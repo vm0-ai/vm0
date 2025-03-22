@@ -37,6 +37,38 @@ function getSecretNameForConnector(type: ConnectorType): string {
 }
 
 /**
+ * Derive api-token connector types from user secrets and variables.
+ * API-token connectors don't have DB records — their existence is inferred
+ * from matching user secrets/variables.
+ */
+export async function getApiTokenConnectorTypes(
+  orgId: string,
+  userId: string,
+): Promise<ConnectorType[]> {
+  const db = globalThis.services.db;
+  const [userSecretRows, userVariableRows] = await Promise.all([
+    db
+      .select({ name: secrets.name })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.type, "user"),
+        ),
+      ),
+    db
+      .select({ name: variables.name })
+      .from(variables)
+      .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId))),
+  ]);
+  return deriveApiTokenConnectedTypes(
+    new Set(userSecretRows.map((r) => r.name)),
+    new Set(userVariableRows.map((r) => r.name)),
+  );
+}
+
+/**
  * List all connectors for an org.
  * Returns OAuth connectors from DB plus derived api-token connectors
  * based on user secrets that match api-token required secret names.
@@ -47,8 +79,8 @@ export async function listConnectors(
 ): Promise<ConnectorResponse[]> {
   const db = globalThis.services.db;
 
-  // Query OAuth connectors from DB, user secret names, and variable names in parallel
-  const [dbResult, userSecretRows, userVariableRows] = await Promise.all([
+  // Query OAuth connectors from DB and derive api-token types in parallel
+  const [dbResult, derivedTypes] = await Promise.all([
     db
       .select({
         id: connectors.id,
@@ -65,20 +97,7 @@ export async function listConnectors(
       .from(connectors)
       .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)))
       .orderBy(connectors.type),
-    db
-      .select({ name: secrets.name })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, orgId),
-          eq(secrets.userId, userId),
-          eq(secrets.type, "user"),
-        ),
-      ),
-    db
-      .select({ name: variables.name })
-      .from(variables)
-      .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId))),
+    getApiTokenConnectorTypes(orgId, userId),
   ]);
 
   const dbConnectors: ConnectorResponse[] = dbResult.map((row) => ({
@@ -93,14 +112,6 @@ export async function listConnectors(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));
-
-  // Derive api-token connected types from user secrets and variables
-  const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
-  const derivedTypes = deriveApiTokenConnectedTypes(
-    userSecretNames,
-    userVariableNames,
-  );
 
   // DB record takes precedence over derived
   const dbTypeSet = new Set(dbConnectors.map((c) => c.type));
