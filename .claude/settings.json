@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.claude.com/schemas/claude-settings.json",
+  "version": "1.0.0",
+  "description": "Claude Code configuration for vm0 project",
+  "agents": {
+    "commit-validator": {
+      "enabled": true,
+      "description": "Validates conventional commit messages"
+    },
+    "pre-commit-checker": {
+      "enabled": true,
+      "description": "Runs quality checks before commits"
+    },
+    "pr-creator": {
+      "enabled": true,
+      "description": "Automates PR creation workflow"
+    },
+    "pr-merger": {
+      "enabled": true,
+      "description": "Automates PR merge workflow"
+    },
+    "pr-pipeline-monitor": {
+      "enabled": true,
+      "description": "Monitors GitHub Actions status"
+    }
+  },
+  "project": {
+    "workingDirectory": "/workspaces/vm0/turbo",
+    "packageManager": "pnpm",
+    "mainBranch": "main",
+    "mergeStrategy": "squash"
+  }
+}

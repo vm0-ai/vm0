@@ -1,5 +1,9 @@
 # Git Commit and PR Workflow
 
+> **⚠️ DEPRECATED**: This command is being superseded by the **pr-creator agent** which provides automated quality checks, branch management, and PR creation. Consider using the agent for a more robust workflow.
+>
+> To use the new agent-based approach, simply describe what you want to commit and let the pr-creator agent handle the workflow automatically.
+
 This document describes the standard workflow for committing changes and creating pull requests.
 
 ## Prerequisites

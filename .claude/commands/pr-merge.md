@@ -1,5 +1,9 @@
 # Merge PR Command
 
+> **⚠️ DEPRECATED**: This command is being superseded by the **pr-merger agent** which provides comprehensive CI validation, retry logic, and automated branch cleanup. Consider using the agent for a more reliable merge workflow.
+>
+> For even more automation, use the **/pr-check** command which combines pipeline monitoring, issue fixing, and merging into one workflow.
+
 This command automates the process of merging a pull request after ensuring all checks pass.
 
 ## What this command does:
