@@ -57,11 +57,12 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
-        id: build
+      - name: Build and push toolchain image
+        id: build-toolchain
         uses: docker/build-push-action@v6
         with:
           context: .docker/ci-toolchain
+          target: toolchain
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -71,9 +72,43 @@ jobs:
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
+      - name: Extract dev metadata
+        if: github.event_name != 'pull_request'
+        id: meta-dev
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/vm0-ai/vm0-dev
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push development image
+        if: github.event_name != 'pull_request'
+        id: build-dev
+        uses: docker/build-push-action@v6
+        with:
+          context: .docker/ci-toolchain
+          target: development
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-dev.outputs.tags }}
+          labels: ${{ steps.meta-dev.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
       - name: Output image info
         if: github.event_name != 'pull_request'
         run: |
+          echo "=== Toolchain Image (CI/CD) ==="
           echo "Image pushed: ${{ steps.meta.outputs.tags }}"
-          echo "Image digest: ${{ steps.build.outputs.digest }}"
-          echo "Use this image in workflows: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          echo "Image digest: ${{ steps.build-toolchain.outputs.digest }}"
+          echo "Use in CI workflows: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          echo ""
+          echo "=== Development Image (Dev Containers) ==="
+          echo "Image pushed: ${{ steps.meta-dev.outputs.tags }}"
+          echo "Image digest: ${{ steps.build-dev.outputs.digest }}"
+          echo "Use in devcontainer: ${{ env.REGISTRY }}/vm0-ai/vm0-dev:main"
