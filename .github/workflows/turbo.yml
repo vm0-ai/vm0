@@ -7,19 +7,36 @@ on:
       - main
 
 jobs:
+  # Run lint and test in parallel since they don't depend on each other
   lint:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
+
       - uses: ./.github/actions/init
+
+      # Cache for pnpm store
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Lint
         run: npx -y @evilmartians/lefthook run pre-commit --all-files
 
   test:
     runs-on: ubuntu-latest
-
+    # Run test in parallel with lint
     services:
       postgres:
         image: postgres:17-alpine
@@ -35,16 +52,75 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
+
       - uses: ./.github/actions/init
+
+      # Cache for pnpm store
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Cache for test results
+      - name: Setup test cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.turbo
+          key: ${{ runner.os }}-test-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-test-
 
       - name: Test
         run: cd turbo && pnpm test
 
+  # Build web and docs in parallel
   build-web:
     runs-on: ubuntu-latest
+    # Only need test to pass, not lint
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
+
       - uses: ./.github/actions/init
+
+      # Cache for pnpm store
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Cache for build outputs
+      - name: Setup build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.next/cache
+          key: ${{ runner.os }}-build-web-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-web-
 
       - name: Build Web Application
         uses: ./.github/actions/vercel-build
@@ -56,11 +132,41 @@ jobs:
 
   build-docs:
     runs-on: ubuntu-latest
+    # Only need test to pass, not lint
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
+
       - uses: ./.github/actions/init
 
-      - name: Build Web Application
+      # Cache for pnpm store
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Cache for build outputs
+      - name: Setup build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.next/cache
+          key: ${{ runner.os }}-build-docs-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-docs-
+
+      - name: Build Docs Application
         uses: ./.github/actions/vercel-build
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -71,7 +177,7 @@ jobs:
   # Database for preview environment
   database:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, lint]  # Ensure code quality before creating resources
     if: github.event_name == 'pull_request'
     permissions:
       deployments: write
@@ -79,6 +185,8 @@ jobs:
       database-url: ${{ steps.branch.outputs.database-url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
       - uses: ./.github/actions/init
 
       - name: Create Neon Branch and Run Migrations
@@ -93,13 +201,15 @@ jobs:
   # Deploy web application
   deploy-web:
     runs-on: ubuntu-latest
-    needs: [build-web, database]
+    needs: [build-web, database, lint]  # Also wait for lint to ensure code quality
     if: github.event_name == 'pull_request'
     permissions:
       pull-requests: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
       - uses: ./.github/actions/init
 
       - name: Download build artifacts
@@ -124,13 +234,15 @@ jobs:
   # Deploy docs application
   deploy-docs:
     runs-on: ubuntu-latest
-    needs: [build-docs]
+    needs: [build-docs, lint]  # Also wait for lint to ensure code quality
     if: github.event_name == 'pull_request' && vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
       pull-requests: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
       - uses: ./.github/actions/init
 
       - name: Download build artifacts
