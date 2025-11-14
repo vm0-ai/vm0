@@ -54,7 +54,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=sha,prefix={{date 'YYYYMMDD'}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push toolchain image
@@ -81,7 +81,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=sha,prefix={{date 'YYYYMMDD'}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push development image

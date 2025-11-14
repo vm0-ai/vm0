@@ -100,6 +100,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      options: --user root
     needs: [change-detection]
     if: needs.change-detection.outputs.any-app-changed == 'true' || github.event_name == 'push'
     services:
@@ -112,31 +115,19 @@ jobs:
           --health-retries 5
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - uses: ./.github/actions/init
 
-      # Add pnpm caching
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: cd turbo && pnpm install --frozen-lockfile
 
       - name: Test
         run: cd turbo && pnpm test
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
 
   build-web:
     runs-on: ubuntu-latest
