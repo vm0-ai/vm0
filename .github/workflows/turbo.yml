@@ -7,9 +7,103 @@ on:
       - main
 
 jobs:
+  # Change detection to optimize CI pipeline
+  change-detection:
+    runs-on: ubuntu-latest
+    # Set outputs for other jobs to use
+    outputs:
+      web-changed: ${{ steps.changes.outputs.web }}
+      docs-changed: ${{ steps.changes.outputs.docs }}
+      packages-changed: ${{ steps.changes.outputs.packages }}
+      any-app-changed: ${{ steps.changes.outputs.any-app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history for PR change detection
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        run: |
+          echo "Detecting changes..."
+
+          # For push to main, assume everything changed
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "Push to main branch - assuming all apps changed"
+            echo "web=true" >> $GITHUB_OUTPUT
+            echo "docs=true" >> $GITHUB_OUTPUT
+            echo "packages=true" >> $GITHUB_OUTPUT
+            echo "any-app=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # For PRs, detect actual changes
+          echo "Checking PR changes..."
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          # Check web app changes
+          if git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/apps/web/; then
+            echo "No changes in web app"
+            WEB_CHANGED="false"
+          else
+            echo "Changes detected in web app"
+            WEB_CHANGED="true"
+          fi
+
+          # Check docs app changes
+          if git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/apps/docs/; then
+            echo "No changes in docs app"
+            DOCS_CHANGED="false"
+          else
+            echo "Changes detected in docs app"
+            DOCS_CHANGED="true"
+          fi
+
+          # Check packages changes (affects all apps)
+          if git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/packages/; then
+            echo "No changes in packages"
+            PACKAGES_CHANGED="false"
+          else
+            echo "Changes detected in packages"
+            PACKAGES_CHANGED="true"
+            # If packages changed, all apps need rebuilding
+            WEB_CHANGED="true"
+            DOCS_CHANGED="true"
+          fi
+
+          # Check root config changes (affects all apps)
+          if ! git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/package.json turbo/pnpm-lock.yaml turbo/turbo.json; then
+            echo "Root config changes detected"
+            PACKAGES_CHANGED="true"
+            WEB_CHANGED="true"
+            DOCS_CHANGED="true"
+          fi
+
+          # Set outputs
+          echo "web=$WEB_CHANGED" >> $GITHUB_OUTPUT
+          echo "docs=$DOCS_CHANGED" >> $GITHUB_OUTPUT
+          echo "packages=$PACKAGES_CHANGED" >> $GITHUB_OUTPUT
+
+          # Any app changed?
+          if [ "$WEB_CHANGED" == "true" ] || [ "$DOCS_CHANGED" == "true" ]; then
+            echo "any-app=true" >> $GITHUB_OUTPUT
+          else
+            echo "any-app=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Summary
+          echo "=== Change Detection Summary ==="
+          echo "Web app changed: $WEB_CHANGED"
+          echo "Docs app changed: $DOCS_CHANGED"
+          echo "Packages changed: $PACKAGES_CHANGED"
+          echo "================================"
+
   lint:
     runs-on: ubuntu-latest
-
+    needs: [change-detection]
+    # Only run if any app changed
+    if: needs.change-detection.outputs.any-app-changed == 'true' || github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/init
@@ -19,7 +113,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-
+    needs: [change-detection]
+    # Only run if any app changed
+    if: needs.change-detection.outputs.any-app-changed == 'true' || github.event_name == 'push'
     services:
       postgres:
         image: postgres:17-alpine
@@ -42,6 +138,9 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
+    needs: [change-detection, test]
+    # Only build if web changed
+    if: needs.change-detection.outputs.web-changed == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/init
@@ -56,11 +155,14 @@ jobs:
 
   build-docs:
     runs-on: ubuntu-latest
+    needs: [change-detection, test]
+    # Only build if docs changed
+    if: needs.change-detection.outputs.docs-changed == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/init
 
-      - name: Build Web Application
+      - name: Build Docs Application
         uses: ./.github/actions/vercel-build
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -71,8 +173,9 @@ jobs:
   # Database for preview environment
   database:
     runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'pull_request'
+    needs: [change-detection, test]
+    # Only create database if web changed (docs don't need database)
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
     permissions:
       deployments: write
     outputs:
@@ -93,8 +196,13 @@ jobs:
   # Deploy web application
   deploy-web:
     runs-on: ubuntu-latest
-    needs: [build-web, database]
-    if: github.event_name == 'pull_request'
+    needs: [build-web, database, lint]
+    # Only deploy if web was built (which means it changed)
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.build-web.result == 'success' &&
+      needs.database.result == 'success'
     permissions:
       pull-requests: write
       deployments: write
@@ -124,8 +232,13 @@ jobs:
   # Deploy docs application
   deploy-docs:
     runs-on: ubuntu-latest
-    needs: [build-docs]
-    if: github.event_name == 'pull_request' && vars.VERCEL_PROJECT_ID_DOCS != ''
+    needs: [build-docs, lint]
+    # Only deploy if docs was built (which means it changed)
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.build-docs.result == 'success' &&
+      vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
       pull-requests: write
       deployments: write
@@ -149,3 +262,22 @@ jobs:
           deployment-env: docs
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
+
+  # Status check job - ensures at least one check passes for PRs
+  ci-status:
+    runs-on: ubuntu-latest
+    needs: [change-detection]
+    if: always()
+    steps:
+      - name: CI Status Summary
+        run: |
+          echo "=== CI Status Summary ==="
+          echo "Change detection completed"
+          echo "Web changed: ${{ needs.change-detection.outputs.web-changed }}"
+          echo "Docs changed: ${{ needs.change-detection.outputs.docs-changed }}"
+          echo "Packages changed: ${{ needs.change-detection.outputs.packages-changed }}"
+
+          if [ "${{ needs.change-detection.outputs.any-app-changed }}" == "false" ]; then
+            echo "No changes detected - skipping builds"
+          fi
+          echo "========================="
