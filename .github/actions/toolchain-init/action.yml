@@ -1,0 +1,33 @@
+name: 'Toolchain Init'
+description: 'Initialize the CI toolchain environment inside container'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup pnpm
+      shell: bash
+      run: |
+        # pnpm is already installed in the container
+        pnpm --version
+        echo "PNPM_HOME=/root/.local/share/pnpm" >> $GITHUB_ENV
+        echo "/root/.local/share/pnpm" >> $GITHUB_PATH
+
+    - name: Get pnpm store directory
+      id: pnpm-cache
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+    - name: Setup pnpm cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        cd turbo
+        pnpm install --frozen-lockfile

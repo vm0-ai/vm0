@@ -6,19 +6,36 @@ on:
     branches:
       - main
 
+env:
+  # Container image to use for CI
+  # Will be updated automatically when new images are built
+  CI_CONTAINER_IMAGE: ghcr.io/vm0-ai/vm0-toolchain:latest
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ vars.CI_CONTAINER_IMAGE || 'ghcr.io/vm0-ai/vm0-toolchain:latest' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+
+      # Use toolchain-init for container environments
+      - uses: ./.github/actions/toolchain-init
 
       - name: Lint
-        run: npx -y @evilmartians/lefthook run pre-commit --all-files
+        run: lefthook run pre-commit --all-files
 
   test:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ vars.CI_CONTAINER_IMAGE || 'ghcr.io/vm0-ai/vm0-toolchain:latest' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     services:
       postgres:
@@ -30,21 +47,49 @@ jobs:
           --health-retries 5
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
 
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/toolchain-init
+
+      # Cache test results
+      - name: Setup test cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.turbo
+          key: ${{ runner.os }}-test-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-test-
 
       - name: Test
         run: cd turbo && pnpm test
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/postgres"
 
   build-web:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ vars.CI_CONTAINER_IMAGE || 'ghcr.io/vm0-ai/vm0-toolchain:latest' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/toolchain-init
+
+      # Cache build outputs
+      - name: Setup build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.next/cache
+          key: ${{ runner.os }}-build-web-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-web-
 
       - name: Build Web Application
         uses: ./.github/actions/vercel-build
@@ -56,11 +101,28 @@ jobs:
 
   build-docs:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ vars.CI_CONTAINER_IMAGE || 'ghcr.io/vm0-ai/vm0-toolchain:latest' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/toolchain-init
 
-      - name: Build Web Application
+      # Cache build outputs
+      - name: Setup build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            turbo/.turbo
+            turbo/**/.next/cache
+          key: ${{ runner.os }}-build-docs-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-docs-
+
+      - name: Build Docs Application
         uses: ./.github/actions/vercel-build
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -69,6 +131,7 @@ jobs:
           artifact-name: turbo-build-${{ github.sha }}-docs
 
   # Database for preview environment
+  # Note: Database job doesn't use container as it only calls APIs
   database:
     runs-on: ubuntu-latest
     needs: test
@@ -79,7 +142,7 @@ jobs:
       database-url: ${{ steps.branch.outputs.database-url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/init  # Use regular init for non-container job
 
       - name: Create Neon Branch and Run Migrations
         id: branch
@@ -91,16 +154,17 @@ jobs:
           action: "create"
 
   # Deploy web application
+  # Note: Deploy jobs don't use container as they mainly download artifacts and call APIs
   deploy-web:
     runs-on: ubuntu-latest
-    needs: [build-web, database]
+    needs: [build-web, database, lint]
     if: github.event_name == 'pull_request'
     permissions:
       pull-requests: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/init  # Use regular init for non-container job
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -124,14 +188,14 @@ jobs:
   # Deploy docs application
   deploy-docs:
     runs-on: ubuntu-latest
-    needs: [build-docs]
+    needs: [build-docs, lint]
     if: github.event_name == 'pull_request' && vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
       pull-requests: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/init  # Use regular init for non-container job
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
