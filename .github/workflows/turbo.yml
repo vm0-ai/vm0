@@ -74,6 +74,7 @@ jobs:
     needs: test
     if: github.event_name == 'pull_request'
     permissions:
+      contents: read
       deployments: write
     outputs:
       database-url: ${{ steps.branch.outputs.database-url }}
@@ -96,6 +97,7 @@ jobs:
     needs: [build-web, database]
     if: github.event_name == 'pull_request'
     permissions:
+      contents: read
       pull-requests: write
       deployments: write
     steps:
@@ -127,6 +129,7 @@ jobs:
     needs: [build-docs]
     if: github.event_name == 'pull_request' && vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
+      contents: read
       pull-requests: write
       deployments: write
     steps:
