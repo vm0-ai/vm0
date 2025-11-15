@@ -147,3 +147,6 @@ settings.local.json
 
 .pnpm-store
 .vercel
+
+# Local HTTPS certificates
+.certs/

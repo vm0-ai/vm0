@@ -7,7 +7,7 @@
     }
   },
   "remoteUser": "vscode",
-  "forwardPorts": [3000, 3001, 4983, 5432],
+  "forwardPorts": [3000, 3001, 4983, 5432, 8080, 8443],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",
     "HISTFILE": "/home/vscode/.cache/.zsh_history",
@@ -17,7 +17,9 @@
     "source=config,target=/home/vscode/.config",
     "source=cache,target=/home/vscode/.cache",
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli",
-    "source=pnpm,target=/home/vscode/.local/share/pnpm"
+    "source=pnpm,target=/home/vscode/.local/share/pnpm",
+    "source=mkcert,target=/home/vscode/.local/share/mkcert",
+    "source=pki,target=/home/vscode/.pki"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "postStartCommand": "gh auth setup-git",
