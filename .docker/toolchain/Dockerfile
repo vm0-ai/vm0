@@ -108,7 +108,8 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
 
 # Create vscode user with standard UID/GID for devcontainer compatibility
 # Following Microsoft's devcontainer pattern for better feature compatibility
-RUN groupadd --gid 1000 vscode \
+# Use -f flag to force group creation if GID already exists (1Password CLI creates GID 1000)
+RUN groupadd -f --gid 1000 vscode \
     && useradd --uid 1000 --gid vscode --shell /usr/bin/zsh --create-home vscode \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
