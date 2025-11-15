@@ -4,32 +4,32 @@
 }
 
 # Main domain redirect to www
-vm0.dev:8443 {
-  tls ../../.certs/vm0.dev.pem ../../.certs/vm0.dev-key.pem
-  redir https://www.vm0.dev:8443{uri} permanent
+vm7.ai:8443 {
+  tls ../../.certs/vm7.ai.pem ../../.certs/vm7.ai-key.pem
+  redir https://www.vm7.ai:8443{uri} permanent
 }
 
 # Web application
-www.vm0.dev:8443 {
-  tls ../../.certs/www.vm0.dev.pem ../../.certs/www.vm0.dev-key.pem
+www.vm7.ai:8443 {
+  tls ../../.certs/www.vm7.ai.pem ../../.certs/www.vm7.ai-key.pem
   reverse_proxy localhost:3000
 }
 
 # Docs application
-docs.vm0.dev:8443 {
-  tls ../../.certs/docs.vm0.dev.pem ../../.certs/docs.vm0.dev-key.pem
+docs.vm7.ai:8443 {
+  tls ../../.certs/docs.vm7.ai.pem ../../.certs/docs.vm7.ai-key.pem
   reverse_proxy localhost:3001
 }
 
 # HTTP redirects to HTTPS
-http://vm0.dev:8080 {
-  redir https://www.vm0.dev:8443{uri} permanent
+http://vm7.ai:8080 {
+  redir https://www.vm7.ai:8443{uri} permanent
 }
 
-http://www.vm0.dev:8080 {
-  redir https://www.vm0.dev:8443{uri} permanent
+http://www.vm7.ai:8080 {
+  redir https://www.vm7.ai:8443{uri} permanent
 }
 
-http://docs.vm0.dev:8080 {
-  redir https://docs.vm0.dev:8443{uri} permanent
+http://docs.vm7.ai:8080 {
+  redir https://docs.vm7.ai:8443{uri} permanent
 }

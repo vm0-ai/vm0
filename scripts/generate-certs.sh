@@ -40,19 +40,19 @@ cd "$CERTS_DIR"
 echo -e "${YELLOW}Generating certificates...${NC}"
 
 # Main domain
-echo "  - vm0.dev"
-mkcert -cert-file vm0.dev.pem -key-file vm0.dev-key.pem \
-  "vm0.dev" "localhost" "127.0.0.1" "::1"
+echo "  - vm7.ai"
+mkcert -cert-file vm7.ai.pem -key-file vm7.ai-key.pem \
+  "vm7.ai" "localhost" "127.0.0.1" "::1"
 
 # Web app
-echo "  - www.vm0.dev"
-mkcert -cert-file www.vm0.dev.pem -key-file www.vm0.dev-key.pem \
-  "www.vm0.dev" "localhost" "127.0.0.1" "::1"
+echo "  - www.vm7.ai"
+mkcert -cert-file www.vm7.ai.pem -key-file www.vm7.ai-key.pem \
+  "www.vm7.ai" "localhost" "127.0.0.1" "::1"
 
 # Docs app
-echo "  - docs.vm0.dev"
-mkcert -cert-file docs.vm0.dev.pem -key-file docs.vm0.dev-key.pem \
-  "docs.vm0.dev" "localhost" "127.0.0.1" "::1"
+echo "  - docs.vm7.ai"
+mkcert -cert-file docs.vm7.ai.pem -key-file docs.vm7.ai-key.pem \
+  "docs.vm7.ai" "localhost" "127.0.0.1" "::1"
 
 echo -e "${GREEN}✓ Certificates generated successfully in ${CERTS_DIR}/${NC}"
 echo ""
