@@ -186,6 +186,7 @@ jobs:
     needs: [change-detection, test, lint]
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
     permissions:
+      contents: read
       deployments: write
     outputs:
       database-url: ${{ steps.branch.outputs.database-url }}
@@ -214,6 +215,7 @@ jobs:
       needs.build-web.result == 'success' &&
       needs.database.result == 'success'
     permissions:
+      contents: read
       pull-requests: write
       deployments: write
     steps:
@@ -251,6 +253,7 @@ jobs:
       needs.build-docs.result == 'success' &&
       vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
+      contents: read
       pull-requests: write
       deployments: write
     steps:
