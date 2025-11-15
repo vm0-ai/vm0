@@ -124,65 +124,6 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
         run: pnpm test
 
-  build-web:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test]
-    if: needs.change-detection.outputs.web-changed == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Setup build cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            turbo/.turbo
-            turbo/**/.next/cache
-          key: ${{ runner.os }}-build-web-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-web-
-
-      - name: Build Web Application
-        uses: ./.github/actions/vercel-build
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          artifact-name: turbo-build-${{ github.sha }}-web
-          environment-variables: |
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-
-  build-docs:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test]
-    if: needs.change-detection.outputs.docs-changed == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Setup build cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            turbo/.turbo
-            turbo/**/.next/cache
-          key: ${{ runner.os }}-build-docs-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-docs-
-
-      - name: Build Docs Application
-        uses: ./.github/actions/vercel-build
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
-          artifact-name: turbo-build-${{ github.sha }}-docs
-
   # Database for preview environment
   database:
     runs-on: ubuntu-latest
@@ -213,12 +154,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [build-web, database, lint]
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      needs.build-web.result == 'success' &&
-      needs.database.result == 'success'
+    needs: [change-detection, database]
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -226,11 +163,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.sha }}-web
 
       - name: Deploy Web to Vercel
         id: deploy
@@ -253,11 +185,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [build-docs, lint]
+    needs: [change-detection]
     if: |
-      always() &&
       github.event_name == 'pull_request' &&
-      needs.build-docs.result == 'success' &&
+      needs.change-detection.outputs.docs-changed == 'true' &&
       vars.VERCEL_PROJECT_ID_DOCS != ''
     permissions:
       contents: read
@@ -266,11 +197,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.sha }}-docs
 
       - name: Deploy Docs to Vercel
         id: deploy

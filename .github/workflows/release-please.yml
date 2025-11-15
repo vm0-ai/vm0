@@ -81,12 +81,6 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.event.workflow_run.head_sha }}-web
-          path: .vercel/output
-
       - name: Deploy Web to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -114,12 +108,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.event.workflow_run.head_sha }}-docs
-          path: .vercel/output
 
       - name: Deploy Docs to Vercel Production
         id: deploy
