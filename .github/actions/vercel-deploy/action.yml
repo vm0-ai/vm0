@@ -1,6 +1,11 @@
 name: "Vercel Deploy"
 description: "Deploy to Vercel with reusable configuration"
 
+outputs:
+  url:
+    description: "The deployment URL"
+    value: ${{ steps.deploy.outputs.url }}
+
 inputs:
   vercel-token:
     description: "Vercel authentication token"
@@ -41,7 +46,7 @@ runs:
         step: start
         token: ${{ github.token }}
         env: ${{ inputs.environment == 'production' && format('{0}/production', inputs.deployment-env) || format('{0}/preview/{1}', inputs.deployment-env, inputs.meta-branch || github.head_ref || github.ref_name) }}
-        ref: ${{ github.head_ref || github.ref }}
+        ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
         desc: Deploying ${{ inputs.environment }} environment
 
     - name: Setup Vercel
@@ -51,16 +56,34 @@ runs:
         vercel-org-id: ${{ inputs.vercel-org-id }}
         vercel-project-id: ${{ inputs.vercel-project-id }}
 
-    - name: Deploy to Vercel
+    - name: Build and Deploy to Vercel
       id: deploy
       shell: bash
       run: |
         # Build deployment command
-        DEPLOY_CMD="vercel deploy --prebuilt --token=${{ inputs.vercel-token }}"
+        DEPLOY_CMD="vercel deploy --token=${{ inputs.vercel-token }}"
 
         # Add production flag if needed
         if [ "${{ inputs.environment }}" == "production" ]; then
           DEPLOY_CMD="$DEPLOY_CMD --prod"
+        fi
+
+        # Add environment variables for both build-time and runtime
+        ENV_VARS="${{ inputs.environment-variables }}"
+        if [ -n "$ENV_VARS" ]; then
+          echo "Adding environment variables for build and runtime..."
+          while IFS= read -r line; do
+            # Skip empty lines
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              # Extract key and value
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              echo "Adding env: $KEY"
+              # Add as both build-time and runtime environment variable
+              DEPLOY_CMD="$DEPLOY_CMD --build-env $KEY=\"$VALUE\" --env $KEY=\"$VALUE\""
+            fi
+          done <<< "$ENV_VARS"
         fi
 
         # Add metadata if provided
@@ -70,18 +93,6 @@ runs:
 
         if [ -n "${{ inputs.meta-pr }}" ]; then
           DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ inputs.meta-pr }}"
-        fi
-
-        # Add environment variables if provided
-        if [ -n "${{ inputs.environment-variables }}" ]; then
-          while IFS= read -r line; do
-            if [ -n "$line" ]; then
-              # Parse key=value format
-              KEY=$(echo "$line" | cut -d'=' -f1)
-              VALUE=$(echo "$line" | cut -d'=' -f2-)
-              DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
-            fi
-          done <<< "${{ inputs.environment-variables }}"
         fi
 
         # Execute deployment and capture URL
