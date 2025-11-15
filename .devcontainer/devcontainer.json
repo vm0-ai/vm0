@@ -19,7 +19,7 @@
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli",
     "source=pnpm,target=/home/vscode/.local/share/pnpm"
   ],
-  "postCreateCommand": "cd turbo && pnpm install",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "customizations": {
     "vscode": {
       "extensions": [
