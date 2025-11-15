@@ -14,6 +14,10 @@ sudo service postgresql start 2>/dev/null || true
 sudo mkdir -p /home/vscode/.local/bin
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local
 
+# Setup Git to use GitHub CLI for authentication
+echo "Configuring Git credential helper..."
+gh auth setup-git 2>/dev/null || true
+
 # Install dependencies
 echo "Installing dependencies..."
 cd /workspaces/vm0/turbo && pnpm install
