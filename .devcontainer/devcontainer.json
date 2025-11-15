@@ -20,6 +20,7 @@
     "source=pnpm,target=/home/vscode/.local/share/pnpm"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "gh auth setup-git",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -14,8 +14,4 @@ sudo service postgresql start 2>/dev/null || true
 sudo mkdir -p /home/vscode/.local/bin
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local
 
-# Setup Git to use GitHub CLI for authentication
-echo "Configuring Git credential helper..."
-gh auth setup-git
-
-echo "✅ Dev container ready!"
+echo "✅ Dev container setup complete!"
