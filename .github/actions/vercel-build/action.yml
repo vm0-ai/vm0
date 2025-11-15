@@ -36,30 +36,24 @@ runs:
 
     - name: Build application
       shell: bash
+      env:
+        ENV_VARS_INPUT: ${{ inputs.environment-variables }}
       run: |
-        # Build command
-        BUILD_CMD="vercel build"
-
-        # Add environment variables for build if provided
-        ENV_VARS="${{ inputs.environment-variables }}"
-        if [ -n "$ENV_VARS" ]; then
-          echo "Setting build environment variables..."
+        # Export environment variables before build
+        if [ -n "$ENV_VARS_INPUT" ]; then
+          echo "Exporting build environment variables..."
           while IFS= read -r line; do
             # Skip empty lines
             line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             if [ -n "$line" ]; then
-              # Extract key and value
-              KEY="${line%%=*}"
-              VALUE="${line#*=}"
-              echo "Setting env: $KEY"
-              # Export for current shell and subprocesses
-              export "$KEY=$VALUE"
+              echo "Exporting: ${line%%=*}"
+              export "$line"
             fi
-          done <<< "$ENV_VARS"
+          done <<< "$ENV_VARS_INPUT"
         fi
 
-        # Execute build
-        eval $BUILD_CMD
+        # Execute build with exported variables
+        vercel build
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
