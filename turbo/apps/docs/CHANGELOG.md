@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/vm0-ai/vm0/compare/docs-v0.1.0...docs-v0.1.1) (2025-11-15)
+
+
+### Bug Fixes
+
+* align docs dev port with caddy proxy configuration ([#25](https://github.com/vm0-ai/vm0/issues/25)) ([28a1b74](https://github.com/vm0-ai/vm0/commit/28a1b749b7267446ac4ee0d89c0f4dd49e1f1cff))
+
 ## [0.1.0](https://github.com/vm0-ai/vm0/compare/docs-v0.0.1...docs-v0.1.0) (2025-11-15)
 
 
