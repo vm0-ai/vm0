@@ -1,6 +1,6 @@
 {
   "name": "VM0 Development",
-  "image": "ghcr.io/vm0-ai/vm0-dev:latest",
+  "image": "ghcr.io/vm0-ai/vm0-dev:5d15ec5",
   "features": {
     "ghcr.io/itsmechlark/features/postgresql:1": {
       "version": "17"

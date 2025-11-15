@@ -11,7 +11,7 @@ jobs:
   change-detection:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     outputs:
       web-changed: ${{ steps.changes.outputs.web }}
@@ -89,7 +89,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [change-detection]
     if: needs.change-detection.outputs.any-app-changed == 'true' || github.event_name == 'push'
@@ -112,7 +112,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [change-detection]
     if: needs.change-detection.outputs.any-app-changed == 'true' || github.event_name == 'push'
@@ -148,7 +148,7 @@ jobs:
   build-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [change-detection, test]
     if: needs.change-detection.outputs.web-changed == 'true'
@@ -185,7 +185,7 @@ jobs:
   build-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [change-detection, test]
     if: needs.change-detection.outputs.docs-changed == 'true'
@@ -223,7 +223,7 @@ jobs:
   database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [change-detection, test, lint]
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
@@ -256,7 +256,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [build-web, database, lint]
     if: |
@@ -302,7 +302,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      image: ghcr.io/vm0-ai/vm0-toolchain:5d15ec5
       options: --user root
     needs: [build-docs, lint]
     if: |
