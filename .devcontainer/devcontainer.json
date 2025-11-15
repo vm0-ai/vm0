@@ -1,18 +1,31 @@
 {
-  "name": "Node.js & TypeScript",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "name": "VM0 Development",
+  "image": "ghcr.io/vm0-ai/vm0-dev:main",
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "22"
-    },
-    "ghcr.io/devcontainers-extra/features/pnpm:2": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers-extra/features/lefthook-asdf:1": {},
-    "ghcr.io/itsmechlark/features/postgresql:1": {},
-    "ghcr.io/guiyomh/features/vim:0": {},
-    "ghcr.io/devcontainers-extra/features/ripgrep:1": {}
+    "ghcr.io/itsmechlark/features/postgresql:1": {
+      "version": "17"
+    }
   },
-  "forwardPorts": [4983],
+  "remoteUser": "vscode",
+  "forwardPorts": [3000, 3001, 5432, 4983],
+  "portsAttributes": {
+    "3000": {
+      "label": "Web App",
+      "onAutoForward": "notify"
+    },
+    "3001": {
+      "label": "Docs App",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "silent"
+    },
+    "4983": {
+      "label": "Dev Server",
+      "onAutoForward": "silent"
+    }
+  },
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",
     "HISTFILE": "/home/vscode/.cache/.zsh_history",
@@ -23,9 +36,24 @@
     "source=cache,target=/home/vscode/.cache",
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli"
   ],
-  "postCreateCommand": "sudo mkdir -p /home/vscode/.local/bin && sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local && npm install -g vercel",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
   "customizations": {
     "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "prisma.prisma",
+        "unifiedjs.vscode-mdx",
+        "ms-vscode.vscode-typescript-next",
+        "vitest.explorer",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "github.vscode-pull-request-github",
+        "github.copilot",
+        "github.copilot-chat"
+      ],
       "settings": {
         "sqltools.connections": [
           {
@@ -33,18 +61,28 @@
             "server": "localhost",
             "port": 5432,
             "driver": "PostgreSQL",
-            "name": "local",
+            "name": "VM0 Local DB",
             "username": "postgres",
             "database": "postgres",
-            "password": ""
+            "password": "postgres"
           }
         ],
-        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.defaultProfile.linux": "bash",
         "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash"
+          },
           "zsh": {
             "path": "/usr/bin/zsh"
           }
-        }
+        },
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "eslint.workingDirectories": ["turbo"],
+        "typescript.tsdk": "turbo/node_modules/typescript/lib"
       }
     }
   }

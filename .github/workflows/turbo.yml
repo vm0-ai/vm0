@@ -10,6 +10,9 @@ jobs:
   # Change detection to optimize CI pipeline
   change-detection:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      options: --user root
     outputs:
       web-changed: ${{ steps.changes.outputs.web }}
       docs-changed: ${{ steps.changes.outputs.docs }}
@@ -131,27 +134,18 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      options: --user root
     needs: [change-detection, test]
     if: needs.change-detection.outputs.web-changed == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - uses: ./.github/actions/init
 
-      # Add pnpm and build caching
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: cd turbo && pnpm install --frozen-lockfile
 
       - name: Setup build cache
         uses: actions/cache@v3
@@ -164,36 +158,31 @@ jobs:
             ${{ runner.os }}-build-web-
 
       - name: Build Web Application
-        uses: ./.github/actions/vercel-build
+        run: |
+          cd turbo
+          pnpm turbo run build --filter=@vm0/web
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          artifact-name: turbo-build-${{ github.sha }}-web
+          name: turbo-build-${{ github.sha }}-web
+          path: turbo/apps/web/.next
+          retention-days: 1
 
   build-docs:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:main
+      options: --user root
     needs: [change-detection, test]
     if: needs.change-detection.outputs.docs-changed == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - uses: ./.github/actions/init
 
-      # Add pnpm and build caching
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: cd turbo && pnpm install --frozen-lockfile
 
       - name: Setup build cache
         uses: actions/cache@v3
@@ -206,12 +195,16 @@ jobs:
             ${{ runner.os }}-build-docs-
 
       - name: Build Docs Application
-        uses: ./.github/actions/vercel-build
+        run: |
+          cd turbo
+          pnpm turbo run build --filter=@vm0/docs
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
-          artifact-name: turbo-build-${{ github.sha }}-docs
+          name: turbo-build-${{ github.sha }}-docs
+          path: turbo/apps/docs/.next
+          retention-days: 1
 
   # Database for preview environment
   database:
