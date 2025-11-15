@@ -8,83 +8,56 @@ on:
   merge_group:
 
 jobs:
-  # Change detection to optimize CI pipeline
+  # Detect changes in apps to optimize CI pipeline
   change-detection:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    # Run for all events, but only do actual detection for PRs
     outputs:
-      web-changed: ${{ steps.changes.outputs.web }}
-      docs-changed: ${{ steps.changes.outputs.docs }}
-      any-app-changed: ${{ steps.changes.outputs.any-app }}
+      web-changed: ${{ steps.detect.outputs.web-changed }}
+      docs-changed: ${{ steps.detect.outputs.docs-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Configure git safe directory
+      - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
 
       - name: Detect changes
-        id: changes
+        id: detect
         run: |
-          echo "Detecting changes..."
-
-          # For push to main, assume everything changed
-          if [ "${{ github.event_name }}" == "push" ]; then
-            echo "Push to main branch - assuming all apps changed"
-            echo "web=true" >> $GITHUB_OUTPUT
-            echo "docs=true" >> $GITHUB_OUTPUT
-            echo "any-app=true" >> $GITHUB_OUTPUT
+          # For non-PR events, assume everything changed
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "Not a PR, assuming all apps changed"
+            echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "docs-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # For PRs, detect actual changes
-          echo "Checking PR changes..."
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          # For PRs, use turbo-ignore to detect changes
+          echo "Checking for changes in PR..."
 
-          # Check web app changes
-          if git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/apps/web/ turbo/packages/; then
-            echo "No changes in web app"
-            WEB_CHANGED="false"
+          # Check web app
+          cd turbo/apps/web
+          if npx turbo-ignore; then
+            echo "No changes detected in web app"
+            echo "web-changed=false" >> $GITHUB_OUTPUT
           else
             echo "Changes detected in web app"
-            WEB_CHANGED="true"
+            echo "web-changed=true" >> $GITHUB_OUTPUT
           fi
 
-          # Check docs app changes
-          if git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/apps/docs/ turbo/packages/; then
-            echo "No changes in docs app"
-            DOCS_CHANGED="false"
+          # Check docs app
+          cd ../docs
+          if npx turbo-ignore; then
+            echo "No changes detected in docs app"
+            echo "docs-changed=false" >> $GITHUB_OUTPUT
           else
             echo "Changes detected in docs app"
-            DOCS_CHANGED="true"
+            echo "docs-changed=true" >> $GITHUB_OUTPUT
           fi
-
-          # Check root config changes (affects all apps)
-          if ! git diff --quiet $BASE_SHA...$HEAD_SHA -- turbo/package.json turbo/pnpm-lock.yaml turbo/turbo.json; then
-            echo "Root config changes detected"
-            WEB_CHANGED="true"
-            DOCS_CHANGED="true"
-          fi
-
-          # Set outputs
-          echo "web=$WEB_CHANGED" >> $GITHUB_OUTPUT
-          echo "docs=$DOCS_CHANGED" >> $GITHUB_OUTPUT
-
-          # Any app changed?
-          if [ "$WEB_CHANGED" == "true" ] || [ "$DOCS_CHANGED" == "true" ]; then
-            echo "any-app=true" >> $GITHUB_OUTPUT
-          else
-            echo "any-app=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Summary
-          echo "=== Change Detection Summary ==="
-          echo "Web app changed: $WEB_CHANGED"
-          echo "Docs app changed: $DOCS_CHANGED"
-          echo "================================"
 
   lint:
     runs-on: ubuntu-latest
@@ -122,78 +95,25 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test
 
-  build-web:
+  # Deploy web application with database
+  deploy-web:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test]
-    if: needs.change-detection.outputs.web-changed == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Setup build cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            turbo/.turbo
-            turbo/**/.next/cache
-          key: ${{ runner.os }}-build-web-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-web-
-
-      - name: Build Web Application
-        uses: ./.github/actions/vercel-build
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          artifact-name: turbo-build-${{ github.sha }}-web
-
-  build-docs:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test]
-    if: needs.change-detection.outputs.docs-changed == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Setup build cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            turbo/.turbo
-            turbo/**/.next/cache
-          key: ${{ runner.os }}-build-docs-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-docs-
-
-      - name: Build Docs Application
-        uses: ./.github/actions/vercel-build
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
-          artifact-name: turbo-build-${{ github.sha }}-docs
-
-  # Database for preview environment
-  database:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test, lint]
+    needs: [change-detection]
+    # Deploy if it's a PR and web changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
+    outputs:
+      preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
       contents: read
+      pull-requests: write
       deployments: write
-    outputs:
-      database-url: ${{ steps.branch.outputs.database-url }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      # Step 1: Create Neon database branch
       - name: Create Neon Branch and Run Migrations
         id: branch
         uses: ./.github/actions/neon-branch
@@ -203,30 +123,7 @@ jobs:
           branch-name: "${{ github.head_ref }}"
           action: "create"
 
-  # Deploy web application
-  deploy-web:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [build-web, database, lint]
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      needs.build-web.result == 'success' &&
-      needs.database.result == 'success'
-    permissions:
-      contents: read
-      pull-requests: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.sha }}-web
-
+      # Step 2: Deploy to Vercel with database URL
       - name: Deploy Web to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -237,7 +134,7 @@ jobs:
           environment: preview
           deployment-env: web
           environment-variables: |
-            DATABASE_URL=${{ needs.database.outputs.database-url }}
+            DATABASE_URL=${{ steps.branch.outputs.database-url }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
@@ -246,12 +143,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [build-docs, lint]
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      needs.build-docs.result == 'success' &&
-      vars.VERCEL_PROJECT_ID_DOCS != ''
+    needs: [change-detection]
+    # Only deploy if it's a PR and docs changed
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.docs-changed == 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -259,11 +153,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: turbo-build-${{ github.sha }}-docs
 
       - name: Deploy Docs to Vercel
         id: deploy
