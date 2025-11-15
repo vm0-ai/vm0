@@ -14,6 +14,10 @@ inputs:
   artifact-name:
     description: "Name for the build artifact"
     required: true
+  environment-variables:
+    description: "Environment variables for build (key=value pairs, one per line)"
+    required: false
+    default: ""
 
 outputs:
   artifact-name:
@@ -32,7 +36,30 @@ runs:
 
     - name: Build application
       shell: bash
-      run: vercel build
+      run: |
+        # Build command
+        BUILD_CMD="vercel build"
+
+        # Add environment variables for build if provided
+        ENV_VARS="${{ inputs.environment-variables }}"
+        if [ -n "$ENV_VARS" ]; then
+          echo "Setting build environment variables..."
+          while IFS= read -r line; do
+            # Skip empty lines
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              # Extract key and value
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              echo "Setting env: $KEY"
+              # Export for current shell and subprocesses
+              export "$KEY=$VALUE"
+            fi
+          done <<< "$ENV_VARS"
+        fi
+
+        # Execute build
+        eval $BUILD_CMD
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
