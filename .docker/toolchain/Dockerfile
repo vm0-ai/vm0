@@ -82,17 +82,6 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install 1Password CLI
-RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | tee /etc/apt/sources.list.d/1password.list \
-    && mkdir -p /etc/debsig/policies/AC2D62742012EA22 \
-    && curl -fsSL https://downloads.1password.com/linux/debian/debsig/1password.pol | tee /etc/debsig/policies/AC2D62742012EA22/1password.pol \
-    && mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 \
-    && curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg \
-    && apt-get update \
-    && apt-get install -y 1password-cli \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install mkcert for local SSL certificates
 RUN apt-get update && apt-get install -y \
     libnss3-tools \
@@ -104,6 +93,17 @@ RUN apt-get update && apt-get install -y \
     fi \
     && chmod +x mkcert-v*-linux-* \
     && mv mkcert-v*-linux-* /usr/local/bin/mkcert \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install 1Password CLI
+RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | tee /etc/apt/sources.list.d/1password.list \
+    && mkdir -p /etc/debsig/policies/AC2D62742012EA22 \
+    && curl -fsSL https://downloads.1password.com/linux/debian/debsig/1password.pol | tee /etc/debsig/policies/AC2D62742012EA22/1password.pol \
+    && mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 \
+    && curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg \
+    && apt-get update \
+    && apt-get install -y 1password-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Create vscode user with standard UID/GID for devcontainer compatibility
