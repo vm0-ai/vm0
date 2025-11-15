@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, test]
+    needs: [change-detection, test, database]
     if: needs.change-detection.outputs.web-changed == 'true'
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +152,7 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
           artifact-name: turbo-build-${{ github.sha }}-web
           environment-variables: |
+            DATABASE_URL=${{ needs.database.outputs.database-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
 
