@@ -98,8 +98,11 @@ jobs:
       - name: Install dependencies
         run: cd turbo && pnpm install --frozen-lockfile
 
+      - name: Initialize git safe directory
+        run: git config --global --add safe.directory /__w/vm0/vm0
+
       - name: Lint
-        run: cd turbo && lefthook run pre-commit --all-files
+        run: cd turbo && pnpm lint
 
   test:
     runs-on: ubuntu-latest
@@ -160,7 +163,7 @@ jobs:
       - name: Build Web Application
         run: |
           cd turbo
-          pnpm turbo run build --filter=@vm0/web
+          pnpm turbo run build --filter=web
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -197,7 +200,7 @@ jobs:
       - name: Build Docs Application
         run: |
           cd turbo
-          pnpm turbo run build --filter=@vm0/docs
+          pnpm turbo run build --filter=docs
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
