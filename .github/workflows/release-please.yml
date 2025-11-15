@@ -27,20 +27,57 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  deploy-web:
+  # Run database migrations in production
+  migrate-production:
     needs: release-please
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:latest
     permissions:
-      deployments: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/toolchain-init
 
-      - name: Push database schema
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          # Get the main branch database URL (production)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: cd turbo/apps/web && pnpm db:migrate
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Run Production Migrations
+        run: |
+          cd turbo && pnpm -F web db:migrate
+        env:
+          DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
+
+  # Deploy web app to production
+  deploy-web-production:
+    needs: [release-please, migrate-production]
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:latest
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          # Get the main branch database URL (production)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -58,17 +95,21 @@ jobs:
           environment: production
           deployment-env: web
           environment-variables: |
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
 
-  deploy-docs:
+  # Deploy docs app to production
+  deploy-docs-production:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' && vars.VERCEL_PROJECT_ID_DOCS != '' }}
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:latest
     permissions:
+      contents: read
       deployments: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/init
+      - uses: ./.github/actions/toolchain-init
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
