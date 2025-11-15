@@ -14,7 +14,8 @@
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",
     "generate-certs": "bash ../scripts/generate-certs.sh",
-    "check-certs": "node packages/proxy/scripts/check-certs.js"
+    "check-certs": "node packages/proxy/scripts/check-certs.js",
+    "sync:env": "eval $(op signin) && op inject -i ../.env.local.tpl -o apps/web/.env.local"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.4",
