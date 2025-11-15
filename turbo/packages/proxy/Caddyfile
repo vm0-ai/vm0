@@ -1,0 +1,35 @@
+{
+  http_port 8080
+  https_port 8443
+}
+
+# Main domain redirect to www
+vm0.dev:8443 {
+  tls ../../.certs/vm0.dev.pem ../../.certs/vm0.dev-key.pem
+  redir https://www.vm0.dev:8443{uri} permanent
+}
+
+# Web application
+www.vm0.dev:8443 {
+  tls ../../.certs/www.vm0.dev.pem ../../.certs/www.vm0.dev-key.pem
+  reverse_proxy localhost:3000
+}
+
+# Docs application
+docs.vm0.dev:8443 {
+  tls ../../.certs/docs.vm0.dev.pem ../../.certs/docs.vm0.dev-key.pem
+  reverse_proxy localhost:3001
+}
+
+# HTTP redirects to HTTPS
+http://vm0.dev:8080 {
+  redir https://www.vm0.dev:8443{uri} permanent
+}
+
+http://www.vm0.dev:8080 {
+  redir https://www.vm0.dev:8443{uri} permanent
+}
+
+http://docs.vm0.dev:8080 {
+  redir https://docs.vm0.dev:8443{uri} permanent
+}

@@ -5,3 +5,4 @@ coverage
 .claude
 CHANGELOG.md
 .source
+Caddyfile
