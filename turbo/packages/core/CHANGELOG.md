@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/vm0-ai/vm0/compare/core-v0.0.1...core-v0.1.0) (2025-11-15)
+
+
+### Features
+
+* initial project setup from makita template ([e9c330a](https://github.com/vm0-ai/vm0/commit/e9c330a5952526d657f245e8db9522de553018b3))
+
 ## [0.1.0](https://github.com/e7h4n/vm0/compare/core-v0.0.1...core-v0.1.0) (2025-08-30)
 
 
