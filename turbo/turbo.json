@@ -7,7 +7,8 @@
     "SKIP_ENV_VALIDATION",
     "VERCEL",
     "CLERK_SECRET_KEY",
-    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "E2B_API_KEY"
   ],
   "tasks": {
     "build": {
