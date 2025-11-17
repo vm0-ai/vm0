@@ -9,7 +9,6 @@
     "CLERK_SECRET_KEY",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "VM0_TOKEN",
-    "VM0_API_URL",
     "API_HOST"
   ],
   "tasks": {

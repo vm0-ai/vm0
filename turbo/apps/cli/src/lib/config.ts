@@ -43,8 +43,7 @@ export async function getToken(): Promise<string | undefined> {
 
 export async function getApiUrl(): Promise<string | undefined> {
   const config = await loadConfig();
-  // Support both API_HOST (preferred) and VM0_API_URL (legacy)
-  const apiHost = process.env.API_HOST ?? process.env.VM0_API_URL;
+  const apiHost = process.env.API_HOST;
   if (apiHost) {
     // Add protocol if missing
     return apiHost.startsWith("http") ? apiHost : `https://${apiHost}`;
