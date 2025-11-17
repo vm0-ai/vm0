@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../src/db/schema/agent-config";
 import { authenticate } from "../../../../src/lib/middleware/auth";
-import { successResponse, errorResponse } from "../../../../src/lib/api-response";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../../src/lib/api-response";
 import { NotFoundError } from "../../../../src/lib/errors";
 import type {
   GetAgentConfigResponse,
@@ -16,7 +19,7 @@ import type {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     // Initialize services at serverless function entry

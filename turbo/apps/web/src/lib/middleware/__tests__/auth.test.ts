@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { authenticate } from "./auth";
-import { UnauthorizedError } from "../errors";
+import { authenticate } from "../auth";
+import { UnauthorizedError } from "../../errors";
 import { createHash } from "crypto";
 
 // Mock globalThis.services
@@ -119,7 +119,7 @@ describe("authenticate", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         lastUsedAt: expect.any(Date),
-      })
+      }),
     );
   });
 });

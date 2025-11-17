@@ -20,7 +20,7 @@ export function errorResponse(error: unknown) {
           code: error.code,
         },
       },
-      { status: error.statusCode }
+      { status: error.statusCode },
     );
   }
 
@@ -33,6 +33,6 @@ export function errorResponse(error: unknown) {
         code: "INTERNAL_SERVER_ERROR",
       },
     },
-    { status: 500 }
+    { status: 500 },
   );
 }
