@@ -102,10 +102,10 @@ jobs:
       - uses: ./.github/actions/toolchain-init
 
       - name: Run Database Migrations
-        working-directory: turbo/apps/web
+        working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm db:push
+        run: pnpm --filter web db:migrate
 
       - name: Test
         working-directory: turbo
