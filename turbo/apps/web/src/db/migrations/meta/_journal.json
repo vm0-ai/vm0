@@ -8,13 +8,6 @@
       "when": 1756181739566,
       "tag": "0000_real_sabretooth",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1763365789017,
-      "tag": "0001_huge_blue_shield",
-      "breakpoints": true
     }
   ]
 }
