@@ -1,13 +1,23 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/hello(.*)",
+  "/api/cli/auth/device",
+  "/api/cli/auth/token",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
+  const authHeader = request.headers.get("Authorization");
+
+  // Skip Clerk auth for CLI token requests
+  if (authHeader?.includes("vm0_live_")) {
+    return NextResponse.next();
+  }
+
   if (!isPublicRoute(request)) {
     await auth.protect();
   }

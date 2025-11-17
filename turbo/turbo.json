@@ -7,7 +7,10 @@
     "SKIP_ENV_VALIDATION",
     "VERCEL",
     "CLERK_SECRET_KEY",
-    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "VM0_TOKEN",
+    "VM0_API_URL",
+    "API_HOST"
   ],
   "tasks": {
     "build": {
