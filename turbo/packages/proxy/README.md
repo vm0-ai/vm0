@@ -93,11 +93,11 @@ The `Caddyfile` defines:
 
 ### Domain Mapping
 
-| Domain            | Port | Backend                       |
-| ----------------- | ---- | ----------------------------- |
-| www.vm7.ai:8443   | 8443 | localhost:3000 (Next.js web)  |
-| docs.vm7.ai:8443  | 8443 | localhost:3001 (Next.js docs) |
-| vm7.ai:8443       | 8443 | Redirect to www.vm7.ai:8443   |
+| Domain           | Port | Backend                       |
+| ---------------- | ---- | ----------------------------- |
+| www.vm7.ai:8443  | 8443 | localhost:3000 (Next.js web)  |
+| docs.vm7.ai:8443 | 8443 | localhost:3001 (Next.js docs) |
+| vm7.ai:8443      | 8443 | Redirect to www.vm7.ai:8443   |
 
 ## Scripts
 
