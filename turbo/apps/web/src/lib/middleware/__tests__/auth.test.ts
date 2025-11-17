@@ -1,29 +1,47 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+/**
+ * @vitest-environment node
+ */
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { authenticate } from "../auth";
 import { UnauthorizedError } from "../../errors";
 import { createHash } from "crypto";
-
-// Mock globalThis.services
-const mockDb = {
-  select: vi.fn(),
-  update: vi.fn(),
-};
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  // Setup globalThis.services mock
-  Object.defineProperty(globalThis, "services", {
-    value: { db: mockDb },
-    configurable: true,
-  });
-});
+import { initServices } from "../../init-services";
+import { apiKeys } from "../../../db/schema/api-key";
+import { eq } from "drizzle-orm";
 
 function hashApiKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
 }
 
-describe("authenticate", () => {
+describe("authenticate - integration tests", () => {
+  beforeEach(async () => {
+    // Initialize services to connect to real database
+    initServices();
+
+    // Clean up test data
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, "Test Key"))
+      .execute();
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, "Test Key 2"))
+      .execute();
+  });
+
+  afterEach(async () => {
+    // Clean up test data after each test
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, "Test Key"))
+      .execute();
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, "Test Key 2"))
+      .execute();
+  });
+
   it("should throw UnauthorizedError when API key is missing", async () => {
     const request = new NextRequest("http://localhost/api/test");
 
@@ -36,90 +54,83 @@ describe("authenticate", () => {
       headers: { "x-api-key": "invalid-key" },
     });
 
-    mockDb.select.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([]),
-        }),
-      }),
-    });
-
     await expect(authenticate(request)).rejects.toThrow(UnauthorizedError);
     await expect(authenticate(request)).rejects.toThrow("Invalid API key");
   });
 
   it("should return API key ID when authentication succeeds", async () => {
     const apiKey = "valid-key-123";
-    const apiKeyId = "api-key-id-123";
+
+    // Insert test API key into database
+    const [insertedKey] = await globalThis.services.db
+      .insert(apiKeys)
+      .values({
+        keyHash: hashApiKey(apiKey),
+        name: "Test Key",
+      })
+      .returning({ id: apiKeys.id });
+
     const request = new NextRequest("http://localhost/api/test", {
       headers: { "x-api-key": apiKey },
-    });
-
-    const mockApiKeyRecord = {
-      id: apiKeyId,
-      keyHash: hashApiKey(apiKey),
-      name: "Test Key",
-      createdAt: new Date(),
-      lastUsedAt: null,
-    };
-
-    mockDb.select.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([mockApiKeyRecord]),
-        }),
-      }),
-    });
-
-    mockDb.update.mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
     });
 
     const result = await authenticate(request);
 
-    expect(result).toBe(apiKeyId);
-    expect(mockDb.update).toHaveBeenCalled();
+    expect(result).toBe(insertedKey?.id);
+
+    // Verify lastUsedAt was updated
+    const [updatedKey] = await globalThis.services.db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, result))
+      .limit(1);
+
+    expect(updatedKey?.lastUsedAt).toBeDefined();
   });
 
   it("should update lastUsedAt timestamp on successful authentication", async () => {
     const apiKey = "valid-key-456";
-    const apiKeyId = "api-key-id-456";
+
+    // Insert test API key into database
+    const [insertedKey] = await globalThis.services.db
+      .insert(apiKeys)
+      .values({
+        keyHash: hashApiKey(apiKey),
+        name: "Test Key 2",
+      })
+      .returning({ id: apiKeys.id });
+
     const request = new NextRequest("http://localhost/api/test", {
       headers: { "x-api-key": apiKey },
     });
 
-    const mockApiKeyRecord = {
-      id: apiKeyId,
-      keyHash: hashApiKey(apiKey),
-      name: "Test Key 2",
-      createdAt: new Date(),
-      lastUsedAt: null,
-    };
+    // First authentication
+    await authenticate(request);
 
-    const mockSet = vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(undefined),
-    });
+    const [firstCheck] = await globalThis.services.db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, insertedKey?.id ?? ""))
+      .limit(1);
 
-    mockDb.select.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([mockApiKeyRecord]),
-        }),
-      }),
-    });
+    const firstLastUsedAt = firstCheck?.lastUsedAt;
+    expect(firstLastUsedAt).toBeDefined();
 
-    mockDb.update.mockReturnValue({
-      set: mockSet,
-    });
+    // Wait a bit and authenticate again
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     await authenticate(request);
 
-    expect(mockSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lastUsedAt: expect.any(Date),
-      }),
+    const [secondCheck] = await globalThis.services.db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, insertedKey?.id ?? ""))
+      .limit(1);
+
+    const secondLastUsedAt = secondCheck?.lastUsedAt;
+    expect(secondLastUsedAt).toBeDefined();
+    expect(secondLastUsedAt?.getTime()).toBeGreaterThan(
+      firstLastUsedAt?.getTime() ?? 0,
     );
   });
 });
