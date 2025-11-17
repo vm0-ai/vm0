@@ -36,25 +36,53 @@ CERTS_DIR="${GIT_ROOT}/.certs"
 mkdir -p "$CERTS_DIR"
 cd "$CERTS_DIR"
 
-# Generate certificates for each domain
-echo -e "${YELLOW}Generating certificates...${NC}"
+# Generate certificates for each domain (skip if already exists)
+echo -e "${YELLOW}Checking certificates...${NC}"
+
+GENERATED_COUNT=0
+SKIPPED_COUNT=0
 
 # Main domain
-echo "  - vm7.ai"
-mkcert -cert-file vm7.ai.pem -key-file vm7.ai-key.pem \
-  "vm7.ai" "localhost" "127.0.0.1" "::1"
+if [ -f "vm7.ai.pem" ] && [ -f "vm7.ai-key.pem" ]; then
+  echo -e "  - vm7.ai ${YELLOW}(skipped - already exists)${NC}"
+  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+else
+  echo "  - vm7.ai"
+  mkcert -cert-file vm7.ai.pem -key-file vm7.ai-key.pem \
+    "vm7.ai" "localhost" "127.0.0.1" "::1"
+  GENERATED_COUNT=$((GENERATED_COUNT + 1))
+fi
 
 # Web app
-echo "  - www.vm7.ai"
-mkcert -cert-file www.vm7.ai.pem -key-file www.vm7.ai-key.pem \
-  "www.vm7.ai" "localhost" "127.0.0.1" "::1"
+if [ -f "www.vm7.ai.pem" ] && [ -f "www.vm7.ai-key.pem" ]; then
+  echo -e "  - www.vm7.ai ${YELLOW}(skipped - already exists)${NC}"
+  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+else
+  echo "  - www.vm7.ai"
+  mkcert -cert-file www.vm7.ai.pem -key-file www.vm7.ai-key.pem \
+    "www.vm7.ai" "localhost" "127.0.0.1" "::1"
+  GENERATED_COUNT=$((GENERATED_COUNT + 1))
+fi
 
 # Docs app
-echo "  - docs.vm7.ai"
-mkcert -cert-file docs.vm7.ai.pem -key-file docs.vm7.ai-key.pem \
-  "docs.vm7.ai" "localhost" "127.0.0.1" "::1"
+if [ -f "docs.vm7.ai.pem" ] && [ -f "docs.vm7.ai-key.pem" ]; then
+  echo -e "  - docs.vm7.ai ${YELLOW}(skipped - already exists)${NC}"
+  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+else
+  echo "  - docs.vm7.ai"
+  mkcert -cert-file docs.vm7.ai.pem -key-file docs.vm7.ai-key.pem \
+    "docs.vm7.ai" "localhost" "127.0.0.1" "::1"
+  GENERATED_COUNT=$((GENERATED_COUNT + 1))
+fi
 
-echo -e "${GREEN}✓ Certificates generated successfully in ${CERTS_DIR}/${NC}"
+if [ $GENERATED_COUNT -gt 0 ]; then
+  echo -e "${GREEN}✓ Generated ${GENERATED_COUNT} certificate(s) in ${CERTS_DIR}/${NC}"
+else
+  echo -e "${GREEN}✓ All certificates already exist in ${CERTS_DIR}/${NC}"
+fi
+if [ $SKIPPED_COUNT -gt 0 ]; then
+  echo -e "${YELLOW}  (${SKIPPED_COUNT} certificate(s) skipped)${NC}"
+fi
 echo ""
 echo "Generated certificates:"
 ls -lh "$CERTS_DIR"/*.pem
