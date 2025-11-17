@@ -1,0 +1,15 @@
+{
+  "name": "@vm0/e2e-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@types/node": "^22.10.2",
+    "dotenv": "^17.2.2",
+    "typescript": "^5.7.2"
+  }
+}
