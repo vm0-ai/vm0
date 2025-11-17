@@ -115,8 +115,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
-    # Deploy if it's a PR and either web or CLI changed (CLI needs web deployment for E2E tests)
-    if: github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true')
+    # Deploy if it's a PR and web changed
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
