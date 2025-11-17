@@ -18,6 +18,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
+      cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       docs_release_created: ${{ steps.release.outputs['turbo/apps/docs--release_created'] }}
     steps:
@@ -119,3 +120,33 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: production
           deployment-env: docs
+
+  publish-npm:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@latest
+
+      - name: Install dependencies
+        run: cd turbo && pnpm install --frozen-lockfile
+
+      - name: Use latest npm for OIDC support
+        run: npm install -g npm@latest
+
+      - name: Build CLI
+        run: cd turbo && pnpm -F @vm0/cli build
+
+      - name: Publish to npm with OIDC
+        run: cd turbo/apps/cli/dist && npm publish --access public

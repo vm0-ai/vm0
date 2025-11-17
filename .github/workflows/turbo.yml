@@ -17,13 +17,14 @@ jobs:
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
+      cli-changed: ${{ steps.detect.outputs.cli-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       - name: Configure Git safe directory
-        run: git config --global --add safe.directory /__w/vm0/vm0
+        run: git config --global --add safe.directory /__w/vm01/vm01
 
       - name: Detect changes
         id: detect
@@ -33,6 +34,7 @@ jobs:
             echo "Not a PR, assuming all apps changed"
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -57,6 +59,16 @@ jobs:
           else
             echo "Changes detected in docs app"
             echo "docs-changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check CLI app
+          cd ../cli
+          if npx turbo-ignore; then
+            echo "No changes detected in CLI app"
+            echo "cli-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in CLI app"
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
           fi
 
   lint:
@@ -103,8 +115,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
-    # Deploy if it's a PR and web changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
+    # Deploy if it's a PR and either web or CLI changed (CLI needs web deployment for E2E tests)
+    if: github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -169,3 +181,51 @@ jobs:
           deployment-env: docs
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
+
+  # Run CLI E2E tests against deployed preview
+  cli-e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web]
+    # Run if CLI changed and web deployment succeeded
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true' && needs.deploy-web.outputs.preview-url != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # For BATS test framework
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm install
+
+      - name: Install Playwright browsers
+        run: cd e2e && npx playwright install chromium
+
+      - name: Authenticate CLI
+        run: |
+          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
+          cd e2e && npm run auth
+        env:
+          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+
+      - name: Run CLI E2E Tests
+        run: |
+          echo "Testing CLI against API_HOST: ${{ needs.deploy-web.outputs.preview-url }}"
+          ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
+        env:
+          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}

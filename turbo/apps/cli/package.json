@@ -1,18 +1,18 @@
 {
-  "name": "vm0-cli",
+  "name": "@vm0/cli",
   "version": "0.1.0",
   "private": true,
   "description": "CLI application",
   "type": "module",
   "bin": {
-    "vm0-cli": "./dist/index.js"
+    "vm0": "./dist/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"e7h4n-vm0-cli\"; delete this.private; delete this.scripts; delete this.devDependencies; delete this.dependencies[\"@vm0/core\"]; this.bin[\"vm0-cli\"]=\"index.js\"; this.files=[\".\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; delete this.dependencies[\"@vm0/core\"]; this.bin[\"vm0\"]=\"index.js\"; this.files=[\".\"]'",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
