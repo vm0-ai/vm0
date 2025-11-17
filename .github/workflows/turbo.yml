@@ -17,6 +17,7 @@ jobs:
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
+      cli-changed: ${{ steps.detect.outputs.cli-changed }}
       web-e2e-changed: ${{ steps.detect.outputs.web-e2e-changed }}
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +35,7 @@ jobs:
             echo "Not a PR, assuming all apps changed"
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "web-e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -59,6 +61,16 @@ jobs:
           else
             echo "Changes detected in docs app"
             echo "docs-changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check CLI app
+          cd ../cli
+          if npx turbo-ignore; then
+            echo "No changes detected in CLI app"
+            echo "cli-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in CLI app"
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
           fi
 
           # Check e2e/web tests
@@ -115,8 +127,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
-    # Deploy if it's a PR and web or web e2e changed (e2e tests need web deployment)
-    if: github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.web-e2e-changed == 'true')
+    # Deploy if it's a PR and web, CLI, or web e2e changed (e2e tests need web deployment)
+    if: github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-e2e-changed == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -233,3 +245,32 @@ jobs:
           npx playwright test --reporter=list
         env:
           BASE_URL: ${{ needs.deploy-web.outputs.preview-url }}
+
+  # Run CLI E2E tests
+  cli-e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection]
+    # Run if CLI changed
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # For BATS test framework
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Run CLI E2E Tests
+        run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
