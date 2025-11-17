@@ -8,4 +8,4 @@ load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 
 # Path to the CLI
-export CLI_COMMAND="vm0-cli"
+export CLI_COMMAND="vm0"

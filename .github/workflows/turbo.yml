@@ -182,14 +182,14 @@ jobs:
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
-  # Run CLI E2E tests against deployed preview
+  # Run CLI E2E tests
   cli-e2e:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web]
-    # Run if CLI changed and web deployment succeeded
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true' && needs.deploy-web.outputs.preview-url != ''
+    needs: [change-detection]
+    # Run if CLI changed
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -208,24 +208,5 @@ jobs:
       - name: Setup CLI globally
         run: cd turbo/apps/cli && pnpm link --global
 
-      - name: Install E2E dependencies
-        run: cd e2e && npm install
-
-      - name: Install Playwright browsers
-        run: cd e2e && npx playwright install chromium
-
-      - name: Authenticate CLI
-        run: |
-          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
-          cd e2e && npm run auth
-        env:
-          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-
       - name: Run CLI E2E Tests
-        run: |
-          echo "Testing CLI against API_HOST: ${{ needs.deploy-web.outputs.preview-url }}"
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
-        env:
-          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}
+        run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats

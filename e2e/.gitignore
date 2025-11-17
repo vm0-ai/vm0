@@ -1,8 +1,2 @@
-# Test artifacts
+node_modules/
 *.log
-*.tmp
-test-results/
-
-# OS files
-.DS_Store
-Thumbs.db
