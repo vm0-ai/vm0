@@ -5,19 +5,19 @@
 
 # Main domain redirect to www
 vm7.ai:8443 {
-  tls ../../.certs/vm7.ai.pem ../../.certs/vm7.ai-key.pem
+  tls ../../../.certs/vm7.ai.pem ../../../.certs/vm7.ai-key.pem
   redir https://www.vm7.ai:8443{uri} permanent
 }
 
 # Web application
 www.vm7.ai:8443 {
-  tls ../../.certs/www.vm7.ai.pem ../../.certs/www.vm7.ai-key.pem
+  tls ../../../.certs/www.vm7.ai.pem ../../../.certs/www.vm7.ai-key.pem
   reverse_proxy localhost:3000
 }
 
 # Docs application
 docs.vm7.ai:8443 {
-  tls ../../.certs/docs.vm7.ai.pem ../../.certs/docs.vm7.ai-key.pem
+  tls ../../../.certs/docs.vm7.ai.pem ../../../.certs/docs.vm7.ai-key.pem
   reverse_proxy localhost:3001
 }
 

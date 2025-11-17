@@ -9,7 +9,7 @@ This package provides a Caddy-based reverse proxy that enables HTTPS for local d
 ## Features
 
 - **HTTPS support** for all local development servers
-- **Multiple domains**: www.vm0.dev, docs.vm0.dev
+- **Multiple domains**: www.vm7.ai, docs.vm7.ai
 - **Automatic HTTP to HTTPS redirect**
 - **WebSocket support** for hot module replacement
 
@@ -41,9 +41,9 @@ This will:
 
 - Install mkcert CA to your system trust store
 - Generate SSL certificates for:
-  - vm0.dev
-  - www.vm0.dev
-  - docs.vm0.dev
+  - vm7.ai
+  - www.vm7.ai
+  - docs.vm7.ai
 
 ### 2. Verify Certificates
 
@@ -72,8 +72,8 @@ pnpm dev
 
 With HTTPS (via Caddy):
 
-- Web: https://www.vm0.dev:8443
-- Docs: https://docs.vm0.dev:8443
+- Web: https://www.vm7.ai:8443
+- Docs: https://docs.vm7.ai:8443
 
 Direct access (HTTP only):
 
@@ -95,9 +95,9 @@ The `Caddyfile` defines:
 
 | Domain            | Port | Backend                       |
 | ----------------- | ---- | ----------------------------- |
-| www.vm0.dev:8443  | 8443 | localhost:3000 (Next.js web)  |
-| docs.vm0.dev:8443 | 8443 | localhost:3001 (Next.js docs) |
-| vm0.dev:8443      | 8443 | Redirect to www.vm0.dev:8443  |
+| www.vm7.ai:8443   | 8443 | localhost:3000 (Next.js web)  |
+| docs.vm7.ai:8443  | 8443 | localhost:3001 (Next.js docs) |
+| vm7.ai:8443       | 8443 | Redirect to www.vm7.ai:8443   |
 
 ## Scripts
 
@@ -109,7 +109,7 @@ The `Caddyfile` defines:
 
 The DevContainer automatically:
 
-- Adds vm0.dev domains to `/etc/hosts`
+- Adds vm7.ai domains to `/etc/hosts`
 - Installs mkcert CA to system trust store
 - Installs CA to NSS database (for Chrome/Firefox)
 - Persists mkcert state across container rebuilds
@@ -159,7 +159,7 @@ Then restart your browser.
 In DevContainer, this should be automatic. If not:
 
 ```bash
-echo "127.0.0.1 vm0.dev www.vm0.dev docs.vm0.dev" | sudo tee -a /etc/hosts
+echo "127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai" | sudo tee -a /etc/hosts
 ```
 
 ## File Structure

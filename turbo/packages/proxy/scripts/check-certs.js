@@ -3,15 +3,15 @@
 const fs = require("fs");
 const path = require("path");
 
-const CERTS_DIR = path.join(__dirname, "../../../.certs");
+const CERTS_DIR = path.join(__dirname, "../../../../.certs");
 
 const requiredCerts = [
-  "vm0.dev.pem",
-  "vm0.dev-key.pem",
-  "www.vm0.dev.pem",
-  "www.vm0.dev-key.pem",
-  "docs.vm0.dev.pem",
-  "docs.vm0.dev-key.pem",
+  "vm7.ai.pem",
+  "vm7.ai-key.pem",
+  "www.vm7.ai.pem",
+  "www.vm7.ai-key.pem",
+  "docs.vm7.ai.pem",
+  "docs.vm7.ai-key.pem",
 ];
 
 console.log("🔍 Checking SSL certificates...\n");
