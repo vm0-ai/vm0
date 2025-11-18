@@ -15,7 +15,7 @@ setup() {
     assert_success
 
     # Extract agent config ID from JSON output
-    agent_config_id=$(echo "$output" | grep -o '"agentConfigId":"[^"]*"' | cut -d'"' -f4)
+    agent_config_id=$(echo "$output" | grep -o '"agentConfigId": "[^"]*"' | cut -d'"' -f4)
 
     # Verify we got a config ID in UUID format
     [ -n "$agent_config_id" ]
@@ -35,7 +35,7 @@ setup() {
     run $CLI_COMMAND create "$TEST_CONFIG" --json
     assert_success
 
-    agent_config_id=$(echo "$output" | grep -o '"agentConfigId":"[^"]*"' | cut -d'"' -f4)
+    agent_config_id=$(echo "$output" | grep -o '"agentConfigId": "[^"]*"' | cut -d'"' -f4)
     [ -n "$agent_config_id" ]
 
     # Step 2: Run with dynamic variables
@@ -50,7 +50,7 @@ setup() {
     run $CLI_COMMAND create "$TEST_CONFIG" --json
     assert_success
 
-    agent_config_id=$(echo "$output" | grep -o '"agentConfigId":"[^"]*"' | cut -d'"' -f4)
+    agent_config_id=$(echo "$output" | grep -o '"agentConfigId": "[^"]*"' | cut -d'"' -f4)
 
     # Run with JSON output
     run $CLI_COMMAND run "$agent_config_id" "echo 'test'" --json
