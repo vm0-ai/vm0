@@ -24,9 +24,7 @@ async function main() {
     `\n📦 Template ID: ${result.templateId || "namnmt5bl80j5oon0pr6"}`,
   );
   console.log(`\n💡 Add this to your .env.local:`);
-  console.log(
-    `E2B_TEMPLATE_ID=${result.templateId || "namnmt5bl80j5oon0pr6"}`,
-  );
+  console.log(`E2B_TEMPLATE_ID=${result.templateId || "namnmt5bl80j5oon0pr6"}`);
 }
 
 main().catch((error) => {
