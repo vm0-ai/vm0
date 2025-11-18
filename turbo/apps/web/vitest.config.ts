@@ -17,6 +17,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     // Don't override env vars, let them pass through from system
+    // Run tests sequentially to avoid database race conditions
+    fileParallelism: false,
   },
   resolve: {
     alias: {
