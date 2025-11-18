@@ -29,12 +29,8 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
     initServices();
 
     // Clean up test data
-    await globalThis.services.db
-      .delete(agentRuntimes)
-      .execute();
-    await globalThis.services.db
-      .delete(agentConfigs)
-      .execute();
+    await globalThis.services.db.delete(agentRuntimes).execute();
+    await globalThis.services.db.delete(agentConfigs).execute();
     await globalThis.services.db
       .delete(apiKeys)
       .where(eq(apiKeys.name, "Test API Key"))
@@ -81,9 +77,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
   afterEach(async () => {
     // Clean up test data
-    await globalThis.services.db
-      .delete(agentRuntimes)
-      .execute();
+    await globalThis.services.db.delete(agentRuntimes).execute();
     await globalThis.services.db
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testAgentConfigId))
