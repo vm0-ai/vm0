@@ -10,7 +10,9 @@
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "E2B_API_KEY",
     "E2B_TEMPLATE_ID",
-    "VM0_API_URL"
+    "VM0_API_URL",
+    "MINIMAX_ANTHROPIC_BASE_URL",
+    "MINIMAX_API_KEY"
   ],
   "tasks": {
     "build": {

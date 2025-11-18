@@ -144,13 +144,29 @@ export class E2BService {
     console.log(`[E2B] Executing run-agent.sh for runtime ${runtimeId}...`);
 
     // Set environment variables and execute script
+    const envs: Record<string, string> = {
+      VM0_RUNTIME_ID: runtimeId,
+      VM0_WEBHOOK_URL: webhookUrl,
+      VM0_WEBHOOK_TOKEN: webhookToken,
+      VM0_PROMPT: prompt,
+    };
+
+    // Add Minimax API configuration if available
+    const minimaxBaseUrl = process.env.MINIMAX_ANTHROPIC_BASE_URL;
+    const minimaxApiKey = process.env.MINIMAX_API_KEY;
+
+    if (minimaxBaseUrl) {
+      envs.ANTHROPIC_BASE_URL = minimaxBaseUrl;
+      console.log(`[E2B] Using Minimax base URL: ${minimaxBaseUrl}`);
+    }
+
+    if (minimaxApiKey) {
+      envs.ANTHROPIC_API_KEY = minimaxApiKey;
+      console.log(`[E2B] Using Minimax API key`);
+    }
+
     const result = await sandbox.commands.run(scriptPath, {
-      envVars: {
-        VM0_RUNTIME_ID: runtimeId,
-        VM0_WEBHOOK_URL: webhookUrl,
-        VM0_WEBHOOK_TOKEN: webhookToken,
-        VM0_PROMPT: prompt,
-      },
+      envs,
     });
 
     const executionTimeMs = Date.now() - execStart;
