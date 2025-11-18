@@ -1,15 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AgentRuntime } from "../agent-runtime";
 import { AgentRunner } from "../agent-runner";
 
 describe("AgentRuntime", () => {
+  const runners: AgentRunner[] = [];
+
   beforeEach(() => {
     // Reset environment variables
     delete process.env.VM0_API_URL;
     delete process.env.VM0_API_KEY;
 
-    // Mock fetch
-    global.fetch = vi.fn();
+    // Mock fetch with default response to prevent unhandled errors
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [],
+        hasMore: false,
+        nextSequence: 1,
+      }),
+    });
+  });
+
+  afterEach(async () => {
+    // Stop all runners to prevent unhandled errors
+    runners.forEach((runner) => runner.stop());
+    // Wait a bit to ensure any in-flight polls complete
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    runners.length = 0;
   });
 
   describe("create", () => {
@@ -71,6 +88,7 @@ describe("AgentRuntime", () => {
       });
 
       const runner = runtime.run("test prompt");
+      runners.push(runner);
 
       expect(runner).toBeInstanceOf(AgentRunner);
     });
@@ -91,12 +109,25 @@ describe("AgentRuntime", () => {
         createdAt: "2025-11-17T10:00:00Z",
       };
 
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      // Setup all mocks before starting the runner
+      // First call: runtime creation
+      (global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockResponse,
+        })
+        // Subsequent calls: events polling
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            events: [],
+            hasMore: false,
+            nextSequence: 1,
+          }),
+        });
 
       const runner = runtime.run("test prompt");
+      runners.push(runner);
 
       // Wait for async operation
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -112,8 +143,6 @@ describe("AgentRuntime", () => {
           }),
         }),
       );
-
-      runner.stop();
     });
 
     it("should emit error if runtime creation fails", async () => {
@@ -127,6 +156,7 @@ describe("AgentRuntime", () => {
       );
 
       const runner = runtime.run("test prompt");
+      runners.push(runner);
 
       const errors: Error[] = [];
       runner.on("error", (error) => {
@@ -170,6 +200,7 @@ describe("AgentRuntime", () => {
       });
 
       const runner = runtime.run("test prompt");
+      runners.push(runner);
 
       const events: string[] = [];
       runner.on("*", (event) => {
@@ -178,8 +209,6 @@ describe("AgentRuntime", () => {
 
       // Wait for runtime to start
       await new Promise((resolve) => setTimeout(resolve, 100));
-
-      runner.stop();
 
       // Should have called fetch for runtime creation
       expect(global.fetch).toHaveBeenCalledWith(
