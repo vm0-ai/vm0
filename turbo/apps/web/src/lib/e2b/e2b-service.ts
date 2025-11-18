@@ -107,7 +107,10 @@ export class E2BService {
     if (e2bConfig.defaultTemplate) {
       console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
       // Template should be passed as first argument, not in options
-      const sandbox = await Sandbox.create(e2bConfig.defaultTemplate, sandboxOptions);
+      const sandbox = await Sandbox.create(
+        e2bConfig.defaultTemplate,
+        sandboxOptions,
+      );
       return sandbox;
     } else {
       console.warn(
