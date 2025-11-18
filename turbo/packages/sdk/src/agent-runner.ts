@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import type {
   AgentEvent,
   EventCallback,
-  EventType,
   InitEvent,
   TextEvent,
   ToolUseEvent,
@@ -14,9 +13,22 @@ import type { APIClient } from './api-client';
 import { TimeoutError } from './utils/errors';
 
 /**
+ * Typed EventEmitter for agent events
+ */
+class TypedEventEmitter extends EventEmitter {
+  emit(event: string | symbol, ...args: unknown[]): boolean {
+    return super.emit(event, ...args);
+  }
+
+  on(event: string | symbol, listener: (...args: unknown[]) => void): this {
+    return super.on(event, listener);
+  }
+}
+
+/**
  * Agent runner - manages event polling and callbacks
  */
-export class AgentRunner extends EventEmitter {
+export class AgentRunner extends TypedEventEmitter {
   private runtimeId?: string;
   private lastSequence = 0;
   private pollInterval: number;
@@ -144,10 +156,9 @@ export class AgentRunner extends EventEmitter {
     return eventData as AgentEvent;
   }
 
-}
-
-// Type-safe event listener overloads
-export interface AgentRunner {
+  /**
+   * Type-safe event listener
+   */
   on(event: 'init', listener: EventCallback<InitEvent>): this;
   on(event: 'text', listener: EventCallback<TextEvent>): this;
   on(event: 'tool_use', listener: EventCallback<ToolUseEvent>): this;
@@ -155,5 +166,7 @@ export interface AgentRunner {
   on(event: 'result', listener: EventCallback<ResultEvent>): this;
   on(event: '*', listener: EventCallback<AgentEvent>): this;
   on(event: 'error', listener: (error: Error) => void): this;
-  on(event: string | symbol, listener: (...args: unknown[]) => void): this;
+  on(event: string | symbol, listener: (...args: unknown[]) => void): this {
+    return super.on(event, listener);
+  }
 }
