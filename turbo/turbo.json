@@ -8,7 +8,8 @@
     "VERCEL",
     "CLERK_SECRET_KEY",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-    "E2B_API_KEY"
+    "E2B_API_KEY",
+    "VM0_API_URL"
   ],
   "tasks": {
     "build": {
