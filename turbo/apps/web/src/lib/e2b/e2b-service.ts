@@ -88,7 +88,7 @@ export class E2BService {
    */
   private async executeCommand(
     sandbox: Sandbox,
-    options: CreateRuntimeOptions
+    _options: CreateRuntimeOptions
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
