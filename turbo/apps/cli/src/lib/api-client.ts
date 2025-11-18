@@ -24,10 +24,8 @@ export class APIClient {
       const error = (await response.json().catch(() => ({}))) as {
         error?: { message?: string };
       };
-      throw new Error(
-        error.error?.message ||
-          `HTTP ${response.status}: ${response.statusText}`,
-      );
+      const errorMessage = error.error?.message || response.statusText;
+      throw new Error(`HTTP ${response.status}: ${errorMessage}`);
     }
 
     return response.json() as Promise<{
@@ -69,10 +67,8 @@ export class APIClient {
       const error = (await response.json().catch(() => ({}))) as {
         error?: { message?: string };
       };
-      throw new Error(
-        error.error?.message ||
-          `HTTP ${response.status}: ${response.statusText}`,
-      );
+      const errorMessage = error.error?.message || response.statusText;
+      throw new Error(`HTTP ${response.status}: ${errorMessage}`);
     }
 
     return response.json() as Promise<{
