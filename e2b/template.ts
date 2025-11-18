@@ -9,7 +9,7 @@ import { Template } from "e2b";
  * - curl and jq for webhook communication
  * - VM0 workspace directory
  */
-export const vm0Template = Template()
+export const template = Template()
   .fromImage("e2bdev/base")
   // Install Node.js 22.x
   .runCmd("curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -")

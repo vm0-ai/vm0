@@ -16,7 +16,8 @@
     "generate-certs": "bash ../scripts/generate-certs.sh",
     "check-certs": "node packages/proxy/scripts/check-certs.js",
     "sync:env": "eval $(op signin) && op inject -i ../.env.local.tpl -o apps/web/.env.local",
-    "e2b:build": "cd apps/web && npx tsx src/lib/e2b/template/build.ts"
+    "e2b:build": "cd ../e2b && npx tsx build.prod.ts",
+    "e2b:build:dev": "cd ../e2b && npx tsx build.dev.ts"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.4",

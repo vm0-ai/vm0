@@ -17,13 +17,13 @@ This will:
 - Push it to E2B
 - Output the template ID
 
-### 2. Configure Template ID
+### 2. Configure Template Name
 
-Add the template ID to your environment:
+Add the template name to your environment:
 
 ```bash
 # In turbo/.env.local
-E2B_TEMPLATE_ID=<template-id-from-build-output>
+E2B_TEMPLATE_NAME=<template-name-from-build-output>
 ```
 
 That's it! Your E2B sandbox is now ready to run Claude Code.
@@ -69,10 +69,10 @@ Building VM0 E2B template...
 [Build logs...]
 ✅ Template built successfully!
 
-📦 Template ID: abcd1234efgh5678
+📦 Template Name: vm0-claude-code
 
 💡 Add this to your .env.local:
-E2B_TEMPLATE_ID=abcd1234efgh5678
+E2B_TEMPLATE_NAME=vm0-claude-code
 ```
 
 ### Configuring the Application
@@ -82,11 +82,11 @@ Update your environment configuration:
 ```bash
 # turbo/.env.local
 E2B_API_KEY=your-e2b-api-key
-E2B_TEMPLATE_ID=abcd1234efgh5678  # From build output
+E2B_TEMPLATE_NAME=vm0-claude-code  # From build output
 VM0_API_URL=http://localhost:3000  # Or your deployed URL
 ```
 
-The E2B service will automatically use the template when `E2B_TEMPLATE_ID` is set.
+The E2B service will automatically use the template when `E2B_TEMPLATE_NAME` is set.
 
 ## Verifying the Template
 
@@ -120,7 +120,7 @@ If you need to modify the template (e.g., install additional packages):
 
 1. Edit `src/lib/e2b/template/template.ts`
 2. Run `pnpm e2b:build` to rebuild
-3. Update `E2B_TEMPLATE_ID` with the new template ID
+3. Update `E2B_TEMPLATE_NAME` with the new template name
 
 Example - Adding a new tool:
 
@@ -162,25 +162,25 @@ E2B_API_KEY=your-api-key
 **Possible causes:**
 
 - Template not built yet
-- Wrong `E2B_TEMPLATE_ID` configured
+- Wrong `E2B_TEMPLATE_NAME` configured
 - Template build failed
 
 **Solutions:**
 
 1. Run `pnpm e2b:build` to build the template
-2. Verify `E2B_TEMPLATE_ID` matches the build output
+2. Verify `E2B_TEMPLATE_NAME` matches the build output
 3. Check build logs for errors
 
 ### Tests fail with "command not found"
 
-**Expected behavior:** Tests will fail if `E2B_TEMPLATE_ID` is not set.
+**Expected behavior:** Tests will fail if `E2B_TEMPLATE_NAME` is not set.
 
 **Solution:** Either:
 
-1. Set `E2B_TEMPLATE_ID` in your environment
+1. Set `E2B_TEMPLATE_NAME` in your environment
 2. Or skip tests that require Claude Code:
    ```typescript
-   it.skipIf(!process.env.E2B_TEMPLATE_ID)(
+   it.skipIf(!process.env.E2B_TEMPLATE_NAME)(
      'should execute Claude Code',
      async () => { ... }
    )
@@ -195,7 +195,7 @@ E2B_API_KEY=your-api-key
 
 ### Optional
 
-- `E2B_TEMPLATE_ID` - Custom template ID (if not set, uses default E2B image without Claude)
+- `E2B_TEMPLATE_NAME` - Custom template name (if not set, uses default E2B image without Claude)
 
 ### Passed to Sandbox (Automatically)
 
@@ -213,13 +213,13 @@ To use the custom template in CI:
 1. Add E2B secrets to GitHub repository:
    - Go to Settings → Secrets and variables → Actions
    - Add `E2B_API_KEY`
-   - Add `E2B_TEMPLATE_ID` (after building locally)
+   - Add `E2B_TEMPLATE_NAME` (after building locally)
 
 2. Update workflow to use template:
    ```yaml
    env:
      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-     E2B_TEMPLATE_ID: ${{ secrets.E2B_TEMPLATE_ID }}
+     E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
    ```
 
 ### Vercel Deployment
@@ -227,7 +227,7 @@ To use the custom template in CI:
 Add environment variables in Vercel dashboard:
 
 - `E2B_API_KEY`
-- `E2B_TEMPLATE_ID`
+- `E2B_TEMPLATE_NAME`
 
 The template will be used automatically in production.
 
@@ -251,7 +251,7 @@ Use the TypeScript SDK approach instead (`pnpm e2b:build`).
 ## Next Steps
 
 1. Build the template: `pnpm e2b:build`
-2. Configure `E2B_TEMPLATE_ID` in `.env.local`
+2. Configure `E2B_TEMPLATE_NAME` in `.env.local`
 3. Start the dev server: `pnpm dev`
 4. Test creating a runtime: `curl -X POST http://localhost:3000/api/agent-runtimes ...`
 5. Verify Claude Code output (not "Hello World from E2B!")
