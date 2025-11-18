@@ -20,7 +20,7 @@ export async function createCommand(
     if (!options.json) success("Validation passed");
 
     // 3. Get API config
-    const apiConfig = getAPIConfig();
+    const apiConfig = await getAPIConfig();
 
     // 4. Create agent config via API
     if (!options.json) info("Creating agent config...");

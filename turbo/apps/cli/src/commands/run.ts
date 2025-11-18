@@ -27,7 +27,7 @@ export async function runCommand(
     }
 
     // 2. Get API config
-    const apiConfig = getAPIConfig();
+    const apiConfig = await getAPIConfig();
 
     // 3. Create runtime
     const client = new APIClient(apiConfig);
@@ -77,7 +77,9 @@ export async function runCommand(
     // Provide hints for common errors
     if (err instanceof Error) {
       if (err.message.includes("401")) {
-        console.error(chalk.gray("\nHint: Check your VM0_API_KEY"));
+        console.error(
+          chalk.gray("\nHint: Run 'vm0 auth login' or set VM0_TOKEN environment variable"),
+        );
       } else if (err.message.includes("404")) {
         console.error(
           chalk.gray("\nHint: Agent config not found. Check the config ID."),

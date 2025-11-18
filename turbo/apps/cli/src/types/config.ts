@@ -25,5 +25,5 @@ export interface VolumeConfig {
 
 export interface CLIConfig {
   apiUrl: string;
-  apiKey: string;
+  token: string;
 }

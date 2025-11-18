@@ -1,4 +1,5 @@
 import type { CLIConfig, VM0Config } from "../types/config";
+import { getToken, getApiUrl } from "./config";
 
 export class APIClient {
   constructor(private config: CLIConfig) {}
@@ -20,6 +21,21 @@ export class APIClient {
   }
 
   /**
+   * Get authorization headers
+   */
+  private getAuthHeaders(): Record<string, string> {
+    if (!this.config.token) {
+      throw new Error(
+        "Not authenticated. Run 'vm0 auth login' to authenticate.",
+      );
+    }
+
+    return {
+      Authorization: `Bearer ${this.config.token}`,
+    };
+  }
+
+  /**
    * Create agent config
    * POST /api/agent-configs
    */
@@ -31,7 +47,7 @@ export class APIClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Api-Key": this.config.apiKey,
+        ...this.getAuthHeaders(),
       },
       body: JSON.stringify({ config }),
     });
@@ -70,7 +86,7 @@ export class APIClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Api-Key": this.config.apiKey,
+        ...this.getAuthHeaders(),
       },
       body: JSON.stringify({
         agentConfigId,
@@ -99,19 +115,19 @@ export class APIClient {
 }
 
 /**
- * Get API configuration from environment
+ * Get API configuration from environment and config file
  */
-export function getAPIConfig(): CLIConfig {
-  const apiUrl = process.env.VM0_API_URL || "http://localhost:3000";
-  const apiKey = process.env.VM0_API_KEY;
+export async function getAPIConfig(): Promise<CLIConfig> {
+  const apiUrl = (await getApiUrl()) || "http://localhost:3000";
+  const token = await getToken();
 
-  if (!apiKey) {
+  if (!token) {
     throw new Error(
-      "VM0_API_KEY environment variable is required.\n\n" +
-        "Set it with:\n" +
-        "  export VM0_API_KEY=your-api-key",
+      "Not authenticated. Run 'vm0 auth login' to authenticate.\n\n" +
+        "Or set VM0_TOKEN environment variable:\n" +
+        "  export VM0_TOKEN=your-bearer-token",
     );
   }
 
-  return { apiUrl, apiKey };
+  return { apiUrl, token };
 }
