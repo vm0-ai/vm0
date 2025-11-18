@@ -233,14 +233,15 @@ jobs:
           pnpm db:migrate
 
       - name: Build and start API server
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/test_db
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
         run: |
           cd turbo
           pnpm --filter web build
           cd apps/web
-          export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
-          export E2B_API_KEY="${{ secrets.E2B_API_KEY }}"
-          export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}"
-          export CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}"
           pnpm start &
           # Wait for server to be ready
           timeout 30 bash -c 'until curl -f http://localhost:3000/api/hello; do sleep 1; done'
