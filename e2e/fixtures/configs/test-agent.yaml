@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  description: "Test agent for e2e tests"
+  image: "ubuntu:22.04"
+  provider: "e2b"
+  working_dir: "/workspace"
+  volumes: []

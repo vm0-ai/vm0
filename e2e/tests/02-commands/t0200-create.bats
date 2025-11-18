@@ -1,0 +1,73 @@
+#!/usr/bin/env bats
+
+load '../../helpers/setup'
+
+# Note: These tests require a running VM0 API server with valid credentials
+# Set VM0_API_URL and VM0_API_KEY environment variables before running
+
+setup() {
+    # Skip tests if API credentials not set
+    if [ -z "$VM0_API_URL" ] || [ -z "$VM0_API_KEY" ]; then
+        skip "VM0_API_URL or VM0_API_KEY not set"
+    fi
+
+    TEST_CONFIG="${TEST_ROOT}/fixtures/configs/test-agent.yaml"
+}
+
+@test "vm0 create shows error without API key" {
+    # Temporarily unset API key
+    old_key="$VM0_API_KEY"
+    unset VM0_API_KEY
+
+    run $CLI_COMMAND create "$TEST_CONFIG"
+
+    # Restore API key
+    export VM0_API_KEY="$old_key"
+
+    assert_failure
+    assert_output --partial "VM0_API_KEY"
+}
+
+@test "vm0 create fails with non-existent config file" {
+    run $CLI_COMMAND create /path/to/nonexistent.yaml
+    assert_failure
+    assert_output --partial "Config file not found"
+}
+
+@test "vm0 create fails with invalid YAML" {
+    # Create temporary invalid YAML file
+    TEMP_FILE="$(mktemp)"
+    echo "invalid: yaml: content: [" > "$TEMP_FILE"
+
+    run $CLI_COMMAND create "$TEMP_FILE"
+
+    rm "$TEMP_FILE"
+
+    assert_failure
+    assert_output --partial "Invalid YAML"
+}
+
+@test "vm0 create shows help with --help flag" {
+    run $CLI_COMMAND create --help
+    assert_success
+    assert_output --partial "Create an agent config"
+}
+
+@test "vm0 create with valid config file creates agent config" {
+    # This test requires a real API server
+    skip "Requires running API server with database"
+
+    run $CLI_COMMAND create "$TEST_CONFIG"
+    assert_success
+    assert_output --partial "Agent Config ID:"
+    assert_output --partial "cfg-"
+}
+
+@test "vm0 create with --json flag outputs JSON" {
+    # This test requires a real API server
+    skip "Requires running API server with database"
+
+    run $CLI_COMMAND create "$TEST_CONFIG" --json
+    assert_success
+    assert_output --regexp '\{"agentConfigId":"cfg-[a-z0-9]+","createdAt":"[0-9-]+T[0-9:]+Z"\}'
+}
