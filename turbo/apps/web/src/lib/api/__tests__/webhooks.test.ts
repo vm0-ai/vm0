@@ -143,9 +143,9 @@ describe("POST /api/webhooks/agent-events", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]?.eventType).toBe("init");
-    expect(events[0]?.sequenceNumber).toBe("1");
+    expect(events[0]?.sequenceNumber).toBe(1);
     expect(events[1]?.eventType).toBe("text");
-    expect(events[1]?.sequenceNumber).toBe("2");
+    expect(events[1]?.sequenceNumber).toBe(2);
   });
 
   it("should reject invalid token", async () => {
