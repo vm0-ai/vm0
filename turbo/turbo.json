@@ -11,7 +11,10 @@
     "VM0_TOKEN",
     "API_HOST",
     "E2B_API_KEY",
-    "VM0_API_URL"
+    "E2B_TEMPLATE_ID",
+    "VM0_API_URL",
+    "MINIMAX_ANTHROPIC_BASE_URL",
+    "MINIMAX_API_KEY"
   ],
   "tasks": {
     "build": {
