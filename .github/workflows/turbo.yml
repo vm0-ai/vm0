@@ -231,6 +231,8 @@ jobs:
           # Run migrations on the new database
           export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
           pnpm db:migrate
+          # Seed database with API key for E2E tests
+          pnpm db:seed
 
       - name: Build and start API server
         env:
