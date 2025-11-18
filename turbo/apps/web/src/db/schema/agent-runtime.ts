@@ -11,10 +11,10 @@ import { agentConfigs } from "./agent-config";
 /**
  * Agent Runtimes table
  * Created when developer executes agent via SDK
- * NOTE: Not implemented in Phase 1, but defined for future use
  */
 export const agentRuntimes = pgTable("agent_runtimes", {
   id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(), // Clerk user ID - owner of this runtime
   agentConfigId: uuid("agent_config_id")
     .references(() => agentConfigs.id)
     .notNull(),

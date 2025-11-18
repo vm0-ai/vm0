@@ -1,20 +1,10 @@
 #!/usr/bin/env tsx
 
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
 import postgres from "postgres";
-import { createHash } from "crypto";
-import { apiKeys } from "../src/db/schema/api-key";
 
 /**
- * Hash API key using SHA-256
- */
-function hashApiKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
-}
-
-/**
- * Seed database with initial API key
+ * Seed database with initial data
  */
 async function seed() {
   if (!process.env.DATABASE_URL) {
@@ -25,25 +15,8 @@ async function seed() {
   const db = drizzle(sql);
 
   try {
-    const apiKey = "dev-key-123";
-    const keyHash = hashApiKey(apiKey);
-
-    // Check if API key already exists
-    const existing = await db
-      .select()
-      .from(apiKeys)
-      .where(eq(apiKeys.keyHash, keyHash))
-      .limit(1);
-
-    if (existing.length > 0) {
-      console.log("✅ API key already exists: dev-key-123");
-    } else {
-      await db.insert(apiKeys).values({
-        keyHash,
-        name: "Development Key",
-      });
-      console.log("✅ Seeded API key: dev-key-123");
-    }
+    // Add seed data here if needed
+    console.log("✅ Database seeding completed");
   } finally {
     await sql.end();
   }

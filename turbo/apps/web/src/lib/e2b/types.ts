@@ -6,6 +6,7 @@ export interface CreateRuntimeOptions {
   agentConfigId: string;
   prompt: string;
   dynamicVars?: Record<string, string>;
+  sandboxToken: string; // Temporary bearer token for sandbox to call APIs
 }
 
 export interface RuntimeResult {

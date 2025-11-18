@@ -20,6 +20,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
       const runtimeId = "rt-test-001";
       const options: CreateRuntimeOptions = {
         agentConfigId: "test-agent-001",
+        sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
         dynamicVars: { testVar: "testValue" },
       };
@@ -56,6 +57,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
     it("should use provided runtime IDs for multiple calls", async () => {
       const options: CreateRuntimeOptions = {
         agentConfigId: "test-agent-002",
+        sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
 
@@ -77,6 +79,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
       const runtimeId = "rt-test-003";
       const options: CreateRuntimeOptions = {
         agentConfigId: "test-agent-003",
+        sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
       };
 
@@ -91,6 +94,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
       const runtimeId = "rt-test-004";
       const options: CreateRuntimeOptions = {
         agentConfigId: "test-agent-004",
+        sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
       };
 
@@ -111,6 +115,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
       const runtimeId = "rt-test-005";
       const options: CreateRuntimeOptions = {
         agentConfigId: "test-agent-005",
+        sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
       };
 
@@ -138,6 +143,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
         const runtimeId = "rt-test-error";
         const options: CreateRuntimeOptions = {
           agentConfigId: "test-agent-error",
+          sandboxToken: "vm0_live_test_token",
           prompt: "This should fail due to invalid API key",
         };
 

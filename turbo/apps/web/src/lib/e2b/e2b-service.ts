@@ -1,6 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
-import { generateWebhookToken } from "../webhook-auth";
 import type {
   CreateRuntimeOptions,
   RuntimeResult,
@@ -30,19 +29,22 @@ export class E2BService {
     let sandbox: Sandbox | null = null;
 
     try {
-      // Generate webhook token
-      const webhookToken = generateWebhookToken(runtimeId);
-
-      // Get webhook configuration
-      const webhookUrl =
+      // Get API configuration
+      const apiUrl =
         globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
-      const webhookEndpoint = `${webhookUrl}/api/webhooks/agent-events`;
+      const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
 
+      console.log(`[E2B] API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook endpoint: ${webhookEndpoint}`);
-      console.log(`[E2B] Webhook token: ${webhookToken}`);
+      console.log(`[E2B] Runtime ID: ${runtimeId}`);
 
-      // Create E2B sandbox
-      sandbox = await this.createSandbox();
+      // Create E2B sandbox with environment variables
+      sandbox = await this.createSandbox({
+        VM0_API_URL: apiUrl,
+        VM0_WEBHOOK_URL: webhookEndpoint,
+        VM0_RUNTIME_ID: runtimeId,
+        VM0_TOKEN: options.sandboxToken, // Temporary bearer token for API calls
+      });
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
       // Execute Claude Code via run-agent.sh
@@ -51,7 +53,7 @@ export class E2BService {
         runtimeId,
         options.prompt,
         webhookEndpoint,
-        webhookToken,
+        options.sandboxToken,
       );
 
       const executionTimeMs = Date.now() - startTime;
@@ -96,16 +98,20 @@ export class E2BService {
   }
 
   /**
-   * Create E2B sandbox with Claude Code
+   * Create E2B sandbox with Claude Code and environment variables
    */
-  private async createSandbox(): Promise<Sandbox> {
+  private async createSandbox(
+    envVars: Record<string, string>,
+  ): Promise<Sandbox> {
     const sandboxOptions = {
       timeoutMs: e2bConfig.defaultTimeout,
+      envs: envVars, // Pass environment variables to sandbox
     };
 
     // Use custom template if configured
     if (e2bConfig.defaultTemplate) {
       console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
+      console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
       // Template should be passed as first argument, not in options
       const sandbox = await Sandbox.create(
         e2bConfig.defaultTemplate,
@@ -116,6 +122,7 @@ export class E2BService {
       console.warn(
         "[E2B] No custom template configured. Ensure Claude Code CLI is available in the sandbox.",
       );
+      console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
       const sandbox = await Sandbox.create(sandboxOptions);
       return sandbox;
     }
@@ -130,7 +137,7 @@ export class E2BService {
     runtimeId: string,
     prompt: string,
     webhookUrl: string,
-    webhookToken: string,
+    sandboxToken: string,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -143,7 +150,7 @@ export class E2BService {
     const envs: Record<string, string> = {
       VM0_RUNTIME_ID: runtimeId,
       VM0_WEBHOOK_URL: webhookUrl,
-      VM0_WEBHOOK_TOKEN: webhookToken,
+      VM0_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
     };
 

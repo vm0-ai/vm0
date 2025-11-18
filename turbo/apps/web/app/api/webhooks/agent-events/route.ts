@@ -2,13 +2,17 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuntimes } from "../../../../src/db/schema/agent-runtime";
 import { agentRuntimeEvents } from "../../../../src/db/schema/agent-runtime-event";
-import { eq, max } from "drizzle-orm";
-import { validateWebhookToken } from "../../../../src/lib/webhook-auth";
+import { eq, max, and } from "drizzle-orm";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
 } from "../../../../src/lib/api-response";
-import { BadRequestError, NotFoundError } from "../../../../src/lib/errors";
+import {
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../../src/lib/errors";
 import type {
   WebhookRequest,
   WebhookResponse,
@@ -22,6 +26,12 @@ export async function POST(request: NextRequest) {
   try {
     // Initialize services
     initServices();
+
+    // Authenticate using bearer token
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
 
     // Parse request body
     const body: WebhookRequest = await request.json();
@@ -39,17 +49,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[Webhook] Received ${body.events.length} events for runtime ${body.runtimeId}`,
+      `[Webhook] Received ${body.events.length} events for runtime ${body.runtimeId} from user ${userId}`,
     );
 
-    // Validate webhook token
-    await validateWebhookToken(request, body.runtimeId);
-
-    // Verify runtime exists
+    // Verify runtime exists and belongs to the authenticated user
     const [runtime] = await globalThis.services.db
       .select()
       .from(agentRuntimes)
-      .where(eq(agentRuntimes.id, body.runtimeId))
+      .where(
+        and(
+          eq(agentRuntimes.id, body.runtimeId),
+          eq(agentRuntimes.userId, userId),
+        ),
+      )
       .limit(1);
 
     if (!runtime) {

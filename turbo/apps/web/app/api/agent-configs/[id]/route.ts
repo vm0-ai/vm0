@@ -2,12 +2,12 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../src/db/schema/agent-config";
-import { authenticate } from "../../../../src/lib/middleware/auth";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
 } from "../../../../src/lib/api-response";
-import { NotFoundError } from "../../../../src/lib/errors";
+import { NotFoundError, UnauthorizedError } from "../../../../src/lib/errors";
 import type {
   GetAgentConfigResponse,
   AgentConfigYaml,
@@ -26,7 +26,10 @@ export async function GET(
     initServices();
 
     // Authenticate
-    await authenticate(request);
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
 
     // Await params (Next.js 15 requirement)
     const { id } = await params;
