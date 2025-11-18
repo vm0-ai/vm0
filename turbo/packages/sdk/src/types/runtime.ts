@@ -13,7 +13,7 @@ export interface RunOptions {
 
 export interface RuntimeResponse {
   runtimeId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: "pending" | "running" | "completed" | "failed";
   createdAt: string;
 }
 

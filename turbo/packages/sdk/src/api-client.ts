@@ -1,5 +1,5 @@
-import type { RuntimeResponse, EventsResponse, SDKConfig } from './types';
-import { APIError } from './utils/errors';
+import type { RuntimeResponse, EventsResponse, SDKConfig } from "./types";
+import { APIError } from "./utils/errors";
 
 /**
  * HTTP client for VM0 API
@@ -21,10 +21,10 @@ export class APIClient {
   async createRuntime(
     agentConfigId: string,
     prompt: string,
-    dynamicVars?: Record<string, string>
+    dynamicVars?: Record<string, string>,
   ): Promise<RuntimeResponse> {
-    const response = await this.fetch('/api/agent-runtimes', {
-      method: 'POST',
+    const response = await this.fetch("/api/agent-runtimes", {
+      method: "POST",
       body: JSON.stringify({
         agentConfigId,
         prompt,
@@ -40,10 +40,10 @@ export class APIClient {
    */
   async getEvents(
     runtimeId: string,
-    since: number = 0
+    since: number = 0,
   ): Promise<EventsResponse> {
     const response = await this.fetch(
-      `/api/agent-runtimes/${runtimeId}/events?since=${since}`
+      `/api/agent-runtimes/${runtimeId}/events?since=${since}`,
     );
 
     return response as EventsResponse;
@@ -67,8 +67,8 @@ export class APIClient {
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
-        'X-Api-Key': this.config.apiKey,
+        "Content-Type": "application/json",
+        "X-Api-Key": this.config.apiKey,
         ...options?.headers,
       },
     });
@@ -79,7 +79,7 @@ export class APIClient {
         (error as { error?: { message?: string } }).error?.message ||
           `HTTP ${response.status}`,
         response.status,
-        (error as { error?: { code?: string } }).error?.code
+        (error as { error?: { code?: string } }).error?.code,
       );
     }
 

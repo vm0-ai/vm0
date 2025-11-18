@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from "events";
 import type {
   AgentEvent,
   EventCallback,
@@ -8,9 +8,9 @@ import type {
   ToolResultEvent,
   ResultEvent,
   SDKConfig,
-} from './types';
-import type { APIClient } from './api-client';
-import { TimeoutError } from './utils/errors';
+} from "./types";
+import type { APIClient } from "./api-client";
+import { TimeoutError } from "./utils/errors";
 
 /**
  * Typed EventEmitter for agent events
@@ -39,7 +39,7 @@ export class AgentRunner extends TypedEventEmitter {
 
   constructor(
     private apiClient: APIClient,
-    private config: Required<SDKConfig>
+    private config: Required<SDKConfig>,
   ) {
     super();
     this.pollInterval = config.pollInterval;
@@ -71,7 +71,7 @@ export class AgentRunner extends TypedEventEmitter {
    */
   async wait(): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      this.on('result', (event) => {
+      this.on("result", (event) => {
         this.stop();
         if (event.content.success) {
           resolve(event.content);
@@ -80,7 +80,7 @@ export class AgentRunner extends TypedEventEmitter {
         }
       });
 
-      this.on('error', (error) => {
+      this.on("error", (error) => {
         this.stop();
         reject(error);
       });
@@ -106,7 +106,7 @@ export class AgentRunner extends TypedEventEmitter {
     try {
       // Check timeout
       if (Date.now() - this.startTime > this.timeout) {
-        this.emit('error', new TimeoutError());
+        this.emit("error", new TimeoutError());
         this.stop();
         return;
       }
@@ -114,7 +114,7 @@ export class AgentRunner extends TypedEventEmitter {
       // Get events
       const response = await this.apiClient.getEvents(
         this.runtimeId,
-        this.lastSequence
+        this.lastSequence,
       );
 
       // Process events
@@ -125,11 +125,11 @@ export class AgentRunner extends TypedEventEmitter {
         const parsedEvent = this.parseEvent(event.eventData);
         if (parsedEvent) {
           this.emit(parsedEvent.type, parsedEvent);
-          this.emit('*', parsedEvent); // Emit all events
+          this.emit("*", parsedEvent); // Emit all events
         }
 
         // Stop if result event
-        if (event.eventType === 'result') {
+        if (event.eventType === "result") {
           this.stop();
           return;
         }
@@ -142,7 +142,7 @@ export class AgentRunner extends TypedEventEmitter {
         }, this.pollInterval);
       }
     } catch (error) {
-      this.emit('error', error);
+      this.emit("error", error);
       this.stop();
     }
   }
@@ -159,13 +159,13 @@ export class AgentRunner extends TypedEventEmitter {
   /**
    * Type-safe event listener
    */
-  on(event: 'init', listener: EventCallback<InitEvent>): this;
-  on(event: 'text', listener: EventCallback<TextEvent>): this;
-  on(event: 'tool_use', listener: EventCallback<ToolUseEvent>): this;
-  on(event: 'tool_result', listener: EventCallback<ToolResultEvent>): this;
-  on(event: 'result', listener: EventCallback<ResultEvent>): this;
-  on(event: '*', listener: EventCallback<AgentEvent>): this;
-  on(event: 'error', listener: (error: Error) => void): this;
+  on(event: "init", listener: EventCallback<InitEvent>): this;
+  on(event: "text", listener: EventCallback<TextEvent>): this;
+  on(event: "tool_use", listener: EventCallback<ToolUseEvent>): this;
+  on(event: "tool_result", listener: EventCallback<ToolResultEvent>): this;
+  on(event: "result", listener: EventCallback<ResultEvent>): this;
+  on(event: "*", listener: EventCallback<AgentEvent>): this;
+  on(event: "error", listener: (error: Error) => void): this;
   on(event: string | symbol, listener: (...args: unknown[]) => void): this {
     return super.on(event, listener);
   }

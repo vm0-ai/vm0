@@ -1,6 +1,6 @@
-import { APIClient } from './api-client';
-import { AgentRunner } from './agent-runner';
-import type { SDKConfig } from './types';
+import { APIClient } from "./api-client";
+import { AgentRunner } from "./agent-runner";
+import type { SDKConfig } from "./types";
 
 /**
  * Agent runtime - main entry point for SDK
@@ -12,7 +12,7 @@ export class AgentRuntime {
   private constructor(
     private agentConfigId: string,
     private dynamicVars: Record<string, string> | undefined,
-    config: SDKConfig
+    config: SDKConfig,
   ) {
     this.config = {
       pollInterval: 1000,
@@ -28,16 +28,16 @@ export class AgentRuntime {
   static create(
     agentConfigId: string,
     dynamicVars?: Record<string, string>,
-    config?: Partial<SDKConfig>
+    config?: Partial<SDKConfig>,
   ): AgentRuntime {
     const fullConfig: SDKConfig = {
-      apiUrl: process.env.VM0_API_URL || 'http://localhost:3000',
-      apiKey: process.env.VM0_API_KEY || '',
+      apiUrl: process.env.VM0_API_URL || "http://localhost:3000",
+      apiKey: process.env.VM0_API_KEY || "",
       ...config,
     };
 
     if (!fullConfig.apiKey) {
-      throw new Error('VM0_API_KEY is required');
+      throw new Error("VM0_API_KEY is required");
     }
 
     return new AgentRuntime(agentConfigId, dynamicVars, fullConfig);
@@ -60,18 +60,18 @@ export class AgentRuntime {
    */
   private async startRuntime(
     prompt: string,
-    runner: AgentRunner
+    runner: AgentRunner,
   ): Promise<void> {
     try {
       const response = await this.apiClient.createRuntime(
         this.agentConfigId,
         prompt,
-        this.dynamicVars
+        this.dynamicVars,
       );
 
       runner.start(response.runtimeId);
     } catch (error) {
-      runner.emit('error', error);
+      runner.emit("error", error);
     }
   }
 }

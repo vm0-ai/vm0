@@ -13,27 +13,31 @@ pnpm add @vm0/sdk
 ## Quick Start
 
 ```typescript
-import { AgentRuntime } from '@vm0/sdk';
+import { AgentRuntime } from "@vm0/sdk";
 
 // Create agent runtime
-const agent = AgentRuntime.create('your-agent-config-id', {
-  userKey: 'user-123',
-}, {
-  apiUrl: 'https://api.vm0.dev',
-  apiKey: 'your-api-key',
-});
+const agent = AgentRuntime.create(
+  "your-agent-config-id",
+  {
+    userKey: "user-123",
+  },
+  {
+    apiUrl: "https://api.vm0.dev",
+    apiKey: "your-api-key",
+  },
+);
 
 // Run agent
-const runner = agent.run('Answer my question');
+const runner = agent.run("Answer my question");
 
 // Listen to events
-runner.on('text', (event) => {
-  console.log('Agent:', event.content);
+runner.on("text", (event) => {
+  console.log("Agent:", event.content);
 });
 
-runner.on('result', (event) => {
-  console.log('Result:', event.content.result);
-  console.log('Cost:', event.content.totalCostUsd);
+runner.on("result", (event) => {
+  console.log("Result:", event.content.result);
+  console.log("Cost:", event.content.totalCostUsd);
 });
 
 // Wait for completion
@@ -53,10 +57,10 @@ VM0_API_KEY=your_api_key_here
 
 ```typescript
 AgentRuntime.create(agentConfigId, dynamicVars, {
-  apiUrl: 'https://api.vm0.dev',
-  apiKey: 'your-api-key',
-  pollInterval: 1000,  // Poll every 1 second
-  timeout: 60000,      // Timeout after 60 seconds
+  apiUrl: "https://api.vm0.dev",
+  apiKey: "your-api-key",
+  pollInterval: 1000, // Poll every 1 second
+  timeout: 60000, // Timeout after 60 seconds
 });
 ```
 

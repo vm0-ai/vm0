@@ -1,40 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentRunner } from '../agent-runner';
-import { APIClient } from '../api-client';
-import type { EventsResponse, TextEvent, ResultEvent } from '../types';
-import { TimeoutError } from '../utils/errors';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { AgentRunner } from "../agent-runner";
+import { APIClient } from "../api-client";
+import type { EventsResponse, TextEvent, ResultEvent } from "../types";
+import { TimeoutError } from "../utils/errors";
 
-describe('AgentRunner', () => {
+describe("AgentRunner", () => {
   let runner: AgentRunner;
   let apiClient: APIClient;
 
   beforeEach(() => {
     apiClient = new APIClient({
-      apiUrl: 'http://localhost:3000',
-      apiKey: 'test-key',
+      apiUrl: "http://localhost:3000",
+      apiKey: "test-key",
     });
     runner = new AgentRunner(apiClient, {
-      apiUrl: 'http://localhost:3000',
-      apiKey: 'test-key',
+      apiUrl: "http://localhost:3000",
+      apiKey: "test-key",
       pollInterval: 100,
       timeout: 1000,
     });
   });
 
-  describe('event emission', () => {
-    it('should emit events as they are received', async () => {
+  describe("event emission", () => {
+    it("should emit events as they are received", async () => {
       const mockEvents: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'text',
+            eventType: "text",
             eventData: {
-              type: 'text',
-              content: 'Hello',
+              type: "text",
+              content: "Hello",
               timestamp: Date.now(),
             } as TextEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
@@ -42,38 +42,38 @@ describe('AgentRunner', () => {
       };
 
       const getEventsSpy = vi
-        .spyOn(apiClient, 'getEvents')
+        .spyOn(apiClient, "getEvents")
         .mockResolvedValue(mockEvents);
 
       const textEvents: TextEvent[] = [];
-      runner.on('text', (event) => {
+      runner.on("text", (event) => {
         textEvents.push(event);
         runner.stop();
       });
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       // Wait for event to be processed
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(textEvents.length).toBeGreaterThanOrEqual(1);
-      expect(textEvents[0].content).toBe('Hello');
+      expect(textEvents[0].content).toBe("Hello");
       expect(getEventsSpy).toHaveBeenCalled();
     });
 
-    it('should emit wildcard events', async () => {
+    it("should emit wildcard events", async () => {
       const mockEvents: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'text',
+            eventType: "text",
             eventData: {
-              type: 'text',
-              content: 'Hello',
+              type: "text",
+              content: "Hello",
               timestamp: Date.now(),
             } as TextEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
@@ -81,16 +81,16 @@ describe('AgentRunner', () => {
       };
 
       const getEventsSpy = vi
-        .spyOn(apiClient, 'getEvents')
+        .spyOn(apiClient, "getEvents")
         .mockResolvedValue(mockEvents);
 
       const allEvents: unknown[] = [];
-      runner.on('*', (event) => {
+      runner.on("*", (event) => {
         allEvents.push(event);
         runner.stop();
       });
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       await new Promise((resolve) => setTimeout(resolve, 150));
 
@@ -99,19 +99,19 @@ describe('AgentRunner', () => {
     });
   });
 
-  describe('polling', () => {
-    it('should stop polling after result event', async () => {
+  describe("polling", () => {
+    it("should stop polling after result event", async () => {
       const mockEvents: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'result',
+            eventType: "result",
             eventData: {
-              type: 'result',
+              type: "result",
               content: {
                 success: true,
-                result: 'Done',
+                result: "Done",
                 durationMs: 1000,
                 numTurns: 1,
                 totalCostUsd: 0.01,
@@ -124,7 +124,7 @@ describe('AgentRunner', () => {
               },
               timestamp: Date.now(),
             } as ResultEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
@@ -132,10 +132,10 @@ describe('AgentRunner', () => {
       };
 
       const getEventsSpy = vi
-        .spyOn(apiClient, 'getEvents')
+        .spyOn(apiClient, "getEvents")
         .mockResolvedValue(mockEvents);
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       await new Promise((resolve) => setTimeout(resolve, 150));
 
@@ -143,19 +143,19 @@ describe('AgentRunner', () => {
       expect(getEventsSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('should track sequence numbers correctly', async () => {
+    it("should track sequence numbers correctly", async () => {
       const mockEvents1: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'text',
+            eventType: "text",
             eventData: {
-              type: 'text',
-              content: 'First',
+              type: "text",
+              content: "First",
               timestamp: Date.now(),
             } as TextEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: true,
@@ -165,14 +165,14 @@ describe('AgentRunner', () => {
       const mockEvents2: EventsResponse = {
         events: [
           {
-            eventId: 'evt-2',
+            eventId: "evt-2",
             sequenceNumber: 2,
-            eventType: 'result',
+            eventType: "result",
             eventData: {
-              type: 'result',
+              type: "result",
               content: {
                 success: true,
-                result: 'Done',
+                result: "Done",
                 durationMs: 1000,
                 numTurns: 1,
                 totalCostUsd: 0.01,
@@ -185,7 +185,7 @@ describe('AgentRunner', () => {
               },
               timestamp: Date.now(),
             } as ResultEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
@@ -193,32 +193,32 @@ describe('AgentRunner', () => {
       };
 
       const getEventsSpy = vi
-        .spyOn(apiClient, 'getEvents')
+        .spyOn(apiClient, "getEvents")
         .mockResolvedValueOnce(mockEvents1)
         .mockResolvedValueOnce(mockEvents2);
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       await new Promise((resolve) => setTimeout(resolve, 250));
 
-      expect(getEventsSpy).toHaveBeenCalledWith('rt-123', 0);
-      expect(getEventsSpy).toHaveBeenCalledWith('rt-123', 1);
+      expect(getEventsSpy).toHaveBeenCalledWith("rt-123", 0);
+      expect(getEventsSpy).toHaveBeenCalledWith("rt-123", 1);
     });
   });
 
-  describe('wait', () => {
-    it('should resolve when result event is successful', async () => {
+  describe("wait", () => {
+    it("should resolve when result event is successful", async () => {
       const mockEvents: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'result',
+            eventType: "result",
             eventData: {
-              type: 'result',
+              type: "result",
               content: {
                 success: true,
-                result: 'Done',
+                result: "Done",
                 durationMs: 1000,
                 numTurns: 1,
                 totalCostUsd: 0.01,
@@ -231,35 +231,35 @@ describe('AgentRunner', () => {
               },
               timestamp: Date.now(),
             } as ResultEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 2,
       };
 
-      vi.spyOn(apiClient, 'getEvents').mockResolvedValue(mockEvents);
+      vi.spyOn(apiClient, "getEvents").mockResolvedValue(mockEvents);
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       const result = await runner.wait();
 
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('result', 'Done');
+      expect(result).toHaveProperty("success", true);
+      expect(result).toHaveProperty("result", "Done");
     });
 
-    it('should reject when result event is unsuccessful', async () => {
+    it("should reject when result event is unsuccessful", async () => {
       const mockEvents: EventsResponse = {
         events: [
           {
-            eventId: 'evt-1',
+            eventId: "evt-1",
             sequenceNumber: 1,
-            eventType: 'result',
+            eventType: "result",
             eventData: {
-              type: 'result',
+              type: "result",
               content: {
                 success: false,
-                result: 'Failed',
+                result: "Failed",
                 durationMs: 1000,
                 numTurns: 1,
                 totalCostUsd: 0.01,
@@ -272,52 +272,52 @@ describe('AgentRunner', () => {
               },
               timestamp: Date.now(),
             } as ResultEvent,
-            createdAt: '2025-11-17T10:00:00Z',
+            createdAt: "2025-11-17T10:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 2,
       };
 
-      vi.spyOn(apiClient, 'getEvents').mockResolvedValue(mockEvents);
+      vi.spyOn(apiClient, "getEvents").mockResolvedValue(mockEvents);
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
-      await expect(runner.wait()).rejects.toThrow('Failed');
+      await expect(runner.wait()).rejects.toThrow("Failed");
     });
 
-    it('should reject on timeout', async () => {
-      vi.spyOn(apiClient, 'getEvents').mockResolvedValue({
+    it("should reject on timeout", async () => {
+      vi.spyOn(apiClient, "getEvents").mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 1,
       });
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
       await expect(runner.wait()).rejects.toThrow(TimeoutError);
     });
 
-    it('should reject on error', async () => {
-      vi.spyOn(apiClient, 'getEvents').mockRejectedValue(
-        new Error('Network error')
+    it("should reject on error", async () => {
+      vi.spyOn(apiClient, "getEvents").mockRejectedValue(
+        new Error("Network error"),
       );
 
-      runner.start('rt-123');
+      runner.start("rt-123");
 
-      await expect(runner.wait()).rejects.toThrow('Network error');
+      await expect(runner.wait()).rejects.toThrow("Network error");
     });
   });
 
-  describe('stop', () => {
-    it('should stop polling', async () => {
-      const getEventsSpy = vi.spyOn(apiClient, 'getEvents').mockResolvedValue({
+  describe("stop", () => {
+    it("should stop polling", async () => {
+      const getEventsSpy = vi.spyOn(apiClient, "getEvents").mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 1,
       });
 
-      runner.start('rt-123');
+      runner.start("rt-123");
       runner.stop();
 
       await new Promise((resolve) => setTimeout(resolve, 150));

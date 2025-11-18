@@ -9,7 +9,7 @@ export interface BaseEvent {
 }
 
 export interface InitEvent extends BaseEvent {
-  type: 'init';
+  type: "init";
   content: {
     cwd: string;
     tools: string[];
@@ -19,19 +19,19 @@ export interface InitEvent extends BaseEvent {
 }
 
 export interface TextEvent extends BaseEvent {
-  type: 'text';
+  type: "text";
   content: string;
 }
 
 export interface ToolUseEvent extends BaseEvent {
-  type: 'tool_use';
+  type: "tool_use";
   tool: string;
   params: Record<string, unknown>;
   toolUseId: string;
 }
 
 export interface ToolResultEvent extends BaseEvent {
-  type: 'tool_result';
+  type: "tool_result";
   tool: string;
   result: string;
   isError: boolean;
@@ -39,7 +39,7 @@ export interface ToolResultEvent extends BaseEvent {
 }
 
 export interface ResultEvent extends BaseEvent {
-  type: 'result';
+  type: "result";
   content: {
     success: boolean;
     result: string;
@@ -62,8 +62,8 @@ export type AgentEvent =
   | ToolResultEvent
   | ResultEvent;
 
-export type EventType = AgentEvent['type'];
+export type EventType = AgentEvent["type"];
 
 export type EventCallback<T extends AgentEvent = AgentEvent> = (
-  event: T
+  event: T,
 ) => void;
