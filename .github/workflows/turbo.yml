@@ -113,6 +113,7 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm test
 
   # Deploy web application with database
