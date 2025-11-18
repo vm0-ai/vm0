@@ -93,6 +93,6 @@ EOF
     for i in 1 2 3; do
         run $CLI_COMMAND create "$TEST_CONFIG" --json
         assert_success
-        assert_output --regexp '"agentConfigId":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"'
+        assert_output --regexp '"agentConfigId": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"'
     done
 }
