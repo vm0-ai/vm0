@@ -1,6 +1,9 @@
 import { Command } from "commander";
 import { createCommand } from "./commands/create";
 import { runCommand } from "./commands/run";
+import chalk from "chalk";
+import { authenticate, logout, checkAuthStatus } from "./lib/auth";
+import { getApiUrl } from "./lib/config";
 
 const program = new Command();
 
@@ -25,4 +28,59 @@ program
   .option("--verbose", "Show detailed information")
   .action(runCommand);
 
-program.parse();
+// vm0 hello command
+program
+  .command("hello")
+  .description("Say hello from the App")
+  .action(() => {
+    console.log(chalk.blue("Welcome to the VM0 CLI!"));
+    console.log(chalk.green(`Core says: ${FOO}`));
+  });
+
+// vm0 info command
+program
+  .command("info")
+  .description("Display environment information")
+  .action(async () => {
+    console.log(chalk.cyan("System Information:"));
+    console.log(`Node Version: ${process.version}`);
+    console.log(`Platform: ${process.platform}`);
+    console.log(`Architecture: ${process.arch}`);
+    const apiUrl = await getApiUrl();
+    console.log(`API Host: ${apiUrl ?? "Not configured"}`);
+  });
+
+const authCommand = program
+  .command("auth")
+  .description("Authentication commands");
+
+authCommand
+  .command("login")
+  .description("Log in to VM0 (use API_HOST env var to set API URL)")
+  .action(async () => {
+    await authenticate();
+  });
+
+authCommand
+  .command("logout")
+  .description("Log out of VM0")
+  .action(async () => {
+    await logout();
+  });
+
+authCommand
+  .command("status")
+  .description("Show current authentication status")
+  .action(async () => {
+    await checkAuthStatus();
+  });
+
+export { program };
+
+if (
+  process.argv[1]?.endsWith("index.js") ||
+  process.argv[1]?.endsWith("index.ts") ||
+  process.argv[1]?.endsWith("vm0")
+) {
+  program.parse();
+}
