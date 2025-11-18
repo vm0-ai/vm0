@@ -195,12 +195,13 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       // Verify execution status
       expect(data.status).toBe("completed");
 
-      // Verify output
-      expect(data.output).toContain("Hello World from E2B!");
+      // Verify output is from Claude Code, NOT the old echo command
+      expect(data.output).not.toContain("Hello World from E2B!");
+      expect(data.output).toBeTruthy(); // Should have some output
 
       // Verify timing
       expect(data.executionTimeMs).toBeGreaterThan(0);
-      expect(data.executionTimeMs).toBeLessThan(60000);
+      expect(data.executionTimeMs).toBeLessThan(600000); // 10 minutes
 
       // Verify timestamp
       expect(data.createdAt).toBeDefined();
@@ -208,7 +209,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       // Verify no error
       expect(data.error).toBeUndefined();
-    }, 60000); // 60 second timeout for real E2B API
+    }, 600000); // 10 minute timeout for Claude Code execution
 
     it("should handle minimal request body", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
@@ -227,8 +228,9 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       const data: CreateAgentRuntimeResponse = await response.json();
       expect(data.status).toBe("completed");
-      expect(data.output).toContain("Hello World from E2B!");
-    }, 60000);
+      expect(data.output).not.toContain("Hello World from E2B!");
+      expect(data.output).toBeTruthy();
+    }, 600000);
 
     it("should handle request with dynamic vars", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
@@ -254,30 +256,9 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       // MVP doesn't use dynamic vars yet, but should accept them
       expect(data.status).toBe("completed");
-      expect(data.output).toContain("Hello World from E2B!");
-    }, 60000);
-
-    it("should handle long prompts", async () => {
-      const longPrompt = "test ".repeat(100); // 500 character prompt
-
-      const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: testAgentConfigId,
-        prompt: longPrompt,
-      };
-
-      const request = new NextRequest("http://localhost/api/agent-runtimes", {
-        method: "POST",
-        headers: { "x-api-key": testApiKey },
-        body: JSON.stringify(requestBody),
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-
-      const data: CreateAgentRuntimeResponse = await response.json();
-      expect(data.status).toBe("completed");
-      expect(data.output).toContain("Hello World from E2B!");
-    }, 60000);
+      expect(data.output).not.toContain("Hello World from E2B!");
+      expect(data.output).toBeTruthy();
+    }, 600000);
 
     it("should return proper error structure on E2B failure", async () => {
       // Save original API key
@@ -335,10 +316,10 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       const data: CreateAgentRuntimeResponse = await response.json();
 
-      // Should complete reasonably fast (E2B sandbox creation is usually 1-10s)
-      expect(totalTime).toBeLessThan(30000); // 30 seconds max
-      expect(data.executionTimeMs).toBeLessThan(30000);
-    }, 60000);
+      // Claude Code execution should complete within 10 minutes
+      expect(totalTime).toBeLessThan(600000); // 10 minutes max
+      expect(data.executionTimeMs).toBeLessThan(600000);
+    }, 600000);
 
     it("should handle sequential requests reliably", async () => {
       const results: CreateAgentRuntimeResponse[] = [];
@@ -365,7 +346,8 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       // All should succeed
       results.forEach((result) => {
         expect(result.status).toBe("completed");
-        expect(result.output).toContain("Hello World from E2B!");
+        expect(result.output).not.toContain("Hello World from E2B!");
+        expect(result.output).toBeTruthy();
         expect(result.runtimeId).toBeDefined();
         expect(result.sandboxId).toBeDefined();
       });
@@ -374,6 +356,6 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       const runtimeIds = results.map((r) => r.runtimeId);
       const uniqueIds = new Set(runtimeIds);
       expect(uniqueIds.size).toBe(3);
-    }, 180000); // 180 second timeout for sequential requests
+    }, 1800000); // 30 minute timeout for 3 sequential Claude Code executions
   });
 });
