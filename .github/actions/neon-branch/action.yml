@@ -56,19 +56,29 @@ runs:
       run: |
         BRANCH_NAME="preview/${{ inputs.branch-name }}"
 
+        # Delete existing branch if it exists to ensure clean state
         if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
-          echo "Branch $BRANCH_NAME already exists"
-        else
-          echo "Create branch $BRANCH_NAME"
-          neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
+          echo "Branch $BRANCH_NAME already exists, deleting for clean state..."
+          neonctl branches delete $BRANCH_NAME --project-id $NEON_PROJECT_ID
+          echo "Existing branch deleted"
         fi
 
-        DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} --pooled)
-        if [ -z "$DATABASE_URL" ]; then
-          echo "Error: Failed to get database URL from neonctl"
-          echo "Attempting without --pooled flag..."
-          DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }})
+        # Create new branch
+        echo "Creating branch $BRANCH_NAME"
+        neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
+
+        DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} --pooled 2>&1)
+        if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == *"Error"* ]] || [[ "$DATABASE_URL" == *"error"* ]]; then
+          echo "Failed to get pooled connection string, attempting without --pooled flag..."
+          DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} 2>&1)
         fi
+
+        if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == *"Error"* ]] || [[ "$DATABASE_URL" == *"error"* ]]; then
+          echo "Error: Failed to get database URL from neonctl for branch $BRANCH_NAME"
+          echo "Output: $DATABASE_URL"
+          exit 1
+        fi
+
         echo "DATABASE_URL value: $DATABASE_URL"
         echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
         echo "Neon branch ready: $BRANCH_NAME"
