@@ -21,11 +21,11 @@ export const vm0Template = Template()
   // Install required tools for webhooks
   .runCmd("sudo apt-get update")
   .runCmd("sudo apt-get install -y curl jq")
+  // Create workspace directory (use absolute path)
+  .runCmd("mkdir -p /home/user/workspace")
   // Create VM0 directory for scripts
   .runCmd("sudo mkdir -p /opt/vm0")
   .runCmd("sudo chmod 755 /opt/vm0")
-  // Create workspace directory
-  .runCmd("mkdir -p ~/workspace")
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")

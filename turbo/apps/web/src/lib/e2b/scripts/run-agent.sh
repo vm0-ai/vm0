@@ -78,7 +78,7 @@ echo "[VM0] Prompt: $PROMPT" >&2
 
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
-claude --print \
+/usr/local/bin/claude --print \
        --verbose \
        --output-format stream-json \
        --dangerously-skip-permissions \
