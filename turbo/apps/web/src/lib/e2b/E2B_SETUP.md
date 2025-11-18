@@ -12,6 +12,7 @@ pnpm e2b:build
 ```
 
 This will:
+
 - Build the E2B template with Claude Code CLI
 - Push it to E2B
 - Output the template ID
@@ -30,6 +31,7 @@ That's it! Your E2B sandbox is now ready to run Claude Code.
 ## What's Included
 
 The custom E2B template includes:
+
 - **Node.js 22.x** - For running npm packages
 - **Claude Code CLI** - `@anthropic-ai/claude-code` installed globally
 - **curl & jq** - For webhook communication
@@ -61,6 +63,7 @@ pnpm e2b:build
 ```
 
 **Output:**
+
 ```
 Building VM0 E2B template...
 [Build logs...]
@@ -106,6 +109,7 @@ e2b sandbox kill <sandbox-id>
 ## Template Files
 
 The template configuration is located in:
+
 - `src/lib/e2b/template/template.ts` - Template configuration
 - `src/lib/e2b/template/build.ts` - Build script
 - `src/lib/e2b/template/README.md` - Detailed documentation
@@ -125,8 +129,8 @@ Example - Adding a new tool:
 export const vm0Template = Template()
   .fromImage("e2bdev/base")
   // ... existing setup ...
-  .runCmd("sudo apt-get install -y git")  // Add new tool
-  .runCmd("git --version");  // Verify installation
+  .runCmd("sudo apt-get install -y git") // Add new tool
+  .runCmd("git --version"); // Verify installation
 ```
 
 ## Troubleshooting
@@ -134,6 +138,7 @@ export const vm0Template = Template()
 ### "E2B_API_KEY not found"
 
 **Solution:** Set your E2B API key in `.env.local`:
+
 ```bash
 E2B_API_KEY=your-api-key
 ```
@@ -141,11 +146,13 @@ E2B_API_KEY=your-api-key
 ### Template build fails
 
 **Possible causes:**
+
 - E2B account quota exceeded
 - Invalid API key
 - E2B service issues
 
 **Solutions:**
+
 1. Check your E2B account quota at https://e2b.dev/dashboard
 2. Verify your API key is correct
 3. Check E2B status at https://status.e2b.dev
@@ -153,11 +160,13 @@ E2B_API_KEY=your-api-key
 ### "Claude not found" in sandbox
 
 **Possible causes:**
+
 - Template not built yet
 - Wrong `E2B_TEMPLATE_ID` configured
 - Template build failed
 
 **Solutions:**
+
 1. Run `pnpm e2b:build` to build the template
 2. Verify `E2B_TEMPLATE_ID` matches the build output
 3. Check build logs for errors
@@ -167,6 +176,7 @@ E2B_API_KEY=your-api-key
 **Expected behavior:** Tests will fail if `E2B_TEMPLATE_ID` is not set.
 
 **Solution:** Either:
+
 1. Set `E2B_TEMPLATE_ID` in your environment
 2. Or skip tests that require Claude Code:
    ```typescript
@@ -179,13 +189,16 @@ E2B_API_KEY=your-api-key
 ## Environment Variables
 
 ### Required
+
 - `E2B_API_KEY` - E2B API key for creating sandboxes
 - `VM0_API_URL` - VM0 API URL for webhook callbacks
 
 ### Optional
+
 - `E2B_TEMPLATE_ID` - Custom template ID (if not set, uses default E2B image without Claude)
 
 ### Passed to Sandbox (Automatically)
+
 - `VM0_RUNTIME_ID` - Runtime UUID
 - `VM0_WEBHOOK_URL` - Webhook endpoint URL
 - `VM0_WEBHOOK_TOKEN` - Webhook auth token
@@ -212,6 +225,7 @@ To use the custom template in CI:
 ### Vercel Deployment
 
 Add environment variables in Vercel dashboard:
+
 - `E2B_API_KEY`
 - `E2B_TEMPLATE_ID`
 
@@ -227,6 +241,7 @@ e2b template build -n vm0-claude-code -c e2b.Dockerfile
 ```
 
 **Why deprecated:**
+
 - Less maintainable
 - Not consistent with E2B ecosystem
 - Harder to version control changes

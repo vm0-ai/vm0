@@ -16,6 +16,7 @@ pnpm e2b:build
 ```
 
 This will:
+
 - Build the template with Claude Code CLI installed
 - Push it to E2B
 - Output the template ID
@@ -32,6 +33,7 @@ E2B_TEMPLATE_ID=<template-id-from-build-output>
 ## What's Included
 
 The template includes:
+
 - **Node.js 22.x** - For running npm packages
 - **Claude Code CLI** - `@anthropic-ai/claude-code` installed globally
 - **curl & jq** - For webhook communication
@@ -73,18 +75,22 @@ If you need to update the template (e.g., install additional packages):
 ## Troubleshooting
 
 ### "E2B_API_KEY not found"
+
 Set your E2B API key:
+
 ```bash
 export E2B_API_KEY=your-api-key
 # Or add to turbo/.env.local
 ```
 
 ### "Template build failed"
+
 - Check your E2B account has available quota
 - Verify your API key is valid
 - Check E2B service status at https://status.e2b.dev
 
 ### "Claude not found in sandbox"
+
 - Verify you set the correct `E2B_TEMPLATE_ID`
 - Check the template was built successfully
 - Try rebuilding the template

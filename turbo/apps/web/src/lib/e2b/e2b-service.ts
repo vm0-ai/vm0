@@ -109,9 +109,7 @@ export class E2BService {
     // Use custom template if configured
     if (e2bConfig.defaultTemplate) {
       sandboxOptions.template = e2bConfig.defaultTemplate;
-      console.log(
-        `[E2B] Using custom template: ${e2bConfig.defaultTemplate}`,
-      );
+      console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
     } else {
       console.warn(
         "[E2B] No custom template configured. Ensure Claude Code CLI is available in the sandbox.",
