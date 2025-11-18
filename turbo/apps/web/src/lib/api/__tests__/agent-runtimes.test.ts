@@ -292,7 +292,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       }
 
       // All should succeed
-      results.forEach((result, i) => {
+      results.forEach((result) => {
         expect(result.status).toBe("completed");
         expect(result.output).toContain("Hello World from E2B!");
         expect(result.runtimeId).toBeDefined();
