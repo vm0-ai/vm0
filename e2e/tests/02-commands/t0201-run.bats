@@ -10,7 +10,7 @@ load '../../helpers/setup'
     old_key="$VM0_API_KEY"
     unset VM0_API_KEY
 
-    run $CLI_COMMAND run cfg-test-123 "test prompt"
+    run $CLI_COMMAND run 00000000-0000-0000-0000-000000000000 "test prompt"
 
     # Restore API key
     export VM0_API_KEY="$old_key"
@@ -20,14 +20,14 @@ load '../../helpers/setup'
 }
 
 @test "vm0 run shows error with invalid agent config ID" {
-    run $CLI_COMMAND run cfg-nonexistent "test prompt"
+    run $CLI_COMMAND run 00000000-0000-0000-0000-000000000000 "test prompt"
     assert_failure
     # Should show 404 hint
     assert_output --partial "404"
 }
 
 @test "vm0 run fails with invalid dynamic vars JSON" {
-    run $CLI_COMMAND run cfg-test-123 "test prompt" --dynamicVars "invalid-json"
+    run $CLI_COMMAND run 00000000-0000-0000-0000-000000000000 "test prompt" --dynamicVars "invalid-json"
     assert_failure
     assert_output --partial "Invalid JSON"
 }

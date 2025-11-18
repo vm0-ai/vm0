@@ -17,9 +17,9 @@ setup() {
     # Extract agent config ID from JSON output
     agent_config_id=$(echo "$output" | grep -o '"agentConfigId":"[^"]*"' | cut -d'"' -f4)
 
-    # Verify we got a config ID
+    # Verify we got a config ID in UUID format
     [ -n "$agent_config_id" ]
-    [[ "$agent_config_id" =~ ^cfg- ]]
+    [[ "$agent_config_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
 
     # Step 2: Run the agent with a simple prompt
     run $CLI_COMMAND run "$agent_config_id" "echo 'Hello World'"
@@ -63,8 +63,8 @@ setup() {
 }
 
 @test "error handling: run with non-existent agent config" {
-
-    run $CLI_COMMAND run cfg-nonexistent-12345 "test prompt"
+    # Use a valid UUID format for non-existent config
+    run $CLI_COMMAND run 00000000-0000-0000-0000-000000000000 "test prompt"
     assert_failure
     assert_output --partial "404"
     assert_output --partial "Agent config not found"
@@ -89,11 +89,10 @@ EOF
 }
 
 @test "stress test: create multiple configs sequentially" {
-
     # Create 3 agent configs
     for i in 1 2 3; do
         run $CLI_COMMAND create "$TEST_CONFIG" --json
         assert_success
-        assert_output --regexp '"agentConfigId":"cfg-[a-z0-9]+"'
+        assert_output --regexp '"agentConfigId":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"'
     done
 }

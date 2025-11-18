@@ -52,11 +52,14 @@ setup() {
     run $CLI_COMMAND create "$TEST_CONFIG"
     assert_success
     assert_output --partial "Agent Config ID:"
-    assert_output --partial "cfg-"
+    # Verify UUID format (8-4-4-4-12 hex digits)
+    assert_output --regexp "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 }
 
 @test "vm0 create with --json flag outputs JSON" {
     run $CLI_COMMAND create "$TEST_CONFIG" --json
     assert_success
-    assert_output --regexp '\{"agentConfigId":"cfg-[a-z0-9]+","createdAt":"[0-9-]+T[0-9:]+Z"\}'
+    # Verify JSON output with UUID format
+    assert_output --regexp '"agentConfigId":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"'
+    assert_output --regexp '"createdAt":"[0-9-]+T[0-9:.]+'
 }
