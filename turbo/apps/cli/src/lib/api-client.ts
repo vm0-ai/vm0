@@ -4,6 +4,22 @@ export class APIClient {
   constructor(private config: CLIConfig) {}
 
   /**
+   * Build URL with Vercel bypass token if available
+   */
+  private buildUrl(path: string): string {
+    const baseUrl = `${this.config.apiUrl}${path}`;
+    const bypassToken = process.env.VM0_VERCEL_BYPASS;
+
+    if (bypassToken) {
+      const url = new URL(baseUrl);
+      url.searchParams.set('x-vercel-protection-bypass', bypassToken);
+      return url.toString();
+    }
+
+    return baseUrl;
+  }
+
+  /**
    * Create agent config
    * POST /api/agent-configs
    */
@@ -11,7 +27,7 @@ export class APIClient {
     agentConfigId: string;
     createdAt: string;
   }> {
-    const response = await fetch(`${this.config.apiUrl}/api/agent-configs`, {
+    const response = await fetch(this.buildUrl('/api/agent-configs'), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -50,7 +66,7 @@ export class APIClient {
     executionTimeMs: number;
     error?: string;
   }> {
-    const response = await fetch(`${this.config.apiUrl}/api/agent-runtimes`, {
+    const response = await fetch(this.buildUrl('/api/agent-runtimes'), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

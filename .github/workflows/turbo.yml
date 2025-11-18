@@ -218,8 +218,17 @@ jobs:
 
       - name: Run CLI E2E Tests
         run: |
-          echo "Testing CLI against API: ${{ needs.deploy-web.outputs.preview-url }}"
+          # Construct API URL with Vercel bypass token if provided
+          BASE_URL="${{ needs.deploy-web.outputs.preview-url }}"
+          if [ -n "$VERCEL_BYPASS_SECRET" ]; then
+            echo "Testing CLI against API with bypass token"
+            export VM0_API_URL="$BASE_URL"
+            export VM0_VERCEL_BYPASS="$VERCEL_BYPASS_SECRET"
+          else
+            echo "Testing CLI against API: $BASE_URL"
+            export VM0_API_URL="$BASE_URL"
+          fi
           ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VM0_API_KEY: dev-key-123
+          VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
