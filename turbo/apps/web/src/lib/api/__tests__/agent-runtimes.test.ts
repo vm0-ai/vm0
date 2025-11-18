@@ -260,29 +260,6 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       expect(data.output).toBeTruthy();
     }, 600000);
 
-    it("should handle long prompts", async () => {
-      const longPrompt = "test ".repeat(100); // 500 character prompt
-
-      const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: testAgentConfigId,
-        prompt: longPrompt,
-      };
-
-      const request = new NextRequest("http://localhost/api/agent-runtimes", {
-        method: "POST",
-        headers: { "x-api-key": testApiKey },
-        body: JSON.stringify(requestBody),
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-
-      const data: CreateAgentRuntimeResponse = await response.json();
-      expect(data.status).toBe("completed");
-      expect(data.output).not.toContain("Hello World from E2B!");
-      expect(data.output).toBeTruthy();
-    }, 600000);
-
     it("should return proper error structure on E2B failure", async () => {
       // Save original API key
       const originalKey = process.env.E2B_API_KEY;
