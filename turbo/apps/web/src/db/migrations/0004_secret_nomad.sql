@@ -1,9 +1,4 @@
-DO $$ BEGIN
- CREATE TYPE "public"."device_code_status" AS ENUM('pending', 'authenticated', 'expired', 'denied');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
+CREATE TYPE "public"."device_code_status" AS ENUM('pending', 'authenticated', 'expired', 'denied');--> statement-breakpoint
 CREATE TABLE "cli_tokens" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"token" text NOT NULL,
