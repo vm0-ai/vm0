@@ -16,10 +16,7 @@ export async function runCommand(
     let dynamicVars: Record<string, string> | undefined;
     if (options.dynamicVars) {
       try {
-        dynamicVars = JSON.parse(options.dynamicVars) as Record<
-          string,
-          string
-        >;
+        dynamicVars = JSON.parse(options.dynamicVars) as Record<string, string>;
       } catch {
         throw new Error(
           "Invalid JSON for --dynamicVars.\n\n" +
@@ -68,7 +65,10 @@ export async function runCommand(
         console.log(chalk.gray("Runtime ID:"), result.runtimeId);
         console.log(chalk.gray("Sandbox ID:"), result.sandboxId);
         console.log(chalk.gray("Status:"), result.status);
-        console.log(chalk.gray("Execution Time:"), `${result.executionTimeMs}ms`);
+        console.log(
+          chalk.gray("Execution Time:"),
+          `${result.executionTimeMs}ms`,
+        );
       }
     }
   } catch (err) {

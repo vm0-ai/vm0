@@ -78,6 +78,7 @@ vm0 create <config-file> [options]
 ```
 
 **Options:**
+
 - `--json` - Output JSON format
 
 **Example:**
@@ -111,6 +112,7 @@ vm0 run <agent-config-id> <prompt> [options]
 ```
 
 **Options:**
+
 - `--dynamicVars <json>` - Dynamic variables as JSON string
 - `--json` - Output JSON format
 - `--verbose` - Show detailed information
@@ -200,6 +202,7 @@ make test
 ### "VM0_API_KEY environment variable is required"
 
 Set the API key:
+
 ```bash
 export VM0_API_KEY="your-api-key"
 ```
