@@ -14,7 +14,7 @@ describe("vm0 run command", () => {
   beforeEach(() => {
     // Mock environment variables
     process.env.VM0_API_URL = "http://localhost:3000";
-    process.env.VM0_API_KEY = "test-key-123";
+    process.env.VM0_TOKEN = "test-token-123";
 
     // Mock fetch
     global.fetch = vi.fn();
@@ -28,8 +28,8 @@ describe("vm0 run command", () => {
     vi.restoreAllMocks();
   });
 
-  it("should fail without API key", async () => {
-    delete process.env.VM0_API_KEY;
+  it("should fail without bearer token", async () => {
+    delete process.env.VM0_TOKEN;
 
     // Mock process.exit
     const mockExit = vi
@@ -64,7 +64,7 @@ describe("vm0 run command", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
-          "X-Api-Key": "test-key-123",
+          Authorization: "Bearer test-token-123",
         }),
       }),
     );
