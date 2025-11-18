@@ -20,7 +20,9 @@ export class E2BService {
     const startTime = Date.now();
     const runtimeId = this.generateRuntimeId();
 
-    console.log(`[E2B] Creating runtime ${runtimeId}...`);
+    console.log(
+      `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`
+    );
 
     let sandbox: Sandbox | null = null;
 
@@ -30,7 +32,7 @@ export class E2BService {
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
       // Execute command (MVP: simple echo, Future: Claude Code)
-      const result = await this.executeCommand(sandbox, options);
+      const result = await this.executeCommand(sandbox);
 
       const executionTimeMs = Date.now() - startTime;
 
@@ -87,8 +89,7 @@ export class E2BService {
    * Future: Run Claude Code with agent configuration
    */
   private async executeCommand(
-    sandbox: Sandbox,
-    _options: CreateRuntimeOptions
+    sandbox: Sandbox
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
