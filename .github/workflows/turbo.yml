@@ -158,6 +158,7 @@ jobs:
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
@@ -189,24 +190,14 @@ jobs:
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
-  # Run CLI E2E tests
+  # Run CLI E2E tests against deployed preview
   cli-e2e:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection]
-    # Run if CLI changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true'
-    services:
-      postgres:
-        image: postgres:17-alpine
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
+    needs: [change-detection, deploy-web]
+    # Run if CLI changed and web deployment succeeded
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true' && needs.deploy-web.outputs.preview-url != ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -219,35 +210,6 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
-      - name: Install PostgreSQL client
-        run: |
-          apt-get update && apt-get install -y postgresql-client
-
-      - name: Setup database
-        run: |
-          cd turbo/apps/web
-          # Create database using the default postgres database
-          PGPASSWORD= psql -h postgres -U postgres -d postgres -c "CREATE DATABASE test_db;" || true
-          # Run migrations on the new database
-          export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
-          pnpm db:migrate
-          # Seed database with API key for E2E tests
-          pnpm db:seed
-
-      - name: Build and start API server
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/test_db
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-        run: |
-          cd turbo
-          pnpm --filter web build
-          cd apps/web
-          pnpm start &
-          # Wait for server to be ready
-          timeout 30 bash -c 'until curl -f http://localhost:3000/api/hello/healthcheck; do sleep 1; done'
-
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
 
@@ -255,7 +217,9 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Run CLI E2E Tests
+        run: |
+          echo "Testing CLI against API: ${{ needs.deploy-web.outputs.preview-url }}"
+          ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
         env:
-          VM0_API_URL: http://localhost:3000
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VM0_API_KEY: ${{ secrets.VM0_E2E_API_KEY }}
-        run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats

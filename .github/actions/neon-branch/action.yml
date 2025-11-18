@@ -79,7 +79,7 @@ runs:
         echo "console-url=$CONSOLE_URL" >> $GITHUB_OUTPUT
         echo "Console URL: $CONSOLE_URL"
 
-    - name: Run Database Migrations
+    - name: Run Database Migrations and Seed
       if: inputs.action == 'create'
       shell: bash
       env:
@@ -88,8 +88,10 @@ runs:
         if [ -n "$DATABASE_URL" ]; then
           echo "Running database migrations..."
           cd turbo && pnpm -F web db:migrate
+          echo "Seeding database with test API key..."
+          pnpm -F web db:seed
         else
-          echo "No database URL provided, skipping migrations"
+          echo "No database URL provided, skipping migrations and seed"
         fi
 
     - name: Delete Neon Branch
