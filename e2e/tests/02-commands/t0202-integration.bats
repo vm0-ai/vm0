@@ -29,23 +29,6 @@ setup() {
     assert_output --partial "Hello World"
 }
 
-@test "workflow with dynamic vars: create and run with variable substitution" {
-    # Phase 1.5: Dynamic vars are passed to API but template substitution
-    # is not yet implemented in E2B service
-    skip "Template substitution not implemented in Phase 1.5"
-
-    # Step 1: Create agent config
-    run $CLI_COMMAND create "$TEST_CONFIG" --json
-    assert_success
-
-    agent_config_id=$(echo "$output" | grep -o '"agentConfigId": "[^"]*"' | cut -d'"' -f4)
-    [ -n "$agent_config_id" ]
-
-    # Step 2: Run with dynamic variables
-    run $CLI_COMMAND run "$agent_config_id" "echo 'Hello {{userName}}'" --dynamicVars '{"userName":"Alice"}'
-    assert_success
-    assert_output --partial "Hello Alice"
-}
 
 @test "workflow with JSON output: create and run with machine-readable output" {
 

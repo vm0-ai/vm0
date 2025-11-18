@@ -32,33 +32,8 @@ load '../../helpers/setup'
     assert_output --partial "Invalid JSON"
 }
 
-@test "vm0 run accepts valid dynamic vars JSON" {
-    # This test needs a created agent config - will be tested in integration
-    skip "Tested in integration test"
-}
-
 @test "vm0 run shows help with --help flag" {
     run $CLI_COMMAND run --help
     assert_success
     assert_output --partial "Run an agent with a prompt"
-}
-
-@test "vm0 run with valid config executes agent" {
-    # Tested in integration workflow
-    skip "Tested in integration test"
-}
-
-@test "vm0 run with --json flag outputs JSON" {
-    # Tested in integration workflow
-    skip "Tested in integration test"
-}
-
-@test "vm0 run with --verbose flag shows detailed information" {
-    # Tested in integration workflow
-    skip "Tested in integration test"
-}
-
-@test "vm0 run displays helpful hints for common errors" {
-    # These hints are already tested in unit tests
-    skip "Tested in unit tests"
 }
