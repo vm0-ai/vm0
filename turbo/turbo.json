@@ -10,7 +10,8 @@
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "E2B_API_KEY",
     "VM0_API_URL",
-    "VM0_API_KEY"
+    "VM0_API_KEY",
+    "VM0_VERCEL_BYPASS"
   ],
   "tasks": {
     "build": {
