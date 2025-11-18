@@ -2,9 +2,13 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import { config } from "dotenv";
+import { existsSync } from "fs";
 
-// Load .env.local for tests
-config({ path: resolve(__dirname, ".env.local") });
+// Load .env.local for tests if it exists (local development)
+const envLocalPath = resolve(__dirname, ".env.local");
+if (existsSync(envLocalPath)) {
+  config({ path: envLocalPath });
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -12,9 +16,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
-    env: {
-      E2B_API_KEY: process.env.E2B_API_KEY || "",
-    },
+    // Don't override env vars, let them pass through from system
   },
   resolve: {
     alias: {
