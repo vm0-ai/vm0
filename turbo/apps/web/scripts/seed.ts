@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { createHash } from "crypto";
 import { apiKeys } from "../src/db/schema/api-key";
@@ -31,7 +32,7 @@ async function seed() {
     const existing = await db
       .select()
       .from(apiKeys)
-      .where(apiKeys.keyHash.eq(keyHash))
+      .where(eq(apiKeys.keyHash, keyHash))
       .limit(1);
 
     if (existing.length > 0) {
