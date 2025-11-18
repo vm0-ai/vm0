@@ -78,7 +78,9 @@ export async function runCommand(
     if (err instanceof Error) {
       if (err.message.includes("401")) {
         console.error(
-          chalk.gray("\nHint: Run 'vm0 auth login' or set VM0_TOKEN environment variable"),
+          chalk.gray(
+            "\nHint: Run 'vm0 auth login' or set VM0_TOKEN environment variable",
+          ),
         );
       } else if (err.message.includes("404")) {
         console.error(
