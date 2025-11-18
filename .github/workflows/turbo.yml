@@ -219,11 +219,17 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
+      - name: Install PostgreSQL client
+        run: |
+          apt-get update && apt-get install -y postgresql-client
+
       - name: Setup database
         run: |
           cd turbo/apps/web
+          # Create database using the default postgres database
+          PGPASSWORD= psql -h postgres -U postgres -d postgres -c "CREATE DATABASE test_db;" || true
+          # Run migrations on the new database
           export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
-          psql $DATABASE_URL -c "CREATE DATABASE test_db;" || true
           pnpm db:migrate
 
       - name: Build and start API server
