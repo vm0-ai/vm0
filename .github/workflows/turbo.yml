@@ -244,7 +244,7 @@ jobs:
           cd apps/web
           pnpm start &
           # Wait for server to be ready
-          timeout 30 bash -c 'until curl -f http://localhost:3000/api/hello; do sleep 1; done'
+          timeout 30 bash -c 'until curl -f http://localhost:3000/api/hello/healthcheck; do sleep 1; done'
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
