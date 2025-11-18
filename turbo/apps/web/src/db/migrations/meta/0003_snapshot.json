@@ -48,12 +48,8 @@
           "name": "agent_configs_api_key_id_api_keys_id_fk",
           "tableFrom": "agent_configs",
           "tableTo": "api_keys",
-          "columnsFrom": [
-            "api_key_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["api_key_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -113,12 +109,8 @@
           "name": "agent_runtime_events_runtime_id_agent_runtimes_id_fk",
           "tableFrom": "agent_runtime_events",
           "tableTo": "agent_runtimes",
-          "columnsFrom": [
-            "runtime_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["runtime_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -208,12 +200,8 @@
           "name": "agent_runtimes_agent_config_id_agent_configs_id_fk",
           "tableFrom": "agent_runtimes",
           "tableTo": "agent_configs",
-          "columnsFrom": [
-            "agent_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -268,9 +256,7 @@
         "api_keys_key_hash_unique": {
           "name": "api_keys_key_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key_hash"
-          ]
+          "columns": ["key_hash"]
         }
       },
       "policies": {},
@@ -333,9 +319,7 @@
         "cli_tokens_token_unique": {
           "name": "cli_tokens_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -434,12 +418,7 @@
     "public.device_code_status": {
       "name": "device_code_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "authenticated",
-        "expired",
-        "denied"
-      ]
+      "values": ["pending", "authenticated", "expired", "denied"]
     }
   },
   "schemas": {},
