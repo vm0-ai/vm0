@@ -1,0 +1,105 @@
+import type { CLIConfig, VM0Config } from "../types/config";
+
+export class APIClient {
+  constructor(private config: CLIConfig) {}
+
+  /**
+   * Create agent config
+   * POST /api/agent-configs
+   */
+  async createAgentConfig(config: VM0Config): Promise<{
+    agentConfigId: string;
+    createdAt: string;
+  }> {
+    const response = await fetch(`${this.config.apiUrl}/api/agent-configs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": this.config.apiKey,
+      },
+      body: JSON.stringify({ config }),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      throw new Error(
+        error.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    return response.json() as Promise<{
+      agentConfigId: string;
+      createdAt: string;
+    }>;
+  }
+
+  /**
+   * Create agent runtime
+   * POST /api/agent-runtimes
+   */
+  async createRuntime(
+    agentConfigId: string,
+    prompt: string,
+    dynamicVars?: Record<string, string>,
+  ): Promise<{
+    runtimeId: string;
+    status: string;
+    sandboxId: string;
+    output: string;
+    executionTimeMs: number;
+    error?: string;
+  }> {
+    const response = await fetch(`${this.config.apiUrl}/api/agent-runtimes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": this.config.apiKey,
+      },
+      body: JSON.stringify({
+        agentConfigId,
+        prompt,
+        dynamicVars,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      throw new Error(
+        error.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    return response.json() as Promise<{
+      runtimeId: string;
+      status: string;
+      sandboxId: string;
+      output: string;
+      executionTimeMs: number;
+      error?: string;
+    }>;
+  }
+}
+
+/**
+ * Get API configuration from environment
+ */
+export function getAPIConfig(): CLIConfig {
+  const apiUrl = process.env.VM0_API_URL || "http://localhost:3000";
+  const apiKey = process.env.VM0_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "VM0_API_KEY environment variable is required.\n\n" +
+        "Set it with:\n" +
+        "  export VM0_API_KEY=your-api-key",
+    );
+  }
+
+  return { apiUrl, apiKey };
+}
