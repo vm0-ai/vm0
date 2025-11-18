@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
+import { config } from "dotenv";
+
+// Load environment variables from .env file
+config({ path: "./.env" });
 
 // Mock Clerk authentication
 vi.mock("@clerk/nextjs/server", () => ({

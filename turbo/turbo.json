@@ -9,7 +9,8 @@
     "CLERK_SECRET_KEY",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "VM0_TOKEN",
-    "API_HOST"
+    "API_HOST",
+    "E2B_API_KEY"
   ],
   "tasks": {
     "build": {
