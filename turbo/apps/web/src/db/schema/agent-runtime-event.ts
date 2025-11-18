@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
 import { agentRuntimes } from "./agent-runtime";
 
 /**
@@ -11,7 +11,7 @@ export const agentRuntimeEvents = pgTable("agent_runtime_events", {
   runtimeId: uuid("runtime_id")
     .references(() => agentRuntimes.id)
     .notNull(),
-  sequenceNumber: varchar("sequence_number").notNull(),
+  sequenceNumber: integer("sequence_number").notNull(),
   eventType: varchar("event_type", { length: 50 }).notNull(),
   eventData: jsonb("event_data").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
