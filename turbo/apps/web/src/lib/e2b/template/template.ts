@@ -14,10 +14,19 @@ export const vm0Template = Template()
   // Install Node.js 22.x
   .runCmd("curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -")
   .runCmd("sudo apt-get install -y nodejs")
-  // Install Claude Code CLI globally
-  .runCmd("sudo npm install -g @anthropic-ai/claude-code")
-  // Verify Claude Code installation
-  .runCmd("claude --version")
+  // Verify Node.js installation
+  .runCmd("node --version")
+  .runCmd("npm --version")
+  // Clear npm cache to force fresh install
+  .runCmd("sudo npm cache clean --force")
+  // Install Claude Code CLI globally with verbose output
+  .runCmd("sudo npm install -g @anthropic-ai/claude-code --verbose")
+  // Verify Claude Code was actually installed
+  .runCmd("ls -la /usr/local/lib/node_modules/ | grep claude || echo 'ERROR: Claude Code not in node_modules'")
+  .runCmd("ls -la /usr/local/bin/ | grep claude || echo 'ERROR: Claude binary not in bin'")
+  .runCmd("npm list -g @anthropic-ai/claude-code || echo 'ERROR: Claude Code not in npm list'")
+  // Try to run claude --version
+  .runCmd("/usr/local/bin/claude --version || echo 'ERROR: Cannot execute claude'")
   // Install required tools for webhooks
   .runCmd("sudo apt-get update")
   .runCmd("sudo apt-get install -y curl jq")
@@ -29,4 +38,6 @@ export const vm0Template = Template()
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")
-  .runCmd('echo "VM0 Claude Code template ready!"');
+  .runCmd('echo "VM0 Claude Code template ready!"')
+  // Final verification - this should fail the build if Claude is not installed
+  .runCmd("test -f /usr/local/bin/claude && echo 'SUCCESS: Claude Code installed' || (echo 'FATAL: Claude Code missing' && exit 1)");

@@ -99,26 +99,23 @@ export class E2BService {
    * Create E2B sandbox with Claude Code
    */
   private async createSandbox(): Promise<Sandbox> {
-    const sandboxOptions: {
-      timeoutMs: number;
-      template?: string;
-    } = {
+    const sandboxOptions = {
       timeoutMs: e2bConfig.defaultTimeout,
     };
 
     // Use custom template if configured
     if (e2bConfig.defaultTemplate) {
-      sandboxOptions.template = e2bConfig.defaultTemplate;
       console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
+      // Template should be passed as first argument, not in options
+      const sandbox = await Sandbox.create(e2bConfig.defaultTemplate, sandboxOptions);
+      return sandbox;
     } else {
       console.warn(
         "[E2B] No custom template configured. Ensure Claude Code CLI is available in the sandbox.",
       );
+      const sandbox = await Sandbox.create(sandboxOptions);
+      return sandbox;
     }
-
-    const sandbox = await Sandbox.create(sandboxOptions);
-
-    return sandbox;
   }
 
   /**
