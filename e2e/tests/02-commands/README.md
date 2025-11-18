@@ -27,7 +27,7 @@ End-to-end tests for `vm0 create` and `vm0 run` commands.
 3. Set up environment variables:
    ```bash
    export VM0_API_URL="http://localhost:3000"
-   export VM0_API_KEY="your-api-key-here"
+   export VM0_TOKEN="your-bearer-token-here"
    ```
 
 4. Ensure the API server is running:
@@ -57,7 +57,7 @@ make test
 ### `t0200-create.bats` - Create Command Tests
 
 1. **Error Handling**:
-   - Missing API key
+   - Missing bearer token
    - Non-existent config file
    - Invalid YAML format
    - Missing required fields
@@ -72,7 +72,7 @@ make test
 ### `t0201-run.bats` - Run Command Tests
 
 1. **Error Handling**:
-   - Missing API key
+   - Missing bearer token
    - Invalid agent config ID (404)
    - Invalid dynamic vars JSON
 
@@ -114,8 +114,8 @@ To enable these tests, ensure all prerequisites are met and remove the `skip` li
 
 Tests check for environment variables and skip automatically if not set:
 ```bash
-if [ -z "$VM0_API_URL" ] || [ -z "$VM0_API_KEY" ]; then
-    skip "VM0_API_URL or VM0_API_KEY not set"
+if [ -z "$VM0_API_URL" ] || [ -z "$VM0_TOKEN" ]; then
+    skip "VM0_API_URL or VM0_TOKEN not set"
 fi
 ```
 

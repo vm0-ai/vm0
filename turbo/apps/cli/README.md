@@ -64,7 +64,7 @@ Set environment variables for API access:
 
 ```bash
 export VM0_API_URL="http://localhost:3000"  # API server URL
-export VM0_API_KEY="your-api-key-here"      # Your API key
+export VM0_TOKEN="your-bearer-token-here"   # Your bearer token
 ```
 
 ## Usage
@@ -144,11 +144,11 @@ vm0 run cfg-abc123 "test prompt" --verbose
 
 The CLI provides helpful error messages and hints for common issues:
 
-- **Missing API Key**: Prompts to set `VM0_API_KEY` environment variable
+- **Missing Bearer Token**: Prompts to set `VM0_TOKEN` environment variable
 - **Invalid Config**: Shows validation errors with specific field issues
 - **Connection Errors**: Suggests checking `VM0_API_URL` and server status
 - **404 Errors**: Indicates agent config not found, check config ID
-- **401 Errors**: Suggests checking API key validity
+- **401 Errors**: Suggests checking bearer token validity
 
 ## Architecture
 
@@ -199,12 +199,12 @@ make test
 
 ## Troubleshooting
 
-### "VM0_API_KEY environment variable is required"
+### "VM0_TOKEN environment variable is required"
 
-Set the API key:
+Set the bearer token:
 
 ```bash
-export VM0_API_KEY="your-api-key"
+export VM0_TOKEN="your-bearer-token"
 ```
 
 ### "Cannot connect to VM0 API"

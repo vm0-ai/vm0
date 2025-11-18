@@ -233,5 +233,5 @@ jobs:
           fi
           ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
         env:
-          VM0_API_KEY: dev-key-123
+          VM0_TOKEN: ${{ secrets.VM0_TOKEN }}
           VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
