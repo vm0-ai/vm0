@@ -1,0 +1,45 @@
+{
+  "name": "@vm0/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for VM0 Agent Runtime",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [
+    "vm0",
+    "agent",
+    "ai",
+    "sdk",
+    "runtime"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "@types/node": "^24.3.0",
+    "eslint": "^9.34.0",
+    "tsup": "^8.5.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
