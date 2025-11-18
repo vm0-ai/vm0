@@ -152,14 +152,17 @@ export class E2BService {
     const minimaxBaseUrl = process.env.MINIMAX_ANTHROPIC_BASE_URL;
     const minimaxApiKey = process.env.MINIMAX_API_KEY;
 
-    if (minimaxBaseUrl) {
+    if (minimaxBaseUrl && minimaxApiKey) {
       envs.ANTHROPIC_BASE_URL = minimaxBaseUrl;
-      console.log(`[E2B] Using Minimax base URL: ${minimaxBaseUrl}`);
-    }
-
-    if (minimaxApiKey) {
-      envs.ANTHROPIC_API_KEY = minimaxApiKey;
-      console.log(`[E2B] Using Minimax API key`);
+      envs.ANTHROPIC_AUTH_TOKEN = minimaxApiKey;
+      envs.API_TIMEOUT_MS = "3000000";
+      envs.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+      envs.ANTHROPIC_MODEL = "MiniMax-M2";
+      envs.ANTHROPIC_SMALL_FAST_MODEL = "MiniMax-M2";
+      envs.ANTHROPIC_DEFAULT_SONNET_MODEL = "MiniMax-M2";
+      envs.ANTHROPIC_DEFAULT_OPUS_MODEL = "MiniMax-M2";
+      envs.ANTHROPIC_DEFAULT_HAIKU_MODEL = "MiniMax-M2";
+      console.log(`[E2B] Using Minimax API (${minimaxBaseUrl})`);
     }
 
     const result = await sandbox.commands.run(scriptPath, {
