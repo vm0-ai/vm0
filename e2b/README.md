@@ -8,8 +8,6 @@ This directory contains the E2B sandbox template configuration for running Claud
 - `build.dev.ts`: Development build script
 - `build.prod.ts`: Production build script
 - `run-agent.sh`: Shell script that executes Claude Code and sends events to the webhook
-- `e2b.Dockerfile.old`: Legacy v1 Dockerfile (kept for reference)
-- `e2b.toml.old`: Legacy v1 configuration (kept for reference)
 
 ## How It Works
 
