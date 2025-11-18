@@ -25,7 +25,7 @@ export const vm0Template = Template()
   .runCmd("sudo mkdir -p /opt/vm0")
   .runCmd("sudo chmod 755 /opt/vm0")
   // Create workspace directory
-  .runCmd("mkdir -p /workspace")
+  .runCmd("mkdir -p ~/workspace")
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")

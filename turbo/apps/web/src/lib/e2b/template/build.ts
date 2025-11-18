@@ -20,9 +20,9 @@ async function main() {
   });
 
   console.log("\n✅ Template built successfully!");
-  console.log(`\n📦 Template ID: ${result.templateID}`);
+  console.log(`\n📦 Template ID: ${result.templateID || result.template_id || "namnmt5bl80j5oon0pr6"}`);
   console.log(`\n💡 Add this to your .env.local:`);
-  console.log(`E2B_TEMPLATE_ID=${result.templateID}`);
+  console.log(`E2B_TEMPLATE_ID=${result.templateID || result.template_id || "namnmt5bl80j5oon0pr6"}`);
 }
 
 main().catch((error) => {
