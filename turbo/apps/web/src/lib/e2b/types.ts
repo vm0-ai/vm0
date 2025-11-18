@@ -16,6 +16,7 @@ export interface RuntimeResult {
   error?: string;
   executionTimeMs: number;
   createdAt: Date;
+  completedAt?: Date;
 }
 
 export interface SandboxExecutionResult {

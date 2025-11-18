@@ -1,4 +1,11 @@
-import { pgTable, uuid, varchar, jsonb, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  jsonb,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { agentConfigs } from "./agent-config";
 
 /**
@@ -12,11 +19,11 @@ export const agentRuntimes = pgTable("agent_runtimes", {
     .references(() => agentConfigs.id)
     .notNull(),
   status: varchar("status", { length: 20 }).notNull(),
-  prompt: varchar("prompt").notNull(),
+  prompt: text("prompt").notNull(),
   dynamicVars: jsonb("dynamic_vars"),
   sandboxId: varchar("sandbox_id", { length: 255 }),
   result: jsonb("result"),
-  error: varchar("error"),
+  error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),

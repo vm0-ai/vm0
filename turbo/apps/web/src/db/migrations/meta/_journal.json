@@ -15,6 +15,13 @@
       "when": 1763365789017,
       "tag": "0001_huge_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1763434219021,
+      "tag": "0002_nifty_jane_foster",
+      "breakpoints": true
     }
   ]
 }

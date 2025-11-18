@@ -16,9 +16,11 @@ export class E2BService {
    * MVP: Executes simple "echo hello world" command
    * Future: Will execute Claude Code with real agent
    */
-  async createRuntime(options: CreateRuntimeOptions): Promise<RuntimeResult> {
+  async createRuntime(
+    runtimeId: string,
+    options: CreateRuntimeOptions,
+  ): Promise<RuntimeResult> {
     const startTime = Date.now();
-    const runtimeId = this.generateRuntimeId();
 
     console.log(
       `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`,
@@ -35,6 +37,7 @@ export class E2BService {
       const result = await this.executeCommand(sandbox);
 
       const executionTimeMs = Date.now() - startTime;
+      const completedAt = new Date();
 
       console.log(
         `[E2B] Runtime ${runtimeId} completed in ${executionTimeMs}ms`,
@@ -46,10 +49,12 @@ export class E2BService {
         status: "completed",
         output: result.stdout,
         executionTimeMs,
-        createdAt: new Date(),
+        createdAt: new Date(startTime),
+        completedAt,
       };
     } catch (error) {
       const executionTimeMs = Date.now() - startTime;
+      const completedAt = new Date();
 
       console.error(`[E2B] Runtime ${runtimeId} failed:`, error);
 
@@ -60,7 +65,8 @@ export class E2BService {
         output: "",
         error: error instanceof Error ? error.message : "Unknown error",
         executionTimeMs,
-        createdAt: new Date(),
+        createdAt: new Date(startTime),
+        completedAt,
       };
     } finally {
       // Always cleanup sandbox
@@ -127,13 +133,6 @@ export class E2BService {
         error,
       );
     }
-  }
-
-  /**
-   * Generate runtime ID
-   */
-  private generateRuntimeId(): string {
-    return `rt-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 }
 
