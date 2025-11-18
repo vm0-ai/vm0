@@ -110,9 +110,7 @@ export class E2BService {
 
     // Use custom template if configured (by name/alias)
     if (e2bConfig.defaultTemplate) {
-      console.log(
-        `[E2B] Using custom template: ${e2bConfig.defaultTemplate}`,
-      );
+      console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
       console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
       // Template name/alias should be passed as first argument
       const sandbox = await Sandbox.create(
