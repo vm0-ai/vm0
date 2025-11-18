@@ -147,7 +147,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
     it("should return 404 when agent config not found", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "non-existent-config",
+        agentConfigId: "00000000-0000-0000-0000-000000000000", // Valid UUID that doesn't exist
         prompt: "test prompt",
       };
 
