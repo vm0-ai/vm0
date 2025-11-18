@@ -123,6 +123,7 @@ export class E2BService {
 
   /**
    * Execute Claude Code via run-agent.sh script
+   * Script is pre-installed in E2B template at /usr/local/bin/run-agent.sh
    */
   private async executeCommand(
     sandbox: Sandbox,
@@ -133,13 +134,8 @@ export class E2BService {
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
-    // Upload run-agent.sh script to sandbox
-    const scriptPath = "/opt/vm0/run-agent.sh";
-    const scriptContent = await this.getRunAgentScript();
-
-    console.log(`[E2B] Uploading run-agent.sh to ${scriptPath}...`);
-    await sandbox.files.write(scriptPath, scriptContent);
-    await sandbox.commands.run(`chmod +x ${scriptPath}`);
+    // Script is already installed in the E2B template
+    const scriptPath = "/usr/local/bin/run-agent.sh";
 
     console.log(`[E2B] Executing run-agent.sh for runtime ${runtimeId}...`);
 
@@ -189,17 +185,6 @@ export class E2BService {
       exitCode: result.exitCode,
       executionTimeMs,
     };
-  }
-
-  /**
-   * Load run-agent.sh script content
-   */
-  private async getRunAgentScript(): Promise<string> {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const scriptPath = path.join(__dirname, "scripts", "run-agent.sh");
-    return fs.readFile(scriptPath, "utf-8");
   }
 
   /**
