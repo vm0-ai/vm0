@@ -203,6 +203,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.4
         version: 0.31.4
+      e2b:
+        specifier: ^2.7.0
+        version: 2.7.0
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
