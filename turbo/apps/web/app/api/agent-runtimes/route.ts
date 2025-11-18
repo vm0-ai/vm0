@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     };
 
     console.log(
-      `[API] Runtime ${result.runtimeId} completed with status: ${result.status}`
+      `[API] Runtime ${result.runtimeId} completed with status: ${result.status}`,
     );
 
     return successResponse(response, 201);

@@ -21,7 +21,7 @@ export class E2BService {
     const runtimeId = this.generateRuntimeId();
 
     console.log(
-      `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`
+      `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`,
     );
 
     let sandbox: Sandbox | null = null;
@@ -37,7 +37,7 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
 
       console.log(
-        `[E2B] Runtime ${runtimeId} completed in ${executionTimeMs}ms`
+        `[E2B] Runtime ${runtimeId} completed in ${executionTimeMs}ms`,
       );
 
       return {
@@ -89,7 +89,7 @@ export class E2BService {
    * Future: Run Claude Code with agent configuration
    */
   private async executeCommand(
-    sandbox: Sandbox
+    sandbox: Sandbox,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -124,7 +124,7 @@ export class E2BService {
     } catch (error) {
       console.error(
         `[E2B] Failed to cleanup sandbox ${sandbox.sandboxId}:`,
-        error
+        error,
       );
     }
   }
