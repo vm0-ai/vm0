@@ -10,7 +10,7 @@ setup() {
 }
 
 @test "vm0 create shows error without API key" {
-    # Temporarily unset API key
+    # Temporarily unset API key (VM0_API_KEY is deprecated, uses VM0_TOKEN)
     old_key="$VM0_API_KEY"
     unset VM0_API_KEY
 
@@ -20,7 +20,7 @@ setup() {
     export VM0_API_KEY="$old_key"
 
     assert_failure
-    assert_output --partial "VM0_API_KEY"
+    assert_output --partial "VM0_TOKEN"
 }
 
 @test "vm0 create fails with non-existent config file" {
