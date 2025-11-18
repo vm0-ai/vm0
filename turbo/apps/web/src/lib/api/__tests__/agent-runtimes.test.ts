@@ -123,7 +123,9 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       // Parse all responses
       const data = await Promise.all(
-        responses.map((res) => res.json() as Promise<CreateAgentRuntimeResponse>),
+        responses.map(
+          (res) => res.json() as Promise<CreateAgentRuntimeResponse>,
+        ),
       );
 
       // All should have unique runtime IDs
