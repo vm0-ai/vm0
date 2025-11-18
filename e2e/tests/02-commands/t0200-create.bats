@@ -6,11 +6,6 @@ load '../../helpers/setup'
 # Set VM0_API_URL and VM0_API_KEY environment variables before running
 
 setup() {
-    # Skip tests if API credentials not set
-    if [ -z "$VM0_API_URL" ] || [ -z "$VM0_API_KEY" ]; then
-        skip "VM0_API_URL or VM0_API_KEY not set"
-    fi
-
     TEST_CONFIG="${TEST_ROOT}/fixtures/configs/test-agent.yaml"
 }
 
@@ -54,9 +49,6 @@ setup() {
 }
 
 @test "vm0 create with valid config file creates agent config" {
-    # This test requires a real API server
-    skip "Requires running API server with database"
-
     run $CLI_COMMAND create "$TEST_CONFIG"
     assert_success
     assert_output --partial "Agent Config ID:"
@@ -64,9 +56,6 @@ setup() {
 }
 
 @test "vm0 create with --json flag outputs JSON" {
-    # This test requires a real API server
-    skip "Requires running API server with database"
-
     run $CLI_COMMAND create "$TEST_CONFIG" --json
     assert_success
     assert_output --regexp '\{"agentConfigId":"cfg-[a-z0-9]+","createdAt":"[0-9-]+T[0-9:]+Z"\}'

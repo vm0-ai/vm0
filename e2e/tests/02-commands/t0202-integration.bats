@@ -6,21 +6,10 @@ load '../../helpers/setup'
 # Note: These tests require a running VM0 API server with valid credentials
 
 setup() {
-    # Skip tests if API credentials not set
-    if [ -z "$VM0_API_URL" ] || [ -z "$VM0_API_KEY" ]; then
-        skip "VM0_API_URL or VM0_API_KEY not set"
-    fi
-
     TEST_CONFIG="${TEST_ROOT}/fixtures/configs/test-agent.yaml"
 }
 
 @test "full workflow: create agent config and run it" {
-    # This is a full integration test that requires:
-    # - Running API server
-    # - Database connection
-    # - E2B API access
-    skip "Requires running API server with database and E2B integration"
-
     # Step 1: Create agent config
     run $CLI_COMMAND create "$TEST_CONFIG" --json
     assert_success
@@ -41,7 +30,6 @@ setup() {
 }
 
 @test "workflow with dynamic vars: create and run with variable substitution" {
-    skip "Requires running API server with database and E2B integration"
 
     # Step 1: Create agent config
     run $CLI_COMMAND create "$TEST_CONFIG" --json
@@ -57,7 +45,6 @@ setup() {
 }
 
 @test "workflow with JSON output: create and run with machine-readable output" {
-    skip "Requires running API server with database and E2B integration"
 
     # Create config
     run $CLI_COMMAND create "$TEST_CONFIG" --json
@@ -76,7 +63,6 @@ setup() {
 }
 
 @test "error handling: run with non-existent agent config" {
-    skip "Requires running API server with database"
 
     run $CLI_COMMAND run cfg-nonexistent-12345 "test prompt"
     assert_failure
@@ -103,7 +89,6 @@ EOF
 }
 
 @test "stress test: create multiple configs sequentially" {
-    skip "Requires running API server with database - stress test"
 
     # Create 3 agent configs
     for i in 1 2 3; do

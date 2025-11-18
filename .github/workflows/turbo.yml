@@ -197,6 +197,16 @@ jobs:
     needs: [change-detection]
     # Run if CLI changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true'
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
     steps:
       - uses: actions/checkout@v4
         with:
@@ -209,6 +219,26 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
+      - name: Setup database
+        run: |
+          cd turbo/apps/web
+          export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
+          psql $DATABASE_URL -c "CREATE DATABASE test_db;" || true
+          pnpm db:migrate
+
+      - name: Build and start API server
+        run: |
+          cd turbo
+          pnpm --filter web build
+          cd apps/web
+          export DATABASE_URL="postgresql://postgres@postgres:5432/test_db"
+          export E2B_API_KEY="${{ secrets.E2B_API_KEY }}"
+          export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}"
+          export CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}"
+          pnpm start &
+          # Wait for server to be ready
+          timeout 30 bash -c 'until curl -f http://localhost:3000/api/hello; do sleep 1; done'
+
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
 
@@ -216,4 +246,7 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Run CLI E2E Tests
+        env:
+          VM0_API_URL: http://localhost:3000
+          VM0_API_KEY: ${{ secrets.VM0_E2E_API_KEY }}
         run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
