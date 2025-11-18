@@ -1,6 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
-import { generateWebhookToken } from "../webhook-auth";
 import type {
   CreateRuntimeOptions,
   RuntimeResult,
@@ -30,24 +29,22 @@ export class E2BService {
     let sandbox: Sandbox | null = null;
 
     try {
-      // Generate webhook token
-      const webhookToken = generateWebhookToken(runtimeId);
-
-      // Get webhook configuration
-      const webhookUrl =
+      // Get API configuration
+      const apiUrl =
         globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
-      const webhookEndpoint = `${webhookUrl}/api/webhooks/agent-events`;
+      const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
 
+      console.log(`[E2B] API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook endpoint: ${webhookEndpoint}`);
-      console.log(`[E2B] Webhook token: ${webhookToken}`);
+      console.log(`[E2B] Runtime ID: ${runtimeId}`);
 
-      // TODO: When implementing run-agent.sh (Issue #53), pass these as environment variables:
-      // VM0_WEBHOOK_URL: webhookEndpoint
-      // VM0_WEBHOOK_TOKEN: webhookToken
-      // VM0_RUNTIME_ID: runtimeId
-
-      // Create E2B sandbox
-      sandbox = await this.createSandbox();
+      // Create E2B sandbox with environment variables
+      sandbox = await this.createSandbox({
+        VM0_API_URL: apiUrl,
+        VM0_WEBHOOK_URL: webhookEndpoint,
+        VM0_RUNTIME_ID: runtimeId,
+        VM0_TOKEN: options.sandboxToken, // Temporary bearer token for API calls
+      });
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
       // Execute command (MVP: simple echo, Future: Claude Code)
@@ -94,15 +91,19 @@ export class E2BService {
   }
 
   /**
-   * Create E2B sandbox
+   * Create E2B sandbox with environment variables
    */
-  private async createSandbox(): Promise<Sandbox> {
+  private async createSandbox(
+    envVars: Record<string, string>,
+  ): Promise<Sandbox> {
     const sandbox = await Sandbox.create({
       timeoutMs: e2bConfig.defaultTimeout,
+      envs: envVars, // Pass environment variables to sandbox
       // Future: Add template/image configuration
       // template: e2bConfig.defaultImage,
     });
 
+    console.log(`[E2B] Sandbox created with env vars:`, Object.keys(envVars));
     return sandbox;
   }
 

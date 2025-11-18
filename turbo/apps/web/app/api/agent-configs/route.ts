@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { agentConfigs } from "../../../src/db/schema/agent-config";
-import { authenticate } from "../../../src/lib/middleware/auth";
+import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { successResponse, errorResponse } from "../../../src/lib/api-response";
-import { BadRequestError } from "../../../src/lib/errors";
+import { BadRequestError, UnauthorizedError } from "../../../src/lib/errors";
 import type {
   CreateAgentConfigRequest,
   CreateAgentConfigResponse,
@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
     initServices();
 
     // Authenticate
-    const apiKeyId = await authenticate(request);
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
 
     // Parse request body
     const body: CreateAgentConfigRequest = await request.json();
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
     const results = await globalThis.services.db
       .insert(agentConfigs)
       .values({
-        apiKeyId,
+        userId,
         config: body.config,
       })
       .returning({

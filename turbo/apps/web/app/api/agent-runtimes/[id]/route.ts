@@ -2,12 +2,12 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuntimes } from "../../../../src/db/schema/agent-runtime";
 import { eq } from "drizzle-orm";
-import { authenticate } from "../../../../src/lib/middleware/auth";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
 } from "../../../../src/lib/api-response";
-import { NotFoundError } from "../../../../src/lib/errors";
+import { NotFoundError, UnauthorizedError } from "../../../../src/lib/errors";
 import type { GetAgentRuntimeResponse } from "../../../../src/types/agent-runtime";
 
 /**
@@ -23,7 +23,10 @@ export async function GET(
     initServices();
 
     // Authenticate
-    await authenticate(request);
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
 
     // Await params
     const { id } = await params;

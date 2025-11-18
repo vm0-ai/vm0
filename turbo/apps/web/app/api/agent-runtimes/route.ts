@@ -4,9 +4,14 @@ import { agentConfigs } from "../../../src/db/schema/agent-config";
 import { agentRuntimes } from "../../../src/db/schema/agent-runtime";
 import { eq } from "drizzle-orm";
 import { e2bService } from "../../../src/lib/e2b";
-import { authenticate } from "../../../src/lib/middleware/auth";
+import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
 import { successResponse, errorResponse } from "../../../src/lib/api-response";
-import { BadRequestError, NotFoundError } from "../../../src/lib/errors";
+import {
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../src/lib/errors";
 import type {
   CreateAgentRuntimeRequest,
   CreateAgentRuntimeResponse,
@@ -22,7 +27,10 @@ export async function POST(request: NextRequest) {
     initServices();
 
     // Authenticate
-    await authenticate(request);
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
 
     // Parse request body
     const body: CreateAgentRuntimeRequest = await request.json();
@@ -54,6 +62,7 @@ export async function POST(request: NextRequest) {
     const [runtime] = await globalThis.services.db
       .insert(agentRuntimes)
       .values({
+        userId,
         agentConfigId: body.agentConfigId,
         status: "pending",
         prompt: body.prompt,
@@ -67,12 +76,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Created runtime record: ${runtime.id}`);
 
-    // Execute in E2B (pass the runtime ID)
+    // Generate temporary bearer token for E2B sandbox
+    const sandboxToken = await generateSandboxToken(userId, runtime.id);
+    console.log(`[API] Generated sandbox token for runtime: ${runtime.id}`);
+
+    // Execute in E2B (pass the runtime ID and sandbox token)
     try {
       const result = await e2bService.createRuntime(runtime.id, {
         agentConfigId: body.agentConfigId,
         prompt: body.prompt,
         dynamicVars: body.dynamicVars,
+        sandboxToken,
       });
 
       // Update runtime with results
