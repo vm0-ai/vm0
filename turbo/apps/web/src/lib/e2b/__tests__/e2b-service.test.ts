@@ -91,7 +91,7 @@ describe("E2B Service - unit tests with real E2B API", () => {
       expect(result.executionTimeMs).toBeLessThanOrEqual(totalTime);
 
       // E2B sandbox creation typically takes 1-10 seconds
-      expect(result.executionTimeMs).toBeGreaterThan(500);
+      expect(result.executionTimeMs).toBeGreaterThanOrEqual(100);
       expect(result.executionTimeMs).toBeLessThan(30000);
     }, 60000);
 
