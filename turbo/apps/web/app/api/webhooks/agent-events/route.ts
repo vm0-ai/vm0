@@ -1,0 +1,99 @@
+import { NextRequest } from "next/server";
+import { initServices } from "../../../../src/lib/init-services";
+import { agentRuntimes } from "../../../../src/db/schema/agent-runtime";
+import { agentRuntimeEvents } from "../../../../src/db/schema/agent-runtime-event";
+import { eq, max } from "drizzle-orm";
+import { validateWebhookToken } from "../../../../src/lib/webhook-auth";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../../src/lib/api-response";
+import { BadRequestError, NotFoundError } from "../../../../src/lib/errors";
+import type {
+  WebhookRequest,
+  WebhookResponse,
+} from "../../../../src/types/webhook";
+
+/**
+ * POST /api/webhooks/agent-events
+ * Receive agent events from E2B sandbox
+ */
+export async function POST(request: NextRequest) {
+  try {
+    // Initialize services
+    initServices();
+
+    // Parse request body
+    const body: WebhookRequest = await request.json();
+
+    if (!body.runtimeId) {
+      throw new BadRequestError("Missing runtimeId");
+    }
+
+    if (!body.events || !Array.isArray(body.events)) {
+      throw new BadRequestError("Missing or invalid events array");
+    }
+
+    if (body.events.length === 0) {
+      throw new BadRequestError("Events array cannot be empty");
+    }
+
+    console.log(
+      `[Webhook] Received ${body.events.length} events for runtime ${body.runtimeId}`,
+    );
+
+    // Validate webhook token
+    await validateWebhookToken(request, body.runtimeId);
+
+    // Verify runtime exists
+    const [runtime] = await globalThis.services.db
+      .select()
+      .from(agentRuntimes)
+      .where(eq(agentRuntimes.id, body.runtimeId))
+      .limit(1);
+
+    if (!runtime) {
+      throw new NotFoundError("Agent runtime");
+    }
+
+    // Get the last sequence number for this runtime
+    const [lastEvent] = await globalThis.services.db
+      .select({ maxSeq: max(agentRuntimeEvents.sequenceNumber) })
+      .from(agentRuntimeEvents)
+      .where(eq(agentRuntimeEvents.runtimeId, body.runtimeId));
+
+    const lastSequence = lastEvent?.maxSeq ? parseInt(lastEvent.maxSeq, 10) : 0;
+
+    // Prepare events for insertion
+    const eventsToInsert = body.events.map((event, index) => ({
+      runtimeId: body.runtimeId,
+      sequenceNumber: String(lastSequence + index + 1),
+      eventType: event.type,
+      eventData: event,
+    }));
+
+    // Insert events in batch
+    await globalThis.services.db
+      .insert(agentRuntimeEvents)
+      .values(eventsToInsert);
+
+    const firstSequence = lastSequence + 1;
+    const lastInsertedSequence = lastSequence + body.events.length;
+
+    console.log(
+      `[Webhook] Stored events ${firstSequence}-${lastInsertedSequence} for runtime ${body.runtimeId}`,
+    );
+
+    // Return response
+    const response: WebhookResponse = {
+      received: body.events.length,
+      firstSequence,
+      lastSequence: lastInsertedSequence,
+    };
+
+    return successResponse(response, 200);
+  } catch (error) {
+    console.error("[Webhook] Error:", error);
+    return errorResponse(error);
+  }
+}

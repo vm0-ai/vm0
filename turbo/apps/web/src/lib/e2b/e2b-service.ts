@@ -1,5 +1,6 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
+import { generateWebhookToken } from "../webhook-auth";
 import type {
   CreateRuntimeOptions,
   RuntimeResult,
@@ -29,6 +30,22 @@ export class E2BService {
     let sandbox: Sandbox | null = null;
 
     try {
+      // Generate webhook token
+      const webhookToken = generateWebhookToken(runtimeId);
+
+      // Get webhook configuration
+      const webhookUrl =
+        globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
+      const webhookEndpoint = `${webhookUrl}/api/webhooks/agent-events`;
+
+      console.log(`[E2B] Webhook endpoint: ${webhookEndpoint}`);
+      console.log(`[E2B] Webhook token: ${webhookToken}`);
+
+      // TODO: When implementing run-agent.sh (Issue #53), pass these as environment variables:
+      // VM0_WEBHOOK_URL: webhookEndpoint
+      // VM0_WEBHOOK_TOKEN: webhookToken
+      // VM0_RUNTIME_ID: runtimeId
+
       // Create E2B sandbox
       sandbox = await this.createSandbox();
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);

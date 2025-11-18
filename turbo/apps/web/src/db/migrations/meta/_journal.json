@@ -22,6 +22,13 @@
       "when": 1763434219021,
       "tag": "0002_nifty_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763438704060,
+      "tag": "0003_low_korg",
+      "breakpoints": true
     }
   ]
 }
