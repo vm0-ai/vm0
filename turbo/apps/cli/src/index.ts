@@ -4,6 +4,7 @@ import { runCommand } from "./commands/run";
 import chalk from "chalk";
 import { authenticate, logout, checkAuthStatus } from "./lib/auth";
 import { getApiUrl } from "./lib/config";
+import { FOO } from "@vm0/core";
 
 const program = new Command();
 
