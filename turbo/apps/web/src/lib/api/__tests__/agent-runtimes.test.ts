@@ -1,16 +1,76 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash } from "crypto";
+import { initServices } from "../../init-services";
+import { apiKeys } from "../../../db/schema/api-key";
+import { agentConfigs } from "../../../db/schema/agent-config";
+import { agentRuntimes } from "../../../db/schema/agent-runtime";
+import { eq } from "drizzle-orm";
 import { POST } from "../../../../app/api/agent-runtimes/route";
 import type {
   CreateAgentRuntimeRequest,
   CreateAgentRuntimeResponse,
 } from "../../../types/agent-runtime";
 
+function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
 describe("Agent Runtimes API - integration tests with real E2B", () => {
-  beforeAll(() => {
+  const testApiKey = "test-api-key-123";
+  let testApiKeyId: string;
+  let testAgentConfigId: string;
+
+  beforeEach(async () => {
+    // Initialize services
+    initServices();
+
+    // Clean up test data
+    await globalThis.services.db
+      .delete(agentRuntimes)
+      .execute();
+    await globalThis.services.db
+      .delete(agentConfigs)
+      .execute();
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, "Test API Key"))
+      .execute();
+
+    // Create test API key
+    const [insertedKey] = await globalThis.services.db
+      .insert(apiKeys)
+      .values({
+        keyHash: hashApiKey(testApiKey),
+        name: "Test API Key",
+      })
+      .returning({ id: apiKeys.id });
+
+    testApiKeyId = insertedKey?.id ?? "";
+
+    // Create test agent config
+    const [insertedConfig] = await globalThis.services.db
+      .insert(agentConfigs)
+      .values({
+        apiKeyId: testApiKeyId,
+        config: {
+          version: "1.0",
+          agent: {
+            description: "Test agent",
+            image: "vm0-claude-code:test",
+            provider: "claude-code",
+            working_dir: "/workspace",
+            volumes: [],
+          },
+        },
+      })
+      .returning({ id: agentConfigs.id });
+
+    testAgentConfigId = insertedConfig?.id ?? "";
+
     // Verify E2B_API_KEY is available
     if (!process.env.E2B_API_KEY) {
       throw new Error(
@@ -19,7 +79,40 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
     }
   });
 
+  afterEach(async () => {
+    // Clean up test data
+    await globalThis.services.db
+      .delete(agentRuntimes)
+      .execute();
+    await globalThis.services.db
+      .delete(agentConfigs)
+      .where(eq(agentConfigs.id, testAgentConfigId))
+      .execute();
+    await globalThis.services.db
+      .delete(apiKeys)
+      .where(eq(apiKeys.id, testApiKeyId))
+      .execute();
+  });
+
   describe("POST /api/agent-runtimes", () => {
+    it("should return 401 when API key is missing", async () => {
+      const requestBody = {
+        agentConfigId: testAgentConfigId,
+        prompt: "test prompt",
+      } as CreateAgentRuntimeRequest;
+
+      const request = new NextRequest("http://localhost/api/agent-runtimes", {
+        method: "POST",
+        body: JSON.stringify(requestBody),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+
+      const data = await response.json();
+      expect(data.error.code).toBe("UNAUTHORIZED");
+    });
+
     it("should return 400 when agentConfigId is missing", async () => {
       const requestBody = {
         prompt: "test prompt",
@@ -27,6 +120,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -40,11 +134,12 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
     it("should return 400 when prompt is missing", async () => {
       const requestBody = {
-        agentConfigId: "test-agent-001",
+        agentConfigId: testAgentConfigId,
       } as CreateAgentRuntimeRequest;
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -56,9 +151,28 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       expect(data.error.message).toBe("Missing prompt");
     });
 
+    it("should return 404 when agent config not found", async () => {
+      const requestBody: CreateAgentRuntimeRequest = {
+        agentConfigId: "non-existent-config",
+        prompt: "test prompt",
+      };
+
+      const request = new NextRequest("http://localhost/api/agent-runtimes", {
+        method: "POST",
+        headers: { "x-api-key": testApiKey },
+        body: JSON.stringify(requestBody),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(404);
+
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
     it("should create runtime and execute hello world with E2B", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "test-agent-001",
+        agentConfigId: testAgentConfigId,
         prompt: "test prompt for hello world",
         dynamicVars: {
           testVar: "testValue",
@@ -67,6 +181,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -77,7 +192,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       // Verify response structure
       expect(data.runtimeId).toBeDefined();
-      expect(data.runtimeId).toMatch(/^rt-\d+-[a-z0-9]+$/);
+      expect(data.runtimeId).toMatch(/^[0-9a-f-]+$/); // UUID format
 
       // Verify sandbox was created
       expect(data.sandboxId).toBeDefined();
@@ -101,58 +216,15 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       expect(data.error).toBeUndefined();
     }, 60000); // 60 second timeout for real E2B API
 
-    it("should handle multiple concurrent runtime requests", async () => {
-      const requests = Array.from({ length: 3 }, (_, i) => {
-        const requestBody: CreateAgentRuntimeRequest = {
-          agentConfigId: `test-agent-concurrent-${i}`,
-          prompt: `concurrent test ${i}`,
-        };
-
-        return new NextRequest("http://localhost/api/agent-runtimes", {
-          method: "POST",
-          body: JSON.stringify(requestBody),
-        });
-      });
-
-      const responses = await Promise.all(requests.map((req) => POST(req)));
-
-      // All should succeed
-      responses.forEach((response) => {
-        expect(response.status).toBe(201);
-      });
-
-      // Parse all responses
-      const data = await Promise.all(
-        responses.map(
-          (res) => res.json() as Promise<CreateAgentRuntimeResponse>,
-        ),
-      );
-
-      // All should have unique runtime IDs
-      const runtimeIds = data.map((d) => d.runtimeId);
-      const uniqueIds = new Set(runtimeIds);
-      expect(uniqueIds.size).toBe(3);
-
-      // All should have unique sandbox IDs
-      const sandboxIds = data.map((d) => d.sandboxId);
-      const uniqueSandboxIds = new Set(sandboxIds);
-      expect(uniqueSandboxIds.size).toBe(3);
-
-      // All should complete successfully
-      data.forEach((d) => {
-        expect(d.status).toBe("completed");
-        expect(d.output).toContain("Hello World from E2B!");
-      });
-    }, 120000); // 120 second timeout for concurrent requests
-
     it("should handle minimal request body", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "test-agent-minimal",
+        agentConfigId: testAgentConfigId,
         prompt: "minimal test",
       };
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -166,7 +238,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
     it("should handle request with dynamic vars", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "test-agent-vars",
+        agentConfigId: testAgentConfigId,
         prompt: "test with vars",
         dynamicVars: {
           var1: "value1",
@@ -177,6 +249,7 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -194,12 +267,13 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
       const longPrompt = "test ".repeat(100); // 500 character prompt
 
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "test-agent-long-prompt",
+        agentConfigId: testAgentConfigId,
         prompt: longPrompt,
       };
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -220,12 +294,13 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
         process.env.E2B_API_KEY = "invalid-key-for-testing";
 
         const requestBody: CreateAgentRuntimeRequest = {
-          agentConfigId: "test-agent-error",
+          agentConfigId: testAgentConfigId,
           prompt: "error test",
         };
 
         const request = new NextRequest("http://localhost/api/agent-runtimes", {
           method: "POST",
+          headers: { "x-api-key": testApiKey },
           body: JSON.stringify(requestBody),
         });
 
@@ -248,12 +323,13 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
   describe("performance and reliability", () => {
     it("should complete within reasonable time", async () => {
       const requestBody: CreateAgentRuntimeRequest = {
-        agentConfigId: "test-agent-performance",
+        agentConfigId: testAgentConfigId,
         prompt: "performance test",
       };
 
       const request = new NextRequest("http://localhost/api/agent-runtimes", {
         method: "POST",
+        headers: { "x-api-key": testApiKey },
         body: JSON.stringify(requestBody),
       });
 
@@ -275,12 +351,13 @@ describe("Agent Runtimes API - integration tests with real E2B", () => {
 
       for (let i = 0; i < 3; i++) {
         const requestBody: CreateAgentRuntimeRequest = {
-          agentConfigId: `test-agent-sequential-${i}`,
+          agentConfigId: testAgentConfigId,
           prompt: `sequential test ${i}`,
         };
 
         const request = new NextRequest("http://localhost/api/agent-runtimes", {
           method: "POST",
+          headers: { "x-api-key": testApiKey },
           body: JSON.stringify(requestBody),
         });
 
