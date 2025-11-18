@@ -62,12 +62,12 @@ export async function POST(request: NextRequest) {
       .from(agentRuntimeEvents)
       .where(eq(agentRuntimeEvents.runtimeId, body.runtimeId));
 
-    const lastSequence = lastEvent?.maxSeq ? parseInt(lastEvent.maxSeq, 10) : 0;
+    const lastSequence = lastEvent?.maxSeq ?? 0;
 
     // Prepare events for insertion
     const eventsToInsert = body.events.map((event, index) => ({
       runtimeId: body.runtimeId,
-      sequenceNumber: String(lastSequence + index + 1),
+      sequenceNumber: lastSequence + index + 1,
       eventType: event.type,
       eventData: event,
     }));
