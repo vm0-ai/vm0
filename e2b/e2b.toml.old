@@ -11,6 +11,7 @@
 # const sandbox = await Sandbox.create('template_id')
 
 dockerfile = "e2b.Dockerfile"
+template_id = "vm0-claude-code"
 
 # Environment variables for container runtime
 # These will be set dynamically when creating sandbox
