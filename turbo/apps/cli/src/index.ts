@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { Command } from "commander";
 import { createCommand } from "./commands/create";
 import { runCommand } from "./commands/run";
