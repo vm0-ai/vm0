@@ -76,9 +76,6 @@ send_event "container_start" '{"timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 echo "[VM0] Starting Claude Code execution..." >&2
 echo "[VM0] Prompt: $PROMPT" >&2
 
-# Accumulator for final output
-output_text=""
-
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
 /usr/local/bin/claude --print \
@@ -97,13 +94,12 @@ set +e  # Don't exit on Claude error
     # Valid JSONL - add to batch
     add_event "$line"
 
-    # Extract text content from JSONL event for stdout
+    # Extract result from "result" event for stdout
     event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
-    if [ "$event_type" = "content" ]; then
-      text_content=$(echo "$line" | jq -r '.data.text // empty' 2>/dev/null)
-      if [ -n "$text_content" ]; then
-        echo -n "$text_content"
-        output_text="${output_text}${text_content}"
+    if [ "$event_type" = "result" ]; then
+      result_content=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+      if [ -n "$result_content" ]; then
+        echo "$result_content"
       fi
     fi
   else
