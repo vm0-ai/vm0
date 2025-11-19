@@ -18,6 +18,14 @@ export interface CreateRunResponse {
   createdAt: string;
 }
 
+export interface GetConfigResponse {
+  id: string;
+  name: string;
+  config: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ApiError {
   error: string;
   details?: unknown;
@@ -42,6 +50,26 @@ class ApiClient {
       throw new Error("API URL not configured");
     }
     return apiUrl;
+  }
+
+  async getConfigByName(name: string): Promise<GetConfigResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(
+      `${baseUrl}/api/agent/configs?name=${encodeURIComponent(name)}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error || `Config not found: ${name}`);
+    }
+
+    return (await response.json()) as GetConfigResponse;
   }
 
   async createOrUpdateConfig(body: {

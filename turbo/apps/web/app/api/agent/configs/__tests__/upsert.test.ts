@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { POST } from "../route";
 import { GET } from "../[id]/route";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -46,7 +47,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response = await POST(request);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(201);
@@ -74,7 +75,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response1 = await POST(request1);
+      const response1 = await POST(request1 as NextRequest);
       const data1 = await response1.json();
 
       expect(data1.action).toBe("created");
@@ -97,7 +98,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config: updatedConfig }),
       });
 
-      const response2 = await POST(request2);
+      const response2 = await POST(request2 as NextRequest);
       const data2 = await response2.json();
 
       expect(response2.status).toBe(200);
@@ -114,7 +115,7 @@ describe("Agent Config Upsert Behavior", () => {
         },
       );
 
-      const getResponse = await GET(getRequest, {
+      const getResponse = await GET(getRequest as NextRequest, {
         params: Promise.resolve({ id: configId }),
       });
       const configData = await getResponse.json();
@@ -140,7 +141,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response1 = await POST(request1);
+      const response1 = await POST(request1 as NextRequest);
       const data1 = await response1.json();
       expect(response1.status).toBe(201);
 
@@ -154,7 +155,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response2 = await POST(request2);
+      const response2 = await POST(request2 as NextRequest);
       const data2 = await response2.json();
       expect(response2.status).toBe(201);
 
@@ -191,7 +192,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response = await POST(request);
+      const response = await POST(request as NextRequest);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -214,7 +215,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response = await POST(request);
+      const response = await POST(request as NextRequest);
 
       expect(response.status).toBe(400);
     });
@@ -235,7 +236,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response = await POST(request);
+      const response = await POST(request as NextRequest);
 
       expect(response.status).toBe(400);
     });
@@ -256,7 +257,7 @@ describe("Agent Config Upsert Behavior", () => {
         body: JSON.stringify({ config }),
       });
 
-      const response = await POST(request);
+      const response = await POST(request as NextRequest);
 
       expect(response.status).toBe(201);
 
@@ -290,7 +291,7 @@ describe("Agent Config Upsert Behavior", () => {
         },
       );
 
-      const createResponse = await POST(createRequest);
+      const createResponse = await POST(createRequest as NextRequest);
       const createData = await createResponse.json();
 
       // Get config
@@ -301,7 +302,7 @@ describe("Agent Config Upsert Behavior", () => {
         },
       );
 
-      const getResponse = await GET(getRequest, {
+      const getResponse = await GET(getRequest as NextRequest, {
         params: Promise.resolve({ id: createData.configId }),
       });
 

@@ -14,6 +14,61 @@ import type {
 import { eq, and } from "drizzle-orm";
 
 /**
+ * GET /api/agent/configs?name={agentName}
+ * Get agent config by name
+ */
+export async function GET(request: NextRequest) {
+  try {
+    // Initialize services at serverless function entry
+    initServices();
+
+    // Authenticate
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
+
+    // Get name from query parameter
+    const { searchParams } = new URL(request.url);
+    const name = searchParams.get("name");
+
+    if (!name) {
+      throw new BadRequestError("Missing name query parameter");
+    }
+
+    // Query config by userId + name
+    const configs = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(and(eq(agentConfigs.userId, userId), eq(agentConfigs.name, name)))
+      .limit(1);
+
+    if (configs.length === 0) {
+      return errorResponse(
+        new BadRequestError(`Agent config not found: ${name}`),
+      );
+    }
+
+    const config = configs[0];
+    if (!config) {
+      return errorResponse(
+        new BadRequestError(`Agent config not found: ${name}`),
+      );
+    }
+
+    return successResponse({
+      id: config.id,
+      name: config.name,
+      config: config.config,
+      createdAt: config.createdAt.toISOString(),
+      updatedAt: config.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
  * POST /api/agent-configs
  * Create a new agent config
  */
