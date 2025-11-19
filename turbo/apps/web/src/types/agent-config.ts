@@ -5,6 +5,7 @@
 export interface AgentConfigYaml {
   version: string;
   agent: {
+    name: string; // Unique identifier per user
     description: string;
     image: string;
     provider: string;
@@ -42,12 +43,16 @@ export interface CreateAgentConfigRequest {
 }
 
 export interface CreateAgentConfigResponse {
-  agentConfigId: string;
-  createdAt: string;
+  configId: string;
+  name: string;
+  action: "created" | "updated";
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface GetAgentConfigResponse {
   id: string;
+  name: string;
   config: AgentConfigYaml;
   createdAt: string;
   updatedAt: string;

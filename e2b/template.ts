@@ -9,7 +9,7 @@ import { Template } from "e2b";
  * - curl and jq for webhook communication
  * - VM0 workspace directory
  */
-export const vm0Template = Template()
+export const template = Template()
   .fromImage("e2bdev/base")
   // Install Node.js 22.x
   .runCmd("curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -")
@@ -43,9 +43,14 @@ export const vm0Template = Template()
   // Create VM0 directory for scripts
   .runCmd("sudo mkdir -p /opt/vm0")
   .runCmd("sudo chmod 755 /opt/vm0")
+  // Copy run-agent.sh script to /usr/local/bin/ (like uspark approach)
+  .copy("./run-agent.sh", "/tmp/run-agent.sh")
+  .runCmd("sudo mv /tmp/run-agent.sh /usr/local/bin/run-agent.sh")
+  .runCmd("sudo chmod +x /usr/local/bin/run-agent.sh")
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")
+  .runCmd("test -f /usr/local/bin/run-agent.sh && echo 'SUCCESS: run-agent.sh installed' || (echo 'FATAL: run-agent.sh missing' && exit 1)")
   .runCmd('echo "VM0 Claude Code template ready!"')
   // Final verification - this should fail the build if Claude is not installed
   .runCmd(

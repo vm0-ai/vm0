@@ -114,7 +114,7 @@ jobs:
           CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          E2B_TEMPLATE_ID: ${{ secrets.E2B_TEMPLATE_ID }}
+          E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           MINIMAX_ANTHROPIC_BASE_URL: ${{ secrets.MINIMAX_ANTHROPIC_BASE_URL }}
         run: pnpm test

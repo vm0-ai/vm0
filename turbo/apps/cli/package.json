@@ -22,7 +22,8 @@
   "dependencies": {
     "@vm0/core": "workspace:*",
     "chalk": "^5.6.0",
-    "commander": "^14.0.0"
+    "commander": "^14.0.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",

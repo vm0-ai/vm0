@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { e2bService } from "../e2b-service";
-import type { CreateRuntimeOptions } from "../types";
+import type { CreateRunOptions } from "../types";
 
 describe("E2B Service - unit tests with real E2B API", () => {
   beforeAll(() => {
@@ -15,21 +15,21 @@ describe("E2B Service - unit tests with real E2B API", () => {
     }
   });
 
-  describe("createRuntime", () => {
+  describe("createRun", () => {
     it("should create sandbox and execute Claude Code", async () => {
-      const runtimeId = "rt-test-001";
-      const options: CreateRuntimeOptions = {
+      const runId = "run-test-001";
+      const options: CreateRunOptions = {
         agentConfigId: "test-agent-001",
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
         dynamicVars: { testVar: "testValue" },
       };
 
-      const result = await e2bService.createRuntime(runtimeId, options);
+      const result = await e2bService.createRun(runId, options);
 
-      // Verify runtime result structure
+      // Verify run result structure
       expect(result).toBeDefined();
-      expect(result.runtimeId).toBe(runtimeId);
+      expect(result.runId).toBe(runId);
 
       // Verify sandbox was created
       expect(result.sandboxId).toBeDefined();
@@ -54,21 +54,21 @@ describe("E2B Service - unit tests with real E2B API", () => {
       expect(result.error).toBeUndefined();
     }, 600000); // 10 minute timeout for Claude Code execution
 
-    it("should use provided runtime IDs for multiple calls", async () => {
-      const options: CreateRuntimeOptions = {
+    it("should use provided run IDs for multiple calls", async () => {
+      const options: CreateRunOptions = {
         agentConfigId: "test-agent-002",
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
 
-      const runtimeId1 = "rt-test-002a";
-      const runtimeId2 = "rt-test-002b";
+      const runId1 = "run-test-002a";
+      const runId2 = "run-test-002b";
 
-      const result1 = await e2bService.createRuntime(runtimeId1, options);
-      const result2 = await e2bService.createRuntime(runtimeId2, options);
+      const result1 = await e2bService.createRun(runId1, options);
+      const result2 = await e2bService.createRun(runId2, options);
 
-      expect(result1.runtimeId).toBe(runtimeId1);
-      expect(result2.runtimeId).toBe(runtimeId2);
+      expect(result1.runId).toBe(runId1);
+      expect(result2.runId).toBe(runId2);
       expect(result1.sandboxId).not.toBe(result2.sandboxId);
       // Both should NOT contain old echo output
       expect(result1.output).not.toContain("Hello World from E2B!");
@@ -76,14 +76,14 @@ describe("E2B Service - unit tests with real E2B API", () => {
     }, 1200000); // 20 minute timeout for two sequential calls
 
     it("should handle execution with minimal options", async () => {
-      const runtimeId = "rt-test-003";
-      const options: CreateRuntimeOptions = {
+      const runId = "run-test-003";
+      const options: CreateRunOptions = {
         agentConfigId: "test-agent-003",
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
       };
 
-      const result = await e2bService.createRuntime(runtimeId, options);
+      const result = await e2bService.createRun(runId, options);
 
       expect(result.status).toBe("completed");
       expect(result.output).not.toContain("Hello World from E2B!");
@@ -91,15 +91,15 @@ describe("E2B Service - unit tests with real E2B API", () => {
     }, 600000);
 
     it("should include execution time metrics", async () => {
-      const runtimeId = "rt-test-004";
-      const options: CreateRuntimeOptions = {
+      const runId = "run-test-004";
+      const options: CreateRunOptions = {
         agentConfigId: "test-agent-004",
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
       };
 
       const startTime = Date.now();
-      const result = await e2bService.createRuntime(runtimeId, options);
+      const result = await e2bService.createRun(runId, options);
       const totalTime = Date.now() - startTime;
 
       // Execution time should be reasonable
@@ -112,14 +112,14 @@ describe("E2B Service - unit tests with real E2B API", () => {
     }, 600000);
 
     it("should cleanup sandbox even on success", async () => {
-      const runtimeId = "rt-test-005";
-      const options: CreateRuntimeOptions = {
+      const runId = "run-test-005";
+      const options: CreateRunOptions = {
         agentConfigId: "test-agent-005",
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
       };
 
-      const result = await e2bService.createRuntime(runtimeId, options);
+      const result = await e2bService.createRun(runId, options);
 
       // Sandbox should be created and cleaned up
       expect(result.sandboxId).toBeDefined();
@@ -140,14 +140,14 @@ describe("E2B Service - unit tests with real E2B API", () => {
         // Temporarily set invalid API key to trigger error
         process.env.E2B_API_KEY = "invalid-key-123";
 
-        const runtimeId = "rt-test-error";
-        const options: CreateRuntimeOptions = {
+        const runId = "run-test-error";
+        const options: CreateRunOptions = {
           agentConfigId: "test-agent-error",
           sandboxToken: "vm0_live_test_token",
           prompt: "This should fail due to invalid API key",
         };
 
-        const result = await e2bService.createRuntime(runtimeId, options);
+        const result = await e2bService.createRun(runId, options);
 
         // Should return failed status instead of throwing
         expect(result.status).toBe("failed");

@@ -1,15 +1,15 @@
 /**
- * Agent runtime types
+ * Agent run types
  */
 
-export interface CreateAgentRuntimeRequest {
+export interface CreateAgentRunRequest {
   agentConfigId: string;
   prompt: string;
   dynamicVars?: Record<string, string>;
 }
 
-export interface CreateAgentRuntimeResponse {
-  runtimeId: string;
+export interface CreateAgentRunResponse {
+  runId: string;
   status: "pending" | "running" | "completed" | "failed";
   sandboxId: string;
   output: string;
@@ -18,8 +18,8 @@ export interface CreateAgentRuntimeResponse {
   createdAt: string;
 }
 
-export interface GetAgentRuntimeResponse {
-  runtimeId: string;
+export interface GetAgentRunResponse {
+  runId: string;
   agentConfigId: string;
   status: "pending" | "running" | "completed" | "failed";
   prompt: string;

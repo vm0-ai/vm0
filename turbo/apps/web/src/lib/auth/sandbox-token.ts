@@ -9,7 +9,7 @@ import { eq, and, lt } from "drizzle-orm";
  */
 export async function generateSandboxToken(
   userId: string,
-  runtimeId: string,
+  runId: string,
 ): Promise<string> {
   initServices();
 
@@ -27,12 +27,12 @@ export async function generateSandboxToken(
   await globalThis.services.db.insert(cliTokens).values({
     token,
     userId,
-    name: `E2B Sandbox - ${runtimeId.substring(0, 8)}`,
+    name: `E2B Sandbox - ${runId.substring(0, 8)}`,
     expiresAt,
     createdAt: now,
   });
 
-  console.log(`Generated sandbox token for runtime ${runtimeId}`);
+  console.log(`Generated sandbox token for run ${runId}`);
   return token;
 }
 

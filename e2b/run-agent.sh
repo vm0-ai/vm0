@@ -2,7 +2,7 @@
 set -e
 
 # Get environment variables
-RUNTIME_ID="${VM0_RUNTIME_ID}"
+RUN_ID="${VM0_RUN_ID}"
 WEBHOOK_URL="${VM0_WEBHOOK_URL}"
 WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
 PROMPT="${VM0_PROMPT}"
@@ -22,9 +22,9 @@ send_events() {
   fi
 
   local payload=$(jq -n \
-    --arg rid "$RUNTIME_ID" \
+    --arg rid "$RUN_ID" \
     --argjson events "$events_json" \
-    '{runtimeId: $rid, events: $events}')
+    '{runId: $rid, events: $events}')
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
@@ -43,10 +43,10 @@ send_event() {
   local event_data="$2"
 
   local payload=$(jq -n \
-    --arg rid "$RUNTIME_ID" \
+    --arg rid "$RUN_ID" \
     --arg type "$event_type" \
     --argjson data "$event_data" \
-    '{runtimeId: $rid, events: [{type: $type, data: $data}]}')
+    '{runId: $rid, events: [{type: $type, data: $data}]}')
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
@@ -76,9 +76,6 @@ send_event "container_start" '{"timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 echo "[VM0] Starting Claude Code execution..." >&2
 echo "[VM0] Prompt: $PROMPT" >&2
 
-# Accumulator for final output
-output_text=""
-
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
 /usr/local/bin/claude --print \
@@ -97,13 +94,12 @@ set +e  # Don't exit on Claude error
     # Valid JSONL - add to batch
     add_event "$line"
 
-    # Extract text content from JSONL event for stdout
+    # Extract result from "result" event for stdout
     event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
-    if [ "$event_type" = "content" ]; then
-      text_content=$(echo "$line" | jq -r '.data.text // empty' 2>/dev/null)
-      if [ -n "$text_content" ]; then
-        echo -n "$text_content"
-        output_text="${output_text}${text_content}"
+    if [ "$event_type" = "result" ]; then
+      result_content=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+      if [ -n "$result_content" ]; then
+        echo "$result_content"
       fi
     fi
   else

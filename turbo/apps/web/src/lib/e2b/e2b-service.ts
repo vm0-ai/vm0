@@ -1,8 +1,8 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
 import type {
-  CreateRuntimeOptions,
-  RuntimeResult,
+  CreateRunOptions,
+  RunResult,
   SandboxExecutionResult,
 } from "./types";
 
@@ -12,18 +12,18 @@ import type {
  */
 export class E2BService {
   /**
-   * Create and execute an agent runtime
+   * Create and execute an agent run
    * MVP: Executes simple "echo hello world" command
    * Future: Will execute Claude Code with real agent
    */
-  async createRuntime(
-    runtimeId: string,
-    options: CreateRuntimeOptions,
-  ): Promise<RuntimeResult> {
+  async createRun(
+    runId: string,
+    options: CreateRunOptions,
+  ): Promise<RunResult> {
     const startTime = Date.now();
 
     console.log(
-      `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`,
+      `[E2B] Creating run ${runId} for agent ${options.agentConfigId}...`,
     );
 
     let sandbox: Sandbox | null = null;
@@ -36,13 +36,13 @@ export class E2BService {
 
       console.log(`[E2B] API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook endpoint: ${webhookEndpoint}`);
-      console.log(`[E2B] Runtime ID: ${runtimeId}`);
+      console.log(`[E2B] Run ID: ${runId}`);
 
       // Create E2B sandbox with environment variables
       sandbox = await this.createSandbox({
         VM0_API_URL: apiUrl,
         VM0_WEBHOOK_URL: webhookEndpoint,
-        VM0_RUNTIME_ID: runtimeId,
+        VM0_RUN_ID: runId,
         VM0_TOKEN: options.sandboxToken, // Temporary bearer token for API calls
       });
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
@@ -50,7 +50,7 @@ export class E2BService {
       // Execute Claude Code via run-agent.sh
       const result = await this.executeCommand(
         sandbox,
-        runtimeId,
+        runId,
         options.prompt,
         webhookEndpoint,
         options.sandboxToken,
@@ -59,12 +59,10 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.log(
-        `[E2B] Runtime ${runtimeId} completed in ${executionTimeMs}ms`,
-      );
+      console.log(`[E2B] Run ${runId} completed in ${executionTimeMs}ms`);
 
       return {
-        runtimeId,
+        runId,
         sandboxId: sandbox.sandboxId,
         status: result.exitCode === 0 ? "completed" : "failed",
         output: result.stdout,
@@ -77,10 +75,10 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.error(`[E2B] Runtime ${runtimeId} failed:`, error);
+      console.error(`[E2B] Run ${runId} failed:`, error);
 
       return {
-        runtimeId,
+        runId,
         sandboxId: sandbox?.sandboxId || "unknown",
         status: "failed",
         output: "",
@@ -108,11 +106,11 @@ export class E2BService {
       envs: envVars, // Pass environment variables to sandbox
     };
 
-    // Use custom template if configured
+    // Use custom template if configured (by name/alias)
     if (e2bConfig.defaultTemplate) {
       console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
       console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
-      // Template should be passed as first argument, not in options
+      // Template name/alias should be passed as first argument
       const sandbox = await Sandbox.create(
         e2bConfig.defaultTemplate,
         sandboxOptions,
@@ -133,26 +131,22 @@ export class E2BService {
    */
   private async executeCommand(
     sandbox: Sandbox,
-    runtimeId: string,
+    runId: string,
     prompt: string,
     webhookUrl: string,
     sandboxToken: string,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
-    // Upload run-agent.sh script to sandbox
-    const scriptPath = "/opt/vm0/run-agent.sh";
-    const scriptContent = await this.getRunAgentScript();
+    // Use pre-installed run-agent.sh script from /usr/local/bin/
+    // The script is copied into the E2B template during build (see e2b/template.ts)
+    const scriptPath = "/usr/local/bin/run-agent.sh";
 
-    console.log(`[E2B] Uploading run-agent.sh to ${scriptPath}...`);
-    await sandbox.files.write(scriptPath, scriptContent);
-    await sandbox.commands.run(`chmod +x ${scriptPath}`);
-
-    console.log(`[E2B] Executing run-agent.sh for runtime ${runtimeId}...`);
+    console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 
     // Set environment variables and execute script
     const envs: Record<string, string> = {
-      VM0_RUNTIME_ID: runtimeId,
+      VM0_RUN_ID: runId,
       VM0_WEBHOOK_URL: webhookUrl,
       VM0_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
@@ -182,10 +176,10 @@ export class E2BService {
     const executionTimeMs = Date.now() - execStart;
 
     if (result.exitCode === 0) {
-      console.log(`[E2B] Runtime ${runtimeId} completed successfully`);
+      console.log(`[E2B] Run ${runId} completed successfully`);
     } else {
       console.error(
-        `[E2B] Runtime ${runtimeId} failed with exit code ${result.exitCode}`,
+        `[E2B] Run ${runId} failed with exit code ${result.exitCode}`,
       );
       console.error(`[E2B] stderr:`, result.stderr);
     }
@@ -196,17 +190,6 @@ export class E2BService {
       exitCode: result.exitCode,
       executionTimeMs,
     };
-  }
-
-  /**
-   * Load run-agent.sh script content
-   */
-  private async getRunAgentScript(): Promise<string> {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const scriptPath = path.join(__dirname, "scripts", "run-agent.sh");
-    return fs.readFile(scriptPath, "utf-8");
   }
 
   /**

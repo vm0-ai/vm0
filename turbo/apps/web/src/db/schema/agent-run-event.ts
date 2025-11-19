@@ -6,17 +6,17 @@ import {
   timestamp,
   integer,
 } from "drizzle-orm/pg-core";
-import { agentRuntimes } from "./agent-runtime";
+import { agentRuns } from "./agent-run";
 
 /**
- * Agent Runtime Events table
+ * Agent Run Events table
  * Stores JSONL events from Claude Code
  * NOTE: Not implemented in Phase 1, but defined for future use
  */
-export const agentRuntimeEvents = pgTable("agent_runtime_events", {
+export const agentRunEvents = pgTable("agent_run_events", {
   id: uuid("id").defaultRandom().primaryKey(),
-  runtimeId: uuid("runtime_id")
-    .references(() => agentRuntimes.id)
+  runId: uuid("run_id")
+    .references(() => agentRuns.id)
     .notNull(),
   sequenceNumber: integer("sequence_number").notNull(),
   eventType: varchar("event_type", { length: 50 }).notNull(),

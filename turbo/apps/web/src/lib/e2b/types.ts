@@ -2,15 +2,15 @@
  * E2B service types
  */
 
-export interface CreateRuntimeOptions {
+export interface CreateRunOptions {
   agentConfigId: string;
   prompt: string;
   dynamicVars?: Record<string, string>;
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
 }
 
-export interface RuntimeResult {
-  runtimeId: string;
+export interface RunResult {
+  runId: string;
   sandboxId: string;
   status: "completed" | "failed";
   output: string;
