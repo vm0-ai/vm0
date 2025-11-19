@@ -4,7 +4,7 @@ set -e
 # Get environment variables
 RUN_ID="${VM0_RUN_ID}"
 WEBHOOK_URL="${VM0_WEBHOOK_URL}"
-WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
+WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN:-${VM0_TOKEN}}"  # Support both names, prefer VM0_WEBHOOK_TOKEN
 PROMPT="${VM0_PROMPT}"
 
 # Batch configuration
@@ -28,7 +28,7 @@ send_events() {
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -H "X-Vm0-Token: $WEBHOOK_TOKEN" \
+    -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
     --silent --fail || echo "[ERROR] Failed to send events" >&2
 
@@ -50,7 +50,7 @@ send_event() {
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -H "X-Vm0-Token: $WEBHOOK_TOKEN" \
+    -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
     --silent --fail || echo "[ERROR] Failed to send event" >&2
 }
