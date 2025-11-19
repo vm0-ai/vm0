@@ -303,4 +303,190 @@ describe("ApiClient", () => {
       ).rejects.toThrow("Failed to create run");
     });
   });
+
+  describe("getEvents", () => {
+    it("should call correct endpoint with auth headers and default params", async () => {
+      const mockResponse = {
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await apiClient.getEvents("run-123");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
+        {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("should support custom since parameter", async () => {
+      const mockResponse = {
+        events: [
+          {
+            sequenceNumber: 5,
+            eventType: "text",
+            eventData: { text: "hello" },
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+        hasMore: false,
+        nextSequence: 5,
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await apiClient.getEvents("run-123", { since: 4 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/agent/runs/run-123/events?since=4&limit=100",
+        expect.any(Object),
+      );
+
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]?.sequenceNumber).toBe(5);
+    });
+
+    it("should support custom limit parameter", async () => {
+      const mockResponse = {
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      await apiClient.getEvents("run-123", { limit: 50 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=50",
+        expect.any(Object),
+      );
+    });
+
+    it("should support both since and limit parameters", async () => {
+      const mockResponse = {
+        events: [],
+        hasMore: true,
+        nextSequence: 150,
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await apiClient.getEvents("run-123", {
+        since: 100,
+        limit: 50,
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/agent/runs/run-123/events?since=100&limit=50",
+        expect.any(Object),
+      );
+
+      expect(result.hasMore).toBe(true);
+      expect(result.nextSequence).toBe(150);
+    });
+
+    it("should return events with all fields", async () => {
+      const mockResponse = {
+        events: [
+          {
+            sequenceNumber: 1,
+            eventType: "init",
+            eventData: { sessionId: "session-123" },
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+          {
+            sequenceNumber: 2,
+            eventType: "text",
+            eventData: { text: "Processing..." },
+            createdAt: "2025-01-01T00:00:01Z",
+          },
+        ],
+        hasMore: false,
+        nextSequence: 2,
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await apiClient.getEvents("run-123");
+
+      expect(result.events).toHaveLength(2);
+      expect(result.events[0]).toEqual({
+        sequenceNumber: 1,
+        eventType: "init",
+        eventData: { sessionId: "session-123" },
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+      expect(result.events[1]).toEqual({
+        sequenceNumber: 2,
+        eventType: "text",
+        eventData: { text: "Processing..." },
+        createdAt: "2025-01-01T00:00:01Z",
+      });
+    });
+
+    it("should throw error when not authenticated", async () => {
+      vi.mocked(config.getToken).mockResolvedValue(null);
+
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "Not authenticated",
+      );
+    });
+
+    it("should throw error when API URL not configured", async () => {
+      vi.mocked(config.getApiUrl).mockResolvedValue(null);
+
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "API URL not configured",
+      );
+    });
+
+    it("should throw error on HTTP error response", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        json: async () => ({ error: "Run not found" }),
+      });
+
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "Run not found",
+      );
+    });
+
+    it("should throw default error message when API error has no message", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+      });
+
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "Failed to fetch events",
+      );
+    });
+  });
 });

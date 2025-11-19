@@ -31,6 +31,17 @@ export interface ApiError {
   details?: unknown;
 }
 
+export interface GetEventsResponse {
+  events: Array<{
+    sequenceNumber: number;
+    eventType: string;
+    eventData: unknown;
+    createdAt: string;
+  }>;
+  hasMore: boolean;
+  nextSequence: number;
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -112,6 +123,32 @@ class ApiClient {
     }
 
     return (await response.json()) as CreateRunResponse;
+  }
+
+  async getEvents(
+    runId: string,
+    options?: { since?: number; limit?: number },
+  ): Promise<GetEventsResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const since = options?.since ?? 0;
+    const limit = options?.limit ?? 100;
+
+    const response = await fetch(
+      `${baseUrl}/api/agent/runs/${runId}/events?since=${since}&limit=${limit}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error || "Failed to fetch events");
+    }
+
+    return (await response.json()) as GetEventsResponse;
   }
 }
 
