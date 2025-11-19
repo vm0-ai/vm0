@@ -136,10 +136,6 @@ export async function POST(request: NextRequest) {
     const response: CreateAgentRunResponse = {
       runId: run.id,
       status: "running",
-      sandboxId: undefined,
-      output: "",
-      error: undefined,
-      executionTimeMs: 0,
       createdAt: run.createdAt.toISOString(),
     };
 

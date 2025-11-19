@@ -11,10 +11,10 @@ export interface CreateAgentRunRequest {
 export interface CreateAgentRunResponse {
   runId: string;
   status: "pending" | "running" | "completed" | "failed";
-  sandboxId: string;
-  output: string;
+  sandboxId?: string;
+  output?: string;
   error?: string;
-  executionTimeMs: number;
+  executionTimeMs?: number;
   createdAt: string;
 }
 
