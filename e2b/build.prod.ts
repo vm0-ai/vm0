@@ -1,3 +1,9 @@
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load environment variables from turbo/apps/web/.env.local
+config({ path: resolve(process.cwd(), "apps/web/.env.local") });
+
 import { Template, defaultBuildLogger } from "e2b";
 import { template } from "./template";
 

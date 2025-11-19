@@ -1,6 +1,7 @@
 {
   "name": "e2b",
   "dependencies": {
+    "dotenv": "^16.4.7",
     "e2b": "^2.7.0",
     "tsx": "^4.20.6"
   }
