@@ -38,9 +38,28 @@ Your job is to continue working on the GitHub issue from the current conversatio
    - **If work complete**: Create PR and go to step 8
    - **If blocked or need clarification**: Post comment explaining the situation, add "pending" label, and exit
    - **If intermediate checkpoint**: Post progress update comment, add "pending" label, and exit (optional)
-8. **Create PR and finalize**:
+8. **Create PR and verify CI pipeline**:
    - Push branch and create Pull Request
-   - Post comment to issue: `gh issue comment <issue_id> --body "Work completed. PR created: <PR_URL>"`
+   - Wait 60 seconds for CI workflows to start
+   - Check and fix pipeline issues:
+     - Use `gh pr checks` to check pipeline status
+     - **If checks still running**: Wait 30 seconds and retry (up to 10 times total)
+     - **If checks failing**: Attempt automatic fixes:
+       - **Lint failures** (if output contains "lint" and "fail"):
+         1. Run `cd turbo && pnpm format`
+         2. If changes detected: `git add -A && git commit -m "fix: auto-format code" && git push`
+         3. Wait 60 seconds and re-check pipeline
+       - **Type check failures** (if output contains "type" or "check-types" and "fail"):
+         1. Run `cd turbo && pnpm check-types`
+         2. Report errors (manual fix required)
+       - **Test failures** (if output contains "test" and "fail"):
+         1. Run `cd turbo && pnpm vitest`
+         2. Report failures (manual fix required)
+       - After pushing fixes, wait 60 seconds and re-check pipeline
+       - Retry fix attempts up to 2 times
+     - **If checks pass** (after fixes or initially): Post success comment to issue
+     - **If unable to fix after retries**: Post comment with failure details and add "pending" label, then exit
+   - Post comment to issue: `gh issue comment <issue_id> --body "Work completed. PR created: <PR_URL>\n\n✅ All CI checks passing"`
    - Add "pending" label for user to review PR
    - Keep issue open (user will close it after merging PR)
 
