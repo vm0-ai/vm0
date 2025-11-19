@@ -144,22 +144,14 @@ export async function automateCliAuth(apiHost?: string) {
     await page.waitForLoadState("networkidle");
 
     // Step 7: Enter device code
-    // Device code format: XXXX-XXXX, needs to be entered into multiple input boxes
+    // Device code format: XXXX-XXXX, entered into a single input field
     console.log(`📝 Entering device code: ${deviceCode}`);
 
-    // Remove hyphen to get pure characters
-    const codeChars = deviceCode.replace('-', '');
+    // Find the code input field
+    const codeInput = page.locator('input[type="text"]').first();
 
-    // Find all input boxes
-    const codeInputs = await page.locator('input[type="text"], input[maxlength="1"]').all();
-    console.log(`🔍 Found ${codeInputs.length} input boxes`);
-
-    // Enter each character into corresponding input box
-    for (let i = 0; i < codeChars.length && i < codeInputs.length; i++) {
-      await codeInputs[i].fill(codeChars[i]);
-      // Add small delay to simulate real input
-      await page.waitForTimeout(50);
-    }
+    // Fill the complete device code (with hyphen)
+    await codeInput.fill(deviceCode);
 
     console.log(`✅ Device code entered: ${deviceCode}`);
 
