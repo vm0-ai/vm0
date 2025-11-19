@@ -22,27 +22,24 @@ export function handleCors(request: NextRequest) {
   const origin = request.headers.get("origin");
   const response = NextResponse.next();
 
-  // Check if the origin is allowed or if there's no origin (CLI requests)
+  // Only set CORS headers if there's an origin (browser requests)
   if (origin && isOriginAllowed(origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");
-  } else if (!origin) {
-    // Allow requests without origin (CLI, server-to-server)
-    response.headers.set("Access-Control-Allow-Origin", "*");
-  }
 
-  // Handle preflight requests
-  if (request.method === "OPTIONS") {
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
-    );
-    response.headers.set("Access-Control-Max-Age", "86400");
-    return new NextResponse(null, { status: 200, headers: response.headers });
+    // Handle preflight requests
+    if (request.method === "OPTIONS") {
+      response.headers.set(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+      );
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+      );
+      response.headers.set("Access-Control-Max-Age", "86400");
+      return new NextResponse(null, { status: 200, headers: response.headers });
+    }
   }
 
   return response;
