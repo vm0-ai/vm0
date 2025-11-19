@@ -32,12 +32,9 @@ Use the centralized script to sync environment variables:
 ```bash
 # From project root
 ./scripts/sync-env.sh
-
-# Or specify a custom template path
-./scripts/sync-env.sh e2e/.env.tpl
 ```
 
-This will inject secrets from 1Password into `.env` file.
+This will inject secrets from 1Password into `.env.local` files for both e2e and web app.
 
 Required environment variables:
 - `CLERK_PUBLISHABLE_KEY` - From 1Password vault

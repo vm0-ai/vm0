@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# Sync environment variables from .env.tpl files using 1Password CLI
-# Usage: ./scripts/sync-env.sh [path/to/.env.tpl]
+# Sync all environment variables from .env.local.tpl files using 1Password CLI
+# Usage: ./scripts/sync-env.sh
 
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,43 +19,28 @@ fi
 echo "Signing in to 1Password..."
 eval $(op signin)
 
-# Function to sync a single template file
-sync_template() {
-  local template=$1
-  local output="${template%.tpl}"
+echo "Syncing all environment templates..."
 
-  if [ ! -f "$template" ]; then
-    echo "⚠ Skipping: $template (not found)"
-    return
-  fi
-
+# Sync e2e environment (e2e/.env.local.tpl → e2e/.env.local)
+if [ -f "$PROJECT_ROOT/e2e/.env.local.tpl" ]; then
   echo ""
-  echo "Syncing: $template"
-  echo "Output:  $output"
-  op inject -i "$template" -o "$output"
+  echo "Syncing: $PROJECT_ROOT/e2e/.env.local.tpl"
+  echo "Output:  $PROJECT_ROOT/e2e/.env.local"
+  op inject -i "$PROJECT_ROOT/e2e/.env.local.tpl" -o "$PROJECT_ROOT/e2e/.env.local"
   echo "✓ Synced successfully"
-}
-
-# If specific template provided, sync only that
-if [ -n "$1" ]; then
-  sync_template "$1"
 else
-  # Sync all known templates
-  echo "Syncing all environment templates..."
+  echo "⚠ Skipping: $PROJECT_ROOT/e2e/.env.local.tpl (not found)"
+fi
 
-  # Sync e2e environment
-  sync_template "$PROJECT_ROOT/e2e/.env.tpl"
-
-  # Sync web app environment (.env.local.tpl → turbo/apps/web/.env.local)
-  if [ -f "$PROJECT_ROOT/.env.local.tpl" ]; then
-    echo ""
-    echo "Syncing: $PROJECT_ROOT/.env.local.tpl"
-    echo "Output:  $PROJECT_ROOT/turbo/apps/web/.env.local"
-    op inject -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/web/.env.local"
-    echo "✓ Synced successfully"
-  else
-    echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
-  fi
+# Sync web app environment (.env.local.tpl → turbo/apps/web/.env.local)
+if [ -f "$PROJECT_ROOT/.env.local.tpl" ]; then
+  echo ""
+  echo "Syncing: $PROJECT_ROOT/.env.local.tpl"
+  echo "Output:  $PROJECT_ROOT/turbo/apps/web/.env.local"
+  op inject -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/web/.env.local"
+  echo "✓ Synced successfully"
+else
+  echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
 fi
 
 echo ""

@@ -4,7 +4,7 @@ import { spawn, ChildProcess } from "child_process";
 import * as dotenv from "dotenv";
 
 // Load environment variables
-dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local" });
 
 /**
  * Automate CLI authentication flow
