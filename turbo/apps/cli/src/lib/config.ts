@@ -41,14 +41,15 @@ export async function getToken(): Promise<string | undefined> {
   return config.token;
 }
 
-export async function getApiUrl(): Promise<string | undefined> {
+export async function getApiUrl(): Promise<string> {
   const config = await loadConfig();
   const apiHost = process.env.API_HOST;
   if (apiHost) {
     // Add protocol if missing
     return apiHost.startsWith("http") ? apiHost : `https://${apiHost}`;
   }
-  return config.apiUrl;
+  // Fallback to production API if no config or env var
+  return config.apiUrl ?? "https://www.vm0.ai";
 }
 
 export async function clearConfig(): Promise<void> {

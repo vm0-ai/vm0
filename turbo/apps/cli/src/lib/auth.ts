@@ -59,14 +59,8 @@ function delay(ms: number): Promise<void> {
 }
 
 export async function authenticate(apiUrl?: string): Promise<void> {
-  // Use provided apiUrl or get from config/env
+  // Use provided apiUrl or get from config/env (with fallback to production)
   const targetApiUrl = apiUrl ?? (await getApiUrl());
-  if (!targetApiUrl) {
-    console.error(
-      chalk.red("No API host configured. Set API_HOST environment variable."),
-    );
-    process.exit(1);
-  }
   console.log(chalk.blue("Initiating authentication..."));
 
   // Request device code

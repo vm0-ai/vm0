@@ -23,6 +23,59 @@ e2e/
 └── run.sh              # Direct test runner script
 ```
 
+## Setup
+
+### Environment Configuration
+
+Use 1Password CLI to sync environment variables:
+
+```bash
+npm run sync:env
+```
+
+This will inject secrets from 1Password into `.env` file.
+
+Required environment variables:
+- `CLERK_PUBLISHABLE_KEY` - From 1Password vault
+- `CLERK_SECRET_KEY` - From 1Password vault
+
+**Prerequisites:**
+- 1Password CLI installed: `brew install --cask 1password-cli`
+- Authenticated with 1Password: `op signin`
+- Access to `Development/vm0-env-local` vault
+
+**Note:** For local testing, set `API_HOST` environment variable:
+```bash
+API_HOST=http://localhost:3000 npm run auth
+```
+By default, the CLI uses production API at `https://www.vm0.ai`.
+
+### CLI Authentication Automation
+
+The `cli-auth-automation.ts` script automates the device flow authentication for testing:
+
+```bash
+# Install dependencies first
+npm install
+
+# Run authentication
+npm run auth
+```
+
+This script will:
+1. Start the CLI `vm0 auth login` command
+2. Parse the device code from CLI output
+3. Use Playwright to automate browser login
+4. Sign in with Clerk test account
+5. Enter the device code automatically
+6. Wait for authentication success
+
+**Prerequisites:**
+- CLI must be built and globally installed: `cd turbo/apps/cli && pnpm link --global`
+- Playwright browsers installed: `npx playwright install chromium`
+- Clerk test account created: `e2e+clerk_test@vm0.ai`
+- Environment variables configured in `.env`
+
 ## Quick Start
 
 ### Using Make (Recommended)

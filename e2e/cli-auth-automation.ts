@@ -31,9 +31,9 @@ export async function automateCliAuth(apiHost?: string) {
     const apiUrl = apiHost || process.env.API_HOST || "http://localhost:3000";
     console.log(`📡 Connecting to API: ${apiUrl}`);
 
-    // Always use globally installed uspark command
+    // Always use globally installed vm0 command
     // Both GitHub Actions and local development should install CLI via pnpm link --global first
-    cliProcess = spawn("uspark", ["auth", "login"], {
+    cliProcess = spawn("vm0", ["auth", "login"], {
       cwd: process.cwd(),
       stdio: ["pipe", "pipe", "pipe"],
       env: {
@@ -224,7 +224,7 @@ export async function automateCliAuth(apiHost?: string) {
     const fs = require("fs");
     const os = require("os");
     const path = require("path");
-    const configPath = path.join(os.homedir(), ".uspark", "config.json");
+    const configPath = path.join(os.homedir(), ".vm0", "config.json");
 
     if (fs.existsSync(configPath)) {
       console.log("✅ Auth file created:", configPath);

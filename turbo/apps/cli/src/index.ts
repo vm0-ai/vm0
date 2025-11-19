@@ -28,7 +28,7 @@ program
     console.log(`Platform: ${process.platform}`);
     console.log(`Architecture: ${process.arch}`);
     const apiUrl = await getApiUrl();
-    console.log(`API Host: ${apiUrl ?? "Not configured"}`);
+    console.log(`API Host: ${apiUrl}`);
   });
 
 const authCommand = program
