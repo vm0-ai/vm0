@@ -14,18 +14,16 @@ Your job is to start working on GitHub issue {{ISSUE_ID}} for the current projec
 
 ## Workflow
 1. **Fetch issue details**: Use `gh issue view {{ISSUE_ID}} --json title,body,comments,labels` to read complete issue information
-2. **Remove pending label**: Use `gh issue edit {{ISSUE_ID}} --remove-label pending` to indicate work has started
-3. **Analyze and plan**:
+2. **Analyze and plan**:
    - Review issue description and all comments for requirements, suggestions, and context
    - Create detailed work plan with specific implementation steps
    - Post plan as issue comment: `gh issue comment {{ISSUE_ID}} --body "..."`
-4. **Add pending label**: Use `gh issue edit {{ISSUE_ID}} --add-label pending` to wait for user approval
-5. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
-6. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
+3. **Add pending label**: Use `gh issue edit {{ISSUE_ID}} --add-label pending` to wait for user approval
+4. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
+5. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
 
 ## Label Management
-- **Remove "pending" label** when starting work (step 2)
-- **Add "pending" label** when waiting for user input (step 4)
+- **Add "pending" label** when waiting for user input (step 3)
 
 ## Error Handling
 - If issue doesn't exist or is inaccessible: report error and exit
