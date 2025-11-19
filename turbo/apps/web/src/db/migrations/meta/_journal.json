@@ -64,6 +64,13 @@
       "when": 1763453903000,
       "tag": "0008_rename_runtime_to_run",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1763453904000,
+      "tag": "0009_add_name_to_agent_configs",
+      "breakpoints": true
     }
   ]
 }
