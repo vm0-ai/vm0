@@ -28,7 +28,7 @@ send_events() {
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -H "X-Vm0-Token: $WEBHOOK_TOKEN" \
+    -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
     --silent --fail || echo "[ERROR] Failed to send events" >&2
 
@@ -50,7 +50,7 @@ send_event() {
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -H "X-Vm0-Token: $WEBHOOK_TOKEN" \
+    -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
     --silent --fail || echo "[ERROR] Failed to send event" >&2
 }

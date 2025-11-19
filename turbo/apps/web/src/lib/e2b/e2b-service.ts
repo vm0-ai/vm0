@@ -43,7 +43,7 @@ export class E2BService {
         VM0_API_URL: apiUrl,
         VM0_WEBHOOK_URL: webhookEndpoint,
         VM0_RUN_ID: runId,
-        VM0_TOKEN: options.sandboxToken, // Temporary bearer token for API calls
+        VM0_WEBHOOK_TOKEN: options.sandboxToken, // Temporary bearer token for webhook authentication
       });
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
@@ -148,7 +148,7 @@ export class E2BService {
     const envs: Record<string, string> = {
       VM0_RUN_ID: runId,
       VM0_WEBHOOK_URL: webhookUrl,
-      VM0_TOKEN: sandboxToken,
+      VM0_WEBHOOK_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
     };
 
