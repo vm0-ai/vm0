@@ -214,7 +214,7 @@ describe("build command", () => {
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 run cfg-123"),
+        expect.stringContaining("vm0 run test"),
       );
     });
   });
