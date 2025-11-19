@@ -26,11 +26,28 @@ send_events() {
     --argjson events "$events_json" \
     '{runId: $rid, events: $events}')
 
-  curl -X POST "$WEBHOOK_URL" \
+  echo "[DEBUG] Sending batch webhook to: $WEBHOOK_URL" >&2
+  echo "[DEBUG] Run ID: $RUN_ID" >&2
+  echo "[DEBUG] Token (first 20 chars): ${WEBHOOK_TOKEN:0:20}..." >&2
+  echo "[DEBUG] Event count: $event_count" >&2
+  echo "[DEBUG] Payload preview: $(echo "$payload" | jq -c '.' | head -c 200)..." >&2
+
+  HTTP_CODE=$(curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
-    --silent --fail || echo "[ERROR] Failed to send events" >&2
+    -w "%{http_code}" \
+    -o /tmp/webhook_response.txt \
+    2>&1)
+
+  CURL_EXIT=$?
+
+  if [ $CURL_EXIT -eq 0 ] && [ "$HTTP_CODE" = "200" ]; then
+    echo "[DEBUG] Webhook SUCCESS: HTTP $HTTP_CODE" >&2
+  else
+    echo "[ERROR] Webhook FAILED: HTTP $HTTP_CODE, curl exit: $CURL_EXIT" >&2
+    echo "[ERROR] Response: $(cat /tmp/webhook_response.txt 2>/dev/null)" >&2
+  fi
 
   # Reset batch
   events_json="[]"
@@ -48,11 +65,25 @@ send_event() {
     --argjson data "$event_data" \
     '{runId: $rid, events: [{type: $type, data: $data}]}')
 
-  curl -X POST "$WEBHOOK_URL" \
+  echo "[DEBUG] Sending single event: $event_type to $WEBHOOK_URL" >&2
+  echo "[DEBUG] Token (first 20 chars): ${WEBHOOK_TOKEN:0:20}..." >&2
+
+  HTTP_CODE=$(curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
-    --silent --fail || echo "[ERROR] Failed to send event" >&2
+    -w "%{http_code}" \
+    -o /tmp/webhook_response.txt \
+    2>&1)
+
+  CURL_EXIT=$?
+
+  if [ $CURL_EXIT -eq 0 ] && [ "$HTTP_CODE" = "200" ]; then
+    echo "[DEBUG] Single event SUCCESS: HTTP $HTTP_CODE" >&2
+  else
+    echo "[ERROR] Single event FAILED: HTTP $HTTP_CODE, curl exit: $CURL_EXIT" >&2
+    echo "[ERROR] Response: $(cat /tmp/webhook_response.txt 2>/dev/null)" >&2
+  fi
 }
 
 # Add event to batch
