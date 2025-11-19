@@ -169,6 +169,15 @@ export class E2BService {
       console.log(`[E2B] Using Minimax API (${minimaxBaseUrl})`);
     }
 
+    console.log(
+      `[E2B] Command env vars:`,
+      JSON.stringify({
+        VM0_RUN_ID: envs.VM0_RUN_ID,
+        VM0_WEBHOOK_URL: envs.VM0_WEBHOOK_URL,
+        VM0_TOKEN: envs.VM0_TOKEN?.substring(0, 20) + "...",
+      }),
+    );
+
     const result = await sandbox.commands.run(scriptPath, {
       envs,
     });
