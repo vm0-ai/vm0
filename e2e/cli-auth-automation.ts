@@ -147,8 +147,8 @@ export async function automateCliAuth(apiHost?: string) {
     const signInUrl = `${baseUrl}/sign-in`;
 
     console.log(`🔗 Navigating to Clerk sign-in: ${signInUrl}`);
-    await page.goto(signInUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
+    await page.goto(signInUrl, { waitUntil: 'load' });
+    // Don't wait for networkidle as Clerk may have continuous polling
     console.log("✅ Sign-in page loaded, attempting authentication");
 
     await clerk.signIn({
