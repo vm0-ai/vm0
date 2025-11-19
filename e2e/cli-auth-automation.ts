@@ -124,7 +124,17 @@ export async function automateCliAuth(apiHost?: string) {
       headless: true, // Run in headless mode
     });
 
-    const context = await browser.newContext();
+    // Build context options with Vercel bypass header if available
+    const contextOptions: any = {};
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      contextOptions.extraHTTPHeaders = {
+        'x-vercel-protection-bypass': bypassSecret
+      };
+      console.log("🔓 Using Vercel bypass secret for browser requests");
+    }
+
+    const context = await browser.newContext(contextOptions);
     const page = await context.newPage();
 
     // Step 4: Setup Clerk authentication
