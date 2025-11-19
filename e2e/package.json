@@ -8,8 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "auth": "tsx cli-auth-automation.ts",
-    "sync:env": "../scripts/sync-env.sh"
+    "auth": "tsx cli-auth-automation.ts"
   },
   "keywords": [],
   "author": "",

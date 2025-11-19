@@ -27,10 +27,14 @@ e2e/
 
 ### Environment Configuration
 
-Use 1Password CLI to sync environment variables:
+Use the centralized script to sync environment variables:
 
 ```bash
-npm run sync:env
+# From project root
+./scripts/sync-env.sh
+
+# Or specify a custom template path
+./scripts/sync-env.sh e2e/.env.tpl
 ```
 
 This will inject secrets from 1Password into `.env` file.

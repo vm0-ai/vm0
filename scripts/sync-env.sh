@@ -1,10 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Sync environment variables from .env.tpl using 1Password CLI
 # Usage: ./scripts/sync-env.sh [path/to/.env.tpl]
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Default to e2e/.env.tpl if no argument provided
