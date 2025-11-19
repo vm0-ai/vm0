@@ -26,7 +26,7 @@ if [ -f "$PROJECT_ROOT/e2e/.env.local.tpl" ]; then
   echo ""
   echo "Syncing: $PROJECT_ROOT/e2e/.env.local.tpl"
   echo "Output:  $PROJECT_ROOT/e2e/.env.local"
-  op inject -i "$PROJECT_ROOT/e2e/.env.local.tpl" -o "$PROJECT_ROOT/e2e/.env.local"
+  op inject --force -i "$PROJECT_ROOT/e2e/.env.local.tpl" -o "$PROJECT_ROOT/e2e/.env.local"
   echo "✓ Synced successfully"
 else
   echo "⚠ Skipping: $PROJECT_ROOT/e2e/.env.local.tpl (not found)"
@@ -37,7 +37,7 @@ if [ -f "$PROJECT_ROOT/.env.local.tpl" ]; then
   echo ""
   echo "Syncing: $PROJECT_ROOT/.env.local.tpl"
   echo "Output:  $PROJECT_ROOT/turbo/apps/web/.env.local"
-  op inject -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/web/.env.local"
+  op inject --force -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/web/.env.local"
   echo "✓ Synced successfully"
 else
   echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
