@@ -1,0 +1,74 @@
+import { Command } from "commander";
+import chalk from "chalk";
+import { readFile } from "fs/promises";
+import { existsSync } from "fs";
+import { parse as parseYaml } from "yaml";
+import { apiClient } from "../lib/api-client";
+import { validateAgentConfig } from "../lib/yaml-validator";
+
+export const buildCommand = new Command()
+  .name("build")
+  .description("Create or update agent configuration")
+  .argument("<config-file>", "Path to config YAML file")
+  .action(async (configFile: string) => {
+    try {
+      // 1. Read file
+      if (!existsSync(configFile)) {
+        console.error(chalk.red(`✗ Config file not found: ${configFile}`));
+        process.exit(1);
+      }
+
+      const content = await readFile(configFile, "utf8");
+
+      // 2. Parse YAML
+      let config: unknown;
+      try {
+        config = parseYaml(content);
+      } catch (error) {
+        console.error(chalk.red("✗ Invalid YAML format"));
+        if (error instanceof Error) {
+          console.error(chalk.gray(`  ${error.message}`));
+        }
+        process.exit(1);
+      }
+
+      // 3. Validate config
+      const validation = validateAgentConfig(config);
+      if (!validation.valid) {
+        console.error(chalk.red(`✗ ${validation.error}`));
+        process.exit(1);
+      }
+
+      // 4. Call API
+      console.log(chalk.blue("Uploading configuration..."));
+
+      const response = await apiClient.createOrUpdateConfig({ config });
+
+      // 5. Display result
+      if (response.action === "created") {
+        console.log(chalk.green(`✓ Config created: ${response.name}`));
+      } else {
+        console.log(chalk.green(`✓ Config updated: ${response.name}`));
+      }
+
+      console.log(chalk.gray(`  Config ID: ${response.configId}`));
+      console.log();
+      console.log("  Run your agent:");
+      console.log(chalk.cyan(`    vm0 run ${response.configId} "your prompt"`));
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes("Not authenticated")) {
+          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+        } else if (error.message.includes("Failed to create config")) {
+          console.error(chalk.red("✗ Failed to create config"));
+          console.error(chalk.gray(`  ${error.message}`));
+        } else {
+          console.error(chalk.red("✗ Failed to create config"));
+          console.error(chalk.gray(`  ${error.message}`));
+        }
+      } else {
+        console.error(chalk.red("✗ An unexpected error occurred"));
+      }
+      process.exit(1);
+    }
+  });

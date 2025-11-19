@@ -3,6 +3,8 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { authenticate, logout, checkAuthStatus } from "./lib/auth";
 import { getApiUrl } from "./lib/config";
+import { buildCommand } from "./commands/build";
+import { runCommand } from "./commands/run";
 
 const program = new Command();
 
@@ -55,6 +57,10 @@ authCommand
   .action(async () => {
     await checkAuthStatus();
   });
+
+// Register build and run commands
+program.addCommand(buildCommand);
+program.addCommand(runCommand);
 
 export { program };
 

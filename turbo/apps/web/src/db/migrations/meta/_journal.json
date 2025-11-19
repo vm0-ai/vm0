@@ -36,6 +36,34 @@
       "when": 1763453838653,
       "tag": "0004_windy_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1763453900000,
+      "tag": "0005_replace_apikey_with_userid",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1763453901000,
+      "tag": "0006_drop_api_keys_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1763453902000,
+      "tag": "0007_add_userid_to_agent_runtimes",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1763453903000,
+      "tag": "0008_rename_runtime_to_run",
+      "breakpoints": true
     }
   ]
 }

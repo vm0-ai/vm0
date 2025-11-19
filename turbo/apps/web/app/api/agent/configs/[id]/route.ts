@@ -51,6 +51,7 @@ export async function GET(
     // Return response
     const response: GetAgentConfigResponse = {
       id: config.id,
+      name: config.name,
       config: config.config as AgentConfigYaml,
       createdAt: config.createdAt.toISOString(),
       updatedAt: config.updatedAt.toISOString(),
