@@ -1,13 +1,16 @@
 import { NextRequest } from "next/server";
-import { initServices } from "../../../src/lib/init-services";
-import { agentConfigs } from "../../../src/db/schema/agent-config";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { successResponse, errorResponse } from "../../../src/lib/api-response";
-import { BadRequestError, UnauthorizedError } from "../../../src/lib/errors";
+import { initServices } from "../../../../src/lib/init-services";
+import { agentConfigs } from "../../../../src/db/schema/agent-config";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../../src/lib/api-response";
+import { BadRequestError, UnauthorizedError } from "../../../../src/lib/errors";
 import type {
   CreateAgentConfigRequest,
   CreateAgentConfigResponse,
-} from "../../../src/types/agent-config";
+} from "../../../../src/types/agent-config";
 
 /**
  * POST /api/agent-configs

@@ -1,25 +1,28 @@
 import { NextRequest } from "next/server";
-import { initServices } from "../../../src/lib/init-services";
-import { agentConfigs } from "../../../src/db/schema/agent-config";
-import { agentRuntimes } from "../../../src/db/schema/agent-runtime";
+import { initServices } from "../../../../src/lib/init-services";
+import { agentConfigs } from "../../../../src/db/schema/agent-config";
+import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq } from "drizzle-orm";
-import { e2bService } from "../../../src/lib/e2b";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
-import { successResponse, errorResponse } from "../../../src/lib/api-response";
+import { e2bService } from "../../../../src/lib/e2b";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../../src/lib/api-response";
 import {
   BadRequestError,
   NotFoundError,
   UnauthorizedError,
-} from "../../../src/lib/errors";
+} from "../../../../src/lib/errors";
 import type {
-  CreateAgentRuntimeRequest,
-  CreateAgentRuntimeResponse,
-} from "../../../src/types/agent-runtime";
+  CreateAgentRunRequest,
+  CreateAgentRunResponse,
+} from "../../../../src/types/agent-run";
 
 /**
- * POST /api/agent-runtimes
- * Create and execute an agent runtime
+ * POST /api/agent/runs
+ * Create and execute an agent run
  */
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body: CreateAgentRuntimeRequest = await request.json();
+    const body: CreateAgentRunRequest = await request.json();
 
     if (!body.agentConfigId) {
       throw new BadRequestError("Missing agentConfigId");
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing prompt");
     }
 
-    console.log(`[API] Creating runtime for config: ${body.agentConfigId}`);
+    console.log(`[API] Creating run for config: ${body.agentConfigId}`);
 
     // Fetch agent config from database
     const [config] = await globalThis.services.db
@@ -58,9 +61,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Found agent config: ${config.id}`);
 
-    // Create runtime record in database
-    const [runtime] = await globalThis.services.db
-      .insert(agentRuntimes)
+    // Create run record in database
+    const [run] = await globalThis.services.db
+      .insert(agentRuns)
       .values({
         userId,
         agentConfigId: body.agentConfigId,
@@ -70,28 +73,28 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    if (!runtime) {
-      throw new Error("Failed to create runtime record");
+    if (!run) {
+      throw new Error("Failed to create run record");
     }
 
-    console.log(`[API] Created runtime record: ${runtime.id}`);
+    console.log(`[API] Created run record: ${run.id}`);
 
     // Generate temporary bearer token for E2B sandbox
-    const sandboxToken = await generateSandboxToken(userId, runtime.id);
-    console.log(`[API] Generated sandbox token for runtime: ${runtime.id}`);
+    const sandboxToken = await generateSandboxToken(userId, run.id);
+    console.log(`[API] Generated sandbox token for run: ${run.id}`);
 
-    // Execute in E2B (pass the runtime ID and sandbox token)
+    // Execute in E2B (pass the run ID and sandbox token)
     try {
-      const result = await e2bService.createRuntime(runtime.id, {
+      const result = await e2bService.createRun(run.id, {
         agentConfigId: body.agentConfigId,
         prompt: body.prompt,
         dynamicVars: body.dynamicVars,
         sandboxToken,
       });
 
-      // Update runtime with results
+      // Update run with results
       await globalThis.services.db
-        .update(agentRuntimes)
+        .update(agentRuns)
         .set({
           status: result.status,
           sandboxId: result.sandboxId,
@@ -103,34 +106,34 @@ export async function POST(request: NextRequest) {
           startedAt: result.createdAt,
           completedAt: result.completedAt || new Date(),
         })
-        .where(eq(agentRuntimes.id, runtime.id));
+        .where(eq(agentRuns.id, run.id));
 
       console.log(
-        `[API] Runtime ${runtime.id} completed with status: ${result.status}`,
+        `[API] Run ${run.id} completed with status: ${result.status}`,
       );
 
       // Return response
-      const response: CreateAgentRuntimeResponse = {
-        runtimeId: runtime.id,
+      const response: CreateAgentRunResponse = {
+        runId: run.id,
         status: result.status,
         sandboxId: result.sandboxId,
         output: result.output,
         error: result.error,
         executionTimeMs: result.executionTimeMs,
-        createdAt: runtime.createdAt.toISOString(),
+        createdAt: run.createdAt.toISOString(),
       };
 
       return successResponse(response, 201);
     } catch (error) {
-      // If E2B execution fails, mark runtime as failed
+      // If E2B execution fails, mark run as failed
       await globalThis.services.db
-        .update(agentRuntimes)
+        .update(agentRuns)
         .set({
           status: "failed",
           error: error instanceof Error ? error.message : "Unknown error",
           completedAt: new Date(),
         })
-        .where(eq(agentRuntimes.id, runtime.id));
+        .where(eq(agentRuns.id, run.id));
 
       throw error;
     }

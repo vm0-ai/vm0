@@ -199,7 +199,7 @@ E2B_API_KEY=your-api-key
 
 ### Passed to Sandbox (Automatically)
 
-- `VM0_RUNTIME_ID` - Runtime UUID
+- `VM0_RUN_ID` - Run UUID
 - `VM0_WEBHOOK_URL` - Webhook endpoint URL
 - `VM0_WEBHOOK_TOKEN` - Webhook auth token
 - `VM0_PROMPT` - User prompt for Claude
@@ -253,7 +253,7 @@ Use the TypeScript SDK approach instead (`pnpm e2b:build`).
 1. Build the template: `pnpm e2b:build`
 2. Configure `E2B_TEMPLATE_NAME` in `.env.local`
 3. Start the dev server: `pnpm dev`
-4. Test creating a runtime: `curl -X POST http://localhost:3000/api/agent-runtimes ...`
+4. Test creating a run: `curl -X POST http://localhost:3000/api/agent/runs ...`
 5. Verify Claude Code output (not "Hello World from E2B!")
 
 ## Resources

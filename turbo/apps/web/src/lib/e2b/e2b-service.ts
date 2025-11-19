@@ -1,8 +1,8 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
 import type {
-  CreateRuntimeOptions,
-  RuntimeResult,
+  CreateRunOptions,
+  RunResult,
   SandboxExecutionResult,
 } from "./types";
 
@@ -12,18 +12,18 @@ import type {
  */
 export class E2BService {
   /**
-   * Create and execute an agent runtime
+   * Create and execute an agent run
    * MVP: Executes simple "echo hello world" command
    * Future: Will execute Claude Code with real agent
    */
-  async createRuntime(
-    runtimeId: string,
-    options: CreateRuntimeOptions,
-  ): Promise<RuntimeResult> {
+  async createRun(
+    runId: string,
+    options: CreateRunOptions,
+  ): Promise<RunResult> {
     const startTime = Date.now();
 
     console.log(
-      `[E2B] Creating runtime ${runtimeId} for agent ${options.agentConfigId}...`,
+      `[E2B] Creating run ${runId} for agent ${options.agentConfigId}...`,
     );
 
     let sandbox: Sandbox | null = null;
@@ -36,13 +36,13 @@ export class E2BService {
 
       console.log(`[E2B] API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook endpoint: ${webhookEndpoint}`);
-      console.log(`[E2B] Runtime ID: ${runtimeId}`);
+      console.log(`[E2B] Run ID: ${runId}`);
 
       // Create E2B sandbox with environment variables
       sandbox = await this.createSandbox({
         VM0_API_URL: apiUrl,
         VM0_WEBHOOK_URL: webhookEndpoint,
-        VM0_RUNTIME_ID: runtimeId,
+        VM0_RUN_ID: runId,
         VM0_TOKEN: options.sandboxToken, // Temporary bearer token for API calls
       });
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
@@ -50,7 +50,7 @@ export class E2BService {
       // Execute Claude Code via run-agent.sh
       const result = await this.executeCommand(
         sandbox,
-        runtimeId,
+        runId,
         options.prompt,
         webhookEndpoint,
         options.sandboxToken,
@@ -59,12 +59,10 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.log(
-        `[E2B] Runtime ${runtimeId} completed in ${executionTimeMs}ms`,
-      );
+      console.log(`[E2B] Run ${runId} completed in ${executionTimeMs}ms`);
 
       return {
-        runtimeId,
+        runId,
         sandboxId: sandbox.sandboxId,
         status: result.exitCode === 0 ? "completed" : "failed",
         output: result.stdout,
@@ -77,10 +75,10 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.error(`[E2B] Runtime ${runtimeId} failed:`, error);
+      console.error(`[E2B] Run ${runId} failed:`, error);
 
       return {
-        runtimeId,
+        runId,
         sandboxId: sandbox?.sandboxId || "unknown",
         status: "failed",
         output: "",
@@ -133,7 +131,7 @@ export class E2BService {
    */
   private async executeCommand(
     sandbox: Sandbox,
-    runtimeId: string,
+    runId: string,
     prompt: string,
     webhookUrl: string,
     sandboxToken: string,
@@ -148,11 +146,11 @@ export class E2BService {
     await sandbox.files.write(scriptPath, scriptContent);
     await sandbox.commands.run(`chmod +x ${scriptPath}`);
 
-    console.log(`[E2B] Executing run-agent.sh for runtime ${runtimeId}...`);
+    console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 
     // Set environment variables and execute script
     const envs: Record<string, string> = {
-      VM0_RUNTIME_ID: runtimeId,
+      VM0_RUN_ID: runId,
       VM0_WEBHOOK_URL: webhookUrl,
       VM0_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
@@ -182,10 +180,10 @@ export class E2BService {
     const executionTimeMs = Date.now() - execStart;
 
     if (result.exitCode === 0) {
-      console.log(`[E2B] Runtime ${runtimeId} completed successfully`);
+      console.log(`[E2B] Run ${runId} completed successfully`);
     } else {
       console.error(
-        `[E2B] Runtime ${runtimeId} failed with exit code ${result.exitCode}`,
+        `[E2B] Run ${runId} failed with exit code ${result.exitCode}`,
       );
       console.error(`[E2B] stderr:`, result.stderr);
     }

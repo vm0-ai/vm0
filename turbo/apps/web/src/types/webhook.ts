@@ -10,7 +10,7 @@ export interface AgentEvent {
 }
 
 export interface WebhookRequest {
-  runtimeId: string;
+  runId: string;
   events: AgentEvent[];
 }
 

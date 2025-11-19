@@ -1,17 +1,20 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
-import { initServices } from "../../../../src/lib/init-services";
-import { agentConfigs } from "../../../../src/db/schema/agent-config";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { initServices } from "../../../../../src/lib/init-services";
+import { agentConfigs } from "../../../../../src/db/schema/agent-config";
+import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
-} from "../../../../src/lib/api-response";
-import { NotFoundError, UnauthorizedError } from "../../../../src/lib/errors";
+} from "../../../../../src/lib/api-response";
+import {
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../../../src/lib/errors";
 import type {
   GetAgentConfigResponse,
   AgentConfigYaml,
-} from "../../../../src/types/agent-config";
+} from "../../../../../src/types/agent-config";
 
 /**
  * GET /api/agent-configs/:id

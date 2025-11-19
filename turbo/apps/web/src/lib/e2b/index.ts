@@ -1,6 +1,6 @@
 export { e2bService, E2BService } from "./e2b-service";
 export type {
-  CreateRuntimeOptions,
-  RuntimeResult,
+  CreateRunOptions,
+  RunResult,
   SandboxExecutionResult,
 } from "./types";

@@ -2,7 +2,7 @@
 set -e
 
 # Get environment variables
-RUNTIME_ID="${VM0_RUNTIME_ID}"
+RUN_ID="${VM0_RUN_ID}"
 WEBHOOK_URL="${VM0_WEBHOOK_URL}"
 WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
 PROMPT="${VM0_PROMPT}"
@@ -22,9 +22,9 @@ send_events() {
   fi
 
   local payload=$(jq -n \
-    --arg rid "$RUNTIME_ID" \
+    --arg rid "$RUN_ID" \
     --argjson events "$events_json" \
-    '{runtimeId: $rid, events: $events}')
+    '{runId: $rid, events: $events}')
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
@@ -43,10 +43,10 @@ send_event() {
   local event_data="$2"
 
   local payload=$(jq -n \
-    --arg rid "$RUNTIME_ID" \
+    --arg rid "$RUN_ID" \
     --arg type "$event_type" \
     --argjson data "$event_data" \
-    '{runtimeId: $rid, events: [{type: $type, data: $data}]}')
+    '{runId: $rid, events: [{type: $type, data: $data}]}')
 
   curl -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
