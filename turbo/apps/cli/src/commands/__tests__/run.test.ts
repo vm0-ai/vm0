@@ -41,7 +41,14 @@ describe("run command", () => {
       expect(apiClient.createRun).toHaveBeenCalled();
     });
 
-    it("should accept configId starting with cfg-", async () => {
+    it("should accept and resolve agent names", async () => {
+      vi.mocked(apiClient.getConfigByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        config: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -51,23 +58,35 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "my-agent", "test prompt"]);
 
-      expect(apiClient.createRun).toHaveBeenCalled();
+      expect(apiClient.getConfigByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.createRun).toHaveBeenCalledWith({
+        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        prompt: "test prompt",
+        dynamicVars: undefined,
+      });
     });
 
-    it("should reject invalid configId format", async () => {
+    it("should handle agent not found errors", async () => {
+      vi.mocked(apiClient.getConfigByName).mockRejectedValue(
+        new Error("Config not found: nonexistent-agent"),
+      );
+
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "invalid-id",
+          "nonexistent-agent",
           "test prompt",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid config ID format"),
+        expect.stringContaining("Agent not found: nonexistent-agent"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 build"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -89,14 +108,14 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "cfg-123",
+        "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
         "-e",
         "KEY1=value1",
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "cfg-123",
+        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         dynamicVars: { KEY1: "value1" },
       });
@@ -106,7 +125,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "cfg-123",
+        "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
         "-e",
         "KEY1=value1",
@@ -115,7 +134,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "cfg-123",
+        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         dynamicVars: { KEY1: "value1", KEY2: "value2" },
       });
@@ -125,14 +144,14 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "cfg-123",
+        "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
         "-e",
         "URL=https://example.com?foo=bar",
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "cfg-123",
+        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         dynamicVars: { URL: "https://example.com?foo=bar" },
       });
@@ -143,7 +162,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "cfg-123",
+          "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
           "-e",
           "EMPTY=",
@@ -156,7 +175,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "cfg-123",
+          "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
           "-e",
           "INVALID",
@@ -169,7 +188,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "cfg-123",
+          "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
           "-e",
           "=value",
@@ -178,10 +197,10 @@ describe("run command", () => {
     });
 
     it("should omit dynamicVars when no env vars provided", async () => {
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "cfg-123",
+        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         dynamicVars: undefined,
       });
@@ -199,13 +218,15 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "550e8400-e29b-41d4-a716-446655440000",
+        "test prompt",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Creating agent run"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Config: cfg-123"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Prompt: test prompt"),
@@ -225,7 +246,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "cfg-123",
+        "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
         "-e",
         "KEY=value",
@@ -246,7 +267,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed: run-123"),
@@ -263,7 +284,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith("Output:");
       expect(mockConsoleLog).toHaveBeenCalledWith("Test output from agent");
@@ -280,7 +301,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Error:"),
@@ -308,7 +329,7 @@ describe("run command", () => {
         return callCount === 1 ? 0 : 5432; // Start at 0, end at 5432
       });
 
-      await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+      await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Execution time: 5s"),
@@ -325,7 +346,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+        await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -343,11 +364,19 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "550e8400-e29b-41d4-a716-446655440000",
+          "test prompt",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Config not found: cfg-123"),
+        expect.stringContaining("Agent not found"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 build"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -358,7 +387,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+        await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -371,7 +400,7 @@ describe("run command", () => {
       vi.mocked(apiClient.createRun).mockRejectedValue("Non-error object");
 
       await expect(async () => {
-        await runCommand.parseAsync(["node", "cli", "cfg-123", "test prompt"]);
+        await runCommand.parseAsync(["node", "cli", "550e8400-e29b-41d4-a716-446655440000", "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(

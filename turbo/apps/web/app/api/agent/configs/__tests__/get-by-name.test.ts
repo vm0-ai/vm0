@@ -95,12 +95,9 @@ describe("GET /api/agent/configs?name=<name>", () => {
   });
 
   it("should return 400 when name query parameter is missing", async () => {
-    const getRequest = new Request(
-      "http://localhost:3000/api/agent/configs",
-      {
-        method: "GET",
-      },
-    );
+    const getRequest = new Request("http://localhost:3000/api/agent/configs", {
+      method: "GET",
+    });
 
     const getResponse = await GET(getRequest as NextRequest);
     const getData = await getResponse.json();

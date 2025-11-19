@@ -57,9 +57,7 @@ export const runCommand = new Command()
             console.log(chalk.gray(`  Resolved to config ID: ${configId}`));
           } catch (error) {
             if (error instanceof Error) {
-              console.error(
-                chalk.red(`✗ Agent not found: ${identifier}`),
-              );
+              console.error(chalk.red(`✗ Agent not found: ${identifier}`));
               console.error(
                 chalk.gray(
                   "  Make sure you've built the agent with: vm0 build",
