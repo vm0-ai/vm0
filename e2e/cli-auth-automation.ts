@@ -38,7 +38,11 @@ export async function automateCliAuth(apiHost?: string) {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        API_HOST: apiUrl  // Set API_HOST environment variable
+        API_HOST: apiUrl,  // Set API_HOST environment variable
+        // Pass Vercel bypass secret if available (for CI/preview deployments)
+        ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
+          VERCEL_AUTOMATION_BYPASS_SECRET: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+        })
       }
     });
 

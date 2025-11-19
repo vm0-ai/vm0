@@ -1,6 +1,24 @@
 import chalk from "chalk";
 import { saveConfig, clearConfig, loadConfig, getApiUrl } from "./config";
 
+/**
+ * Build headers with optional Vercel bypass secret
+ * Used to bypass Vercel deployment protection in CI/preview environments
+ */
+function buildHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  // Add Vercel bypass secret if available (for CI/preview deployments)
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  return headers;
+}
+
 async function requestDeviceCode(apiUrl: string): Promise<{
   device_code: string;
   user_code: string;
@@ -10,7 +28,7 @@ async function requestDeviceCode(apiUrl: string): Promise<{
 }> {
   const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildHeaders(),
     body: JSON.stringify({}),
   });
 
@@ -40,7 +58,7 @@ async function exchangeToken(
 }> {
   const response = await fetch(`${apiUrl}/api/cli/auth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildHeaders(),
     body: JSON.stringify({ device_code: deviceCode }),
   });
 
