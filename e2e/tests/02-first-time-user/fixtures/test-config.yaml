@@ -1,0 +1,6 @@
+version: "1.0"
+
+agent:
+  name: test-agent-e2e
+  description: "E2E test agent for first-time user flow"
+  instructions: "You are a helpful assistant. Answer questions concisely."
