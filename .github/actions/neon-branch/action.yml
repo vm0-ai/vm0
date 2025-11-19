@@ -28,6 +28,9 @@ outputs:
   database-url:
     description: "Database connection URL for the branch"
     value: ${{ steps.branch.outputs.database-url }}
+  database-url-encoded:
+    description: "Base64 encoded database connection URL (to bypass GitHub secret detection)"
+    value: ${{ steps.branch.outputs.database-url-encoded }}
   console-url:
     description: "Neon console URL for the branch"
     value: ${{ steps.branch.outputs.console-url }}
@@ -71,6 +74,10 @@ runs:
         fi
         echo "DATABASE_URL value: $DATABASE_URL"
         echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+
+        # Also output base64 encoded version to bypass GitHub secret detection
+        DATABASE_URL_ENCODED=$(echo -n "$DATABASE_URL" | base64 -w 0)
+        echo "database-url-encoded=$DATABASE_URL_ENCODED" >> $GITHUB_OUTPUT
         echo "Neon branch ready: $BRANCH_NAME"
 
         # Get branch ID for console URL

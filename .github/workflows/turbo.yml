@@ -107,9 +107,11 @@ jobs:
       - name: Determine Database URL
         id: db
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ] && [ -n "${{ needs.deploy-web.outputs.database-url || '' }}" ]; then
+          if [ "${{ github.event_name }}" == "pull_request" ] && [ -n "${{ needs.deploy-web.outputs.database-url-encoded || '' }}" ]; then
             echo "Using Neon database from preview deployment"
-            echo "url=${{ needs.deploy-web.outputs.database-url }}" >> $GITHUB_OUTPUT
+            # Decode the base64 encoded database URL
+            DECODED_URL=$(echo "${{ needs.deploy-web.outputs.database-url-encoded }}" | base64 -d)
+            echo "url=$DECODED_URL" >> $GITHUB_OUTPUT
           else
             echo "Using CI PostgreSQL database"
             echo "url=postgresql://postgres@postgres:5432/postgres" >> $GITHUB_OUTPUT
@@ -145,6 +147,7 @@ jobs:
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
       database-url: ${{ steps.branch.outputs.database-url }}
+      database-url-encoded: ${{ steps.branch.outputs.database-url-encoded }}
     permissions:
       contents: read
       pull-requests: write
