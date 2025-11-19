@@ -131,10 +131,15 @@ export async function automateCliAuth(apiHost?: string) {
     await clerkSetup();
 
     // Step 5: Login to Clerk
-    // Use configured API URL
+    // Navigate to sign-in page where Clerk components are available
     const baseUrl = apiUrl;
+    const signInUrl = `${baseUrl}/sign-in`;
 
-    await page.goto(baseUrl);
+    console.log(`🔗 Navigating to Clerk sign-in: ${signInUrl}`);
+    await page.goto(signInUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
+    console.log("✅ Sign-in page loaded, attempting authentication");
+
     await clerk.signIn({
       page,
       emailAddress: "e2e+clerk_test@vm0.ai",
