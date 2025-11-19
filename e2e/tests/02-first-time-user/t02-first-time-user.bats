@@ -7,11 +7,23 @@ export TEST_CONFIG_DIR="${HOME}/.vm0-test"
 export TEST_CONFIG_FILE="${TEST_CONFIG_DIR}/config.json"
 export TEST_AGENT_CONFIG="${TEST_ROOT}/tests/02-first-time-user/fixtures/test-config.yaml"
 
+# Ensure VM0_TOKEN is set, fail with clear error if not
+if [ -z "$VM0_TOKEN" ]; then
+    echo "ERROR: VM0_TOKEN environment variable must be set to run these tests" >&2
+    echo "Please set VM0_TOKEN to a valid authentication token" >&2
+    exit 1
+fi
+
 # Setup: ensure clean state before each test
 setup() {
     # Remove test config directory if it exists
     if [ -d "$TEST_CONFIG_DIR" ]; then
         rm -rf "$TEST_CONFIG_DIR"
+    fi
+
+    # Set API_HOST for tests if not already set
+    if [ -z "$API_HOST" ]; then
+        export API_HOST="http://localhost:3000"
     fi
 }
 
@@ -23,10 +35,10 @@ teardown() {
     fi
 }
 
-# Helper: save test token to config
+# Helper: save test token to config file
 save_test_token() {
     local token="$1"
-    local api_url="${TEST_API_URL:-http://localhost:3000}"
+    local api_url="${API_HOST:-http://localhost:3000}"
 
     mkdir -p "$TEST_CONFIG_DIR"
     cat > "$TEST_CONFIG_FILE" <<EOF
@@ -39,35 +51,37 @@ EOF
 
 @test "auth status shows not authenticated initially" {
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    run $CLI_COMMAND auth status
+    # Unset VM0_TOKEN temporarily for this test
+    ( unset VM0_TOKEN; run $CLI_COMMAND auth status )
     assert_success
     assert_output --partial "Not authenticated"
 }
 
-@test "auth status shows authenticated with token" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
+@test "auth status shows authenticated with VM0_TOKEN env var" {
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
 
+    # VM0_TOKEN is already set from the file-level check
     run $CLI_COMMAND auth status
     assert_success
     assert_output --partial "Authenticated"
 }
 
-@test "auth status persists token across commands" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
+@test "auth status shows authenticated with config file token" {
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
+    save_test_token "$VM0_TOKEN"
+
+    # Unset VM0_TOKEN to test config file authentication
+    ( unset VM0_TOKEN; run $CLI_COMMAND auth status )
+    assert_success
+    assert_output --partial "Authenticated"
+}
+
+@test "auth status persists token across commands" {
+    export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
+    save_test_token "$VM0_TOKEN"
+
+    # Unset VM0_TOKEN to test config file persistence
+    unset VM0_TOKEN
 
     # First check
     run $CLI_COMMAND auth status
@@ -81,14 +95,7 @@ EOF
 }
 
 @test "build command creates config successfully" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
 
     run $CLI_COMMAND build "$TEST_AGENT_CONFIG"
     assert_success
@@ -98,14 +105,7 @@ EOF
 }
 
 @test "build command shows usage instructions" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
 
     run $CLI_COMMAND build "$TEST_AGENT_CONFIG"
     assert_success
@@ -116,21 +116,15 @@ EOF
 @test "build command fails without authentication" {
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
 
-    run $CLI_COMMAND build "$TEST_AGENT_CONFIG"
+    # Unset VM0_TOKEN to test failure case
+    ( unset VM0_TOKEN; run $CLI_COMMAND build "$TEST_AGENT_CONFIG" )
     assert_failure
     # Should fail due to missing authentication or API configuration
     [[ "$output" == *"Not authenticated"* || "$output" == *"API URL not configured"* ]]
 }
 
 @test "run command works with agent name" {
-    skip "Requires TEST_TOKEN environment variable and E2B execution"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
 
     # First build the config
     run $CLI_COMMAND build "$TEST_AGENT_CONFIG"
@@ -143,14 +137,7 @@ EOF
 }
 
 @test "run command works with configId" {
-    skip "Requires TEST_TOKEN environment variable and E2B execution"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
 
     # First build the config and extract configId
     output=$($CLI_COMMAND build "$TEST_AGENT_CONFIG" 2>&1)
@@ -165,21 +152,19 @@ EOF
 @test "run command fails without authentication" {
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
 
-    run $CLI_COMMAND run test-agent "test prompt"
+    # Unset VM0_TOKEN to test failure case
+    ( unset VM0_TOKEN; run $CLI_COMMAND run test-agent "test prompt" )
     assert_failure
     # Should fail due to missing authentication or agent not found
     [[ "$output" == *"Not authenticated"* || "$output" == *"Agent not found"* || "$output" == *"API URL not configured"* ]]
 }
 
 @test "logout command removes credentials" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
+    save_test_token "$VM0_TOKEN"
+
+    # Unset VM0_TOKEN to test config file logout
+    unset VM0_TOKEN
 
     # Logout
     run $CLI_COMMAND auth logout
@@ -188,14 +173,11 @@ EOF
 }
 
 @test "auth status shows not authenticated after logout" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
+    save_test_token "$VM0_TOKEN"
+
+    # Unset VM0_TOKEN to test config file logout
+    unset VM0_TOKEN
 
     # Logout
     $CLI_COMMAND auth logout
@@ -207,14 +189,11 @@ EOF
 }
 
 @test "logout removes token from filesystem" {
-    skip "Requires TEST_TOKEN environment variable"
-
-    if [ -z "$TEST_TOKEN" ]; then
-        skip "TEST_TOKEN not set"
-    fi
-
     export VM0_CONFIG_DIR="$TEST_CONFIG_DIR"
-    save_test_token "$TEST_TOKEN"
+    save_test_token "$VM0_TOKEN"
+
+    # Unset VM0_TOKEN to test config file logout
+    unset VM0_TOKEN
 
     # Logout
     $CLI_COMMAND auth logout
