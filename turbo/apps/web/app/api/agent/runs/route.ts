@@ -83,60 +83,67 @@ export async function POST(request: NextRequest) {
     const sandboxToken = await generateSandboxToken(userId, run.id);
     console.log(`[API] Generated sandbox token for run: ${run.id}`);
 
-    // Execute in E2B (pass the run ID and sandbox token)
-    try {
-      const result = await e2bService.createRun(run.id, {
+    // Update run status to 'running' before starting E2B execution
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({
+        status: "running",
+        startedAt: new Date(),
+      })
+      .where(eq(agentRuns.id, run.id));
+
+    // Execute in E2B asynchronously (don't await)
+    e2bService
+      .createRun(run.id, {
         agentConfigId: body.agentConfigId,
         prompt: body.prompt,
         dynamicVars: body.dynamicVars,
         sandboxToken,
+      })
+      .then((result) => {
+        // Update run with results on success
+        return globalThis.services.db
+          .update(agentRuns)
+          .set({
+            status: result.status,
+            sandboxId: result.sandboxId,
+            result: {
+              output: result.output,
+              executionTimeMs: result.executionTimeMs,
+            },
+            error: result.error || null,
+            completedAt: result.completedAt || new Date(),
+          })
+          .where(eq(agentRuns.id, run.id));
+      })
+      .then(() => {
+        console.log(`[API] Run ${run.id} completed successfully`);
+      })
+      .catch((error) => {
+        // Update run with error on failure
+        console.error(`[API] Run ${run.id} failed:`, error);
+        return globalThis.services.db
+          .update(agentRuns)
+          .set({
+            status: "failed",
+            error: error instanceof Error ? error.message : "Unknown error",
+            completedAt: new Date(),
+          })
+          .where(eq(agentRuns.id, run.id));
       });
 
-      // Update run with results
-      await globalThis.services.db
-        .update(agentRuns)
-        .set({
-          status: result.status,
-          sandboxId: result.sandboxId,
-          result: {
-            output: result.output,
-            executionTimeMs: result.executionTimeMs,
-          },
-          error: result.error || null,
-          startedAt: result.createdAt,
-          completedAt: result.completedAt || new Date(),
-        })
-        .where(eq(agentRuns.id, run.id));
+    // Return response immediately with 'running' status
+    const response: CreateAgentRunResponse = {
+      runId: run.id,
+      status: "running",
+      sandboxId: undefined,
+      output: "",
+      error: undefined,
+      executionTimeMs: 0,
+      createdAt: run.createdAt.toISOString(),
+    };
 
-      console.log(
-        `[API] Run ${run.id} completed with status: ${result.status}`,
-      );
-
-      // Return response
-      const response: CreateAgentRunResponse = {
-        runId: run.id,
-        status: result.status,
-        sandboxId: result.sandboxId,
-        output: result.output,
-        error: result.error,
-        executionTimeMs: result.executionTimeMs,
-        createdAt: run.createdAt.toISOString(),
-      };
-
-      return successResponse(response, 201);
-    } catch (error) {
-      // If E2B execution fails, mark run as failed
-      await globalThis.services.db
-        .update(agentRuns)
-        .set({
-          status: "failed",
-          error: error instanceof Error ? error.message : "Unknown error",
-          completedAt: new Date(),
-        })
-        .where(eq(agentRuns.id, run.id));
-
-      throw error;
-    }
+    return successResponse(response, 201);
   } catch (error) {
     return errorResponse(error);
   }
