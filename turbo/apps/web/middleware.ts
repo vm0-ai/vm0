@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { handleCors } from "./middleware.cors";
 
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -8,18 +8,29 @@ const isPublicRoute = createRouteMatcher([
   "/api/hello(.*)",
   "/api/cli/auth/device",
   "/api/cli/auth/token",
-  "/api/agent/configs(.*)",
-  "/api/agent/runs(.*)",
+  "/cli-auth(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
+  // Check if this might be a CLI token request BEFORE handling CORS
   const authHeader = request.headers.get("Authorization");
+  const hasCliToken = authHeader && authHeader.includes("vm0_live_");
 
-  // Skip Clerk auth for CLI token requests
-  if (authHeader?.includes("vm0_live_")) {
-    return NextResponse.next();
+  // Skip Clerk auth for CLI token requests - will be handled at API route level
+  if (hasCliToken) {
+    // Still need to handle CORS for CLI requests
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return handleCors(request);
+    }
+    return;
   }
 
+  // Handle CORS for API routes
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return handleCors(request);
+  }
+
+  // For non-CLI token requests, use regular Clerk authentication
   if (!isPublicRoute(request)) {
     await auth.protect();
   }
