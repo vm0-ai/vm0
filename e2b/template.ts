@@ -43,9 +43,13 @@ export const template = Template()
   // Create VM0 directory for scripts
   .runCmd("sudo mkdir -p /opt/vm0")
   .runCmd("sudo chmod 755 /opt/vm0")
+  // Copy run-agent.sh script to /usr/local/bin/ (like uspark approach)
+  .copyFile("./run-agent.sh", "/usr/local/bin/run-agent.sh")
+  .runCmd("sudo chmod +x /usr/local/bin/run-agent.sh")
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")
+  .runCmd("test -f /usr/local/bin/run-agent.sh && echo 'SUCCESS: run-agent.sh installed' || (echo 'FATAL: run-agent.sh missing' && exit 1)")
   .runCmd('echo "VM0 Claude Code template ready!"')
   // Final verification - this should fail the build if Claude is not installed
   .runCmd(

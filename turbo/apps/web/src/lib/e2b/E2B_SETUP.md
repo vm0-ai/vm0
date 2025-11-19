@@ -35,7 +35,8 @@ The custom E2B template includes:
 - **Node.js 22.x** - For running npm packages
 - **Claude Code CLI** - `@anthropic-ai/claude-code` installed globally
 - **curl & jq** - For webhook communication
-- **/opt/vm0** - Directory for VM0 scripts
+- **run-agent.sh** - Pre-installed at `/usr/local/bin/run-agent.sh` for executing Claude Code
+- **/opt/vm0** - Directory for VM0 scripts (deprecated, kept for compatibility)
 - **/workspace** - Working directory for Claude Code
 
 ## Prerequisites

@@ -50,9 +50,10 @@ E2B_API_KEY=your_api_key npx tsx build.prod.ts
 
 The following environment variables are set when creating a sandbox:
 
-- `VM0_RUNTIME_ID`: Unique identifier for this runtime execution
+- `VM0_RUN_ID`: Unique identifier for this agent run execution
 - `VM0_WEBHOOK_URL`: URL to send execution events to
 - `VM0_TOKEN`: Authentication token for webhook requests
+- `VM0_PROMPT`: The prompt for Claude Code to execute
 - `ANTHROPIC_BASE_URL`: Base URL for Anthropic API (optional, for custom endpoints)
 - `ANTHROPIC_AUTH_TOKEN`: Authentication token for Claude API
 
