@@ -1,0 +1,320 @@
+/**
+ * @vitest-environment node
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { POST } from "../route";
+import { GET } from "../[id]/route";
+import { initServices } from "../../../../../src/lib/init-services";
+import { agentConfigs } from "../../../../../src/db/schema/agent-config";
+import { eq } from "drizzle-orm";
+
+// Mock the auth module
+let mockUserId = "test-user-123";
+vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
+  getUserId: async () => mockUserId,
+}));
+
+describe("Agent Config Upsert Behavior", () => {
+  const testUserId = "test-user-123";
+
+  beforeAll(() => {
+    initServices();
+  });
+
+  afterAll(async () => {
+    // Cleanup: Delete test configs
+    await globalThis.services.db
+      .delete(agentConfigs)
+      .where(eq(agentConfigs.userId, testUserId));
+  });
+
+  describe("POST /api/agent/configs", () => {
+    it("should create new config when name does not exist", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "test-agent-create",
+          instructions: "Test instructions",
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.action).toBe("created");
+      expect(data.name).toBe("test-agent-create");
+      expect(data.configId).toBeDefined();
+      expect(data.createdAt).toBeDefined();
+    });
+
+    it("should update existing config when name matches", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "test-agent-update",
+          instructions: "Initial instructions",
+        },
+      };
+
+      // First create
+      const request1 = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response1 = await POST(request1);
+      const data1 = await response1.json();
+
+      expect(data1.action).toBe("created");
+      const configId = data1.configId;
+
+      // Then update with same name
+      const updatedConfig = {
+        ...config,
+        agent: {
+          ...config.agent,
+          instructions: "Updated instructions",
+        },
+      };
+
+      const request2 = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config: updatedConfig }),
+      });
+
+      const response2 = await POST(request2);
+      const data2 = await response2.json();
+
+      expect(response2.status).toBe(200);
+      expect(data2.action).toBe("updated");
+      expect(data2.configId).toBe(configId); // Same ID
+      expect(data2.name).toBe("test-agent-update");
+      expect(data2.updatedAt).toBeDefined();
+
+      // Verify the config was actually updated
+      const getRequest = new Request(
+        `http://localhost:3000/api/agent/configs/${configId}`,
+        {
+          method: "GET",
+        },
+      );
+
+      const getResponse = await GET(getRequest, {
+        params: Promise.resolve({ id: configId }),
+      });
+      const configData = await getResponse.json();
+
+      expect(configData.config.agent.instructions).toBe("Updated instructions");
+    });
+
+    it("should maintain unique constraint on (userId, name)", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "test-unique-constraint",
+        },
+      };
+
+      // Create config for user 1
+      mockUserId = "user-1";
+      const request1 = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response1 = await POST(request1);
+      const data1 = await response1.json();
+      expect(response1.status).toBe(201);
+
+      // Create config with same name for user 2 (should succeed)
+      mockUserId = "user-2";
+      const request2 = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response2 = await POST(request2);
+      const data2 = await response2.json();
+      expect(response2.status).toBe(201);
+
+      // Should be different config IDs
+      expect(data1.configId).not.toBe(data2.configId);
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentConfigs)
+        .where(eq(agentConfigs.userId, "user-1"));
+      await globalThis.services.db
+        .delete(agentConfigs)
+        .where(eq(agentConfigs.userId, "user-2"));
+
+      // Reset mockUserId
+      mockUserId = "test-user-123";
+    });
+  });
+
+  describe("agent.name validation", () => {
+    it("should reject config with invalid name format", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "ab", // Too short
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("Invalid agent.name");
+    });
+
+    it("should reject config with name starting with hyphen", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "-invalid",
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject config with name containing special characters", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "my_agent",
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should accept valid name with hyphens", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "my-test-agent-123",
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+
+      // Cleanup
+      const data = await response.json();
+      await globalThis.services.db
+        .delete(agentConfigs)
+        .where(eq(agentConfigs.id, data.configId));
+    });
+  });
+
+  describe("GET /api/agent/configs/:id", () => {
+    it("should return config with name field", async () => {
+      const config = {
+        version: "1.0",
+        agent: {
+          name: "test-get-config",
+          instructions: "Test",
+        },
+      };
+
+      // Create config
+      const createRequest = new Request(
+        "http://localhost:3000/api/agent/configs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ config }),
+        },
+      );
+
+      const createResponse = await POST(createRequest);
+      const createData = await createResponse.json();
+
+      // Get config
+      const getRequest = new Request(
+        `http://localhost:3000/api/agent/configs/${createData.configId}`,
+        {
+          method: "GET",
+        },
+      );
+
+      const getResponse = await GET(getRequest, {
+        params: Promise.resolve({ id: createData.configId }),
+      });
+
+      expect(getResponse.status).toBe(200);
+      const getData = await getResponse.json();
+
+      expect(getData.name).toBe("test-get-config");
+      expect(getData.config.agent.name).toBe("test-get-config");
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentConfigs)
+        .where(eq(agentConfigs.id, createData.configId));
+    });
+  });
+});
