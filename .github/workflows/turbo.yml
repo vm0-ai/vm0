@@ -220,3 +220,44 @@ jobs:
 
       - name: Run CLI E2E Tests
         run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
+
+  # Run webhook integration test
+  webhook-integration-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web]
+    # Run if web changed and preview deployment exists
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.web-changed == 'true'
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Run Database Migrations
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm --filter web db:migrate
+
+      - name: Run Webhook Integration Test
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_ANTHROPIC_BASE_URL: ${{ secrets.MINIMAX_ANTHROPIC_BASE_URL }}
+          CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
+        run: pnpm --filter web test webhook-integration.test.ts
