@@ -1,6 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient } from "../lib/api-client";
+import { ClaudeEventParser } from "../lib/event-parser";
+import { EventRenderer } from "../lib/event-renderer";
 
 function collectEnvVars(
   value: string,
@@ -18,6 +20,45 @@ function collectEnvVars(
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
+}
+
+async function pollEvents(runId: string): Promise<void> {
+  let nextSequence = 0;
+  let complete = false;
+  const pollIntervalMs = 500;
+
+  while (!complete) {
+    try {
+      const response = await apiClient.getEvents(runId, {
+        since: nextSequence,
+      });
+
+      for (const event of response.events) {
+        const parsed = ClaudeEventParser.parse(event.eventData);
+
+        if (parsed) {
+          EventRenderer.render(parsed);
+
+          if (parsed.type === "result") {
+            complete = true;
+          }
+        }
+      }
+
+      nextSequence = response.nextSequence;
+
+      // If no new events and not complete, wait before next poll
+      if (response.events.length === 0 && !complete) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+    } catch (error) {
+      console.error(
+        chalk.red("✗ Failed to poll events:"),
+        error instanceof Error ? error.message : "Unknown error",
+      );
+      throw error;
+    }
+  }
 }
 
 export const runCommand = new Command()
@@ -80,9 +121,9 @@ export const runCommand = new Command()
 
         console.log();
         console.log(chalk.blue("Executing in sandbox..."));
+        console.log();
 
-        // 3. Call API (synchronous)
-        const startTime = Date.now();
+        // 3. Call API (async)
         const response = await apiClient.createRun({
           agentConfigId: configId,
           prompt,
@@ -90,26 +131,8 @@ export const runCommand = new Command()
             Object.keys(options.env).length > 0 ? options.env : undefined,
         });
 
-        const duration = Math.round((Date.now() - startTime) / 1000);
-
-        // 4. Display result
-        console.log();
-        console.log(chalk.green(`✓ Run completed: ${response.runId}`));
-        console.log();
-
-        if (response.output) {
-          console.log("Output:");
-          console.log(response.output);
-          console.log();
-        }
-
-        if (response.error) {
-          console.log(chalk.red("Error:"));
-          console.log(response.error);
-          console.log();
-        }
-
-        console.log(chalk.gray(`Execution time: ${duration}s`));
+        // 4. Poll for events
+        await pollEvents(response.runId);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
