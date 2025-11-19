@@ -109,8 +109,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ] && [ -n "${{ needs.deploy-web.outputs.database-url-encoded || '' }}" ]; then
             echo "Using Neon database from preview deployment"
-            # Decode the base64 encoded database URL
-            DECODED_URL=$(echo "${{ needs.deploy-web.outputs.database-url-encoded }}" | base64 -d)
+            # Double decode the base64 encoded database URL
+            DECODED_URL=$(echo "${{ needs.deploy-web.outputs.database-url-encoded }}" | base64 -d | base64 -d)
             echo "url=$DECODED_URL" >> $GITHUB_OUTPUT
           else
             echo "Using CI PostgreSQL database"
