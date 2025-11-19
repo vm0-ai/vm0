@@ -36,6 +36,8 @@ describe("E2B Sandbox to Webhook Integration Test", () => {
       throw new Error("DATABASE_URL is required for integration tests");
     }
 
+    console.log(`[Test] DATABASE_URL host: ${new URL(process.env.DATABASE_URL).host}`);
+
     // Get webhook URL from environment
     const apiUrl = process.env.VM0_API_URL || process.env.VERCEL_URL;
     if (!apiUrl) {
