@@ -107,7 +107,7 @@ jobs:
       - name: Determine Database URL
         id: db
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ] && [ -n "${{ needs.deploy-web.outputs.database-url-encoded || '' }}" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ needs.deploy-web.outputs.database-url-encoded || '' }}" ]; then
             echo "Using Neon database from preview deployment"
             # Double decode the base64 encoded database URL
             DECODED_URL=$(echo "${{ needs.deploy-web.outputs.database-url-encoded }}" | base64 -d | base64 -d)
