@@ -66,13 +66,28 @@ export class E2BService {
     let tempDir: string | null = null;
 
     try {
-      // Get API configuration (env schema handles VERCEL_URL priority in default)
-      const apiUrl = globalThis.services?.env?.VM0_API_URL;
+      // Get API configuration with dynamic fallback logic
+      // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
+      const envVars = globalThis.services?.env;
+      let apiUrl = envVars?.VM0_API_URL;
+
+      if (!apiUrl) {
+        // If no explicit URL, determine based on VERCEL_ENV
+        if (envVars?.VERCEL_ENV === "preview" && envVars?.VERCEL_URL) {
+          apiUrl = `https://${envVars.VERCEL_URL}`;
+        } else if (envVars?.VERCEL_ENV === "production") {
+          apiUrl = "https://www.vm0.ai";
+        } else {
+          apiUrl = "http://localhost:3000";
+        }
+      }
+
       const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
 
       console.log(
-        `[E2B] Environment - VERCEL_ENV: ${globalThis.services?.env?.VERCEL_ENV}, VERCEL_URL: ${globalThis.services?.env?.VERCEL_URL}`,
+        `[E2B] Environment - VERCEL_ENV: ${envVars?.VERCEL_ENV}, VERCEL_URL: ${envVars?.VERCEL_URL}, VM0_API_URL: ${envVars?.VM0_API_URL}`,
       );
+      console.log(`[E2B] Computed API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook: ${webhookEndpoint}`);
 
       // Resolve volumes from agent config

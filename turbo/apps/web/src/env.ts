@@ -14,18 +14,7 @@ function initEnv() {
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       E2B_TEMPLATE_NAME: z.string().min(1).optional(),
-      VM0_API_URL: z
-        .string()
-        .url()
-        .optional()
-        .default(
-          // Use VERCEL_URL for preview deployments, production URL for production, localhost otherwise
-          process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : process.env.VERCEL_ENV === "production"
-              ? "https://www.vm0.ai"
-              : "http://localhost:3000",
-        ),
+      VM0_API_URL: z.string().url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
       VERCEL_URL: z.string().optional(),
       MINIMAX_ANTHROPIC_BASE_URL: z.string().url().optional(),
