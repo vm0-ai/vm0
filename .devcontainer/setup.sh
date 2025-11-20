@@ -14,6 +14,25 @@ sudo service postgresql start 2>/dev/null || true
 sudo mkdir -p /home/vscode/.local/bin
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local
 
+# Install cloudflared for local webhook tunnel support
+echo "🌐 Installing cloudflared..."
+if ! command -v cloudflared &> /dev/null; then
+  ARCH=$(dpkg --print-architecture)
+  if [ "$ARCH" = "arm64" ]; then
+    CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb"
+  else
+    CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+  fi
+
+  echo "  Downloading cloudflared for $ARCH..."
+  curl -sL "$CLOUDFLARED_URL" -o /tmp/cloudflared.deb
+  sudo dpkg -i /tmp/cloudflared.deb
+  rm /tmp/cloudflared.deb
+  echo "✓ cloudflared installed ($(cloudflared --version | head -n 1))"
+else
+  echo "✓ cloudflared already installed ($(cloudflared --version | head -n 1))"
+fi
+
 # Add local development domains to /etc/hosts
 echo "📝 Adding local domains to /etc/hosts..."
 if ! grep -q "vm0.dev" /etc/hosts; then
