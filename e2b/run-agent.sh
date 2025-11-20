@@ -7,6 +7,7 @@ WEBHOOK_URL="${VM0_WEBHOOK_URL}"
 WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
 PROMPT="${VM0_PROMPT}"
 WORKING_DIR="${VM0_WORKING_DIR:-/home/user}"
+VERCEL_BYPASS="${VERCEL_PROTECTION_BYPASS:-}"
 
 # Send single event immediately
 send_event() {
@@ -17,11 +18,19 @@ send_event() {
     --argjson event "$event_json" \
     '{runId: $rid, events: [$event]}')
 
-  curl -X POST "$WEBHOOK_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $WEBHOOK_TOKEN" \
-    -d "$payload" \
-    --silent --fail || echo "[ERROR] Failed to send event" >&2
+  # Build curl command with optional Vercel bypass header
+  local curl_cmd="curl -X POST \"$WEBHOOK_URL\" \
+    -H \"Content-Type: application/json\" \
+    -H \"Authorization: Bearer $WEBHOOK_TOKEN\""
+
+  # Add Vercel protection bypass header if available (for preview deployments)
+  if [ -n "$VERCEL_BYPASS" ]; then
+    curl_cmd="$curl_cmd -H \"x-vercel-protection-bypass: $VERCEL_BYPASS\""
+  fi
+
+  curl_cmd="$curl_cmd -d '$payload' --silent --fail"
+
+  eval "$curl_cmd" || echo "[ERROR] Failed to send event" >&2
 }
 
 # Change to working directory

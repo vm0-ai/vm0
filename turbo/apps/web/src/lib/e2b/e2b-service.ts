@@ -137,12 +137,23 @@ export class E2BService {
       }
 
       // Create E2B sandbox with environment variables
-      sandbox = await this.createSandbox({
+      const sandboxEnvVars: Record<string, string> = {
         VM0_API_URL: apiUrl,
         VM0_WEBHOOK_URL: webhookEndpoint,
         VM0_RUN_ID: runId,
         VM0_WEBHOOK_TOKEN: options.sandboxToken, // Temporary bearer token for webhook authentication
-      });
+      };
+
+      // Add Vercel protection bypass secret if available (for preview deployments)
+      const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      if (vercelBypassSecret) {
+        sandboxEnvVars.VERCEL_PROTECTION_BYPASS = vercelBypassSecret;
+        console.log(
+          `[E2B] Added Vercel protection bypass for preview deployment`,
+        );
+      }
+
+      sandbox = await this.createSandbox(sandboxEnvVars);
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
       // Upload volumes to sandbox
