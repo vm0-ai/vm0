@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/web-v0.4.1...web-v0.5.0) (2025-11-20)
+
+
+### Features
+
+* add working_dir support for agent execution ([#113](https://github.com/vm0-ai/vm0/issues/113)) ([a96f487](https://github.com/vm0-ai/vm0/commit/a96f487d8536041b86ef49cd05621dfa5476d5dc))
+* implement volume mounting for S3-backed agent workspaces ([#103](https://github.com/vm0-ai/vm0/issues/103)) ([85f7b8e](https://github.com/vm0-ai/vm0/commit/85f7b8e758a6b4d2d5ae6b899be2c4b247959302))
+
+
+### Bug Fixes
+
+* remove timeout limitation for e2b sandbox command execution ([#114](https://github.com/vm0-ai/vm0/issues/114)) ([e4c5c86](https://github.com/vm0-ai/vm0/commit/e4c5c869aa4af6433f871b38a199f13895e94704))
+* require authentication for cli device authorization page ([#104](https://github.com/vm0-ai/vm0/issues/104)) ([39428a4](https://github.com/vm0-ai/vm0/commit/39428a4c209403e15a48eea8d468860a50ec716b))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/web-v0.4.0...web-v0.4.1) (2025-11-20)
 
 

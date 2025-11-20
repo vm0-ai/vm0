@@ -9,6 +9,7 @@ import type {
 import { resolveVolumes } from "../volume/volume-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
 import type { AgentVolumeConfig } from "../volume/types";
+import type { AgentConfigYaml } from "../../types/agent-config";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -174,6 +175,7 @@ export class E2BService {
         options.prompt,
         webhookEndpoint,
         options.sandboxToken,
+        options.agentConfig,
       );
 
       const executionTimeMs = Date.now() - startTime;
@@ -232,7 +234,7 @@ export class E2BService {
     envVars: Record<string, string>,
   ): Promise<Sandbox> {
     const sandboxOptions = {
-      timeoutMs: e2bConfig.defaultTimeout,
+      timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
       envs: envVars, // Pass environment variables to sandbox
     };
 
@@ -265,6 +267,7 @@ export class E2BService {
     prompt: string,
     webhookUrl: string,
     sandboxToken: string,
+    agentConfig?: unknown,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -274,6 +277,10 @@ export class E2BService {
 
     console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 
+    // Extract working_dir from agent config
+    const config = agentConfig as AgentConfigYaml | undefined;
+    const workingDir = config?.agent?.working_dir;
+
     // Set environment variables and execute script
     const envs: Record<string, string> = {
       VM0_RUN_ID: runId,
@@ -281,6 +288,12 @@ export class E2BService {
       VM0_WEBHOOK_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
     };
+
+    // Add working directory if configured
+    if (workingDir) {
+      envs.VM0_WORKING_DIR = workingDir;
+      console.log(`[E2B] Working directory configured: ${workingDir}`);
+    }
 
     // Add Minimax API configuration if available
     const minimaxBaseUrl = env().MINIMAX_ANTHROPIC_BASE_URL;
@@ -301,6 +314,7 @@ export class E2BService {
 
     const result = await sandbox.commands.run(scriptPath, {
       envs,
+      timeoutMs: 0, // No timeout - allows indefinite execution
     });
 
     const executionTimeMs = Date.now() - execStart;

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/vm0-ai/vm0/compare/cli-v0.3.0...cli-v1.0.0) (2025-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* CLI no longer recognizes API_HOST environment variable. Users must update to use VM0_API_URL instead.
+
+### Features
+
+* standardize api url environment variable to vm0_api_url ([#110](https://github.com/vm0-ai/vm0/issues/110)) ([f4b9fab](https://github.com/vm0-ai/vm0/commit/f4b9fabeeeb44cb27960335e38bcd7180f18ed84))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/cli-v0.2.0...cli-v0.3.0) (2025-11-20)
 
 
