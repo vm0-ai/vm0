@@ -1,4 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
+import { env } from "../../env";
 import { e2bConfig } from "./config";
 import type {
   CreateRunOptions,
@@ -153,8 +154,8 @@ export class E2BService {
     };
 
     // Add Minimax API configuration if available
-    const minimaxBaseUrl = process.env.MINIMAX_ANTHROPIC_BASE_URL;
-    const minimaxApiKey = process.env.MINIMAX_API_KEY;
+    const minimaxBaseUrl = env().MINIMAX_ANTHROPIC_BASE_URL;
+    const minimaxApiKey = env().MINIMAX_API_KEY;
 
     if (minimaxBaseUrl && minimaxApiKey) {
       envs.ANTHROPIC_BASE_URL = minimaxBaseUrl;

@@ -13,7 +13,10 @@ function initEnv() {
         .default("development"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
+      E2B_TEMPLATE_NAME: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional().default("http://localhost:3000"),
+      MINIMAX_ANTHROPIC_BASE_URL: z.string().url().optional(),
+      MINIMAX_API_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -23,7 +26,10 @@ function initEnv() {
       NODE_ENV: process.env.NODE_ENV,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
       E2B_API_KEY: process.env.E2B_API_KEY,
+      E2B_TEMPLATE_NAME: process.env.E2B_TEMPLATE_NAME,
       VM0_API_URL: process.env.VM0_API_URL,
+      MINIMAX_ANTHROPIC_BASE_URL: process.env.MINIMAX_ANTHROPIC_BASE_URL,
+      MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },

@@ -96,6 +96,10 @@ jobs:
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
+            E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
+            MINIMAX_ANTHROPIC_BASE_URL=${{ secrets.MINIMAX_ANTHROPIC_BASE_URL }}
+            MINIMAX_API_KEY=${{ secrets.MINIMAX_API_KEY }}
 
   # Deploy docs app to production
   deploy-docs-production:

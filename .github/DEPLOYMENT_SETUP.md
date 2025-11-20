@@ -24,14 +24,28 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Generate at: https://vercel.com/account/tokens
 - `NEON_API_KEY`: Your Neon API key (Optional but Recommended)
   - Generate at: https://console.neon.tech/app/settings/api-keys
+- `CLERK_SECRET_KEY`: Your Clerk secret key (Required)
+  - Get from: https://dashboard.clerk.com
+- `E2B_API_KEY`: Your E2B API key (Optional)
+  - Get from: https://e2b.dev/dashboard
+- `E2B_TEMPLATE_NAME`: Custom E2B template name (Optional)
+  - Generate by running `cd turbo && pnpm e2b:build`
+- `MINIMAX_ANTHROPIC_BASE_URL`: Minimax API base URL (Optional)
+  - For using Minimax as an alternative LLM provider
+- `MINIMAX_API_KEY`: Minimax API key (Optional)
+  - Required if using Minimax API
 
 ### Variables (Store as Repository Variables)
 - `VERCEL_TEAM_ID`: Your Vercel team/organization ID
   - Find in Vercel project settings → General → Team ID
-- `VERCEL_PROJECT_ID`: Your Vercel project ID
+- `VERCEL_PROJECT_ID_WEB`: Your Vercel project ID for web app
+  - Find in Vercel project settings → General → Project ID
+- `VERCEL_PROJECT_ID_DOCS`: Your Vercel project ID for docs app
   - Find in Vercel project settings → General → Project ID
 - `NEON_PROJECT_ID`: Your Neon project ID (Optional but Recommended)
   - Find in Neon console → Project Settings → General
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
+  - Get from: https://dashboard.clerk.com
 
 **Note**: If Neon secrets are not configured, the deployment will still work but without database branching.
 
@@ -58,3 +72,40 @@ pnpm db:push
 ```
 
 This uses Drizzle Kit to push your schema defined in `turbo/apps/web/src/db/schema/` to the Neon database branch.
+
+## Environment Variables Details
+
+### Required Variables
+These must be configured for the application to work:
+- **CLERK_SECRET_KEY**: Required for user authentication
+- **NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY**: Required for Clerk client-side SDK
+- **DATABASE_URL**: Automatically injected by the workflow from Neon
+
+### Optional E2B Configuration
+For running agent code in sandboxes:
+- **E2B_API_KEY**: Your E2B API key for creating sandboxes
+- **E2B_TEMPLATE_NAME**: Custom template with Claude Code CLI pre-installed
+  - Build template: `cd turbo && pnpm e2b:build`
+  - Without this, the default E2B image is used (Claude Code must be manually installed)
+
+### Optional Minimax Configuration
+For using Minimax as an alternative LLM provider:
+- **MINIMAX_ANTHROPIC_BASE_URL**: Base URL for Minimax API
+- **MINIMAX_API_KEY**: API key for Minimax
+- Both must be set to enable Minimax integration
+
+### How Environment Variables are Injected
+
+The workflow uses two methods to inject environment variables into Vercel deployments:
+
+1. **GitHub Actions → Vercel CLI** (Recommended for sensitive values)
+   - Secrets are stored in GitHub and passed to Vercel during deployment
+   - Used for: `CLERK_SECRET_KEY`, `E2B_API_KEY`, etc.
+   - See `.github/workflows/release-please.yml` and `.github/workflows/turbo.yml`
+
+2. **Vercel Dashboard** (Alternative method)
+   - Environment variables can also be set directly in Vercel project settings
+   - Go to: Project Settings → Environment Variables
+   - Useful for overriding values or configuring additional environments
+
+**Note**: GitHub Actions method takes precedence and is recommended for security and consistency across deployments.
