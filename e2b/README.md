@@ -24,23 +24,29 @@ This directory contains the E2B sandbox template configuration for running Claud
 This template uses E2B v2 SDK. To build and deploy a new version:
 
 ```bash
-# From the e2b directory
-cd e2b
+# 1. Set up environment variables
+# Add your E2B API key to turbo/apps/web/.env.local:
+echo "E2B_API_KEY=your_api_key_here" >> turbo/apps/web/.env.local
 
-# Install dependencies (first time only)
+# 2. Install dependencies (first time only)
+cd e2b
 npm install
 
-# Build and push the template (development)
-E2B_API_KEY=your_api_key npx tsx build.dev.ts
+# 3. Build and push the template
+# Run from the turbo directory (important!)
+cd ../turbo
 
-# Build and push the template (production)
-E2B_API_KEY=your_api_key npx tsx build.prod.ts
+# Development build
+pnpm e2b:build:dev
+
+# Production build
+pnpm e2b:build
 
 # The template will be created with an alias:
 # - Development: vm0-claude-code-dev
 # - Production: vm0-claude-code
 
-# Update environment variables:
+# Update environment variables if template name changes:
 # - turbo/apps/web/.env.local (E2B_TEMPLATE_NAME=vm0-claude-code)
 # - GitHub secrets (E2B_TEMPLATE_NAME)
 # - Vercel environment variables (E2B_TEMPLATE_NAME)

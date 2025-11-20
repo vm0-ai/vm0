@@ -1,22 +1,44 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Sandbox } from "@e2b/code-interpreter";
 import { e2bService } from "../e2b-service";
 import type { CreateRunOptions } from "../types";
 
-describe("E2B Service - unit tests with real E2B API", () => {
-  beforeAll(() => {
-    // Verify E2B_API_KEY is available
-    if (!process.env.E2B_API_KEY) {
-      throw new Error(
-        "E2B_API_KEY is required for E2B service tests. Please set it in .env.local",
-      );
-    }
+// Mock the E2B SDK module
+vi.mock("@e2b/code-interpreter");
+
+describe("E2B Service - mocked unit tests", () => {
+  beforeEach(() => {
+    // Clear all mocks before each test
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Helper function to create a mock sandbox instance
+   */
+  const createMockSandbox = (overrides = {}) => ({
+    sandboxId: "mock-sandbox-id-123",
+    commands: {
+      run: vi.fn().mockResolvedValue({
+        stdout: "Mock Claude Code output",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+    kill: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   });
 
   describe("createRun", () => {
     it("should create sandbox and execute Claude Code", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
       const runId = "run-test-001";
       const options: CreateRunOptions = {
         agentConfigId: "test-agent-001",
@@ -25,26 +47,27 @@ describe("E2B Service - unit tests with real E2B API", () => {
         dynamicVars: { testVar: "testValue" },
       };
 
+      // Act
       const result = await e2bService.createRun(runId, options);
 
-      // Verify run result structure
+      // Assert - Verify run result structure
       expect(result).toBeDefined();
       expect(result.runId).toBe(runId);
 
       // Verify sandbox was created
-      expect(result.sandboxId).toBeDefined();
-      expect(result.sandboxId).toBeTruthy();
+      expect(result.sandboxId).toBe("mock-sandbox-id-123");
+      expect(Sandbox.create).toHaveBeenCalledTimes(1);
 
       // Verify execution status
       expect(result.status).toBe("completed");
 
-      // Verify output is from Claude Code, NOT the old echo command
+      // Verify output is from Claude Code (not the old echo command)
       expect(result.output).not.toContain("Hello World from E2B!");
-      expect(result.output).toBeTruthy(); // Should have some output
+      expect(result.output).toBe("Mock Claude Code output");
 
       // Verify timing information
       expect(result.executionTimeMs).toBeGreaterThan(0);
-      expect(result.executionTimeMs).toBeLessThan(600000); // Should complete in under 10 minutes
+      expect(result.executionTimeMs).toBeLessThan(10000); // Should complete quickly with mocks
 
       // Verify timestamps
       expect(result.createdAt).toBeInstanceOf(Date);
@@ -52,9 +75,25 @@ describe("E2B Service - unit tests with real E2B API", () => {
 
       // Verify no error
       expect(result.error).toBeUndefined();
-    }, 600000); // 10 minute timeout for Claude Code execution
+
+      // Verify sandbox methods were called
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
 
     it("should use provided run IDs for multiple calls", async () => {
+      // Arrange
+      const mockSandbox1 = createMockSandbox({
+        sandboxId: "mock-sandbox-id-1",
+      });
+      const mockSandbox2 = createMockSandbox({
+        sandboxId: "mock-sandbox-id-2",
+      });
+
+      vi.mocked(Sandbox.create)
+        .mockResolvedValueOnce(mockSandbox1 as unknown as Sandbox)
+        .mockResolvedValueOnce(mockSandbox2 as unknown as Sandbox);
+
       const options: CreateRunOptions = {
         agentConfigId: "test-agent-002",
         sandboxToken: "vm0_live_test_token",
@@ -64,18 +103,36 @@ describe("E2B Service - unit tests with real E2B API", () => {
       const runId1 = "run-test-002a";
       const runId2 = "run-test-002b";
 
+      // Act
       const result1 = await e2bService.createRun(runId1, options);
       const result2 = await e2bService.createRun(runId2, options);
 
+      // Assert
       expect(result1.runId).toBe(runId1);
       expect(result2.runId).toBe(runId2);
       expect(result1.sandboxId).not.toBe(result2.sandboxId);
+      expect(result1.sandboxId).toBe("mock-sandbox-id-1");
+      expect(result2.sandboxId).toBe("mock-sandbox-id-2");
+
       // Both should NOT contain old echo output
       expect(result1.output).not.toContain("Hello World from E2B!");
       expect(result2.output).not.toContain("Hello World from E2B!");
-    }, 1200000); // 20 minute timeout for two sequential calls
+
+      // Verify both sandboxes were created and cleaned up
+      expect(Sandbox.create).toHaveBeenCalledTimes(2);
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox1.kill).toHaveBeenCalledTimes(1);
+      expect(mockSandbox2.kill).toHaveBeenCalledTimes(1);
+    });
 
     it("should handle execution with minimal options", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
       const runId = "run-test-003";
       const options: CreateRunOptions = {
         agentConfigId: "test-agent-003",
@@ -83,14 +140,27 @@ describe("E2B Service - unit tests with real E2B API", () => {
         prompt: "What is 2+2?",
       };
 
+      // Act
       const result = await e2bService.createRun(runId, options);
 
+      // Assert
       expect(result.status).toBe("completed");
       expect(result.output).not.toContain("Hello World from E2B!");
       expect(result.output).toBeTruthy();
-    }, 600000);
+
+      // Verify sandbox was created and cleaned up
+      expect(Sandbox.create).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
 
     it("should include execution time metrics", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
       const runId = "run-test-004";
       const options: CreateRunOptions = {
         agentConfigId: "test-agent-004",
@@ -98,20 +168,31 @@ describe("E2B Service - unit tests with real E2B API", () => {
         prompt: "Quick question: what is today?",
       };
 
+      // Act
       const startTime = Date.now();
       const result = await e2bService.createRun(runId, options);
       const totalTime = Date.now() - startTime;
 
-      // Execution time should be reasonable
-      expect(result.executionTimeMs).toBeGreaterThan(0);
+      // Assert - Execution time should be reasonable
+      expect(result.executionTimeMs).toBeGreaterThanOrEqual(0);
       expect(result.executionTimeMs).toBeLessThanOrEqual(totalTime);
 
-      // Claude Code execution + E2B sandbox creation
-      expect(result.executionTimeMs).toBeGreaterThanOrEqual(100);
-      expect(result.executionTimeMs).toBeLessThan(600000); // Under 10 minutes
-    }, 600000);
+      // With mocks, execution should be fast
+      expect(result.executionTimeMs).toBeLessThan(10000); // Under 10 seconds
+
+      // Verify sandbox was created and cleaned up
+      expect(Sandbox.create).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
 
     it("should cleanup sandbox even on success", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
       const runId = "run-test-005";
       const options: CreateRunOptions = {
         agentConfigId: "test-agent-005",
@@ -119,44 +200,44 @@ describe("E2B Service - unit tests with real E2B API", () => {
         prompt: "Say goodbye",
       };
 
+      // Act
       const result = await e2bService.createRun(runId, options);
 
-      // Sandbox should be created and cleaned up
-      expect(result.sandboxId).toBeDefined();
+      // Assert - Sandbox should be created and cleaned up
+      expect(result.sandboxId).toBe("mock-sandbox-id-123");
       expect(result.status).toBe("completed");
       expect(result.output).not.toContain("Hello World from E2B!");
 
-      // Note: We cannot directly verify the sandbox was killed,
-      // but the service logs should show cleanup messages
-    }, 600000);
+      // Verify sandbox cleanup was called
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("error handling", () => {
     it("should handle E2B API errors gracefully", async () => {
-      // Save original API key
-      const originalKey = process.env.E2B_API_KEY;
+      // Arrange
+      vi.mocked(Sandbox.create).mockRejectedValue(
+        new Error("E2B API error: Invalid API key"),
+      );
 
-      try {
-        // Temporarily set invalid API key to trigger error
-        process.env.E2B_API_KEY = "invalid-key-123";
+      const runId = "run-test-error";
+      const options: CreateRunOptions = {
+        agentConfigId: "test-agent-error",
+        sandboxToken: "vm0_live_test_token",
+        prompt: "This should fail due to mocked error",
+      };
 
-        const runId = "run-test-error";
-        const options: CreateRunOptions = {
-          agentConfigId: "test-agent-error",
-          sandboxToken: "vm0_live_test_token",
-          prompt: "This should fail due to invalid API key",
-        };
+      // Act
+      const result = await e2bService.createRun(runId, options);
 
-        const result = await e2bService.createRun(runId, options);
+      // Assert - Should return failed status instead of throwing
+      expect(result.status).toBe("failed");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("E2B API error");
+      expect(result.sandboxId).toBe("unknown");
 
-        // Should return failed status instead of throwing
-        expect(result.status).toBe("failed");
-        expect(result.error).toBeDefined();
-        expect(result.sandboxId).toBe("unknown");
-      } finally {
-        // Restore original API key
-        process.env.E2B_API_KEY = originalKey;
-      }
-    }, 60000);
+      // Verify Sandbox.create was called but sandbox methods were not
+      expect(Sandbox.create).toHaveBeenCalledTimes(1);
+    });
   });
 });
