@@ -211,6 +211,87 @@ describe("E2B Service - mocked unit tests", () => {
       // Verify sandbox cleanup was called
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
+
+    it("should pass working_dir to sandbox when configured", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      const runId = "run-test-006";
+      const options: CreateRunOptions = {
+        agentConfigId: "test-agent-006",
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Read files from workspace",
+        agentConfig: {
+          version: "1.0",
+          agent: {
+            name: "test-agent",
+            description: "Test agent with working dir",
+            image: "test-image",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+            volumes: [],
+          },
+        },
+      };
+
+      // Act
+      const result = await e2bService.createRun(runId, options);
+
+      // Assert
+      expect(result.status).toBe("completed");
+
+      // Verify sandbox command was called with environment variables including working_dir
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      const commandCall = mockSandbox.commands.run.mock.calls[0];
+      expect(commandCall).toBeDefined();
+      expect(commandCall?.[0]).toBe("/usr/local/bin/run-agent.sh");
+      expect(commandCall?.[1]?.envs).toBeDefined();
+      expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
+        "/home/user/workspace",
+      );
+    });
+
+    it("should not set VM0_WORKING_DIR when not configured", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      const runId = "run-test-007";
+      const options: CreateRunOptions = {
+        agentConfigId: "test-agent-007",
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Read files",
+        agentConfig: {
+          version: "1.0",
+          agent: {
+            name: "test-agent",
+            description: "Test agent without working dir",
+            image: "test-image",
+            provider: "claude-code",
+            volumes: [],
+          },
+        },
+      };
+
+      // Act
+      const result = await e2bService.createRun(runId, options);
+
+      // Assert
+      expect(result.status).toBe("completed");
+
+      // Verify sandbox command was called without VM0_WORKING_DIR
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      const commandCall = mockSandbox.commands.run.mock.calls[0];
+      expect(commandCall).toBeDefined();
+      expect(commandCall?.[0]).toBe("/usr/local/bin/run-agent.sh");
+      expect(commandCall?.[1]?.envs).toBeDefined();
+      expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBeUndefined();
+    });
   });
 
   describe("error handling", () => {

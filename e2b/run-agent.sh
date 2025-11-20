@@ -6,6 +6,7 @@ RUN_ID="${VM0_RUN_ID}"
 WEBHOOK_URL="${VM0_WEBHOOK_URL}"
 WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
 PROMPT="${VM0_PROMPT}"
+WORKING_DIR="${VM0_WORKING_DIR:-/home/user}"
 
 # Send single event immediately
 send_event() {
@@ -21,6 +22,13 @@ send_event() {
     -H "Authorization: Bearer $WEBHOOK_TOKEN" \
     -d "$payload" \
     --silent --fail || echo "[ERROR] Failed to send event" >&2
+}
+
+# Change to working directory
+echo "[VM0] Working directory: $WORKING_DIR" >&2
+cd "$WORKING_DIR" || {
+  echo "[ERROR] Failed to change to working directory: $WORKING_DIR" >&2
+  exit 1
 }
 
 # Execute Claude Code with JSONL output
