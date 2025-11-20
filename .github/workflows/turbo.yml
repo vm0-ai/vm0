@@ -63,12 +63,24 @@ jobs:
 
           # Check CLI app
           cd ../cli
-          if npx turbo-ignore; then
-            echo "No changes detected in CLI app"
-            echo "cli-changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "Changes detected in CLI app"
+          CLI_CODE_CHANGED=false
+          if ! npx turbo-ignore; then
+            echo "Changes detected in CLI code"
+            CLI_CODE_CHANGED=true
+          fi
+
+          # Check E2E tests directory (outside turbo workspace)
+          cd /__w/vm0/vm0
+          if git diff --name-only HEAD~1 HEAD | grep -q "^e2e/"; then
+            echo "Changes detected in E2E tests"
+            CLI_CODE_CHANGED=true
+          fi
+
+          if [ "$CLI_CODE_CHANGED" = true ]; then
             echo "cli-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected in CLI app or E2E tests"
+            echo "cli-changed=false" >> $GITHUB_OUTPUT
           fi
 
   lint:
