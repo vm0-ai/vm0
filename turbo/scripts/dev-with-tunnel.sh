@@ -42,9 +42,11 @@ if ! command -v cloudflared &> /dev/null; then
 fi
 
 # Check if port 3000 is already in use
-if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+# Try to connect to the port - if connection succeeds, port is in use
+if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3000' 2>/dev/null; then
   log_error "Port 3000 is already in use!"
   log_error "Please stop any running dev server and try again."
+  log_error "You can find the process with: fuser 3000/tcp or ps aux | grep 3000"
   exit 1
 fi
 
@@ -67,12 +69,22 @@ cleanup() {
   if [ ! -z "$TUNNEL_PID" ] && kill -0 $TUNNEL_PID 2>/dev/null; then
     log_info "Stopping Cloudflare Tunnel (PID: $TUNNEL_PID)..."
     kill $TUNNEL_PID 2>/dev/null || true
+    # Wait a moment for graceful shutdown
+    sleep 1
+    # Force kill if still running
+    kill -9 $TUNNEL_PID 2>/dev/null || true
   fi
 
-  # Kill Next.js dev server
+  # Kill Next.js dev server and all its child processes
   if [ ! -z "$DEV_SERVER_PID" ] && kill -0 $DEV_SERVER_PID 2>/dev/null; then
     log_info "Stopping Next.js dev server (PID: $DEV_SERVER_PID)..."
-    kill $DEV_SERVER_PID 2>/dev/null || true
+    # Kill the pnpm process and its entire process group
+    kill -- -$(ps -o pgid= $DEV_SERVER_PID | grep -o '[0-9]*') 2>/dev/null || kill $DEV_SERVER_PID 2>/dev/null || true
+    # Wait a moment
+    sleep 1
+    # Force kill any remaining processes
+    pkill -9 -P $DEV_SERVER_PID 2>/dev/null || true
+    kill -9 $DEV_SERVER_PID 2>/dev/null || true
   fi
 
   log_info "Cleanup complete."
@@ -156,26 +168,40 @@ DEV_SERVER_PID=$!
 log_info "Waiting for Next.js to be ready..."
 MAX_WAIT=120
 WAITED=0
+NEXTJS_READY=false
 
 while [ $WAITED -lt $MAX_WAIT ]; do
-  if curl -s http://localhost:3000 > /dev/null 2>&1; then
-    log_info "✅ Next.js dev server is ready!"
-    break
-  fi
-
   # Check if dev server process is still running
   if ! kill -0 $DEV_SERVER_PID 2>/dev/null; then
-    log_error "Next.js dev server failed to start!"
+    log_error "Next.js dev server process died!"
     log_error "Check logs: /tmp/nextjs-dev.log"
     tail -50 /tmp/nextjs-dev.log
     exit 1
+  fi
+
+  # Check for startup errors in logs
+  if grep -q "EADDRINUSE" /tmp/nextjs-dev.log 2>/dev/null; then
+    log_error "Port 3000 is already in use (detected in Next.js logs)!"
+    log_error "Check logs: /tmp/nextjs-dev.log"
+    tail -20 /tmp/nextjs-dev.log
+    exit 1
+  fi
+
+  # Check if Next.js is ready by looking for "Ready" in logs
+  if grep -q "Ready in" /tmp/nextjs-dev.log 2>/dev/null; then
+    # Double-check that port is actually listening
+    if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3000' 2>/dev/null; then
+      log_info "✅ Next.js dev server is ready!"
+      NEXTJS_READY=true
+      break
+    fi
   fi
 
   sleep 2
   WAITED=$((WAITED + 2))
 done
 
-if [ $WAITED -ge $MAX_WAIT ]; then
+if [ "$NEXTJS_READY" = false ]; then
   log_error "Next.js dev server failed to start within ${MAX_WAIT} seconds"
   log_error "Check logs: /tmp/nextjs-dev.log"
   tail -50 /tmp/nextjs-dev.log
