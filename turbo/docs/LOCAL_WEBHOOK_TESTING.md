@@ -36,6 +36,7 @@ pnpm dev:tunnel
 ```
 
 This single command will:
+
 1. ✅ Start Cloudflare Tunnel
 2. ✅ Get a public HTTPS URL (e.g., `https://random.trycloudflare.com`)
 3. ✅ Set `VM0_API_URL` to the tunnel URL
@@ -126,6 +127,7 @@ Press `Ctrl+C` to stop both the tunnel and dev server. The script will clean up 
 **Error**: `Port 3000 is already in use!`
 
 **Solution**: Stop any running dev servers:
+
 ```bash
 # Find and kill processes on port 3000
 lsof -ti:3000 | xargs kill -9
@@ -136,6 +138,7 @@ lsof -ti:3000 | xargs kill -9
 **Issue**: Tunnel URL returns errors when accessed externally
 
 **Reasons**:
+
 - Tunnel may take 15-20 seconds to become fully accessible
 - This is normal behavior for temporary tunnels
 
@@ -146,6 +149,7 @@ lsof -ti:3000 | xargs kill -9
 **Error**: `cloudflared not found!`
 
 **Solution**: Rebuild your devcontainer:
+
 1. Open VS Code Command Palette (`Cmd/Ctrl+Shift+P`)
 2. Select "Dev Containers: Rebuild Container"
 3. Wait for rebuild to complete
@@ -156,16 +160,19 @@ lsof -ti:3000 | xargs kill -9
 **Check these**:
 
 1. **Verify tunnel is running**:
+
    ```bash
    ps aux | grep cloudflared
    ```
 
 2. **Check tunnel logs**:
+
    ```bash
    tail -f /tmp/cloudflared-dev.log
    ```
 
 3. **Verify VM0_API_URL is set**:
+
    ```bash
    # In the dev server terminal, you should see it in the output
    ```
@@ -191,6 +198,7 @@ lsof -ti:3000 | xargs kill -9
 ### HTTP/2 Protocol
 
 The script uses `--protocol http2` flag for cloudflared because:
+
 - ✅ HTTP/2 works reliably in devcontainer environments
 - ❌ QUIC (default) fails with connection timeouts
 - This was discovered during POC testing
@@ -207,11 +215,13 @@ The script uses `--protocol http2` flag for cloudflared because:
 ### View Logs in Real-Time
 
 **Tunnel logs**:
+
 ```bash
 tail -f /tmp/cloudflared-dev.log
 ```
 
 **Next.js logs**:
+
 ```bash
 tail -f /tmp/nextjs-dev.log
 ```

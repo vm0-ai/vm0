@@ -147,11 +147,9 @@ echo ""
 
 cd "$WEB_APP_DIR"
 
-# Export VM0_API_URL for the dev server
-export VM0_API_URL="$TUNNEL_URL"
-
-# Start dev server in background
-pnpm dev > /tmp/nextjs-dev.log 2>&1 &
+# Start dev server in background with VM0_API_URL set (not exported)
+# This way the variable is only set for the dev server process
+VM0_API_URL="$TUNNEL_URL" pnpm dev > /tmp/nextjs-dev.log 2>&1 &
 DEV_SERVER_PID=$!
 
 # Wait for dev server to be ready
