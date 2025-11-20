@@ -150,4 +150,3 @@ settings.local.json
 
 # Local HTTPS certificates
 .certs/
-uspark/
