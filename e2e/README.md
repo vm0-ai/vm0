@@ -8,14 +8,14 @@ End-to-end tests using BATS (Bash Automated Testing System).
 e2e/
 ├── .bats/                # BATS installation (git-ignored)
 ├── fixtures/             # Test data and expected outputs
-│   ├── configs/         # Configuration files for testing
+│   ├── configs/         # Agent configuration files for testing
 │   ├── inputs/          # Input data files
 │   └── expected/        # Expected output snapshots
 ├── helpers/             # Shared test helpers
 │   └── setup.bash       # Common setup/teardown functions
 ├── tests/               # Test suites
-│   ├── 01-basic/       # Basic functionality tests
-│   ├── 02-commands/    # Command-specific tests
+│   ├── 01-smoke/       # Smoke tests (hello, help, info)
+│   ├── 02-commands/    # Command-specific tests (build, run)
 │   ├── 03-pipes/       # Pipe and stdin tests
 │   ├── 04-errors/      # Error handling tests
 │   └── 05-integration/ # Integration tests
@@ -194,6 +194,26 @@ chmod +x run.sh
 chmod +x tests/**/*.bats
 ```
 
+## Test Suites
+
+### 01-smoke
+Basic smoke tests that verify CLI availability and core functionality:
+- `t01-smoke.bats`: Tests for `vm0 hello`, `vm0 --help`, and `vm0 info` commands
+
+### 02-commands
+Command-specific end-to-end tests:
+- `t02-run.bats`: Tests for `vm0 run` command with agent execution
+  - Builds test agent configuration from fixtures
+  - Executes simple math task ("1+1=?")
+  - Validates successful completion with `[result]` event
+  - Verifies error-free execution
+
+**Agent Configuration Fixtures:**
+- `fixtures/configs/vm0-test-math.yaml`: Test agent config for math tasks
+  - Uses `vm0-claude-code:test` image
+  - Provider: `claude-code`
+  - Working directory: `/home/user/workspace`
+
 ## Contributing
 
 1. Add tests for new features in appropriate category
@@ -201,3 +221,4 @@ chmod +x tests/**/*.bats
 3. Include both success and failure cases
 4. Test edge cases and error conditions
 5. Keep tests isolated and independent
+6. Place test fixtures in `fixtures/configs/` for agent configurations
