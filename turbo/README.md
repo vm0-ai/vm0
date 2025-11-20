@@ -76,6 +76,17 @@ yarn exec turbo dev
 pnpm exec turbo dev
 ```
 
+#### Local Webhook Testing
+
+To test E2B webhook callbacks locally (without deploying to staging/production):
+
+```bash
+cd turbo
+pnpm dev:tunnel
+```
+
+This starts a Cloudflare Tunnel that exposes your local dev server, allowing E2B sandboxes to send webhook events to localhost. See [Local Webhook Testing Guide](./docs/LOCAL_WEBHOOK_TESTING.md) for details.
+
 You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
 
 ```
