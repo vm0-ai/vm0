@@ -286,6 +286,7 @@ export class E2BService {
 
     const result = await sandbox.commands.run(scriptPath, {
       envs,
+      timeoutMs: 0, // No timeout - allows indefinite execution
     });
 
     const executionTimeMs = Date.now() - execStart;
