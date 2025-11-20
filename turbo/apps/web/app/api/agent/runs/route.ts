@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
         prompt: body.prompt,
         dynamicVars: body.dynamicVars,
         sandboxToken,
+        agentConfig: config.config, // Pass full config for volume resolution
       })
       .then((result) => {
         // Update run with results on success

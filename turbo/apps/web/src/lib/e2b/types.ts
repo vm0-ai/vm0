@@ -7,6 +7,7 @@ export interface CreateRunOptions {
   prompt: string;
   dynamicVars?: Record<string, string>;
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
+  agentConfig?: unknown; // Full agent config JSONB for volume resolution
 }
 
 export interface RunResult {
