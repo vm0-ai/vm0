@@ -67,8 +67,19 @@ export class E2BService {
 
     try {
       // Get API configuration
-      const apiUrl =
-        globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
+      // Priority: VM0_API_URL > VERCEL_URL (for preview deployments) > localhost
+      let apiUrl = globalThis.services?.env?.VM0_API_URL;
+
+      if (!apiUrl && process.env.VERCEL_URL) {
+        // Vercel preview deployments: use VERCEL_URL with https
+        apiUrl = `https://${process.env.VERCEL_URL}`;
+        console.log(`[E2B] Using Vercel deployment URL: ${apiUrl}`);
+      } else if (!apiUrl) {
+        // Local development fallback
+        apiUrl = "http://localhost:3000";
+        console.log(`[E2B] Using localhost fallback: ${apiUrl}`);
+      }
+
       const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
 
       console.log(`[E2B] API URL: ${apiUrl}`);

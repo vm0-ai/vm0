@@ -26,8 +26,26 @@ async function pollEvents(runId: string): Promise<void> {
   let nextSequence = 0;
   let complete = false;
   const pollIntervalMs = 500;
+  const timeoutMs = 3 * 60 * 1000; // 3 minutes timeout
+  const startTime = Date.now();
 
   while (!complete) {
+    // Check timeout
+    const elapsed = Date.now() - startTime;
+    if (elapsed > timeoutMs) {
+      console.error(
+        chalk.red(
+          "\n✗ Agent execution timed out after 3 minutes without receiving events",
+        ),
+      );
+      console.error(
+        chalk.gray(
+          "  This usually means the agent's webhook configuration is incorrect or unreachable",
+        ),
+      );
+      throw new Error("Agent execution timed out");
+    }
+
     try {
       const response = await apiClient.getEvents(runId, {
         since: nextSequence,
