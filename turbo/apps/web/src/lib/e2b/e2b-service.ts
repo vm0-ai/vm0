@@ -70,13 +70,19 @@ export class E2BService {
       // Get API configuration with dynamic fallback logic
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
       const envVars = globalThis.services?.env;
-      let apiUrl = envVars?.VM0_API_URL;
+
+      // Read Vercel system variables directly from process.env
+      // These may not be available through the validated env schema
+      const vercelEnv = process.env.VERCEL_ENV;
+      const vercelUrl = process.env.VERCEL_URL;
+
+      let apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
 
       if (!apiUrl) {
         // If no explicit URL, determine based on VERCEL_ENV
-        if (envVars?.VERCEL_ENV === "preview" && envVars?.VERCEL_URL) {
-          apiUrl = `https://${envVars.VERCEL_URL}`;
-        } else if (envVars?.VERCEL_ENV === "production") {
+        if (vercelEnv === "preview" && vercelUrl) {
+          apiUrl = `https://${vercelUrl}`;
+        } else if (vercelEnv === "production") {
           apiUrl = "https://www.vm0.ai";
         } else {
           apiUrl = "http://localhost:3000";
@@ -86,7 +92,7 @@ export class E2BService {
       const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
 
       console.log(
-        `[E2B] Environment - VERCEL_ENV: ${envVars?.VERCEL_ENV}, VERCEL_URL: ${envVars?.VERCEL_URL}, VM0_API_URL: ${envVars?.VM0_API_URL}`,
+        `[E2B] Environment - VERCEL_ENV: ${vercelEnv}, VERCEL_URL: ${vercelUrl}, VM0_API_URL: ${apiUrl}`,
       );
       console.log(`[E2B] Computed API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook: ${webhookEndpoint}`);
