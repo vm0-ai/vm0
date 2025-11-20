@@ -71,6 +71,10 @@ export class E2BService {
       let apiUrl = globalThis.services?.env?.VM0_API_URL;
       const vercelUrl = globalThis.services?.env?.VERCEL_URL;
 
+      console.log(
+        `[E2B] Environment check - VM0_API_URL: ${apiUrl}, VERCEL_URL: ${vercelUrl}, process.env.VERCEL_URL: ${process.env.VERCEL_URL}`,
+      );
+
       // If apiUrl is the default localhost value and VERCEL_URL is available, use VERCEL_URL instead
       if (apiUrl === "http://localhost:3000" && vercelUrl) {
         // Vercel preview deployments: use VERCEL_URL with https
