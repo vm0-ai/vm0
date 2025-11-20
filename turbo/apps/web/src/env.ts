@@ -14,7 +14,14 @@ function initEnv() {
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       E2B_TEMPLATE_NAME: z.string().min(1).optional(),
-      VM0_API_URL: z.string().url().optional().default("http://localhost:3000"),
+      VM0_API_URL: z
+        .string()
+        .url()
+        .default(
+          process.env.NODE_ENV === "production"
+            ? "https://www.vm0.ai"
+            : "http://localhost:3000",
+        ),
       MINIMAX_ANTHROPIC_BASE_URL: z.string().url().optional(),
       MINIMAX_API_KEY: z.string().min(1).optional(),
       AWS_REGION: z.string().min(1),
