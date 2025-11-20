@@ -43,10 +43,10 @@ export async function getToken(): Promise<string | undefined> {
 
 export async function getApiUrl(): Promise<string> {
   const config = await loadConfig();
-  const apiHost = process.env.API_HOST;
-  if (apiHost) {
+  const apiUrl = process.env.VM0_API_URL;
+  if (apiUrl) {
     // Add protocol if missing
-    return apiHost.startsWith("http") ? apiHost : `https://${apiHost}`;
+    return apiUrl.startsWith("http") ? apiUrl : `https://${apiUrl}`;
   }
   // Fallback to production API if no config or env var
   return config.apiUrl ?? "https://www.vm0.ai";

@@ -233,7 +233,7 @@ jobs:
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
           cd e2e && npm run auth
         env:
-          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -241,4 +241,4 @@ jobs:
       - name: Run CLI E2E Tests
         run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
         env:
-          API_HOST: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}

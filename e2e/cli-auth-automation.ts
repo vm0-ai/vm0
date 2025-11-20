@@ -17,7 +17,7 @@ dotenv.config({ path: ".env.local" });
  * 2. Parse device code
  * 3. Use Playwright to auto-login and enter code
  *
- * @param apiHost - API server address, defaults to environment variable API_HOST or localhost:3000
+ * @param apiHost - API server address, defaults to environment variable VM0_API_URL or localhost:3000
  */
 export async function automateCliAuth(apiHost?: string) {
   let cliProcess: ChildProcess | null = null;
@@ -27,8 +27,8 @@ export async function automateCliAuth(apiHost?: string) {
     console.log("🚀 Starting CLI authentication flow...");
 
     // Step 1: Start CLI auth command
-    // Use provided apiHost or environment variable API_HOST, defaults to localhost:3000
-    const apiUrl = apiHost || process.env.API_HOST || "http://localhost:3000";
+    // Use provided apiHost or environment variable VM0_API_URL, defaults to localhost:3000
+    const apiUrl = apiHost || process.env.VM0_API_URL || "http://localhost:3000";
     console.log(`📡 Connecting to API: ${apiUrl}`);
 
     // Always use globally installed vm0 command
@@ -38,7 +38,7 @@ export async function automateCliAuth(apiHost?: string) {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        API_HOST: apiUrl,  // Set API_HOST environment variable
+        VM0_API_URL: apiUrl,  // Set VM0_API_URL environment variable
         // Pass Vercel bypass secret if available (for CI/preview deployments)
         ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
           VERCEL_AUTOMATION_BYPASS_SECRET: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
@@ -257,8 +257,8 @@ export async function automateCliAuth(apiHost?: string) {
 
 // If running this script directly
 if (require.main === module) {
-  // Can specify API_HOST via command line argument or environment variable
-  const apiHost = process.argv[2] || process.env.API_HOST;
+  // Can specify VM0_API_URL via command line argument or environment variable
+  const apiHost = process.argv[2] || process.env.VM0_API_URL;
 
   automateCliAuth(apiHost)
     .then(() => {

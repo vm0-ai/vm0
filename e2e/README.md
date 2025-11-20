@@ -45,9 +45,9 @@ Required environment variables:
 - Authenticated with 1Password: `op signin`
 - Access to `Development/vm0-env-local` vault
 
-**Note:** For local testing, set `API_HOST` environment variable:
+**Note:** For local testing, set `VM0_API_URL` environment variable:
 ```bash
-API_HOST=http://localhost:3000 npm run auth
+VM0_API_URL=http://localhost:3000 npm run auth
 ```
 By default, the CLI uses production API at `https://www.vm0.ai`.
 

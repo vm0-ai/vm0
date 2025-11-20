@@ -55,7 +55,7 @@ Prerequisites:
 ## Technical details:
 
 The authentication script (`e2e/cli-auth-automation.ts`):
-- Spawns `uspark auth login` with `API_HOST=http://localhost:3000`
+- Spawns `uspark auth login` with `VM0_API_URL=http://localhost:3000`
 - Launches Playwright browser in headless mode
 - Logs in via Clerk using `e2e+clerk_test@vm0.ai`
 - Automatically enters the CLI device code

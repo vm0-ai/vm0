@@ -39,7 +39,7 @@ const authCommand = program
 
 authCommand
   .command("login")
-  .description("Log in to VM0 (use API_HOST env var to set API URL)")
+  .description("Log in to VM0 (use VM0_API_URL env var to set API URL)")
   .action(async () => {
     await authenticate();
   });
