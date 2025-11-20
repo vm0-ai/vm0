@@ -15,7 +15,10 @@
     "E2B_TEMPLATE_NAME",
     "VM0_API_URL",
     "MINIMAX_ANTHROPIC_BASE_URL",
-    "MINIMAX_API_KEY"
+    "MINIMAX_API_KEY",
+    "AWS_REGION",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY"
   ],
   "tasks": {
     "build": {

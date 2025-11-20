@@ -17,6 +17,9 @@ function initEnv() {
       VM0_API_URL: z.string().url().optional().default("http://localhost:3000"),
       MINIMAX_ANTHROPIC_BASE_URL: z.string().url().optional(),
       MINIMAX_API_KEY: z.string().min(1).optional(),
+      AWS_REGION: z.string().min(1),
+      AWS_ACCESS_KEY_ID: z.string().min(1),
+      AWS_SECRET_ACCESS_KEY: z.string().min(1),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -30,6 +33,9 @@ function initEnv() {
       VM0_API_URL: process.env.VM0_API_URL,
       MINIMAX_ANTHROPIC_BASE_URL: process.env.MINIMAX_ANTHROPIC_BASE_URL,
       MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
+      AWS_REGION: process.env.AWS_REGION,
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },
