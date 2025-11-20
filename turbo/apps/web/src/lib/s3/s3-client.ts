@@ -36,6 +36,16 @@ export function parseS3Uri(uri: string): S3Uri {
 function getS3Client(): S3Client {
   const envVars = env();
 
+  if (
+    !envVars.AWS_REGION ||
+    !envVars.AWS_ACCESS_KEY_ID ||
+    !envVars.AWS_SECRET_ACCESS_KEY
+  ) {
+    throw new Error(
+      "AWS credentials not configured. Set AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY environment variables.",
+    );
+  }
+
   return new S3Client({
     region: envVars.AWS_REGION,
     credentials: {

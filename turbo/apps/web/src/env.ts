@@ -24,9 +24,9 @@ function initEnv() {
         ),
       MINIMAX_ANTHROPIC_BASE_URL: z.string().url().optional(),
       MINIMAX_API_KEY: z.string().min(1).optional(),
-      AWS_REGION: z.string().min(1),
-      AWS_ACCESS_KEY_ID: z.string().min(1),
-      AWS_SECRET_ACCESS_KEY: z.string().min(1),
+      AWS_REGION: z.string().min(1).optional(),
+      AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+      AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
