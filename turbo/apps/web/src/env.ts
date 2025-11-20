@@ -13,7 +13,14 @@ function initEnv() {
         .default("development"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
-      VM0_API_URL: z.string().url().optional().default("http://localhost:3000"),
+      VM0_API_URL: z
+        .string()
+        .url()
+        .default(
+          process.env.NODE_ENV === "production"
+            ? "https://www.vm0.ai"
+            : "http://localhost:3000",
+        ),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),

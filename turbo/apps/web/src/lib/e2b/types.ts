@@ -7,6 +7,7 @@ export interface CreateRunOptions {
   prompt: string;
   dynamicVars?: Record<string, string>;
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
+  apiUrl?: string; // Override API URL (auto-detected from request or from env)
 }
 
 export interface RunResult {
