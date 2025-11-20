@@ -37,7 +37,9 @@ export class E2BService {
         await this.uploadDirectoryToSandbox(sandbox, localPath, remoteFilePath);
       } else {
         const content = await fs.promises.readFile(localPath);
-        await sandbox.files.write(remoteFilePath, content);
+        // Convert Buffer to Uint8Array which E2B accepts
+        const uint8Content = new Uint8Array(content);
+        await sandbox.files.write(remoteFilePath, uint8Content);
       }
     }
   }
