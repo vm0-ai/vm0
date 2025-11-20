@@ -69,17 +69,17 @@ export class E2BService {
       // Get API configuration
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview deployments) > localhost
       let apiUrl = globalThis.services?.env?.VM0_API_URL;
+      const vercelUrl = globalThis.services?.env?.VERCEL_URL;
 
       // If apiUrl is the default localhost value and VERCEL_URL is available, use VERCEL_URL instead
-      if (apiUrl === "http://localhost:3000" && process.env.VERCEL_URL) {
+      if (apiUrl === "http://localhost:3000" && vercelUrl) {
         // Vercel preview deployments: use VERCEL_URL with https
-        apiUrl = `https://${process.env.VERCEL_URL}`;
+        apiUrl = `https://${vercelUrl}`;
         console.log(`[E2B] Using Vercel deployment URL: ${apiUrl}`);
       } else if (!apiUrl || apiUrl === "http://localhost:3000") {
         // Local development fallback
-        console.log(
-          `[E2B] Using localhost fallback: ${apiUrl || "http://localhost:3000"}`,
-        );
+        apiUrl = "http://localhost:3000";
+        console.log(`[E2B] Using localhost fallback: ${apiUrl}`);
       } else {
         // Explicit VM0_API_URL was provided
         console.log(`[E2B] Using explicit API URL: ${apiUrl}`);
