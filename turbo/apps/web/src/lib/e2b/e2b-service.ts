@@ -219,7 +219,7 @@ export class E2BService {
     envVars: Record<string, string>,
   ): Promise<Sandbox> {
     const sandboxOptions = {
-      timeoutMs: e2bConfig.defaultTimeout,
+      timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
       envs: envVars, // Pass environment variables to sandbox
     };
 
