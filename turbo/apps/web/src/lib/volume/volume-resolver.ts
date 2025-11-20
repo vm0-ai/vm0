@@ -16,15 +16,15 @@ export function parseMountPath(declaration: string): {
   mountPath: string;
 } {
   const parts = declaration.split(":");
-  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+  if (parts.length !== 2 || !parts[0]!.trim() || !parts[1]!.trim()) {
     throw new Error(
       `Invalid volume declaration: ${declaration}. Expected format: volume-name:/mount/path`,
     );
   }
 
   return {
-    volumeName: parts[0].trim(),
-    mountPath: parts[1].trim(),
+    volumeName: parts[0]!.trim(),
+    mountPath: parts[1]!.trim(),
   };
 }
 
@@ -44,13 +44,13 @@ export function replaceTemplateVars(
 
   const matches = uri.matchAll(templatePattern);
   for (const match of matches) {
-    const varName = match[1];
+    const varName = match[1]!;
     const value = vars[varName];
 
     if (value === undefined) {
       missingVars.push(varName);
     } else {
-      result = result.replace(match[0], value);
+      result = result.replace(match[0]!, value);
     }
   }
 

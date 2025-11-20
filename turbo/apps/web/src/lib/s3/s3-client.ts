@@ -25,7 +25,7 @@ export function parseS3Uri(uri: string): S3Uri {
   }
 
   return {
-    bucket: match[1],
+    bucket: match[1]!,
     prefix: match[2] || "",
   };
 }

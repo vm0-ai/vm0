@@ -41,7 +41,7 @@ export class E2BService {
         const arrayBuffer = content.buffer.slice(
           content.byteOffset,
           content.byteOffset + content.byteLength,
-        );
+        ) as ArrayBuffer;
         await sandbox.files.write(remoteFilePath, arrayBuffer);
       }
     }
