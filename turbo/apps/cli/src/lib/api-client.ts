@@ -49,10 +49,18 @@ class ApiClient {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
 
-    return {
+    const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     };
+
+    // Add Vercel bypass secret if available (for CI/preview deployments)
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      headers["x-vercel-protection-bypass"] = bypassSecret;
+    }
+
+    return headers;
   }
 
   private async getBaseUrl(): Promise<string> {
