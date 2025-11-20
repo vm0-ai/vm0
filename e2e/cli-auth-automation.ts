@@ -124,33 +124,26 @@ export async function automateCliAuth(apiHost?: string) {
       headless: true, // Run in headless mode
     });
 
-    // Build context options with Vercel bypass headers if available
-    const contextOptions: any = {};
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      contextOptions.extraHTTPHeaders = {
-        'x-vercel-protection-bypass': bypassSecret,
-        'x-vercel-set-bypass-cookie': 'samesitenone' // For cross-site requests in browser
-      };
-      console.log("🔓 Configuring Vercel bypass for browser requests");
-    }
-
-    const context = await browser.newContext(contextOptions);
+    const context = await browser.newContext();
     const page = await context.newPage();
 
     // Step 4: Setup Clerk authentication
     await clerkSetup();
 
     // Step 5: Login to Clerk
-    // Navigate to sign-in page where Clerk components are available
+    // Use configured API URL
     const baseUrl = apiUrl;
-    const signInUrl = `${baseUrl}/sign-in`;
 
-    console.log(`🔗 Navigating to Clerk sign-in: ${signInUrl}`);
-    await page.goto(signInUrl, { waitUntil: 'load' });
-    // Don't wait for networkidle as Clerk may have continuous polling
-    console.log("✅ Sign-in page loaded, attempting authentication");
+    // If Vercel bypass secret is available, set bypass cookie via query parameter
+    // This avoids CORS issues that occur when using HTTP headers
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    let initialUrl = baseUrl;
+    if (bypassSecret) {
+      initialUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
+      console.log("🔓 Setting Vercel bypass cookie via query parameter");
+    }
 
+    await page.goto(initialUrl);
     await clerk.signIn({
       page,
       emailAddress: "e2e+clerk_test@vm0.ai",
