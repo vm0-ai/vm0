@@ -5,6 +5,7 @@ import type {
   VolumeResolutionResult,
   VolumeError,
 } from "./types";
+import { normalizeGitUrl, validateGitUrl } from "../git/git-client";
 
 /**
  * Parse mount path declaration
@@ -103,38 +104,105 @@ export function resolveVolumes(
         continue;
       }
 
-      // Validate driver (MVP only supports s3fs)
-      if (volumeConfig.driver !== "s3fs") {
+      // Validate driver
+      if (volumeConfig.driver !== "s3fs" && volumeConfig.driver !== "git") {
         errors.push({
           volumeName,
-          message: `Unsupported volume driver: ${volumeConfig.driver}. Only s3fs is supported.`,
+          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: s3fs, git.`,
           type: "invalid_uri",
         });
         continue;
       }
 
-      // Replace template variables
-      const { uri, missingVars } = replaceTemplateVars(
-        volumeConfig.driver_opts.uri,
-        dynamicVars,
-      );
+      // Handle S3 volumes
+      if (volumeConfig.driver === "s3fs") {
+        // Replace template variables
+        const { uri, missingVars } = replaceTemplateVars(
+          volumeConfig.driver_opts.uri,
+          dynamicVars,
+        );
 
-      if (missingVars.length > 0) {
-        errors.push({
-          volumeName,
-          message: `Missing required variables: ${missingVars.join(", ")}`,
-          type: "missing_variable",
+        if (missingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables: ${missingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        // Validate region is provided for S3
+        if (!volumeConfig.driver_opts.region) {
+          errors.push({
+            volumeName,
+            message: "S3 volumes require 'region' in driver_opts",
+            type: "invalid_uri",
+          });
+          continue;
+        }
+
+        // Add resolved S3 volume
+        volumes.push({
+          name: volumeName,
+          driver: "s3fs",
+          mountPath,
+          s3Uri: uri,
+          region: volumeConfig.driver_opts.region,
         });
-        continue;
       }
 
-      // Add resolved volume
-      volumes.push({
-        name: volumeName,
-        s3Uri: uri,
-        mountPath,
-        region: volumeConfig.driver_opts.region,
-      });
+      // Handle Git volumes
+      if (volumeConfig.driver === "git") {
+        // Replace template variables in URI
+        const { uri, missingVars } = replaceTemplateVars(
+          volumeConfig.driver_opts.uri,
+          dynamicVars,
+        );
+
+        if (missingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables: ${missingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        // Normalize and validate Git URL
+        const normalizedUrl = normalizeGitUrl(uri);
+        if (!validateGitUrl(normalizedUrl)) {
+          errors.push({
+            volumeName,
+            message: `Invalid Git URL: ${uri}. Only HTTPS URLs are supported.`,
+            type: "invalid_uri",
+          });
+          continue;
+        }
+
+        // Replace template variables in branch (default to main)
+        const branchTemplate = volumeConfig.driver_opts.branch || "main";
+        const { uri: branch, missingVars: branchMissingVars } =
+          replaceTemplateVars(branchTemplate, dynamicVars);
+
+        if (branchMissingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables in branch: ${branchMissingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        // Add resolved Git volume
+        volumes.push({
+          name: volumeName,
+          driver: "git",
+          mountPath,
+          gitUri: normalizedUrl,
+          gitBranch: branch,
+          gitToken: volumeConfig.driver_opts.token,
+        });
+      }
     } catch (error) {
       errors.push({
         volumeName: "unknown",

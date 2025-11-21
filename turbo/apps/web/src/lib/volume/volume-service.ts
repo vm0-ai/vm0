@@ -3,6 +3,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveVolumes } from "./volume-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
+import {
+  buildAuthenticatedUrl,
+  buildGitCloneCommand,
+  sanitizeGitUrlForLogging,
+} from "../git/git-client";
 import type {
   AgentVolumeConfig,
   PreparedVolume,
@@ -67,31 +72,49 @@ export class VolumeService {
 
     const preparedVolumes: PreparedVolume[] = [];
 
-    // Download each volume from S3
+    // Process each volume based on driver type
     for (const volume of volumeResult.volumes) {
       try {
-        const localPath = path.join(tempDir, volume.name);
-        const downloadResult = await downloadS3Directory(
-          volume.s3Uri,
-          localPath,
-        );
-        console.log(
-          `[Volume] Downloaded volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-        );
+        if (volume.driver === "s3fs") {
+          // Download S3 volumes to temp directory
+          const localPath = path.join(tempDir, volume.name);
+          const downloadResult = await downloadS3Directory(
+            volume.s3Uri!,
+            localPath,
+          );
+          console.log(
+            `[Volume] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+          );
 
-        preparedVolumes.push({
-          name: volume.name,
-          localPath,
-          mountPath: volume.mountPath,
-          s3Uri: volume.s3Uri,
-        });
+          preparedVolumes.push({
+            name: volume.name,
+            driver: "s3fs",
+            localPath,
+            mountPath: volume.mountPath,
+            s3Uri: volume.s3Uri,
+          });
+        } else if (volume.driver === "git") {
+          // Git volumes: store metadata only (clone happens in sandbox)
+          console.log(
+            `[Volume] Prepared Git volume "${volume.name}": ${sanitizeGitUrlForLogging(volume.gitUri!)} (${volume.gitBranch})`,
+          );
+
+          preparedVolumes.push({
+            name: volume.name,
+            driver: "git",
+            mountPath: volume.mountPath,
+            gitUri: volume.gitUri,
+            gitBranch: volume.gitBranch,
+            gitToken: volume.gitToken,
+          });
+        }
       } catch (error) {
         console.error(
-          `[Volume] Failed to download volume "${volume.name}":`,
+          `[Volume] Failed to prepare volume "${volume.name}":`,
           error,
         );
         errors.push(
-          `${volume.name}: Failed to download - ${error instanceof Error ? error.message : "Unknown error"}`,
+          `${volume.name}: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     }
@@ -117,30 +140,85 @@ export class VolumeService {
     }
 
     console.log(
-      `[Volume] Uploading ${preparedVolumes.length} volumes to sandbox...`,
+      `[Volume] Mounting ${preparedVolumes.length} volumes to sandbox...`,
     );
 
     for (const volume of preparedVolumes) {
       try {
-        // Check if directory exists before uploading
-        const stat = await fs.promises.stat(volume.localPath).catch(() => null);
-        if (stat) {
-          await this.uploadDirectoryToSandbox(
+        if (volume.driver === "s3fs") {
+          // Upload S3 volumes from local temp to sandbox
+          const stat = await fs.promises
+            .stat(volume.localPath!)
+            .catch(() => null);
+          if (stat) {
+            await this.uploadDirectoryToSandbox(
+              sandbox,
+              volume.localPath!,
+              volume.mountPath,
+            );
+            console.log(
+              `[Volume] Uploaded S3 volume "${volume.name}" to ${volume.mountPath}`,
+            );
+          }
+        } else if (volume.driver === "git") {
+          // Clone Git repository directly in sandbox
+          await this.cloneGitRepo(
             sandbox,
-            volume.localPath,
+            volume.gitUri!,
+            volume.gitBranch!,
             volume.mountPath,
+            volume.gitToken,
           );
           console.log(
-            `[Volume] Uploaded volume "${volume.name}" to ${volume.mountPath}`,
+            `[Volume] Cloned Git volume "${volume.name}" to ${volume.mountPath}`,
           );
         }
       } catch (error) {
         console.error(
-          `[Volume] Failed to upload volume "${volume.name}":`,
+          `[Volume] Failed to mount volume "${volume.name}":`,
           error,
         );
+        throw error;
       }
     }
+  }
+
+  /**
+   * Clone Git repository directly in E2B sandbox
+   * @param sandbox - E2B sandbox instance
+   * @param gitUri - Git repository URL
+   * @param branch - Branch to clone
+   * @param mountPath - Target directory path
+   * @param token - Authentication token (optional)
+   */
+  private async cloneGitRepo(
+    sandbox: Sandbox,
+    gitUri: string,
+    branch: string,
+    mountPath: string,
+    token?: string,
+  ): Promise<void> {
+    // Build authenticated URL if token provided
+    const authUrl = buildAuthenticatedUrl(gitUri, token);
+
+    // Build clone command
+    const cloneCommand = buildGitCloneCommand(authUrl, branch, mountPath);
+
+    // Log sanitized command
+    console.log(
+      `[Volume] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch})`,
+    );
+
+    // Execute git clone in sandbox
+    const result = await sandbox.commands.run(cloneCommand);
+
+    // Check for errors
+    if (result.exitCode !== 0) {
+      const errorMessage = result.stderr || result.stdout || "Unknown error";
+      throw new Error(`Git clone failed: ${errorMessage}`);
+    }
+
+    console.log(`[Volume] Git clone successful: ${mountPath}`);
   }
 
   /**

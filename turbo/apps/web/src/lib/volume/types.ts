@@ -5,7 +5,9 @@ export interface VolumeConfig {
   driver: string;
   driver_opts: {
     uri: string;
-    region: string;
+    region?: string;
+    branch?: string;
+    token?: string;
   };
 }
 
@@ -14,9 +16,13 @@ export interface VolumeConfig {
  */
 export interface ResolvedVolume {
   name: string;
-  s3Uri: string;
+  driver: string;
   mountPath: string;
-  region: string;
+  s3Uri?: string;
+  region?: string;
+  gitUri?: string;
+  gitBranch?: string;
+  gitToken?: string;
 }
 
 /**
@@ -52,9 +58,13 @@ export interface AgentVolumeConfig {
  */
 export interface PreparedVolume {
   name: string;
-  localPath: string;
+  driver: string;
+  localPath?: string;
   mountPath: string;
-  s3Uri: string;
+  s3Uri?: string;
+  gitUri?: string;
+  gitBranch?: string;
+  gitToken?: string;
 }
 
 /**

@@ -12,16 +12,6 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
     ...actual,
-    default: {
-      ...actual.default,
-      promises: {
-        mkdir: vi.fn(),
-        readdir: vi.fn(),
-        readFile: vi.fn(),
-        stat: vi.fn(),
-        rm: vi.fn(),
-      },
-    },
     promises: {
       mkdir: vi.fn(),
       readdir: vi.fn(),
@@ -100,6 +90,7 @@ describe("VolumeService", () => {
         volumes: [
           {
             name: "data",
+            driver: "s3fs",
             s3Uri: "s3://test-bucket/data",
             mountPath: "/workspace/data",
             region: "us-east-1",
@@ -123,6 +114,7 @@ describe("VolumeService", () => {
       expect(result.preparedVolumes).toHaveLength(1);
       expect(result.preparedVolumes[0]).toEqual({
         name: "data",
+        driver: "s3fs",
         localPath: "/tmp/vm0-run-test-run-id/data",
         mountPath: "/workspace/data",
         s3Uri: "s3://test-bucket/data",
@@ -185,6 +177,7 @@ describe("VolumeService", () => {
         volumes: [
           {
             name: "data",
+            driver: "s3fs",
             s3Uri: "s3://test-bucket/data",
             mountPath: "/workspace/data",
             region: "us-east-1",
@@ -232,6 +225,7 @@ describe("VolumeService", () => {
       const preparedVolumes: PreparedVolume[] = [
         {
           name: "data",
+          driver: "s3fs",
           localPath: "/tmp/vm0-run-test/data",
           mountPath: "/workspace/data",
           s3Uri: "s3://test-bucket/data",

@@ -112,6 +112,7 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
       name: "claude-system",
+      driver: "s3fs",
       s3Uri: "s3://my-bucket/claude-files",
       mountPath: "/home/user/.claude",
       region: "us-west-2",
@@ -140,6 +141,7 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
       name: "user-workspace",
+      driver: "s3fs",
       s3Uri: "s3://my-bucket/users/test-user-123",
       mountPath: "/home/user/workspace",
       region: "us-west-2",
@@ -259,7 +261,227 @@ describe("resolveVolumes", () => {
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
       type: "invalid_uri",
-      message: "Unsupported volume driver: nfs. Only s3fs is supported.",
+      message: "Unsupported volume driver: nfs. Supported drivers: s3fs, git.",
+    });
+  });
+
+  describe("Git volumes", () => {
+    it("should resolve Git volume with full URL", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+              branch: "main",
+              token: "ghp_test123",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]).toMatchObject({
+        name: "repo",
+        driver: "git",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/user/repo.git",
+        gitBranch: "main",
+        gitToken: "ghp_test123",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should resolve Git volume with short format", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "user/repo",
+              branch: "develop",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]).toMatchObject({
+        name: "repo",
+        driver: "git",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/user/repo.git",
+        gitBranch: "develop",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should use main as default branch for Git volumes", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]?.gitBranch).toBe("main");
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should replace template variables in Git URI", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        dynamic_volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/{{user}}/{{project}}.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {
+        user: "testuser",
+        project: "testrepo",
+      });
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]).toMatchObject({
+        name: "repo",
+        driver: "git",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/testuser/testrepo.git",
+        gitBranch: "main",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should replace template variables in Git branch", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        dynamic_volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+              branch: "{{branchName}}",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {
+        branchName: "feature-123",
+      });
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]?.gitBranch).toBe("feature-123");
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should error on missing template variables in Git URI", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        dynamic_volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/{{user}}/repo.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {});
+
+      expect(result.volumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "repo",
+        type: "missing_variable",
+        message: "Missing required variables: user",
+      });
+    });
+
+    it("should error on invalid Git URL", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "git@github.com:user/repo.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "repo",
+        type: "invalid_uri",
+        message:
+          "Invalid Git URL: git@github.com:user/repo.git. Only HTTPS URLs are supported.",
+      });
+    });
+
+    it("should preserve token with environment variable pattern", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["repo:/workspace"],
+        },
+        volumes: {
+          repo: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+              branch: "main",
+              token: "${CI_GITHUB_TOKEN}",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.volumes[0]?.gitToken).toBe("${CI_GITHUB_TOKEN}");
+      expect(result.errors).toHaveLength(0);
     });
   });
 
