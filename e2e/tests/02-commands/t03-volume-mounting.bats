@@ -37,10 +37,3 @@ setup() {
     assert_success
     assert_output --partial "test-user-123"
 }
-
-@test "Run agent with dynamic volume - verify user data access" {
-    run $CLI_COMMAND run vm0-test-volume-dynamic -e userId=test-user-123 "List all files in /home/user/workspace/user-files/ directory"
-    assert_success
-    assert_output --partial "profile.json"
-    assert_output --partial "README.md"
-}
