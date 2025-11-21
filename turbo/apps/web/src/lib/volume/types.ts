@@ -44,5 +44,5 @@ export interface AgentVolumeConfig {
     volumes?: string[];
   };
   volumes?: Record<string, VolumeConfig>;
-  "dynamic-volumes"?: Record<string, VolumeConfig>;
+  dynamic_volumes?: Record<string, VolumeConfig>;
 }

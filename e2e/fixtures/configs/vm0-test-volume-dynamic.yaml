@@ -9,7 +9,7 @@ agent:
   volumes:
     - "user-data:/home/user/workspace/user-files"
 
-dynamic-volumes:
+dynamic_volumes:
   user-data:
     driver: s3fs
     driver_opts:

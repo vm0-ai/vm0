@@ -70,6 +70,14 @@ export function resolveVolumes(
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
 
+  // Check for deprecated 'dynamic-volumes' format
+  if ("dynamic-volumes" in config) {
+    throw new Error(
+      "Configuration error: 'dynamic-volumes' is deprecated. Please use 'dynamic_volumes' instead (snake_case). " +
+        "Migration: Simply rename 'dynamic-volumes:' to 'dynamic_volumes:' in your config file.",
+    );
+  }
+
   // If no volume declarations, return empty result
   if (!config.agent?.volumes || config.agent.volumes.length === 0) {
     return { volumes, errors };
@@ -82,14 +90,14 @@ export function resolveVolumes(
 
       // Look up volume definition (static or dynamic)
       const staticVolume = config.volumes?.[volumeName];
-      const dynamicVolume = config["dynamic-volumes"]?.[volumeName];
+      const dynamicVolume = config.dynamic_volumes?.[volumeName];
       const volumeConfig: VolumeConfig | undefined =
         staticVolume || dynamicVolume;
 
       if (!volumeConfig) {
         errors.push({
           volumeName,
-          message: `Volume "${volumeName}" not found in volumes or dynamic-volumes`,
+          message: `Volume "${volumeName}" not found in volumes or dynamic_volumes`,
           type: "missing_definition",
         });
         continue;
