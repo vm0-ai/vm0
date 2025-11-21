@@ -301,3 +301,4 @@ jobs:
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          CI_GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
