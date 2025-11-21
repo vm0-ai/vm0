@@ -153,7 +153,10 @@ export class E2BService {
         );
       }
 
-      sandbox = await this.createSandbox(sandboxEnvVars);
+      sandbox = await this.createSandbox(
+        sandboxEnvVars,
+        agentConfig as AgentConfigYaml | undefined,
+      );
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
       // Upload volumes to sandbox
@@ -246,33 +249,35 @@ export class E2BService {
 
   /**
    * Create E2B sandbox with Claude Code and environment variables
+   * @param envVars Environment variables to pass to sandbox
+   * @param agentConfig Agent configuration containing image specification
    */
   private async createSandbox(
     envVars: Record<string, string>,
+    agentConfig?: AgentConfigYaml,
   ): Promise<Sandbox> {
     const sandboxOptions = {
       timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
       envs: envVars, // Pass environment variables to sandbox
     };
 
-    // Use custom template if configured (by name/alias)
-    if (e2bConfig.defaultTemplate) {
-      console.log(`[E2B] Using custom template: ${e2bConfig.defaultTemplate}`);
-      console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
-      // Template name/alias should be passed as first argument
-      const sandbox = await Sandbox.create(
-        e2bConfig.defaultTemplate,
-        sandboxOptions,
+    // Priority: agent.image > E2B_TEMPLATE_NAME
+    const templateName = agentConfig?.agent?.image || e2bConfig.defaultTemplate;
+
+    if (!templateName) {
+      throw new Error(
+        "[E2B] No template specified. Either set agent.image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
       );
-      return sandbox;
-    } else {
-      console.warn(
-        "[E2B] No custom template configured. Ensure Claude Code CLI is available in the sandbox.",
-      );
-      console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
-      const sandbox = await Sandbox.create(sandboxOptions);
-      return sandbox;
     }
+
+    console.log(`[E2B] Using template: ${templateName}`);
+    console.log(
+      `[E2B] Template source: ${agentConfig?.agent?.image ? "agent.image" : "E2B_TEMPLATE_NAME"}`,
+    );
+    console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
+
+    const sandbox = await Sandbox.create(templateName, sandboxOptions);
+    return sandbox;
   }
 
   /**

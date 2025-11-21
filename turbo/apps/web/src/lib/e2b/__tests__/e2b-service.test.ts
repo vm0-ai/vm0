@@ -321,4 +321,44 @@ describe("E2B Service - mocked unit tests", () => {
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("template selection", () => {
+    it("should use agent.image when provided", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      const runId = "run-test-template-001";
+      const options: CreateRunOptions = {
+        agentConfigId: "test-agent-template-001",
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Test with custom image",
+        agentConfig: {
+          version: "1.0",
+          agent: {
+            name: "test-agent",
+            description: "Test agent with custom image",
+            image: "custom-template-name",
+            provider: "claude-code",
+            working_dir: "/workspace",
+            volumes: [],
+          },
+        },
+      };
+
+      // Act
+      const result = await e2bService.createRun(runId, options);
+
+      // Assert
+      expect(result.status).toBe("completed");
+      expect(Sandbox.create).toHaveBeenCalledTimes(1);
+
+      // Verify that agent.image was used
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      expect(createCall?.[0]).toBe("custom-template-name");
+    });
+  });
 });
