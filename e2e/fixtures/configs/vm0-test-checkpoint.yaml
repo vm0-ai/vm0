@@ -1,19 +1,26 @@
+version: "1.0"
+
 agent:
   name: vm0-test-checkpoint
+  description: "Test agent with GitHub volume mounting for checkpoint/resume"
   image: vm0-claude-code:test
   provider: claude-code
   model: claude-3-5-sonnet-20241022
   working_dir: /home/user
   volumes:
-    - name: claude-files
-      driver: github
-      metadata:
-        repository: lancy/claude-files
-        ref: main
-        path: /home/user/claude-files
-    - name: question
-      driver: github
-      metadata:
-        repository: lancy/question
-        ref: main
-        path: /home/user/question
+    - "claude-files:/home/user/claude-files"
+    - "question:/home/user/question"
+
+volumes:
+  claude-files:
+    driver: git
+    driver_opts:
+      repo: lancy/claude-files
+      branch: main
+      token: "{{githubToken}}"
+  question:
+    driver: git
+    driver_opts:
+      repo: lancy/question
+      branch: main
+      token: "{{githubToken}}"
