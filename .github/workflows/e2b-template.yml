@@ -34,14 +34,26 @@ jobs:
         working-directory: ./turbo
         run: pnpm install --frozen-lockfile
 
-      - name: Build E2B template
+      - name: Build E2B template (production)
+        if: github.ref == 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: pnpm e2b:build
+        run: pnpm e2b:build:prod
+
+      - name: Build E2B template (dev)
+        if: github.ref != 'refs/heads/main'
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:build:dev
 
       - name: Build summary
         if: success()
         run: |
           echo "✅ E2B template built successfully"
-          echo "Template alias: vm0-claude-code"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Template: vm0-claude-code (production)"
+          else
+            echo "Template: vm0-claude-code-dev (dev)"
+          fi
