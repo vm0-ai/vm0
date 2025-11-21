@@ -31,8 +31,6 @@ export async function POST(request: NextRequest) {
       throw new UnauthorizedError("Missing or invalid authorization header");
     }
 
-    const providedToken = authHeader.slice(7); // Remove "Bearer " prefix
-
     // Get request body
     const body = await request.json();
     const {
@@ -56,7 +54,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify run exists and token matches
+    // Verify run exists
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
@@ -65,11 +63,6 @@ export async function POST(request: NextRequest) {
 
     if (!run) {
       throw new NotFoundError("Agent run");
-    }
-
-    // Verify webhook token matches the run's sandbox token
-    if (run.sandboxToken !== providedToken) {
-      throw new UnauthorizedError("Invalid webhook token");
     }
 
     console.log(
