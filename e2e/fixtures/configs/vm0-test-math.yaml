@@ -3,6 +3,6 @@ version: "1.0"
 agent:
   name: vm0-test-math
   description: "A vm0 demo agent with math."
-  image: vm0-claude-code:test
+  image: vm0-claude-code-dev
   provider: claude-code
   working_dir: /home/user/workspace
