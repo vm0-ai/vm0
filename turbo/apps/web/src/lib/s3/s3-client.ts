@@ -234,4 +234,3 @@ export async function uploadS3Object(
     );
   }
 }
-

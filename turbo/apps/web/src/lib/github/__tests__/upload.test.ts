@@ -27,15 +27,17 @@ describe("uploadGitHubDirectory", () => {
     vi.mocked(fs.stat).mockResolvedValue({ size: 100 } as never);
 
     // Mock execSync to return commit SHA with proper encoding
-    vi.mocked(execSync).mockImplementation((cmd: string, options?: { encoding?: string }) => {
-      if (cmd.includes("git rev-parse HEAD")) {
-        if (options?.encoding === "utf8") {
-          return mockCommitSha as never;
+    vi.mocked(execSync).mockImplementation(
+      (cmd: string, options?: { encoding?: string }) => {
+        if (cmd.includes("git rev-parse HEAD")) {
+          if (options?.encoding === "utf8") {
+            return mockCommitSha as never;
+          }
+          return Buffer.from(mockCommitSha);
         }
-        return Buffer.from(mockCommitSha);
-      }
-      return Buffer.from("");
-    });
+        return Buffer.from("");
+      },
+    );
   });
 
   afterEach(() => {
