@@ -12,6 +12,7 @@ WEBHOOK_TOKEN="\${VM0_WEBHOOK_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
+SESSION_ID="\${VM0_SESSION_ID:-}"
 
 # Send single event immediately
 send_event() {
@@ -46,15 +47,24 @@ cd "$WORKING_DIR" || {
 
 # Execute Claude Code with JSONL output
 echo "[VM0] Starting Claude Code execution..." >&2
-echo "[VM0] Prompt: $PROMPT" >&2
+
+# Build Claude command with optional resume flag
+CLAUDE_CMD="/usr/local/bin/claude --print --verbose --output-format stream-json --dangerously-skip-permissions"
+
+# Check if resuming from checkpoint
+if [ -n "$SESSION_ID" ]; then
+  echo "[VM0] Resuming from session: $SESSION_ID" >&2
+  CLAUDE_CMD="$CLAUDE_CMD -r $SESSION_ID"
+else
+  echo "[VM0] Starting new session" >&2
+  echo "[VM0] Prompt: $PROMPT" >&2
+fi
+
+CLAUDE_CMD="$CLAUDE_CMD \\"$PROMPT\\""
 
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
-/usr/local/bin/claude --print \\
-       --verbose \\
-       --output-format stream-json \\
-       --dangerously-skip-permissions \\
-       "$PROMPT" 2>&1 | while IFS= read -r line; do
+eval "$CLAUDE_CMD" 2>&1 | while IFS= read -r line; do
 
   # Skip empty lines
   if [ -z "$line" ]; then
