@@ -13,12 +13,20 @@ setup() {
     assert_output --partial "vm0-test-checkpoint"
 }
 
-@test "Run agent with GitHub volume - verify repository access" {
+@test "Run agent with GitHub volume - verify claude-files repository access" {
     # Test that GitHub volume is mounted and accessible
-    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/repo directory and tell me if README.md exists"
+    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/claude-files directory"
     assert_success
     # Should access the GitHub repository volume
-    assert_output --partial "README"
+    assert_output --partial "claude-files"
+}
+
+@test "Run agent with GitHub volume - verify question repository access" {
+    # Test that GitHub volume is mounted and accessible
+    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/question directory"
+    assert_success
+    # Should access the GitHub repository volume
+    assert_output --partial "question"
 }
 
 @test "Create checkpoint during agent execution" {

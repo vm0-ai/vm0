@@ -5,9 +5,15 @@ agent:
   model: claude-3-5-sonnet-20241022
   working_dir: /home/user
   volumes:
-    - name: test-repo
+    - name: claude-files
       driver: github
       metadata:
-        repository: anthropics/anthropic-sdk-typescript
+        repository: lancy/claude-files
         ref: main
-        path: /home/user/repo
+        path: /home/user/claude-files
+    - name: question
+      driver: github
+      metadata:
+        repository: lancy/question
+        ref: main
+        path: /home/user/question
