@@ -1,8 +1,10 @@
-import { execSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { decryptToken, isEncryptedToken } from "../crypto/token-encryption";
 import type { DownloadResult, GitHubUri, UploadResult } from "./types";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
+import tar from "tar";
 
 /**
  * Parse GitHub URI
@@ -53,7 +55,7 @@ async function getDirectoryStats(dirPath: string): Promise<{
 }
 
 /**
- * Download repository contents using git clone
+ * Download repository contents using GitHub API (tarball)
  */
 export async function downloadGitHubDirectory(
   githubUri: string,
@@ -68,39 +70,65 @@ export async function downloadGitHubDirectory(
     ? decryptToken(token, userId, encryptionSecret)
     : token;
 
-  const cloneUrl = `https://${actualToken}@github.com/${owner}/${repo}.git`;
-
   await fs.mkdir(localPath, { recursive: true });
 
   try {
-    execSync(`git clone --depth 1 --branch ${ref} ${cloneUrl} ${localPath}`, {
-      stdio: "pipe",
+    // Download tarball from GitHub API
+    const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${ref}`;
+    const response = await fetch(tarballUrl, {
+      headers: {
+        Authorization: `Bearer ${actualToken}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
     });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download repository: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    // Get commit SHA from response headers
+    const contentDisposition = response.headers.get("content-disposition");
+    const commitShaMatch = contentDisposition?.match(/filename=.*-([a-f0-9]{7,40})\.tar\.gz/);
+    const commitSha = commitShaMatch?.[1] || "unknown";
+
+    // Extract tarball to local path
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+
+    // Convert Web ReadableStream to Node.js Readable
+    const nodeStream = Readable.fromWeb(response.body as any);
+
+    // Extract tar.gz - GitHub tarballs have a root directory we need to strip
+    await pipeline(
+      nodeStream,
+      tar.extract({
+        cwd: localPath,
+        strip: 1, // Remove the root directory from the tarball
+      }),
+    );
+
+    const stats = await getDirectoryStats(localPath);
+
+    return {
+      filesDownloaded: stats.fileCount,
+      bytesDownloaded: stats.totalBytes,
+      commitSha,
+    };
   } catch (error) {
     if (error instanceof Error) {
-      throw new Error(`Failed to clone GitHub repository: ${error.message}`);
+      throw new Error(`Failed to download GitHub repository: ${error.message}`);
     }
     throw error;
   }
-
-  const commitSha = execSync("git rev-parse HEAD", {
-    cwd: localPath,
-    encoding: "utf8",
-  }).trim();
-
-  await fs.rm(path.join(localPath, ".git"), { recursive: true, force: true });
-
-  const stats = await getDirectoryStats(localPath);
-
-  return {
-    filesDownloaded: stats.fileCount,
-    bytesDownloaded: stats.totalBytes,
-    commitSha,
-  };
 }
 
 /**
- * Upload directory as new commit on specific branch
+ * Upload directory as new commit on specific branch using GitHub API
+ * TODO: Implement using GitHub Tree API for MVP phase
  */
 export async function uploadGitHubDirectory(
   localPath: string,
@@ -111,60 +139,21 @@ export async function uploadGitHubDirectory(
   userId: string,
   encryptionSecret: string,
 ): Promise<UploadResult> {
-  const { owner, repo } = parseGitHubUri(githubUri);
+  // For MVP, we disable upload functionality
+  // This will be implemented using GitHub Git Data API (create tree + commit)
+  throw new Error(
+    "GitHub volume upload is not yet implemented. Read-only support is available.",
+  );
 
-  const actualToken = isEncryptedToken(token)
-    ? decryptToken(token, userId, encryptionSecret)
-    : token;
+  // const { owner, repo } = parseGitHubUri(githubUri);
+  // const actualToken = isEncryptedToken(token)
+  //   ? decryptToken(token, userId, encryptionSecret)
+  //   : token;
 
-  const remoteUrl = `https://${actualToken}@github.com/${owner}/${repo}.git`;
-
-  try {
-    execSync("git init", { cwd: localPath, stdio: "pipe" });
-    execSync(`git remote add origin ${remoteUrl}`, {
-      cwd: localPath,
-      stdio: "pipe",
-    });
-    execSync('git config user.name "VM0 Agent"', {
-      cwd: localPath,
-      stdio: "pipe",
-    });
-    execSync('git config user.email "agent@vm0.ai"', {
-      cwd: localPath,
-      stdio: "pipe",
-    });
-
-    execSync("git fetch origin main", { cwd: localPath, stdio: "pipe" });
-    execSync(`git checkout -b ${branch} origin/main`, {
-      cwd: localPath,
-      stdio: "pipe",
-    });
-
-    execSync("git add .", { cwd: localPath, stdio: "pipe" });
-    execSync(`git commit -m "${commitMessage}"`, {
-      cwd: localPath,
-      stdio: "pipe",
-    });
-    execSync(`git push origin ${branch}`, { cwd: localPath, stdio: "pipe" });
-
-    const commitSha = execSync("git rev-parse HEAD", {
-      cwd: localPath,
-      encoding: "utf8",
-    }).trim();
-
-    const stats = await getDirectoryStats(localPath);
-
-    return {
-      commitSha,
-      branch,
-      filesUploaded: stats.fileCount,
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(
-        `Failed to upload to GitHub repository: ${error.message}`,
-      );
-    }
-    throw error;
-  }
+  // TODO: Implement using GitHub API:
+  // 1. Get current ref SHA
+  // 2. Create blobs for all files
+  // 3. Create tree
+  // 4. Create commit
+  // 5. Update ref
 }

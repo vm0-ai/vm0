@@ -11,7 +11,9 @@ import { downloadS3Directory } from "../s3/s3-client";
 import {
   downloadGitHubDirectory,
   uploadGitHubDirectory,
+  parseGitHubUri,
 } from "../github/github-client";
+import { decryptToken, isEncryptedToken } from "../crypto/token-encryption";
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import type { VolumeMetadata } from "./types";
@@ -258,6 +260,7 @@ export class E2BService {
               const localPath = path.join(tempDir, volume.name);
 
               if (volume.driver === "s3fs") {
+                // Download S3 volumes to local temp directory for upload to sandbox
                 const downloadResult = await downloadS3Directory(
                   volume.uri,
                   localPath,
@@ -265,23 +268,8 @@ export class E2BService {
                 console.log(
                   `[E2B] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
                 );
-              } else if (volume.driver === "git") {
-                if (!options.userId) {
-                  throw new Error(
-                    "userId is required for git volume driver but was not provided",
-                  );
-                }
-                const downloadResult = await downloadGitHubDirectory(
-                  volume.uri,
-                  localPath,
-                  volume.metadata.token as string,
-                  options.userId,
-                  env().ENCRYPTION_SECRET,
-                );
-                console.log(
-                  `[E2B] Downloaded Git volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.bytesDownloaded} bytes, commit: ${downloadResult.commitSha}`,
-                );
               }
+              // Git volumes will be cloned directly in sandbox, no need to download here
             } catch (error) {
               console.error(
                 `[E2B] Failed to download volume "${volume.name}":`,
@@ -314,29 +302,71 @@ export class E2BService {
       );
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
-      // Upload volumes to sandbox
-      if (volumeResult.volumes.length > 0 && tempDir) {
+      // Mount volumes to sandbox
+      if (volumeResult.volumes.length > 0) {
         console.log(
-          `[E2B] Uploading ${volumeResult.volumes.length} volumes to sandbox...`,
+          `[E2B] Mounting ${volumeResult.volumes.length} volumes to sandbox...`,
         );
 
         for (const volume of volumeResult.volumes) {
           try {
-            const localPath = path.join(tempDir, volume.name);
-            // Check if directory exists before uploading
-            if (await fs.promises.stat(localPath).catch(() => null)) {
-              await this.uploadDirectoryToSandbox(
-                sandbox,
-                localPath,
-                volume.mountPath,
-              );
+            if (volume.driver === "s3fs" && tempDir) {
+              // Upload S3 volumes from local temp directory
+              const localPath = path.join(tempDir, volume.name);
+              // Check if directory exists before uploading
+              if (await fs.promises.stat(localPath).catch(() => null)) {
+                await this.uploadDirectoryToSandbox(
+                  sandbox,
+                  localPath,
+                  volume.mountPath,
+                );
+                console.log(
+                  `[E2B] Uploaded S3 volume "${volume.name}" to ${volume.mountPath}`,
+                );
+              }
+            } else if (volume.driver === "git") {
+              // Clone Git repos directly in sandbox using git clone
+              if (!options.userId) {
+                throw new Error(
+                  "userId is required for git volume driver but was not provided",
+                );
+              }
+
+              const actualToken = isEncryptedToken(
+                volume.metadata.token as string,
+              )
+                ? decryptToken(
+                    volume.metadata.token as string,
+                    options.userId,
+                    env().ENCRYPTION_SECRET,
+                  )
+                : (volume.metadata.token as string);
+
+              // Parse GitHub URI
+              const { owner, repo, ref } = parseGitHubUri(volume.uri);
+              const cloneUrl = `https://${actualToken}@github.com/${owner}/${repo}.git`;
+
+              // Execute git clone in sandbox
+              const cloneCmd = `mkdir -p ${volume.mountPath} && git clone --depth 1 --branch ${ref} ${cloneUrl} ${volume.mountPath}`;
               console.log(
-                `[E2B] Uploaded volume "${volume.name}" to ${volume.mountPath}`,
+                `[E2B] Cloning Git volume "${volume.name}" from ${owner}/${repo}@${ref}...`,
+              );
+
+              const result = await sandbox.commands.run(cloneCmd);
+
+              if (result.exitCode !== 0) {
+                throw new Error(
+                  `Git clone failed: ${result.stderr || result.stdout}`,
+                );
+              }
+
+              console.log(
+                `[E2B] Cloned Git volume "${volume.name}" to ${volume.mountPath}`,
               );
             }
           } catch (error) {
             console.error(
-              `[E2B] Failed to upload volume "${volume.name}":`,
+              `[E2B] Failed to mount volume "${volume.name}":`,
               error,
             );
           }
