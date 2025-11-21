@@ -112,9 +112,12 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
       name: "claude-system",
-      s3Uri: "s3://my-bucket/claude-files",
+      uri: "s3://my-bucket/claude-files",
+      driver: "s3fs",
       mountPath: "/home/user/.claude",
-      region: "us-west-2",
+      metadata: {
+        region: "us-west-2",
+      },
     });
     expect(result.errors).toHaveLength(0);
   });
@@ -140,9 +143,12 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
       name: "user-workspace",
-      s3Uri: "s3://my-bucket/users/test-user-123",
+      uri: "s3://my-bucket/users/test-user-123",
+      driver: "s3fs",
       mountPath: "/home/user/workspace",
-      region: "us-west-2",
+      metadata: {
+        region: "us-west-2",
+      },
     });
     expect(result.errors).toHaveLength(0);
   });
@@ -258,8 +264,8 @@ describe("resolveVolumes", () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
-      type: "invalid_uri",
-      message: "Unsupported volume driver: nfs. Only s3fs is supported.",
+      type: "invalid_driver",
+      message: "Unsupported volume driver: nfs. Supported: s3fs, git",
     });
   });
 });
