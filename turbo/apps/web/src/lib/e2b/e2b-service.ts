@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { resolveVolumes } from "../volume/volume-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
+import { downloadGitHubDirectory } from "../github/github-client";
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import * as fs from "node:fs";
@@ -120,13 +121,32 @@ export class E2BService {
         for (const volume of volumeResult.volumes) {
           try {
             const localPath = path.join(tempDir, volume.name);
-            const downloadResult = await downloadS3Directory(
-              volume.s3Uri,
-              localPath,
-            );
-            console.log(
-              `[E2B] Downloaded volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-            );
+
+            if (volume.driver === "s3fs") {
+              const downloadResult = await downloadS3Directory(
+                volume.uri,
+                localPath,
+              );
+              console.log(
+                `[E2B] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+              );
+            } else if (volume.driver === "git") {
+              if (!options.userId) {
+                throw new Error(
+                  "userId is required for git volume driver but was not provided",
+                );
+              }
+              const downloadResult = await downloadGitHubDirectory(
+                volume.uri,
+                localPath,
+                volume.metadata.token as string,
+                options.userId,
+                env().ENCRYPTION_SECRET,
+              );
+              console.log(
+                `[E2B] Downloaded Git volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.bytesDownloaded} bytes, commit: ${downloadResult.commitSha}`,
+              );
+            }
           } catch (error) {
             console.error(
               `[E2B] Failed to download volume "${volume.name}":`,

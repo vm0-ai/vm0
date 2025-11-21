@@ -9,6 +9,7 @@ export interface CreateRunOptions {
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
   agentConfig?: unknown; // Full agent config JSONB for volume resolution
   apiUrl?: string; // Override API URL (auto-detected from request or from env)
+  userId?: string; // User ID for token decryption (optional for backwards compatibility)
 }
 
 export interface RunResult {

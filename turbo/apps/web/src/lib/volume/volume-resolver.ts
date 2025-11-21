@@ -95,38 +95,112 @@ export function resolveVolumes(
         continue;
       }
 
-      // Validate driver (MVP only supports s3fs)
-      if (volumeConfig.driver !== "s3fs") {
+      // Validate driver
+      if (volumeConfig.driver !== "s3fs" && volumeConfig.driver !== "git") {
         errors.push({
           volumeName,
-          message: `Unsupported volume driver: ${volumeConfig.driver}. Only s3fs is supported.`,
-          type: "invalid_uri",
+          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported: s3fs, git`,
+          type: "invalid_driver",
         });
         continue;
       }
 
-      // Replace template variables
-      const { uri, missingVars } = replaceTemplateVars(
-        volumeConfig.driver_opts.uri,
-        dynamicVars,
-      );
+      // Handle s3fs driver
+      if (volumeConfig.driver === "s3fs") {
+        if (!volumeConfig.driver_opts.uri) {
+          errors.push({
+            volumeName,
+            message: "S3 driver requires 'uri' option",
+            type: "missing_option",
+          });
+          continue;
+        }
 
-      if (missingVars.length > 0) {
-        errors.push({
-          volumeName,
-          message: `Missing required variables: ${missingVars.join(", ")}`,
-          type: "missing_variable",
+        const { uri, missingVars } = replaceTemplateVars(
+          volumeConfig.driver_opts.uri,
+          dynamicVars,
+        );
+
+        if (missingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables: ${missingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        volumes.push({
+          name: volumeName,
+          uri,
+          driver: "s3fs",
+          mountPath,
+          metadata: {
+            region: volumeConfig.driver_opts.region,
+          },
         });
-        continue;
       }
 
-      // Add resolved volume
-      volumes.push({
-        name: volumeName,
-        s3Uri: uri,
-        mountPath,
-        region: volumeConfig.driver_opts.region,
-      });
+      // Handle git driver
+      if (volumeConfig.driver === "git") {
+        if (!volumeConfig.driver_opts.repo) {
+          errors.push({
+            volumeName,
+            message: "Git driver requires 'repo' option (format: owner/repo)",
+            type: "missing_option",
+          });
+          continue;
+        }
+
+        if (!volumeConfig.driver_opts.token) {
+          errors.push({
+            volumeName,
+            message:
+              "Git driver requires 'token' option (encrypted GitHub token)",
+            type: "missing_option",
+          });
+          continue;
+        }
+
+        const { uri: repoUri, missingVars: repoMissingVars } =
+          replaceTemplateVars(volumeConfig.driver_opts.repo, dynamicVars);
+
+        if (repoMissingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables in repo: ${repoMissingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        const branch = volumeConfig.driver_opts.branch || "main";
+        const { uri: branchUri, missingVars: branchMissingVars } =
+          replaceTemplateVars(branch, dynamicVars);
+
+        if (branchMissingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables in branch: ${branchMissingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        const uri = `github://${repoUri}@${branchUri}`;
+
+        volumes.push({
+          name: volumeName,
+          uri,
+          driver: "git",
+          mountPath,
+          metadata: {
+            repo: repoUri,
+            branch: branchUri,
+            token: volumeConfig.driver_opts.token,
+          },
+        });
+      }
     } catch (error) {
       errors.push({
         volumeName: "unknown",

@@ -4,8 +4,11 @@
 export interface VolumeConfig {
   driver: string;
   driver_opts: {
-    uri: string;
-    region: string;
+    uri?: string;
+    region?: string;
+    repo?: string;
+    branch?: string;
+    token?: string;
   };
 }
 
@@ -14,9 +17,10 @@ export interface VolumeConfig {
  */
 export interface ResolvedVolume {
   name: string;
-  s3Uri: string;
+  uri: string;
+  driver: string;
   mountPath: string;
-  region: string;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -33,7 +37,12 @@ export interface VolumeResolutionResult {
 export interface VolumeError {
   volumeName: string;
   message: string;
-  type: "missing_definition" | "missing_variable" | "invalid_uri";
+  type:
+    | "missing_definition"
+    | "missing_variable"
+    | "invalid_uri"
+    | "invalid_driver"
+    | "missing_option";
 }
 
 /**

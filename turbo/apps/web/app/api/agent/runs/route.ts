@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
         dynamicVars: body.dynamicVars,
         sandboxToken,
         agentConfig: config.config, // Pass full config for volume resolution
+        userId, // For decrypting GitHub tokens
       })
       .then((result) => {
         // Update run with results on success
