@@ -7,7 +7,7 @@ agent:
   provider: claude-code
   working_dir: /home/user/workspace
   volumes:
-    - "user-data:/home/user/workspace/user-files"
+    - "user-data:/home/user/workspace"
 
 dynamic_volumes:
   user-data:

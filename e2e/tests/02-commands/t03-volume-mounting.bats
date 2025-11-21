@@ -15,7 +15,7 @@ setup() {
 }
 
 @test "Run agent with static volume - read file from S3 volume" {
-    run $CLI_COMMAND run vm0-test-volume-static "Read the file at /home/user/workspace/data/message.txt and output exactly what it says"
+    run $CLI_COMMAND run vm0-test-volume-static "Read the file at /home/user/workspace/message.txt and output exactly what it says"
     assert_success
     assert_output --partial "Hello from S3 volume"
 }
@@ -27,7 +27,7 @@ setup() {
 }
 
 @test "Run agent with dynamic volume - read file with template variable" {
-    run $CLI_COMMAND run vm0-test-volume-dynamic -e userId=test-user-123 "Read the file at /home/user/workspace/user-files/message.txt and output exactly what it says"
+    run $CLI_COMMAND run vm0-test-volume-dynamic -e userId=test-user-123 "Read the file at /home/user/workspace/message.txt and output exactly what it says"
     assert_success
     assert_output --partial "Hello from test-user-123"
 }
