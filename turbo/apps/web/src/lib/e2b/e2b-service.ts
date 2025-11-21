@@ -7,7 +7,11 @@ import type {
   SandboxExecutionResult,
 } from "./types";
 import { resolveVolumes } from "../volume/volume-resolver";
-import { downloadS3Directory } from "../s3/s3-client";
+import {
+  downloadS3Directory,
+  downloadS3ObjectCompressed,
+  parseS3Uri,
+} from "../s3/s3-client";
 import {
   downloadGitHubDirectory,
   uploadGitHubDirectory,
@@ -15,6 +19,9 @@ import {
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import type { VolumeMetadata } from "./types";
+import type { VolumeSnapshot } from "../../db/schema/agent-checkpoint";
+import { agentCheckpoints } from "../../db/schema/agent-checkpoint";
+import { eq } from "drizzle-orm";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -87,6 +94,46 @@ export class E2BService {
   }
 
   /**
+   * Restore checkpoint state - load checkpoint data from database
+   */
+  private async loadCheckpoint(checkpointId: string): Promise<{
+    sessionId: string;
+    sessionContent: Buffer;
+    volumeSnapshots: VolumeSnapshot[];
+    workingDirectory: string;
+    encodedPath: string;
+  }> {
+    console.log(`[E2B] Loading checkpoint ${checkpointId}...`);
+
+    // Load checkpoint from database
+    const [checkpoint] = await globalThis.services.db
+      .select()
+      .from(agentCheckpoints)
+      .where(eq(agentCheckpoints.id, checkpointId))
+      .limit(1);
+
+    if (!checkpoint) {
+      throw new Error(`Checkpoint ${checkpointId} not found`);
+    }
+
+    // Download session file from S3
+    const { bucket, prefix } = parseS3Uri(checkpoint.sessionFileS3Path);
+    const sessionContent = await downloadS3ObjectCompressed(bucket, prefix);
+
+    console.log(
+      `[E2B] Downloaded session file from ${checkpoint.sessionFileS3Path} (${sessionContent.length} bytes)`,
+    );
+
+    return {
+      sessionId: checkpoint.sessionId,
+      sessionContent,
+      volumeSnapshots: checkpoint.volumeSnapshots as VolumeSnapshot[],
+      workingDirectory: checkpoint.workingDirectory,
+      encodedPath: checkpoint.encodedPath,
+    };
+  }
+
+  /**
    * Create and execute an agent run
    * MVP: Executes simple "echo hello world" command
    * Future: Will execute Claude Code with real agent
@@ -103,8 +150,17 @@ export class E2BService {
 
     let sandbox: Sandbox | null = null;
     let tempDir: string | null = null;
+    let checkpointData: Awaited<ReturnType<typeof this.loadCheckpoint>> | null =
+      null;
 
     try {
+      // Load checkpoint if resuming
+      if (options.checkpointId) {
+        checkpointData = await this.loadCheckpoint(options.checkpointId);
+        console.log(
+          `[E2B] Resuming from checkpoint ${options.checkpointId} with session ${checkpointData.sessionId}`,
+        );
+      }
       // Get API configuration with dynamic fallback logic
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
       const envVars = globalThis.services?.env;
@@ -146,26 +202,76 @@ export class E2BService {
         console.warn(`[E2B] Volume resolution errors:`, volumeResult.errors);
       }
 
-      // Download volumes from S3 to temp directories
-      if (volumeResult.volumes.length > 0) {
+      // Download volumes - use checkpoint snapshots if resuming
+      if (volumeResult.volumes.length > 0 || checkpointData) {
         tempDir = `/tmp/vm0-run-${runId}`;
         await fs.promises.mkdir(tempDir, { recursive: true });
 
-        console.log(
-          `[E2B] Downloading ${volumeResult.volumes.length} volumes...`,
-        );
+        // If resuming, download from checkpoint snapshots
+        if (checkpointData) {
+          console.log(
+            `[E2B] Restoring ${checkpointData.volumeSnapshots.length} volumes from checkpoint...`,
+          );
 
-        for (const volume of volumeResult.volumes) {
-          try {
-            const localPath = path.join(tempDir, volume.name);
+          for (const snapshot of checkpointData.volumeSnapshots) {
+            try {
+              const localPath = path.join(tempDir, snapshot.volumeName);
 
-            if (volume.driver === "s3fs") {
-              const downloadResult = await downloadS3Directory(
-                volume.uri,
-                localPath,
+              if (snapshot.driver === "git" && snapshot.commitSha) {
+                if (!options.userId) {
+                  throw new Error(
+                    "userId is required for git volume driver but was not provided",
+                  );
+                }
+
+                // Find the volume config to get the token
+                const volumeConfig = volumeResult.volumes.find(
+                  (v) => v.name === snapshot.volumeName,
+                );
+                if (!volumeConfig) {
+                  console.warn(
+                    `[E2B] Volume "${snapshot.volumeName}" not found in agent config, skipping`,
+                  );
+                  continue;
+                }
+
+                // Download from specific commit
+                const gitUri = `${snapshot.uri}#${snapshot.commitSha}`;
+                const downloadResult = await downloadGitHubDirectory(
+                  gitUri,
+                  localPath,
+                  volumeConfig.metadata.token as string,
+                  options.userId,
+                  env().ENCRYPTION_SECRET,
+                );
+                console.log(
+                  `[E2B] Restored Git volume "${snapshot.volumeName}" from commit ${snapshot.commitSha}: ${downloadResult.filesDownloaded} files`,
+                );
+              }
+            } catch (error) {
+              console.error(
+                `[E2B] Failed to restore volume "${snapshot.volumeName}":`,
+                error,
               );
-              console.log(
-                `[E2B] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+            }
+          }
+        } else {
+          // Normal volume download (not resuming)
+          console.log(
+            `[E2B] Downloading ${volumeResult.volumes.length} volumes...`,
+          );
+
+          for (const volume of volumeResult.volumes) {
+            try {
+              const localPath = path.join(tempDir, volume.name);
+
+              if (volume.driver === "s3fs") {
+                const downloadResult = await downloadS3Directory(
+                  volume.uri,
+                  localPath,
+                );
+                console.log(
+                  `[E2B] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
               );
             } else if (volume.driver === "git") {
               if (!options.userId) {
@@ -245,6 +351,31 @@ export class E2BService {
         }
       }
 
+      // Restore session file if resuming from checkpoint
+      if (checkpointData) {
+        const sessionDir = `~/.config/claude/projects/${checkpointData.encodedPath}`;
+        const sessionFilePath = `${sessionDir}/${checkpointData.sessionId}.jsonl`;
+
+        console.log(
+          `[E2B] Restoring session file to ${sessionFilePath} in sandbox...`,
+        );
+
+        // Create directory structure
+        await sandbox.commands.run(`mkdir -p ${sessionDir}`);
+
+        // Upload session file
+        const arrayBuffer = checkpointData.sessionContent.buffer.slice(
+          checkpointData.sessionContent.byteOffset,
+          checkpointData.sessionContent.byteOffset +
+            checkpointData.sessionContent.byteLength,
+        ) as ArrayBuffer;
+        await sandbox.files.write(sessionFilePath, arrayBuffer);
+
+        console.log(
+          `[E2B] Session file restored (${checkpointData.sessionContent.length} bytes)`,
+        );
+      }
+
       // Execute Claude Code via run-agent.sh
       const result = await this.executeCommand(
         sandbox,
@@ -253,6 +384,7 @@ export class E2BService {
         webhookEndpoint,
         options.sandboxToken,
         options.agentConfig,
+        checkpointData?.sessionId,
       );
 
       const executionTimeMs = Date.now() - startTime;
@@ -412,6 +544,7 @@ export class E2BService {
     webhookUrl: string,
     sandboxToken: string,
     agentConfig?: unknown,
+    sessionId?: string,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -432,6 +565,12 @@ export class E2BService {
       VM0_WEBHOOK_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
     };
+
+    // Add session ID if resuming from checkpoint
+    if (sessionId) {
+      envs.VM0_SESSION_ID = sessionId;
+      console.log(`[E2B] Resuming session: ${sessionId}`);
+    }
 
     // Add working directory if configured
     if (workingDir) {

@@ -10,6 +10,7 @@ export interface CreateRunOptions {
   agentConfig?: unknown; // Full agent config JSONB for volume resolution
   apiUrl?: string; // Override API URL (auto-detected from request or from env)
   userId?: string; // User ID for token decryption (optional for backwards compatibility)
+  checkpointId?: string; // Optional checkpoint ID to resume from
 }
 
 export interface RunResult {
