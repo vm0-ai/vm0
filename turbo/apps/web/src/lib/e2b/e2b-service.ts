@@ -176,7 +176,7 @@ export class E2BService {
         }
       }
 
-      const webhookEndpoint = `${apiUrl}/api/webhooks/agent-events`;
+      const webhookEndpoint = `${apiUrl}/api/webhooks/agent/events`;
 
       console.log(
         `[E2B] Environment - VERCEL_ENV: ${vercelEnv}, VERCEL_URL: ${vercelUrl}, VM0_API_URL: ${apiUrl}`,

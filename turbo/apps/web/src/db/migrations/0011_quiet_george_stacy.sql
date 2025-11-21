@@ -1,0 +1,1 @@
+ALTER TABLE "agent_checkpoints" DROP COLUMN "model";

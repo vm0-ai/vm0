@@ -30,8 +30,6 @@ export const agentCheckpoints = pgTable("agent_checkpoints", {
   workingDirectory: text("working_directory").notNull(),
   encodedPath: varchar("encoded_path", { length: 500 }).notNull(),
 
-  // Run metadata
-  model: varchar("model", { length: 100 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

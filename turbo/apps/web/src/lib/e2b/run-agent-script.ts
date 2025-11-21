@@ -13,6 +13,7 @@ PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 SESSION_ID="\${VM0_SESSION_ID:-}"
+API_URL="\${VM0_API_URL:-http://localhost:3000}"
 
 # Send single event immediately
 send_event() {
@@ -100,6 +101,67 @@ echo ""
 if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   echo "[VM0] Claude Code completed successfully" >&2
   send_event '{"type": "result", "data": {"status": "success", "exitCode": 0}}'
+
+  # Save checkpoint after successful completion
+  echo "[VM0] Saving checkpoint..." >&2
+
+  # Calculate encodedPath from working directory
+  ENCODED_PATH=$(echo -n "$WORKING_DIR" | base64 -w 0 2>/dev/null || echo -n "$WORKING_DIR" | base64)
+  SESSION_DIR="$HOME/.config/claude/projects/$ENCODED_PATH"
+
+  # Find the most recent session file (in case SESSION_ID is not set)
+  if [ -z "$SESSION_ID" ]; then
+    SESSION_FILE=$(ls -t "$SESSION_DIR"/*.jsonl 2>/dev/null | head -1)
+    if [ -n "$SESSION_FILE" ]; then
+      SESSION_ID=$(basename "$SESSION_FILE" .jsonl)
+    fi
+  else
+    SESSION_FILE="$SESSION_DIR/$SESSION_ID.jsonl"
+  fi
+
+  if [ -f "$SESSION_FILE" ]; then
+    echo "[VM0] Found session file: $SESSION_FILE" >&2
+
+    # Read session content and escape for JSON
+    SESSION_CONTENT=$(cat "$SESSION_FILE" | jq -Rs .)
+
+    # Build checkpoint payload
+    CHECKPOINT_PAYLOAD=$(jq -n \\\\
+      --arg runId "$RUN_ID" \\\\
+      --arg sessionId "$SESSION_ID" \\\\
+      --argjson sessionContent "$SESSION_CONTENT" \\\\
+      --arg workingDirectory "$WORKING_DIR" \\\\
+      --arg encodedPath "$ENCODED_PATH" \\\\
+      '{
+        runId: $runId,
+        sessionId: $sessionId,
+        sessionContent: $sessionContent,
+        workingDirectory: $workingDirectory,
+        encodedPath: $encodedPath,
+        volumeSnapshots: []
+      }')
+
+    # Build curl command for checkpoint
+    CHECKPOINT_URL="$API_URL/api/webhooks/agent/checkpoints"
+    CHECKPOINT_CURL="curl -X POST \\"$CHECKPOINT_URL\\" \\\\
+      -H \\"Content-Type: application/json\\" \\\\
+      -H \\"Authorization: Bearer $WEBHOOK_TOKEN\\""
+
+    # Add Vercel protection bypass header if available
+    if [ -n "$VERCEL_BYPASS" ]; then
+      CHECKPOINT_CURL="$CHECKPOINT_CURL -H \\"x-vercel-protection-bypass: $VERCEL_BYPASS\\""
+    fi
+
+    CHECKPOINT_CURL="$CHECKPOINT_CURL -d '$CHECKPOINT_PAYLOAD' --silent --show-error"
+
+    if eval "$CHECKPOINT_CURL"; then
+      echo "[VM0] Checkpoint saved successfully" >&2
+    else
+      echo "[VM0] Warning: Failed to save checkpoint" >&2
+    fi
+  else
+    echo "[VM0] Warning: Session file not found at $SESSION_FILE, skipping checkpoint" >&2
+  fi
 else
   echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
   send_event "{\\"type\\": \\"result\\", \\"data\\": {\\"status\\": \\"failed\\", \\"exitCode\\": $CLAUDE_EXIT_CODE}}"
