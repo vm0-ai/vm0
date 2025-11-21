@@ -38,11 +38,6 @@ async function pollEvents(runId: string): Promise<void> {
           "\n✗ Agent execution timed out after 3 minutes without receiving events",
         ),
       );
-      console.error(
-        chalk.gray(
-          "  This usually means the agent's webhook configuration is incorrect or unreachable",
-        ),
-      );
       throw new Error("Agent execution timed out");
     }
 

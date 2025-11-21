@@ -241,10 +241,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web]
     # Run if:
-    # - It's a PR, CLI changed, and web deployment succeeded
+    # - It's a PR, (CLI or web) changed, and web deployment succeeded
     # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
     if: |
-      (github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true' && needs.deploy-web.outputs.preview-url != '') ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
     steps:
       - uses: actions/checkout@v4
