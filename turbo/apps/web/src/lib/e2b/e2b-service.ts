@@ -10,6 +10,7 @@ import { resolveVolumes } from "../volume/volume-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
+import { RUN_AGENT_SCRIPT } from "./run-agent-script";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -281,39 +282,19 @@ export class E2BService {
   }
 
   /**
-   * Get the path to run-agent.sh script
-   * Resolves to the correct location in both dev and production
-   */
-  private getRunAgentScriptPath(): string {
-    // In production build (.next/standalone), the script is in .next/server/scripts/
-    // In development, we read directly from the scripts directory
-    const isDev = process.env.NODE_ENV === "development";
-
-    if (isDev) {
-      // Development: read from source
-      return path.join(process.cwd(), "../../scripts/e2b/run-agent.sh");
-    } else {
-      // Production: read from build output
-      return path.join(process.cwd(), ".next/server/scripts/run-agent.sh");
-    }
-  }
-
-  /**
-   * Read and upload run-agent.sh script to sandbox
+   * Upload run-agent.sh script to sandbox
+   * The script content is embedded in the application code for reliable deployment
    */
   private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
-    const localScriptPath = this.getRunAgentScriptPath();
     const tempPath = "/tmp/run-agent.sh";
     const finalPath = "/usr/local/bin/run-agent.sh";
 
     try {
-      // Read script content
-      const scriptContent = await fs.promises.readFile(localScriptPath);
-
-      // Convert Buffer to ArrayBuffer for E2B
-      const arrayBuffer = scriptContent.buffer.slice(
-        scriptContent.byteOffset,
-        scriptContent.byteOffset + scriptContent.byteLength,
+      // Convert script string to ArrayBuffer for E2B
+      const scriptBuffer = Buffer.from(RUN_AGENT_SCRIPT, "utf-8");
+      const arrayBuffer = scriptBuffer.buffer.slice(
+        scriptBuffer.byteOffset,
+        scriptBuffer.byteOffset + scriptBuffer.byteLength,
       ) as ArrayBuffer;
 
       // Upload to temp location first
@@ -329,7 +310,7 @@ export class E2BService {
     } catch (error) {
       console.error(`[E2B] Failed to upload run-agent.sh:`, error);
       throw new Error(
-        `Failed to upload run-agent.sh script. Ensure the script exists at ${localScriptPath}`,
+        `Failed to upload run-agent.sh script: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
