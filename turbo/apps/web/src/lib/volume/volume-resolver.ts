@@ -58,6 +58,28 @@ export function replaceTemplateVars(
 }
 
 /**
+ * Parse GitHub repository URL to extract owner/repo
+ * @param repoUrl - Full GitHub repository URL
+ * @returns owner/repo string
+ * @example
+ * parseGitHubRepoUrl("https://github.com/owner/repo.git") => "owner/repo"
+ * parseGitHubRepoUrl("https://github.com/owner/repo") => "owner/repo"
+ */
+export function parseGitHubRepoUrl(repoUrl: string): string {
+  const httpsPattern =
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/;
+  const match = repoUrl.match(httpsPattern);
+
+  if (match) {
+    return `${match[1]}/${match[2]}`;
+  }
+
+  throw new Error(
+    `Invalid GitHub repository URL: ${repoUrl}. Expected format: https://github.com/owner/repo.git`,
+  );
+}
+
+/**
  * Resolve volumes from agent configuration
  * @param config - Agent configuration with volume definitions
  * @param dynamicVars - Dynamic variables for template replacement
@@ -154,7 +176,8 @@ export function resolveVolumes(
         if (!volumeConfig.driver_opts.repo) {
           errors.push({
             volumeName,
-            message: "Git driver requires 'repo' option (format: owner/repo)",
+            message:
+              "Git driver requires 'repo' option (format: https://github.com/owner/repo.git)",
             type: "missing_option",
           });
           continue;
@@ -170,7 +193,7 @@ export function resolveVolumes(
           continue;
         }
 
-        const { uri: repoUri, missingVars: repoMissingVars } =
+        const { uri: repoUrl, missingVars: repoMissingVars } =
           replaceTemplateVars(volumeConfig.driver_opts.repo, dynamicVars);
 
         if (repoMissingVars.length > 0) {
@@ -181,6 +204,9 @@ export function resolveVolumes(
           });
           continue;
         }
+
+        // Parse GitHub URL to extract owner/repo
+        const ownerRepo = parseGitHubRepoUrl(repoUrl);
 
         const branch = volumeConfig.driver_opts.branch || "main";
         const { uri: branchUri, missingVars: branchMissingVars } =
@@ -195,7 +221,7 @@ export function resolveVolumes(
           continue;
         }
 
-        const uri = `github://${repoUri}@${branchUri}`;
+        const uri = `github://${ownerRepo}@${branchUri}`;
 
         volumes.push({
           name: volumeName,
@@ -203,7 +229,7 @@ export function resolveVolumes(
           driver: "git",
           mountPath,
           metadata: {
-            repo: repoUri,
+            repo: ownerRepo,
             branch: branchUri,
             token: volumeConfig.driver_opts.token,
           },

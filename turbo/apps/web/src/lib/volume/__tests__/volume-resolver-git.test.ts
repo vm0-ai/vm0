@@ -13,7 +13,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "owner/repo",
+              repo: "https://github.com/owner/repo.git",
               branch: "main",
               token: "encrypted:AES256:test:test:test",
             },
@@ -47,7 +47,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "owner/repo",
+              repo: "https://github.com/owner/repo.git",
               token: "encrypted:AES256:test:test:test",
             },
           },
@@ -61,7 +61,7 @@ describe("volume-resolver git driver", () => {
       expect(result.volumes[0]?.metadata.branch).toBe("main");
     });
 
-    it("should support template variables in repo", () => {
+    it("should support template variables in repo URL", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["workspace:/home/user/workspace"],
@@ -70,7 +70,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "{{org}}/{{project}}",
+              repo: "https://github.com/{{org}}/{{project}}.git",
               branch: "main",
               token: "encrypted:AES256:test:test:test",
             },
@@ -97,7 +97,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "owner/repo",
+              repo: "https://github.com/owner/repo.git",
               branch: "{{branch}}",
               token: "encrypted:AES256:test:test:test",
             },
@@ -133,7 +133,8 @@ describe("volume-resolver git driver", () => {
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toEqual({
         volumeName: "workspace",
-        message: "Git driver requires 'repo' option (format: owner/repo)",
+        message:
+          "Git driver requires 'repo' option (format: https://github.com/owner/repo.git)",
         type: "missing_option",
       });
     });
@@ -147,7 +148,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "owner/repo",
+              repo: "https://github.com/owner/repo.git",
             },
           },
         },
@@ -173,7 +174,7 @@ describe("volume-resolver git driver", () => {
           workspace: {
             driver: "git",
             driver_opts: {
-              repo: "{{org}}/{{project}}",
+              repo: "https://github.com/{{org}}/{{project}}.git",
               token: "encrypted:AES256:test:test:test",
             },
           },
