@@ -27,6 +27,9 @@ describe("E2B Service - mocked unit tests", () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks();
+
+    // Set required environment variable
+    process.env.VM0_API_URL = "https://test.vm0.ai";
   });
 
   /**
