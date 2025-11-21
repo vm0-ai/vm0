@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/web-v0.5.0...web-v0.5.1) (2025-11-20)
+
+
+### Bug Fixes
+
+* set explicit 1-hour timeout for e2b sandbox lifecycle ([#117](https://github.com/vm0-ai/vm0/issues/117)) ([b1594b8](https://github.com/vm0-ai/vm0/commit/b1594b8b59600341d5ea3bde3623da4e7cec4b8d))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/web-v0.4.1...web-v0.5.0) (2025-11-20)
 
 
