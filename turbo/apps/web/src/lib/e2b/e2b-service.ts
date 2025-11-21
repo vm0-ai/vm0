@@ -8,9 +8,13 @@ import type {
 } from "./types";
 import { resolveVolumes } from "../volume/volume-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
-import { downloadGitHubDirectory } from "../github/github-client";
+import {
+  downloadGitHubDirectory,
+  uploadGitHubDirectory,
+} from "../github/github-client";
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
+import type { VolumeMetadata } from "./types";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -45,6 +49,39 @@ export class E2BService {
           content.byteOffset + content.byteLength,
         ) as ArrayBuffer;
         await sandbox.files.write(remoteFilePath, arrayBuffer);
+      }
+    }
+  }
+
+  /**
+   * Download directory contents from E2B sandbox recursively
+   */
+  private async downloadDirectoryFromSandbox(
+    sandbox: Sandbox,
+    remotePath: string,
+    localDir: string,
+  ): Promise<void> {
+    // List directory contents
+    const entries = await sandbox.files.list(remotePath);
+
+    // Create local directory
+    await fs.promises.mkdir(localDir, { recursive: true });
+
+    for (const entry of entries) {
+      const remoteFilePath = path.posix.join(remotePath, entry.name);
+      const localPath = path.join(localDir, entry.name);
+
+      if (entry.type === "dir") {
+        await this.downloadDirectoryFromSandbox(
+          sandbox,
+          remoteFilePath,
+          localPath,
+        );
+      } else {
+        const content = await sandbox.files.read(remoteFilePath);
+        // Convert ArrayBuffer to Buffer
+        const buffer = Buffer.from(content);
+        await fs.promises.writeFile(localPath, buffer);
       }
     }
   }
@@ -223,6 +260,70 @@ export class E2BService {
 
       console.log(`[E2B] Run ${runId} completed in ${executionTimeMs}ms`);
 
+      // Upload modified volumes back to storage (Git volumes only)
+      const volumeMetadata: VolumeMetadata[] = [];
+
+      if (volumeResult.volumes.length > 0 && result.exitCode === 0 && tempDir) {
+        console.log(
+          `[E2B] Uploading modified volumes for ${volumeResult.volumes.length} volume(s)...`,
+        );
+
+        for (const volume of volumeResult.volumes) {
+          try {
+            if (volume.driver === "git") {
+              if (!options.userId) {
+                console.warn(
+                  `[E2B] Skipping upload for Git volume "${volume.name}": userId not provided`,
+                );
+                continue;
+              }
+
+              // Download modified workspace from sandbox
+              const localPath = path.join(tempDir, `${volume.name}-modified`);
+              await this.downloadDirectoryFromSandbox(
+                sandbox,
+                volume.mountPath,
+                localPath,
+              );
+              console.log(
+                `[E2B] Downloaded modified volume "${volume.name}" from sandbox`,
+              );
+
+              // Upload to GitHub with run-specific branch
+              const branch = `run-${runId}`;
+              const commitMessage = `Agent run ${runId}\n\nPrompt: ${options.prompt}\n\nAutomated commit from VM0 agent`;
+
+              const uploadResult = await uploadGitHubDirectory(
+                localPath,
+                volume.uri,
+                branch,
+                commitMessage,
+                volume.metadata.token as string,
+                options.userId,
+                env().ENCRYPTION_SECRET,
+              );
+
+              console.log(
+                `[E2B] Uploaded volume "${volume.name}" to branch "${branch}", commit: ${uploadResult.commitSha}`,
+              );
+
+              volumeMetadata.push({
+                volumeName: volume.name,
+                driver: "git",
+                commitSha: uploadResult.commitSha,
+                branch: uploadResult.branch,
+                repo: volume.metadata.repo as string,
+              });
+            }
+          } catch (error) {
+            console.error(
+              `[E2B] Failed to upload volume "${volume.name}":`,
+              error,
+            );
+          }
+        }
+      }
+
       return {
         runId,
         sandboxId: sandbox.sandboxId,
@@ -232,6 +333,7 @@ export class E2BService {
         executionTimeMs,
         createdAt: new Date(startTime),
         completedAt,
+        volumeMetadata: volumeMetadata.length > 0 ? volumeMetadata : undefined,
       };
     } catch (error) {
       const executionTimeMs = Date.now() - startTime;

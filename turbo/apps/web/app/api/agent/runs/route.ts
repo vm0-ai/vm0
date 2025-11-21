@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
             result: {
               output: result.output,
               executionTimeMs: result.executionTimeMs,
+              volumeMetadata: result.volumeMetadata,
             },
             error: result.error || null,
             completedAt: result.completedAt || new Date(),

@@ -21,6 +21,15 @@ export interface RunResult {
   executionTimeMs: number;
   createdAt: Date;
   completedAt?: Date;
+  volumeMetadata?: VolumeMetadata[];
+}
+
+export interface VolumeMetadata {
+  volumeName: string;
+  driver: string;
+  commitSha?: string;
+  branch?: string;
+  repo?: string;
 }
 
 export interface SandboxExecutionResult {
