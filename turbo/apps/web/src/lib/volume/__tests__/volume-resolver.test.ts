@@ -127,7 +127,7 @@ describe("resolveVolumes", () => {
       agent: {
         volumes: ["user-workspace:/home/user/workspace"],
       },
-      "dynamic_volumes": {
+      dynamic_volumes: {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {
@@ -170,7 +170,7 @@ describe("resolveVolumes", () => {
           },
         },
       },
-      "dynamic_volumes": {
+      dynamic_volumes: {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {
@@ -209,7 +209,7 @@ describe("resolveVolumes", () => {
       agent: {
         volumes: ["user-workspace:/path"],
       },
-      "dynamic_volumes": {
+      dynamic_volumes: {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {
@@ -267,5 +267,26 @@ describe("resolveVolumes", () => {
       type: "invalid_driver",
       message: "Unsupported volume driver: nfs. Supported: s3fs, git",
     });
+  });
+
+  it("should reject deprecated 'dynamic-volumes' format", () => {
+    const config = {
+      agent: {
+        volumes: ["user-workspace:/path"],
+      },
+      "dynamic-volumes": {
+        "user-workspace": {
+          driver: "s3fs",
+          driver_opts: {
+            uri: "s3://bucket/users/{{userId}}",
+            region: "us-west-2",
+          },
+        },
+      },
+    };
+
+    expect(() => resolveVolumes(config as AgentVolumeConfig)).toThrow(
+      "Configuration error: 'dynamic-volumes' is deprecated. Please use 'dynamic_volumes' instead (snake_case)",
+    );
   });
 });
