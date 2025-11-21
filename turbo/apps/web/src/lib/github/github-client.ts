@@ -91,7 +91,9 @@ export async function downloadGitHubDirectory(
 
     // Get commit SHA from response headers
     const contentDisposition = response.headers.get("content-disposition");
-    const commitShaMatch = contentDisposition?.match(/filename=.*-([a-f0-9]{7,40})\.tar\.gz/);
+    const commitShaMatch = contentDisposition?.match(
+      /filename=.*-([a-f0-9]{7,40})\.tar\.gz/,
+    );
     const commitSha = commitShaMatch?.[1] || "unknown";
 
     // Extract tarball to local path

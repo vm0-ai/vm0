@@ -66,8 +66,7 @@ export function replaceTemplateVars(
  * parseGitHubRepoUrl("https://github.com/owner/repo") => "owner/repo"
  */
 export function parseGitHubRepoUrl(repoUrl: string): string {
-  const httpsPattern =
-    /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/;
+  const httpsPattern = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/;
   const match = repoUrl.match(httpsPattern);
 
   if (match) {
