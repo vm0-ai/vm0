@@ -127,7 +127,7 @@ describe("resolveVolumes", () => {
       agent: {
         volumes: ["user-workspace:/home/user/workspace"],
       },
-      "dynamic-volumes": {
+      "dynamic_volumes": {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {
@@ -170,7 +170,7 @@ describe("resolveVolumes", () => {
           },
         },
       },
-      "dynamic-volumes": {
+      "dynamic_volumes": {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {
@@ -209,7 +209,7 @@ describe("resolveVolumes", () => {
       agent: {
         volumes: ["user-workspace:/path"],
       },
-      "dynamic-volumes": {
+      "dynamic_volumes": {
         "user-workspace": {
           driver: "s3fs",
           driver_opts: {

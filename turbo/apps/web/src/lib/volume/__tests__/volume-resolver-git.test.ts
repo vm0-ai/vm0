@@ -66,7 +66,7 @@ describe("volume-resolver git driver", () => {
         agent: {
           volumes: ["workspace:/home/user/workspace"],
         },
-        "dynamic-volumes": {
+        "dynamic_volumes": {
           workspace: {
             driver: "git",
             driver_opts: {
@@ -93,7 +93,7 @@ describe("volume-resolver git driver", () => {
         agent: {
           volumes: ["workspace:/home/user/workspace"],
         },
-        "dynamic-volumes": {
+        "dynamic_volumes": {
           workspace: {
             driver: "git",
             driver_opts: {
@@ -169,7 +169,7 @@ describe("volume-resolver git driver", () => {
         agent: {
           volumes: ["workspace:/home/user/workspace"],
         },
-        "dynamic-volumes": {
+        "dynamic_volumes": {
           workspace: {
             driver: "git",
             driver_opts: {
