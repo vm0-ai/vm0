@@ -281,6 +281,60 @@ export class E2BService {
   }
 
   /**
+   * Get the path to run-agent.sh script
+   * Resolves to the correct location in both dev and production
+   */
+  private getRunAgentScriptPath(): string {
+    // In production build (.next/standalone), the script is in .next/server/scripts/
+    // In development, we read directly from the scripts directory
+    const isDev = process.env.NODE_ENV === "development";
+
+    if (isDev) {
+      // Development: read from source
+      return path.join(process.cwd(), "../../scripts/e2b/run-agent.sh");
+    } else {
+      // Production: read from build output
+      return path.join(process.cwd(), ".next/server/scripts/run-agent.sh");
+    }
+  }
+
+  /**
+   * Read and upload run-agent.sh script to sandbox
+   */
+  private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
+    const localScriptPath = this.getRunAgentScriptPath();
+    const tempPath = "/tmp/run-agent.sh";
+    const finalPath = "/usr/local/bin/run-agent.sh";
+
+    try {
+      // Read script content
+      const scriptContent = await fs.promises.readFile(localScriptPath);
+
+      // Convert Buffer to ArrayBuffer for E2B
+      const arrayBuffer = scriptContent.buffer.slice(
+        scriptContent.byteOffset,
+        scriptContent.byteOffset + scriptContent.byteLength,
+      ) as ArrayBuffer;
+
+      // Upload to temp location first
+      await sandbox.files.write(tempPath, arrayBuffer);
+
+      // Move to /usr/local/bin/ and make executable
+      await sandbox.commands.run(
+        `sudo mv ${tempPath} ${finalPath} && sudo chmod +x ${finalPath}`,
+      );
+
+      console.log(`[E2B] Uploaded run-agent.sh to sandbox: ${finalPath}`);
+      return finalPath;
+    } catch (error) {
+      console.error(`[E2B] Failed to upload run-agent.sh:`, error);
+      throw new Error(
+        `Failed to upload run-agent.sh script. Ensure the script exists at ${localScriptPath}`,
+      );
+    }
+  }
+
+  /**
    * Execute Claude Code via run-agent.sh script
    */
   private async executeCommand(
@@ -293,9 +347,9 @@ export class E2BService {
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
-    // Use pre-installed run-agent.sh script from /usr/local/bin/
-    // The script is copied into the E2B template during build (see e2b/template.ts)
-    const scriptPath = "/usr/local/bin/run-agent.sh";
+    // Upload run-agent.sh script to sandbox at runtime
+    // This allows script changes without rebuilding the E2B template
+    const scriptPath = await this.uploadRunAgentScript(sandbox);
 
     console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 

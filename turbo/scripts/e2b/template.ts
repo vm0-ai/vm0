@@ -40,19 +40,9 @@ export const template = Template()
   .runCmd("sudo apt-get install -y curl jq")
   // Create workspace directory (use absolute path)
   .runCmd("mkdir -p /home/user/workspace")
-  // Create VM0 directory for scripts
-  .runCmd("sudo mkdir -p /opt/vm0")
-  .runCmd("sudo chmod 755 /opt/vm0")
-  // Copy run-agent.sh script to /usr/local/bin/ (like uspark approach)
-  .copy("./run-agent.sh", "/tmp/run-agent.sh")
-  .runCmd("sudo mv /tmp/run-agent.sh /usr/local/bin/run-agent.sh")
-  .runCmd("sudo chmod +x /usr/local/bin/run-agent.sh")
-  // Verify installations
+  // Verify required tools are installed
   .runCmd("which curl")
   .runCmd("which jq")
-  .runCmd(
-    "test -f /usr/local/bin/run-agent.sh && echo 'SUCCESS: run-agent.sh installed' || (echo 'FATAL: run-agent.sh missing' && exit 1)",
-  )
   .runCmd('echo "VM0 Claude Code template ready!"')
   // Final verification - this should fail the build if Claude is not installed
   .runCmd(
