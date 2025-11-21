@@ -12,11 +12,11 @@ import {
   BadRequestError,
   NotFoundError,
   UnauthorizedError,
-} from "../../../../src/lib/errors";
+} from "../../../../../src/lib/errors";
 import type {
   WebhookRequest,
   WebhookResponse,
-} from "../../../../src/types/webhook";
+} from "../../../../../src/types/webhook";
 
 /**
  * POST /api/webhooks/agent-events
