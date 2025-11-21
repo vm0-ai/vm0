@@ -1,31 +1,35 @@
-#!/bin/bash
+/**
+ * Agent execution script content
+ * This script is uploaded to the E2B sandbox at runtime
+ */
+export const RUN_AGENT_SCRIPT = `#!/bin/bash
 set -e
 
 # Get environment variables
-RUN_ID="${VM0_RUN_ID}"
-WEBHOOK_URL="${VM0_WEBHOOK_URL}"
-WEBHOOK_TOKEN="${VM0_WEBHOOK_TOKEN}"
-PROMPT="${VM0_PROMPT}"
-WORKING_DIR="${VM0_WORKING_DIR:-/home/user}"
-VERCEL_BYPASS="${VERCEL_PROTECTION_BYPASS:-}"
+RUN_ID="\${VM0_RUN_ID}"
+WEBHOOK_URL="\${VM0_WEBHOOK_URL}"
+WEBHOOK_TOKEN="\${VM0_WEBHOOK_TOKEN}"
+PROMPT="\${VM0_PROMPT}"
+WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
+VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 
 # Send single event immediately
 send_event() {
   local event_json="$1"
 
-  local payload=$(jq -n \
-    --arg rid "$RUN_ID" \
-    --argjson event "$event_json" \
+  local payload=$(jq -n \\
+    --arg rid "$RUN_ID" \\
+    --argjson event "$event_json" \\
     '{runId: $rid, events: [$event]}')
 
   # Build curl command with optional Vercel bypass header
-  local curl_cmd="curl -X POST \"$WEBHOOK_URL\" \
-    -H \"Content-Type: application/json\" \
-    -H \"Authorization: Bearer $WEBHOOK_TOKEN\""
+  local curl_cmd="curl -X POST \\"$WEBHOOK_URL\\" \\
+    -H \\"Content-Type: application/json\\" \\
+    -H \\"Authorization: Bearer $WEBHOOK_TOKEN\\""
 
   # Add Vercel protection bypass header if available (for preview deployments)
   if [ -n "$VERCEL_BYPASS" ]; then
-    curl_cmd="$curl_cmd -H \"x-vercel-protection-bypass: $VERCEL_BYPASS\""
+    curl_cmd="$curl_cmd -H \\"x-vercel-protection-bypass: $VERCEL_BYPASS\\""
   fi
 
   curl_cmd="$curl_cmd -d '$payload' --silent --fail"
@@ -46,10 +50,10 @@ echo "[VM0] Prompt: $PROMPT" >&2
 
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
-/usr/local/bin/claude --print \
-       --verbose \
-       --output-format stream-json \
-       --dangerously-skip-permissions \
+/usr/local/bin/claude --print \\
+       --verbose \\
+       --output-format stream-json \\
+       --dangerously-skip-permissions \\
        "$PROMPT" 2>&1 | while IFS= read -r line; do
 
   # Skip empty lines
@@ -76,7 +80,7 @@ set +e  # Don't exit on Claude error
   fi
 done
 
-CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
+CLAUDE_EXIT_CODE=\${PIPESTATUS[0]}
 set -e
 
 # Print newline after output
@@ -88,7 +92,8 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   send_event '{"type": "result", "data": {"status": "success", "exitCode": 0}}'
 else
   echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
-  send_event "{\"type\": \"result\", \"data\": {\"status\": \"failed\", \"exitCode\": $CLAUDE_EXIT_CODE}}"
+  send_event "{\\"type\\": \\"result\\", \\"data\\": {\\"status\\": \\"failed\\", \\"exitCode\\": $CLAUDE_EXIT_CODE}}"
 fi
 
 exit $CLAUDE_EXIT_CODE
+`;

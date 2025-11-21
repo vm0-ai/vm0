@@ -1,21 +1,32 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Noto_Sans, Fira_Code, Fira_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import "./globals.css";
+import "./landing.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
+const notoSans = Noto_Sans({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-noto-sans",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
+
+const firaCode = Fira_Code({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-fira-code",
+});
+
+const firaMono = Fira_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-fira-mono",
 });
 
 export const metadata: Metadata = {
-  title: "vm0",
-  description: "vm0 application",
+  title: "VM0 - Modern Infrastructure for Agent Development",
+  description:
+    "Build and evolve AI agents, just natural language. VM0 gives you a built-in sandbox with everything needed to build modern agents.",
 };
 
 export default function RootLayout({
@@ -26,7 +37,9 @@ export default function RootLayout({
   return (
     <ClerkProvider publishableKey={getClerkPublishableKey()}>
       <html lang="en">
-        <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <body
+          className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable}`}
+        >
           {children}
         </body>
       </html>

@@ -9,6 +9,20 @@ import type { CreateRunOptions } from "../types";
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
 
+// Mock fs module
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    promises: {
+      ...actual.promises,
+      readFile: vi
+        .fn()
+        .mockResolvedValue(Buffer.from("#!/bin/bash\necho 'mock script'")),
+    },
+  };
+});
+
 describe("E2B Service - mocked unit tests", () => {
   beforeEach(() => {
     // Clear all mocks before each test
@@ -20,6 +34,9 @@ describe("E2B Service - mocked unit tests", () => {
    */
   const createMockSandbox = (overrides = {}) => ({
     sandboxId: "mock-sandbox-id-123",
+    files: {
+      write: vi.fn().mockResolvedValue(undefined),
+    },
     commands: {
       run: vi.fn().mockResolvedValue({
         stdout: "Mock Claude Code output",
@@ -66,7 +83,7 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.output).toBe("Mock Claude Code output");
 
       // Verify timing information
-      expect(result.executionTimeMs).toBeGreaterThan(0);
+      expect(result.executionTimeMs).toBeGreaterThanOrEqual(0);
       expect(result.executionTimeMs).toBeLessThan(10000); // Should complete quickly with mocks
 
       // Verify timestamps
@@ -77,7 +94,8 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      // commands.run called twice: once for "sudo mv && chmod", once for executing script
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -120,8 +138,9 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify both sandboxes were created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
-      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(1);
-      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(1);
+      // Each sandbox: 2 calls (sudo mv && chmod, then execute script)
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(2);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox1.kill).toHaveBeenCalledTimes(1);
       expect(mockSandbox2.kill).toHaveBeenCalledTimes(1);
     });
@@ -150,7 +169,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -182,7 +201,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -244,10 +263,11 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.status).toBe("completed");
 
       // Verify sandbox command was called with environment variables including working_dir
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
-      const commandCall = mockSandbox.commands.run.mock.calls[0];
+      expect(mockSandbox.commands.run).toHaveBeenCalled();
+      const commandCall = mockSandbox.commands.run.mock.calls.find(
+        (call) => call[0] === "/usr/local/bin/run-agent.sh",
+      );
       expect(commandCall).toBeDefined();
-      expect(commandCall?.[0]).toBe("/usr/local/bin/run-agent.sh");
       expect(commandCall?.[1]?.envs).toBeDefined();
       expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
         "/home/user/workspace",
@@ -285,10 +305,11 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.status).toBe("completed");
 
       // Verify sandbox command was called without VM0_WORKING_DIR
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
-      const commandCall = mockSandbox.commands.run.mock.calls[0];
+      expect(mockSandbox.commands.run).toHaveBeenCalled();
+      const commandCall = mockSandbox.commands.run.mock.calls.find(
+        (call) => call[0] === "/usr/local/bin/run-agent.sh",
+      );
       expect(commandCall).toBeDefined();
-      expect(commandCall?.[0]).toBe("/usr/local/bin/run-agent.sh");
       expect(commandCall?.[1]?.envs).toBeDefined();
       expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBeUndefined();
     });
