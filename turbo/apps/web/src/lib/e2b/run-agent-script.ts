@@ -7,12 +7,23 @@ set -e
 
 # Get environment variables
 RUN_ID="\${VM0_RUN_ID}"
-API_URL="\${VM0_API_URL:-http://localhost:3000}"
+API_URL="\${VM0_API_URL}"
 API_TOKEN="\${VM0_API_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 SESSION_ID="\${VM0_SESSION_ID:-}"
+
+# Validate required environment variables
+if [ -z "$API_URL" ]; then
+  echo "[ERROR] VM0_API_URL is not set" >&2
+  exit 1
+fi
+
+if [ -z "$API_TOKEN" ]; then
+  echo "[ERROR] VM0_API_TOKEN is not set" >&2
+  exit 1
+fi
 
 # Construct webhook URLs from API_URL
 EVENTS_WEBHOOK_URL="$API_URL/api/webhooks/agent/events"

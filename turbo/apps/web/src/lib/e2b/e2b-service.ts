@@ -155,7 +155,7 @@ export class E2BService {
         );
       }
       // Get API configuration with dynamic fallback logic
-      // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
+      // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL
       const envVars = globalThis.services?.env;
 
       // Read Vercel system variables directly from process.env
@@ -172,7 +172,9 @@ export class E2BService {
         } else if (vercelEnv === "production") {
           apiUrl = "https://www.vm0.ai";
         } else {
-          apiUrl = "http://localhost:3000";
+          throw new Error(
+            "VM0_API_URL must be set for E2B sandbox execution. Cannot use localhost as sandbox cannot reach local machine.",
+          );
         }
       }
 
