@@ -11,6 +11,8 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "test:e2e": "vitest --run --config e2e/vitest.config.ts",
+    "test:e2e:watch": "vitest --config e2e/vitest.config.ts",
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",

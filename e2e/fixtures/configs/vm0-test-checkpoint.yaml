@@ -1,0 +1,13 @@
+agent:
+  name: vm0-test-checkpoint
+  image: vm0-claude-code:test
+  provider: claude-code
+  model: claude-3-5-sonnet-20241022
+  working_dir: /home/user
+  volumes:
+    - name: test-repo
+      driver: github
+      metadata:
+        repository: anthropics/anthropic-sdk-typescript
+        ref: main
+        path: /home/user/repo
