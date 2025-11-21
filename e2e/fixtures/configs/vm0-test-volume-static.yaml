@@ -7,7 +7,7 @@ agent:
   provider: claude-code
   working_dir: /home/user/workspace
   volumes:
-    - "test-data:/home/user/workspace/data"
+    - "test-data:/home/user/workspace"
 
 volumes:
   test-data:

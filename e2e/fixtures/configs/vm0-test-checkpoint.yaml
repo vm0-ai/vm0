@@ -5,22 +5,22 @@ agent:
   description: "Test agent with GitHub volume mounting for checkpoint/resume"
   image: vm0-claude-code-dev
   provider: claude-code
-  model: claude-3-5-sonnet-20241022
-  working_dir: /home/user
+  working_dir: /home/user/workspace
   volumes:
-    - "claude-files:/home/user/claude-files"
-    - "question:/home/user/question"
+    - claude-system:/home/user/.claude
+    - user-workspace:/home/user/workspace
 
 volumes:
-  claude-files:
+  claude-system:
+    driver: s3fs
+    driver_opts:
+      uri: s3://vm0-s3-demo-bucket-public/claude-files
+      region: us-west-2
+
+dynamic_volumes:
+  user-workspace:
     driver: git
     driver_opts:
-      repo: lancy/claude-files
-      branch: main
-      token: "${CI_GITHUB_TOKEN}"
-  question:
-    driver: git
-    driver_opts:
-      repo: lancy/question
+      repo: https://github.com/{{user}}/question.git
       branch: main
       token: "${CI_GITHUB_TOKEN}"

@@ -13,22 +13,11 @@ setup() {
     assert_output --partial "vm0-test-checkpoint"
 }
 
-@test "Run agent with GitHub volume - verify claude-files repository access" {
-    # Test that GitHub volume is mounted and accessible
-    # Token is encrypted in config during build (from CI_GITHUB_TOKEN env var)
-    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/claude-files directory"
-    assert_success
-    # Should access the GitHub repository volume
-    assert_output --partial "claude-files"
-}
-
 @test "Run agent with GitHub volume - verify question repository access" {
     # Test that GitHub volume is mounted and accessible
-    # Token is encrypted in config during build (from CI_GITHUB_TOKEN env var)
-    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/question directory"
+    run $CLI_COMMAND run vm0-test-checkpoint "List the files in the /home/user/workspace directory" -e user=lancy
     assert_success
-    # Should access the GitHub repository volume
-    assert_output --partial "question"
+    assert_output --partial "question.md"
 }
 
 @test "Create checkpoint during agent execution" {
