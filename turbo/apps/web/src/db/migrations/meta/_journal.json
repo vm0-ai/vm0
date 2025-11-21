@@ -71,6 +71,13 @@
       "when": 1763453904000,
       "tag": "0009_add_name_to_agent_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1763745898379,
+      "tag": "0010_add_checkpoints_table",
+      "breakpoints": true
     }
   ]
 }
