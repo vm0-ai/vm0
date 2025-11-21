@@ -5,13 +5,11 @@ on:
     branches:
       - main
     paths:
-      - "e2b/**"
-      - "turbo/scripts/e2b/**"
+      - "turbo/scripts/e2b/template.ts"
       - ".github/workflows/e2b-template.yml"
   pull_request:
     paths:
-      - "e2b/**"
-      - "turbo/scripts/e2b/**"
+      - "turbo/scripts/e2b/template.ts"
       - ".github/workflows/e2b-template.yml"
 
 jobs:

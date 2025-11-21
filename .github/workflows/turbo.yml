@@ -6,6 +6,13 @@ on:
     branches:
       - main
   merge_group:
+  workflow_dispatch:
+    inputs:
+      run_cli_e2e:
+        description: 'Force run CLI E2E tests'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # Detect changes in apps to optimize CI pipeline
@@ -29,6 +36,15 @@ jobs:
       - name: Detect changes
         id: detect
         run: |
+          # For workflow_dispatch with run_cli_e2e, force CLI changed
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run_cli_e2e }}" = "true" ]; then
+            echo "Manual trigger with CLI E2E enabled"
+            echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "docs-changed=false" >> $GITHUB_OUTPUT
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # For non-PR events, assume everything changed
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "Not a PR, assuming all apps changed"
@@ -140,8 +156,12 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
-    # Deploy if it's a PR and either web or CLI changed (CLI needs web deployment for E2E tests)
-    if: github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true')
+    # Deploy if:
+    # - It's a PR and either web or CLI changed (CLI needs web deployment for E2E tests)
+    # - It's a workflow_dispatch with run_cli_e2e enabled
+    if: |
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -220,8 +240,12 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web]
-    # Run if CLI changed and web deployment succeeded
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.cli-changed == 'true' && needs.deploy-web.outputs.preview-url != ''
+    # Run if:
+    # - It's a PR, (CLI or web) changed, and web deployment succeeded
+    # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
+    if: |
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
     steps:
       - uses: actions/checkout@v4
         with:
