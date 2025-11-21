@@ -69,7 +69,8 @@ You'll see webhook events streaming in real-time! 🎉
 3. **Environment Setup**: `VM0_API_URL` is set to the tunnel URL
 4. **Dev Server Start**: Next.js starts with the tunnel URL configured
 5. **Webhook Flow**:
-   - E2B sandbox receives `VM0_WEBHOOK_URL=https://tunnel-url.trycloudflare.com/api/webhooks/agent-events`
+   - E2B sandbox receives `VM0_API_URL=https://tunnel-url.trycloudflare.com`
+   - Sandbox constructs webhook URL: `${VM0_API_URL}/api/webhooks/agent/events`
    - Sandbox sends webhook events through the tunnel
    - Events reach your local dev server
    - Events are authenticated and stored in local database
@@ -91,7 +92,7 @@ When you run `pnpm dev:tunnel`, you'll see:
   Tunnel:  https://example-name-random.trycloudflare.com
 
 E2B webhooks will be sent to:
-  https://example-name-random.trycloudflare.com/api/webhooks/agent-events
+  https://example-name-random.trycloudflare.com/api/webhooks/agent/events
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -180,7 +181,7 @@ lsof -ti:3000 | xargs kill -9
 4. **Test webhook endpoint manually**:
    ```bash
    # Replace with your tunnel URL
-   curl -X POST https://your-tunnel.trycloudflare.com/api/webhooks/agent-events \
+   curl -X POST https://your-tunnel.trycloudflare.com/api/webhooks/agent/events \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer test-token" \
      -d '{"runId": "test", "events": [{"type": "init"}]}'

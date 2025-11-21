@@ -201,8 +201,8 @@ E2B_API_KEY=your-api-key
 ### Passed to Sandbox (Automatically)
 
 - `VM0_RUN_ID` - Run UUID
-- `VM0_WEBHOOK_URL` - Webhook endpoint URL
-- `VM0_WEBHOOK_TOKEN` - Webhook auth token
+- `VM0_API_URL` - API base URL (sandbox constructs webhook endpoint internally)
+- `VM0_API_TOKEN` - Temporary webhook auth token
 - `VM0_PROMPT` - User prompt for Claude
 
 ## CI/CD Setup
