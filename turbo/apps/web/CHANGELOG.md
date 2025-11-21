@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/web-v0.6.0...web-v0.7.0) (2025-11-21)
+
+
+### Features
+
+* migrate landing page to apps/web ([#136](https://github.com/vm0-ai/vm0/issues/136)) ([a11e26e](https://github.com/vm0-ai/vm0/commit/a11e26ebbc0a8787792918882c6243180a1603f4))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/web-v0.5.1...web-v0.6.0) (2025-11-21)
 
 
