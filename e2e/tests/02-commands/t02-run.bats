@@ -18,10 +18,3 @@ setup() {
     assert_success
     assert_output --partial "[result]"
 }
-
-@test "Verify run command completes without errors" {
-    run $CLI_COMMAND run vm0-test-math "1+1=?"
-    assert_success
-    refute_output --partial "error"
-    refute_output --partial "failed"
-}

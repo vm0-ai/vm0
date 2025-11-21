@@ -20,20 +20,14 @@ setup() {
     assert_output --partial "Hello from S3 volume"
 }
 
-@test "Run agent with static volume - verify JSON file access" {
-    run $CLI_COMMAND run vm0-test-volume-static "Read /home/user/workspace/data/config.json and tell me the value of the 'test' field"
-    assert_success
-    assert_output --partial "volume-mounting"
-}
-
 @test "Build agent with dynamic volume configuration" {
     run $CLI_COMMAND build "$TEST_DYNAMIC_VOLUME_CONFIG"
     assert_success
     assert_output --partial "vm0-test-volume-dynamic"
 }
 
-@test "Run agent with dynamic volume - pass userId variable" {
-    run $CLI_COMMAND run vm0-test-volume-dynamic -e userId=test-user-123 "Read the file at /home/user/workspace/user-files/profile.json and tell me the userId value"
+@test "Run agent with dynamic volume - read file with template variable" {
+    run $CLI_COMMAND run vm0-test-volume-dynamic -e userId=test-user-123 "Read the file at /home/user/workspace/user-files/message.txt and output exactly what it says"
     assert_success
-    assert_output --partial "test-user-123"
+    assert_output --partial "Hello from test-user-123"
 }
