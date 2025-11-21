@@ -28,7 +28,7 @@ import { auth } from "@clerk/nextjs/server";
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
-describe("POST /api/webhooks/agent-events", () => {
+describe("POST /api/webhooks/agent/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID(); // UUID for agent run
@@ -112,7 +112,7 @@ describe("POST /api/webhooks/agent-events", () => {
   describe("Authentication", () => {
     it("should reject webhook without authentication", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -135,7 +135,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
     it("should reject webhook with invalid token", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -174,7 +174,7 @@ describe("POST /api/webhooks/agent-events", () => {
       });
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -222,7 +222,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
     it("should reject webhook without runId", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -245,7 +245,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
     it("should reject webhook without events array", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -268,7 +268,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
     it("should reject webhook with empty events array", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -315,7 +315,7 @@ describe("POST /api/webhooks/agent-events", () => {
       const nonExistentRunId = randomUUID(); // Use a valid UUID that doesn't exist
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -350,7 +350,7 @@ describe("POST /api/webhooks/agent-events", () => {
       });
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -403,7 +403,7 @@ describe("POST /api/webhooks/agent-events", () => {
       });
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -484,7 +484,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
       // First webhook - 2 events
       const request1 = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -510,7 +510,7 @@ describe("POST /api/webhooks/agent-events", () => {
 
       // Second webhook - 3 events
       const request2 = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -607,7 +607,7 @@ describe("POST /api/webhooks/agent-events", () => {
       ];
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
@@ -682,7 +682,7 @@ describe("POST /api/webhooks/agent-events", () => {
       }));
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent-events",
+        "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {

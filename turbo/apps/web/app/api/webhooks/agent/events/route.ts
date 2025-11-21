@@ -19,7 +19,7 @@ import type {
 } from "../../../../src/types/webhook";
 
 /**
- * POST /api/webhooks/agent-events
+ * POST /api/webhooks/agent/events
  * Receive agent events from E2B sandbox
  */
 export async function POST(request: NextRequest) {
