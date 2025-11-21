@@ -9,6 +9,19 @@ import type { CreateRunOptions } from "../types";
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
 
+// Mock VolumeService
+vi.mock("../volume/volume-service", () => ({
+  volumeService: {
+    prepareVolumes: vi.fn().mockResolvedValue({
+      preparedVolumes: [],
+      tempDir: null,
+      errors: [],
+    }),
+    mountVolumes: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 // Mock fs module
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();

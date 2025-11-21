@@ -6,49 +6,16 @@ import type {
   RunResult,
   SandboxExecutionResult,
 } from "./types";
-import { resolveVolumes } from "../volume/volume-resolver";
-import { downloadS3Directory } from "../s3/s3-client";
+import { volumeService } from "../volume/volume-service";
 import type { AgentVolumeConfig } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import { RUN_AGENT_SCRIPT } from "./run-agent-script";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 /**
  * E2B Service
  * Manages E2B sandbox creation and execution
  */
 export class E2BService {
-  /**
-   * Upload directory contents to E2B sandbox recursively
-   */
-  private async uploadDirectoryToSandbox(
-    sandbox: Sandbox,
-    localDir: string,
-    remotePath: string,
-  ): Promise<void> {
-    const entries = await fs.promises.readdir(localDir, {
-      withFileTypes: true,
-    });
-
-    for (const entry of entries) {
-      const localPath = path.join(localDir, entry.name);
-      const remoteFilePath = path.posix.join(remotePath, entry.name);
-
-      if (entry.isDirectory()) {
-        await this.uploadDirectoryToSandbox(sandbox, localPath, remoteFilePath);
-      } else {
-        const content = await fs.promises.readFile(localPath);
-        // Convert Buffer to ArrayBuffer for E2B
-        const arrayBuffer = content.buffer.slice(
-          content.byteOffset,
-          content.byteOffset + content.byteLength,
-        ) as ArrayBuffer;
-        await sandbox.files.write(remoteFilePath, arrayBuffer);
-      }
-    }
-  }
-
   /**
    * Create and execute an agent run
    * MVP: Executes simple "echo hello world" command
@@ -65,7 +32,14 @@ export class E2BService {
     );
 
     let sandbox: Sandbox | null = null;
-    let tempDir: string | null = null;
+    const agentConfig = options.agentConfig as AgentVolumeConfig | undefined;
+
+    // Prepare volumes (resolve + download) before try block
+    const volumeResult = await volumeService.prepareVolumes(
+      agentConfig,
+      options.dynamicVars || {},
+      runId,
+    );
 
     try {
       // Get API configuration with dynamic fallback logic
@@ -98,45 +72,6 @@ export class E2BService {
       console.log(`[E2B] Computed API URL: ${apiUrl}`);
       console.log(`[E2B] Webhook: ${webhookEndpoint}`);
 
-      // Resolve volumes from agent config
-      const agentConfig = options.agentConfig as AgentVolumeConfig | undefined;
-      const volumeResult = agentConfig
-        ? resolveVolumes(agentConfig, options.dynamicVars || {})
-        : { volumes: [], errors: [] };
-
-      // Log volume resolution errors but don't fail the run
-      if (volumeResult.errors.length > 0) {
-        console.warn(`[E2B] Volume resolution errors:`, volumeResult.errors);
-      }
-
-      // Download volumes from S3 to temp directories
-      if (volumeResult.volumes.length > 0) {
-        tempDir = `/tmp/vm0-run-${runId}`;
-        await fs.promises.mkdir(tempDir, { recursive: true });
-
-        console.log(
-          `[E2B] Downloading ${volumeResult.volumes.length} volumes...`,
-        );
-
-        for (const volume of volumeResult.volumes) {
-          try {
-            const localPath = path.join(tempDir, volume.name);
-            const downloadResult = await downloadS3Directory(
-              volume.s3Uri,
-              localPath,
-            );
-            console.log(
-              `[E2B] Downloaded volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-            );
-          } catch (error) {
-            console.error(
-              `[E2B] Failed to download volume "${volume.name}":`,
-              error,
-            );
-          }
-        }
-      }
-
       // Create E2B sandbox with environment variables
       const sandboxEnvVars: Record<string, string> = {
         VM0_API_URL: apiUrl,
@@ -160,34 +95,8 @@ export class E2BService {
       );
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
-      // Upload volumes to sandbox
-      if (volumeResult.volumes.length > 0 && tempDir) {
-        console.log(
-          `[E2B] Uploading ${volumeResult.volumes.length} volumes to sandbox...`,
-        );
-
-        for (const volume of volumeResult.volumes) {
-          try {
-            const localPath = path.join(tempDir, volume.name);
-            // Check if directory exists before uploading
-            if (await fs.promises.stat(localPath).catch(() => null)) {
-              await this.uploadDirectoryToSandbox(
-                sandbox,
-                localPath,
-                volume.mountPath,
-              );
-              console.log(
-                `[E2B] Uploaded volume "${volume.name}" to ${volume.mountPath}`,
-              );
-            }
-          } catch (error) {
-            console.error(
-              `[E2B] Failed to upload volume "${volume.name}":`,
-              error,
-            );
-          }
-        }
-      }
+      // Mount volumes to sandbox
+      await volumeService.mountVolumes(sandbox, volumeResult.preparedVolumes);
 
       // Execute Claude Code via run-agent.sh
       const result = await this.executeCommand(
@@ -237,14 +146,7 @@ export class E2BService {
       }
 
       // Cleanup temp directory
-      if (tempDir) {
-        try {
-          await fs.promises.rm(tempDir, { recursive: true, force: true });
-          console.log(`[E2B] Cleaned up temp directory: ${tempDir}`);
-        } catch (error) {
-          console.error(`[E2B] Failed to cleanup temp directory:`, error);
-        }
-      }
+      await volumeService.cleanup(volumeResult.tempDir);
     }
   }
 

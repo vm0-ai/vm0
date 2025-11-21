@@ -46,3 +46,22 @@ export interface AgentVolumeConfig {
   volumes?: Record<string, VolumeConfig>;
   dynamic_volumes?: Record<string, VolumeConfig>;
 }
+
+/**
+ * Prepared volume with local path and mount information
+ */
+export interface PreparedVolume {
+  name: string;
+  localPath: string;
+  mountPath: string;
+  s3Uri: string;
+}
+
+/**
+ * Result of volume preparation (resolution + download)
+ */
+export interface VolumePreparationResult {
+  preparedVolumes: PreparedVolume[];
+  tempDir: string | null;
+  errors: string[];
+}
