@@ -22,6 +22,7 @@ export const agentRuns = pgTable("agent_runs", {
   prompt: text("prompt").notNull(),
   dynamicVars: jsonb("dynamic_vars"),
   sandboxId: varchar("sandbox_id", { length: 255 }),
+  sessionId: varchar("session_id", { length: 255 }), // Claude Code session ID
   result: jsonb("result"),
   error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

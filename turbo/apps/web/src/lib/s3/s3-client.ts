@@ -2,6 +2,7 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { env } from "../../env";
 import * as fs from "node:fs";
@@ -201,4 +202,95 @@ export async function downloadS3Directory(
     filesDownloaded: files.length,
     totalBytes,
   };
+}
+
+/**
+ * Upload file to S3
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param content - File content as Buffer or string
+ */
+export async function uploadS3Object(
+  bucket: string,
+  key: string,
+  content: Buffer | string,
+): Promise<void> {
+  const client = getS3Client();
+
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: content,
+      }),
+    );
+  } catch (error) {
+    throw new S3DownloadError(
+      `Failed to upload to S3: ${bucket}/${key}`,
+      bucket,
+      key,
+      error instanceof Error ? error : undefined,
+    );
+  }
+}
+
+/**
+ * Upload file to S3 with gzip compression
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key (should end with .gz)
+ * @param content - File content to compress and upload
+ */
+export async function uploadS3ObjectCompressed(
+  bucket: string,
+  key: string,
+  content: Buffer | string,
+): Promise<void> {
+  const zlib = await import("zlib");
+  const compressed = zlib.gzipSync(content);
+  await uploadS3Object(bucket, key, compressed);
+}
+
+/**
+ * Download and decompress gzipped file from S3
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key (should end with .gz)
+ * @returns Decompressed content as Buffer
+ */
+export async function downloadS3ObjectCompressed(
+  bucket: string,
+  key: string,
+): Promise<Buffer> {
+  const client = getS3Client();
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await client.send(command);
+
+    if (!response.Body) {
+      throw new Error("Empty response body");
+    }
+
+    // Convert stream to buffer
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as any) {
+      chunks.push(chunk);
+    }
+    const compressed = Buffer.concat(chunks);
+
+    // Decompress
+    const zlib = await import("zlib");
+    return zlib.gunzipSync(compressed);
+  } catch (error) {
+    throw new S3DownloadError(
+      `Failed to download compressed file from S3: ${bucket}/${key}`,
+      bucket,
+      key,
+      error instanceof Error ? error : undefined,
+    );
+  }
 }

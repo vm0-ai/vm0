@@ -71,6 +71,23 @@ export async function POST(request: NextRequest) {
 
     const lastSequence = lastEvent?.maxSeq ?? 0;
 
+    // Extract session ID from system init event
+    const initEvent = body.events.find(
+      (e: any) => e.type === "system" && e.subtype === "init",
+    );
+
+    if (initEvent?.session_id && !run.sessionId) {
+      // Update run with session ID (only once)
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({ sessionId: initEvent.session_id })
+        .where(eq(agentRuns.id, body.runId));
+
+      console.log(
+        `[Webhook] Captured session ID ${initEvent.session_id} for run ${body.runId}`,
+      );
+    }
+
     // Prepare events for insertion
     const eventsToInsert = body.events.map((event, index) => ({
       runId: body.runId,
