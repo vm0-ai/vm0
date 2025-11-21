@@ -38,7 +38,7 @@ export function getEventHandlerConfig(): EventHandlerConfig {
     // Local dev with ngrok or production with real URL
     return {
       mode: "webhook",
-      webhookUrl: `${webhookUrl}/api/webhooks/agent-events`,
+      webhookUrl: `${webhookUrl}/api/webhooks/agent/events`,
     };
   }
 
