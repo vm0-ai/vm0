@@ -7,11 +7,14 @@ set -e
 
 # Get environment variables
 RUN_ID="\${VM0_RUN_ID}"
-WEBHOOK_URL="\${VM0_WEBHOOK_URL}"
-WEBHOOK_TOKEN="\${VM0_WEBHOOK_TOKEN}"
+API_URL="\${VM0_API_URL}"
+API_TOKEN="\${VM0_API_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
+
+# Construct webhook endpoint URL
+WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 
 # Send single event immediately
 send_event() {
@@ -25,7 +28,7 @@ send_event() {
   # Build curl command with optional Vercel bypass header
   local curl_cmd="curl -X POST \\"$WEBHOOK_URL\\" \\
     -H \\"Content-Type: application/json\\" \\
-    -H \\"Authorization: Bearer $WEBHOOK_TOKEN\\""
+    -H \\"Authorization: Bearer $API_TOKEN\\""
 
   # Add Vercel protection bypass header if available (for preview deployments)
   if [ -n "$VERCEL_BYPASS" ]; then
