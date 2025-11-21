@@ -73,8 +73,8 @@ export async function POST(request: NextRequest) {
 
     // Extract session ID from system init event
     const initEvent = body.events.find(
-      (e: any) => e.type === "system" && e.subtype === "init",
-    );
+      (e) => e.type === "system" && (e as { subtype?: string }).subtype === "init",
+    ) as { session_id?: string } | undefined;
 
     if (initEvent?.session_id && !run.sessionId) {
       // Update run with session ID (only once)

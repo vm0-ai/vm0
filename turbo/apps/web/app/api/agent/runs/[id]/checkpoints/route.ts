@@ -1,22 +1,20 @@
 import { NextRequest } from "next/server";
-import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentCheckpoints } from "../../../../../src/db/schema/agent-checkpoint";
+import { initServices } from "../../../../../../src/lib/init-services";
+import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentCheckpoints } from "../../../../../../src/db/schema/agent-checkpoint";
 import { eq } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
-} from "../../../../../src/lib/api-response";
+} from "../../../../../../src/lib/api-response";
 import {
   BadRequestError,
   NotFoundError,
   UnauthorizedError,
-} from "../../../../../src/lib/errors";
+} from "../../../../../../src/lib/errors";
 import { Sandbox } from "@e2b/code-interpreter";
-import { uploadS3ObjectCompressed } from "../../../../../src/lib/s3/s3-client";
-import { env } from "../../../../../src/env";
-import type { VolumeSnapshot } from "../../../../../src/db/schema/agent-checkpoint";
+import type { VolumeSnapshot } from "../../../../../../src/db/schema/agent-checkpoint";
 
 /**
  * POST /api/agent/runs/:id/checkpoints
@@ -89,22 +87,9 @@ export async function POST(
         );
       }
 
-      // Upload compressed session file to S3
-      const envVars = env();
-      const s3Bucket = "vm0-s3-agent-session";
-      const s3Key = `sessions/${userId}/${runId}/${run.sessionId}.jsonl.gz`;
-
       console.log(
-        `[Checkpoint] Uploading compressed session file to s3://${s3Bucket}/${s3Key}`,
+        `[Checkpoint] Session content retrieved (${sessionContent.length} bytes)`,
       );
-
-      await uploadS3ObjectCompressed(
-        s3Bucket,
-        s3Key,
-        Buffer.from(sessionContent),
-      );
-
-      const sessionFileS3Path = `s3://${s3Bucket}/${s3Key}`;
 
       // Extract volume snapshots from run result
       const volumeSnapshots: VolumeSnapshot[] = [];
@@ -135,13 +120,13 @@ export async function POST(
         }
       }
 
-      // Create checkpoint record
+      // Create checkpoint record with session content stored in DB
       const [checkpoint] = await globalThis.services.db
         .insert(agentCheckpoints)
         .values({
           runId,
           sessionId: run.sessionId,
-          sessionFileS3Path,
+          sessionContent: String(sessionContent), // Convert ArrayBuffer/string to string
           volumeSnapshots,
           workingDirectory,
           encodedPath,
@@ -156,8 +141,9 @@ export async function POST(
       return successResponse(
         {
           checkpointId: checkpoint!.id,
-          sessionFileS3Path,
+          sessionId: run.sessionId,
           volumeSnapshots,
+          sessionSize: sessionContent.length,
         },
         201,
       );

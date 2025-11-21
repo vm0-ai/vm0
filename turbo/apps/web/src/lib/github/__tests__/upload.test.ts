@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadGitHubDirectory } from "../github-client";
 import { execSync } from "child_process";
 import fs from "fs/promises";
-import path from "path";
 
 // Mock child_process and fs
 vi.mock("child_process");
@@ -23,15 +22,15 @@ describe("uploadGitHubDirectory", () => {
 
     // Mock fs operations
     vi.mocked(fs.readdir).mockResolvedValue([
-      { name: "file.txt", isDirectory: () => false } as any,
+      { name: "file.txt", isDirectory: () => false } as never,
     ]);
-    vi.mocked(fs.stat).mockResolvedValue({ size: 100 } as any);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 100 } as never);
 
     // Mock execSync to return commit SHA with proper encoding
-    vi.mocked(execSync).mockImplementation((cmd: string, options?: any) => {
+    vi.mocked(execSync).mockImplementation((cmd: string, options?: { encoding?: string }) => {
       if (cmd.includes("git rev-parse HEAD")) {
         if (options?.encoding === "utf8") {
-          return mockCommitSha as any;
+          return mockCommitSha as never;
         }
         return Buffer.from(mockCommitSha);
       }

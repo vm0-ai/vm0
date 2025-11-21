@@ -21,7 +21,7 @@ export const agentCheckpoints = pgTable("agent_checkpoints", {
 
   // Claude Code session
   sessionId: varchar("session_id", { length: 255 }).notNull(),
-  sessionFileS3Path: text("session_file_s3_path").notNull(),
+  sessionContent: text("session_content").notNull(), // JSONL content stored directly in DB
 
   // Volume snapshots (array of volume states)
   volumeSnapshots: jsonb("volume_snapshots").notNull(),

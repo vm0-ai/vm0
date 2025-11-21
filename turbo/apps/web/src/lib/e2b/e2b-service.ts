@@ -7,11 +7,7 @@ import type {
   SandboxExecutionResult,
 } from "./types";
 import { resolveVolumes } from "../volume/volume-resolver";
-import {
-  downloadS3Directory,
-  downloadS3ObjectCompressed,
-  parseS3Uri,
-} from "../s3/s3-client";
+import { downloadS3Directory } from "../s3/s3-client";
 import {
   downloadGitHubDirectory,
   uploadGitHubDirectory,
@@ -98,7 +94,7 @@ export class E2BService {
    */
   private async loadCheckpoint(checkpointId: string): Promise<{
     sessionId: string;
-    sessionContent: Buffer;
+    sessionContent: string;
     volumeSnapshots: VolumeSnapshot[];
     workingDirectory: string;
     encodedPath: string;
@@ -116,17 +112,13 @@ export class E2BService {
       throw new Error(`Checkpoint ${checkpointId} not found`);
     }
 
-    // Download session file from S3
-    const { bucket, prefix } = parseS3Uri(checkpoint.sessionFileS3Path);
-    const sessionContent = await downloadS3ObjectCompressed(bucket, prefix);
-
     console.log(
-      `[E2B] Downloaded session file from ${checkpoint.sessionFileS3Path} (${sessionContent.length} bytes)`,
+      `[E2B] Loaded checkpoint from database (${checkpoint.sessionContent.length} bytes)`,
     );
 
     return {
       sessionId: checkpoint.sessionId,
-      sessionContent,
+      sessionContent: checkpoint.sessionContent,
       volumeSnapshots: checkpoint.volumeSnapshots as VolumeSnapshot[],
       workingDirectory: checkpoint.workingDirectory,
       encodedPath: checkpoint.encodedPath,
@@ -272,29 +264,30 @@ export class E2BService {
                 );
                 console.log(
                   `[E2B] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-              );
-            } else if (volume.driver === "git") {
-              if (!options.userId) {
-                throw new Error(
-                  "userId is required for git volume driver but was not provided",
+                );
+              } else if (volume.driver === "git") {
+                if (!options.userId) {
+                  throw new Error(
+                    "userId is required for git volume driver but was not provided",
+                  );
+                }
+                const downloadResult = await downloadGitHubDirectory(
+                  volume.uri,
+                  localPath,
+                  volume.metadata.token as string,
+                  options.userId,
+                  env().ENCRYPTION_SECRET,
+                );
+                console.log(
+                  `[E2B] Downloaded Git volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.bytesDownloaded} bytes, commit: ${downloadResult.commitSha}`,
                 );
               }
-              const downloadResult = await downloadGitHubDirectory(
-                volume.uri,
-                localPath,
-                volume.metadata.token as string,
-                options.userId,
-                env().ENCRYPTION_SECRET,
-              );
-              console.log(
-                `[E2B] Downloaded Git volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.bytesDownloaded} bytes, commit: ${downloadResult.commitSha}`,
+            } catch (error) {
+              console.error(
+                `[E2B] Failed to download volume "${volume.name}":`,
+                error,
               );
             }
-          } catch (error) {
-            console.error(
-              `[E2B] Failed to download volume "${volume.name}":`,
-              error,
-            );
           }
         }
       }
@@ -363,11 +356,11 @@ export class E2BService {
         // Create directory structure
         await sandbox.commands.run(`mkdir -p ${sessionDir}`);
 
-        // Upload session file
-        const arrayBuffer = checkpointData.sessionContent.buffer.slice(
-          checkpointData.sessionContent.byteOffset,
-          checkpointData.sessionContent.byteOffset +
-            checkpointData.sessionContent.byteLength,
+        // Upload session file from database content
+        const buffer = Buffer.from(checkpointData.sessionContent, "utf-8");
+        const arrayBuffer = buffer.buffer.slice(
+          buffer.byteOffset,
+          buffer.byteOffset + buffer.byteLength,
         ) as ArrayBuffer;
         await sandbox.files.write(sessionFilePath, arrayBuffer);
 
