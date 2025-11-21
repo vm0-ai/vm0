@@ -16,7 +16,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID();
   const testConfigId = randomUUID();
-  const testCheckpointId = randomUUID();
 
   beforeEach(async () => {
     // Initialize services
