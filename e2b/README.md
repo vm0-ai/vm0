@@ -2,6 +2,10 @@
 
 This directory contains the E2B sandbox template configuration for running Claude Code agents.
 
+## Build System 2.0
+
+This template uses **E2B Build System 2.0** - the modern, programmatic approach to defining sandbox templates. Templates are expressed as TypeScript code rather than Dockerfiles, making them AI-friendly and easier to maintain.
+
 ## Files
 
 - `template.ts`: E2B v2 template definition using programmatic SDK
@@ -19,22 +23,26 @@ This directory contains the E2B sandbox template configuration for running Claud
 2. **Runtime Phase**: When creating a sandbox, the script is already available and can be executed directly
 3. **Execution**: The e2b-service.ts calls `/usr/local/bin/run-agent.sh` with environment variables
 
-## Building and Deploying the Template
+## Automated Builds
 
-This template uses E2B v2 SDK. To build and deploy a new version:
+Templates are automatically built and deployed via GitHub Actions when changes are pushed to the `e2b/` directory:
+
+- **Pull Requests**: Templates are built to validate changes
+- **Main Branch**: Templates are built and deployed automatically
+
+To trigger a build, simply push changes to any file in the `e2b/` directory.
+
+## Manual Builds
+
+For local development and testing, you can manually build templates:
 
 ```bash
 # 1. Set up environment variables
 # Add your E2B API key to turbo/apps/web/.env.local:
 echo "E2B_API_KEY=your_api_key_here" >> turbo/apps/web/.env.local
 
-# 2. Install dependencies (first time only)
-cd e2b
-npm install
-
-# 3. Build and push the template
-# Run from the turbo directory (important!)
-cd ../turbo
+# 2. Build and push the template from the turbo directory
+cd turbo
 
 # Development build
 pnpm e2b:build:dev
@@ -45,14 +53,18 @@ pnpm e2b:build
 # The template will be created with an alias:
 # - Development: vm0-claude-code-dev
 # - Production: vm0-claude-code
-
-# Update environment variables if template name changes:
-# - turbo/apps/web/.env.local (E2B_TEMPLATE_NAME=vm0-claude-code)
-# - GitHub secrets (E2B_TEMPLATE_NAME)
-# - Vercel environment variables (E2B_TEMPLATE_NAME)
 ```
 
-## Environment Variables
+## Configuration
+
+### Build Configuration
+
+Update these if template name changes:
+- `turbo/apps/web/.env.local` - E2B_TEMPLATE_NAME=vm0-claude-code
+- GitHub secrets - E2B_API_KEY (for automated builds)
+- Vercel environment variables - E2B_TEMPLATE_NAME
+
+### Runtime Environment Variables
 
 The following environment variables are set when creating a sandbox:
 
