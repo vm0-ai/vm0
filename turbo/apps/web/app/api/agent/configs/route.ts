@@ -12,6 +12,7 @@ import type {
   CreateAgentConfigResponse,
 } from "../../../../src/types/agent-config";
 import { eq, and } from "drizzle-orm";
+import { processGitHubTokens } from "../../../../src/lib/config/token-processor";
 
 /**
  * GET /api/agent/configs?name={agentName}
@@ -113,6 +114,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Process GitHub tokens: encrypt plaintext tokens
+    const encryptionSecret = globalThis.services?.env?.ENCRYPTION_SECRET;
+    if (!encryptionSecret) {
+      throw new Error("ENCRYPTION_SECRET not configured");
+    }
+
+    const processedConfig = processGitHubTokens(
+      body.config,
+      userId,
+      encryptionSecret,
+    );
+
     // Check if config exists for this user + name
     const existing = await globalThis.services.db
       .select()
@@ -129,7 +142,7 @@ export async function POST(request: NextRequest) {
       const [updated] = await globalThis.services.db
         .update(agentConfigs)
         .set({
-          config: body.config,
+          config: processedConfig,
           updatedAt: new Date(),
         })
         .where(eq(agentConfigs.id, existing[0].id))
@@ -158,7 +171,7 @@ export async function POST(request: NextRequest) {
         .values({
           userId,
           name: agentName,
-          config: body.config,
+          config: processedConfig,
         })
         .returning({
           id: agentConfigs.id,

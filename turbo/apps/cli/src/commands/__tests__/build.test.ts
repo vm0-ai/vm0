@@ -5,6 +5,7 @@ import { existsSync } from "fs";
 import * as yaml from "yaml";
 import { apiClient } from "../../lib/api-client";
 import * as yamlValidator from "../../lib/yaml-validator";
+import * as envReplacer from "../../lib/env-replacer";
 
 // Mock dependencies
 vi.mock("fs/promises");
@@ -12,6 +13,7 @@ vi.mock("fs");
 vi.mock("yaml");
 vi.mock("../../lib/api-client");
 vi.mock("../../lib/yaml-validator");
+vi.mock("../../lib/env-replacer");
 
 describe("build command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -24,6 +26,11 @@ describe("build command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for env replacer - no errors, returns config unchanged
+    vi.mocked(envReplacer.replaceEnvVars).mockImplementation((config) => ({
+      config,
+      errors: [],
+    }));
   });
 
   afterEach(() => {

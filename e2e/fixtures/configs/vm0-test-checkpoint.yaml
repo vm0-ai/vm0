@@ -17,10 +17,10 @@ volumes:
     driver_opts:
       repo: lancy/claude-files
       branch: main
-      token: "{{githubToken}}"
+      token: "${CI_GITHUB_TOKEN}"
   question:
     driver: git
     driver_opts:
       repo: lancy/question
       branch: main
-      token: "{{githubToken}}"
+      token: "${CI_GITHUB_TOKEN}"

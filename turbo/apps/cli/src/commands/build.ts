@@ -5,6 +5,7 @@ import { existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
 import { validateAgentConfig } from "../lib/yaml-validator";
+import { replaceEnvVars } from "../lib/env-replacer";
 
 export const buildCommand = new Command()
   .name("build")
@@ -39,12 +40,24 @@ export const buildCommand = new Command()
         process.exit(1);
       }
 
-      // 4. Call API
+      // 4. Replace environment variables
+      const envReplacement = replaceEnvVars(config);
+      if (envReplacement.errors.length > 0) {
+        console.error(chalk.red("✗ Environment variable errors:"));
+        for (const error of envReplacement.errors) {
+          console.error(chalk.gray(`  ${error}`));
+        }
+        process.exit(1);
+      }
+
+      // 5. Call API
       console.log(chalk.blue("Uploading configuration..."));
 
-      const response = await apiClient.createOrUpdateConfig({ config });
+      const response = await apiClient.createOrUpdateConfig({
+        config: envReplacement.config,
+      });
 
-      // 5. Display result
+      // 6. Display result
       if (response.action === "created") {
         console.log(chalk.green(`✓ Config created: ${response.name}`));
       } else {
