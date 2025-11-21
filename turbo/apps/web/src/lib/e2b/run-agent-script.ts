@@ -7,13 +7,16 @@ set -e
 
 # Get environment variables
 RUN_ID="\${VM0_RUN_ID}"
-WEBHOOK_URL="\${VM0_WEBHOOK_URL}"
-WEBHOOK_TOKEN="\${VM0_WEBHOOK_TOKEN}"
+API_URL="\${VM0_API_URL:-http://localhost:3000}"
+API_TOKEN="\${VM0_API_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 SESSION_ID="\${VM0_SESSION_ID:-}"
-API_URL="\${VM0_API_URL:-http://localhost:3000}"
+
+# Construct webhook URLs from API_URL
+EVENTS_WEBHOOK_URL="$API_URL/api/webhooks/agent/events"
+CHECKPOINTS_WEBHOOK_URL="$API_URL/api/webhooks/agent/checkpoints"
 
 # Send single event immediately
 send_event() {
@@ -25,9 +28,9 @@ send_event() {
     '{runId: $rid, events: [$event]}')
 
   # Build curl command with optional Vercel bypass header
-  local curl_cmd="curl -X POST \\"$WEBHOOK_URL\\" \\
+  local curl_cmd="curl -X POST \\"$EVENTS_WEBHOOK_URL\\" \\
     -H \\"Content-Type: application/json\\" \\
-    -H \\"Authorization: Bearer $WEBHOOK_TOKEN\\""
+    -H \\"Authorization: Bearer $API_TOKEN\\""
 
   # Add Vercel protection bypass header if available (for preview deployments)
   if [ -n "$VERCEL_BYPASS" ]; then
@@ -142,10 +145,9 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
       }')
 
     # Build curl command for checkpoint
-    CHECKPOINT_URL="$API_URL/api/webhooks/agent/checkpoints"
-    CHECKPOINT_CURL="curl -X POST \\"$CHECKPOINT_URL\\" \\\\
+    CHECKPOINT_CURL="curl -X POST \\"$CHECKPOINTS_WEBHOOK_URL\\" \\\\
       -H \\"Content-Type: application/json\\" \\\\
-      -H \\"Authorization: Bearer $WEBHOOK_TOKEN\\""
+      -H \\"Authorization: Bearer $API_TOKEN\\""
 
     # Add Vercel protection bypass header if available
     if [ -n "$VERCEL_BYPASS" ]; then

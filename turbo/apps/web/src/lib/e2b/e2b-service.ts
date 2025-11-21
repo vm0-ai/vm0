@@ -176,13 +176,10 @@ export class E2BService {
         }
       }
 
-      const webhookEndpoint = `${apiUrl}/api/webhooks/agent/events`;
-
       console.log(
         `[E2B] Environment - VERCEL_ENV: ${vercelEnv}, VERCEL_URL: ${vercelUrl}, VM0_API_URL: ${apiUrl}`,
       );
       console.log(`[E2B] Computed API URL: ${apiUrl}`);
-      console.log(`[E2B] Webhook: ${webhookEndpoint}`);
 
       // Resolve volumes from agent config
       const agentConfig = options.agentConfig as AgentVolumeConfig | undefined;
@@ -296,9 +293,8 @@ export class E2BService {
       // Create E2B sandbox with environment variables
       const sandboxEnvVars: Record<string, string> = {
         VM0_API_URL: apiUrl,
-        VM0_WEBHOOK_URL: webhookEndpoint,
         VM0_RUN_ID: runId,
-        VM0_WEBHOOK_TOKEN: options.sandboxToken, // Temporary bearer token for webhook authentication
+        VM0_API_TOKEN: options.sandboxToken, // Temporary bearer token for webhook authentication
       };
 
       // Add Vercel protection bypass secret if available (for preview deployments)
@@ -375,8 +371,6 @@ export class E2BService {
         sandbox,
         runId,
         options.prompt,
-        webhookEndpoint,
-        options.sandboxToken,
         options.agentConfig,
         checkpointData?.sessionId,
       );
@@ -569,8 +563,6 @@ export class E2BService {
     sandbox: Sandbox,
     runId: string,
     prompt: string,
-    webhookUrl: string,
-    sandboxToken: string,
     agentConfig?: unknown,
     sessionId?: string,
   ): Promise<SandboxExecutionResult> {
@@ -587,10 +579,8 @@ export class E2BService {
     const workingDir = config?.agent?.working_dir;
 
     // Set environment variables and execute script
+    // Note: VM0_API_URL and VM0_API_TOKEN are already set in sandbox environment
     const envs: Record<string, string> = {
-      VM0_RUN_ID: runId,
-      VM0_WEBHOOK_URL: webhookUrl,
-      VM0_WEBHOOK_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
     };
 
