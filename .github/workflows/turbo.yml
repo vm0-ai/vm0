@@ -225,7 +225,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive  # For BATS test framework
+          submodules: recursive # For BATS test framework
       - uses: ./.github/actions/toolchain-init
 
       - name: Setup pnpm global directory
@@ -255,6 +255,13 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Setup S3 test data
+        run: ./e2e/scripts/setup-s3-test-data.sh
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run CLI E2E Tests
         run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats
