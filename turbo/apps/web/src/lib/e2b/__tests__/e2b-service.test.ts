@@ -5,7 +5,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bService } from "../e2b-service";
 import type { CreateRunOptions } from "../types";
-import * as fs from "node:fs";
 
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
