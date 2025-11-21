@@ -198,7 +198,7 @@ describe("VolumeService", () => {
 
       expect(result.preparedVolumes).toHaveLength(0);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("data: Failed to download");
+      expect(result.errors[0]).toContain("data: Failed to prepare");
     });
   });
 
