@@ -1,5 +1,5 @@
 import { Template, defaultBuildLogger } from "e2b";
-import { template } from "../../../e2b/template";
+import { template } from "./template";
 
 // E2B_API_KEY should be set as an environment variable
 // In CI: from GitHub secrets

@@ -50,7 +50,9 @@ export const template = Template()
   // Verify installations
   .runCmd("which curl")
   .runCmd("which jq")
-  .runCmd("test -f /usr/local/bin/run-agent.sh && echo 'SUCCESS: run-agent.sh installed' || (echo 'FATAL: run-agent.sh missing' && exit 1)")
+  .runCmd(
+    "test -f /usr/local/bin/run-agent.sh && echo 'SUCCESS: run-agent.sh installed' || (echo 'FATAL: run-agent.sh missing' && exit 1)",
+  )
   .runCmd('echo "VM0 Claude Code template ready!"')
   // Final verification - this should fail the build if Claude is not installed
   .runCmd(
