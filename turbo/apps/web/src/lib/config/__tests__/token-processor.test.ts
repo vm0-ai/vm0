@@ -209,9 +209,9 @@ describe("processGitHubTokens", () => {
 
     const result = processGitHubTokens(config, testUserId, testSecret);
 
-    expect(
-      isEncryptedToken((result as any).level1.level2.level3.token),
-    ).toBe(true);
+    expect(isEncryptedToken((result as any).level1.level2.level3.token)).toBe(
+      true,
+    );
   });
 
   it("should handle arrays", () => {
