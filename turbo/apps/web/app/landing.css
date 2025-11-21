@@ -1488,7 +1488,11 @@ section {
 }
 
 .prompt-visual {
-  background: url("/assets/bg_1.png") !important;
+  background: image-set(
+    url("/assets/bg_1.avif") type("image/avif"),
+    url("/assets/bg_1.webp") type("image/webp"),
+    url("/assets/bg_1.png") type("image/png")
+  ) !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1525,7 +1529,11 @@ section {
 }
 
 .agent-visual {
-  background: url("/assets/bg_1.png") !important;
+  background: image-set(
+    url("/assets/bg_1.avif") type("image/avif"),
+    url("/assets/bg_1.webp") type("image/webp"),
+    url("/assets/bg_1.png") type("image/png")
+  ) !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1536,7 +1544,11 @@ section {
 }
 
 .observable-visual {
-  background: url("/assets/bg_2.png") !important;
+  background: image-set(
+    url("/assets/bg_2.avif") type("image/avif"),
+    url("/assets/bg_2.webp") type("image/webp"),
+    url("/assets/bg_2.png") type("image/png")
+  ) !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1547,7 +1559,11 @@ section {
 }
 
 .persistent-visual {
-  background: url("/assets/bg_4.png?v=2");
+  background: image-set(
+    url("/assets/bg_4.avif") type("image/avif"),
+    url("/assets/bg_4.webp") type("image/webp"),
+    url("/assets/bg_4.png") type("image/png")
+  );
   background-size: cover;
   background-position: center;
   border: none;
