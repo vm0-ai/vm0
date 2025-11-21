@@ -19,7 +19,7 @@ setup() {
         skip "CI_GITHUB_TOKEN not set, skipping git volume test"
     fi
 
-    run $CLI_COMMAND run vm0-git-volume-test -e user=key "List all files in the current directory (pwd and ls -la), then read the question.md file and tell me what it says"
+    run $CLI_COMMAND run vm0-git-volume-test -e user=lancy "List all files in the current directory (pwd and ls -la), then read the question.md file and tell me what it says"
     assert_success
     assert_output --partial "1+1"
 }
