@@ -12,9 +12,7 @@ import {
 } from "vitest";
 import { POST } from "../route";
 import { NextRequest } from "next/server";
-import {
-  initServices,
-} from "../../../../../../src/lib/init-services";
+import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
@@ -108,8 +106,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .where(eq(agentConfigs.id, testConfigId));
   });
 
-  afterAll(async () => {
-  });
+  afterAll(async () => {});
 
   // ============================================
   // P0 Tests: Authentication (2 tests)

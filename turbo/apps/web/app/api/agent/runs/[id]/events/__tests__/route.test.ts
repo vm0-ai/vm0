@@ -12,9 +12,7 @@ import {
 } from "vitest";
 import { GET } from "../route";
 import { NextRequest } from "next/server";
-import {
-  initServices,
-} from "../../../../../../../src/lib/init-services";
+import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
 import { agentConfigs } from "../../../../../../../src/db/schema/agent-config";

@@ -12,9 +12,7 @@ import {
 } from "vitest";
 import { POST } from "../route";
 import { NextRequest } from "next/server";
-import {
-  initServices,
-} from "../../../../../src/lib/init-services";
+import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -108,8 +106,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
       .where(eq(agentConfigs.id, testConfigId));
   });
 
-  afterAll(async () => {
-  });
+  afterAll(async () => {});
 
   // ============================================
   // Async Execution Tests
