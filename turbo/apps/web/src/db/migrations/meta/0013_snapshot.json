@@ -127,12 +127,8 @@
           "name": "agent_run_events_run_id_agent_runs_id_fk",
           "tableFrom": "agent_run_events",
           "tableTo": "agent_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -234,12 +230,8 @@
           "name": "agent_runs_agent_config_id_agent_configs_id_fk",
           "tableFrom": "agent_runs",
           "tableTo": "agent_configs",
-          "columnsFrom": [
-            "agent_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -311,12 +303,8 @@
           "name": "checkpoints_run_id_agent_runs_id_fk",
           "tableFrom": "checkpoints",
           "tableTo": "agent_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -324,12 +312,8 @@
           "name": "checkpoints_agent_config_id_agent_configs_id_fk",
           "tableFrom": "checkpoints",
           "tableTo": "agent_configs",
-          "columnsFrom": [
-            "agent_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -339,9 +323,7 @@
         "checkpoints_run_id_unique": {
           "name": "checkpoints_run_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "run_id"
-          ]
+          "columns": ["run_id"]
         }
       },
       "policies": {},
@@ -404,9 +386,7 @@
         "cli_tokens_token_unique": {
           "name": "cli_tokens_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -505,12 +485,7 @@
     "public.device_code_status": {
       "name": "device_code_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "authenticated",
-        "expired",
-        "denied"
-      ]
+      "values": ["pending", "authenticated", "expired", "denied"]
     }
   },
   "schemas": {},

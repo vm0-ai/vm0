@@ -18,6 +18,12 @@ export interface CreateRunResponse {
   createdAt: string;
 }
 
+export interface ResumeRunResponse {
+  runId: string;
+  status: string;
+  createdAt: string;
+}
+
 export interface GetConfigResponse {
   id: string;
   name: string;
@@ -157,6 +163,28 @@ class ApiClient {
     }
 
     return (await response.json()) as GetEventsResponse;
+  }
+
+  async resumeRun(body: {
+    checkpointId: string;
+    prompt: string;
+    dynamicVars?: Record<string, string>;
+  }): Promise<ResumeRunResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/agent/runs/resume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error || "Failed to resume run");
+    }
+
+    return (await response.json()) as ResumeRunResponse;
   }
 }
 

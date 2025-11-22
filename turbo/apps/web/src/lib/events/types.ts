@@ -14,6 +14,7 @@ export interface Vm0StartEvent {
   agentName?: string;
   prompt: string;
   dynamicVars?: Record<string, unknown>;
+  resumedFromCheckpointId?: string;
   timestamp: string;
 }
 

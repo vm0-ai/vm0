@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { runService } from "../../../../../src/lib/run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
@@ -13,6 +14,10 @@ import {
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
 import { eq } from "drizzle-orm";
+import {
+  sendVm0StartEvent,
+  sendVm0ErrorEvent,
+} from "../../../../../src/lib/events";
 
 export interface ResumeAgentRunRequest {
   checkpointId: string;
@@ -93,6 +98,13 @@ export async function POST(request: NextRequest) {
     const sandboxToken = await generateSandboxToken(userId, run.id);
     console.log(`[API] Generated sandbox token for resume run: ${run.id}`);
 
+    // Fetch agent config for event metadata
+    const [config] = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(eq(agentConfigs.id, context.agentConfigId))
+      .limit(1);
+
     // Update run status to 'running' before starting E2B execution
     await globalThis.services.db
       .update(agentRuns)
@@ -101,6 +113,16 @@ export async function POST(request: NextRequest) {
         startedAt: new Date(),
       })
       .where(eq(agentRuns.id, run.id));
+
+    // Send vm0_start event
+    await sendVm0StartEvent({
+      runId: run.id,
+      agentConfigId: context.agentConfigId,
+      agentName: config?.name || undefined,
+      prompt: body.prompt,
+      dynamicVars: context.dynamicVars,
+      resumedFromCheckpointId: body.checkpointId,
+    });
 
     // Execute in E2B asynchronously (don't await)
     // Create new context with actual run ID and token
@@ -132,10 +154,10 @@ export async function POST(request: NextRequest) {
       .then(() => {
         console.log(`[API] Resume run ${run.id} completed successfully`);
       })
-      .catch((error) => {
+      .catch(async (error) => {
         // Update run with error on failure
         console.error(`[API] Resume run ${run.id} failed:`, error);
-        return globalThis.services.db
+        await globalThis.services.db
           .update(agentRuns)
           .set({
             status: "failed",
@@ -143,6 +165,13 @@ export async function POST(request: NextRequest) {
             completedAt: new Date(),
           })
           .where(eq(agentRuns.id, run.id));
+
+        // Send vm0_error event
+        await sendVm0ErrorEvent({
+          runId: run.id,
+          error: error instanceof Error ? error.message : "Unknown error",
+          errorType: "sandbox_error",
+        });
       });
 
     // Return response immediately with 'running' status
