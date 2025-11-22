@@ -15,7 +15,7 @@ setup() {
 @test "Execute initial run, resume from checkpoint, and verify git volume access" {
     # Step 1: Run initial task that creates a checkpoint
     echo "# Step 1: Running initial task 'answer my question'..."
-    run $CLI_COMMAND run vm0-checkpoint-resume-test "answer my question"
+    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "answer my question"
     assert_success
 
     # Verify we got a checkpoint created
