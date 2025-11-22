@@ -1,10 +1,10 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import { GET } from "../route";
 import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../../src/lib/init-services";
+import { initServices, cleanupServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
 import { agentConfigs } from "../../../../../../../src/db/schema/agent-config";
@@ -106,6 +106,11 @@ describe("GET /api/agent/runs/:id/events", () => {
     await globalThis.services.db
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testConfigId));
+  });
+
+  afterAll(async () => {
+    // Clean up database connections
+    await cleanupServices();
   });
 
   // ============================================
