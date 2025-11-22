@@ -19,6 +19,10 @@ import type {
   CreateAgentRunRequest,
   CreateAgentRunResponse,
 } from "../../../../src/types/agent-run";
+import {
+  sendVm0StartEvent,
+  sendVm0ErrorEvent,
+} from "../../../../src/lib/vm0-events";
 
 /**
  * POST /api/agent/runs
@@ -92,6 +96,15 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(agentRuns.id, run.id));
 
+    // Send vm0_start event
+    await sendVm0StartEvent({
+      runId: run.id,
+      agentConfigId: body.agentConfigId,
+      agentName: config.name || undefined,
+      prompt: body.prompt,
+      dynamicVars: body.dynamicVars,
+    });
+
     // Execute in E2B asynchronously (don't await)
     e2bService
       .createRun(run.id, {
@@ -120,10 +133,10 @@ export async function POST(request: NextRequest) {
       .then(() => {
         console.log(`[API] Run ${run.id} completed successfully`);
       })
-      .catch((error) => {
+      .catch(async (error) => {
         // Update run with error on failure
         console.error(`[API] Run ${run.id} failed:`, error);
-        return globalThis.services.db
+        await globalThis.services.db
           .update(agentRuns)
           .set({
             status: "failed",
@@ -131,6 +144,13 @@ export async function POST(request: NextRequest) {
             completedAt: new Date(),
           })
           .where(eq(agentRuns.id, run.id));
+
+        // Send vm0_error event
+        await sendVm0ErrorEvent({
+          runId: run.id,
+          error: error instanceof Error ? error.message : "Unknown error",
+          errorType: "sandbox_error",
+        });
       });
 
     // Return response immediately with 'running' status

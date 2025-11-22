@@ -72,29 +72,29 @@ create_checkpoint() {
 
   # Read session ID from temp file
   if [ ! -f "$SESSION_ID_FILE" ]; then
-    echo "[VM0] No session ID found, skipping checkpoint" >&2
-    return 0
+    echo "[ERROR] No session ID found, checkpoint creation failed" >&2
+    return 1
   fi
   local SESSION_ID=$(cat "$SESSION_ID_FILE")
 
   # Read session history path from temp file
   if [ ! -f "$SESSION_HISTORY_PATH_FILE" ]; then
-    echo "[VM0] No session history path found, skipping checkpoint" >&2
-    return 0
+    echo "[ERROR] No session history path found, checkpoint creation failed" >&2
+    return 1
   fi
   local SESSION_HISTORY_PATH=$(cat "$SESSION_HISTORY_PATH_FILE")
 
   # Check if session history file exists
   if [ ! -f "$SESSION_HISTORY_PATH" ]; then
-    echo "[VM0] Session history file not found at $SESSION_HISTORY_PATH, skipping checkpoint" >&2
-    return 0
+    echo "[ERROR] Session history file not found at $SESSION_HISTORY_PATH, checkpoint creation failed" >&2
+    return 1
   fi
 
   # Read session history
   SESSION_HISTORY=$(cat "$SESSION_HISTORY_PATH" 2>/dev/null || echo "")
   if [ -z "$SESSION_HISTORY" ]; then
-    echo "[VM0] Session history is empty, skipping checkpoint" >&2
-    return 0
+    echo "[ERROR] Session history is empty, checkpoint creation failed" >&2
+    return 1
   fi
 
   echo "[VM0] Session history loaded ($(echo "$SESSION_HISTORY" | wc -l) lines)" >&2
@@ -332,8 +332,13 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   echo "[VM0] Claude Code completed successfully" >&2
   send_event '{"type": "result", "data": {"status": "success", "exitCode": 0}}'
 
-  # Create checkpoint if execution was successful (don't fail script if checkpoint fails)
-  create_checkpoint || echo "[WARNING] Checkpoint creation failed, but run was successful" >&2
+  # Create checkpoint - this is mandatory for successful runs
+  if ! create_checkpoint; then
+    echo "[ERROR] Checkpoint creation failed, marking run as failed" >&2
+    # Cleanup temp files
+    rm -f "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" 2>/dev/null || true
+    exit 1
+  fi
 else
   echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
   send_event "{\\"type\\": \\"result\\", \\"data\\": {\\"status\\": \\"failed\\", \\"exitCode\\": $CLAUDE_EXIT_CODE}}"

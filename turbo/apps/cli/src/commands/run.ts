@@ -47,12 +47,15 @@ async function pollEvents(runId: string): Promise<void> {
       });
 
       for (const event of response.events) {
-        const parsed = ClaudeEventParser.parse(event.eventData);
+        const parsed = ClaudeEventParser.parse(
+          event.eventData as Record<string, unknown>,
+        );
 
         if (parsed) {
           EventRenderer.render(parsed);
 
-          if (parsed.type === "result") {
+          // Complete when we receive vm0_result or vm0_error
+          if (parsed.type === "vm0_result" || parsed.type === "vm0_error") {
             complete = true;
           }
         }
