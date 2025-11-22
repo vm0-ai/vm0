@@ -6,7 +6,6 @@ import { NextRequest } from "next/server";
 import { GET, POST } from "../route";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -29,7 +28,6 @@ describe("GET /api/agent/configs?name=<name>", () => {
     await globalThis.services.db
       .delete(agentConfigs)
       .where(eq(agentConfigs.userId, testUserId));
-    await cleanupServices();
   });
 
   it("should return config when name exists", async () => {

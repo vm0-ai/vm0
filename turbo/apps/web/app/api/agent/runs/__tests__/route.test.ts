@@ -14,7 +14,6 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
@@ -110,7 +109,6 @@ describe("POST /api/agent/runs - Async Execution", () => {
   });
 
   afterAll(async () => {
-    await cleanupServices();
   });
 
   // ============================================

@@ -14,7 +14,6 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
@@ -110,7 +109,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   });
 
   afterAll(async () => {
-    await cleanupServices();
   });
 
   // ============================================

@@ -7,7 +7,6 @@ import { POST } from "../route";
 import { GET } from "../[id]/route";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -30,7 +29,6 @@ describe("Agent Config Upsert Behavior", () => {
     await globalThis.services.db
       .delete(agentConfigs)
       .where(eq(agentConfigs.userId, testUserId));
-    await cleanupServices();
   });
 
   describe("POST /api/agent/configs", () => {

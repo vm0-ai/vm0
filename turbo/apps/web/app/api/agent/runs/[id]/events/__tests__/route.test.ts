@@ -14,7 +14,6 @@ import { GET } from "../route";
 import { NextRequest } from "next/server";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
@@ -121,7 +120,6 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   afterAll(async () => {
     // Clean up database connections
-    await cleanupServices();
   });
 
   // ============================================

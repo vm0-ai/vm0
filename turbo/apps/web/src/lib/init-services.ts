@@ -68,26 +68,3 @@ export function initServices(): void {
     configurable: true,
   });
 }
-
-/**
- * Clean up services and close database connections
- * Call this when shutting down or in test cleanup
- *
- * @example
- * // In test teardown
- * afterAll(async () => {
- *   await cleanupServices();
- * });
- */
-export async function cleanupServices(): Promise<void> {
-  if (_pool) {
-    await _pool.end();
-    _pool = undefined;
-  }
-  _db = undefined;
-  _env = undefined;
-  _services = undefined;
-
-  // Remove the globalThis property
-  delete (globalThis as { services?: Services }).services;
-}

@@ -14,7 +14,6 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import {
   initServices,
-  cleanupServices,
 } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
@@ -118,7 +117,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   afterAll(async () => {
     // Clean up database connections
-    await cleanupServices();
   });
 
   // ============================================
