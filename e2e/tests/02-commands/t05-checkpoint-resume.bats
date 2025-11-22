@@ -19,10 +19,10 @@ setup() {
     assert_success
 
     # Verify we got a checkpoint created
-    assert_output --partial "[checkpoint]"
+    assert_output --partial "Checkpoint:"
 
-    # Extract checkpoint ID from output (format: [checkpoint] checkpoint_id: <uuid>)
-    CHECKPOINT_ID=$(echo "$output" | grep -oP 'checkpoint_id:\s*\K[a-f0-9-]{36}' | head -1)
+    # Extract checkpoint ID from output (format: Checkpoint: <uuid>)
+    CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
 
     echo "# Extracted checkpoint ID: $CHECKPOINT_ID"
     [ -n "$CHECKPOINT_ID" ] || {
