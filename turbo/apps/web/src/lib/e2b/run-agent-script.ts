@@ -13,6 +13,7 @@ PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 GIT_VOLUMES="\${VM0_GIT_VOLUMES:-[]}"
+RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
 
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
@@ -291,11 +292,16 @@ echo "[VM0] Prompt: $PROMPT" >&2
 
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
-/usr/local/bin/claude --print \\
-       --verbose \\
-       --output-format stream-json \\
-       --dangerously-skip-permissions \\
-       "$PROMPT" 2>&1 | while IFS= read -r line; do
+
+# Check if we're resuming from a checkpoint
+if [ -n "$RESUME_SESSION_ID" ]; then
+  echo "[VM0] Resuming session: $RESUME_SESSION_ID" >&2
+  /usr/local/bin/claude --print \\
+         --verbose \\
+         --output-format stream-json \\
+         --dangerously-skip-permissions \\
+         --resume "$RESUME_SESSION_ID" \\
+         "$PROMPT" 2>&1 | while IFS= read -r line; do
 
   # Skip empty lines
   if [ -z "$line" ]; then
@@ -320,6 +326,38 @@ set +e  # Don't exit on Claude error
     echo "[STDERR] $line" >&2
   fi
 done
+else
+  echo "[VM0] Starting new session" >&2
+  /usr/local/bin/claude --print \\
+         --verbose \\
+         --output-format stream-json \\
+         --dangerously-skip-permissions \\
+         "$PROMPT" 2>&1 | while IFS= read -r line; do
+
+  # Skip empty lines
+  if [ -z "$line" ]; then
+    continue
+  fi
+
+  # Check if line is valid JSON
+  if echo "$line" | jq empty 2>/dev/null; then
+    # Valid JSONL - send immediately
+    send_event "$line"
+
+    # Extract result from "result" event for stdout
+    event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+    if [ "$event_type" = "result" ]; then
+      result_content=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+      if [ -n "$result_content" ]; then
+        echo "$result_content"
+      fi
+    fi
+  else
+    # Not JSON - log as stderr
+    echo "[STDERR] $line" >&2
+  fi
+done
+fi
 
 CLAUDE_EXIT_CODE=\${PIPESTATUS[0]}
 set -e

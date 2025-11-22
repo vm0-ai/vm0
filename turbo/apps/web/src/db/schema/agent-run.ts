@@ -18,6 +18,7 @@ export const agentRuns = pgTable("agent_runs", {
   agentConfigId: uuid("agent_config_id")
     .references(() => agentConfigs.id)
     .notNull(),
+  resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
   status: varchar("status", { length: 20 }).notNull(),
   prompt: text("prompt").notNull(),
   dynamicVars: jsonb("dynamic_vars"),

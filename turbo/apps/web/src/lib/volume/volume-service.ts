@@ -13,6 +13,7 @@ import type {
   PreparedVolume,
   VolumePreparationResult,
 } from "./types";
+import type { VolumeSnapshot } from "../checkpoint/types";
 
 /**
  * Volume Service
@@ -122,6 +123,89 @@ export class VolumeService {
     return {
       preparedVolumes,
       tempDir,
+      errors,
+    };
+  }
+
+  /**
+   * Prepare volumes from checkpoint snapshots (for resume functionality)
+   * Resolves Git URI and token from agent config and uses snapshot branch
+   * @param snapshots - Volume snapshots from checkpoint
+   * @param agentConfig - Agent configuration containing volume definitions
+   * @param dynamicVars - Dynamic variables for template replacement
+   * @returns Volume preparation result with prepared volumes
+   */
+  async prepareVolumesFromSnapshots(
+    snapshots: VolumeSnapshot[],
+    agentConfig: AgentVolumeConfig | undefined,
+    dynamicVars: Record<string, string>,
+  ): Promise<VolumePreparationResult> {
+    const errors: string[] = [];
+
+    console.log(
+      `[Volume] Preparing ${snapshots.length} volumes from snapshots...`,
+    );
+
+    if (!agentConfig) {
+      return {
+        preparedVolumes: [],
+        tempDir: null,
+        errors: ["Agent config not provided"],
+      };
+    }
+
+    const preparedVolumes: PreparedVolume[] = [];
+
+    // First resolve volumes from agent config to get URI and token
+    const volumeResult = resolveVolumes(agentConfig, dynamicVars);
+    const resolvedVolumeMap = new Map(
+      volumeResult.volumes.map((v) => [v.name, v]),
+    );
+
+    // Process each snapshot
+    for (const snapshot of snapshots) {
+      try {
+        if (snapshot.driver === "git") {
+          if (!snapshot.snapshot) {
+            throw new Error("Git snapshot missing snapshot data");
+          }
+
+          // Get the resolved volume from agent config
+          const resolvedVolume = resolvedVolumeMap.get(snapshot.name);
+          if (!resolvedVolume) {
+            throw new Error(
+              `Volume "${snapshot.name}" not found in agent config`,
+            );
+          }
+
+          console.log(
+            `[Volume] Prepared Git snapshot "${snapshot.name}": branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
+          );
+
+          // Use snapshot branch instead of default branch
+          preparedVolumes.push({
+            name: snapshot.name,
+            driver: "git",
+            mountPath: snapshot.mountPath,
+            gitUri: resolvedVolume.gitUri,
+            gitBranch: snapshot.snapshot.branch, // Use snapshot branch
+            gitToken: resolvedVolume.gitToken,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[Volume] Failed to prepare snapshot "${snapshot.name}":`,
+          error,
+        );
+        errors.push(
+          `${snapshot.name}: Failed to prepare snapshot - ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }
+
+    return {
+      preparedVolumes,
+      tempDir: null,
       errors,
     };
   }

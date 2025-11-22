@@ -1,45 +1,50 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
 import { e2bConfig } from "./config";
-import type {
-  CreateRunOptions,
-  RunResult,
-  SandboxExecutionResult,
-} from "./types";
+import type { RunResult, SandboxExecutionResult } from "./types";
 import { volumeService } from "../volume/volume-service";
 import type { AgentVolumeConfig, PreparedVolume } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import { RUN_AGENT_SCRIPT } from "./run-agent-script";
+import type { ExecutionContext } from "../run/types";
+import { calculateSessionHistoryPath } from "../run/run-service";
 
 /**
  * E2B Service
  * Manages E2B sandbox creation and execution
+ * Agnostic to run type (new run or resume)
  */
 export class E2BService {
   /**
-   * Create and execute an agent run
-   * MVP: Executes simple "echo hello world" command
-   * Future: Will execute Claude Code with real agent
+   * Execute an agent run with the given context
+   * Works for both new runs and resumed runs
+   *
+   * @param context Execution context containing all necessary information
+   * @returns Run result
    */
-  async createRun(
-    runId: string,
-    options: CreateRunOptions,
-  ): Promise<RunResult> {
+  async execute(context: ExecutionContext): Promise<RunResult> {
     const startTime = Date.now();
+    const isResume = !!context.resumeSession;
 
     console.log(
-      `[E2B] Creating run ${runId} for agent ${options.agentConfigId}...`,
+      `[E2B] ${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentConfigId}...`,
     );
 
     let sandbox: Sandbox | null = null;
-    const agentConfig = options.agentConfig as AgentVolumeConfig | undefined;
+    const agentConfig = context.agentConfig as AgentVolumeConfig | undefined;
 
-    // Prepare volumes (resolve + download) before try block
-    const volumeResult = await volumeService.prepareVolumes(
-      agentConfig,
-      options.dynamicVars || {},
-      runId,
-    );
+    // Prepare volumes - use snapshots for resume, or fresh volumes for new run
+    const volumeResult = context.resumeVolumes
+      ? await volumeService.prepareVolumesFromSnapshots(
+          context.resumeVolumes,
+          agentConfig,
+          context.dynamicVars || {},
+        )
+      : await volumeService.prepareVolumes(
+          agentConfig,
+          context.dynamicVars || {},
+          context.runId,
+        );
 
     try {
       // Get API configuration with dynamic fallback logic
@@ -75,8 +80,8 @@ export class E2BService {
       // Create E2B sandbox with environment variables
       const sandboxEnvVars: Record<string, string> = {
         VM0_API_URL: apiUrl,
-        VM0_RUN_ID: runId,
-        VM0_API_TOKEN: options.sandboxToken, // Temporary bearer token for webhook authentication
+        VM0_RUN_ID: context.runId,
+        VM0_API_TOKEN: context.sandboxToken, // Temporary bearer token for webhook authentication
       };
 
       // Add Vercel protection bypass secret if available (for preview deployments)
@@ -97,23 +102,36 @@ export class E2BService {
       // Mount volumes to sandbox
       await volumeService.mountVolumes(sandbox, volumeResult.preparedVolumes);
 
+      // Restore session history for resume
+      if (context.resumeSession) {
+        await this.restoreSessionHistory(
+          sandbox,
+          context.resumeSession.sessionId,
+          context.resumeSession.sessionHistory,
+          context.resumeSession.workingDir,
+        );
+      }
+
       // Execute Claude Code via run-agent.sh
       const result = await this.executeCommand(
         sandbox,
-        runId,
-        options.prompt,
-        options.sandboxToken,
-        options.agentConfig,
+        context.runId,
+        context.prompt,
+        context.sandboxToken,
+        context.agentConfig,
         volumeResult.preparedVolumes,
+        context.resumeSession?.sessionId,
       );
 
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.log(`[E2B] Run ${runId} completed in ${executionTimeMs}ms`);
+      console.log(
+        `[E2B] Run ${context.runId} completed in ${executionTimeMs}ms`,
+      );
 
       return {
-        runId,
+        runId: context.runId,
         sandboxId: sandbox.sandboxId,
         status: result.exitCode === 0 ? "completed" : "failed",
         output: result.stdout,
@@ -126,10 +144,10 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.error(`[E2B] Run ${runId} failed:`, error);
+      console.error(`[E2B] Run ${context.runId} failed:`, error);
 
       return {
-        runId,
+        runId: context.runId,
         sandboxId: sandbox?.sandboxId || "unknown",
         status: "failed",
         output: "",
@@ -147,6 +165,52 @@ export class E2BService {
       // Cleanup temp directory
       await volumeService.cleanup(volumeResult.tempDir);
     }
+  }
+
+  /**
+   * Restore session history for resume functionality
+   * Writes session history JSONL file to correct location for Claude Code to detect
+   *
+   * @param sandbox E2B sandbox instance
+   * @param sessionId Session ID to restore
+   * @param sessionHistory JSONL content of session history
+   * @param workingDir Working directory for path calculation
+   */
+  private async restoreSessionHistory(
+    sandbox: Sandbox,
+    sessionId: string,
+    sessionHistory: string,
+    workingDir: string,
+  ): Promise<void> {
+    console.log(`[E2B] Restoring session history for ${sessionId}...`);
+
+    // Calculate session history path using same logic as run-agent-script
+    const sessionHistoryPath = calculateSessionHistoryPath(
+      workingDir,
+      sessionId,
+    );
+
+    console.log(`[E2B] Session history path: ${sessionHistoryPath}`);
+
+    // Create directory structure
+    const dirPath = sessionHistoryPath.substring(
+      0,
+      sessionHistoryPath.lastIndexOf("/"),
+    );
+    await sandbox.commands.run(`mkdir -p "${dirPath}"`);
+
+    // Write session history file
+    const sessionBuffer = Buffer.from(sessionHistory, "utf-8");
+    const arrayBuffer = sessionBuffer.buffer.slice(
+      sessionBuffer.byteOffset,
+      sessionBuffer.byteOffset + sessionBuffer.byteLength,
+    ) as ArrayBuffer;
+
+    await sandbox.files.write(sessionHistoryPath, arrayBuffer);
+
+    console.log(
+      `[E2B] Session history restored (${sessionHistory.split("\n").length} lines)`,
+    );
   }
 
   /**
@@ -227,6 +291,7 @@ export class E2BService {
     sandboxToken: string,
     agentConfig?: unknown,
     preparedVolumes?: PreparedVolume[],
+    resumeSessionId?: string,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -251,6 +316,12 @@ export class E2BService {
     if (workingDir) {
       envs.VM0_WORKING_DIR = workingDir;
       console.log(`[E2B] Working directory configured: ${workingDir}`);
+    }
+
+    // Add resume session ID if provided
+    if (resumeSessionId) {
+      envs.VM0_RESUME_SESSION_ID = resumeSessionId;
+      console.log(`[E2B] Resume session ID configured: ${resumeSessionId}`);
     }
 
     // Add volume information for checkpoint

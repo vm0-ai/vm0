@@ -1,28 +1,33 @@
 import { NextRequest } from "next/server";
-import { initServices } from "../../../../src/lib/init-services";
-import { agentConfigs } from "../../../../src/db/schema/agent-config";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
-import { runService } from "../../../../src/lib/run";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
+import { initServices } from "../../../../../src/lib/init-services";
+import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { runService } from "../../../../../src/lib/run";
+import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   successResponse,
   errorResponse,
-} from "../../../../src/lib/api-response";
+} from "../../../../../src/lib/api-response";
 import {
   BadRequestError,
-  NotFoundError,
   UnauthorizedError,
-} from "../../../../src/lib/errors";
-import type {
-  CreateAgentRunRequest,
-  CreateAgentRunResponse,
-} from "../../../../src/types/agent-run";
+} from "../../../../../src/lib/errors";
+import { eq } from "drizzle-orm";
+
+export interface ResumeAgentRunRequest {
+  checkpointId: string;
+  prompt: string;
+}
+
+export interface ResumeAgentRunResponse {
+  runId: string;
+  status: string;
+  createdAt: string;
+}
 
 /**
- * POST /api/agent/runs
- * Create and execute an agent run
+ * POST /api/agent/runs/resume
+ * Resume execution from a checkpoint
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,40 +41,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body: CreateAgentRunRequest = await request.json();
+    const body: ResumeAgentRunRequest = await request.json();
 
-    if (!body.agentConfigId) {
-      throw new BadRequestError("Missing agentConfigId");
+    if (!body.checkpointId) {
+      throw new BadRequestError("Missing checkpointId");
     }
 
     if (!body.prompt) {
       throw new BadRequestError("Missing prompt");
     }
 
-    console.log(`[API] Creating run for config: ${body.agentConfigId}`);
+    console.log(
+      `[API] Resuming from checkpoint: ${body.checkpointId} for user ${userId}`,
+    );
 
-    // Fetch agent config from database
-    const [config] = await globalThis.services.db
-      .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, body.agentConfigId))
-      .limit(1);
+    // Create resume context (this validates checkpoint and loads data)
+    const context = await runService.createResumeContext(
+      "", // Temporary, will be replaced with actual run ID
+      body.checkpointId,
+      body.prompt,
+      "", // Temporary, will be replaced with actual token
+      userId,
+    );
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
-    }
-
-    console.log(`[API] Found agent config: ${config.id}`);
+    console.log(
+      `[API] Resume context created for agent config: ${context.agentConfigId}`,
+    );
 
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId,
-        agentConfigId: body.agentConfigId,
+        agentConfigId: context.agentConfigId,
+        resumedFromCheckpointId: body.checkpointId,
         status: "pending",
         prompt: body.prompt,
-        dynamicVars: body.dynamicVars || null,
+        dynamicVars: context.dynamicVars || null,
       })
       .returning();
 
@@ -77,11 +85,13 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to create run record");
     }
 
-    console.log(`[API] Created run record: ${run.id}`);
+    console.log(
+      `[API] Created resume run record: ${run.id} (from checkpoint ${body.checkpointId})`,
+    );
 
     // Generate temporary bearer token for E2B sandbox
     const sandboxToken = await generateSandboxToken(userId, run.id);
-    console.log(`[API] Generated sandbox token for run: ${run.id}`);
+    console.log(`[API] Generated sandbox token for resume run: ${run.id}`);
 
     // Update run status to 'running' before starting E2B execution
     await globalThis.services.db
@@ -93,17 +103,16 @@ export async function POST(request: NextRequest) {
       .where(eq(agentRuns.id, run.id));
 
     // Execute in E2B asynchronously (don't await)
-    // First create execution context
+    // Create new context with actual run ID and token
     runService
-      .createRunContext(
+      .createResumeContext(
         run.id,
-        body.agentConfigId,
+        body.checkpointId,
         body.prompt,
         sandboxToken,
-        body.dynamicVars,
-        config.config,
+        userId,
       )
-      .then((context) => runService.executeRun(context))
+      .then((finalContext) => runService.executeRun(finalContext))
       .then((result) => {
         // Update run with results on success
         return globalThis.services.db
@@ -121,11 +130,11 @@ export async function POST(request: NextRequest) {
           .where(eq(agentRuns.id, run.id));
       })
       .then(() => {
-        console.log(`[API] Run ${run.id} completed successfully`);
+        console.log(`[API] Resume run ${run.id} completed successfully`);
       })
       .catch((error) => {
         // Update run with error on failure
-        console.error(`[API] Run ${run.id} failed:`, error);
+        console.error(`[API] Resume run ${run.id} failed:`, error);
         return globalThis.services.db
           .update(agentRuns)
           .set({
@@ -137,7 +146,7 @@ export async function POST(request: NextRequest) {
       });
 
     // Return response immediately with 'running' status
-    const response: CreateAgentRunResponse = {
+    const response: ResumeAgentRunResponse = {
       runId: run.id,
       status: "running",
       createdAt: run.createdAt.toISOString(),

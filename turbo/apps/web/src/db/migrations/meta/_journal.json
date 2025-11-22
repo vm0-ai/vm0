@@ -78,6 +78,13 @@
       "when": 1763745898379,
       "tag": "0010_add_checkpoints_table",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1763790051477,
+      "tag": "0011_sparkling_loa",
+      "breakpoints": true
     }
   ]
 }
