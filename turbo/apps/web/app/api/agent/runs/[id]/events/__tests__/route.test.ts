@@ -53,10 +53,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -97,10 +94,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
