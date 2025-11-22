@@ -66,10 +66,10 @@ async function sendVm0Event(
   event: Vm0StartEvent | Vm0ResultEvent | Vm0ErrorEvent,
 ): Promise<void> {
   // Use fixed sequence numbers for VM0 events:
-  // - vm0_start: -1 (before all agent events)
+  // - vm0_start: 0 (before all agent events which start at 1)
   // - vm0_result/error: 1000000 (after all agent events)
   const VM0_SEQUENCE_MAP = {
-    vm0_start: -1,
+    vm0_start: 0,
     vm0_result: 1000000,
     vm0_error: 1000000,
   } as const;
