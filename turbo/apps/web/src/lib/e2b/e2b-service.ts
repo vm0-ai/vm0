@@ -7,7 +7,7 @@ import type {
   SandboxExecutionResult,
 } from "./types";
 import { volumeService } from "../volume/volume-service";
-import type { AgentVolumeConfig } from "../volume/types";
+import type { AgentVolumeConfig, PreparedVolume } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import { RUN_AGENT_SCRIPT } from "./run-agent-script";
 
@@ -104,6 +104,7 @@ export class E2BService {
         options.prompt,
         options.sandboxToken,
         options.agentConfig,
+        volumeResult.preparedVolumes,
       );
 
       const executionTimeMs = Date.now() - startTime;
@@ -224,6 +225,7 @@ export class E2BService {
     prompt: string,
     sandboxToken: string,
     agentConfig?: unknown,
+    preparedVolumes?: PreparedVolume[],
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
 
@@ -248,6 +250,25 @@ export class E2BService {
     if (workingDir) {
       envs.VM0_WORKING_DIR = workingDir;
       console.log(`[E2B] Working directory configured: ${workingDir}`);
+    }
+
+    // Add volume information for checkpoint
+    if (preparedVolumes && preparedVolumes.length > 0) {
+      // Filter only Git volumes and format for checkpoint
+      const gitVolumes = preparedVolumes
+        .filter((v) => v.driver === "git")
+        .map((v) => ({
+          name: v.name,
+          driver: v.driver,
+          mountPath: v.mountPath,
+        }));
+
+      if (gitVolumes.length > 0) {
+        envs.VM0_GIT_VOLUMES = JSON.stringify(gitVolumes);
+        console.log(
+          `[E2B] Configured ${gitVolumes.length} Git volume(s) for checkpoint`,
+        );
+      }
     }
 
     // Add Minimax API configuration if available
