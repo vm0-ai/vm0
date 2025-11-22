@@ -53,10 +53,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    await globalThis.services.db
-      .delete(checkpoints)
-      .where(eq(checkpoints.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related checkpoints
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -87,10 +84,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    await globalThis.services.db
-      .delete(checkpoints)
-      .where(eq(checkpoints.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related checkpoints
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
