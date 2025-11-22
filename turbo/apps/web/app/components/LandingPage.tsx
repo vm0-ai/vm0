@@ -146,7 +146,7 @@ export default function LandingPage() {
           <div className="hero-grid">
             <div className="hero-text">
               <h1 className="hero-title">
-                Agent-native runtime for modern agent development
+                The modern runtime for agent-native development
               </h1>
               <p className="hero-description">
                 Infrastructure for AI agents, not workflows. VM0&apos;s built-in sandbox 
