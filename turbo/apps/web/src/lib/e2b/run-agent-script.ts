@@ -231,6 +231,10 @@ cd "$WORKING_DIR" || {
   exit 1
 }
 
+# Set Claude config directory to ensure consistent session history location
+export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
+echo "[VM0] Claude config directory: $CLAUDE_CONFIG_DIR" >&2
+
 # Execute Claude Code with JSONL output
 echo "[VM0] Starting Claude Code execution..." >&2
 echo "[VM0] Prompt: $PROMPT" >&2
