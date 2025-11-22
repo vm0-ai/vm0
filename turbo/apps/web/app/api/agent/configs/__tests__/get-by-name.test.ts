@@ -4,7 +4,10 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../route";
-import { initServices, cleanupServices } from "../../../../../src/lib/init-services";
+import {
+  initServices,
+  cleanupServices,
+} from "../../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
 
