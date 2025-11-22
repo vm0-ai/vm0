@@ -325,11 +325,11 @@ export default function LandingPage() {
       <section className="section-spacing">
         <div className="container">
           <h2 className="section-title">
-            Suppot all kinds of CLI-based agents
+            Support all kinds of CLI-based agents
           </h2>
           <p className="section-description">
             Leverage Claude Code, Codex, Gemini, and other CLI agents to build
-            your own. VM0 fits into any agent developennt and provides the
+            your own. VM0 fits into any agent development and provides the
             infrastructure you need to create vertical, end-user-facing agents.
           </p>
 
