@@ -23,7 +23,7 @@ function isUUID(str: string): boolean {
 }
 
 async function pollEvents(runId: string): Promise<void> {
-  let nextSequence = 0;
+  let nextSequence = -99;
   let complete = false;
   const pollIntervalMs = 500;
   const timeoutMs = 3 * 60 * 1000; // 3 minutes timeout

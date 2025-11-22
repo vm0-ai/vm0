@@ -4,7 +4,6 @@
  */
 
 import { agentRunEvents } from "../db/schema/agent-run-event";
-import { sql } from "drizzle-orm";
 import type {
   Vm0StartEvent,
   Vm0ResultEvent,
@@ -60,21 +59,24 @@ export async function sendVm0ErrorEvent(
 
 /**
  * Internal function to send a VM0 event to the database
- * Uses atomic subquery to get next sequence number without race conditions
+ * Uses fixed sequence numbers to avoid database queries
  */
 async function sendVm0Event(
   runId: string,
   event: Vm0StartEvent | Vm0ResultEvent | Vm0ErrorEvent,
 ): Promise<void> {
-  // Use a subquery to get next sequence number atomically
-  // This avoids race conditions and extra queries
+  // Use fixed sequence numbers for VM0 events:
+  // - vm0_start: -1 (before all agent events)
+  // - vm0_result/error: 1000000 (after all agent events)
+  const VM0_SEQUENCE_MAP = {
+    vm0_start: -1,
+    vm0_result: 1000000,
+    vm0_error: 1000000,
+  } as const;
+
   await globalThis.services.db.insert(agentRunEvents).values({
     runId,
-    sequenceNumber: sql`(
-      SELECT COALESCE(MAX(sequence_number), 0) + 1
-      FROM agent_run_events
-      WHERE run_id = ${runId}
-    )`,
+    sequenceNumber: VM0_SEQUENCE_MAP[event.type],
     eventType: event.type,
     eventData: event,
   });
