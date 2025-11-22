@@ -17,7 +17,7 @@ import type {
   CheckpointRequest,
   CheckpointResponse,
 } from "../../../../../src/lib/checkpoint";
-import { sendVm0ResultEvent } from "../../../../../src/lib/vm0-events";
+import { sendVm0ResultEvent } from "../../../../../src/lib/events";
 
 /**
  * POST /api/webhooks/agent/checkpoints

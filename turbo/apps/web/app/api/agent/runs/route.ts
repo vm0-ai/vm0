@@ -22,7 +22,7 @@ import type {
 import {
   sendVm0StartEvent,
   sendVm0ErrorEvent,
-} from "../../../../src/lib/vm0-events";
+} from "../../../../src/lib/events";
 
 /**
  * POST /api/agent/runs

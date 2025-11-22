@@ -3,12 +3,8 @@
  * Helper functions for sending VM0 system events
  */
 
-import { agentRunEvents } from "../db/schema/agent-run-event";
-import type {
-  Vm0StartEvent,
-  Vm0ResultEvent,
-  Vm0ErrorEvent,
-} from "../types/vm0-events";
+import { agentRunEvents } from "../../db/schema/agent-run-event";
+import type { Vm0StartEvent, Vm0ResultEvent, Vm0ErrorEvent } from "./types";
 
 /**
  * Send a VM0 start event
