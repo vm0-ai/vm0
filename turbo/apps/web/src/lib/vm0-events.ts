@@ -4,8 +4,7 @@
  */
 
 import { agentRunEvents } from "../db/schema/agent-run-event";
-import { max } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type {
   Vm0StartEvent,
   Vm0ResultEvent,
@@ -61,24 +60,21 @@ export async function sendVm0ErrorEvent(
 
 /**
  * Internal function to send a VM0 event to the database
+ * Uses atomic subquery to get next sequence number without race conditions
  */
 async function sendVm0Event(
   runId: string,
   event: Vm0StartEvent | Vm0ResultEvent | Vm0ErrorEvent,
 ): Promise<void> {
-  // Get the last sequence number for this run
-  const [lastEvent] = await globalThis.services.db
-    .select({ maxSeq: max(agentRunEvents.sequenceNumber) })
-    .from(agentRunEvents)
-    .where(eq(agentRunEvents.runId, runId));
-
-  const lastSequence = lastEvent?.maxSeq ?? 0;
-  const nextSequence = lastSequence + 1;
-
-  // Insert the event
+  // Use a subquery to get next sequence number atomically
+  // This avoids race conditions and extra queries
   await globalThis.services.db.insert(agentRunEvents).values({
     runId,
-    sequenceNumber: nextSequence,
+    sequenceNumber: sql`(
+      SELECT COALESCE(MAX(sequence_number), 0) + 1
+      FROM agent_run_events
+      WHERE run_id = ${runId}
+    )`,
     eventType: event.type,
     eventData: event,
   });
