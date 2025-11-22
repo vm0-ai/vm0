@@ -18,9 +18,9 @@ GIT_VOLUMES="\${VM0_GIT_VOLUMES:-[]}"
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
 
-# Variables for checkpoint
-SESSION_ID=""
-SESSION_HISTORY_PATH=""
+# Variables for checkpoint (use temp files to persist across subshells)
+SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"
+SESSION_HISTORY_PATH_FILE="/tmp/vm0-session-history-$RUN_ID.txt"
 
 # Send single event immediately
 send_event() {
@@ -28,15 +28,19 @@ send_event() {
 
   # Extract session ID from init event
   local event_type=$(echo "$event_json" | jq -r '.type // empty' 2>/dev/null)
-  if [ "$event_type" = "init" ] && [ -z "$SESSION_ID" ]; then
-    SESSION_ID=$(echo "$event_json" | jq -r '.data.sessionId // empty' 2>/dev/null)
-    if [ -n "$SESSION_ID" ]; then
-      echo "[VM0] Captured session ID: $SESSION_ID" >&2
+  local event_subtype=$(echo "$event_json" | jq -r '.subtype // empty' 2>/dev/null)
+  if [ "$event_type" = "system" ] && [ "$event_subtype" = "init" ] && [ ! -f "$SESSION_ID_FILE" ]; then
+    local session_id=$(echo "$event_json" | jq -r '.session_id // empty' 2>/dev/null)
+    if [ -n "$session_id" ]; then
+      echo "[VM0] Captured session ID: $session_id" >&2
+      # Save to temp file to persist across subshells
+      echo "$session_id" > "$SESSION_ID_FILE"
       # Calculate session history path
-      # Encode working directory path (replace / with _)
-      local encoded_path=$(echo "$WORKING_DIR" | sed 's|/|_|g')
-      SESSION_HISTORY_PATH="$HOME/.config/claude/projects/\${encoded_path}/\${SESSION_ID}.jsonl"
-      echo "[VM0] Session history will be at: $SESSION_HISTORY_PATH" >&2
+      # Claude Code uses hyphen-separated path encoding (e.g., /home/user/workspace -> -home-user-workspace)
+      local project_name=$(echo "$WORKING_DIR" | sed 's|^/||' | sed 's|/|-|g')
+      local session_history_path="$HOME/.config/claude/projects/-\${project_name}/\${session_id}.jsonl"
+      echo "$session_history_path" > "$SESSION_HISTORY_PATH_FILE"
+      echo "[VM0] Session history will be at: $session_history_path" >&2
     fi
   fi
 
@@ -45,30 +49,40 @@ send_event() {
     --argjson event "$event_json" \\
     '{runId: $rid, events: [$event]}')
 
-  # Build curl command with optional Vercel bypass header
-  local curl_cmd="curl -X POST \\"$WEBHOOK_URL\\" \\
-    -H \\"Content-Type: application/json\\" \\
-    -H \\"Authorization: Bearer $API_TOKEN\\""
-
-  # Add Vercel protection bypass header if available (for preview deployments)
+  # Send event directly with curl (avoid eval to prevent shell injection)
   if [ -n "$VERCEL_BYPASS" ]; then
-    curl_cmd="$curl_cmd -H \\"x-vercel-protection-bypass: $VERCEL_BYPASS\\""
+    curl -X POST "$WEBHOOK_URL" \\
+      -H "Content-Type: application/json" \\
+      -H "Authorization: Bearer $API_TOKEN" \\
+      -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
+      -d "$payload" \\
+      --silent --fail || echo "[ERROR] Failed to send event" >&2
+  else
+    curl -X POST "$WEBHOOK_URL" \\
+      -H "Content-Type: application/json" \\
+      -H "Authorization: Bearer $API_TOKEN" \\
+      -d "$payload" \\
+      --silent --fail || echo "[ERROR] Failed to send event" >&2
   fi
-
-  curl_cmd="$curl_cmd -d '$payload' --silent --fail"
-
-  eval "$curl_cmd" || echo "[ERROR] Failed to send event" >&2
 }
 
 # Create checkpoint after successful run
 create_checkpoint() {
   echo "[VM0] Creating checkpoint..." >&2
 
-  # Check if we have session ID
-  if [ -z "$SESSION_ID" ]; then
+  # Read session ID from temp file
+  if [ ! -f "$SESSION_ID_FILE" ]; then
     echo "[VM0] No session ID found, skipping checkpoint" >&2
     return 0
   fi
+  local SESSION_ID=$(cat "$SESSION_ID_FILE")
+
+  # Read session history path from temp file
+  if [ ! -f "$SESSION_HISTORY_PATH_FILE" ]; then
+    echo "[VM0] No session history path found, skipping checkpoint" >&2
+    return 0
+  fi
+  local SESSION_HISTORY_PATH=$(cat "$SESSION_HISTORY_PATH_FILE")
 
   # Check if session history file exists
   if [ ! -f "$SESSION_HISTORY_PATH" ]; then
@@ -108,13 +122,36 @@ create_checkpoint() {
 
       echo "[VM0] Creating Git snapshot for volume '$VOLUME_NAME' at $MOUNT_PATH" >&2
 
-      # Create Git snapshot
-      SNAPSHOT=$(create_git_snapshot "$MOUNT_PATH" "$VOLUME_NAME")
+      # Create Git snapshot - redirect stderr to suppress git messages
+      SNAPSHOT=$(create_git_snapshot "$MOUNT_PATH" "$VOLUME_NAME" 2>/dev/null)
 
       if [ $? -eq 0 ] && [ -n "$SNAPSHOT" ]; then
-        # Add snapshot to volume
-        volume=$(echo "$volume" | jq --argjson snap "$SNAPSHOT" '.snapshot = $snap')
-        snapshots_array=$(echo "$snapshots_array" | jq --argjson vol "$volume" '. + [$vol]')
+        # Add snapshot to volume using temp files to avoid quoting issues
+        local vol_tmp="/tmp/vol-$RUN_ID-$VOLUME_NAME.json"
+        local snap_tmp="/tmp/snap-$RUN_ID-$VOLUME_NAME.json"
+        local arr_tmp="/tmp/arr-$RUN_ID.json"
+
+        echo "$volume" > "$vol_tmp"
+        echo "$SNAPSHOT" > "$snap_tmp"
+        echo "$snapshots_array" > "$arr_tmp"
+
+        # Merge snapshot into volume
+        volume=$(jq --slurpfile snap "$snap_tmp" '. + {snapshot: $snap[0]}' "$vol_tmp" 2>&1)
+        if [ $? -ne 0 ]; then
+          echo "[ERROR] Failed to merge snapshot into volume: $volume" >&2
+          return 1
+        fi
+
+        echo "$volume" > "$vol_tmp"
+        # Append volume to snapshots array
+        snapshots_array=$(jq --slurpfile vol "$vol_tmp" '. + $vol' "$arr_tmp" 2>&1)
+        if [ $? -ne 0 ]; then
+          echo "[ERROR] Failed to append volume to array: $snapshots_array" >&2
+          return 1
+        fi
+
+        rm -f "$vol_tmp" "$snap_tmp"
+
         echo "[VM0] Git snapshot created for '$VOLUME_NAME'" >&2
       else
         echo "[ERROR] Failed to create Git snapshot for '$VOLUME_NAME'" >&2
@@ -127,7 +164,11 @@ create_checkpoint() {
 
   echo "[VM0] Calling checkpoint API..." >&2
 
-  # Build checkpoint payload
+  # Build checkpoint payload - VOLUME_SNAPSHOTS is already valid JSON
+  if [ -z "$VOLUME_SNAPSHOTS" ] || [ "$VOLUME_SNAPSHOTS" = "[]" ]; then
+    VOLUME_SNAPSHOTS="[]"
+  fi
+
   local checkpoint_payload=$(jq -n \\
     --arg rid "$RUN_ID" \\
     --arg sid "$SESSION_ID" \\
@@ -140,25 +181,32 @@ create_checkpoint() {
       volumeSnapshots: $volumes
     }')
 
-  # Build curl command
-  local curl_cmd="curl -X POST \\"$CHECKPOINT_URL\\" \\
-    -H \\"Content-Type: application/json\\" \\
-    -H \\"Authorization: Bearer $API_TOKEN\\""
-
-  # Add Vercel protection bypass header if available
+  # Call checkpoint API directly (avoid eval)
   if [ -n "$VERCEL_BYPASS" ]; then
-    curl_cmd="$curl_cmd -H \\"x-vercel-protection-bypass: $VERCEL_BYPASS\\""
-  fi
-
-  curl_cmd="$curl_cmd -d '$checkpoint_payload' --silent --fail"
-
-  # Call checkpoint API
-  if eval "$curl_cmd"; then
-    echo "[VM0] Checkpoint created successfully" >&2
-    return 0
+    if curl -X POST "$CHECKPOINT_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $API_TOKEN" \
+      -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \
+      -d "$checkpoint_payload" \
+      --silent --fail; then
+      echo "[VM0] Checkpoint created successfully" >&2
+      return 0
+    else
+      echo "[ERROR] Failed to create checkpoint" >&2
+      return 1
+    fi
   else
-    echo "[ERROR] Failed to create checkpoint" >&2
-    return 1
+    if curl -X POST "$CHECKPOINT_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $API_TOKEN" \
+      -d "$checkpoint_payload" \
+      --silent --fail; then
+      echo "[VM0] Checkpoint created successfully" >&2
+      return 0
+    else
+      echo "[ERROR] Failed to create checkpoint" >&2
+      return 1
+    fi
   fi
 }
 
@@ -193,22 +241,23 @@ create_git_snapshot() {
     # Still return current commit
     COMMIT_ID=$(git rev-parse HEAD 2>/dev/null || echo "")
     if [ -n "$COMMIT_ID" ]; then
-      echo "{\\"branch\\": \\"$branch_name\\", \\"commitId\\": \\"$COMMIT_ID\\"}"
+      # Use jq to generate valid JSON
+      jq -n --arg branch "$branch_name" --arg commit "$COMMIT_ID" '{branch: $branch, commitId: $commit}'
       return 0
     else
       return 1
     fi
   fi
 
-  # Commit changes
+  # Commit changes (suppress stdout and stderr)
   local commit_message="checkpoint: save state for run $RUN_ID"
-  if ! git commit -m "$commit_message" 2>/dev/null; then
+  if ! git commit -m "$commit_message" >/dev/null 2>&1; then
     echo "[ERROR] Failed to commit changes" >&2
     return 1
   fi
 
-  # Push to remote
-  if ! git push origin "$branch_name" 2>/dev/null; then
+  # Push to remote (suppress stdout and stderr)
+  if ! git push origin "$branch_name" >/dev/null 2>&1; then
     echo "[ERROR] Failed to push branch $branch_name" >&2
     return 1
   fi
@@ -220,7 +269,8 @@ create_git_snapshot() {
     return 1
   fi
 
-  echo "{\\"branch\\": \\"$branch_name\\", \\"commitId\\": \\"$COMMIT_ID\\"}"
+  # Use jq to generate valid JSON
+  jq -n --arg branch "$branch_name" --arg commit "$COMMIT_ID" '{branch: $branch, commitId: $commit}'
   return 0
 }
 
@@ -282,12 +332,15 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   echo "[VM0] Claude Code completed successfully" >&2
   send_event '{"type": "result", "data": {"status": "success", "exitCode": 0}}'
 
-  # Create checkpoint if execution was successful
-  create_checkpoint
+  # Create checkpoint if execution was successful (don't fail script if checkpoint fails)
+  create_checkpoint || echo "[WARNING] Checkpoint creation failed, but run was successful" >&2
 else
   echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
   send_event "{\\"type\\": \\"result\\", \\"data\\": {\\"status\\": \\"failed\\", \\"exitCode\\": $CLAUDE_EXIT_CODE}}"
 fi
+
+# Cleanup temp files
+rm -f "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" 2>/dev/null || true
 
 exit $CLAUDE_EXIT_CODE
 `;

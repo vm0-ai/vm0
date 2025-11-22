@@ -68,12 +68,8 @@ export async function POST(request: NextRequest) {
       throw new NotFoundError("Agent run");
     }
 
-    // Validate run status is completed
-    if (run.status !== "completed") {
-      throw new BadRequestError(
-        `Cannot create checkpoint for run with status "${run.status}". Only completed runs can be checkpointed.`,
-      );
-    }
+    // Note: We don't check run status here because the checkpoint is called from within
+    // the sandbox before the E2B service updates the run status to "completed"
 
     // Create checkpoint
     const result = await checkpointService.createCheckpoint(body);

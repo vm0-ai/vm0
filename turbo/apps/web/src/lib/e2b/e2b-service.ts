@@ -185,6 +185,7 @@ export class E2BService {
   /**
    * Upload run-agent.sh script to sandbox
    * The script content is embedded in the application code for reliable deployment
+   * Updated: Using jq for JSON generation in git snapshots
    */
   private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
     const tempPath = "/tmp/run-agent.sh";
@@ -295,13 +296,15 @@ export class E2BService {
 
     const executionTimeMs = Date.now() - execStart;
 
+    // Always log stderr to capture [VM0] checkpoint logs (even on success)
+    console.log(`[E2B] stderr (${result.stderr.length} chars):`, result.stderr);
+
     if (result.exitCode === 0) {
       console.log(`[E2B] Run ${runId} completed successfully`);
     } else {
       console.error(
         `[E2B] Run ${runId} failed with exit code ${result.exitCode}`,
       );
-      console.error(`[E2B] stderr:`, result.stderr);
     }
 
     return {
