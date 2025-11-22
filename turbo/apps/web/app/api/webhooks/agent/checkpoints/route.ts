@@ -17,6 +17,7 @@ import type {
   CheckpointRequest,
   CheckpointResponse,
 } from "../../../../../src/lib/checkpoint";
+import { sendVm0ResultEvent } from "../../../../../src/lib/events";
 
 /**
  * POST /api/webhooks/agent/checkpoints
@@ -77,6 +78,13 @@ export async function POST(request: NextRequest) {
     console.log(
       `[Checkpoint API] Checkpoint created: ${result.checkpointId} with ${result.volumeSnapshots} snapshot(s)`,
     );
+
+    // Send vm0_result event
+    await sendVm0ResultEvent({
+      runId: body.runId,
+      checkpointId: result.checkpointId,
+      volumeSnapshots: result.volumeSnapshots,
+    });
 
     // Return response
     const response: CheckpointResponse = {

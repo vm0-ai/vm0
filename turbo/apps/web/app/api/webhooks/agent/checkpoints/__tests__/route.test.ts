@@ -1,7 +1,15 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -53,10 +61,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    await globalThis.services.db
-      .delete(checkpoints)
-      .where(eq(checkpoints.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related checkpoints
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -87,10 +92,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    await globalThis.services.db
-      .delete(checkpoints)
-      .where(eq(checkpoints.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related checkpoints
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -103,6 +105,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testConfigId));
   });
+
+  afterAll(async () => {});
 
   // ============================================
   // P0 Tests: Authentication (2 tests)

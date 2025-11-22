@@ -24,9 +24,9 @@ describe("run command", () => {
 
     // Default mock for ClaudeEventParser
     vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
-      if (raw.type === "result") {
+      if (raw.type === "vm0_result") {
         return {
-          type: "result",
+          type: "vm0_result",
           timestamp: new Date(),
           data: { success: true, result: "Done" },
         };
@@ -61,8 +61,8 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
@@ -97,8 +97,8 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
@@ -156,8 +156,8 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
@@ -281,8 +281,8 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
@@ -450,9 +450,9 @@ describe("run command", () => {
             data: { text: raw.text },
           };
         }
-        if (raw.type === "result") {
+        if (raw.type === "vm0_result") {
           return {
-            type: "result",
+            type: "vm0_result",
             timestamp: new Date(),
             data: { success: true, result: "Done" },
           };
@@ -495,8 +495,8 @@ describe("run command", () => {
             },
             {
               sequenceNumber: 3,
-              eventType: "result",
-              eventData: { type: "result", success: true, result: "Done" },
+              eventType: "vm0_result",
+              eventData: { type: "vm0_result", success: true, result: "Done" },
               createdAt: "2025-01-01T00:00:02Z",
             },
           ],
@@ -512,7 +512,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
-        since: 0,
+        since: -1,
       });
       expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
         since: 1,
@@ -539,8 +539,8 @@ describe("run command", () => {
           },
           {
             sequenceNumber: 2,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:01Z",
           },
         ],
@@ -560,7 +560,7 @@ describe("run command", () => {
         sessionId: "session-123",
       });
       expect(ClaudeEventParser.parse).toHaveBeenCalledWith({
-        type: "result",
+        type: "vm0_result",
         success: true,
         result: "Done",
       });
@@ -581,8 +581,8 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
@@ -619,9 +619,9 @@ describe("run command", () => {
         if (raw.type === "unknown") {
           return null;
         }
-        if (raw.type === "result") {
+        if (raw.type === "vm0_result") {
           return {
-            type: "result",
+            type: "vm0_result",
             timestamp: new Date(),
             data: { success: true, result: "Done" },
           };
@@ -639,8 +639,8 @@ describe("run command", () => {
           },
           {
             sequenceNumber: 2,
-            eventType: "result",
-            eventData: { type: "result", success: true, result: "Done" },
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
             createdAt: "2025-01-01T00:00:01Z",
           },
         ],

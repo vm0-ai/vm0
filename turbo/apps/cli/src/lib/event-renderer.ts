@@ -27,6 +27,15 @@ export class EventRenderer {
       case "result":
         this.renderResult(event);
         break;
+      case "vm0_start":
+        this.renderVm0Start(event);
+        break;
+      case "vm0_result":
+        this.renderVm0Result(event);
+        break;
+      case "vm0_error":
+        this.renderVm0Error(event);
+        break;
     }
   }
 
@@ -114,6 +123,37 @@ export class EventRenderer {
           `input=${formatTokens(inputTokens)} output=${formatTokens(outputTokens)}`,
         )}`,
       );
+    }
+  }
+
+  private static renderVm0Start(event: ParsedEvent): void {
+    console.log(chalk.cyan("[vm0_start]") + " Run starting");
+    const prompt = String(event.data.prompt || "");
+    const displayPrompt =
+      prompt.length > 100 ? prompt.substring(0, 100) + "..." : prompt;
+    console.log(`  Prompt: ${chalk.gray(displayPrompt)}`);
+
+    if (event.data.agentName) {
+      console.log(`  Agent: ${chalk.gray(String(event.data.agentName))}`);
+    }
+  }
+
+  private static renderVm0Result(event: ParsedEvent): void {
+    console.log(chalk.green("[vm0_result]") + " ✓ Run completed successfully");
+    console.log(
+      `  Checkpoint: ${chalk.gray(String(event.data.checkpointId || ""))}`,
+    );
+    const volumeSnapshots = Number(event.data.volumeSnapshots || 0);
+    if (volumeSnapshots > 0) {
+      console.log(`  Volume snapshots: ${chalk.gray(String(volumeSnapshots))}`);
+    }
+  }
+
+  private static renderVm0Error(event: ParsedEvent): void {
+    console.log(chalk.red("[vm0_error]") + " ✗ Run failed");
+    console.log(`  Error: ${chalk.red(String(event.data.error || ""))}`);
+    if (event.data.errorType) {
+      console.log(`  Type: ${chalk.gray(String(event.data.errorType))}`);
     }
   }
 }

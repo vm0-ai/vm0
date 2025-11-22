@@ -1,7 +1,15 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { GET } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../../src/lib/init-services";
@@ -53,10 +61,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -97,10 +102,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
+    // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -112,6 +114,10 @@ describe("GET /api/agent/runs/:id/events", () => {
     await globalThis.services.db
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testConfigId));
+  });
+
+  afterAll(async () => {
+    // Clean up database connections
   });
 
   // ============================================

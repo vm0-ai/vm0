@@ -1,2 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "resumed_from_checkpoint_id" uuid;--> statement-breakpoint
-ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_resumed_from_checkpoint_id_checkpoints_id_fk" FOREIGN KEY ("resumed_from_checkpoint_id") REFERENCES "public"."checkpoints"("id") ON DELETE no action ON UPDATE no action;

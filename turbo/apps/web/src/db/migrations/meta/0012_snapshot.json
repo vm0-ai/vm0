@@ -1,6 +1,6 @@
 {
-  "id": "2b7b7b56-6bcd-45bf-871a-2cb90f15b45d",
-  "prevId": "dd14b3bc-2f97-4f70-b226-668806332ffc",
+  "id": "fbba4282-9aa3-4601-9762-966fbd5343f0",
+  "prevId": "ab5d1f54-2a38-4bc2-a8b9-53f201f6665f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -127,13 +127,9 @@
           "name": "agent_run_events_run_id_agent_runs_id_fk",
           "tableFrom": "agent_run_events",
           "tableTo": "agent_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -165,12 +161,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "resumed_from_checkpoint_id": {
-          "name": "resumed_from_checkpoint_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "status": {
           "name": "status",
@@ -234,25 +224,8 @@
           "name": "agent_runs_agent_config_id_agent_configs_id_fk",
           "tableFrom": "agent_runs",
           "tableTo": "agent_configs",
-          "columnsFrom": [
-            "agent_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "agent_runs_resumed_from_checkpoint_id_checkpoints_id_fk": {
-          "name": "agent_runs_resumed_from_checkpoint_id_checkpoints_id_fk",
-          "tableFrom": "agent_runs",
-          "tableTo": "checkpoints",
-          "columnsFrom": [
-            "resumed_from_checkpoint_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -324,25 +297,17 @@
           "name": "checkpoints_run_id_agent_runs_id_fk",
           "tableFrom": "checkpoints",
           "tableTo": "agent_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "checkpoints_agent_config_id_agent_configs_id_fk": {
           "name": "checkpoints_agent_config_id_agent_configs_id_fk",
           "tableFrom": "checkpoints",
           "tableTo": "agent_configs",
-          "columnsFrom": [
-            "agent_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -352,9 +317,7 @@
         "checkpoints_run_id_unique": {
           "name": "checkpoints_run_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "run_id"
-          ]
+          "columns": ["run_id"]
         }
       },
       "policies": {},
@@ -417,9 +380,7 @@
         "cli_tokens_token_unique": {
           "name": "cli_tokens_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -518,12 +479,7 @@
     "public.device_code_status": {
       "name": "device_code_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "authenticated",
-        "expired",
-        "denied"
-      ]
+      "values": ["pending", "authenticated", "expired", "denied"]
     }
   },
   "schemas": {},

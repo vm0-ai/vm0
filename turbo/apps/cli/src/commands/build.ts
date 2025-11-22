@@ -5,6 +5,7 @@ import { existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
 import { validateAgentConfig } from "../lib/yaml-validator";
+import { expandEnvVarsInObject } from "../lib/env-expander";
 
 export const buildCommand = new Command()
   .name("build")
@@ -32,19 +33,22 @@ export const buildCommand = new Command()
         process.exit(1);
       }
 
-      // 3. Validate config
+      // 3. Expand environment variables
+      config = expandEnvVarsInObject(config);
+
+      // 4. Validate config
       const validation = validateAgentConfig(config);
       if (!validation.valid) {
         console.error(chalk.red(`✗ ${validation.error}`));
         process.exit(1);
       }
 
-      // 4. Call API
+      // 5. Call API
       console.log(chalk.blue("Uploading configuration..."));
 
       const response = await apiClient.createOrUpdateConfig({ config });
 
-      // 5. Display result
+      // 6. Display result
       if (response.action === "created") {
         console.log(chalk.green(`✓ Config created: ${response.name}`));
       } else {

@@ -16,7 +16,7 @@ import { agentConfigs } from "./agent-config";
 export const checkpoints = pgTable("checkpoints", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id")
-    .references(() => agentRuns.id)
+    .references(() => agentRuns.id, { onDelete: "cascade" })
     .notNull()
     .unique(),
   agentConfigId: uuid("agent_config_id")
