@@ -28,10 +28,11 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock E2B service
-vi.mock("../../../../../src/lib/e2b", () => ({
-  e2bService: {
-    createRun: vi.fn(),
+// Mock run service (which orchestrates e2b execution)
+vi.mock("../../../../../src/lib/run", () => ({
+  runService: {
+    createRunContext: vi.fn(),
+    executeRun: vi.fn(),
   },
 }));
 
@@ -42,11 +43,11 @@ vi.mock("../../../../../src/lib/auth/sandbox-token", () => ({
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { e2bService } from "../../../../../src/lib/e2b";
+import { runService } from "../../../../../src/lib/run";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockE2bService = vi.mocked(e2bService);
+const mockRunService = vi.mocked(runService);
 
 describe("POST /api/agent/runs - Async Execution", () => {
   // Generate unique IDs for this test run
@@ -114,13 +115,16 @@ describe("POST /api/agent/runs - Async Execution", () => {
 
   describe("Async Execution", () => {
     it("should return immediately with 'running' status without waiting for completion", async () => {
-      // Mock E2B service to simulate long-running execution
+      // Mock run service to simulate long-running execution
       // Use a promise that never resolves to verify we don't wait for it
-      let resolveE2B: ((value: unknown) => void) | undefined;
-      const e2bPromise = new Promise((resolve) => {
-        resolveE2B = resolve;
+      let resolveExecution: ((value: unknown) => void) | undefined;
+      const executionPromise = new Promise((resolve) => {
+        resolveExecution = resolve;
       });
-      mockE2bService.createRun.mockReturnValue(e2bPromise as Promise<never>);
+      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.executeRun.mockReturnValue(
+        executionPromise as Promise<never>,
+      );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -156,9 +160,9 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(run!.status).toBe("running");
       expect(run!.prompt).toBe("Test prompt");
 
-      // Clean up: resolve the E2B promise to avoid memory leaks
-      if (resolveE2B) {
-        resolveE2B({
+      // Clean up: resolve the execution promise to avoid memory leaks
+      if (resolveExecution) {
+        resolveExecution({
           runId: data.runId,
           status: "completed" as const,
           sandboxId: "test-sandbox",
@@ -173,13 +177,14 @@ describe("POST /api/agent/runs - Async Execution", () => {
     });
 
     it("should update run status to 'completed' after E2B execution finishes successfully", async () => {
-      // Mock successful E2B execution that completes after a delay
-      mockE2bService.createRun.mockImplementation(
-        (runId: string) =>
+      // Mock successful run execution that completes after a delay
+      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.executeRun.mockImplementation(
+        (context: never) =>
           new Promise((resolve) => {
             setTimeout(() => {
               resolve({
-                runId,
+                runId: (context as { runId?: string }).runId || "test-run-id",
                 status: "completed" as const,
                 sandboxId: "test-sandbox-123",
                 output: "Success! Task completed.",
@@ -230,8 +235,9 @@ describe("POST /api/agent/runs - Async Execution", () => {
     });
 
     it("should update run status to 'failed' if E2B execution fails", async () => {
-      // Mock E2B execution failure
-      mockE2bService.createRun.mockImplementation(
+      // Mock run execution failure
+      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.executeRun.mockImplementation(
         () =>
           new Promise((_, reject) => {
             setTimeout(() => {
@@ -274,13 +280,14 @@ describe("POST /api/agent/runs - Async Execution", () => {
     });
 
     it("should not block API response even if E2B takes a long time", async () => {
-      // Mock E2B service with 5 second delay
-      mockE2bService.createRun.mockImplementation(
-        (runId: string) =>
+      // Mock run service with 5 second delay
+      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.executeRun.mockImplementation(
+        (context: never) =>
           new Promise((resolve) => {
             setTimeout(() => {
               resolve({
-                runId,
+                runId: (context as { runId?: string }).runId || "test-run-id",
                 status: "completed" as const,
                 sandboxId: "test-sandbox",
                 output: "Completed after delay",
