@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bService } from "../e2b-service";
-import type { CreateRunOptions } from "../types";
+import type { ExecutionContext } from "../../run/types";
 
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
@@ -61,7 +61,7 @@ describe("E2B Service - mocked unit tests", () => {
     ...overrides,
   });
 
-  describe("createRun", () => {
+  describe("execute", () => {
     it("should create sandbox and execute Claude Code", async () => {
       // Arrange
       const mockSandbox = createMockSandbox();
@@ -69,20 +69,21 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-001";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-001",
         agentConfigId: "test-agent-001",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
         dynamicVars: { testVar: "testValue" },
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert - Verify run result structure
       expect(result).toBeDefined();
-      expect(result.runId).toBe(runId);
+      expect(result.runId).toBe(context.runId);
 
       // Verify sandbox was created
       expect(result.sandboxId).toBe("mock-sandbox-id-123");
@@ -125,22 +126,29 @@ describe("E2B Service - mocked unit tests", () => {
         .mockResolvedValueOnce(mockSandbox1 as unknown as Sandbox)
         .mockResolvedValueOnce(mockSandbox2 as unknown as Sandbox);
 
-      const options: CreateRunOptions = {
+      const context1: ExecutionContext = {
+        runId: "run-test-002a",
         agentConfigId: "test-agent-002",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
 
-      const runId1 = "run-test-002a";
-      const runId2 = "run-test-002b";
+      const context2: ExecutionContext = {
+        runId: "run-test-002b",
+        agentConfigId: "test-agent-002",
+        agentConfig: {},
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Say hi",
+      };
 
       // Act
-      const result1 = await e2bService.createRun(runId1, options);
-      const result2 = await e2bService.createRun(runId2, options);
+      const result1 = await e2bService.execute(context1);
+      const result2 = await e2bService.execute(context2);
 
       // Assert
-      expect(result1.runId).toBe(runId1);
-      expect(result2.runId).toBe(runId2);
+      expect(result1.runId).toBe(context1.runId);
+      expect(result2.runId).toBe(context2.runId);
       expect(result1.sandboxId).not.toBe(result2.sandboxId);
       expect(result1.sandboxId).toBe("mock-sandbox-id-1");
       expect(result2.sandboxId).toBe("mock-sandbox-id-2");
@@ -165,15 +173,16 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-003";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-003",
         agentConfigId: "test-agent-003",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert
       expect(result.status).toBe("completed");
@@ -193,16 +202,17 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-004";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-004",
         agentConfigId: "test-agent-004",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
       };
 
       // Act
       const startTime = Date.now();
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
       const totalTime = Date.now() - startTime;
 
       // Assert - Execution time should be reasonable
@@ -225,15 +235,16 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-005";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-005",
         agentConfigId: "test-agent-005",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert - Sandbox should be created and cleaned up
       expect(result.sandboxId).toBe("mock-sandbox-id-123");
@@ -251,11 +262,9 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-006";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-006",
         agentConfigId: "test-agent-006",
-        sandboxToken: "vm0_live_test_token",
-        prompt: "Read files from workspace",
         agentConfig: {
           version: "1.0",
           agent: {
@@ -267,10 +276,12 @@ describe("E2B Service - mocked unit tests", () => {
             volumes: [],
           },
         },
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Read files from workspace",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert
       expect(result.status).toBe("completed");
@@ -294,11 +305,9 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-007";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-007",
         agentConfigId: "test-agent-007",
-        sandboxToken: "vm0_live_test_token",
-        prompt: "Read files",
         agentConfig: {
           version: "1.0",
           agent: {
@@ -309,10 +318,12 @@ describe("E2B Service - mocked unit tests", () => {
             volumes: [],
           },
         },
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Read files",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert
       expect(result.status).toBe("completed");
@@ -335,15 +346,16 @@ describe("E2B Service - mocked unit tests", () => {
         new Error("E2B API error: Invalid API key"),
       );
 
-      const runId = "run-test-error";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-error",
         agentConfigId: "test-agent-error",
+        agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert - Should return failed status instead of throwing
       expect(result.status).toBe("failed");
@@ -364,11 +376,9 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
-      const runId = "run-test-template-001";
-      const options: CreateRunOptions = {
+      const context: ExecutionContext = {
+        runId: "run-test-template-001",
         agentConfigId: "test-agent-template-001",
-        sandboxToken: "vm0_live_test_token",
-        prompt: "Test with custom image",
         agentConfig: {
           version: "1.0",
           agent: {
@@ -380,10 +390,12 @@ describe("E2B Service - mocked unit tests", () => {
             volumes: [],
           },
         },
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Test with custom image",
       };
 
       // Act
-      const result = await e2bService.createRun(runId, options);
+      const result = await e2bService.execute(context);
 
       // Assert
       expect(result.status).toBe("completed");
