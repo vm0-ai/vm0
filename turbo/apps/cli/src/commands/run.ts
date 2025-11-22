@@ -178,71 +178,48 @@ runCmd
   .description("Resume an agent run from a checkpoint")
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
-  .option(
-    "-e, --env <key=value>",
-    "Environment variables (repeatable)",
-    collectEnvVars,
-    {},
-  )
-  .action(
-    async (
-      checkpointId: string,
-      prompt: string,
-      options: { env: Record<string, string> },
-    ) => {
-      try {
-        // 1. Validate checkpoint ID format
-        if (!isUUID(checkpointId)) {
-          console.error(
-            chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
-          );
-          console.error(chalk.gray("  Checkpoint ID must be a valid UUID"));
-          process.exit(1);
-        }
-
-        // 2. Display starting message
-        console.log(chalk.blue("\nResuming agent run from checkpoint..."));
-        console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
-        console.log(chalk.gray(`  Prompt: ${prompt}`));
-
-        if (Object.keys(options.env).length > 0) {
-          console.log(
-            chalk.gray(`  Variables: ${JSON.stringify(options.env)}`),
-          );
-        }
-
-        console.log();
-        console.log(chalk.blue("Executing in sandbox..."));
-        console.log();
-
-        // 3. Call resume API
-        const response = await apiClient.resumeRun({
-          checkpointId,
-          prompt,
-          dynamicVars:
-            Object.keys(options.env).length > 0 ? options.env : undefined,
-        });
-
-        // 4. Poll for events
-        await pollEvents(response.runId);
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(
-              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
-            );
-          } else if (error.message.includes("not found")) {
-            console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
-          } else {
-            console.error(chalk.red("✗ Resume failed"));
-            console.error(chalk.gray(`  ${error.message}`));
-          }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
-        }
+  .action(async (checkpointId: string, prompt: string) => {
+    try {
+      // 1. Validate checkpoint ID format
+      if (!isUUID(checkpointId)) {
+        console.error(
+          chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
+        );
+        console.error(chalk.gray("  Checkpoint ID must be a valid UUID"));
         process.exit(1);
       }
-    },
-  );
+
+      // 2. Display starting message
+      console.log(chalk.blue("\nResuming agent run from checkpoint..."));
+      console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
+      console.log(chalk.gray(`  Prompt: ${prompt}`));
+      console.log();
+      console.log(chalk.blue("Executing in sandbox..."));
+      console.log();
+
+      // 3. Call resume API
+      const response = await apiClient.resumeRun({
+        checkpointId,
+        prompt,
+      });
+
+      // 4. Poll for events
+      await pollEvents(response.runId);
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes("Not authenticated")) {
+          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+        } else if (error.message.includes("not found")) {
+          console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
+        } else {
+          console.error(chalk.red("✗ Resume failed"));
+          console.error(chalk.gray(`  ${error.message}`));
+        }
+      } else {
+        console.error(chalk.red("✗ An unexpected error occurred"));
+      }
+      process.exit(1);
+    }
+  });
 
 export const runCommand = runCmd;

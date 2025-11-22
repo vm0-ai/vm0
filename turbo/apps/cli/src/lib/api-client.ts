@@ -168,7 +168,6 @@ class ApiClient {
   async resumeRun(body: {
     checkpointId: string;
     prompt: string;
-    dynamicVars?: Record<string, string>;
   }): Promise<ResumeRunResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
