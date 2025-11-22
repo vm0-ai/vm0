@@ -37,7 +37,7 @@ setup() {
     assert_success
 
     # Verify the run started and resumed from checkpoint
-    assert_output --partial "[start]"
+    assert_output --partial "[vm0_start]"
 
     # Step 3: Verify git volume is accessible and answer.md exists
     echo "# Step 3: Verifying git volume access..."
