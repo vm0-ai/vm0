@@ -84,6 +84,19 @@ Synthesize the conversation into a clear issue:
 - Use appropriate formatting (code blocks, lists, etc.)
 - Add a footer noting it was created from conversation
 
+**Title format:**
+Use Conventional Commit style prefix based on issue type:
+- `feat:` for new features or enhancements
+- `bug:` for defects or broken functionality
+- `docs:` for documentation work
+- `refactor:` for code improvements or tech debt
+- `test:` for testing-related tasks
+- `chore:` for maintenance or build tasks
+- `perf:` for performance improvements
+- Or other appropriate prefixes
+
+Always use lowercase after the prefix, no period at end.
+
 **Labeling:**
 Choose labels based on issue nature:
 - `enhancement` for new features
@@ -96,7 +109,7 @@ Choose labels based on issue nature:
 Create the issue:
 ```bash
 gh issue create \
-  --title "[Clear, descriptive title]" \
+  --title "[type]: [clear, descriptive description]" \
   --body "[Synthesized content]" \
   --label "[appropriate-labels]"
 ```

@@ -66,10 +66,12 @@ Organize information to enable quick reproduction and diagnosis:
 Create the issue directly with:
 ```bash
 gh issue create \
-  --title "[Bug]: [Concise description]" \
+  --title "bug: [concise description]" \
   --body "[Organized content]" \
   --label "bug"
 ```
+
+**Title format:** Use Conventional Commit style with `bug:` prefix followed by lowercase description (no period at end).
 
 ### 4. Return Result
 

@@ -61,10 +61,12 @@ Organize information in a clear, logical way that includes:
 Create the issue directly with:
 ```bash
 gh issue create \
-  --title "[Clear, concise title]" \
+  --title "feat: [clear, concise description]" \
   --body "[Organized content]" \
   --label "enhancement"
 ```
+
+**Title format:** Use Conventional Commit style with `feat:` prefix followed by lowercase description (no period at end).
 
 ### 4. Return Result
 
