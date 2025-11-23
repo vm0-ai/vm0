@@ -33,8 +33,10 @@ export interface GetConfigResponse {
 }
 
 export interface ApiError {
-  error: string;
-  details?: unknown;
+  error: {
+    message: string;
+    code: string;
+  };
 }
 
 export interface GetEventsResponse {
@@ -91,7 +93,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error || `Config not found: ${name}`);
+      throw new Error(error.error.message || `Config not found: ${name}`);
     }
 
     return (await response.json()) as GetConfigResponse;
@@ -111,7 +113,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error || "Failed to create config");
+      throw new Error(error.error.message || "Failed to create config");
     }
 
     return (await response.json()) as CreateConfigResponse;
@@ -133,7 +135,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error || "Failed to create run");
+      throw new Error(error.error.message || "Failed to create run");
     }
 
     return (await response.json()) as CreateRunResponse;
@@ -159,7 +161,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error || "Failed to fetch events");
+      throw new Error(error.error.message || "Failed to fetch events");
     }
 
     return (await response.json()) as GetEventsResponse;
@@ -180,7 +182,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error || "Failed to resume run");
+      throw new Error(error.error.message || "Failed to resume run");
     }
 
     return (await response.json()) as ResumeRunResponse;

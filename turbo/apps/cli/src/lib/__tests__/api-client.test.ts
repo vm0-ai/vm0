@@ -99,7 +99,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when not authenticated", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(null);
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
         apiClient.createOrUpdateConfig({ config: {} }),
@@ -107,7 +107,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when API URL not configured", async () => {
-      vi.mocked(config.getApiUrl).mockResolvedValue(null);
+      vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
         apiClient.createOrUpdateConfig({ config: {} }),
@@ -117,7 +117,9 @@ describe("ApiClient", () => {
     it("should throw error on HTTP error response", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({ error: "Invalid config" }),
+        json: async () => ({
+          error: { message: "Invalid config", code: "INVALID_CONFIG" },
+        }),
       });
 
       await expect(
@@ -128,7 +130,9 @@ describe("ApiClient", () => {
     it("should throw default error message when API error has no message", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({}),
+        json: async () => ({
+          error: { message: "", code: "ERROR" },
+        }),
       });
 
       await expect(
@@ -254,7 +258,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when not authenticated", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(null);
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
         apiClient.createRun({
@@ -265,7 +269,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when API URL not configured", async () => {
-      vi.mocked(config.getApiUrl).mockResolvedValue(null);
+      vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
         apiClient.createRun({
@@ -278,7 +282,9 @@ describe("ApiClient", () => {
     it("should throw error on HTTP error response", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({ error: "Config not found" }),
+        json: async () => ({
+          error: { message: "Config not found", code: "NOT_FOUND" },
+        }),
       });
 
       await expect(
@@ -292,7 +298,9 @@ describe("ApiClient", () => {
     it("should throw default error message when API error has no message", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({}),
+        json: async () => ({
+          error: { message: "", code: "ERROR" },
+        }),
       });
 
       await expect(
@@ -452,7 +460,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when not authenticated", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(null);
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
         "Not authenticated",
@@ -460,7 +468,7 @@ describe("ApiClient", () => {
     });
 
     it("should throw error when API URL not configured", async () => {
-      vi.mocked(config.getApiUrl).mockResolvedValue(null);
+      vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
         "API URL not configured",
@@ -470,7 +478,9 @@ describe("ApiClient", () => {
     it("should throw error on HTTP error response", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({ error: "Run not found" }),
+        json: async () => ({
+          error: { message: "Run not found", code: "NOT_FOUND" },
+        }),
       });
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
@@ -481,7 +491,9 @@ describe("ApiClient", () => {
     it("should throw default error message when API error has no message", async () => {
       mockFetch.mockResolvedValue({
         ok: false,
-        json: async () => ({}),
+        json: async () => ({
+          error: { message: "", code: "ERROR" },
+        }),
       });
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
