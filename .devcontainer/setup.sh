@@ -9,6 +9,12 @@ echo "🚀 Setting up dev container..."
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true
 
+# Generate locale for UTF-8 support
+echo "🌐 Setting up locale..."
+sudo locale-gen en_US.UTF-8 2>/dev/null || true
+sudo update-locale LANG=en_US.UTF-8 2>/dev/null || true
+echo "✓ Locale configured"
+
 # Setup directories - fix ownership for all mounted volumes
 # This is the key difference - uspark fixes all directories at once
 sudo mkdir -p /home/vscode/.local/bin
