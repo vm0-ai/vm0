@@ -134,8 +134,12 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error.message || "Failed to create run");
+      const errorBody = await response.json();
+      console.error("[API Client Debug] Error response:", errorBody);
+      const error = errorBody as ApiError;
+      const message = error.error?.message || "Failed to create run";
+      console.error("[API Client Debug] Extracted message:", message);
+      throw new Error(message);
     }
 
     return (await response.json()) as CreateRunResponse;
