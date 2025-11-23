@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/web-v1.0.0...web-v1.1.0) (2025-11-23)
+
+
+### Features
+
+* add validation for environment and template variables before execution ([#164](https://github.com/vm0-ai/vm0/issues/164)) ([a197eba](https://github.com/vm0-ai/vm0/commit/a197eba8ee189e37317e80fd720d1a8df64a863a))
+
+
+### Bug Fixes
+
+* remove duplicate result event emission in agent execution ([#162](https://github.com/vm0-ai/vm0/issues/162)) ([3d7b336](https://github.com/vm0-ai/vm0/commit/3d7b3364fba12ff2519e2176e8ef42305cb8d08d))
+
 ## [1.0.0](https://github.com/vm0-ai/vm0/compare/web-v0.7.0...web-v1.0.0) (2025-11-22)
 
 
