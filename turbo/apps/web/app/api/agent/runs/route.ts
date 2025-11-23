@@ -23,6 +23,7 @@ import {
   sendVm0StartEvent,
   sendVm0ErrorEvent,
 } from "../../../../src/lib/events";
+import { extractTemplateVars } from "../../../../src/lib/config-validator";
 
 /**
  * POST /api/agent/runs
@@ -64,6 +65,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[API] Found agent config: ${config.id}`);
+
+    // Validate template variables
+    const requiredVars = extractTemplateVars(config.config);
+    const providedVars = body.dynamicVars || {};
+    const missingVars = requiredVars.filter(
+      (varName) => providedVars[varName] === undefined,
+    );
+
+    if (missingVars.length > 0) {
+      throw new BadRequestError(
+        `Missing required template variables: ${missingVars.join(", ")}`,
+      );
+    }
 
     // Create run record in database
     const [run] = await globalThis.services.db

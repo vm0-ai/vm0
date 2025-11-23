@@ -12,6 +12,7 @@ import type {
   CreateAgentConfigResponse,
 } from "../../../../src/types/agent-config";
 import { eq, and } from "drizzle-orm";
+import { extractUnexpandedVars } from "../../../../src/lib/config-validator";
 
 /**
  * GET /api/agent/configs?name={agentName}
@@ -110,6 +111,14 @@ export async function POST(request: NextRequest) {
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
         "Invalid agent.name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+      );
+    }
+
+    // Validate that all environment variables are expanded
+    const unexpandedVars = extractUnexpandedVars(body.config);
+    if (unexpandedVars.length > 0) {
+      throw new BadRequestError(
+        `Configuration contains unexpanded environment variables: ${unexpandedVars.join(", ")}`,
       );
     }
 

@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { expandEnvVars, expandEnvVarsInObject } from "../env-expander";
+import {
+  expandEnvVars,
+  expandEnvVarsInObject,
+  extractEnvVarReferences,
+  validateEnvVars,
+} from "../env-expander";
 
 describe("env-expander", () => {
   const originalEnv = process.env;
@@ -171,6 +176,150 @@ describe("env-expander", () => {
       expect(expandEnvVarsInObject(true)).toBe(true);
       expect(expandEnvVarsInObject(null)).toBe(null);
       expect(expandEnvVarsInObject(undefined)).toBe(undefined);
+    });
+  });
+
+  describe("extractEnvVarReferences", () => {
+    it("should extract single variable from string", () => {
+      const result = extractEnvVarReferences("token: ${TEST_TOKEN}");
+      expect(result).toEqual(["TEST_TOKEN"]);
+    });
+
+    it("should extract multiple variables from string", () => {
+      const result = extractEnvVarReferences(
+        "https://github.com/${TEST_USER}/repo?token=${TEST_TOKEN}",
+      );
+      expect(result).toEqual(["TEST_USER", "TEST_TOKEN"]);
+    });
+
+    it("should extract variables from object", () => {
+      const obj = {
+        token: "${TEST_TOKEN}",
+        user: "${TEST_USER}",
+      };
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual(["TEST_TOKEN", "TEST_USER"]);
+    });
+
+    it("should extract variables from nested objects", () => {
+      const obj = {
+        config: {
+          auth: {
+            token: "${TEST_TOKEN}",
+          },
+          user: "${TEST_USER}",
+        },
+        region: "${TEST_REGION}",
+      };
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual(["TEST_TOKEN", "TEST_USER", "TEST_REGION"]);
+    });
+
+    it("should extract variables from arrays", () => {
+      const obj = {
+        tokens: ["${TEST_TOKEN}", "${TEST_USER}"],
+      };
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual(["TEST_TOKEN", "TEST_USER"]);
+    });
+
+    it("should return unique variable names", () => {
+      const obj = {
+        token1: "${TEST_TOKEN}",
+        token2: "${TEST_TOKEN}",
+        user: "${TEST_USER}",
+      };
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual(["TEST_TOKEN", "TEST_USER"]);
+    });
+
+    it("should handle multiple variables in single string", () => {
+      const result = extractEnvVarReferences(
+        "${TEST_USER}:${TEST_TOKEN}:${TEST_REGION}",
+      );
+      expect(result).toEqual(["TEST_USER", "TEST_TOKEN", "TEST_REGION"]);
+    });
+
+    it("should return empty array for no variables", () => {
+      const obj = {
+        name: "test-agent",
+        count: 42,
+        enabled: true,
+      };
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual([]);
+    });
+
+    it("should handle empty string", () => {
+      const result = extractEnvVarReferences("");
+      expect(result).toEqual([]);
+    });
+
+    it("should handle null and undefined", () => {
+      expect(extractEnvVarReferences(null)).toEqual([]);
+      expect(extractEnvVarReferences(undefined)).toEqual([]);
+    });
+
+    it("should handle complex nested structures", () => {
+      const obj = {
+        agent: {
+          name: "test-agent",
+        },
+        dynamic_volumes: {
+          workspace: {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/${TEST_USER}/repo",
+              token: "${TEST_TOKEN}",
+            },
+          },
+        },
+        volumes: {
+          system: {
+            driver: "s3fs",
+            driver_opts: {
+              uri: "s3://bucket/${TEST_USER}/data",
+              region: "${TEST_REGION}",
+            },
+          },
+        },
+      };
+
+      const result = extractEnvVarReferences(obj);
+      expect(result).toEqual(["TEST_USER", "TEST_TOKEN", "TEST_REGION"]);
+    });
+  });
+
+  describe("validateEnvVars", () => {
+    it("should return empty array when all variables are defined", () => {
+      const result = validateEnvVars(["TEST_TOKEN", "TEST_USER"]);
+      expect(result).toEqual([]);
+    });
+
+    it("should return missing variables", () => {
+      const result = validateEnvVars([
+        "TEST_TOKEN",
+        "MISSING_VAR",
+        "ANOTHER_MISSING",
+      ]);
+      expect(result).toEqual(["MISSING_VAR", "ANOTHER_MISSING"]);
+    });
+
+    it("should return all variables when none are defined", () => {
+      const result = validateEnvVars(["UNDEFINED_1", "UNDEFINED_2"]);
+      expect(result).toEqual(["UNDEFINED_1", "UNDEFINED_2"]);
+    });
+
+    it("should handle empty array", () => {
+      const result = validateEnvVars([]);
+      expect(result).toEqual([]);
+    });
+
+    it("should detect undefined vs empty string", () => {
+      // eslint-disable-next-line turbo/no-undeclared-env-vars
+      process.env.EMPTY_VAR = "";
+      const result = validateEnvVars(["EMPTY_VAR", "UNDEFINED_VAR"]);
+      expect(result).toEqual(["UNDEFINED_VAR"]);
     });
   });
 });

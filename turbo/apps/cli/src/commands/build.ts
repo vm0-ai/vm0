@@ -5,7 +5,11 @@ import { existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
 import { validateAgentConfig } from "../lib/yaml-validator";
-import { expandEnvVarsInObject } from "../lib/env-expander";
+import {
+  expandEnvVarsInObject,
+  extractEnvVarReferences,
+  validateEnvVars,
+} from "../lib/env-expander";
 
 export const buildCommand = new Command()
   .name("build")
@@ -33,22 +37,42 @@ export const buildCommand = new Command()
         process.exit(1);
       }
 
-      // 3. Expand environment variables
+      // 3. Validate environment variables before expansion
+      const referencedVars = extractEnvVarReferences(config);
+      const missingVars = validateEnvVars(referencedVars);
+
+      if (missingVars.length > 0) {
+        console.error(chalk.red("✗ Missing required environment variables:"));
+        for (const varName of missingVars) {
+          console.error(chalk.red(`  - ${varName}`));
+        }
+        console.error();
+        console.error(
+          chalk.gray("Please set these variables before running 'vm0 build'."),
+        );
+        console.error(chalk.gray("Example:"));
+        for (const varName of missingVars) {
+          console.error(chalk.gray(`  export ${varName}=your-value`));
+        }
+        process.exit(1);
+      }
+
+      // 4. Expand environment variables
       config = expandEnvVarsInObject(config);
 
-      // 4. Validate config
+      // 5. Validate config
       const validation = validateAgentConfig(config);
       if (!validation.valid) {
         console.error(chalk.red(`✗ ${validation.error}`));
         process.exit(1);
       }
 
-      // 5. Call API
+      // 6. Call API
       console.log(chalk.blue("Uploading configuration..."));
 
       const response = await apiClient.createOrUpdateConfig({ config });
 
-      // 6. Display result
+      // 7. Display result
       if (response.action === "created") {
         console.log(chalk.green(`✓ Config created: ${response.name}`));
       } else {
