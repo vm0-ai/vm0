@@ -107,6 +107,161 @@ describe("build command", () => {
     });
   });
 
+  describe("environment variable validation", () => {
+    beforeEach(() => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
+      // Clear env vars for testing
+      delete process.env.ACCESS_TOKEN;
+      delete process.env.API_KEY;
+      delete process.env.DATABASE_URL;
+    });
+
+    it("should exit with error when single env var is missing", async () => {
+      const configWithMissingVar = {
+        version: "1.0",
+        agent: { name: "test" },
+        token: "${ACCESS_TOKEN}",
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithMissingVar);
+
+      await expect(async () => {
+        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required environment variables"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("ACCESS_TOKEN"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("export ACCESS_TOKEN=your-value"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit with error when multiple env vars are missing", async () => {
+      const configWithMissingVars = {
+        version: "1.0",
+        agent: { name: "test" },
+        token: "${ACCESS_TOKEN}",
+        apiKey: "${API_KEY}",
+        database: "${DATABASE_URL}",
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithMissingVars);
+
+      await expect(async () => {
+        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required environment variables"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("ACCESS_TOKEN"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("API_KEY"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("DATABASE_URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit with error when env var in nested object is missing", async () => {
+      const configWithNestedVar = {
+        version: "1.0",
+        agent: { name: "test" },
+        database: {
+          connection: {
+            url: "${DATABASE_URL}",
+          },
+        },
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithNestedVar);
+
+      await expect(async () => {
+        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("DATABASE_URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit with error when env var in array is missing", async () => {
+      const configWithArrayVar = {
+        version: "1.0",
+        agent: { name: "test" },
+        tokens: ["${ACCESS_TOKEN}", "${API_KEY}"],
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithArrayVar);
+
+      await expect(async () => {
+        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("ACCESS_TOKEN"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("API_KEY"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should proceed when all env vars are defined", async () => {
+      process.env.ACCESS_TOKEN = "test-token";
+      process.env.API_KEY = "test-key";
+
+      const configWithVars = {
+        version: "1.0",
+        agent: { name: "test" },
+        token: "${ACCESS_TOKEN}",
+        apiKey: "${API_KEY}",
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithVars);
+      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+        valid: true,
+      });
+      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
+        configId: "cfg-123",
+        name: "test",
+        action: "created",
+      });
+
+      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+
+      expect(apiClient.createOrUpdateConfig).toHaveBeenCalled();
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+
+    it("should proceed when config has no env vars", async () => {
+      const configWithoutVars = {
+        version: "1.0",
+        agent: { name: "test" },
+        token: "plain-text-token",
+      };
+      vi.mocked(yaml.parse).mockReturnValue(configWithoutVars);
+      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+        valid: true,
+      });
+      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
+        configId: "cfg-123",
+        name: "test",
+        action: "created",
+      });
+
+      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+
+      expect(apiClient.createOrUpdateConfig).toHaveBeenCalled();
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+  });
+
   describe("config validation", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
