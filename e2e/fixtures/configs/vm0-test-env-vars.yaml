@@ -1,0 +1,11 @@
+version: "1.0"
+
+agent:
+  name: vm0-test-env-vars
+  description: "Test agent with environment variables"
+  image: vm0-claude-code-dev
+  provider: claude-code
+  working_dir: /home/user/workspace
+  env:
+    - "API_TOKEN=${TEST_API_TOKEN}"
+    - "DATABASE_URL=${TEST_DB_URL}"
