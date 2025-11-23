@@ -365,10 +365,9 @@ set -e
 # Print newline after output
 echo ""
 
-# Send final result event
+# Handle completion
 if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   echo "[VM0] Claude Code completed successfully" >&2
-  send_event '{"type": "result", "data": {"status": "success", "exitCode": 0}}'
 
   # Create checkpoint - this is mandatory for successful runs
   if ! create_checkpoint; then
@@ -379,7 +378,6 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
   fi
 else
   echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
-  send_event "{\\"type\\": \\"result\\", \\"data\\": {\\"status\\": \\"failed\\", \\"exitCode\\": $CLAUDE_EXIT_CODE}}"
 fi
 
 # Cleanup temp files
