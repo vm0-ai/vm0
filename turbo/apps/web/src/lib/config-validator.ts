@@ -41,7 +41,10 @@ export function extractTemplateVars(obj: unknown): string[] {
     if (typeof value === "string") {
       const matches = value.matchAll(/\{\{([^}]+)\}\}/g);
       for (const match of matches) {
-        templateVars.add(match[1]);
+        const varName = match[1];
+        if (varName) {
+          templateVars.add(varName);
+        }
       }
     } else if (Array.isArray(value)) {
       for (const item of value) {
