@@ -151,7 +151,22 @@ export class EventRenderer {
 
   private static renderVm0Error(event: ParsedEvent): void {
     console.log(chalk.red("[vm0_error]") + " ✗ Run failed");
-    console.log(`  Error: ${chalk.red(String(event.data.error || ""))}`);
+
+    // Handle error as string or object
+    let errorMessage = "";
+    if (typeof event.data.error === "string") {
+      errorMessage = event.data.error;
+    } else if (event.data.error && typeof event.data.error === "object") {
+      // If error is an object, try to extract message
+      const errorObj = event.data.error as Record<string, unknown>;
+      if ("message" in errorObj && typeof errorObj.message === "string") {
+        errorMessage = errorObj.message;
+      } else {
+        errorMessage = JSON.stringify(event.data.error);
+      }
+    }
+
+    console.log(`  Error: ${chalk.red(errorMessage || "Unknown error")}`);
     if (event.data.errorType) {
       console.log(`  Type: ${chalk.gray(String(event.data.errorType))}`);
     }
