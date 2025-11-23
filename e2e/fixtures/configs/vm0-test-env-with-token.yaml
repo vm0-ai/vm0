@@ -1,0 +1,26 @@
+version: "1.0"
+
+agent:
+  name: vm0-vars-test-with-token
+  description: "Test agent for vars"
+  image: vm0-claude-code-dev
+  provider: claude-code
+  working_dir: /home/user/workspace
+  volumes:
+    - claude-system:/home/user/.config/claude
+    - user-workspace:/home/user/workspace
+
+volumes:
+  claude-system:
+    driver: s3fs
+    driver_opts:
+      uri: s3://vm0-s3-demo-bucket-public/claude-files
+      region: us-west-2
+
+dynamic_volumes:
+  user-workspace:
+    driver: git
+    driver_opts:
+      uri: https://github.com/{{user}}/question.git
+      branch: main
+      token: "${CI_GITHUB_TOKEN}"
