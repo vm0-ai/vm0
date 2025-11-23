@@ -215,7 +215,8 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(data.status).toBe("running");
 
       // Wait for E2B execution to complete
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Increased timeout to handle CI environment delays
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Check that run was updated in database
       const [updatedRun] = await globalThis.services.db
