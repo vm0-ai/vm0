@@ -28,6 +28,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ## Issues Found
 
 ### Category 1: Mock Analysis ✅ PASS
+
 **Status:** No issues found
 
 - No new mock implementations added
@@ -37,9 +38,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 2: Test Coverage ⚠️ NEEDS ATTENTION
+
 **Status:** Minor issues found
 
 **Issue 2.1: Removed test without replacement**
+
 - **Location:** `turbo/apps/web/src/lib/api/__tests__/agent-runtimes.test.ts`
 - **Problem:** Removed "should handle long prompts" test entirely
 - **Code:**
@@ -57,9 +60,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   3. Keep the test but update assertions for Claude Code output
 
 **Issue 2.2: Test quality - testing vague assertions**
+
 - **Location:** Multiple test files
 - **Problem:** Updated assertions are too generic
 - **Code:**
+
   ```typescript
   // Before: Specific assertion
   expect(data.output).toContain("Hello World from E2B!");
@@ -67,6 +72,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   // After: Vague assertion
   expect(data.output).toBeTruthy(); // Should have some output
   ```
+
 - **Impact:** Tests will pass with any non-empty output, even error messages
 - **Recommendation:** Add more specific assertions:
   ```typescript
@@ -79,9 +85,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 3: Error Handling ⚠️ NEEDS ATTENTION
+
 **Status:** Potential over-engineering detected
 
 **Issue 3.1: Generic try-catch with fallback**
+
 - **Location:** `turbo/apps/web/src/lib/e2b/e2b-service.ts`
 - **Problem:** Broad error handling that catches all exceptions
 - **Code:**
@@ -113,6 +121,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   - Let E2B SDK errors propagate naturally
   - Only catch specific, recoverable errors
   - Remove the broad catch block and handle errors at API layer
+
   ```typescript
   // Better approach - let errors propagate
   sandbox = await this.createSandbox(); // Throws on failure
@@ -128,15 +137,18 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 4: Interface Changes ✅ PASS
+
 **Status:** Well documented
 
 **New/Modified Interfaces:**
+
 1. `CreateRuntimeOptions` - No breaking changes
 2. `CreateRuntimeResult` - No breaking changes
 3. E2B Service public methods - Signature unchanged
 4. API endpoint `/api/agent-runtimes` - Backward compatible
 
 **Positive observations:**
+
 - All interface changes are backward compatible
 - Environment variable additions are optional (with sensible defaults)
 - API contract maintained
@@ -144,6 +156,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 5: Timer and Delay Analysis ✅ PASS
+
 **Status:** No issues found
 
 - No artificial delays added
@@ -152,12 +165,14 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 - Timeout increases are justified (Claude Code execution takes longer than echo)
 
 **Positive observations:**
+
 - Timeout changes are appropriate (60s → 600s for AI execution)
 - Tests handle real async behavior properly
 
 ---
 
 ### Category 6: Prohibition of Dynamic Imports ✅ PASS
+
 **Status:** No issues found
 
 - No dynamic `import()` statements detected
@@ -167,6 +182,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 7: Database and Service Mocking in Web Tests ✅ PASS
+
 **Status:** Not applicable
 
 - Tests are integration tests using real E2B API
@@ -176,9 +192,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 8: Test Mock Cleanup ⚠️ NEEDS ATTENTION
+
 **Status:** Missing mock cleanup hooks
 
 **Issue 8.1: Missing vi.clearAllMocks() in beforeEach**
+
 - **Location:**
   - `turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
   - `turbo/apps/web/src/lib/api/__tests__/agent-runtimes.test.ts`
@@ -195,6 +213,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 9: TypeScript `any` Type Usage ✅ PASS
+
 **Status:** No issues found
 
 - No `any` types detected in modified code
@@ -204,6 +223,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 10: Artificial Delays in Tests ✅ PASS
+
 **Status:** No issues found
 
 - No `setTimeout` in tests
@@ -214,9 +234,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 11: Hardcoded URLs and Configuration ⚠️ NEEDS ATTENTION
+
 **Status:** Minor issues found
 
 **Issue 11.1: Hardcoded template name in documentation**
+
 - **Location:** `turbo/apps/web/src/lib/e2b/E2B_SETUP.md`
 - **Problem:** Template name "vm0-claude-code" is hardcoded in multiple places
 - **Code:**
@@ -230,6 +252,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 - **Recommendation:** Consider using a placeholder like `<template-id>` or referencing the build output
 
 **Issue 11.2: Environment configuration is properly centralized** ✅
+
 - All configuration uses `process.env` correctly
 - Uses `.env.local.tpl` template approach
 - No hardcoded URLs in code
@@ -237,6 +260,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 12: Direct Database Operations in Tests ✅ PASS
+
 **Status:** Not applicable
 
 - No database operations in modified tests
@@ -245,12 +269,15 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 13: Avoid Fallback Patterns - Fail Fast ⚠️ CRITICAL
+
 **Status:** Violates fail-fast principle
 
 **Issue 13.1: Silent fallback for template configuration**
+
 - **Location:** `turbo/apps/web/src/lib/e2b/e2b-service.ts`
 - **Problem:** Silently falls back to default sandbox when template not configured
 - **Code:**
+
   ```typescript
   private async createSandbox(): Promise<Sandbox> {
     const sandboxOptions = { timeoutMs: e2bConfig.defaultTimeout };
@@ -268,9 +295,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
     }
   }
   ```
+
 - **Impact:** CRITICAL - Production code will create sandboxes without Claude Code if template not configured, leading to runtime failures
 - **Rationale for violation:** The fallback hides misconfiguration and causes failures later during execution
 - **Recommendation:** Fail fast instead:
+
   ```typescript
   private async createSandbox(): Promise<Sandbox> {
     const sandboxOptions = { timeoutMs: e2bConfig.defaultTimeout };
@@ -288,6 +317,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   ```
 
 **Issue 13.2: Fallback for unknown sandbox ID**
+
 - **Location:** `turbo/apps/web/src/lib/e2b/e2b-service.ts`
 - **Problem:** Falls back to "unknown" when sandbox ID not available
 - **Code:**
@@ -312,6 +342,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 14: Prohibition of Lint/Type Suppressions ✅ PASS
+
 **Status:** No issues found
 
 - No `eslint-disable` comments
@@ -322,12 +353,15 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ---
 
 ### Category 15: Avoid Bad Tests ⚠️ NEEDS ATTENTION
+
 **Status:** Multiple issues found
 
 **Issue 15.1: Over-testing execution time**
+
 - **Location:** `turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Problem:** Tests include detailed timing assertions
 - **Code:**
+
   ```typescript
   it("should include execution time metrics", async () => {
     const startTime = Date.now();
@@ -340,6 +374,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
     expect(result.executionTimeMs).toBeLessThan(600000);
   }, 600000);
   ```
+
 - **Impact:** Test may be flaky due to timing variations in CI/CD
 - **Recommendation:** Either remove timing assertions or make them more lenient:
   ```typescript
@@ -349,6 +384,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   ```
 
 **Issue 15.2: Tests verify trivial output existence**
+
 - **Location:** Multiple test files
 - **Problem:** Tests only verify output is truthy
 - **Code:**
@@ -365,9 +401,11 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
   ```
 
 **Issue 15.3: Testing implementation details**
+
 - **Location:** `turbo/apps/web/src/lib/api/__tests__/agent-runtimes.test.ts`
 - **Problem:** Test verifies cleanup behavior indirectly
 - **Code:**
+
   ```typescript
   it("should cleanup sandbox even on success", async () => {
     const result = await e2bService.createRuntime(runtimeId, options);
@@ -380,6 +418,7 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
     // but the service logs should show cleanup messages
   }, 600000);
   ```
+
 - **Impact:** Test doesn't actually verify what it claims to test
 - **Recommendation:** Either:
   1. Remove this test (cleanup is implementation detail)
@@ -441,12 +480,14 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 ### Status: ⚠️ NEEDS WORK
 
 **Rationale:**
+
 - **Critical Issues:** 2 violations of core project principles (fail-fast, defensive programming)
 - **Code Quality:** Good overall structure and documentation
 - **Test Coverage:** Adequate but with quality issues
 - **Type Safety:** Excellent, no TypeScript issues
 
 **Positive Aspects:**
+
 - Excellent documentation (E2B_SETUP.md)
 - Proper use of environment variables
 - No dynamic imports, hardcoded URLs, or type suppressions
@@ -454,11 +495,13 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 - Good commit message structure
 
 **Critical Concerns:**
+
 1. **Violates Fail-Fast Principle:** Template fallback hides configuration errors
 2. **Defensive Error Handling:** Broad try-catch blocks against project principles
 3. **Test Quality:** Vague assertions don't provide sufficient confidence
 
 **Required Actions Before Merge:**
+
 1. Remove template fallback - fail fast when `E2B_TEMPLATE_ID` missing
 2. Refactor error handling - let errors propagate naturally
 3. Improve test assertions - verify meaningful output patterns
@@ -470,23 +513,23 @@ This commit integrates Claude Code CLI execution within E2B sandboxes, replacing
 
 ## Detailed Code Quality Metrics
 
-| Category | Status | Issues | Critical |
-|----------|--------|--------|----------|
-| 1. Mock Analysis | ✅ Pass | 0 | 0 |
-| 2. Test Coverage | ⚠️ Needs Attention | 2 | 0 |
-| 3. Error Handling | ⚠️ Needs Attention | 1 | 0 |
-| 4. Interface Changes | ✅ Pass | 0 | 0 |
-| 5. Timer/Delay Analysis | ✅ Pass | 0 | 0 |
-| 6. Dynamic Imports | ✅ Pass | 0 | 0 |
-| 7. DB/Service Mocking | ✅ Pass | 0 | 0 |
-| 8. Mock Cleanup | ⚠️ Needs Attention | 1 | 0 |
-| 9. TypeScript `any` | ✅ Pass | 0 | 0 |
-| 10. Artificial Delays | ✅ Pass | 0 | 0 |
-| 11. Hardcoded Config | ⚠️ Needs Attention | 1 | 0 |
-| 12. Direct DB in Tests | ✅ Pass | 0 | 0 |
-| 13. Fallback Patterns | ❌ Fail | 2 | 2 |
-| 14. Lint Suppressions | ✅ Pass | 0 | 0 |
-| 15. Bad Tests | ⚠️ Needs Attention | 3 | 0 |
+| Category                | Status             | Issues | Critical |
+| ----------------------- | ------------------ | ------ | -------- |
+| 1. Mock Analysis        | ✅ Pass            | 0      | 0        |
+| 2. Test Coverage        | ⚠️ Needs Attention | 2      | 0        |
+| 3. Error Handling       | ⚠️ Needs Attention | 1      | 0        |
+| 4. Interface Changes    | ✅ Pass            | 0      | 0        |
+| 5. Timer/Delay Analysis | ✅ Pass            | 0      | 0        |
+| 6. Dynamic Imports      | ✅ Pass            | 0      | 0        |
+| 7. DB/Service Mocking   | ✅ Pass            | 0      | 0        |
+| 8. Mock Cleanup         | ⚠️ Needs Attention | 1      | 0        |
+| 9. TypeScript `any`     | ✅ Pass            | 0      | 0        |
+| 10. Artificial Delays   | ✅ Pass            | 0      | 0        |
+| 11. Hardcoded Config    | ⚠️ Needs Attention | 1      | 0        |
+| 12. Direct DB in Tests  | ✅ Pass            | 0      | 0        |
+| 13. Fallback Patterns   | ❌ Fail            | 2      | 2        |
+| 14. Lint Suppressions   | ✅ Pass            | 0      | 0        |
+| 15. Bad Tests           | ⚠️ Needs Attention | 3      | 0        |
 
 **Total Issues:** 10
 **Critical Issues:** 2

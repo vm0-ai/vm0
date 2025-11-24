@@ -35,15 +35,18 @@ beforeEach(() => {
 ## Mock Analysis (Bad Smell #1)
 
 **New Mocks:**
+
 - `@e2b/code-interpreter` - External SDK mock
 
 **Assessment:**
+
 - ✅ Appropriate - external API should be mocked in unit tests
 - ✅ Fast execution
 - ✅ No network dependency
 - ✅ Proper mock cleanup
 
 **Alternatives Considered:**
+
 - Real API calls: Too slow (10-20 min), requires API key
 - Integration tests: Should be separate from unit tests
 
@@ -56,6 +59,7 @@ beforeEach(() => {
 The tests now only verify mock behavior, not actual E2B integration.
 
 **Recommendation:**
+
 - Keep these fast unit tests
 - Add separate integration tests with real E2B API
 - Run integration tests less frequently (nightly, pre-release)
@@ -71,9 +75,11 @@ Perfect example of appropriate mocking for external services. The speed improvem
 ## Recommendations
 
 ### Medium Priority
+
 1. Add integration tests that use real E2B API
 2. Run integration tests in separate CI job (nightly/manual)
 3. Document testing strategy (unit vs integration)
 
 ### Low Priority
+
 1. Consider E2B sandbox if they offer test environments

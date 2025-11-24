@@ -18,6 +18,7 @@ Simplifies event handling by removing event batching logic and container_start e
 ### ✅ EXCELLENT: YAGNI Principle Applied
 
 **Changes**:
+
 - Removes batching logic
 - Removes container_start event
 - Simplifies to immediate event sending
@@ -25,6 +26,7 @@ Simplifies event handling by removing event batching logic and container_start e
 **Assessment**: This refactoring **removes unnecessary complexity**, which aligns perfectly with YAGNI principle from CLAUDE.md.
 
 **Benefits**:
+
 1. Simpler code (less logic to maintain)
 2. More immediate feedback (no batching delay)
 3. Removes unused event type
@@ -33,6 +35,7 @@ Simplifies event handling by removing event batching logic and container_start e
 ### ✅ PASS: All Bad Smell Checks
 
 **Shell script changes**:
+
 - Removes complexity (good)
 - No new code smells introduced
 - TypeScript-specific checks don't apply to bash

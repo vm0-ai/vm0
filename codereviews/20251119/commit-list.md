@@ -21,6 +21,7 @@
 Total commits: 15
 
 ## Legend
+
 - ✅ Excellent (fixes code smells or exemplary quality)
 - ⚠️ Has issues requiring attention
 - ❌ Critical issues requiring immediate action

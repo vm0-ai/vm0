@@ -30,6 +30,7 @@ This commit implements OAuth 2.0 device flow authentication for the CLI applicat
 **Severity: Medium**
 
 #### Issue 1.1: Mock Implementation without Real Test Coverage
+
 **Location:** `turbo/apps/web/src/lib/auth/__tests__/get-user-id.spec.ts`
 
 ```typescript
@@ -39,11 +40,13 @@ mockHeaders.mockResolvedValue({
 ```
 
 **Problem:**
+
 - The test file adds a mock for `headers` from `next/headers` but only tests the Clerk authentication path
 - The new CLI token authentication path is NOT tested - this is a critical gap
 - The mock is only configured to return `null` for the Authorization header, which only exercises the fallback path
 
 **Impact:**
+
 - No test coverage for the new CLI token validation logic (lines 11-40 in `get-user-id.ts`)
 - Database query logic for token validation is completely untested
 - Token expiration checking is not verified
@@ -51,6 +54,7 @@ mockHeaders.mockResolvedValue({
 
 **Recommendation:**
 Add comprehensive tests for the CLI token authentication path:
+
 - Test valid CLI token authentication
 - Test expired CLI token handling
 - Test invalid token format
@@ -64,7 +68,9 @@ Add comprehensive tests for the CLI token authentication path:
 **Severity: High**
 
 #### Issue 2.1: No Tests for New API Routes
+
 **Locations:**
+
 - `turbo/apps/web/app/api/cli/auth/device/route.ts`
 - `turbo/apps/web/app/api/cli/auth/token/route.ts`
 
@@ -85,6 +91,7 @@ This commit adds critical authentication endpoints with NO test coverage:
    - No tests for CLI token generation and storage
 
 **Impact:**
+
 - Authentication security vulnerabilities could be introduced without detection
 - State transitions in the device flow are untested
 - Error handling paths are not verified
@@ -92,16 +99,19 @@ This commit adds critical authentication endpoints with NO test coverage:
 
 **Recommendation:**
 Add comprehensive API route tests covering:
+
 - Happy path: complete device flow from code generation to token exchange
 - Error scenarios: expired codes, invalid codes, denied authorization
 - Edge cases: concurrent requests, database failures
 - Security: token format validation, expiration enforcement
 
 #### Issue 2.2: No Tests for Server Actions
+
 **Location:** `turbo/apps/web/app/cli-auth/actions.ts`
 
 **Problem:**
 The `verifyDeviceAction()` server action has no tests:
+
 - No validation of authentication check
 - No validation of code normalization logic
 - No validation of status update logic
@@ -111,12 +121,15 @@ The `verifyDeviceAction()` server action has no tests:
 Add unit tests for `verifyDeviceAction()` covering all branches and error conditions.
 
 #### Issue 2.3: No Tests for CLI Authentication Logic
+
 **Locations:**
+
 - `turbo/apps/cli/src/lib/auth.ts`
 - `turbo/apps/cli/src/lib/config.ts`
 
 **Problem:**
 168 lines of authentication logic with zero test coverage:
+
 - Token polling mechanism untested
 - Error handling untested
 - Timeout behavior untested
@@ -132,6 +145,7 @@ Add unit and integration tests for CLI authentication flow.
 **Severity: Low**
 
 #### Issue 3.1: Silent Error in lastUsedAt Update
+
 **Location:** `turbo/apps/web/src/lib/auth/get-user-id.ts` (lines 29-33)
 
 ```typescript
@@ -143,12 +157,14 @@ globalThis.services.db
 ```
 
 **Problem:**
+
 - Uses `.catch(console.error)` to suppress errors from the database update
 - This is fire-and-forget error handling that hides database issues
 - While non-blocking is appropriate, logging to console.error in production is not ideal
 
 **Assessment:**
 This is acceptable because:
+
 - The lastUsedAt update is non-critical metadata
 - Failure shouldn't block authentication
 - The comment "non-blocking" clarifies intent
@@ -163,6 +179,7 @@ Consider using a proper logging system instead of console.error in production, b
 **Severity: Medium**
 
 #### Issue 5.1: Artificial Delay in Production Code
+
 **Location:** `turbo/apps/cli/src/lib/auth.ts` (lines 57-59, 96-98)
 
 ```typescript
@@ -177,11 +194,13 @@ if (!isFirstPoll) {
 ```
 
 **Problem:**
+
 - Implements polling with `setTimeout`-based delays
 - While acceptable for CLI polling scenarios, this adds artificial delays to the authentication process
 
 **Assessment:**
 This is **ACCEPTABLE** because:
+
 - This is CLI code, not test code
 - OAuth 2.0 device flow specification requires polling with delays
 - The delay is configurable via server-specified `interval` (respects rate limiting)
@@ -197,6 +216,7 @@ This is **ACCEPTABLE** because:
 **Severity: Low**
 
 #### Issue 7.1: Incomplete Mock Setup for Database Testing
+
 **Location:** `turbo/apps/web/src/lib/auth/__tests__/get-user-id.spec.ts`
 
 **Problem:**
@@ -245,6 +265,7 @@ No test files use artificial delays or fake timers.
 **Severity: Medium**
 
 #### Issue 11.1: Hardcoded Fallback URL
+
 **Location:** `turbo/apps/web/app/api/cli/auth/device/route.ts` (line 38)
 
 ```typescript
@@ -252,23 +273,29 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 ```
 
 **Problem:**
+
 - Uses hardcoded fallback URL `"http://localhost:3000"`
 - Violates the project principle: "Avoid hardcoded fallback URLs"
 - Should fail fast if `NEXT_PUBLIC_APP_URL` is not configured
 
 **Recommendation:**
 Remove the fallback and fail fast:
+
 ```typescript
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
 if (!baseUrl) {
   return NextResponse.json(
-    { error: "server_error", error_description: "NEXT_PUBLIC_APP_URL not configured" },
-    { status: 500 }
+    {
+      error: "server_error",
+      error_description: "NEXT_PUBLIC_APP_URL not configured",
+    },
+    { status: 500 },
   );
 }
 ```
 
-#### Issue 11.2: Server-Side Use of NEXT_PUBLIC_ Variable
+#### Issue 11.2: Server-Side Use of NEXT*PUBLIC* Variable
+
 **Location:** `turbo/apps/web/app/api/cli/auth/device/route.ts` (line 38)
 
 ```typescript
@@ -276,6 +303,7 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 ```
 
 **Problem:**
+
 - Server-side code uses `NEXT_PUBLIC_APP_URL` environment variable
 - According to bad smell #11: "Server-side code should not use `NEXT_PUBLIC_` environment variables"
 - `NEXT_PUBLIC_` variables are meant for client-side code
@@ -290,6 +318,7 @@ Use a server-only environment variable like `APP_URL` or `SERVER_URL` instead of
 **Severity: High**
 
 #### Issue 13.1: Optional API URL with Silent Fallback
+
 **Location:** `turbo/apps/cli/src/lib/config.ts` (lines 44-51)
 
 ```typescript
@@ -305,21 +334,26 @@ export async function getApiUrl(): Promise<string | undefined> {
 ```
 
 **Problem:**
+
 - Returns `undefined` instead of failing fast when API URL is not configured
 - Calling code in `auth.ts` does check for undefined and exits, but this violates the fail-fast principle
 - Function signature allows undefined, encouraging optional configuration
 
 **Assessment:**
 The calling code does handle this properly:
+
 ```typescript
 const targetApiUrl = apiUrl ?? (await getApiUrl());
 if (!targetApiUrl) {
-  console.error(chalk.red("No API host configured. Set API_HOST environment variable."));
+  console.error(
+    chalk.red("No API host configured. Set API_HOST environment variable."),
+  );
   process.exit(1);
 }
 ```
 
 However, the pattern is not ideal. The function should either:
+
 1. Throw an error when API URL is not configured, OR
 2. Be explicitly named to indicate optionality (e.g., `tryGetApiUrl`)
 
@@ -327,6 +361,7 @@ However, the pattern is not ideal. The function should either:
 Rename to `tryGetApiUrl()` to make the optional nature explicit, or make it required and throw when not configured.
 
 #### Issue 13.2: Fallback URL Pattern in Device Route
+
 **Location:** `turbo/apps/web/app/api/cli/auth/device/route.ts` (line 38)
 
 Already covered in Issue 11.1 - this is both a hardcoded URL problem AND a fallback pattern violation.
@@ -395,7 +430,7 @@ The commit adds minimal test coverage (only updating one existing test). The new
 ### Database Schema Changes
 
 1. **New Tables:**
-   - `cli_tokens` - Stores CLI access tokens (vm0_live_ prefix, 90-day expiry)
+   - `cli_tokens` - Stores CLI access tokens (vm0*live* prefix, 90-day expiry)
    - `device_codes` - Stores device flow codes (XXXX-XXXX format, 15-min TTL)
 
 2. **New Enum:**
@@ -464,7 +499,7 @@ The commit adds minimal test coverage (only updating one existing test). The new
 
 1. ❌ **Insufficient test coverage** - New authentication paths are untested
 2. ❌ **Hardcoded fallback URL** - Violates fail-fast principle
-3. ❌ **Server-side NEXT_PUBLIC_ usage** - Incorrect environment variable pattern
+3. ❌ **Server-side NEXT*PUBLIC* usage** - Incorrect environment variable pattern
 4. ⚠️ **Missing integration tests** - Device flow not tested end-to-end
 
 ### Verdict
@@ -472,6 +507,7 @@ The commit adds minimal test coverage (only updating one existing test). The new
 This commit implements a solid authentication system but lacks the test coverage required for a security-critical feature. The hardcoded fallback URL and improper environment variable usage must be fixed before merging.
 
 **Required Actions Before Merge:**
+
 1. Add comprehensive test coverage for all new authentication paths
 2. Remove hardcoded fallback and fix environment variable usage
 3. Add integration tests for the complete device flow
@@ -483,14 +519,14 @@ This commit implements a solid authentication system but lacks the test coverage
 
 ## Code Quality Score
 
-| Category | Score | Weight | Notes |
-|----------|-------|--------|-------|
-| Test Coverage | 2/10 | 30% | Critical gaps in new functionality |
-| Error Handling | 8/10 | 15% | Mostly good, one hardcoded fallback |
-| Type Safety | 10/10 | 15% | Excellent - no `any` types |
-| Code Patterns | 7/10 | 15% | Good patterns but config issues |
-| Documentation | 6/10 | 10% | Commit message clear, inline docs minimal |
-| Security | 7/10 | 15% | Good design, needs test validation |
+| Category       | Score | Weight | Notes                                     |
+| -------------- | ----- | ------ | ----------------------------------------- |
+| Test Coverage  | 2/10  | 30%    | Critical gaps in new functionality        |
+| Error Handling | 8/10  | 15%    | Mostly good, one hardcoded fallback       |
+| Type Safety    | 10/10 | 15%    | Excellent - no `any` types                |
+| Code Patterns  | 7/10  | 15%    | Good patterns but config issues           |
+| Documentation  | 6/10  | 10%    | Commit message clear, inline docs minimal |
+| Security       | 7/10  | 15%    | Good design, needs test validation        |
 
 **Weighted Score: 5.9/10**
 

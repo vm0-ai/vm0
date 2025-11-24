@@ -21,6 +21,7 @@ Adds Claude Code slash commands for automating GitHub issue workflows: `/issue-t
 These are markdown documentation files defining Claude Code slash commands, not TypeScript/JavaScript code.
 
 **No code smell analysis applicable** - documentation files are not subject to code quality checks for:
+
 - Mocks
 - Type safety
 - Error handling
@@ -30,13 +31,17 @@ These are markdown documentation files defining Claude Code slash commands, not 
 ## Content Review
 
 ### issue-todo.md
+
 Defines workflow for:
+
 - Creating GitHub issues from todo items
 - Labeling issues appropriately
 - Linking issues in comments
 
 ### issue-continue.md
+
 Defines workflow for:
+
 - Finding blocked issues
 - Analyzing failures
 - Implementing fixes

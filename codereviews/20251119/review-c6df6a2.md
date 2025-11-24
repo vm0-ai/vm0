@@ -22,20 +22,25 @@ Large-scale refactoring commit that renames "agent runtimes" to "agent runs" and
 ## Bad Smell Analysis
 
 ### ✅ PASS: Mock Analysis (Bad Smell #1)
+
 - No new mocks introduced
 - Existing tests use real E2B API
 
 ### ✅ PASS: Test Coverage (Bad Smell #2)
+
 - All tests updated to reflect new naming
 - Test scenarios remain comprehensive
 
 ### ✅ PASS: Error Handling (Bad Smell #3)
+
 - No unnecessary try/catch blocks
 - Maintains fail-fast approach
 - Uses custom error classes properly
 
 ### ⚠️ BREAKING CHANGES: Interface Changes (Bad Smell #4)
+
 **Breaking API changes** (intentional for refactoring):
+
 - `/api/agent-runtimes` → `/api/agent/runs`
 - `/api/agent-configs` → `/api/agent/configs`
 - Type changes: `AgentRuntime` → `AgentRun`, `runtimeId` → `runId`
@@ -44,24 +49,30 @@ Large-scale refactoring commit that renames "agent runtimes" to "agent runs" and
 **Assessment**: Intentional breaking changes properly documented in commit message.
 
 ### ✅ PASS: Timer and Delay Analysis (Bad Smell #5)
+
 - No fake timers introduced
 - No artificial delays
 
 ### ✅ PASS: Dynamic Imports (Bad Smell #6)
+
 - All imports are static
 
 ### ✅ PASS: Database Mocking (Bad Smell #7)
+
 - No new database mocking
 - Uses real E2B API in tests
 
 ### ✅ PASS: Test Mock Cleanup (Bad Smell #8)
+
 - No new test files requiring cleanup
 
 ### ✅ PASS: TypeScript any Usage (Bad Smell #9)
+
 - No `any` types introduced
 - All types properly defined
 
 ### ✅ PASS: All Other Bad Smells
+
 - No artificial delays in tests
 - No hardcoded URLs
 - No direct DB operations in tests

@@ -18,11 +18,13 @@ Fixes shell script output handling to correctly extract the `result` field from 
 ### ✅ PASS: All Bad Smell Checks
 
 Shell script changes:
+
 - Removes unused `output_text` variable
 - Simplifies output extraction using `jq`
 - Correctly extracts `result` field from JSONL
 
 **No code smells detected**:
+
 - TypeScript-specific code smells don't apply to bash scripts
 - No unnecessary complexity introduced
 - Simplifies logic (removes unused variable)

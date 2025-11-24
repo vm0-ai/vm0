@@ -12,20 +12,24 @@
 This commit represents a significant architectural change that migrates the authentication system from API key-based authentication to OAuth 2.0 device flow with bearer tokens. The changes include:
 
 ### Added Files
+
 - `/turbo/apps/web/src/lib/auth/sandbox-token.ts` - Token generation for E2B sandboxes
 - 3 database migration files for schema changes
 
 ### Modified Files
+
 - 5 API route handlers (agent-configs, agent-runtimes, webhooks)
 - Database schema files (agent-config, agent-runtime)
 - E2B service implementation
 - Seed script
 
 ### Deleted Files
+
 - API key schema and middleware (`api-key.ts`, `auth.ts`, `webhook-auth.ts`)
 - 4 test files (1,180 lines of tests removed)
 
 ### Statistics
+
 - **24 files changed**
 - **+168 insertions, -1,383 deletions**
 - **Net reduction of 1,215 lines**
@@ -55,6 +59,7 @@ No new mocks were introduced in this commit. The changes actually removed test f
 5. `/turbo/apps/web/src/lib/middleware/__tests__/auth.test.ts` (136 lines)
 
 **Impact:**
+
 - Zero test coverage for the new bearer token authentication system
 - No tests for `generateSandboxToken()` function
 - No tests for the updated API routes using `getUserId()`
@@ -62,6 +67,7 @@ No new mocks were introduced in this commit. The changes actually removed test f
 - No tests for E2B service with new token passing mechanism
 
 **What Should Be Tested:**
+
 1. **Sandbox Token Generation:**
    - Token generation creates valid tokens
    - Tokens are stored in database with correct expiration (2 hours)
@@ -119,6 +125,7 @@ No unnecessary try/catch blocks were added. Errors propagate naturally.
    - `api_keys` table dropped
 
 3. **New Interfaces:**
+
    ```typescript
    // CreateRuntimeOptions now includes sandboxToken
    interface CreateRuntimeOptions {
@@ -135,6 +142,7 @@ No unnecessary try/catch blocks were added. Errors propagate naturally.
    - Added: `VM0_API_URL`
 
 **Recommendations:**
+
 - Migration guide needed for existing API consumers
 - Document the token expiration policy (2 hours for sandbox tokens)
 - Update API documentation with new authentication requirements
@@ -234,6 +242,7 @@ The localhost fallback is acceptable for development environments.
 The deleted test files did contain direct database operations (violating this principle), but no new tests were added that we could review.
 
 Example of deleted bad pattern:
+
 ```typescript
 // From deleted test - direct DB operations
 const [insertedKey] = await globalThis.services.db
@@ -266,6 +275,7 @@ No silent fallbacks or recovery logic that would hide configuration issues.
 **Status:** ✅ PASS
 
 No lint or type suppression comments were added:
+
 - No `// eslint-disable`
 - No `// @ts-ignore`
 - No `// @ts-nocheck`
@@ -282,6 +292,7 @@ The deleted test files contained several bad patterns that are now gone (which i
 **Bad Patterns That Were Removed:**
 
 1. **Over-testing error responses:**
+
    ```typescript
    // Deleted - was testing every HTTP status code
    it("should return 401 when API key is missing", async () => {
@@ -375,15 +386,15 @@ While removing bad tests is positive, the complete absence of replacement tests 
 
 ### Scoring
 
-| Category | Status | Score |
-|----------|--------|-------|
-| Code Quality | ✅ Pass | 9/10 |
-| Security | ✅ Pass | 9/10 |
-| Architecture | ✅ Pass | 8/10 |
-| **Test Coverage** | ❌ **Fail** | **0/10** |
-| Documentation | ⚠️ Needs Work | 5/10 |
-| Error Handling | ✅ Pass | 9/10 |
-| **Overall** | **⚠️ NEEDS WORK** | **6.7/10** |
+| Category          | Status            | Score      |
+| ----------------- | ----------------- | ---------- |
+| Code Quality      | ✅ Pass           | 9/10       |
+| Security          | ✅ Pass           | 9/10       |
+| Architecture      | ✅ Pass           | 8/10       |
+| **Test Coverage** | ❌ **Fail**       | **0/10**   |
+| Documentation     | ⚠️ Needs Work     | 5/10       |
+| Error Handling    | ✅ Pass           | 9/10       |
+| **Overall**       | **⚠️ NEEDS WORK** | **6.7/10** |
 
 ### Summary
 

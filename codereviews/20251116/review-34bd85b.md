@@ -31,6 +31,7 @@ Removed event batching logic to provide real-time event delivery.
 With immediate sending, high-frequency events could overwhelm the API.
 
 **Recommendation:**
+
 - Monitor for API rate limit issues
 - Consider throttling if events fire very frequently
 - Document expected event frequency

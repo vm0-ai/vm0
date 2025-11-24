@@ -18,6 +18,7 @@ Simple API method correction - changes from incorrect `.copyFile()` to correct `
 ### ✅ PASS: All Bad Smell Checks
 
 This is a simple one-line API method fix:
+
 ```typescript
 // Before
 await filesystem.copyFile(...)
@@ -27,6 +28,7 @@ await filesystem.copy(...)
 ```
 
 **No code smells detected**:
+
 - No mocks introduced
 - No error handling issues
 - No dynamic imports

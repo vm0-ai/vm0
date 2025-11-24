@@ -17,21 +17,23 @@ Converts E2B service integration tests to mocked unit tests by mocking the entir
 
 ### ❌ CRITICAL: Mock Analysis (Bad Smell #1)
 
-**turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts:10**
+**turbo/apps/web/src/lib/e2b/**tests**/e2b-service.test.ts:10**
 
 ```typescript
-vi.mock("@e2b/code-interpreter")
+vi.mock("@e2b/code-interpreter");
 ```
 
 **VIOLATION**: Converts integration tests into fake tests
 
 **Issues**:
+
 1. Mocks entire E2B SDK module
 2. Lines 21-30: Creates mock sandbox with mocked methods
 3. Lines 37-40: Mocks `Sandbox.create` to return mock sandbox
 4. Tests no longer verify real E2B SDK integration works
 
 **Problems**:
+
 - Tests pass while real code could be broken
 - Mock behavior may not match real E2B SDK
 - Lost confidence in E2B integration
@@ -40,6 +42,7 @@ vi.mock("@e2b/code-interpreter")
 ### ❌ CRITICAL: Over-Mocking (Bad Smell #15)
 
 **Examples throughout file**:
+
 - Lines 81-82: Tests mock was called, not real behavior
   ```typescript
   expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1);
@@ -55,12 +58,14 @@ vi.mock("@e2b/code-interpreter")
 Tests throughout the file verify that mocks were called correctly instead of testing actual E2B SDK integration:
 
 **Examples**:
+
 - Line 81: `expect(mockSandbox.commands.run).toHaveBeenCalledTimes(1)`
 - Line 82: `expect(mockSandbox.kill).toHaveBeenCalledTimes(1)`
 - Line 135: Testing mock creation count
 - Line 222: Testing cleanup was called
 
 **Problem**: These tests provide **zero confidence** that:
+
 - Real E2B SDK API works correctly
 - Real sandbox creation succeeds
 - Real command execution functions properly
@@ -73,11 +78,13 @@ Line 14: Properly implements `vi.clearAllMocks()` in `beforeEach`
 ### ⚠️ LOSS OF VALUE: Integration Test Conversion
 
 **Before this commit**:
+
 - Tests used real E2B API
 - Provided confidence in actual integration
 - Caught real timing expectations (600s → fast response)
 
 **After this commit**:
+
 - Tests use mocks exclusively
 - No confidence in E2B integration
 - Won't catch E2B SDK API changes
@@ -86,18 +93,23 @@ Line 14: Properly implements `vi.clearAllMocks()` in `beforeEach`
 ## Recommendations
 
 ### 1. CRITICAL: Revert This Commit
+
 **Action**: Keep integration tests with real E2B API
 **Reason**: Real API tests provide valuable confidence that mocks cannot
 
 ### 2. ALTERNATIVE: Separate Test Types
+
 If unit tests are desired:
+
 - Create `e2b-service.unit.test.ts` for fast unit tests with mocks
 - Keep `e2b-service.test.ts` as integration tests with real E2B API
 - Run integration tests less frequently (nightly builds)
 - Both test types serve different purposes
 
 ### 3. Use MSW for HTTP Mocking
+
 If mocking is needed:
+
 - Mock only the HTTP webhook calls using MSW
 - Don't mock the E2B SDK itself
 - Keep E2B SDK integration real
@@ -109,6 +121,7 @@ If mocking is needed:
 **Severity**: CRITICAL
 
 This commit converts valuable integration tests into worthless fake tests. The tests will pass even when:
+
 - E2B SDK API changes break integration
 - Real sandbox creation fails
 - Real command execution has bugs
@@ -117,16 +130,19 @@ This commit converts valuable integration tests into worthless fake tests. The t
 ## Critical Issues
 
 ### Issue 1: Fake Tests ❌
+
 - **Violation**: Bad Smell #15 "Avoid Bad Tests" - Fake tests
 - **Severity**: CRITICAL
 - **Impact**: Zero confidence in E2B integration
 
 ### Issue 2: Over-Mocking ❌
+
 - **Violation**: Bad Smell #1 "Mock Analysis" and Bad Smell #15
 - **Severity**: CRITICAL
 - **Impact**: Tests verify mocks, not real code
 
 ### Issue 3: Lost Integration Coverage ❌
+
 - **Impact**: No longer testing actual E2B SDK integration
 - **Severity**: CRITICAL
 - **Risk**: Integration bugs will not be caught
@@ -134,15 +150,18 @@ This commit converts valuable integration tests into worthless fake tests. The t
 ## Required Actions
 
 **Option 1** (RECOMMENDED): Revert this commit
+
 - Keep integration tests with real E2B API
 - Integration tests are valuable even if slower
 
 **Option 2**: Separate test types
+
 - Create separate unit test file with mocks
 - Keep integration tests as separate file
 - Document when to run each type
 
 **Option 3**: Mock only external HTTP
+
 - Use MSW to mock webhook HTTP calls only
 - Keep E2B SDK integration real
 - Best of both worlds: fast tests with real integration

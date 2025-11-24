@@ -37,6 +37,7 @@ if (isUUID(identifier)) {
 ```
 
 **Analysis**: This looks like a fallback pattern but is actually **proper polymorphic input handling**:
+
 - Both UUID and name are valid primary use cases
 - Not error recovery - both paths are intentional
 - Errors fail fast with clear messages
@@ -49,6 +50,7 @@ if (isUUID(identifier)) {
 **New test file**: `turbo/apps/web/app/api/agent/configs/__tests__/get-by-name.test.ts`
 
 Comprehensive coverage:
+
 - Success case (retrieve by name)
 - Not found case
 - Missing parameter validation
@@ -58,6 +60,7 @@ Comprehensive coverage:
 **Assessment**: High-quality test coverage
 
 ### ✅ PASS: Type Safety (Bad Smell #9)
+
 - No `any` types introduced
 - Proper interfaces defined (`GetConfigResponse`)
 - All types explicit and correct
@@ -72,11 +75,13 @@ Comprehensive coverage:
 - Errors propagate with context
 
 Example error message:
+
 ```typescript
-`Agent config not found: ${identifier}`
+`Agent config not found: ${identifier}`;
 ```
 
 ### ✅ PASS: All Other Bad Smells
+
 - No dynamic imports
 - No fake timers
 - No mocking issues (tests use appropriate mocks)
@@ -87,13 +92,17 @@ Example error message:
 ## Recommendations
 
 ### 1. Documentation Enhancement
+
 Add to API documentation:
+
 - UUID vs name identifier format
 - When to use each format
 - Name validation rules (allowed characters)
 
 ### 2. Future Enhancement: Name Validation
+
 Consider adding validation for agent name format:
+
 - Character restrictions
 - Length limits
 - Reserved names
@@ -101,7 +110,9 @@ Consider adding validation for agent name format:
 **Note**: Following YAGNI, current implementation without validation is acceptable for initial release.
 
 ### 3. Integration Tests
+
 Consider adding E2E test covering full flow:
+
 ```bash
 vm0 build agent.yaml  # Creates config with name
 vm0 run agent-name    # Runs by name

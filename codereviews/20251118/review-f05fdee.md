@@ -18,19 +18,23 @@ This commit refactors the E2B template configuration to use template names (alia
 ## Analysis by Bad Code Smell Categories
 
 ### 1. Mock Analysis ✅ PASS
+
 - **Status**: No mocks introduced or modified
 - **Finding**: This is a pure refactoring commit with no test mock changes
 
 ### 2. Test Coverage ⚠️ MINOR ISSUE
+
 - **Status**: No test updates included
 - **Finding**: The commit changes environment variable names from `E2B_TEMPLATE_ID` to `E2B_TEMPLATE_NAME` but does not show any test updates to reflect this change
 - **Recommendation**: Verify that existing tests using `E2B_TEMPLATE_ID` have been updated to use `E2B_TEMPLATE_NAME`, or add tests if coverage is missing
 
 ### 3. Error Handling ✅ PASS
+
 - **Status**: No problematic error handling patterns
 - **Finding**: The code follows fail-fast principles appropriately. No defensive try/catch blocks added
 
 ### 4. Interface Changes ✅ PASS
+
 - **Status**: Breaking change properly documented
 - **Finding**: The environment variable rename (`E2B_TEMPLATE_ID` → `E2B_TEMPLATE_NAME`) is a breaking change, but it's clearly documented in:
   - Commit message
@@ -40,10 +44,12 @@ This commit refactors the E2B template configuration to use template names (alia
 - **Note**: This is well-handled with comprehensive documentation
 
 ### 5. Timer and Delay Analysis ✅ PASS
+
 - **Status**: No timers, delays, or fake timers introduced
 - **Finding**: No timing-related code in this commit
 
 ### 6. Prohibition of Dynamic Imports ✅ PASS
+
 - **Status**: No dynamic imports used
 - **Finding**: All imports in new files (`build.dev.ts`, `build.prod.ts`, `template.ts`) use static imports:
   ```typescript
@@ -52,22 +58,27 @@ This commit refactors the E2B template configuration to use template names (alia
   ```
 
 ### 7. Database and Service Mocking in Web Tests ✅ PASS
+
 - **Status**: Not applicable
 - **Finding**: No database or service mocking in this commit
 
 ### 8. Test Mock Cleanup ✅ PASS
+
 - **Status**: Not applicable
 - **Finding**: No test files modified
 
 ### 9. TypeScript `any` Type Usage ✅ PASS
+
 - **Status**: No `any` types introduced
 - **Finding**: All new TypeScript code uses proper typing
 
 ### 10. Artificial Delays in Tests ✅ PASS
+
 - **Status**: No test delays introduced
 - **Finding**: No test files modified
 
 ### 11. Hardcoded URLs and Configuration 🔴 ISSUE FOUND
+
 - **Status**: Hardcoded value in deleted file
 - **Finding**: In the deleted `turbo/apps/web/src/lib/e2b/template/build.ts` (line 24):
   ```typescript
@@ -82,30 +93,35 @@ This commit refactors the E2B template configuration to use template names (alia
 - **Result**: This actually FIXES a hardcoded configuration issue
 
 ### 12. Direct Database Operations in Tests ✅ PASS
+
 - **Status**: Not applicable
 - **Finding**: No test files or database operations in this commit
 
 ### 13. Avoid Fallback Patterns - Fail Fast ✅ PASS (IMPROVED)
+
 - **Status**: Fallback pattern removed
 - **Finding**: The deleted code contained a fallback pattern:
   ```typescript
   // DELETED - BAD:
-  result.templateId || "namnmt5bl80j5oon0pr6"
+  result.templateId || "namnmt5bl80j5oon0pr6";
   ```
   The new implementation removes this fallback, allowing failures to surface naturally
 - **Assessment**: This is an IMPROVEMENT that aligns with the fail-fast principle
 
 ### 14. Prohibition of Lint/Type Suppressions ✅ PASS
+
 - **Status**: No suppression comments added
 - **Finding**: No eslint-disable, @ts-ignore, or similar suppressions in the new code
 
 ### 15. Avoid Bad Tests ✅ PASS
+
 - **Status**: Not applicable
 - **Finding**: No test code changes in this commit
 
 ## Additional Observations
 
 ### Positive Aspects
+
 1. **Clean Refactoring**: The directory restructure moves E2B template code out of the web app source tree into a dedicated `/e2b/` directory, improving separation of concerns
 2. **Environment Separation**: Separate build scripts for dev and prod environments (`build.dev.ts`, `build.prod.ts`) follow good practices
 3. **Comprehensive Documentation**: Updated all relevant documentation including READMEs, setup guides, and inline comments
@@ -114,6 +130,7 @@ This commit refactors the E2B template configuration to use template names (alia
 6. **Template Naming Convention**: Clear distinction between dev (`vm0-claude-code-dev`) and prod (`vm0-claude-code`) templates
 
 ### Potential Concerns
+
 1. **Test Coverage**: No evidence of test updates in the diff. If tests exist that reference `E2B_TEMPLATE_ID`, they need updating
 2. **Deployment Coordination**: The breaking change requires coordinated updates to:
    - GitHub Secrets (mentioned in docs)
@@ -122,6 +139,7 @@ This commit refactors the E2B template configuration to use template names (alia
    - This is documented but requires manual coordination
 
 ### Code Quality
+
 - **TypeScript**: Proper typing throughout
 - **Error Handling**: Follows fail-fast principles (e.g., `main().catch(console.error)`)
 - **Code Style**: Clean and consistent
@@ -138,6 +156,7 @@ This commit refactors the E2B template configuration to use template names (alia
 **✅ PASS**
 
 This is a high-quality refactoring commit that:
+
 - Improves code organization by moving template code to a dedicated directory
 - Aligns with E2B v2 SDK best practices by using template names instead of IDs
 - Removes a bad smell (hardcoded fallback value)
