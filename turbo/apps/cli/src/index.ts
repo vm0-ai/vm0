@@ -5,6 +5,7 @@ import { authenticate, logout, checkAuthStatus } from "./lib/auth";
 import { getApiUrl } from "./lib/config";
 import { buildCommand } from "./commands/build";
 import { runCommand } from "./commands/run";
+import { volumeCommand } from "./commands/volume";
 
 const program = new Command();
 
@@ -58,9 +59,10 @@ authCommand
     await checkAuthStatus();
   });
 
-// Register build and run commands
+// Register build, run, and volume commands
 program.addCommand(buildCommand);
 program.addCommand(runCommand);
+program.addCommand(volumeCommand);
 
 export { program };
 

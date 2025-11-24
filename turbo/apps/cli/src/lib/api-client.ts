@@ -188,6 +188,62 @@ class ApiClient {
 
     return (await response.json()) as ResumeRunResponse;
   }
+
+  /**
+   * Generic GET request
+   */
+  async get(path: string): Promise<Response> {
+    const baseUrl = await this.getBaseUrl();
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Not authenticated. Run: vm0 auth login");
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
+
+    // Add Vercel bypass secret if available
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      headers["x-vercel-protection-bypass"] = bypassSecret;
+    }
+
+    return fetch(`${baseUrl}${path}`, {
+      method: "GET",
+      headers,
+    });
+  }
+
+  /**
+   * Generic POST request
+   */
+  async post(
+    path: string,
+    options?: { body?: FormData | string },
+  ): Promise<Response> {
+    const baseUrl = await this.getBaseUrl();
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Not authenticated. Run: vm0 auth login");
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
+
+    // Add Vercel bypass secret if available
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      headers["x-vercel-protection-bypass"] = bypassSecret;
+    }
+
+    return fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers,
+      body: options?.body,
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

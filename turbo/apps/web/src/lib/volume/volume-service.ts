@@ -25,12 +25,14 @@ export class VolumeService {
    * @param agentConfig - Agent configuration containing volume definitions
    * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
+   * @param userId - User ID for VM0 volume access (optional)
    * @returns Volume preparation result with prepared volumes and temp directory
    */
   async prepareVolumes(
     agentConfig: AgentVolumeConfig | undefined,
     dynamicVars: Record<string, string>,
     runId: string,
+    userId?: string,
   ): Promise<VolumePreparationResult> {
     const errors: string[] = [];
 
@@ -107,6 +109,27 @@ export class VolumeService {
             gitUri: volume.gitUri,
             gitBranch: volume.gitBranch,
             gitToken: volume.gitToken,
+          });
+        } else if (volume.driver === "vm0") {
+          // VM0 volumes: download from S3 using user-specific prefix
+          if (!userId) {
+            throw new Error("userId is required for VM0 volumes");
+          }
+
+          const s3Prefix = `${userId}/${volume.vm0VolumeName}`;
+          const s3Uri = `s3://vm0-s3-user-volumes/${s3Prefix}`;
+          const localPath = path.join(tempDir, volume.name);
+
+          const downloadResult = await downloadS3Directory(s3Uri, localPath);
+          console.log(
+            `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}): ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+          );
+
+          preparedVolumes.push({
+            name: volume.name,
+            driver: "vm0",
+            localPath,
+            mountPath: volume.mountPath,
           });
         }
       } catch (error) {
@@ -229,8 +252,8 @@ export class VolumeService {
 
     for (const volume of preparedVolumes) {
       try {
-        if (volume.driver === "s3fs") {
-          // Upload S3 volumes from local temp to sandbox
+        if (volume.driver === "s3fs" || volume.driver === "vm0") {
+          // Upload S3 or VM0 volumes from local temp to sandbox
           const stat = await fs.promises
             .stat(volume.localPath!)
             .catch(() => null);
@@ -241,7 +264,7 @@ export class VolumeService {
               volume.mountPath,
             );
             console.log(
-              `[Volume] Uploaded S3 volume "${volume.name}" to ${volume.mountPath}`,
+              `[Volume] Uploaded ${volume.driver} volume "${volume.name}" to ${volume.mountPath}`,
             );
           }
         } else if (volume.driver === "git") {
