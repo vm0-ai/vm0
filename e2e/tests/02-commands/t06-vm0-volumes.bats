@@ -77,8 +77,8 @@ teardown() {
 
     # Create .vm0/volume.yaml config to specify which volume to pull
     mkdir -p .vm0
-    cat > .vm0/volume.yaml <<EOF
-name: $VOLUME_NAME
+    cat > .vm0/volume.yaml <<'EOF'
+name: e2e-test-volume
 EOF
 
     run $CLI_COMMAND volume pull
