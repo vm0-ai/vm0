@@ -168,10 +168,7 @@ export class VolumeService {
     console.log(
       `[Volume] Preparing ${snapshots.length} volumes from snapshots...`,
     );
-    console.log(
-      `[Volume] Snapshots data:`,
-      JSON.stringify(snapshots, null, 2),
-    );
+    console.log(`[Volume] Snapshots data:`, JSON.stringify(snapshots, null, 2));
 
     if (!agentConfig) {
       return {
@@ -366,7 +363,9 @@ export class VolumeService {
       console.error(
         `[Volume] Git clone failed with exit code ${result.exitCode}`,
       );
-      console.error(`[Volume] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`);
+      console.error(
+        `[Volume] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`,
+      );
       console.error(`[Volume] stderr:`, result.stderr);
       console.error(`[Volume] stdout:`, result.stdout);
 
