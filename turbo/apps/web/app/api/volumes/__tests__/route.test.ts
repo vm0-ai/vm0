@@ -55,27 +55,25 @@ vi.mock("../../../../src/lib/s3/s3-client", () => ({
 }));
 
 // Mock AdmZip
-vi.mock("adm-zip", () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      extractAllTo: vi.fn(),
-      addLocalFolder: vi.fn(),
-      writeZip: vi.fn(),
-      getEntries: vi.fn().mockReturnValue([
-        {
-          entryName: "file1.txt",
-          isDirectory: false,
-          getData: vi.fn().mockReturnValue(Buffer.from("content1")),
-        },
-        {
-          entryName: "file2.txt",
-          isDirectory: false,
-          getData: vi.fn().mockReturnValue(Buffer.from("content2")),
-        },
-      ]),
-    })),
-  };
-});
+vi.mock("adm-zip", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    extractAllTo: vi.fn(),
+    addLocalFolder: vi.fn(),
+    writeZip: vi.fn(),
+    getEntries: vi.fn().mockReturnValue([
+      {
+        entryName: "file1.txt",
+        isDirectory: false,
+        getData: vi.fn().mockReturnValue(Buffer.from("content1")),
+      },
+      {
+        entryName: "file2.txt",
+        isDirectory: false,
+        getData: vi.fn().mockReturnValue(Buffer.from("content2")),
+      },
+    ]),
+  })),
+}));
 
 // Mock database
 const mockDb = {
@@ -85,6 +83,7 @@ const mockDb = {
   limit: vi.fn().mockResolvedValue([]),
   insert: vi.fn().mockReturnThis(),
   values: vi.fn().mockReturnThis(),
+  returning: vi.fn().mockResolvedValue([]),
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
 };
@@ -188,8 +187,19 @@ describe("POST /api/volumes", () => {
   it("should successfully upload a valid volume", async () => {
     vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
 
-    // Mock database to return no existing volume
-    mockDb.limit.mockResolvedValueOnce([]);
+    // Mock database: no existing volume, create volume and version
+    mockDb.limit.mockResolvedValueOnce([]); // No existing volume
+    mockDb.returning
+      .mockResolvedValueOnce([
+        { id: "volume-id-123", name: "test-volume", userId: "test-user" },
+      ]) // Volume creation
+      .mockResolvedValueOnce([
+        {
+          id: "version-id-456",
+          volumeId: "volume-id-123",
+          s3Key: "test-user/test-volume/version-id-456",
+        },
+      ]); // Version creation
 
     const formData = new FormData();
     formData.append("volumeName", "test-volume");
@@ -214,6 +224,7 @@ describe("POST /api/volumes", () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.volumeName).toBe("test-volume");
+    expect(json.versionId).toBe("version-id-456");
     expect(json.fileCount).toBeGreaterThanOrEqual(0);
     expect(json.size).toBeGreaterThanOrEqual(0);
   }, 10000);
@@ -269,5 +280,70 @@ describe("GET /api/volumes", () => {
     expect(response.status).toBe(404);
     const json = await response.json();
     expect(json.error).toContain("not found");
+  });
+
+  it("should return 404 when volume has no HEAD version", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+
+    // Mock volume exists but has no HEAD version
+    mockDb.limit.mockResolvedValueOnce([
+      {
+        id: "volume-id-123",
+        name: "test-volume",
+        userId: "test-user",
+        headVersionId: null,
+      },
+    ]);
+
+    const request = new NextRequest(
+      "http://localhost/api/volumes?name=test-volume",
+      {
+        method: "GET",
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.error).toContain("has no versions");
+  });
+
+  it("should download HEAD version successfully", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+
+    // Mock volume with HEAD version
+    mockDb.limit
+      .mockResolvedValueOnce([
+        {
+          id: "volume-id-123",
+          name: "test-volume",
+          userId: "test-user",
+          headVersionId: "version-id-456",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "version-id-456",
+          volumeId: "volume-id-123",
+          s3Key: "test-user/test-volume/version-id-456",
+          fileCount: 5,
+        },
+      ]);
+
+    const request = new NextRequest(
+      "http://localhost/api/volumes?name=test-volume",
+      {
+        method: "GET",
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/zip");
+    expect(response.headers.get("content-disposition")).toContain(
+      "test-volume.zip",
+    );
   });
 });
