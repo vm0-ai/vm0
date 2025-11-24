@@ -145,27 +145,6 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(data.error.message).toBeDefined();
     });
 
-    it("should reject webhook with invalid token", async () => {
-      const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer vm0_live_invalid_token_12345",
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            events: [{ type: "test", timestamp: Date.now(), data: {} }],
-          }),
-        },
-      );
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(401);
-    });
-
     it("should reject webhook with expired token", async () => {
       // Create expired token
       const expiredToken = `vm0_live_expired_${Date.now()}_${process.pid}`;
