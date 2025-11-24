@@ -14,6 +14,8 @@ import type {
   VolumePreparationResult,
 } from "./types";
 import type { VolumeSnapshot } from "../checkpoint/types";
+import { volumes, volumeVersions } from "../../db/schema/volume";
+import { eq, and } from "drizzle-orm";
 
 /**
  * Volume Service
@@ -111,18 +113,59 @@ export class VolumeService {
             gitToken: volume.gitToken,
           });
         } else if (volume.driver === "vm0") {
-          // VM0 volumes: download from S3 using user-specific prefix
+          // VM0 volumes: download from S3 using HEAD version
           if (!userId) {
             throw new Error("userId is required for VM0 volumes");
           }
 
-          const s3Prefix = `${userId}/${volume.vm0VolumeName}`;
-          const s3Uri = `s3://vm0-s3-user-volumes/${s3Prefix}`;
+          // Query database for volume and HEAD version
+          const [dbVolume] = await globalThis.services.db
+            .select()
+            .from(volumes)
+            .where(
+              and(
+                eq(volumes.userId, userId),
+                eq(volumes.name, volume.vm0VolumeName!),
+              ),
+            )
+            .limit(1);
+
+          if (!dbVolume) {
+            throw new Error(
+              `VM0 volume "${volume.vm0VolumeName}" not found in database`,
+            );
+          }
+
+          if (!dbVolume.headVersionId) {
+            console.warn(
+              `[Volume] VM0 volume "${volume.vm0VolumeName}" has no HEAD version, skipping`,
+            );
+            errors.push(
+              `${volume.name}: Volume "${volume.vm0VolumeName}" has no versions`,
+            );
+            continue;
+          }
+
+          // Get HEAD version details
+          const [headVersion] = await globalThis.services.db
+            .select()
+            .from(volumeVersions)
+            .where(eq(volumeVersions.id, dbVolume.headVersionId))
+            .limit(1);
+
+          if (!headVersion) {
+            throw new Error(
+              `VM0 volume "${volume.vm0VolumeName}" HEAD version not found`,
+            );
+          }
+
+          // Download from versioned S3 path
+          const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
           const localPath = path.join(tempDir, volume.name);
 
           const downloadResult = await downloadS3Directory(s3Uri, localPath);
           console.log(
-            `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}): ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+            `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
           );
 
           preparedVolumes.push({
