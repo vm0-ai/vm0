@@ -9,6 +9,7 @@
 This is a substantial commit implementing VM0 system events for run lifecycle management. It adds three new event types (vm0_start, vm0_result, vm0_error) to provide definitive run completion signals independent of agent events.
 
 Key features:
+
 - New VM0 event types and service for sending events
 - Backend changes: send vm0_start after run status update, vm0_result/error after checkpoint
 - Agent script changes: make checkpoint creation mandatory for successful runs
@@ -21,6 +22,7 @@ Total: ~1600 insertions across multiple modules and substantial test updates.
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Clear separation of concerns with new events module (events/types.ts, events/vm0-events.ts, events/index.ts)
 - Fixed sequence numbers (0 for vm0_start, 1000000 for vm0_result/error) avoid database queries
 - Comprehensive test suite with 176 lines in env-expander.test.ts covering edge cases
@@ -60,13 +62,16 @@ Total: ~1600 insertions across multiple modules and substantial test updates.
 
 1. **CRITICAL: Remove ESLint disable comments**
    Instead of disabling the lint rule, properly declare environment variables in a constants file:
+
    ```typescript
    // turbo/apps/cli/src/lib/env-constants.ts
    export const TEST_TOKEN = process.env.TEST_TOKEN || "";
    export const TEST_USER = process.env.TEST_USER || "";
    export const TEST_REGION = process.env.TEST_REGION || "";
    ```
+
    Then use in tests without lint comments:
+
    ```typescript
    beforeEach(() => {
      process.env.TEST_TOKEN = "secret-token-123";
@@ -76,8 +81,12 @@ Total: ~1600 insertions across multiple modules and substantial test updates.
    ```
 
 2. **Improve env var expansion error handling**:
+
    ```typescript
-   export function expandEnvVars(value: string, required: string[] = []): string {
+   export function expandEnvVars(
+     value: string,
+     required: string[] = [],
+   ): string {
      return value.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
        const varValue = process.env[varName];
        if (varValue === undefined && required.includes(varName)) {
@@ -99,6 +108,7 @@ Total: ~1600 insertions across multiple modules and substantial test updates.
    ```
 
 ## Breaking Changes
+
 - **CLI polling change**: Initial sequence number changed from 0 to -1
   - This ensures vm0_start event (sequence 0) is captured on first poll
   - Applications polling manually need to be updated
@@ -107,5 +117,6 @@ Total: ~1600 insertions across multiple modules and substantial test updates.
   - Requires checkpoint creation for successful runs (introduced in 098adc6)
 
 ## Critical Issues Requiring Immediate Action
+
 - **ESLint disable comments MUST be removed** per CLAUDE.md guidelines
 - This commit violates the "Zero tolerance for lint/type suppressions" principle

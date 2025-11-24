@@ -9,6 +9,7 @@
 This comprehensive commit implements checkpoint resume functionality, enabling agents to resume execution from previously saved checkpoints. This is a multi-phase implementation with significant architectural changes.
 
 Key features:
+
 - Database: Add resumed_from_checkpoint_id field to agent_runs
 - Service layer: Create run-service to orchestrate run and resume logic
 - E2B service: Refactor to use ExecutionContext abstraction
@@ -23,6 +24,7 @@ Total: ~900 insertions with significant refactoring of existing code.
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Clear service layer abstraction with run-service.ts handling orchestration
 - ExecutionContext abstraction provides clean contract between services
 - Proper error handling in resume route with rollback on failure
@@ -66,6 +68,7 @@ Total: ~900 insertions with significant refactoring of existing code.
 ### 💡 Recommendations
 
 1. **Add integration tests for run-service**:
+
    ```typescript
    // turbo/apps/web/src/lib/run/__tests__/run-service.integration.test.ts
    describe("run-service integration", () => {
@@ -78,17 +81,19 @@ Total: ~900 insertions with significant refactoring of existing code.
    ```
 
 2. **Improve error messages in volume preparation**:
+
    ```typescript
    try {
      await restoreGitSnapshot(snapshot);
    } catch (error) {
      throw new Error(
-       `Failed to prepare volume "${volumeName}" from snapshot: ${error instanceof Error ? error.message : "unknown error"}`
+       `Failed to prepare volume "${volumeName}" from snapshot: ${error instanceof Error ? error.message : "unknown error"}`,
      );
    }
    ```
 
 3. **Add validation for ExecutionContext in run-service**:
+
    ```typescript
    private validateExecutionContext(context: ExecutionContext): void {
      if (!context.runId) throw new Error("ExecutionContext missing runId");
@@ -103,6 +108,7 @@ Total: ~900 insertions with significant refactoring of existing code.
    - Clarify what happens if checkpoint data is partially corrupted
 
 ## Breaking Changes
+
 - **API endpoint change**: Run API now requires run-service instead of direct e2b-service calls
   - Internal implementation change, no public API breaking changes
   - All tests updated to mock run-service
@@ -114,7 +120,9 @@ Total: ~900 insertions with significant refactoring of existing code.
   - Requires checkpoint ID and prompt
 
 ## Architecture Notes
+
 The ExecutionContext abstraction is a positive architectural improvement:
+
 - Decouples run orchestration from E2B sandbox details
 - Enables cleaner session history management
 - Simplifies checkpoint resume implementation

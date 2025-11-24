@@ -9,6 +9,7 @@
 This commit removes duplicate manual result event emissions from the `run-agent-script.ts` file. The Claude Code agent was emitting result events both manually in the shell script and through the event processing loop, causing duplicate events. The fix keeps logging and checkpoint creation intact while relying solely on Claude Code's output stream for result events.
 
 **Changes:**
+
 - Remove `send_event` call for success case (line 371)
 - Remove `send_event` call for failure case (line 382)
 - Preserve logging messages and checkpoint creation workflow
@@ -31,6 +32,7 @@ This commit removes duplicate manual result event emissions from the `run-agent-
 **None identified.** This is a clean, minimal fix with no code smells.
 
 The commit properly:
+
 - Eliminates duplicate event emissions without adding try/catch blocks
 - Maintains the checkpoint creation workflow for successful runs
 - Preserves logging for debugging purposes
@@ -41,6 +43,7 @@ The commit properly:
 **Suggested improvements:** None. This is a well-executed fix.
 
 **Notes on quality:**
+
 - The change is properly scoped to address the specific issue (duplicate events)
 - No fallback patterns or defensive programming introduced
 - No artificial delays or timers added

@@ -7,6 +7,7 @@
 ## Summary
 
 Large feature implementation adding event streaming capability for the vm0 run command. The changes include:
+
 - New event polling API endpoint
 - Async E2B execution
 - Event parser and renderer for CLI
@@ -33,12 +34,14 @@ await new Promise((resolve) => setTimeout(resolve, 200));
 ```
 
 **Why this is bad:**
+
 - Artificial delays cause test flakiness
 - Slow down CI/CD pipelines
 - Mask actual race conditions
 - Tests should use proper event sequencing instead
 
 **Recommendation:**
+
 - Use proper async/await patterns
 - Use database queries to verify state changes
 - Consider using event emitters or promises for better control
@@ -64,12 +67,14 @@ return successResponse(response, 201);
 ```
 
 **Why this is concerning:**
+
 - No guarantee error handling will execute before process terminates
 - In serverless environments (Vercel), the function may be frozen before async updates complete
 - Database updates may not persist
 - Error logging may not occur
 
 **Recommendation:**
+
 - Either make this truly async with a job queue/background worker
 - Or document that this is intended for serverless and may have reliability issues
 - Consider using a message queue for reliable async execution
@@ -84,11 +89,13 @@ const pollIntervalMs = 500;
 ```
 
 **Why this could be improved:**
+
 - Hardcoded magic number
 - Should be configurable or use environment variable
 - 500ms may be too fast or too slow depending on context
 
 **Recommendation:**
+
 - Extract to configuration constant
 - Make configurable via environment variable
 - Consider adaptive polling (exponential backoff)
@@ -105,6 +112,7 @@ const pollIntervalMs = 500;
 ## Mock Analysis
 
 **New Mocks:**
+
 - `vi.mock("../../lib/event-parser")` - Mocking the event parser in tests
 - `vi.mock("../../lib/event-renderer")` - Mocking the renderer in tests
 
@@ -117,12 +125,14 @@ Could use integration tests with real parser/renderer to ensure they work togeth
 ## Test Quality Assessment
 
 **Strong points:**
+
 - Comprehensive coverage of all event types
 - Edge cases tested (empty arrays, long text, zero values)
 - Proper use of vi.clearAllMocks()
 - No console mocking without assertions
 
 **Concerns:**
+
 - Heavy reliance on artificial delays (setTimeout) in async tests
 - Tests use delays instead of deterministic async patterns
 - Could benefit from more integration-level tests
@@ -130,6 +140,7 @@ Could use integration tests with real parser/renderer to ensure they work togeth
 ## Interface Changes
 
 **New Public Interfaces:**
+
 1. `GET /api/agent/runs/:id/events` - New API endpoint for polling events
    - Query params: `since`, `limit`
    - Returns: `{ events, nextSequence, hasMore }`
@@ -147,16 +158,19 @@ Could use integration tests with real parser/renderer to ensure they work togeth
 ## Recommendations
 
 ### High Priority
+
 1. **Remove all artificial delays from tests** - Replace with proper async patterns
 2. **Address fire-and-forget async pattern** - Use job queue or document limitations
 3. **Add integration tests** - Test full flow from API to CLI
 
 ### Medium Priority
+
 1. **Make poll interval configurable** - Extract hardcoded 500ms value
 2. **Add exponential backoff** - For polling when no events
 3. **Document async behavior** - Clarify serverless execution model
 
 ### Low Priority
+
 1. **Consider WebSocket alternative** - For real-time streaming instead of polling
 2. **Add metrics** - Track polling frequency, event lag
 

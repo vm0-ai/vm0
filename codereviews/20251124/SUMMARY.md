@@ -16,6 +16,7 @@
 **Status:** ✅ APPROVED - No code smells found
 
 **Highlights:**
+
 - Clean, minimal fix addressing duplicate event emissions
 - Proper fail-fast approach maintained
 - No defensive programming or unnecessary complexity
@@ -32,6 +33,7 @@
 **Status:** ⚠️ CONDITIONAL - Two minor issues require attention
 
 **Critical Issues (MUST FIX):**
+
 1. **ESLint Suppression Violation** (High Priority)
    - File: `/workspaces/vm01/turbo/apps/cli/src/lib/__tests__/env-expander.test.ts` line 143
    - Issue: `// eslint-disable-next-line turbo/no-undeclared-env-vars` violates zero-tolerance suppression policy
@@ -45,6 +47,7 @@
    - Category: #10 - Artificial Delays in Tests
 
 **Positive Aspects:**
+
 - Comprehensive test coverage (17 CLI + 6 e2e tests)
 - Clear, actionable error messages for users
 - Fail-fast principle properly implemented
@@ -53,6 +56,7 @@
 - Real async testing approach (mostly)
 
 **Breaking Changes:**
+
 - **API:** New 400 error responses for missing variables (non-breaking in practice, improves error handling)
 - **CLI:** Early validation prevents silent failures during variable expansion (improvement)
 
@@ -65,6 +69,7 @@
 **Status:** ✅ APPROVED - No code smells found
 
 **Highlights:**
+
 - Well-structured principle-based command documentation
 - Increases Agent autonomy while maintaining quality
 - Consistent Conventional Commit format for all issue titles
@@ -74,6 +79,7 @@
 - Zero code smells identified
 
 **Breaking Changes:**
+
 - Minor workflow changes (no longer shows preview, auto-determines issue type)
 - All changes are process improvements, not functional breaking changes
 - Purely beneficial for user experience
@@ -84,10 +90,10 @@
 
 ## Critical Action Items
 
-| Priority | Issue | File | Category | Action |
-|----------|-------|------|----------|--------|
-| HIGH | ESLint suppression comment | `turbo/apps/cli/src/lib/__tests__/env-expander.test.ts:143` | #14 | Remove comment, add proper env var setup |
-| MEDIUM | Artificial delay in test | `turbo/apps/web/app/api/agent/runs/__tests__/route.test.ts:218` | #10 | Replace setTimeout with proper async/await |
+| Priority | Issue                      | File                                                            | Category | Action                                     |
+| -------- | -------------------------- | --------------------------------------------------------------- | -------- | ------------------------------------------ |
+| HIGH     | ESLint suppression comment | `turbo/apps/cli/src/lib/__tests__/env-expander.test.ts:143`     | #14      | Remove comment, add proper env var setup   |
+| MEDIUM   | Artificial delay in test   | `turbo/apps/web/app/api/agent/runs/__tests__/route.test.ts:218` | #10      | Replace setTimeout with proper async/await |
 
 ## Summary
 

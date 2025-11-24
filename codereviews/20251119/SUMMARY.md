@@ -19,15 +19,18 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ## Critical Issues Requiring Immediate Action
 
 ### 1. Commit b15a24b ❌ **Grade: F**
+
 **Title**: test: replace e2b service real api with mocked sdk in unit tests (#86)
 
 **Critical Problems**:
+
 - Converts valuable integration tests to fake tests
 - Mocks entire E2B SDK instead of testing real integration
 - Tests verify mocks were called, not that code works
 - Zero confidence in E2B integration after this change
 
 **Required Action**: **REVERT THIS COMMIT**
+
 - Keep integration tests with real E2B API
 - Real API tests provide confidence mocks cannot provide
 
@@ -36,14 +39,17 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ---
 
 ### 2. Commit b821df4 ❌ **Grade: D**
+
 **Title**: fix: use correct env var and auth header for webhook authentication (#80)
 
 **Critical Problems**:
+
 - **Fallback pattern** violates "fail fast" principle (Bad Smell #13)
 - **Polling with setTimeout** instead of event-driven architecture (Bad Smell #10)
 - Adds complex abstraction that may violate YAGNI
 
 **Required Actions**:
+
 1. Remove fallback from file mode - fail fast if configuration missing
 2. Replace polling with `fs.watch()` for file mode
 3. Reconsider if file/webhook abstraction is needed (YAGNI)
@@ -55,14 +61,17 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ## Commits Needing Improvement
 
 ### 3. Commit 1a8192a ⚠️ **Grade: B+**
+
 **Title**: test: add comprehensive test coverage for CLI build and run commands (#66)
 
 **Issues**:
+
 - **Date.now() mocking** violates fake timer prohibition (Bad Smell #5)
 - Heavy mocking reduces integration confidence
 - Need to verify database test uses real DB
 
 **Required Actions**:
+
 1. Remove Date.now() mock in run.test.ts:297
 2. Verify upsert.test.ts uses real database
 
@@ -71,14 +80,17 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ---
 
 ### 4. Commit e2af8ff ⚠️ **Grade: C+**
+
 **Title**: fix: enable e2b build scripts to read e2b api key from .env.local (#88)
 
 **Issues**:
+
 - Hardcoded path to .env.local
 - Silent failure if file missing (violates fail-fast)
 - No validation that E2B_API_KEY loaded successfully
 
 **Required Actions**:
+
 1. Add file existence check
 2. Verify E2B_API_KEY exists after loading
 3. Fail fast with clear error messages
@@ -88,14 +100,17 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ---
 
 ### 5. Commit dd886b9 ⚠️ **Grade: B+**
+
 **Title**: test: add comprehensive unit tests for webhook api endpoint (#90)
 
 **Issues**:
+
 - 8 repetitive tests focused on HTTP status codes
 - Direct database operations instead of API calls
 - Framework mocking reduces confidence
 
 **Recommended Actions**:
+
 1. Consolidate 8 status code tests into 2-3 comprehensive tests
 2. Use API endpoints for test setup instead of direct DB operations
 
@@ -106,9 +121,11 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ## Excellent Commits ✅
 
 ### Commit 0cc2bd3 - **Grade: A+**
+
 **Title**: fix: resolve E2B script loading error by pre-installing run-agent.sh in template (#68)
 
 **Why Excellent**:
+
 - **Fixes existing code smell** (removes dynamic imports)
 - Architectural improvement (build-time vs runtime)
 - Follows fail-fast principle
@@ -119,9 +136,11 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ---
 
 ### Commit 34bd85b - **Grade: A**
+
 **Title**: refactor: remove container_start event and send agent events immediately (#84)
 
 **Why Excellent**:
+
 - **Applies YAGNI principle** by removing unnecessary complexity
 - Removes batching logic (simpler)
 - More immediate event delivery
@@ -132,9 +151,11 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ---
 
 ### Commit 4842d80 - **Grade: A**
+
 **Title**: feat: add support for agent names in vm0 run command (#71)
 
 **Why Excellent**:
+
 - Clean implementation with comprehensive tests
 - Proper polymorphic input handling (not a fallback)
 - Strict type safety maintained
@@ -147,21 +168,25 @@ Reviewed 15 commits from November 19, 2025 against project code quality standard
 ## Good Commits 👍
 
 ### Commit c6df6a2 - **Grade: A**
+
 **Title**: refactor: rename agent runtimes to agent runs and restructure API paths (#62)
 
 Textbook large-scale refactoring. All changes consistent, no code smells introduced.
 
 ### Commit c0b8d11 - **Grade: A-**
+
 **Title**: feat: implement CLI build and run commands (#65)
 
 Excellent implementation following YAGNI. Proper use of `unknown` type, fail-fast error handling.
 
 ### Commit ead58b6 - **Grade: A**
+
 **Title**: fix: use correct .copy() method instead of .copyFile() in template.ts (#69)
 
 Simple, focused API fix. No issues.
 
 ### Commit 2505d84 - **Grade: A**
+
 **Title**: fix: extract result field from claude code jsonl output (#72)
 
 Clean shell script fix. Removes dead code.
@@ -171,6 +196,7 @@ Clean shell script fix. Removes dead code.
 ## Documentation Commits 📄
 
 Three commits were documentation/workflow files (Claude Code slash commands) with no code to review:
+
 - ea8dcfa - feat: add slash commands for github issue workflow automation (#77)
 - 0783b82 - feat: add CI pipeline verification and auto-fix to issue-continue workflow (#81)
 - 8af0ab5 - refactor: remove unnecessary pending label removal from issue-todo workflow (#85)
@@ -181,20 +207,20 @@ Three commits were documentation/workflow files (Claude Code slash commands) wit
 
 ### Violations Found
 
-| Bad Smell | Commits | Severity |
-|-----------|---------|----------|
-| #1: Mock Analysis | b15a24b, dd886b9 | Critical, Medium |
-| #5: Fake Timers | 1a8192a | Critical |
-| #10: Artificial Delays | b821df4 | Critical |
-| #11: Hardcoded URLs | e2af8ff | Medium |
-| #12: Direct DB Operations | dd886b9 | Medium |
-| #13: Fallback Patterns | b821df4, e2af8ff | Critical, Medium |
-| #15: Bad Tests | b15a24b, 1a8192a, dd886b9 | Critical, Medium |
+| Bad Smell                 | Commits                   | Severity         |
+| ------------------------- | ------------------------- | ---------------- |
+| #1: Mock Analysis         | b15a24b, dd886b9          | Critical, Medium |
+| #5: Fake Timers           | 1a8192a                   | Critical         |
+| #10: Artificial Delays    | b821df4                   | Critical         |
+| #11: Hardcoded URLs       | e2af8ff                   | Medium           |
+| #12: Direct DB Operations | dd886b9                   | Medium           |
+| #13: Fallback Patterns    | b821df4, e2af8ff          | Critical, Medium |
+| #15: Bad Tests            | b15a24b, 1a8192a, dd886b9 | Critical, Medium |
 
 ### Code Smells Fixed ✅
 
-| Bad Smell | Commit | Description |
-|-----------|--------|-------------|
+| Bad Smell           | Commit  | Description                              |
+| ------------------- | ------- | ---------------------------------------- |
 | #6: Dynamic Imports | 0cc2bd3 | Removed dynamic imports from E2B service |
 
 ---
@@ -250,12 +276,14 @@ Three commits were documentation/workflow files (Claude Code slash commands) wit
 **Overall Assessment**: **Good with Critical Issues**
 
 The team demonstrates strong adherence to:
+
 - Type safety (zero `any` usage)
 - Code cleanliness (zero suppressions)
 - Test hygiene (proper mock cleanup)
 - YAGNI principle (several good examples)
 
 However, **two commits have critical issues** that violate core project principles:
+
 1. **b15a24b**: Fake tests that provide zero confidence
 2. **b821df4**: Fallback patterns and polling with delays
 

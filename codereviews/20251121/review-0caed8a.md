@@ -5,7 +5,9 @@
 **Date:** Sat Nov 22 00:15:45 2025 +0800
 
 ## Summary
+
 Standardized API configuration naming and webhook endpoint path structure across the codebase:
+
 - Moved webhook endpoint from /api/webhooks/agent-events to /api/webhooks/agent/events (hierarchical structure)
 - Renamed environment variables: VM0_WEBHOOK_URL → VM0_API_URL and VM0_WEBHOOK_TOKEN → VM0_API_TOKEN
 - Updated bash script (run-agent-script.ts) to construct full webhook URL internally
@@ -17,18 +19,21 @@ Standardized API configuration naming and webhook endpoint path structure across
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Excellent API structure improvement - hierarchical /api/webhooks/agent/events is more RESTful than agent-events
-- Clear semantic improvement in env var naming (VM0_API_* is more descriptive than VM0_WEBHOOK_*)
+- Clear semantic improvement in env var naming (VM0*API*_ is more descriptive than VM0*WEBHOOK*_)
 - Centralized webhook URL construction in run-agent-script reduces duplication
 - Comprehensive updates across all affected files (services, tests, documentation)
 - Proper directory restructuring maintains clean project organization
 - Documentation updated to reflect changes
 
 ### ⚠️ Issues Found
+
 - **Bad Smell #11 (Hardcoded URLs and Configuration)** - Verify that no hardcoded webhook URLs remain in the codebase after this refactoring
 - **Bad Smell #4 (Interface Changes)** - This is a significant breaking change to public API (webhook endpoint path and env var names)
 
 ### 💡 Recommendations
+
 - Verify all client code that calls the webhook endpoint has been updated to use new path
 - Add migration guide or deprecation warning if external systems consume this API
 - Check if any documentation outside the codebase (README, setup guides, etc.) needs updating
@@ -36,6 +41,7 @@ Standardized API configuration naming and webhook endpoint path structure across
 - Ensure all environment variable changes are documented in .env.example and deployment documentation
 
 ## Breaking Changes
+
 - **API Endpoint**: Webhook moved from /api/webhooks/agent-events to /api/webhooks/agent/events
 - **Environment Variables**:
   - VM0_WEBHOOK_URL → VM0_API_URL (also changed from full URL to base URL)

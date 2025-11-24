@@ -41,14 +41,16 @@ const envPath = path.resolve(process.cwd(), "apps/web/.env.local");
 ```
 
 **Assessment:**
+
 - Assumes specific working directory (turbo/)
 - Could be fragile if run from different directory
 - Works for current use case
 
 **Recommendation:**
+
 - Add validation that file exists
 - Fail fast with clear error if .env.local not found
-- Consider using __dirname relative paths
+- Consider using \_\_dirname relative paths
 
 ## Overall Assessment
 
@@ -60,9 +62,11 @@ Solid developer experience improvement with no major issues. The path resolution
 ## Recommendations
 
 ### Medium Priority
+
 1. Add validation that .env.local exists
 2. Fail fast with helpful error if E2B_API_KEY not found
 3. Consider documenting required env vars in schema
 
 ### Low Priority
-1. Consider using __dirname for more robust path resolution
+
+1. Consider using \_\_dirname for more robust path resolution

@@ -9,6 +9,7 @@
 This commit refactors the E2B agent execution to transfer the `run-agent.sh` script at runtime instead of baking it into the template. This enables dynamic script updates without requiring template rebuilds.
 
 Key changes:
+
 - Move script from `/e2b/run-agent.sh` to embedded content in `turbo/apps/web/src/lib/e2b/run-agent-script.ts`
 - Update E2B service to upload script at runtime
 - Remove E2B template directory (now handled at runtime)
@@ -20,6 +21,7 @@ Key changes:
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Removes infrastructure rebuild dependency for script changes
 - Embedded script content eliminates file path resolution issues
 - Proper error handling with meaningful error messages
@@ -31,6 +33,7 @@ Key changes:
 ### ⚠️ Issues Found
 
 #### 1. **String Escaping Complexity in Embedded Script** (Error Handling Risk)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/run-agent-script.ts`
 - **Lines:** All lines
 - **Issue:** The script content is embedded as a backtick template string with manual escape sequences. Uses `\\` for shell escapes, which is fragile and difficult to maintain.
@@ -49,6 +52,7 @@ Key changes:
 - **Recommendation:** Consider storing script in a `.sh` file and importing as binary, or using a template literal processor
 
 #### 2. **Buffer Conversion Complexity in uploadRunAgentScript()** (Over-engineering)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/e2b-service.ts`
 - **Lines:** 290-300
 - **Issue:** Complex ArrayBuffer conversion for a string:
@@ -63,6 +67,7 @@ Key changes:
 - **Recommendation:** Check E2B API documentation for simpler string-to-ArrayBuffer conversion method, or add explanatory comment
 
 #### 3. **Timing Assumption in Test** (Test Anti-pattern)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Line:** 86
 - **Issue:** Changed assertion from `toBeGreaterThan(0)` to `toBeGreaterThanOrEqual(0)` suggesting execution could complete in 0ms
@@ -70,6 +75,7 @@ Key changes:
 - **Real impact:** Low (this is a unit test with mocks), but indicates the test may not be meaningful
 
 #### 4. **Mock fs Module but Don't Use It** (Unused Code)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Lines:** 12-15
 - **Issue:**
@@ -89,6 +95,7 @@ Key changes:
 - **Recommendation:** Remove this unused mock
 
 #### 5. **Test Assertion Logic Complexity** (Bad Tests)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Lines:** 265-270 and 313-318
 - **Issue:** Tests now search for specific command call instead of verifying the first call:
@@ -101,6 +108,7 @@ Key changes:
 - **Better approach:** Mock sandbox should have structured calls that are easier to assert on
 
 #### 6. **Implicit Test Behavior Changes** (Documentation Issue)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Lines:** 77, 140, 171, 202
 - **Issue:** Comments now say "commands.run called twice" but the test assertions still use `toHaveBeenCalled()` without strict count assertions
@@ -108,6 +116,7 @@ Key changes:
 - **Recommendation:** Add explicit `toHaveBeenCalledTimes(2)` assertions after the find operation
 
 #### 7. **Missing Error Case Coverage** (Test Coverage)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/e2b-service.ts`
 - **Lines:** 301-313 (uploadRunAgentScript error handling)
 - **Issue:** New error handling for script upload isn't tested
@@ -117,20 +126,24 @@ Key changes:
   - Sandbox.files.write() throwing error
 
 #### 8. **CLI Error Message Reduction** (Design Decision - Questionable)
+
 - **File:** `/workspaces/vm01/turbo/apps/cli/src/commands/run.ts`
 - **Lines:** Removed lines 41-45
 - **Issue:** Removed helpful debug message about webhook configuration
   ```typescript
   // REMOVED:
-  console.error(chalk.gray(
-    "  This usually means the agent's webhook configuration is incorrect or unreachable",
-  ));
+  console.error(
+    chalk.gray(
+      "  This usually means the agent's webhook configuration is incorrect or unreachable",
+    ),
+  );
   ```
 - **Problem:** This was useful debugging information for users. Removal reduces helpfulness.
 - **Context:** Commit message says "Remove debug hint from CLI timeout error message" but this looks like a reduction in helpful output
 - **Recommendation:** Consider keeping this as it helps users diagnose issues
 
 #### 9. **GitHub Actions Conditional Logic** (Configuration Complexity)
+
 - **File:** `.github/workflows/turbo.yml`
 - **Lines:** 32-45
 - **Issue:** New conditional logic for `workflow_dispatch` input:
@@ -146,6 +159,7 @@ Key changes:
 - **Recommendation:** Document when this workflow_dispatch option should be used
 
 #### 10. **Test Mock Cleanup - Not Explicitly Called** (Test Quality)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/e2b/__tests__/e2b-service.test.ts`
 - **Line:** 18
 - **Issue:** `vi.clearAllMocks()` is called in `beforeEach`, which is correct per guidelines
@@ -159,6 +173,7 @@ Key changes:
    - Add documentation explaining the escaping strategy
 
 2. **Improve buffer conversion clarity:**
+
    ```typescript
    // Before
    const arrayBuffer = scriptBuffer.buffer.slice(...)
@@ -185,6 +200,7 @@ Key changes:
    - Add documentation for users on running tests manually
 
 ## Breaking Changes
+
 - None for API. Internal change to script delivery mechanism.
 - E2B template structure changed (no longer includes script), but E2B rebuilds typically isolate this.
 

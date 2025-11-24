@@ -101,6 +101,7 @@ try {
 ```
 
 **Issue:** This pattern violates the "fail-fast" principle. Instead of letting errors propagate, it catches all exceptions and returns a "failed" status. This approach:
+
 - Hides configuration issues that should be caught during deployment
 - Makes debugging harder by converting exceptions to status codes
 - Adds unnecessary complexity with multiple code paths
@@ -130,6 +131,7 @@ it("should return 400 when prompt is missing", async () => {
 ```
 
 **Issue:** Per Smell #15 ("Avoid Bad Tests" - Over-testing error responses):
+
 > "Don't write repetitive tests for every 401/404/400 scenario. Focus on meaningful error handling, not HTTP status code validation."
 
 These tests are boilerplate validation tests that don't test meaningful business logic.
@@ -143,6 +145,7 @@ These tests are boilerplate validation tests that don't test meaningful business
 **Location:** Both test files
 
 **Issue:** Neither test file includes `vi.clearAllMocks()` in `beforeEach` hooks. Per Smell #8:
+
 > "All test files MUST call `vi.clearAllMocks()` in `beforeEach` hooks. Prevents mock state leakage between tests. Eliminates flaky test behavior from persistent mock state."
 
 While these tests don't currently use mocks heavily, this is a required pattern for consistency and future-proofing.
@@ -225,6 +228,7 @@ export const e2bConfig = {
 ```
 
 **Issue:** Per Smell #11 ("Hardcoded URLs and Configuration"):
+
 > "Never hardcode URLs or environment-specific values. Use centralized configuration from `env()` function."
 
 While `defaultTimeout` is reasonable, `defaultImage: "vm0-claude-code:test"` looks environment-specific and should come from environment configuration.
@@ -286,6 +290,7 @@ defaultImage: "vm0-claude-code:test", // For future use
 ```
 
 **Issue:** Per YAGNI principle in project guidelines:
+
 > "Don't add functionality until it's actually needed"
 
 This configuration value is marked "For future use" and is not currently used anywhere in the code.
@@ -374,6 +379,7 @@ This commit introduces good structure and comprehensive test coverage, but has s
 3. **Missing Test Standards**: Lacks required `vi.clearAllMocks()` in beforeEach hooks
 
 **Positive Aspects:**
+
 - Good separation of concerns
 - Real integration tests (no mocking of E2B)
 - No TypeScript `any` usage
@@ -382,6 +388,7 @@ This commit introduces good structure and comprehensive test coverage, but has s
 - Clear type definitions
 
 **Required Actions Before Merge:**
+
 1. Refactor error handling to fail-fast pattern
 2. Update tests to validate correct fail-fast behavior
 3. Add vi.clearAllMocks() to test files

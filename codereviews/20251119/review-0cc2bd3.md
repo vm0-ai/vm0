@@ -23,6 +23,7 @@ Fixes E2B script loading by pre-installing `run-agent.sh` at template build time
 ### ✅ FIXES CODE SMELL: Dynamic Imports (Bad Smell #6)
 
 **Removed Code** (e2b-service.ts):
+
 ```typescript
 private async getRunAgentScript(): Promise<string> {
   const fs = await import("fs/promises");
@@ -32,6 +33,7 @@ private async getRunAgentScript(): Promise<string> {
 ```
 
 **Assessment**: POSITIVE FIX
+
 - This commit **removes** a prohibited dynamic import pattern
 - Bad smell #6 explicitly prohibits `await import()`
 - The new approach (pre-installing at build time) is architecturally superior
@@ -39,6 +41,7 @@ private async getRunAgentScript(): Promise<string> {
 ### ✅ EXCELLENT: Architectural Improvement
 
 **Benefits of the change**:
+
 1. Eliminates runtime file system dependencies
 2. Removes dynamic imports (prohibited pattern)
 3. Makes sandbox creation more reliable and faster
@@ -46,6 +49,7 @@ private async getRunAgentScript(): Promise<string> {
 5. Simpler code - no async script loading logic needed
 
 ### ✅ PASS: All Other Bad Smells
+
 - No new mocks introduced
 - No test issues
 - No error handling issues

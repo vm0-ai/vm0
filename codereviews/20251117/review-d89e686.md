@@ -10,6 +10,7 @@
 This commit implements Phase 1 of the database schema and API framework for agent configurations:
 
 ### New Components
+
 - **Database Schema**: 4 new PostgreSQL tables (api_keys, agent_configs, agent_runtimes, agent_runtime_events)
 - **API Endpoints**:
   - POST /api/agent-configs (create agent config)
@@ -21,6 +22,7 @@ This commit implements Phase 1 of the database schema and API framework for agen
 - **CI/CD**: Database migration step added to workflow
 
 ### Files Changed (23 files, +1193, -30)
+
 - 4 new database schema files
 - 2 new API route handlers
 - 1 authentication middleware
@@ -46,6 +48,7 @@ await new Promise((resolve) => setTimeout(resolve, 100));
 **Issue**: Uses artificial 100ms delay to test timestamp updates.
 
 **Why This Is Bad**:
+
 - Violates the "No Artificial Delays" principle
 - Causes test flakiness and slows CI/CD pipeline
 - Masks timing issues that should be handled properly
@@ -55,6 +58,7 @@ await new Promise((resolve) => setTimeout(resolve, 100));
 Remove the timestamp comparison test entirely. Testing that `lastUsedAt` is updated is sufficient - you don't need to verify that the second timestamp is greater than the first. This over-tests the database's timestamp functionality rather than testing business logic.
 
 **Suggested Fix**:
+
 ```typescript
 // Remove the entire test "should update lastUsedAt timestamp on successful authentication"
 // The test "should return API key ID when authentication succeeds" already
@@ -86,6 +90,7 @@ export async function POST(request: NextRequest) {
 This is a borderline case. API route handlers are **entry points** where errors must be caught to return proper HTTP responses. The error handling here serves a specific purpose: converting exceptions to HTTP responses.
 
 **Analysis**:
+
 - The catch blocks don't just log and re-throw - they convert errors to HTTP responses
 - This is the top level of the application where errors should be handled
 - The `errorResponse()` utility provides meaningful error handling
@@ -138,6 +143,7 @@ it("should return 400 when config is missing", async () => {
 **Issue**: Violates "Don't write repetitive tests for every 401/404/400 scenario" principle.
 
 **Why This Is Bad**:
+
 - Excessive boilerplate testing of HTTP status codes
 - Tests focus on error codes rather than business logic
 - 8 out of 12 integration tests are error status code tests (67% of tests)
@@ -147,6 +153,7 @@ it("should return 400 when config is missing", async () => {
 Consolidate error tests into 1-2 tests that cover authentication and validation flows. Focus more on successful business logic paths and edge cases.
 
 **Suggested Refactor**:
+
 ```typescript
 // Instead of 4 separate 401 tests, have 1 authentication test
 it("should handle authentication correctly", async () => {
@@ -196,6 +203,7 @@ With corresponding tests for each validation case (lines 103-116 in test file).
 **Issue**: Manual validation that could be replaced with a schema validator like Zod.
 
 **Why This Is Bad**:
+
 - Manual validation is error-prone and verbose
 - Test is redundant if using a schema validator
 - Violates "Over-testing schema validation - Zod already validates at runtime"
@@ -205,6 +213,7 @@ With corresponding tests for each validation case (lines 103-116 in test file).
 Use Zod schema validation for the request body. This eliminates the need for manual validation tests.
 
 **Suggested Fix**:
+
 ```typescript
 // Define schema in types/agent-config.ts
 export const AgentConfigYamlSchema = z.object({
@@ -256,6 +265,7 @@ const [dbConfig] = await globalThis.services.db
 **Issue**: Tests should use API endpoints for data setup, not direct database operations.
 
 **Why This Is Bad**:
+
 - Direct DB operations duplicate business logic from API endpoints
 - Makes tests brittle when schema or business logic changes
 - Tests don't validate the full API flow
@@ -264,12 +274,14 @@ const [dbConfig] = await globalThis.services.db
 This is a **phase 1 implementation** with limited API endpoints. There may not be an API endpoint to create API keys yet, so direct DB access for test setup is necessary.
 
 **Recommendation**:
+
 - For now, direct DB access for test setup is **acceptable** since there's no API key creation endpoint yet
 - However, test verification should still use APIs where possible
 - Add a TODO comment to refactor once more APIs are available
 - Prioritize creating an API key management endpoint in phase 2
 
 **Suggested Fix**:
+
 ```typescript
 beforeEach(async () => {
   // TODO: Replace with API call once API key creation endpoint exists
@@ -296,7 +308,9 @@ it("should create agent config and return 201", async () => {
     .limit(1);
 
   // ✅ Better: Verify via GET API
-  const getResponse = await GET(request, { params: Promise.resolve({ id: data.agentConfigId }) });
+  const getResponse = await GET(request, {
+    params: Promise.resolve({ id: data.agentConfigId }),
+  });
   const getConfig = await getResponse.json();
   expect(getConfig.config).toEqual(configData);
 });
@@ -328,6 +342,7 @@ These tests don't actually use mocks - they're integration tests with real datab
 Add `vi.clearAllMocks()` to all `beforeEach` hooks for consistency, even if not currently needed.
 
 **Suggested Fix**:
+
 ```typescript
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -351,6 +366,7 @@ config: config.config as AgentConfigYaml,
 **Issue**: Uses type assertion (`as`) instead of proper type narrowing.
 
 **Why This Is Bad**:
+
 - Project principle: "Use proper type narrowing instead of type assertions"
 - Type assertions bypass TypeScript's type checking
 - No runtime validation that the data matches the type
@@ -359,6 +375,7 @@ config: config.config as AgentConfigYaml,
 Use Zod to validate the config shape at runtime, or define the database schema with proper types.
 
 **Suggested Fix**:
+
 ```typescript
 // Validate at runtime with Zod
 const config = AgentConfigYamlSchema.parse(dbConfig.config);
@@ -394,6 +411,7 @@ export interface AgentConfigYaml {
 ```
 
 **Issue**:
+
 - No runtime validation of the config structure
 - Manual validation in route handler only checks top-level fields
 - Nested fields like `agent.description`, `agent.image`, etc. are not validated
@@ -418,6 +436,7 @@ if (!result) {
 **Issue**: Generic error message that doesn't indicate what went wrong or how to fix it.
 
 **Why This Is Minor**:
+
 - This is a defensive check that should theoretically never fail
 - Database insert errors would be caught earlier
 - Still good to have for unexpected scenarios
@@ -427,7 +446,9 @@ Use a custom error type or add more context:
 
 ```typescript
 if (!result) {
-  throw new InternalServerError("Database insert returned no result - this should never happen");
+  throw new InternalServerError(
+    "Database insert returned no result - this should never happen",
+  );
 }
 ```
 
@@ -436,40 +457,48 @@ if (!result) {
 ## Positive Aspects
 
 ### 1. Integration Tests with Real Database ✅
+
 - Tests connect to real PostgreSQL database
 - No mocking of `globalThis.services` - follows project guidelines perfectly
 - Tests catch actual integration issues
 - Proper cleanup in `beforeEach`/`afterEach` hooks
 
 ### 2. Proper Service Initialization ✅
+
 - Calls `initServices()` at entry points
 - Uses global services pattern correctly
 - No unnecessary singleton management
 
 ### 3. No Dynamic Imports ✅
+
 - All imports are static at file top
 - No `await import()` or conditional imports
 
 ### 4. No Fake Timers ✅
+
 - Tests don't use `vi.useFakeTimers()`
 - Real async behavior is tested (except for one artificial delay)
 
 ### 5. Type Safety ✅
+
 - No `any` types found in any files
 - Proper TypeScript interfaces and types
 - Type inference used where appropriate
 
 ### 6. No Lint/Type Suppressions ✅
+
 - No `eslint-disable` comments
 - No `@ts-ignore` or `@ts-nocheck`
 - All code passes type checking cleanly
 
 ### 7. Fail-Fast Error Handling ✅
+
 - Authentication throws immediately on invalid keys
 - Validation throws immediately on missing fields
 - No fallback patterns that hide errors
 
 ### 8. Clean Code Structure ✅
+
 - Clear separation of concerns
 - Logical file organization
 - Good naming conventions
@@ -480,15 +509,18 @@ if (!result) {
 ## Summary of Recommendations
 
 ### Must Fix (Critical)
+
 1. **Remove artificial delay** in auth.test.ts:120 - delete the timestamp comparison test
 2. **Add vi.clearAllMocks()** to all beforeEach hooks for consistency
 
 ### Should Fix (Major)
+
 3. **Consolidate error tests** - reduce 8 error tests to 1-2, focus on business logic
 4. **Add Zod schema validation** - replace manual validation with schema
 5. **Use Zod for type validation** - remove type assertions with runtime validation
 
 ### Could Fix (Minor)
+
 6. **Add TODO comments** for direct DB access in tests - plan to use APIs once available
 7. **Add explanatory comments** to try/catch blocks at API boundaries
 8. **Improve error messages** for defensive checks
@@ -498,17 +530,20 @@ if (!result) {
 ## Overall Assessment: **Major Issues**
 
 ### Breakdown
+
 - **Critical Issues**: 1 (artificial delay violates strict project policy)
 - **Major Issues**: 3 (over-testing HTTP codes, missing schema validation, test structure)
 - **Minor Issues**: 3 (type assertions, generic errors, missing cleanup calls)
 - **Positive Aspects**: 8 (integration tests, service usage, type safety, etc.)
 
 ### Verdict
+
 The commit shows **excellent foundational work** with proper integration testing and service architecture. However, it has **one critical violation** (artificial delays) and several **major improvements needed** around test quality and validation strategy.
 
 The code is production-ready for Phase 1 after fixing the critical artificial delay issue. Other improvements can be addressed in follow-up commits.
 
 ### Test Quality Score: **6/10**
+
 - ✅ Uses real database (excellent)
 - ✅ No service mocking (excellent)
 - ❌ 67% of tests are error status codes (poor focus)
@@ -517,6 +552,7 @@ The code is production-ready for Phase 1 after fixing the critical artificial de
 - ⚠️ Direct DB access acceptable for Phase 1, should improve in Phase 2
 
 ### Code Quality Score: **8/10**
+
 - ✅ Type safety maintained throughout
 - ✅ No lint suppressions
 - ✅ Proper service usage

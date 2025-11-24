@@ -24,6 +24,7 @@ This is a markdown documentation file defining a Claude Code slash command, not 
 ## Content Review
 
 Updates workflow to add:
+
 - CI pipeline check verification
 - Automatic retry with fixes if pipeline fails
 - Better error handling in automation workflow

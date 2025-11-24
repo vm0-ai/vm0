@@ -5,7 +5,9 @@
 **Date:** Fri Nov 21 23:21:52 2025 +0800
 
 ## Summary
+
 Refactored volume-related operations from E2BService into a new dedicated VolumeService class, following Single Responsibility Principle. Changes include:
+
 - Created VolumeService with methods: prepareVolumes(), mountVolumes(), uploadDirectoryToSandbox(), cleanup()
 - Added new types: PreparedVolume, VolumePreparationResult
 - Refactored E2BService to delegate all volume operations to VolumeService
@@ -16,6 +18,7 @@ Refactored volume-related operations from E2BService into a new dedicated Volume
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Excellent application of Single Responsibility Principle - volume logic separated into dedicated service
 - Clear separation of concerns - E2BService focuses on sandbox execution, VolumeService on volume management
 - Well-typed refactoring with explicit type definitions (PreparedVolume, VolumePreparationResult)
@@ -25,10 +28,12 @@ Refactored volume-related operations from E2BService into a new dedicated Volume
 - Preparation moved outside try block improves error handling clarity
 
 ### ⚠️ Issues Found
+
 - **Bad Smell #8 (Test Mock Cleanup)** - E2BService test file should be verified to include `vi.clearAllMocks()` in beforeEach hook to prevent mock state leakage
 - **Bad Smell #9 (TypeScript any Type)** - Need to verify VolumeService implementation doesn't use `any` types
 
 ### 💡 Recommendations
+
 - Verify that the E2BService test includes `vi.clearAllMocks()` in beforeEach to prevent test flakiness
 - Document the VolumeService contract - it's a public-facing service now
 - Consider exporting a singleton instance of VolumeService for consistent usage patterns
@@ -36,4 +41,5 @@ Refactored volume-related operations from E2BService into a new dedicated Volume
 - Document the volume preparation lifecycle in comments for future maintainers
 
 ## Breaking Changes
+
 - **None** - This is a pure refactoring maintaining identical public API and behavior

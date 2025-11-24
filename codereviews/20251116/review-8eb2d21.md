@@ -7,6 +7,7 @@
 ## Summary
 
 Large feature implementation adding:
+
 - OAuth 2.0 device flow authentication for CLI
 - E2E test automation with Playwright
 - Production API fallback for CLI
@@ -52,12 +53,14 @@ setTimeout(() => {
 ```
 
 **Why this is bad:**
+
 - E2E code with artificial delays is flaky
 - 100ms polling is inefficient and wastes CPU
 - Hard-coded 2000ms timeout is arbitrary
 - Tests should use event-driven patterns, not polling
 
 **Recommendation:**
+
 - Use event emitters for CLI output parsing
 - Use Playwright's proper wait mechanisms (waitForSelector, waitForResponse)
 - Remove `page.waitForTimeout(2000)` - use proper wait conditions
@@ -81,6 +84,7 @@ export async function getApiUrl(): Promise<string> {
 ```
 
 **Why this violates the spec:**
+
 - According to Bad Smell #13: "No fallback/recovery logic - errors should fail immediately"
 - Silently falling back to production can cause:
   - Developers accidentally hitting production in development
@@ -88,6 +92,7 @@ export async function getApiUrl(): Promise<string> {
   - Configuration errors being hidden
 
 **Previous implementation was better:**
+
 ```typescript
 // Old version that was removed:
 if (!targetApiUrl) {
@@ -97,6 +102,7 @@ if (!targetApiUrl) {
 ```
 
 **Recommendation:**
+
 - Remove hardcoded "https://www.vm0.ai" fallback
 - Require explicit API_HOST configuration
 - Fail fast if not configured
@@ -116,11 +122,13 @@ const apiUrl = apiHost || process.env.API_HOST || "http://localhost:3000";
 ```
 
 **Why this is bad:**
+
 - Hardcoded URLs violate configuration principle
 - Makes testing against different environments difficult
 - Should use centralized configuration
 
 **Recommendation:**
+
 - Remove all hardcoded URLs
 - Require explicit configuration
 - Use environment variables consistently
@@ -140,11 +148,13 @@ if (bypassSecret) {
 ```
 
 **Assessment:**
+
 - Acceptable for CI/testing purposes
 - Should be documented that this is CI-only
 - Consider if this could be misused in production
 
 **Recommendation:**
+
 - Add comment explaining this is CI-only
 - Consider restricting to NODE_ENV=test
 - Document in README
@@ -162,6 +172,7 @@ if (!targetApiUrl) {
 ```
 
 **Why this is concerning:**
+
 - Removing fail-fast error handling violates project principles
 - Was correct according to Bad Smell #13 (fail fast)
 - Now silently falls back to production
@@ -179,12 +190,14 @@ if (!targetApiUrl) {
 ## Test Quality Assessment
 
 **Concerns:**
+
 - E2E automation relies heavily on setTimeout/setInterval
 - Polling pattern for CLI output is inefficient
 - Hard-coded timeouts (2000ms, 15000ms) are fragile
 - No proper event-driven parsing
 
 **Strong points:**
+
 - Comprehensive e2e flow coverage
 - Good Clerk integration
 - Screenshot debugging
@@ -192,27 +205,32 @@ if (!targetApiUrl) {
 ## Interface Changes
 
 **Breaking Changes:**
+
 1. Removed API key authentication - all APIs now require Bearer tokens
 2. Changed authentication flow from API keys to OAuth device flow
 3. Added fallback to production API (potentially dangerous)
 
 **New Endpoints:**
+
 - `POST /api/cli/auth/device` - Request device code
 - `POST /api/cli/auth/token` - Exchange device code for token
 
 ## Recommendations
 
 ### High Priority
+
 1. **Remove hardcoded production fallback** - Violates fail-fast principle
 2. **Replace setTimeout/setInterval with event-driven patterns** - Fix e2e flakiness
 3. **Replace page.waitForTimeout with proper waits** - Use Playwright correctly
 
 ### Medium Priority
+
 1. **Add environment validation** - Ensure API_HOST is set where required
 2. **Document Vercel bypass secret** - Clarify CI-only usage
 3. **Add integration tests** - Test device flow with actual API
 
 ### Low Priority
+
 1. **Consider WebSocket for CLI output** - Instead of polling
 2. **Add retry logic** - For network failures in device flow
 3. **Improve error messages** - More helpful when auth fails
@@ -229,6 +247,7 @@ This commit introduces significant architectural changes (OAuth device flow) whi
 3. **Moderate:** Hardcoded URLs throughout
 
 The OAuth migration is good, but the fallback pattern and timeout-based e2e code need to be addressed. These issues can cause:
+
 - Developers accidentally hitting production
 - Flaky e2e tests
 - Configuration errors being hidden

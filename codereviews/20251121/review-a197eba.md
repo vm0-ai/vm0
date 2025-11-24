@@ -9,12 +9,14 @@
 This comprehensive commit adds a validation system to catch missing environment and template variables early, preventing runtime failures. The implementation spans both CLI and backend API:
 
 **CLI changes:**
+
 - `extractEnvVarReferences()` scans config for `${VAR}` patterns
 - `validateEnvVars()` checks if variables exist in process.env
 - Integration into build command with clear error messages
 - 17 comprehensive test cases for extraction and validation
 
 **Backend changes:**
+
 - `extractUnexpandedVars()` detects remaining `${VAR}` in configs
 - `extractTemplateVars()` scans for `{{VAR}}` patterns
 - Validation in POST `/api/agent/configs` for unexpanded vars
@@ -22,6 +24,7 @@ This comprehensive commit adds a validation system to catch missing environment 
 - Return 400 errors with clear messages for missing variables
 
 **Files affected:** 13 files changed, 449 insertions(+), 27 deletions(-)
+
 - New files: `vm0-test-env-with-token.yaml`, `vm0-test-env-without-token.yaml`, `config-validator.ts`, `t01-validation.bats`
 - Modified: build.ts, api-client.ts, env-expander.ts, event-renderer.ts, configs/route.ts, runs/route.ts, and test files
 
@@ -41,6 +44,7 @@ This comprehensive commit adds a validation system to catch missing environment 
 ### ⚠️ Issues Found
 
 **1. Potential ESLint Violation in Test - Line 143 of env-expander.test.ts**
+
 - **Issue**: Comment `// eslint-disable-next-line turbo/no-undeclared-env-vars` appears in test
 - **Category**: #14 - Prohibition of Lint/Type Suppressions
 - **Details**: The test file contains an eslint-disable comment instead of properly declaring the test environment variable
@@ -48,6 +52,7 @@ This comprehensive commit adds a validation system to catch missing environment 
 - **Severity**: Medium - Violates zero-tolerance suppression policy
 
 **2. Artificial Delay in Test - Line 218 of runs/route.test.ts**
+
 - **Issue**: `await new Promise((resolve) => setTimeout(resolve, 500))` artificial delay introduced
 - **Category**: #10 - Artificial Delays in Tests
 - **Details**: While the commit message explains this is for CI timing, artificial delays mask real async issues
@@ -58,11 +63,13 @@ This comprehensive commit adds a validation system to catch missing environment 
 
 **Critical - Fix ESLint Suppression:**
 The eslint-disable comment must be removed and either:
+
 1. Properly declare the environment variable in the test setup, or
 2. Use a fixture/helper that manages test environment variables properly
 
 **Address Artificial Delay:**
 Replace the artificial setTimeout delay with proper async/await patterns:
+
 ```typescript
 // Instead of:
 await new Promise((resolve) => setTimeout(resolve, 500));
@@ -75,6 +82,7 @@ await waitFor(() => {
 
 **Process Recommendation:**
 Before merging, ensure:
+
 1. ESLint suppression is removed and replaced with proper environment setup
 2. Artificial delay is replaced with event-based or condition-based waiting
 3. Run full lint/type check: `cd turbo && pnpm turbo run lint`
@@ -82,6 +90,7 @@ Before merging, ensure:
 ## Breaking Changes
 
 **API Changes - New Validation Behavior:**
+
 1. **POST /api/agent/configs**
    - Now validates that no unexpanded environment variables (`${VAR}`) remain in config
    - Returns 400 error if validation fails: `"Configuration contains unexpanded environment variables: VAR1, VAR2"`
@@ -91,10 +100,12 @@ Before merging, ensure:
    - Returns 400 error if validation fails: `"Missing required template variables: VAR1, VAR2"`
 
 **Impact:**
+
 - Clients must ensure environment variables are properly expanded before config creation
 - Clients must provide all required template variables when creating runs
 - This is a **non-breaking** change in the sense that it catches errors earlier, but clients need to handle new 400 error responses
 
 **CLI Changes:**
+
 - `vm0 build` now validates environment variables and fails early with clear error messages
 - This prevents silent failures during expansion, improving user experience

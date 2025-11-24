@@ -5,6 +5,7 @@
 ### Major Issues Found
 
 #### ⚠️ NEEDS FIXES - Commit d89e686
+
 **feat: implement phase 1 database schema and api framework with integration tests (#44)**
 
 This commit successfully re-implements the agent config feature (originally in f8a9b08) with integration tests, but has issues that need to be addressed:
@@ -15,6 +16,7 @@ This commit successfully re-implements the agent config feature (originally in f
 4. **Missing vi.clearAllMocks()** - Tests don't call `vi.clearAllMocks()` in beforeEach hooks
 
 **Positives**:
+
 - ✅ Uses real database (no mocking) - excellent integration testing approach
 - ✅ Zero TypeScript `any` types
 - ✅ No lint/type suppressions
@@ -28,6 +30,7 @@ This commit successfully re-implements the agent config feature (originally in f
 ### Critical Issues Found
 
 #### ❌ FAIL - Commit f8a9b08 (REVERTED)
+
 **feat: implement phase 1 database schema and api framework for agent configs**
 
 This commit had multiple critical issues and was correctly reverted in cd471c7:
@@ -47,42 +50,52 @@ This commit had multiple critical issues and was correctly reverted in cd471c7:
 ### Good Commits
 
 #### ✅ EXCELLENT - Commit a46585a
+
 **feat: add cli ci/cd pipeline with npm oidc publishing**
 
 Exemplary CI/CD implementation:
+
 - Real E2E tests against actual CLI binary (no mocking)
 - Proper BATS test framework usage
 - Secure OIDC publishing
 - Tests verify user-visible behavior
 
 #### ✅ GOOD - Commit e4fd5ed
+
 **feat: add e2b api key configuration**
 
 Clean configuration change:
+
 - Proper environment variable setup
 - No hardcoded values
 - Optional field with no fallbacks
 - Minor: Could add tests for optional validation
 
 #### ✅ GOOD - Commit 04612b2
+
 **fix: prevent overwriting existing ssl certificates**
 
 Infrastructure improvement:
+
 - Makes certificate generation idempotent
 - Maintains fail-fast behavior
 - Clear user communication
 
 #### ✅ GOOD - Commit 3a7d77a
+
 **fix(devcontainer): use dynamic port mapping for CLI compatibility**
 
 Infrastructure improvement:
+
 - Enables multiple devcontainers
 - Clean configuration change
 
 #### ✅ GOOD - Commit 78eef54
+
 **fix(proxy): update domain from vm0.dev to vm7.ai and fix certificate paths**
 
 Domain migration:
+
 - Consistent updates across all files
 - Proper documentation updates
 - No breaking changes
@@ -92,11 +105,13 @@ Domain migration:
 ### Administrative Commits
 
 #### N/A - Commit cd471c7
+
 **Revert "feat: implement phase 1 database schema and api framework for agent configs"**
 
 Pure revert commit - see f8a9b08 for analysis.
 
 #### N/A - Commit 1c793f7
+
 **chore: release main**
 
 Automated release-please commit - version bumps only.
@@ -114,6 +129,7 @@ Automated release-please commit - version bumps only.
 ## Key Patterns Observed
 
 ### Positive Patterns
+
 1. ✅ No `any` types used across all commits
 2. ✅ No lint/type suppression comments
 3. ✅ No dynamic imports
@@ -121,6 +137,7 @@ Automated release-please commit - version bumps only.
 5. ✅ Good E2E testing approach in CLI pipeline (a46585a)
 
 ### Issues to Watch
+
 1. ⚠️ Missing tests for some configuration changes
 2. ❌ Heavy database mocking in f8a9b08 (reverted)
 3. ❌ Defensive error handling patterns in f8a9b08 (reverted)
@@ -128,6 +145,7 @@ Automated release-please commit - version bumps only.
 ## Recommendations for Future Development
 
 ### When Re-implementing Agent Config Feature
+
 Based on f8a9b08 analysis:
 
 1. **Use Real Database in Tests**
@@ -156,6 +174,7 @@ Based on f8a9b08 analysis:
    - Verify actual data persistence
 
 ### General Best Practices
+
 1. Continue using real E2E tests like in a46585a
 2. Add unit tests for environment validation
 3. Maintain fail-fast approach in error handling

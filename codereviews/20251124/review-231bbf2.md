@@ -9,11 +9,13 @@
 This commit refactors the issue creation command system to be more flexible and principle-driven rather than template-based. The changes split functionality into three specialized commands:
 
 **New specialized commands:**
+
 - `issue-feature`: Create feature requests focused on user requirements and acceptance criteria
 - `issue-bug`: Create bug reports with reproduction steps and environment details
 - `issue-new`: Intelligently analyze conversation context to determine issue type automatically
 
 **Key improvements:**
+
 - Remove rigid templates in favor of principle-based guidance
 - Allow Agent to organize content naturally based on conversation context
 - Mandatory clarification step ensures accuracy before creation
@@ -22,6 +24,7 @@ This commit refactors the issue creation command system to be more flexible and 
 - Increased Agent autonomy while maintaining quality
 
 **Files affected:** 3 files changed, 320 insertions(+), 49 deletions(-)
+
 - New files: `issue-bug.md` (88 lines), `issue-feature.md` (83 lines)
 - Modified: `issue-new.md` (comprehensive refactor, 198 lines vs 49 lines)
 
@@ -42,6 +45,7 @@ This commit refactors the issue creation command system to be more flexible and 
 **None identified.** These are well-structured command documentation files without executable code.
 
 The refactor properly:
+
 - Replaces rigid templates with principle-based guidance
 - Maintains quality through clear, actionable principles
 - Provides flexibility while keeping consistency via Conventional Commits
@@ -54,6 +58,7 @@ The refactor properly:
 **No code changes needed.** This is a process improvement that provides better guidance for the Claude Code Agent.
 
 **Optional enhancements for future consideration:**
+
 1. Document how the three commands relate to each other in a README or guide
 2. Add examples of common issue types for each command to help users select the right one
 3. Consider creating a decision tree if Agent autonomy in `issue-new` needs additional guidance
@@ -64,6 +69,7 @@ The removal of the preview step in `issue-new` (now creates issues directly afte
 ## Breaking Changes
 
 **Workflow Changes:**
+
 1. **`issue-new` command now auto-determines issue type** instead of requiring user to specify
    - No user-facing breaking change since it now works automatically
    - Users no longer see a preview before creation (increased efficiency)
@@ -78,6 +84,7 @@ The removal of the preview step in `issue-new` (now creates issues directly afte
    - This is a consistency improvement, not a breaking change to functionality
 
 **Compatibility:**
+
 - No breaking changes to APIs or data structures
 - Purely a process/workflow improvement
 - Existing integrations continue to work as before

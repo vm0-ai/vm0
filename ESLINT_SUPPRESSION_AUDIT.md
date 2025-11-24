@@ -6,12 +6,12 @@
 
 ## Executive Summary
 
-| Category | Count | Status |
-|----------|-------|--------|
-| ESLint Suppressions | 4 | 🔴 Must Fix |
-| TypeScript Suppressions | 0 | ✅ Clean |
-| Prettier Suppressions | 0 | ✅ Clean |
-| OxLint Suppressions | 0 | ✅ Clean |
+| Category                | Count | Status      |
+| ----------------------- | ----- | ----------- |
+| ESLint Suppressions     | 4     | 🔴 Must Fix |
+| TypeScript Suppressions | 0     | ✅ Clean    |
+| Prettier Suppressions   | 0     | ✅ Clean    |
+| OxLint Suppressions     | 0     | ✅ Clean    |
 
 ## Violations Found
 
@@ -21,24 +21,28 @@
 **Occurrences:** 4
 
 #### Line 15-16
+
 ```typescript
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 process.env.TEST_TOKEN = "secret-token-123";
 ```
 
 #### Line 17-18
+
 ```typescript
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 process.env.TEST_USER = "testuser";
 ```
 
 #### Line 19-20
+
 ```typescript
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 process.env.TEST_REGION = "us-east-1";
 ```
 
 #### Line 319-320
+
 ```typescript
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 process.env.EMPTY_VAR = "";
@@ -51,16 +55,19 @@ The `turbo/no-undeclared-env-vars` rule requires all environment variables to be
 ### Fix Strategy
 
 **Option 1: Declare Test Environment Variables (Recommended)**
+
 - Create a test environment configuration file
 - Declare all test environment variables in turbo configuration
 - Remove suppression comments
 
 **Option 2: Use Vitest Environment Setup**
+
 - Move environment setup to `vitest.setup.ts`
 - Declare variables in test configuration
 - Remove suppression comments
 
 **Option 3: Mock process.env Properly**
+
 - Use vitest's `vi.stubEnv()` to mock environment variables
 - This approach is type-safe and follows testing best practices
 - Remove suppression comments
@@ -92,6 +99,7 @@ describe("env-expander", () => {
 ### Step 2: Update Line 319-320
 
 Replace:
+
 ```typescript
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 process.env.EMPTY_VAR = "";
@@ -99,6 +107,7 @@ const result = validateEnvVars(["EMPTY_VAR", "UNDEFINED_VAR"]);
 ```
 
 With:
+
 ```typescript
 vi.stubEnv("EMPTY_VAR", "");
 const result = validateEnvVars(["EMPTY_VAR", "UNDEFINED_VAR"]);
@@ -109,17 +118,20 @@ const result = validateEnvVars(["EMPTY_VAR", "UNDEFINED_VAR"]);
 After applying fixes:
 
 1. **Remove all suppression comments**
+
    ```bash
    # Verify no suppressions remain
    grep -r "eslint-disable" turbo/apps/cli/src/lib/__tests__/env-expander.test.ts
    ```
 
 2. **Run linter**
+
    ```bash
    cd turbo && pnpm turbo run lint
    ```
 
 3. **Run tests**
+
    ```bash
    cd turbo && pnpm vitest env-expander.test.ts
    ```
@@ -152,6 +164,7 @@ After applying fixes:
 ## Additional Notes
 
 The `vi.stubEnv()` and `vi.unstubAllEnvs()` methods are the recommended way to mock environment variables in Vitest. They provide:
+
 - Type safety
 - Automatic cleanup
 - Better isolation between tests

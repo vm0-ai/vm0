@@ -37,10 +37,12 @@ beforeEach(async () => {
 ## Mock Analysis
 
 **Mocks Used:**
+
 - `vi.mock("next/headers")` - Mock Next.js headers
 - `vi.mock("@clerk/nextjs/server")` - Mock authentication
 
 **Assessment:**
+
 - Appropriate mocking of external dependencies
 - Tests use real database (follows Bad Smell #7)
 - Mocks are focused on framework/auth, not business logic
@@ -48,6 +50,7 @@ beforeEach(async () => {
 ## Test Coverage
 
 **Strong Points:**
+
 - Authentication & authorization tests
 - Validation tests
 - Success scenarios

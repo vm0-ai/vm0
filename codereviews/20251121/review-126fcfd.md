@@ -9,6 +9,7 @@
 This commit standardizes configuration naming to use snake_case for reserved keywords, specifically renaming `dynamic-volumes` to `dynamic_volumes` throughout the codebase. This aligns with Docker Compose conventions for reserved keywords.
 
 Key changes:
+
 - Updated type definitions from `"dynamic-volumes"` to `dynamic_volumes`
 - Updated volume resolver with validation for deprecated format
 - Updated all test cases to use new naming
@@ -18,6 +19,7 @@ Key changes:
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Breaking change is clearly marked and documented in commit message
 - Proper migration path with helpful error message for users
 - Type-safe updates to interfaces
@@ -29,6 +31,7 @@ Key changes:
 ### ⚠️ Issues Found
 
 #### 1. **Acceptable Error Handling Pattern** (Error Handling - Good)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/volume-resolver.ts`
 - **Lines:** 73-79
 - **Issue:** Throws error for deprecated format
@@ -43,9 +46,11 @@ Key changes:
 - **Assessment:** ✅ This is appropriate error handling - fails fast with clear user guidance. No issue here.
 
 #### 2. **Type-Safe Interface Update** (Type Safety - Good)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/types.ts`
 - **Line:** 47
 - **Issue:** Changed from string literal `"dynamic-volumes"` to `dynamic_volumes`
+
   ```typescript
   // Before
   "dynamic-volumes"?: Record<string, VolumeConfig>;
@@ -53,15 +58,18 @@ Key changes:
   // After
   dynamic_volumes?: Record<string, VolumeConfig>;
   ```
+
 - **Assessment:** ✅ Proper TypeScript - no longer requires string literal property access, enabling better IDE support and type checking
 
 #### 3. **Test Coverage for Deprecated Format** (Test Coverage - Good)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/__tests__/volume-resolver.test.ts`
 - **Lines:** 265-286
 - **Issue:** New test case validates that old format is rejected
 - **Assessment:** ✅ Excellent - tests the migration path, ensures backward incompatibility is obvious to users
 
 #### 4. **Inconsistent Error Message Reference** (Documentation Quality)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/volume-resolver.ts`
 - **Line:** 99
 - **Issue:** Updated error message references both sources:
@@ -72,6 +80,7 @@ Key changes:
 - **Assessment:** ✅ Good - previous message was confusing with hyphenated reference
 
 #### 5. **Missing Deprecation Warning Phase** (Change Management)
+
 - **File:** All modified files
 - **Issue:** No intermediate phase where deprecated format shows warning but still works
 - **Problem:** This is a hard breaking change with no migration period. Users get an error immediately.
@@ -79,6 +88,7 @@ Key changes:
 - **Note:** The error message does make this discoverable, so acceptable for v1.0
 
 #### 6. **Configuration File Path Not Validated** (Implementation Detail)
+
 - **File:** `/workspaces/vm01/e2e/fixtures/configs/vm0-test-volume-dynamic.yaml`
 - **Line:** 12
 - **Issue:** Only one fixture file appears to be updated
@@ -86,6 +96,7 @@ Key changes:
 - **Recommendation:** Verify all config files have been updated through full codebase search
 
 #### 7. **No Migration Guide Created** (Documentation)
+
 - **File:** No migration guide found in commit
 - **Issue:** Users upgrading will get an error but might not know where to look
 - **Problem:** The inline error message helps, but comprehensive migration guide would be better
@@ -95,6 +106,7 @@ Key changes:
   - Automated migration script if possible
 
 #### 8. **Case Sensitivity Not Addressed** (Potential Issue)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/volume-resolver.ts`
 - **Lines:** 73-79
 - **Issue:** Check `if ("dynamic-volumes" in config)` is case-sensitive
@@ -102,17 +114,18 @@ Key changes:
 - **Recommendation:** Consider more lenient matching with helpful error:
   ```typescript
   const hasDeprecatedKey = Object.keys(config).some(
-    (key) => key.toLowerCase() === "dynamic-volumes"
+    (key) => key.toLowerCase() === "dynamic-volumes",
   );
   if (hasDeprecatedKey) {
     throw new Error(
       "Configuration error: 'dynamic-volumes' is deprecated. Use 'dynamic_volumes' instead (snake_case). " +
-      `Found: '${Object.keys(config).find(k => k.toLowerCase() === "dynamic-volumes")}'`
+        `Found: '${Object.keys(config).find((k) => k.toLowerCase() === "dynamic-volumes")}'`,
     );
   }
   ```
 
 #### 9. **Index Signature Not Updated** (Type Safety)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/types.ts`
 - **Issue:** Interface allows any property name via implicit index signature
   ```typescript
@@ -125,6 +138,7 @@ Key changes:
 - **Assessment:** This is acceptable since the runtime validation catches it
 
 #### 10. **Test All Call Sites Updated** (Test Coverage - Good)
+
 - **File:** `/workspaces/vm01/turbo/apps/web/src/lib/volume/__tests__/volume-resolver.test.ts`
 - **Lines:** 127, 168, 208
 - **Issue:** All test cases updated to use new naming
@@ -159,6 +173,7 @@ Key changes:
    - Enables easier format evolution in future
 
 ## Breaking Changes
+
 - **BREAKING CHANGE:** Configuration files must rename `dynamic-volumes:` to `dynamic_volumes:`
 - **Migration:** Users will receive clear error message with instructions
 - **Impact:** Required for all users with dynamic volume configurations

@@ -9,12 +9,14 @@
 This is a minimal documentation/UI fix correcting typos in the landing page CLI section. Single file change to `turbo/apps/web/app/components/LandingPage.tsx` with 2 lines modified.
 
 Changes:
+
 - Corrected typos in CLI section text
 - Minimal, focused fix with no code logic changes
 
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Focused, single-purpose change (typo corrections only)
 - No unnecessary refactoring or scope creep
 - Directly addresses user-facing text issues
@@ -29,6 +31,7 @@ None identified. This is a straightforward documentation fix.
 None required. The implementation is appropriate for the use case.
 
 ## Breaking Changes
+
 - None. This is purely cosmetic/text change.
 - No functional or behavioral changes.
 - No API or component signature changes.

@@ -27,10 +27,12 @@ vi.mock("@clerk/nextjs/server");
 **Assessment**: Mocks Next.js and Clerk APIs
 
 **Questions**:
+
 - Are real Clerk test helpers available?
 - Can Next.js headers be tested without mocking?
 
 **Recommendation**:
+
 - If mocks are necessary (no test environment), document why
 - Ensure mock behavior matches real APIs exactly
 - Consider integration tests with real Clerk if possible
@@ -42,12 +44,14 @@ vi.mock("@clerk/nextjs/server");
 **Lines 54-81, 395-402, 529-537, 610-618**
 
 Uses **real database operations**, not mocks:
+
 ```typescript
 await globalThis.services.db.select().from(AGENT_CONFIGS_TBL)
 await globalThis.services.db.insert(AGENT_RUNS_TBL).values(...)
 ```
 
 **Assessment**: ✅ Correct approach per Bad Smell #7
+
 - Uses real `globalThis.services.db`
 - Tests actual database integration
 - Verifies real database state
@@ -67,12 +71,14 @@ await globalThis.services.db.insert(AGENT_CONFIGS_TBL).values({
 ```
 
 **VIOLATION**: Bad Smell #12 prohibits direct DB operations for test setup
+
 - Should use API endpoints instead: `POST /api/agent-configs`
 - Direct DB operations duplicate business logic
 - Tests become brittle when schema changes
 - Bypasses validation and business rules
 
 **Recommendation**:
+
 ```typescript
 // ❌ Bad: Direct database insert
 await globalThis.services.db.insert(AGENT_CONFIGS_TBL).values({...});
@@ -102,6 +108,7 @@ const { configId } = await response.json();
 8. Lines 311-350: Testing 404 for wrong user's run
 
 **Pattern**:
+
 ```typescript
 it("should return 401 when ...", async () => {
   expect(response.status).toBe(401);
@@ -110,11 +117,13 @@ it("should return 401 when ...", async () => {
 ```
 
 **Problem**: Too focused on HTTP status validation, not business logic
+
 - Very repetitive pattern
 - Doesn't test meaningful workflows
 - Bad Smell #15: "Don't write repetitive tests for every 401/404/400 scenario"
 
 **Recommendation**: Consolidate into 2-3 comprehensive tests
+
 ```typescript
 describe("Authentication and Authorization", () => {
   it("should handle authentication errors", async () => {
@@ -142,6 +151,7 @@ describe("Request Validation", () => {
 ### ✅ GOOD: Test Structure and Organization
 
 **Excellent organization**:
+
 - Lines 108-194: Authentication tests grouped
 - Lines 200-290: Validation tests grouped
 - Lines 296-364: Authorization tests grouped
@@ -154,12 +164,14 @@ No pointless console mocking - lets output appear naturally.
 ### ✅ GOOD: Test Coverage Quality
 
 **Comprehensive coverage of important scenarios**:
+
 - Lines 439-521: Sequence number management
 - Lines 533-624: Data integrity
 - Lines 634-722: Batch processing
 - Edge cases well covered
 
 ### ✅ PASS: All Other Bad Smells
+
 - No `any` types
 - No fake timers
 - No dynamic imports
@@ -170,14 +182,17 @@ No pointless console mocking - lets output appear naturally.
 ## Recommendations
 
 ### 1. MEDIUM: Consolidate Status Code Tests
+
 **Lines**: 115-350 (8 separate tests)
 **Action**: Consolidate into 2-3 comprehensive error handling tests
 **Benefit**:
+
 - Less repetitive code
 - Focus on business logic
 - Easier to maintain
 
 **Example**:
+
 ```typescript
 // Instead of 8 separate tests, write 2-3:
 describe("Error Handling", () => {
@@ -196,14 +211,17 @@ describe("Error Handling", () => {
 ```
 
 ### 2. MEDIUM: Use API Endpoints for Test Setup
+
 **Lines**: 73-81, 206-213, 298-305
 **Action**: Replace direct DB inserts with API calls
 **Benefits**:
+
 - Tests use same code path as production
 - Catches business logic bugs
 - More resilient to schema changes
 
 ### 3. LOW: Document Why Next.js/Clerk Are Mocked
+
 **Lines**: 16-17
 **Action**: Add comment explaining why mocking is necessary
 **Alternative**: Investigate if real test helpers exist
@@ -228,18 +246,21 @@ Comprehensive test coverage with good organization. Main issues are over-emphasi
 ## Issues Summary
 
 ### Issue 1: Over-Testing Status Codes ❌
+
 - **Violation**: Bad Smell #15
 - **Severity**: MEDIUM
 - **Impact**: 8 repetitive tests focused on HTTP status codes
 - **Action**: Consolidate to 2-3 comprehensive tests
 
 ### Issue 2: Direct DB Operations ⚠️
+
 - **Violation**: Bad Smell #12
 - **Severity**: MEDIUM
 - **Impact**: Test setup bypasses API layer
 - **Action**: Use API endpoints for test data setup
 
 ### Issue 3: Framework Mocking ⚠️
+
 - **Violation**: Bad Smell #1 (potential)
 - **Severity**: LOW-MEDIUM
 - **Impact**: Reduced confidence in Next.js/Clerk integration
@@ -259,6 +280,7 @@ Comprehensive test coverage with good organization. Main issues are over-emphasi
 ## Code Examples
 
 ### Good Pattern (Real Database Usage)
+
 ```typescript
 // ✅ Good: Uses real database
 const result = await globalThis.services.db
@@ -268,6 +290,7 @@ const result = await globalThis.services.db
 ```
 
 ### Anti-Pattern (Direct DB Insert)
+
 ```typescript
 // ❌ Should use API instead
 await globalThis.services.db.insert(AGENT_CONFIGS_TBL).values({...});
@@ -277,15 +300,16 @@ await POST("/api/agent/configs", { json: {...} });
 ```
 
 ### Anti-Pattern (Too Many Status Tests)
+
 ```typescript
 // ❌ 8 separate tests for status codes
-it("should return 401 when not authenticated")
-it("should return 401 when token invalid")
-it("should return 401 when token expired")
-it("should return 400 when missing runId")
+it("should return 401 when not authenticated");
+it("should return 401 when token invalid");
+it("should return 401 when token expired");
+it("should return 400 when missing runId");
 // ... 4 more similar tests
 
 // ✅ Should be 2-3 comprehensive tests
-it("should handle authentication errors")
-it("should validate request body")
+it("should handle authentication errors");
+it("should validate request body");
 ```

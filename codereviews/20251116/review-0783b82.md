@@ -21,12 +21,14 @@ Added CI pipeline verification with auto-fix capabilities to issue-continue work
 ```
 
 **Why this is concerning:**
+
 - 30-second fixed intervals are arbitrary
 - 60-second wait is a magic number
-- Total worst case: 10 * 30s = 5 minutes of waiting
+- Total worst case: 10 \* 30s = 5 minutes of waiting
 - No adaptive waiting based on actual CI status
 
 **Recommendation:**
+
 - Use exponential backoff (10s, 20s, 40s, etc.)
 - Poll GitHub API for actual workflow status
 - Use `gh run watch` instead of fixed delays
@@ -42,6 +44,7 @@ Added CI pipeline verification with auto-fix capabilities to issue-continue work
 ```
 
 **Why this could be improved:**
+
 - Hard-coded magic numbers (2, 10)
 - Should be configurable
 - No clear rationale for these specific numbers
@@ -62,10 +65,12 @@ Good automation idea but uses hard-coded delays instead of event-driven status c
 ## Recommendations
 
 ### High Priority
+
 1. Replace fixed delays with `gh run watch` or GitHub API polling
 2. Use exponential backoff instead of fixed 30s intervals
 
 ### Medium Priority
+
 1. Make retry counts configurable
 2. Document why specific intervals were chosen
 3. Add timeout limits to prevent infinite waiting

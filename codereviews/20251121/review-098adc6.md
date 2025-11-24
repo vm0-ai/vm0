@@ -7,6 +7,7 @@
 ## Summary
 
 This commit implements the checkpoint system for preserving agent run state during execution. Key features:
+
 - New checkpoints table with database schema and migration
 - Checkpoint API endpoint (POST /api/webhooks/agent/checkpoints)
 - Checkpoint service with Git snapshot support
@@ -20,6 +21,7 @@ Total: ~1900 insertions including tests and database migrations.
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Comprehensive 12-test suite covering critical paths:
   - Authentication (2 tests): missing/invalid tokens
   - Validation (4 tests): required fields
@@ -62,16 +64,21 @@ Total: ~1900 insertions including tests and database migrations.
 ### 💡 Recommendations
 
 1. **Add field validation tests**: Verify that created_at, updated_at, and other metadata fields are correctly set:
+
    ```typescript
    it("should store checkpoint with correct metadata", async () => {
      // ... test code ...
-     const stored = await db.select().from(checkpoints).where(eq(checkpoints.id, result.id));
+     const stored = await db
+       .select()
+       .from(checkpoints)
+       .where(eq(checkpoints.id, result.id));
      expect(stored[0].createdAt).toBeInstanceOf(Date);
      expect(stored[0].updatedAt).toBeInstanceOf(Date);
    });
    ```
 
 2. **Improve bash error messages** in git operations:
+
    ```bash
    git push origin "$branch" || {
      echo "ERROR: Failed to push checkpoint for volume $volume_name: git push failed"
@@ -82,10 +89,12 @@ Total: ~1900 insertions including tests and database migrations.
 3. **Add logging for volume snapshots**: Track which volumes were snapshotted and which were skipped in checkpoint creation for debugging purposes.
 
 ## Breaking Changes
+
 - None. This is a new feature that doesn't affect existing functionality.
 - New checkpoints table is created via migration.
 - New API endpoint doesn't conflict with existing endpoints.
 
 ## Follow-up Issues
+
 - Commit 8e2ff1d addresses cascade delete issue
 - Commit 304f672 addresses session history path issues

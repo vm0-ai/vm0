@@ -9,6 +9,7 @@
 This is a minimal configuration change that adds a Docker named volume for persisting Codex data across container rebuilds. Single line addition to `.devcontainer/devcontainer.json` following the same pattern as other tool volumes (vercel, pnpm, mkcert, pki).
 
 Change:
+
 - Added `source=codex,target=/home/vscode/.codex` volume mount
 
 This ensures Codex-related data and cache are retained when the devcontainer is rebuilt.
@@ -16,6 +17,7 @@ This ensures Codex-related data and cache are retained when the devcontainer is 
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Follows existing volume mounting convention consistently with vercel, pnpm, mkcert, pki volumes
 - Minimal, focused change with single responsibility
 - Properly placed in devcontainer.json volumes array
@@ -32,6 +34,7 @@ None identified. This is a straightforward configuration addition following esta
 None required. The implementation is clean and appropriate for the use case.
 
 ## Breaking Changes
+
 - None. This is a purely additive configuration change.
 - Existing volume mounts remain unchanged.
 - Codex volume is created automatically by Docker on first use.

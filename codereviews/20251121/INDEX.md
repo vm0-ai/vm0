@@ -1,21 +1,24 @@
 # Code Review Index - November 21, 2025
 
 ## Overview
+
 This directory contains comprehensive code reviews for 6 commits analyzed against project standards defined in CLAUDE.md and specifications in /specs/bad-smell.md.
 
 ## Quick Navigation
 
 ### Review Files
-| Commit | Short SHA | Title | Status | Issues |
-|--------|-----------|-------|--------|--------|
-| 6f3d79c | 6f3d79c | Git Volume Driver Support | ✅ PASS | 0 critical, 3 minor |
-| 098adc6 | 098adc6 | Checkpoint API Endpoint | ✅ PASS | 0 critical, 4 minor |
-| 37ccecc | 37ccecc | Codex Volume Mount | ✅ PASS | 0 issues |
-| 8e2ff1d | 8e2ff1d | VM0 System Events | ⚠️ FAILING | 1 CRITICAL |
-| 304f672 | 304f672 | Checkpoint Resume | ✅ PASS | 0 critical, 2 minor |
-| eccd66b | eccd66b | Landing Page Typos | ✅ PASS | 0 issues |
+
+| Commit  | Short SHA | Title                     | Status     | Issues              |
+| ------- | --------- | ------------------------- | ---------- | ------------------- |
+| 6f3d79c | 6f3d79c   | Git Volume Driver Support | ✅ PASS    | 0 critical, 3 minor |
+| 098adc6 | 098adc6   | Checkpoint API Endpoint   | ✅ PASS    | 0 critical, 4 minor |
+| 37ccecc | 37ccecc   | Codex Volume Mount        | ✅ PASS    | 0 issues            |
+| 8e2ff1d | 8e2ff1d   | VM0 System Events         | ⚠️ FAILING | 1 CRITICAL          |
+| 304f672 | 304f672   | Checkpoint Resume         | ✅ PASS    | 0 critical, 2 minor |
+| eccd66b | eccd66b   | Landing Page Typos        | ✅ PASS    | 0 issues            |
 
 ### Key Files
+
 - `REVIEW_SUMMARY.md` - Executive summary with statistics and recommendations
 - `review-6f3d79c.md` - Git volume driver support review
 - `review-098adc6.md` - Checkpoint API endpoint review
@@ -27,6 +30,7 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 ## Critical Issues
 
 ### 🔴 CRITICAL: Commit 8e2ff1d - ESLint Disable Comments
+
 **File:** `turbo/apps/cli/src/lib/__tests__/env-expander.test.ts`
 **Lines:** 450, 452, 454
 **Issue:** Contains `// eslint-disable-next-line turbo/no-undeclared-env-vars` comments
@@ -35,6 +39,7 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 **Status:** MUST BE FIXED BEFORE MERGE
 
 ## Summary Statistics
+
 - Total Lines Reviewed: ~5,600
 - Total Commits: 6
 - Pass Rate: 83% (5/6)
@@ -43,6 +48,7 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 - Low Issues: 1
 
 ## Code Quality Metrics
+
 - Test Coverage: Strong (multiple 12+ test suites)
 - Architecture: Good (proper service abstractions)
 - Security: Good (token handling, auth checks)
@@ -52,19 +58,23 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 ## Recommendation Priorities
 
 ### 🚨 Immediate (Before Merge)
+
 1. Fix ESLint disable comments in 8e2ff1d
 
 ### ⏱️ Near Term (Before Release)
+
 1. Add integration tests for run-service
 2. Improve error messages in bash git operations
 3. Consider Git domain extensibility
 
 ### 🎯 Future Enhancements
+
 1. Monitor ExecutionContext growth
 2. Add volume snapshot logging
 3. Add checkpoint data validation
 
 ## Review Standards Applied
+
 - CLAUDE.md project guidelines
 - /specs/bad-smell.md bad code smell criteria
 - 15 code smell categories:
@@ -85,6 +95,7 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
   15. Bad Tests
 
 ## Analysis Methodology
+
 1. Git commit extraction via `git show <hash>`
 2. Code change analysis against bad smell criteria
 3. Pattern identification (imports, error handling, mocking, etc.)
@@ -93,6 +104,7 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 6. Compliance with CLAUDE.md guidelines
 
 ## How to Use These Reviews
+
 1. Start with `REVIEW_SUMMARY.md` for executive overview
 2. Review individual `review-<sha>.md` files for detailed analysis
 3. Check CRITICAL Issues section for blocking items
@@ -100,8 +112,9 @@ This directory contains comprehensive code reviews for 6 commits analyzed agains
 5. Reference specific file paths and line numbers for implementations
 
 ## Generated Date
+
 November 24, 2025
 
 ## Review Author
-Claude Code Review System
 
+Claude Code Review System

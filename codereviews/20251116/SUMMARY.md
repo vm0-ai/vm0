@@ -13,6 +13,7 @@ Reviewed 10 recent commits focusing on code quality, bad smells, and adherence t
 ### 1. Artificial Delays in Tests (Bad Smell #10)
 
 **Affected Commits:**
+
 - a551950 (event streaming)
 - 8eb2d21 (CLI e2e automation)
 - 0783b82 (CI verification)
@@ -21,17 +22,20 @@ Reviewed 10 recent commits focusing on code quality, bad smells, and adherence t
 
 **Issue:**
 Multiple uses of `setTimeout` and arbitrary delays in test and automation code:
+
 - Event streaming tests: 100ms, 200ms delays
 - E2E automation: 100ms polling, 2000ms waits, 15000ms timeouts
 - CI workflow: 30s intervals, 60s delays
 
 **Impact:**
+
 - Flaky tests
 - Slow CI/CD pipelines
 - Hidden race conditions
 - Unpredictable behavior
 
 **Recommendation:**
+
 - Replace all `setTimeout` with event-driven patterns
 - Use proper async/await and event emitters
 - Replace polling with event listeners
@@ -44,18 +48,21 @@ Multiple uses of `setTimeout` and arbitrary delays in test and automation code:
 **Severity:** High
 
 **Issue:**
+
 ```typescript
 // turbo/apps/cli/src/lib/config.ts
 return config.apiUrl ?? "https://www.vm0.ai";
 ```
 
 **Why This Violates Principles:**
+
 - Project spec (Bad Smell #13): "No fallback/recovery logic - errors should fail immediately"
 - Silently falls back to production API
 - Hides configuration errors
 - Risk of developers/tests accidentally hitting production
 
 **Previous (Better) Implementation:**
+
 ```typescript
 if (!targetApiUrl) {
   console.error(chalk.red("No API host configured..."));
@@ -64,6 +71,7 @@ if (!targetApiUrl) {
 ```
 
 **Recommendation:**
+
 - Remove hardcoded production fallback
 - Restore fail-fast error handling
 - Require explicit API_HOST configuration
@@ -75,6 +83,7 @@ if (!targetApiUrl) {
 **Severity:** High
 
 **Issue:**
+
 ```typescript
 // turbo/apps/web/app/api/agent/runs/route.ts
 e2bService
@@ -87,31 +96,35 @@ return successResponse(response, 201);
 ```
 
 **Impact:**
+
 - In serverless (Vercel), function may freeze before async operations complete
 - Database updates may not persist
 - Error logging may not execute
 - No guarantee of reliability
 
 **Recommendation:**
+
 - Use job queue for reliable async execution
 - Or document serverless limitations
 - Consider message queue (e.g., Inngest, BullMQ)
 
 ## Bad Smell Violations Summary
 
-| Bad Smell | Commits | Severity |
-|-----------|---------|----------|
-| #10 - Artificial Delays | a551950, 8eb2d21, 0783b82 | High |
-| #13 - Fallback Patterns | 8eb2d21 | High |
-| #3 - Fire-and-Forget | a551950 | High |
-| #11 - Hardcoded URLs | 8eb2d21 | Medium |
+| Bad Smell               | Commits                   | Severity |
+| ----------------------- | ------------------------- | -------- |
+| #10 - Artificial Delays | a551950, 8eb2d21, 0783b82 | High     |
+| #13 - Fallback Patterns | 8eb2d21                   | High     |
+| #3 - Fire-and-Forget    | a551950                   | High     |
+| #11 - Hardcoded URLs    | 8eb2d21                   | Medium   |
 
 ## Excellent Examples ✅
 
 ### dd886b9 - Webhook API Tests
+
 **Rating:** ⭐⭐⭐⭐⭐
 
 Perfect example of well-written tests:
+
 - ✅ vi.clearAllMocks() in beforeEach
 - ✅ No setTimeout/delays
 - ✅ Real database operations
@@ -122,9 +135,11 @@ Perfect example of well-written tests:
 **Use as template for future test files.**
 
 ### b15a24b - E2B Service Mocking
+
 **Rating:** ⭐⭐⭐⭐⭐
 
 Excellent mocking strategy:
+
 - ✅ Appropriate external API mocking
 - ✅ 99.99% speed improvement (10-20 min → 8ms)
 - ✅ No network dependencies
@@ -142,12 +157,12 @@ Excellent mocking strategy:
 
 ## Commit Risk Assessment
 
-| Risk Level | Count | Commits |
-|------------|-------|---------|
-| 🔴 High | 0 | - |
-| 🟡 Medium-High | 1 | 8eb2d21 |
-| 🟠 Medium | 2 | a551950, 0783b82 |
-| 🟢 Low | 7 | All others |
+| Risk Level     | Count | Commits          |
+| -------------- | ----- | ---------------- |
+| 🔴 High        | 0     | -                |
+| 🟡 Medium-High | 1     | 8eb2d21          |
+| 🟠 Medium      | 2     | a551950, 0783b82 |
+| 🟢 Low         | 7     | All others       |
 
 ## Action Items by Priority
 
@@ -242,6 +257,7 @@ The codebase demonstrates strong adherence to project principles in most areas (
 3. Fire-and-forget async (unreliable in serverless)
 
 These issues should be addressed before the next release to prevent:
+
 - Flaky tests and slow CI/CD
 - Production incidents from hidden configuration errors
 - Data consistency issues in serverless environments
@@ -249,6 +265,7 @@ These issues should be addressed before the next release to prevent:
 ## Detailed Reviews
 
 See individual commit reviews for full analysis:
+
 - [commit-list.md](commit-list.md) - Links to all reviews
 - [review-a551950.md](review-a551950.md) - Event streaming
 - [review-8eb2d21.md](review-8eb2d21.md) - CLI e2e automation

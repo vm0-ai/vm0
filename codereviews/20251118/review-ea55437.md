@@ -22,6 +22,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 1. Mock Analysis ✅ PASS
 
 **Findings:**
+
 - No mocks are used in the implementation code
 - Integration tests (`webhooks.test.ts`) use real database operations
 - Unit tests (`webhook-auth.test.ts`) test the authentication logic without mocks
@@ -31,6 +32,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 2. Test Coverage ✅ PASS
 
 **Findings:**
+
 - Comprehensive test coverage for webhook authentication (`webhook-auth.test.ts`):
   - Token generation uniqueness
   - Token validation with correct/incorrect tokens
@@ -49,6 +51,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 3. Error Handling ✅ PASS
 
 **Findings:**
+
 - Minimal try/catch usage in `route.ts` - only at the top-level handler
 - Errors are allowed to propagate naturally:
   - `validateWebhookToken()` throws errors that bubble up
@@ -61,7 +64,9 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 4. Interface Changes ✅ PASS
 
 **Findings:**
+
 - New public interfaces defined in `/src/types/webhook.ts`:
+
   ```typescript
   export interface AgentEvent {
     type: string;
@@ -81,6 +86,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
     lastSequence: number;
   }
   ```
+
 - New environment variable: `VM0_API_URL`
 - New API endpoint: `POST /api/webhooks/agent-events`
 - New exported functions in `webhook-auth.ts`:
@@ -92,6 +98,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 5. Timer and Delay Analysis ✅ PASS
 
 **Findings:**
+
 - No artificial delays in production code
 - No `setTimeout` or `setInterval` usage
 - No `useFakeTimers` or timer mocking in tests
@@ -102,6 +109,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 6. Dynamic Imports ✅ PASS
 
 **Findings:**
+
 - All imports are static
 - No `await import()` or dynamic `import()` calls
 - Proper static imports at file tops
@@ -111,6 +119,7 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 7. Database and Service Mocking in Web Tests ✅ PASS
 
 **Findings:**
+
 - Integration tests use real database via `globalThis.services.db`
 - No mocking of `globalThis.services`
 - Proper test data setup with actual database operations
@@ -121,12 +130,14 @@ This commit implements a webhook endpoint for receiving and storing agent events
 ### 8. Test Mock Cleanup ⚠️ NEEDS IMPROVEMENT
 
 **Findings:**
+
 - `webhook-auth.test.ts`: No mocks used, so cleanup not needed
 - `webhooks.test.ts`: No `vi.clearAllMocks()` in `beforeEach`
 
 **Issue:** While this specific test file doesn't create mocks that would leak, following the standard practice would improve consistency.
 
 **Recommendation:**
+
 ```typescript
 beforeEach(async () => {
   vi.clearAllMocks(); // Add this line
@@ -138,6 +149,7 @@ beforeEach(async () => {
 ### 9. TypeScript `any` Type Usage ✅ PASS
 
 **Findings:**
+
 - No usage of `any` type anywhere in the code
 - Proper type definitions throughout
 - Uses `Record<string, unknown>` for flexible objects instead of `any`
@@ -148,6 +160,7 @@ beforeEach(async () => {
 ### 10. Artificial Delays in Tests ✅ PASS
 
 **Findings:**
+
 - No `setTimeout` or artificial delays in tests
 - No `vi.useFakeTimers()` usage
 - All async operations use proper `await` patterns
@@ -159,23 +172,28 @@ beforeEach(async () => {
 
 **Findings:**
 In `env.ts`:
+
 ```typescript
 VM0_API_URL: z.string().url().optional().default("http://localhost:3000"),
 ```
 
 In `e2b-service.ts`:
+
 ```typescript
 const webhookUrl =
   globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
 ```
 
 **Issues:**
+
 1. Hardcoded default URL in environment configuration
 2. Fallback pattern in `e2b-service.ts` violates the "Avoid Fallback Patterns" principle
 
 **Recommendations:**
+
 1. Remove the `.default()` from the Zod schema - make it required or explicitly optional
 2. Remove the fallback in `e2b-service.ts` - let it fail if not configured:
+
 ```typescript
 const webhookUrl = globalThis.services.env.VM0_API_URL;
 if (!webhookUrl) {
@@ -186,6 +204,7 @@ if (!webhookUrl) {
 ### 12. Direct Database Operations in Tests ⚠️ DISCUSSION NEEDED
 
 **Findings:**
+
 - Integration tests use direct database operations for test setup:
   ```typescript
   await globalThis.services.db.insert(apiKeys).values({...})
@@ -195,6 +214,7 @@ if (!webhookUrl) {
 
 **Analysis:**
 This is a nuanced situation. While smell #12 recommends using API endpoints for test data setup, in this specific case:
+
 - The tests are testing the webhook API itself
 - There are no existing API endpoints for creating runtimes (that's internal infrastructure)
 - Using direct DB operations for test fixtures is appropriate for infrastructure testing
@@ -205,6 +225,7 @@ This is a nuanced situation. While smell #12 recommends using API endpoints for 
 
 **Findings:**
 In `e2b-service.ts`:
+
 ```typescript
 const webhookUrl =
   globalThis.services?.env?.VM0_API_URL || "http://localhost:3000";
@@ -213,11 +234,12 @@ const webhookUrl =
 **Issue:** This fallback pattern violates the "fail fast" principle. If `VM0_API_URL` is not configured, the code should fail with a clear error rather than falling back to a hardcoded localhost URL.
 
 **Recommendation:**
+
 ```typescript
 const webhookUrl = globalThis.services.env.VM0_API_URL;
 if (!webhookUrl) {
   throw new Error(
-    "VM0_API_URL environment variable is required for webhook integration"
+    "VM0_API_URL environment variable is required for webhook integration",
   );
 }
 ```
@@ -225,6 +247,7 @@ if (!webhookUrl) {
 ### 14. Prohibition of Lint/Type Suppressions ✅ PASS
 
 **Findings:**
+
 - No `// eslint-disable` comments
 - No `// @ts-ignore` or `// @ts-nocheck` comments
 - No `// prettier-ignore` comments
@@ -235,6 +258,7 @@ if (!webhookUrl) {
 ### 15. Avoid Bad Tests ✅ PASS
 
 **Findings:**
+
 - **No fake tests**: Tests execute real code paths with real database
 - **No implementation duplication**: Tests verify behavior, not implementation
 - **Error response testing**: Balanced approach - tests meaningful error scenarios without excessive boilerplate
@@ -250,15 +274,18 @@ if (!webhookUrl) {
 ## Issues Summary
 
 ### Critical Issues
+
 None
 
 ### Important Issues
+
 1. **Hardcoded URL and Fallback Pattern** (Smells #11, #13)
    - Location: `/turbo/apps/web/src/env.ts` and `/turbo/apps/web/src/lib/e2b/e2b-service.ts`
    - Issue: Hardcoded default URL and fallback pattern violate fail-fast principles
    - Impact: Hides misconfiguration issues that should fail during deployment
 
 ### Minor Issues
+
 1. **Missing Mock Cleanup** (Smell #8)
    - Location: `/turbo/apps/web/src/lib/api/__tests__/webhooks.test.ts`
    - Issue: Missing `vi.clearAllMocks()` in `beforeEach`
@@ -267,7 +294,9 @@ None
 ## Recommendations
 
 ### High Priority
+
 1. **Remove fallback pattern in e2b-service.ts:**
+
    ```typescript
    // Remove this:
    const webhookUrl =
@@ -277,12 +306,13 @@ None
    const webhookUrl = globalThis.services.env.VM0_API_URL;
    if (!webhookUrl) {
      throw new Error(
-       "VM0_API_URL environment variable is required for webhook integration"
+       "VM0_API_URL environment variable is required for webhook integration",
      );
    }
    ```
 
 2. **Update env.ts to require VM0_API_URL or make it explicitly optional:**
+
    ```typescript
    // Option 1: Make it required
    VM0_API_URL: z.string().url(),
@@ -292,6 +322,7 @@ None
    ```
 
 ### Low Priority
+
 3. **Add vi.clearAllMocks() to test beforeEach for consistency:**
    ```typescript
    beforeEach(async () => {
@@ -322,9 +353,11 @@ While the implementation quality is generally high with excellent test coverage 
 2. These issues could hide configuration problems in production
 
 ### Recommendation
+
 The commit should be amended to remove the fallback patterns and hardcoded defaults. The code quality is otherwise excellent, but these specific violations go against core project principles that are designed to prevent silent failures in production.
 
 ### Severity Assessment
+
 - **Critical Issues:** 0
 - **Important Issues:** 1 (hardcoded URL + fallback pattern, related violations)
 - **Minor Issues:** 1 (missing mock cleanup)

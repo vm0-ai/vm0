@@ -7,6 +7,7 @@
 ## Summary
 
 This commit adds comprehensive support for mounting Git repositories as dynamic volumes in agent configurations. Key features include:
+
 - New Git volume driver alongside existing S3 driver
 - HTTPS Git URL support with token-based authentication
 - Template variable replacement in Git URIs (e.g., {{user}})
@@ -19,6 +20,7 @@ The implementation spans 714 insertions across git client utilities, volume reso
 ## Code Smell Analysis
 
 ### ✅ Good Practices
+
 - Well-structured git-client.ts with clear utility functions (validateGitUrl, normalizeGitUrl, buildAuthenticatedUrl, sanitizeGitUrlForLogging, buildGitCloneCommand)
 - Strong test coverage with 26 new unit tests covering positive and negative scenarios
 - Proper URL handling and token sanitization for security (masking credentials in logs)
@@ -52,6 +54,7 @@ The implementation spans 714 insertions across git client utilities, volume reso
 ### 💡 Recommendations
 
 1. In `sanitizeGitUrlForLogging()`, replace the silent catch with:
+
    ```typescript
    export function sanitizeGitUrlForLogging(url: string): string {
      try {
@@ -65,6 +68,7 @@ The implementation spans 714 insertions across git client utilities, volume reso
      }
    }
    ```
+
    This approach is acceptable as it handles both valid URLs and custom formats appropriately.
 
 2. Consider adding configuration option for default Git domain (currently hardcoded to GitHub) to support enterprise Git platforms in future.
@@ -75,5 +79,6 @@ The implementation spans 714 insertions across git client utilities, volume reso
    - Malformed URIs
 
 ## Breaking Changes
+
 - None. This is a backward-compatible addition that extends VolumeConfig with new git driver option.
 - Existing S3 volumes continue to work unchanged.

@@ -30,6 +30,7 @@ Fixed mismatches in environment variable naming and auth header format between E
 Having different environment variable names in different places suggests lack of centralized configuration.
 
 **Recommendation:**
+
 - Consider centralizing env var names in a config file
 - Use TypeScript constants for env var keys
 - This prevents future mismatches
@@ -44,6 +45,7 @@ Good bug fix that standardizes auth. Consider centralizing configuration to prev
 ## Recommendations
 
 ### Medium Priority
+
 1. Centralize environment variable names in a config file
 2. Add validation that required env vars are set
 3. Consider using a type-safe env config library
