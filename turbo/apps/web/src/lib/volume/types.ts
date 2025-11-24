@@ -23,6 +23,7 @@ export interface ResolvedVolume {
   gitUri?: string;
   gitBranch?: string;
   gitToken?: string;
+  vm0VolumeName?: string;
 }
 
 /**

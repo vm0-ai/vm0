@@ -105,10 +105,14 @@ export function resolveVolumes(
       }
 
       // Validate driver
-      if (volumeConfig.driver !== "s3fs" && volumeConfig.driver !== "git") {
+      if (
+        volumeConfig.driver !== "s3fs" &&
+        volumeConfig.driver !== "git" &&
+        volumeConfig.driver !== "vm0"
+      ) {
         errors.push({
           volumeName,
-          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: s3fs, git.`,
+          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: s3fs, git, vm0.`,
           type: "invalid_uri",
         });
         continue;
@@ -201,6 +205,47 @@ export function resolveVolumes(
           gitUri: normalizedUrl,
           gitBranch: branch,
           gitToken: volumeConfig.driver_opts.token,
+        });
+      }
+
+      // Handle VM0 volumes
+      if (volumeConfig.driver === "vm0") {
+        // Replace template variables in URI
+        const { uri, missingVars } = replaceTemplateVars(
+          volumeConfig.driver_opts.uri,
+          dynamicVars,
+        );
+
+        if (missingVars.length > 0) {
+          errors.push({
+            volumeName,
+            message: `Missing required variables: ${missingVars.join(", ")}`,
+            type: "missing_variable",
+          });
+          continue;
+        }
+
+        // Parse vm0:// URI
+        const vm0UriPattern = /^vm0:\/\/(.+)$/;
+        const match = uri.match(vm0UriPattern);
+
+        if (!match) {
+          errors.push({
+            volumeName,
+            message: `Invalid VM0 URI: ${uri}. Expected format: vm0://volume-name`,
+            type: "invalid_uri",
+          });
+          continue;
+        }
+
+        const vm0VolumeName = match[1];
+
+        // Add resolved VM0 volume
+        volumes.push({
+          name: volumeName,
+          driver: "vm0",
+          mountPath,
+          vm0VolumeName,
         });
       }
     } catch (error) {

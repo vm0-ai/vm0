@@ -13,6 +13,7 @@ import {
 import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
+import type { ExecutionContext } from "../../../../../src/lib/run/types";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -176,17 +177,19 @@ describe("POST /api/agent/runs - Async Execution", () => {
     it("should update run status to 'completed' after E2B execution finishes successfully", async () => {
       // Mock successful run execution that completes immediately
       mockRunService.createRunContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockImplementation(async (context: never) => {
-        return {
-          runId: (context as { runId?: string }).runId || "test-run-id",
-          status: "completed" as const,
-          sandboxId: "test-sandbox-123",
-          output: "Success! Task completed.",
-          executionTimeMs: 5000,
-          createdAt: new Date(),
-          completedAt: new Date(),
-        };
-      });
+      mockRunService.executeRun.mockImplementation(
+        async (context: ExecutionContext) => {
+          return {
+            runId: context.runId || "test-run-id",
+            status: "completed" as const,
+            sandboxId: "test-sandbox-123",
+            output: "Success! Task completed.",
+            executionTimeMs: 5000,
+            createdAt: new Date(),
+            completedAt: new Date(),
+          };
+        },
+      );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",

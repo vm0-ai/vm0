@@ -25,6 +25,15 @@ export interface DownloadResult {
 }
 
 /**
+ * Result of uploading directory to S3
+ */
+export interface UploadResult {
+  s3Prefix: string;
+  filesUploaded: number;
+  totalBytes: number;
+}
+
+/**
  * S3 download error
  */
 export class S3DownloadError extends Error {
@@ -36,5 +45,20 @@ export class S3DownloadError extends Error {
   ) {
     super(message);
     this.name = "S3DownloadError";
+  }
+}
+
+/**
+ * S3 upload error
+ */
+export class S3UploadError extends Error {
+  constructor(
+    message: string,
+    public readonly bucket: string,
+    public readonly key?: string,
+    public readonly cause?: Error,
+  ) {
+    super(message);
+    this.name = "S3UploadError";
   }
 }
