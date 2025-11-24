@@ -283,4 +283,170 @@ describe("VolumeService", () => {
       expect(fs.promises.rm).toHaveBeenCalled();
     });
   });
+
+  describe("prepareVolumesFromSnapshots", () => {
+    it("should prepare Git volume from snapshot with correct branch", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["user-workspace:/home/user/workspace"],
+        },
+        dynamic_volumes: {
+          "user-workspace": {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/{{user}}/question.git",
+              branch: "main",
+              token: "${CI_GITHUB_TOKEN}",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "user-workspace",
+          driver: "git" as const,
+          mountPath: "/home/user/workspace",
+          snapshot: {
+            branch: "run-test-run-123",
+            commitId: "abc123def456",
+          },
+        },
+      ];
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "user-workspace",
+            driver: "git",
+            gitUri: "https://github.com/lancy/question.git",
+            gitBranch: "main",
+            gitToken: "test-token",
+            mountPath: "/home/user/workspace",
+          },
+        ],
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        { user: "lancy" },
+      );
+
+      expect(result.preparedVolumes).toHaveLength(1);
+      expect(result.preparedVolumes[0]).toEqual({
+        name: "user-workspace",
+        driver: "git",
+        mountPath: "/home/user/workspace",
+        gitUri: "https://github.com/lancy/question.git",
+        gitBranch: "run-test-run-123",
+        gitToken: "test-token",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should return error when snapshot is missing snapshot data", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["user-workspace:/home/user/workspace"],
+        },
+        dynamic_volumes: {
+          "user-workspace": {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/{{user}}/question.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "user-workspace",
+          driver: "git" as const,
+          mountPath: "/home/user/workspace",
+        },
+      ];
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "user-workspace",
+            driver: "git",
+            gitUri: "https://github.com/lancy/question.git",
+            gitBranch: "main",
+            mountPath: "/home/user/workspace",
+          },
+        ],
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        { user: "lancy" },
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(
+        "user-workspace: Failed to prepare snapshot",
+      );
+      expect(result.errors[0]).toContain("Git snapshot missing snapshot data");
+    });
+
+    it("should return error when snapshot is missing branch name", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["user-workspace:/home/user/workspace"],
+        },
+        dynamic_volumes: {
+          "user-workspace": {
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/{{user}}/question.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "user-workspace",
+          driver: "git" as const,
+          mountPath: "/home/user/workspace",
+          snapshot: {
+            branch: "",
+            commitId: "abc123",
+          },
+        },
+      ];
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "user-workspace",
+            driver: "git",
+            gitUri: "https://github.com/lancy/question.git",
+            gitBranch: "main",
+            mountPath: "/home/user/workspace",
+          },
+        ],
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        { user: "lancy" },
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("Git snapshot missing branch name");
+    });
+  });
 });
