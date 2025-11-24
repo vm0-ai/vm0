@@ -128,7 +128,7 @@ export default function LandingPage() {
                 />
               </div>
               <span className="tagline">
-                Build and evolve AI agents, just natural language
+                Build and evolve AI agents in natural language.
               </span>
             </div>
             <div className="nav-right">
@@ -146,12 +146,11 @@ export default function LandingPage() {
           <div className="hero-grid">
             <div className="hero-text">
               <h1 className="hero-title">
-                Modern and simple infrastructure for agent development
+                The modern runtime for agent-native development
               </h1>
               <p className="hero-description">
-                Shift from workflows to natural-language CLI agents. VM0 gives
-                you a built-in sandbox with everything needed to build modern
-                agents.
+                Infrastructure for AI agents, not workflows. VM0&apos;s built-in sandbox 
+                gives you everything you need to design, run, and iterate on modern agents.
               </p>
               <div className="hero-buttons">
                 <Link href="/sign-up" className="btn-primary-large">
@@ -249,11 +248,9 @@ export default function LandingPage() {
         <div className="container">
           <h2 className="section-title">Build agents in a modern way</h2>
           <p className="section-description">
-            Building agents today is still too complicated. Platforms like E2B,
-            Modal, and Daytona run containers, but they don&apos;t understand
-            how agents actually work. Tools like N8N rely on rigid,
-            workflow-based execution and aren&apos;t intelligent enough for real
-            agent behavior.
+            Today&apos;s options fall into two buckets: tools that only run containers, 
+            and workflow builders that are too rigid for real agent behavior. Developers still lack an environment built for agent-native execution. VM0 bridges 
+            this gap with an end to end agent-native runtime.
           </p>
 
           <div className="comparison-wrapper">
@@ -328,7 +325,7 @@ export default function LandingPage() {
             Support all kinds of CLI-based agents
           </h2>
           <p className="section-description">
-            Leverage Claude Code, Codex, Gemini, and other CLI agents to build
+            Use Claude Code, Codex, Gemini, and other CLI agents to build
             your own. VM0 fits into any agent development and provides the
             infrastructure you need to create vertical, end-user-facing agents.
           </p>
