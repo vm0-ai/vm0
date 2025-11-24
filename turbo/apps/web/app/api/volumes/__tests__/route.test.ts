@@ -57,27 +57,23 @@ vi.mock("../../../../src/lib/s3/s3-client", () => ({
 // Mock AdmZip
 vi.mock("adm-zip", () => {
   return {
-    default: vi.fn().mockImplementation(() => {
-      // Mock for POST - extracting uploaded zip (receives string path)
-      // or GET - creating zip to download (receives nothing)
-      return {
-        extractAllTo: vi.fn(),
-        addLocalFolder: vi.fn(),
-        writeZip: vi.fn(),
-        getEntries: vi.fn().mockReturnValue([
-          {
-            entryName: "file1.txt",
-            isDirectory: false,
-            getData: vi.fn().mockReturnValue(Buffer.from("content1")),
-          },
-          {
-            entryName: "file2.txt",
-            isDirectory: false,
-            getData: vi.fn().mockReturnValue(Buffer.from("content2")),
-          },
-        ]),
-      };
-    }),
+    default: vi.fn().mockImplementation(() => ({
+      extractAllTo: vi.fn(),
+      addLocalFolder: vi.fn(),
+      writeZip: vi.fn(),
+      getEntries: vi.fn().mockReturnValue([
+        {
+          entryName: "file1.txt",
+          isDirectory: false,
+          getData: vi.fn().mockReturnValue(Buffer.from("content1")),
+        },
+        {
+          entryName: "file2.txt",
+          isDirectory: false,
+          getData: vi.fn().mockReturnValue(Buffer.from("content2")),
+        },
+      ]),
+    })),
   };
 });
 
