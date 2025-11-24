@@ -20,8 +20,11 @@ teardown() {
 }
 
 @test "Initialize volume in directory" {
-    cd "$TEST_VOLUME_DIR"
-    run $CLI_COMMAND volume init "$VOLUME_NAME"
+    # Create directory with volume name for auto-detection
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+
+    run $CLI_COMMAND volume init
     assert_success
     assert_output --partial "$VOLUME_NAME"
 
@@ -38,17 +41,22 @@ teardown() {
 }
 
 @test "volume init rejects invalid volume name" {
-    cd "$TEST_VOLUME_DIR"
-    run $CLI_COMMAND volume init "INVALID_NAME"
+    # Create directory with invalid name (uppercase)
+    mkdir -p "$TEST_VOLUME_DIR/INVALID_NAME"
+    cd "$TEST_VOLUME_DIR/INVALID_NAME"
+
+    run $CLI_COMMAND volume init
     assert_failure
     assert_output --partial "Invalid volume name"
 }
 
 @test "Push volume to cloud" {
-    cd "$TEST_VOLUME_DIR"
+    # Create directory with volume name and initialize
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
 
     # Initialize volume
-    $CLI_COMMAND volume init "$VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume init >/dev/null
 
     # Create test files
     echo "Hello from E2E test" > test-file.txt
@@ -67,7 +75,13 @@ teardown() {
     NEW_DIR="$(mktemp -d)"
     cd "$NEW_DIR"
 
-    run $CLI_COMMAND volume pull "$VOLUME_NAME"
+    # Create .vm0/volume.yaml config to specify which volume to pull
+    mkdir -p .vm0
+    cat > .vm0/volume.yaml <<EOF
+name: $VOLUME_NAME
+EOF
+
+    run $CLI_COMMAND volume pull
     assert_success
     assert_output --partial "Downloading"
 
@@ -79,6 +93,9 @@ teardown() {
 }
 
 @test "Run agent with vm0:// volume - read uploaded file" {
+    # Build the agent config first
+    $CLI_COMMAND build "$TEST_VM0_VOLUME_CONFIG" >/dev/null
+
     # Note: This test depends on the previous push succeeding
     run $CLI_COMMAND run vm0-test-vm0-volume \
         "Read the file at /workspace/test-file.txt and tell me exactly what it says"
