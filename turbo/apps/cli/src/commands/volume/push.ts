@@ -120,11 +120,13 @@ export const pushCommand = new Command()
 
       const result = (await response.json()) as {
         volumeName: string;
+        versionId: string;
         size: number;
         fileCount: number;
       };
 
       console.log(chalk.green("✓ Upload complete"));
+      console.log(chalk.gray(`  Version: ${result.versionId}`));
       console.log(chalk.gray(`  Files: ${result.fileCount.toLocaleString()}`));
       console.log(chalk.gray(`  Size: ${formatBytes(result.size)}`));
     } catch (error) {
