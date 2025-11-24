@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { getApiUrl, saveConfig, getToken, clearConfig } from "../config";
 import { existsSync } from "fs";
 import { readFile, unlink, mkdir } from "fs/promises";
@@ -25,6 +25,7 @@ describe("config", () => {
   afterEach(async () => {
     // Restore original env vars
     process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
     // Clean up test config
     if (existsSync(CONFIG_FILE)) {
       await unlink(CONFIG_FILE);
@@ -72,8 +73,7 @@ describe("config", () => {
 
     it("should not read from API_HOST environment variable", async () => {
       // Set API_HOST (old variable) - should be ignored
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
-      process.env.API_HOST = "https://old-api.example.com";
+      vi.stubEnv("API_HOST", "https://old-api.example.com");
       const apiUrl = await getApiUrl();
       // Should fallback to production URL, not use API_HOST
       expect(apiUrl).toBe("https://www.vm0.ai");

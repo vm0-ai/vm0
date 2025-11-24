@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   expandEnvVars,
   expandEnvVarsInObject,
@@ -7,22 +7,14 @@ import {
 } from "../env-expander";
 
 describe("env-expander", () => {
-  const originalEnv = process.env;
-
   beforeEach(() => {
-    // Create a clean copy of env
-    process.env = { ...originalEnv };
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    process.env.TEST_TOKEN = "secret-token-123";
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    process.env.TEST_USER = "testuser";
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    process.env.TEST_REGION = "us-east-1";
+    vi.stubEnv("TEST_TOKEN", "secret-token-123");
+    vi.stubEnv("TEST_USER", "testuser");
+    vi.stubEnv("TEST_REGION", "us-east-1");
   });
 
   afterEach(() => {
-    // Restore original env
-    process.env = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   describe("expandEnvVars", () => {
@@ -316,8 +308,7 @@ describe("env-expander", () => {
     });
 
     it("should detect undefined vs empty string", () => {
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
-      process.env.EMPTY_VAR = "";
+      vi.stubEnv("EMPTY_VAR", "");
       const result = validateEnvVars(["EMPTY_VAR", "UNDEFINED_VAR"]);
       expect(result).toEqual(["UNDEFINED_VAR"]);
     });
