@@ -41,38 +41,30 @@ async function pollEvents(runId: string): Promise<void> {
       throw new Error("Agent execution timed out");
     }
 
-    try {
-      const response = await apiClient.getEvents(runId, {
-        since: nextSequence,
-      });
+    const response = await apiClient.getEvents(runId, {
+      since: nextSequence,
+    });
 
-      for (const event of response.events) {
-        const parsed = ClaudeEventParser.parse(
-          event.eventData as Record<string, unknown>,
-        );
+    for (const event of response.events) {
+      const parsed = ClaudeEventParser.parse(
+        event.eventData as Record<string, unknown>,
+      );
 
-        if (parsed) {
-          EventRenderer.render(parsed);
+      if (parsed) {
+        EventRenderer.render(parsed);
 
-          // Complete when we receive vm0_result or vm0_error
-          if (parsed.type === "vm0_result" || parsed.type === "vm0_error") {
-            complete = true;
-          }
+        // Complete when we receive vm0_result or vm0_error
+        if (parsed.type === "vm0_result" || parsed.type === "vm0_error") {
+          complete = true;
         }
       }
+    }
 
-      nextSequence = response.nextSequence;
+    nextSequence = response.nextSequence;
 
-      // If no new events and not complete, wait before next poll
-      if (response.events.length === 0 && !complete) {
-        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      }
-    } catch (error) {
-      console.error(
-        chalk.red("✗ Failed to poll events:"),
-        error instanceof Error ? error.message : "Unknown error",
-      );
-      throw error;
+    // If no new events and not complete, wait before next poll
+    if (response.events.length === 0 && !complete) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   }
 }
