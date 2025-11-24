@@ -126,31 +126,27 @@ describe("POST /api/volumes", () => {
     expect(json.error).toBe("Not authenticated");
   });
 
-  it(
-    "should return 400 when volumeName is missing",
-    async () => {
-      vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+  it("should return 400 when volumeName is missing", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
 
-      const formData = new FormData();
-      const file = new File(["test"], "test.zip", { type: "application/zip" });
-      formData.append("file", file);
+    const formData = new FormData();
+    const file = new File(["test"], "test.zip", { type: "application/zip" });
+    formData.append("file", file);
 
-      // Mock formData method to return immediately
-      const mockFormData = async () => formData;
+    // Mock formData method to return immediately
+    const mockFormData = async () => formData;
 
-      const request = new NextRequest("http://localhost/api/volumes", {
-        method: "POST",
-      });
-      request.formData = mockFormData as never;
+    const request = new NextRequest("http://localhost/api/volumes", {
+      method: "POST",
+    });
+    request.formData = mockFormData as never;
 
-      const response = await POST(request);
+    const response = await POST(request);
 
-      expect(response.status).toBe(400);
-      const json = await response.json();
-      expect(json.error).toBe("Missing volumeName or file");
-    },
-    10000,
-  );
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error).toBe("Missing volumeName or file");
+  }, 10000);
 
   it("should return 400 when file is missing", async () => {
     vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
@@ -170,71 +166,61 @@ describe("POST /api/volumes", () => {
     expect(json.error).toBe("Missing volumeName or file");
   });
 
-  it(
-    "should return 400 for invalid volume name",
-    async () => {
-      vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+  it("should return 400 for invalid volume name", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
 
-      const formData = new FormData();
-      formData.append("volumeName", "INVALID-NAME"); // uppercase
-      const file = new File(["test"], "test.zip", { type: "application/zip" });
-      formData.append("file", file);
+    const formData = new FormData();
+    formData.append("volumeName", "INVALID-NAME"); // uppercase
+    const file = new File(["test"], "test.zip", { type: "application/zip" });
+    formData.append("file", file);
 
-      // Mock formData method to return immediately
-      const mockFormData = async () => formData;
+    // Mock formData method to return immediately
+    const mockFormData = async () => formData;
 
-      const request = new NextRequest("http://localhost/api/volumes", {
-        method: "POST",
-      });
-      request.formData = mockFormData as never;
+    const request = new NextRequest("http://localhost/api/volumes", {
+      method: "POST",
+    });
+    request.formData = mockFormData as never;
 
-      const response = await POST(request);
+    const response = await POST(request);
 
-      expect(response.status).toBe(400);
-      const json = await response.json();
-      expect(json.error).toContain("Invalid volume name");
-    },
-    10000,
-  );
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error).toContain("Invalid volume name");
+  }, 10000);
 
-  it(
-    "should successfully upload a valid volume",
-    async () => {
-      vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+  it("should successfully upload a valid volume", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
 
-      // Mock database to return no existing volume
-      mockDb.limit.mockResolvedValueOnce([]);
+    // Mock database to return no existing volume
+    mockDb.limit.mockResolvedValueOnce([]);
 
-      const formData = new FormData();
-      formData.append("volumeName", "test-volume");
-      const file = new File(["test zip content"], "test.zip", {
-        type: "application/zip",
-      });
-      formData.append("file", file);
+    const formData = new FormData();
+    formData.append("volumeName", "test-volume");
+    const file = new File(["test zip content"], "test.zip", {
+      type: "application/zip",
+    });
+    formData.append("file", file);
 
-      // Mock file.arrayBuffer() since it's called in the route
-      file.arrayBuffer = vi
-        .fn()
-        .mockResolvedValue(new ArrayBuffer(16)) as never;
+    // Mock file.arrayBuffer() since it's called in the route
+    file.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(16)) as never;
 
-      // Mock formData method to return immediately
-      const mockFormData = async () => formData;
+    // Mock formData method to return immediately
+    const mockFormData = async () => formData;
 
-      const request = new NextRequest("http://localhost/api/volumes", {
-        method: "POST",
-      });
-      request.formData = mockFormData as never;
+    const request = new NextRequest("http://localhost/api/volumes", {
+      method: "POST",
+    });
+    request.formData = mockFormData as never;
 
-      const response = await POST(request);
+    const response = await POST(request);
 
-      expect(response.status).toBe(200);
-      const json = await response.json();
-      expect(json.volumeName).toBe("test-volume");
-      expect(json.fileCount).toBeGreaterThanOrEqual(0);
-      expect(json.size).toBeGreaterThanOrEqual(0);
-    },
-    10000,
-  );
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.volumeName).toBe("test-volume");
+    expect(json.fileCount).toBeGreaterThanOrEqual(0);
+    expect(json.size).toBeGreaterThanOrEqual(0);
+  }, 10000);
 });
 
 describe("GET /api/volumes", () => {

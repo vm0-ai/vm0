@@ -395,7 +395,8 @@ describe("resolveVolumes", () => {
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
       type: "invalid_uri",
-      message: "Unsupported volume driver: nfs. Supported drivers: s3fs, git, vm0.",
+      message:
+        "Unsupported volume driver: nfs. Supported drivers: s3fs, git, vm0.",
     });
   });
 
