@@ -199,7 +199,6 @@ describe("Agent Config Upsert Behavior", () => {
       expect(data.error.message).toContain("Invalid agent.name");
     });
 
-
     it("should accept valid name with hyphens", async () => {
       const config = {
         version: "1.0",

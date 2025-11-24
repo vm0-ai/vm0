@@ -137,7 +137,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.error).toBeDefined();
       expect(data.error.message).toBeDefined();
     });
-
   });
 
   // ============================================
