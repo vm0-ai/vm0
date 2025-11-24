@@ -26,44 +26,6 @@ export function isValidVolumeName(name: string): boolean {
 }
 
 /**
- * Generate suggested volume name from directory name
- */
-export function suggestVolumeName(dirName: string): string {
-  // Convert to lowercase
-  let suggested = dirName.toLowerCase();
-
-  // Replace invalid characters with hyphens
-  suggested = suggested.replace(/[^a-z0-9-]/g, "-");
-
-  // Remove consecutive hyphens
-  suggested = suggested.replace(/--+/g, "-");
-
-  // Remove leading/trailing hyphens
-  suggested = suggested.replace(/^-+|-+$/g, "");
-
-  // Ensure it starts and ends with alphanumeric
-  if (suggested.length > 0 && suggested.match(/^[a-z0-9]/)) {
-    if (!suggested.match(/[a-z0-9]$/)) {
-      suggested = suggested.replace(/-+$/, "");
-    }
-  }
-
-  // Truncate to max length
-  if (suggested.length > 64) {
-    suggested = suggested.substring(0, 64);
-    // Ensure it ends with alphanumeric after truncation
-    suggested = suggested.replace(/-+$/, "");
-  }
-
-  // Ensure minimum length
-  if (suggested.length < 3) {
-    return "volume";
-  }
-
-  return suggested;
-}
-
-/**
  * Read volume config from .vm0/volume.yaml
  */
 export async function readVolumeConfig(

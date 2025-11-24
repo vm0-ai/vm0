@@ -3,7 +3,6 @@ import chalk from "chalk";
 import path from "path";
 import {
   isValidVolumeName,
-  suggestVolumeName,
   writeVolumeConfig,
   readVolumeConfig,
 } from "../../lib/volume-utils";
@@ -28,19 +27,22 @@ export const initCommand = new Command()
         return;
       }
 
-      // Generate volume name from directory name
-      const volumeName = suggestVolumeName(dirName);
+      // Use directory name as volume name
+      const volumeName = dirName;
 
-      // Validate generated name
+      // Validate volume name
       if (!isValidVolumeName(volumeName)) {
         console.error(
-          chalk.red(
-            `✗ Could not generate valid volume name from directory "${dirName}"`,
-          ),
+          chalk.red(`✗ Invalid volume name: "${dirName}"`),
         );
         console.error(
           chalk.gray(
             "  Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",
+          ),
+        );
+        console.error(
+          chalk.gray(
+            "  Example: my-dataset, user-data-v2, training-set-2024",
           ),
         );
         process.exit(1);

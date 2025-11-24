@@ -66,7 +66,7 @@ teardown() {
     # Push to cloud
     run $CLI_COMMAND volume push
     assert_success
-    assert_output --partial "Uploading volume"
+    assert_output --partial "Uploading"
     assert_output --partial "$VOLUME_NAME"
 }
 

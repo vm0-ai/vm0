@@ -4,7 +4,6 @@ import * as path from "path";
 import * as os from "os";
 import {
   isValidVolumeName,
-  suggestVolumeName,
   readVolumeConfig,
   writeVolumeConfig,
 } from "../volume-utils";
@@ -60,60 +59,6 @@ describe("volume-utils", () => {
       expect(isValidVolumeName("my@dataset")).toBe(false);
       expect(isValidVolumeName("data.set")).toBe(false);
       expect(isValidVolumeName("my/dataset")).toBe(false);
-    });
-  });
-
-  describe("suggestVolumeName", () => {
-    it("should convert valid directory names", () => {
-      expect(suggestVolumeName("mnist")).toBe("mnist");
-      expect(suggestVolumeName("my-dataset")).toBe("my-dataset");
-      expect(suggestVolumeName("training-data")).toBe("training-data");
-    });
-
-    it("should convert uppercase to lowercase", () => {
-      expect(suggestVolumeName("MNIST")).toBe("mnist");
-      expect(suggestVolumeName("MyDataset")).toBe("mydataset");
-      expect(suggestVolumeName("Training-Data")).toBe("training-data");
-    });
-
-    it("should replace underscores with hyphens", () => {
-      expect(suggestVolumeName("my_dataset")).toBe("my-dataset");
-      expect(suggestVolumeName("training_data_v2")).toBe("training-data-v2");
-    });
-
-    it("should replace spaces with hyphens", () => {
-      expect(suggestVolumeName("my dataset")).toBe("my-dataset");
-      expect(suggestVolumeName("training data v2")).toBe("training-data-v2");
-    });
-
-    it("should replace special characters with hyphens", () => {
-      expect(suggestVolumeName("my@dataset")).toBe("my-dataset");
-      expect(suggestVolumeName("data.set")).toBe("data-set");
-      expect(suggestVolumeName("my/dataset")).toBe("my-dataset");
-    });
-
-    it("should remove consecutive hyphens", () => {
-      expect(suggestVolumeName("my--dataset")).toBe("my-dataset");
-      expect(suggestVolumeName("data___set")).toBe("data-set");
-      expect(suggestVolumeName("my  dataset")).toBe("my-dataset");
-    });
-
-    it("should remove leading and trailing hyphens", () => {
-      expect(suggestVolumeName("-dataset")).toBe("dataset");
-      expect(suggestVolumeName("dataset-")).toBe("dataset");
-      expect(suggestVolumeName("-my-data-")).toBe("my-data");
-    });
-
-    it("should truncate names longer than 64 characters", () => {
-      const longName = "a".repeat(100);
-      const suggested = suggestVolumeName(longName);
-      expect(suggested.length).toBeLessThanOrEqual(64);
-    });
-
-    it("should return 'volume' for names shorter than 3 characters after processing", () => {
-      expect(suggestVolumeName("ab")).toBe("volume");
-      expect(suggestVolumeName("a")).toBe("volume");
-      expect(suggestVolumeName("--")).toBe("volume");
     });
   });
 
