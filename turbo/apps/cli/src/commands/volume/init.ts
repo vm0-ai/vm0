@@ -32,18 +32,14 @@ export const initCommand = new Command()
 
       // Validate volume name
       if (!isValidVolumeName(volumeName)) {
-        console.error(
-          chalk.red(`✗ Invalid volume name: "${dirName}"`),
-        );
+        console.error(chalk.red(`✗ Invalid volume name: "${dirName}"`));
         console.error(
           chalk.gray(
             "  Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
         );
         console.error(
-          chalk.gray(
-            "  Example: my-dataset, user-data-v2, training-set-2024",
-          ),
+          chalk.gray("  Example: my-dataset, user-data-v2, training-set-2024"),
         );
         process.exit(1);
       }
