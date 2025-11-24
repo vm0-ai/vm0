@@ -13,6 +13,7 @@ import {
 import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
+import type { ExecutionContext } from "../../../../../src/lib/run/types";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -180,11 +181,11 @@ describe("POST /api/agent/runs - Async Execution", () => {
       // Mock successful run execution that completes after a delay
       mockRunService.createRunContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockImplementation(
-        (context: never) =>
+        (context: ExecutionContext) =>
           new Promise((resolve) => {
             setTimeout(() => {
               resolve({
-                runId: (context as { runId?: string }).runId || "test-run-id",
+                runId: context.runId || "test-run-id",
                 status: "completed" as const,
                 sandboxId: "test-sandbox-123",
                 output: "Success! Task completed.",
@@ -284,11 +285,11 @@ describe("POST /api/agent/runs - Async Execution", () => {
       // Mock run service with 5 second delay
       mockRunService.createRunContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockImplementation(
-        (context: never) =>
+        (context: ExecutionContext) =>
           new Promise((resolve) => {
             setTimeout(() => {
               resolve({
-                runId: (context as { runId?: string }).runId || "test-run-id",
+                runId: context.runId || "test-run-id",
                 status: "completed" as const,
                 sandboxId: "test-sandbox",
                 output: "Completed after delay",

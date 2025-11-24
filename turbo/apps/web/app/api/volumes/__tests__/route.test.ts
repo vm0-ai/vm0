@@ -57,7 +57,7 @@ vi.mock("../../../../src/lib/s3/s3-client", () => ({
 // Mock AdmZip
 vi.mock("adm-zip", () => {
   return {
-    default: vi.fn().mockImplementation((pathOrBuffer?: string | Buffer) => {
+    default: vi.fn().mockImplementation(() => {
       // Mock for POST - extracting uploaded zip (receives string path)
       // or GET - creating zip to download (receives nothing)
       return {

@@ -15,7 +15,7 @@ export interface ResumeSession {
  */
 export interface ExecutionContext {
   runId: string;
-  userId: string;
+  userId?: string;
   agentConfigId: string;
   agentConfig: unknown;
   prompt: string;
