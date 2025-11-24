@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { volumes } from "../../../src/db/schema/volume";
+import { volumes, volumeVersions } from "../../../src/db/schema/volume";
 import { eq, and } from "drizzle-orm";
 import {
   uploadS3Directory,
@@ -98,53 +98,67 @@ export async function POST(request: NextRequest) {
       totalSize += stats.size;
     }
 
-    // Delete existing volume files from S3 if any
-    const s3Prefix = `${userId}/${volumeName}`;
-    const s3Uri = `s3://${S3_BUCKET}/${s3Prefix}`;
-
-    try {
-      await deleteS3Directory(s3Uri);
-    } catch (error) {
-      console.log(
-        `[Volumes] No existing volume to delete or deletion failed:`,
-        error,
-      );
-    }
-
-    // Upload extracted files to S3
-    console.log(`[Volumes] Uploading ${fileCount} files to S3...`);
-    await uploadS3Directory(extractPath, s3Uri);
-
-    // Create or update volume record in database
-    const [existingVolume] = await globalThis.services.db
+    // Find or create volume record
+    let [volume] = await globalThis.services.db
       .select()
       .from(volumes)
       .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
       .limit(1);
 
-    if (existingVolume) {
-      // Update existing volume
-      await globalThis.services.db
-        .update(volumes)
-        .set({
-          s3Prefix,
+    if (!volume) {
+      // Create new volume record (without HEAD initially)
+      const [newVolume] = await globalThis.services.db
+        .insert(volumes)
+        .values({
+          userId,
+          name: volumeName,
+          s3Prefix: `${userId}/${volumeName}`, // Base prefix (versions add versionId)
           size: totalSize,
           fileCount,
-          updatedAt: new Date(),
         })
-        .where(eq(volumes.id, existingVolume.id));
-    } else {
-      // Create new volume
-      await globalThis.services.db.insert(volumes).values({
-        userId,
-        name: volumeName,
-        s3Prefix,
-        size: totalSize,
-        fileCount,
-      });
+        .returning();
+      volume = newVolume!;
+      console.log(`[Volumes] Created new volume record: ${volume.id}`);
     }
 
-    console.log(`[Volumes] Successfully uploaded volume "${volumeName}"`);
+    // Create new version record
+    const [version] = await globalThis.services.db
+      .insert(volumeVersions)
+      .values({
+        volumeId: volume.id,
+        s3Key: `${userId}/${volumeName}/${crypto.randomUUID()}`,
+        size: totalSize,
+        fileCount,
+        message: null,
+        createdBy: "user",
+      })
+      .returning();
+
+    if (!version) {
+      throw new Error("Failed to create volume version");
+    }
+
+    console.log(`[Volumes] Created version: ${version.id}`);
+
+    // Upload files to versioned S3 path
+    const s3Uri = `s3://${S3_BUCKET}/${version.s3Key}`;
+    console.log(`[Volumes] Uploading ${fileCount} files to ${s3Uri}...`);
+    await uploadS3Directory(extractPath, s3Uri);
+
+    // Update volume's HEAD pointer and metadata
+    await globalThis.services.db
+      .update(volumes)
+      .set({
+        headVersionId: version.id,
+        size: totalSize,
+        fileCount,
+        updatedAt: new Date(),
+      })
+      .where(eq(volumes.id, volume.id));
+
+    console.log(
+      `[Volumes] Successfully uploaded volume "${volumeName}" version ${version.id}`,
+    );
 
     // Clean up temp directory
     await fs.promises.rm(tempDir, { recursive: true, force: true });
@@ -152,6 +166,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       volumeName,
+      versionId: version.id,
       size: totalSize,
       fileCount,
     });
@@ -220,12 +235,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Check if volume has a HEAD version
+    if (!volume.headVersionId) {
+      return NextResponse.json(
+        { error: `Volume "${volumeName}" has no versions` },
+        { status: 404 },
+      );
+    }
+
+    // Get HEAD version details
+    const [headVersion] = await globalThis.services.db
+      .select()
+      .from(volumeVersions)
+      .where(eq(volumeVersions.id, volume.headVersionId))
+      .limit(1);
+
+    if (!headVersion) {
+      return NextResponse.json(
+        { error: `Volume "${volumeName}" HEAD version not found` },
+        { status: 404 },
+      );
+    }
+
+    console.log(
+      `[Volumes] Downloading HEAD version ${headVersion.id} (${headVersion.fileCount} files)`,
+    );
+
     // Create temp directory for download
     tempDir = path.join(os.tmpdir(), `vm0-volume-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Download files from S3
-    const s3Uri = `s3://${S3_BUCKET}/${volume.s3Prefix}`;
+    // Download files from versioned S3 path
+    const s3Uri = `s3://${S3_BUCKET}/${headVersion.s3Key}`;
     const downloadPath = path.join(tempDir, "download");
     console.log(`[Volumes] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);
