@@ -99,15 +99,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Find or create volume record
-    let [volume] = await globalThis.services.db
+    const existingVolumes = await globalThis.services.db
       .select()
       .from(volumes)
       .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
       .limit(1);
 
+    let volume = existingVolumes[0];
     if (!volume) {
       // Create new volume record (without HEAD initially)
-      const [newVolume] = await globalThis.services.db
+      const newVolumes = await globalThis.services.db
         .insert(volumes)
         .values({
           userId,
@@ -117,12 +118,15 @@ export async function POST(request: NextRequest) {
           fileCount,
         })
         .returning();
-      volume = newVolume!;
+      volume = newVolumes[0];
+      if (!volume) {
+        throw new Error("Failed to create volume");
+      }
       console.log(`[Volumes] Created new volume record: ${volume.id}`);
     }
 
     // Create new version record
-    const [version] = await globalThis.services.db
+    const createdVersions = await globalThis.services.db
       .insert(volumeVersions)
       .values({
         volumeId: volume.id,
@@ -133,6 +137,8 @@ export async function POST(request: NextRequest) {
         createdBy: "user",
       })
       .returning();
+
+    const version = createdVersions[0];
 
     if (!version) {
       throw new Error("Failed to create volume version");
