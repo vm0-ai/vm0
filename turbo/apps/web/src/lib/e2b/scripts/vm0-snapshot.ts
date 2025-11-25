@@ -12,6 +12,9 @@ create_vm0_snapshot() {
   local vm0_volume_name="$3"
 
   echo "[VM0] Creating VM0 snapshot for volume '$volume_name' ($vm0_volume_name) at $mount_path" >&2
+  echo "[VM0] VOLUME_WEBHOOK_URL: $VOLUME_WEBHOOK_URL" >&2
+  echo "[VM0] API_TOKEN length: ${#API_TOKEN}" >&2
+  echo "[VM0] RUN_ID: $RUN_ID" >&2
 
   # Create temp directory for zip
   local zip_dir="/tmp/vm0-snapshot-$RUN_ID-$volume_name"
@@ -24,11 +27,33 @@ create_vm0_snapshot() {
     return 1
   }
 
-  # Create zip file (exclude .git directory if present)
-  if ! zip -r "$zip_path" . -x "*.git*" >/dev/null 2>&1; then
-    echo "[ERROR] Failed to create zip for volume '$volume_name'" >&2
-    rm -rf "$zip_dir"
-    return 1
+  # Create zip file (exclude .git and .vm0 directories)
+  # Try 'zip' command first, fallback to 'python3' zipfile module
+  if command -v zip >/dev/null 2>&1; then
+    if ! zip -r "$zip_path" . -x "*.git*" -x "*.vm0*" >/dev/null 2>&1; then
+      echo "[ERROR] Failed to create zip for volume '$volume_name'" >&2
+      rm -rf "$zip_dir"
+      return 1
+    fi
+  else
+    # Fallback: use Python's zipfile module (always available with Claude Code)
+    echo "[VM0] 'zip' not found, using Python zipfile" >&2
+    python3 -c "
+import zipfile
+import os
+with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk('.'):
+        # Exclude .git and .vm0 directories
+        dirs[:] = [d for d in dirs if d not in ['.git', '.vm0']]
+        for file in files:
+            filepath = os.path.join(root, file)
+            arcname = os.path.relpath(filepath, '.')
+            zf.write(filepath, arcname)
+" 2>&1 || {
+      echo "[ERROR] Failed to create zip using Python for volume '$volume_name'" >&2
+      rm -rf "$zip_dir"
+      return 1
+    }
   fi
 
   echo "[VM0] Created zip file for volume '$volume_name'" >&2

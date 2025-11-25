@@ -101,6 +101,7 @@ create_checkpoint() {
   fi
 
   # Create VM0 snapshots for each VM0 volume
+  echo "[VM0] VM0_VOLUMES value: $VM0_VOLUMES" >&2
   if [ "$VM0_VOLUMES" != "[]" ]; then
     echo "[VM0] Processing $(echo "$VM0_VOLUMES" | jq 'length') VM0 volume(s)..." >&2
 
