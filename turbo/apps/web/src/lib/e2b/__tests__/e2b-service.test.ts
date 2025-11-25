@@ -9,6 +9,14 @@ import type { ExecutionContext } from "../../run/types";
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
 
+// Mock e2bConfig to provide a default template
+vi.mock("../config", () => ({
+  e2bConfig: {
+    defaultTimeout: 0,
+    defaultTemplate: "mock-template",
+  },
+}));
+
 // Mock VolumeService - use vi.hoisted to ensure mock is defined before vi.mock runs
 const mockVolumeService = vi.hoisted(() => ({
   prepareVolumes: vi.fn().mockResolvedValue({
@@ -127,8 +135,8 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      // commands.run called: 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
+      // commands.run called: 1 (mkdir) + 6 (mv/chmod for each script) + 1 (execute) = 8 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(8);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -178,9 +186,9 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify both sandboxes were created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
-      // Each sandbox: 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
-      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(7);
-      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(7);
+      // Each sandbox: 1 (mkdir) + 6 (mv/chmod for each script) + 1 (execute) = 8 times
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(8);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(8);
       expect(mockSandbox1.kill).toHaveBeenCalledTimes(1);
       expect(mockSandbox2.kill).toHaveBeenCalledTimes(1);
     });
@@ -210,8 +218,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
+      // 1 (mkdir) + 6 (mv/chmod for each script) + 1 (execute) = 8 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(8);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -244,8 +252,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
+      // 1 (mkdir) + 6 (mv/chmod for each script) + 1 (execute) = 8 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(8);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
