@@ -280,21 +280,11 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Install AWS CLI
-        run: |
-          apt-get update && apt-get install -y unzip
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          ./aws/install
-          rm -rf aws awscliv2.zip
-          aws --version
-
-      - name: Setup S3 test data
-        run: ./e2e/scripts/setup-s3-test-data.sh
+      - name: Setup VM0 test volumes
+        run: ./e2e/scripts/setup-vm0-volumes.sh
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Run CLI E2E Tests
         run: ./e2e/test/libs/bats/bin/bats ./e2e/tests/**/*.bats

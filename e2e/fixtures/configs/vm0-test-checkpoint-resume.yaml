@@ -12,10 +12,9 @@ agent:
 
 volumes:
   claude-system:
-    driver: s3fs
+    driver: vm0
     driver_opts:
-      uri: s3://vm0-s3-demo-bucket-public/claude-files
-      region: us-west-2
+      uri: vm0://claude-files
 
 dynamic_volumes:
   user-workspace:
