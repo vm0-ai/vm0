@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/vm0-ai/vm0/compare/docs-v0.1.1...docs-v0.1.2) (2025-11-24)
+
+
+### Bug Fixes
+
+* remove all eslint suppression comments and use vi.stubEnv for tests ([#171](https://github.com/vm0-ai/vm0/issues/171)) ([e210c7c](https://github.com/vm0-ai/vm0/commit/e210c7c0df82e045b3e9103b0bd6dabc28567c12))
+
 ## [0.1.1](https://github.com/vm0-ai/vm0/compare/docs-v0.1.0...docs-v0.1.1) (2025-11-15)
 
 

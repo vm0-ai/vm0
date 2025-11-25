@@ -88,6 +88,140 @@ describe("replaceTemplateVars", () => {
       missingVars: [],
     });
   });
+
+  describe("VM0 volumes", () => {
+    it("should resolve VM0 volume with valid URI", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["dataset:/workspace/data"],
+        },
+        volumes: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://mnist",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+      expect(result.volumes[0]).toMatchObject({
+        name: "dataset",
+        driver: "vm0",
+        mountPath: "/workspace/data",
+        vm0VolumeName: "mnist",
+      });
+    });
+
+    it("should resolve VM0 volume with template variables", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["dataset:/workspace/data"],
+        },
+        dynamic_volumes: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://{{datasetName}}",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, { datasetName: "cifar10" });
+
+      expect(result.volumes).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+      expect(result.volumes[0]).toMatchObject({
+        name: "dataset",
+        driver: "vm0",
+        mountPath: "/workspace/data",
+        vm0VolumeName: "cifar10",
+      });
+    });
+
+    it("should error on missing template variables in VM0 URI", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["dataset:/workspace/data"],
+        },
+        dynamic_volumes: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://{{datasetName}}",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config); // No dynamic vars provided
+
+      expect(result.volumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "dataset",
+        type: "missing_variable",
+        message: "Missing required variables: datasetName",
+      });
+    });
+
+    it("should error on invalid VM0 URI format", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["dataset:/workspace/data"],
+        },
+        volumes: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "invalid://mnist", // Wrong protocol
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "dataset",
+        type: "invalid_uri",
+        message:
+          "Invalid VM0 URI: invalid://mnist. Expected format: vm0://volume-name",
+      });
+    });
+
+    it("should error on missing vm0:// prefix", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          volumes: ["dataset:/workspace/data"],
+        },
+        volumes: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "mnist", // Missing vm0:// prefix
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config);
+
+      expect(result.volumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "dataset",
+        type: "invalid_uri",
+      });
+    });
+  });
 });
 
 describe("resolveVolumes", () => {
@@ -261,7 +395,8 @@ describe("resolveVolumes", () => {
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
       type: "invalid_uri",
-      message: "Unsupported volume driver: nfs. Supported drivers: s3fs, git.",
+      message:
+        "Unsupported volume driver: nfs. Supported drivers: s3fs, git, vm0.",
     });
   });
 

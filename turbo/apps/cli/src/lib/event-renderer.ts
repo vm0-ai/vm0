@@ -128,6 +128,11 @@ export class EventRenderer {
 
   private static renderVm0Start(event: ParsedEvent): void {
     console.log(chalk.cyan("[vm0_start]") + " Run starting");
+
+    if (event.data.runId) {
+      console.log(`  Run ID: ${chalk.gray(String(event.data.runId))}`);
+    }
+
     const prompt = String(event.data.prompt || "");
     const displayPrompt =
       prompt.length > 100 ? prompt.substring(0, 100) + "..." : prompt;

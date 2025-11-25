@@ -44,6 +44,7 @@ export class RunService {
     sandboxToken: string,
     dynamicVars: Record<string, string> | undefined,
     agentConfig: unknown,
+    userId?: string,
   ): Promise<ExecutionContext> {
     console.log(`[RunService] Creating run context for ${runId}`);
 
@@ -54,6 +55,7 @@ export class RunService {
       prompt,
       dynamicVars,
       sandboxToken,
+      userId,
     };
   }
 
@@ -150,6 +152,7 @@ export class RunService {
 
     return {
       runId,
+      userId,
       agentConfigId: checkpoint.agentConfigId,
       agentConfig: config.config,
       prompt,
