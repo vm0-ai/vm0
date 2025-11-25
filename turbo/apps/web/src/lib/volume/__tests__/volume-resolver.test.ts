@@ -225,17 +225,16 @@ describe("replaceTemplateVars", () => {
 });
 
 describe("resolveVolumes", () => {
-  it("should resolve static volume", () => {
+  it("should resolve static VM0 volume", () => {
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: ["claude-system:/home/user/.claude"],
+        volumes: ["dataset:/workspace/data"],
       },
       volumes: {
-        "claude-system": {
-          driver: "s3fs",
+        dataset: {
+          driver: "vm0",
           driver_opts: {
-            uri: "s3://my-bucket/claude-files",
-            region: "us-west-2",
+            uri: "vm0://my-dataset",
           },
         },
       },
@@ -245,73 +244,64 @@ describe("resolveVolumes", () => {
 
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
-      name: "claude-system",
-      driver: "s3fs",
-      s3Uri: "s3://my-bucket/claude-files",
-      mountPath: "/home/user/.claude",
-      region: "us-west-2",
+      name: "dataset",
+      driver: "vm0",
+      mountPath: "/workspace/data",
+      vm0VolumeName: "my-dataset",
     });
     expect(result.errors).toHaveLength(0);
   });
 
-  it("should resolve dynamic volume with template variables", () => {
+  it("should resolve dynamic VM0 volume with template variables", () => {
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: ["user-workspace:/home/user/workspace"],
+        volumes: ["dataset:/workspace/data"],
       },
       dynamic_volumes: {
-        "user-workspace": {
-          driver: "s3fs",
+        dataset: {
+          driver: "vm0",
           driver_opts: {
-            uri: "s3://my-bucket/users/{{userId}}",
-            region: "us-west-2",
+            uri: "vm0://{{datasetName}}",
           },
         },
       },
     };
 
-    const result = resolveVolumes(config, { userId: "test-user-123" });
+    const result = resolveVolumes(config, { datasetName: "cifar10" });
 
     expect(result.volumes).toHaveLength(1);
     expect(result.volumes[0]).toEqual({
-      name: "user-workspace",
-      driver: "s3fs",
-      s3Uri: "s3://my-bucket/users/test-user-123",
-      mountPath: "/home/user/workspace",
-      region: "us-west-2",
+      name: "dataset",
+      driver: "vm0",
+      mountPath: "/workspace/data",
+      vm0VolumeName: "cifar10",
     });
     expect(result.errors).toHaveLength(0);
   });
 
-  it("should resolve multiple volumes", () => {
+  it("should resolve multiple volumes (git and vm0)", () => {
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: [
-          "claude-system:/home/user/.claude",
-          "user-workspace:/home/user/workspace",
-        ],
+        volumes: ["repo:/workspace", "dataset:/data"],
       },
       volumes: {
-        "claude-system": {
-          driver: "s3fs",
+        repo: {
+          driver: "git",
           driver_opts: {
-            uri: "s3://my-bucket/claude-files",
-            region: "us-west-2",
+            uri: "https://github.com/user/repo.git",
+            branch: "main",
           },
         },
-      },
-      dynamic_volumes: {
-        "user-workspace": {
-          driver: "s3fs",
+        dataset: {
+          driver: "vm0",
           driver_opts: {
-            uri: "s3://my-bucket/users/{{userId}}",
-            region: "us-west-2",
+            uri: "vm0://my-dataset",
           },
         },
       },
     };
 
-    const result = resolveVolumes(config, { userId: "test-user" });
+    const result = resolveVolumes(config);
 
     expect(result.volumes).toHaveLength(2);
     expect(result.errors).toHaveLength(0);
@@ -337,14 +327,13 @@ describe("resolveVolumes", () => {
   it("should detect missing template variables", () => {
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: ["user-workspace:/path"],
+        volumes: ["dataset:/path"],
       },
       dynamic_volumes: {
-        "user-workspace": {
-          driver: "s3fs",
+        dataset: {
+          driver: "vm0",
           driver_opts: {
-            uri: "s3://bucket/users/{{userId}}",
-            region: "us-west-2",
+            uri: "vm0://{{datasetName}}",
           },
         },
       },
@@ -355,9 +344,9 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
-      volumeName: "user-workspace",
+      volumeName: "dataset",
       type: "missing_variable",
-      message: "Missing required variables: userId",
+      message: "Missing required variables: datasetName",
     });
   });
 
@@ -373,7 +362,7 @@ describe("resolveVolumes", () => {
   });
 
   it("should handle unsupported driver", () => {
-    const config: AgentVolumeConfig = {
+    const config = {
       agent: {
         volumes: ["custom-volume:/path"],
       },
@@ -382,11 +371,10 @@ describe("resolveVolumes", () => {
           driver: "nfs",
           driver_opts: {
             uri: "nfs://server/path",
-            region: "us-west-2",
           },
         },
       },
-    };
+    } as AgentVolumeConfig;
 
     const result = resolveVolumes(config);
 
@@ -395,8 +383,7 @@ describe("resolveVolumes", () => {
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
       type: "invalid_uri",
-      message:
-        "Unsupported volume driver: nfs. Supported drivers: s3fs, git, vm0.",
+      message: "Unsupported volume driver: nfs. Supported drivers: git, vm0.",
     });
   });
 
@@ -623,14 +610,13 @@ describe("resolveVolumes", () => {
   it("should reject deprecated 'dynamic-volumes' format", () => {
     const config = {
       agent: {
-        volumes: ["user-workspace:/path"],
+        volumes: ["dataset:/path"],
       },
       "dynamic-volumes": {
-        "user-workspace": {
-          driver: "s3fs",
+        dataset: {
+          driver: "vm0",
           driver_opts: {
-            uri: "s3://bucket/users/{{userId}}",
-            region: "us-west-2",
+            uri: "vm0://my-dataset",
           },
         },
       },

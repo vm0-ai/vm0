@@ -7,15 +7,7 @@ agent:
   provider: claude-code
   working_dir: /home/user/workspace
   volumes:
-    - claude-system:/home/user/.config/claude
     - user-workspace:/home/user/workspace
-
-volumes:
-  claude-system:
-    driver: s3fs
-    driver_opts:
-      uri: s3://vm0-s3-demo-bucket-public/claude-files
-      region: us-west-2
 
 dynamic_volumes:
   user-workspace:

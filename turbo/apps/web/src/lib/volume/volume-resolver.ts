@@ -4,6 +4,7 @@ import type {
   ResolvedVolume,
   VolumeResolutionResult,
   VolumeError,
+  VolumeDriver,
 } from "./types";
 import { normalizeGitUrl, validateGitUrl } from "../git/git-client";
 
@@ -105,54 +106,14 @@ export function resolveVolumes(
       }
 
       // Validate driver
-      if (
-        volumeConfig.driver !== "s3fs" &&
-        volumeConfig.driver !== "git" &&
-        volumeConfig.driver !== "vm0"
-      ) {
+      const supportedDrivers: VolumeDriver[] = ["git", "vm0"];
+      if (!supportedDrivers.includes(volumeConfig.driver)) {
         errors.push({
           volumeName,
-          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: s3fs, git, vm0.`,
+          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: git, vm0.`,
           type: "invalid_uri",
         });
         continue;
-      }
-
-      // Handle S3 volumes
-      if (volumeConfig.driver === "s3fs") {
-        // Replace template variables
-        const { uri, missingVars } = replaceTemplateVars(
-          volumeConfig.driver_opts.uri,
-          dynamicVars,
-        );
-
-        if (missingVars.length > 0) {
-          errors.push({
-            volumeName,
-            message: `Missing required variables: ${missingVars.join(", ")}`,
-            type: "missing_variable",
-          });
-          continue;
-        }
-
-        // Validate region is provided for S3
-        if (!volumeConfig.driver_opts.region) {
-          errors.push({
-            volumeName,
-            message: "S3 volumes require 'region' in driver_opts",
-            type: "invalid_uri",
-          });
-          continue;
-        }
-
-        // Add resolved S3 volume
-        volumes.push({
-          name: volumeName,
-          driver: "s3fs",
-          mountPath,
-          s3Uri: uri,
-          region: volumeConfig.driver_opts.region,
-        });
       }
 
       // Handle Git volumes

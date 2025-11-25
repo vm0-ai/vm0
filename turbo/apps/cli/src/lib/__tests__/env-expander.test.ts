@@ -111,7 +111,7 @@ describe("env-expander", () => {
       const obj = {
         agent: {
           name: "test-agent",
-          volumes: ["system:/home", "workspace:/work"],
+          volumes: ["dataset:/data", "workspace:/work"],
         },
         dynamic_volumes: {
           workspace: {
@@ -124,11 +124,10 @@ describe("env-expander", () => {
           },
         },
         volumes: {
-          system: {
-            driver: "s3fs",
+          dataset: {
+            driver: "vm0",
             driver_opts: {
-              uri: "s3://bucket/${TEST_USER}/data",
-              region: "${TEST_REGION}",
+              uri: "vm0://${TEST_USER}-dataset",
             },
           },
         },
@@ -138,7 +137,7 @@ describe("env-expander", () => {
       expect(result).toEqual({
         agent: {
           name: "test-agent",
-          volumes: ["system:/home", "workspace:/work"],
+          volumes: ["dataset:/data", "workspace:/work"],
         },
         dynamic_volumes: {
           workspace: {
@@ -151,11 +150,10 @@ describe("env-expander", () => {
           },
         },
         volumes: {
-          system: {
-            driver: "s3fs",
+          dataset: {
+            driver: "vm0",
             driver_opts: {
-              uri: "s3://bucket/testuser/data",
-              region: "us-east-1",
+              uri: "vm0://testuser-dataset",
             },
           },
         },
@@ -267,11 +265,10 @@ describe("env-expander", () => {
           },
         },
         volumes: {
-          system: {
-            driver: "s3fs",
+          dataset: {
+            driver: "vm0",
             driver_opts: {
-              uri: "s3://bucket/${TEST_USER}/data",
-              region: "${TEST_REGION}",
+              uri: "vm0://${TEST_REGION}-dataset",
             },
           },
         },

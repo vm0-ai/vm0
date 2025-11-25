@@ -80,25 +80,7 @@ export class VolumeService {
     // Process each volume based on driver type
     for (const volume of volumeResult.volumes) {
       try {
-        if (volume.driver === "s3fs") {
-          // Download S3 volumes to temp directory
-          const localPath = path.join(tempDir, volume.name);
-          const downloadResult = await downloadS3Directory(
-            volume.s3Uri!,
-            localPath,
-          );
-          console.log(
-            `[Volume] Downloaded S3 volume "${volume.name}": ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-          );
-
-          preparedVolumes.push({
-            name: volume.name,
-            driver: "s3fs",
-            localPath,
-            mountPath: volume.mountPath,
-            s3Uri: volume.s3Uri,
-          });
-        } else if (volume.driver === "git") {
+        if (volume.driver === "git") {
           // Git volumes: store metadata only (clone happens in sandbox)
           console.log(
             `[Volume] Prepared Git volume "${volume.name}": ${sanitizeGitUrlForLogging(volume.gitUri!)} (${volume.gitBranch})`,
@@ -329,8 +311,8 @@ export class VolumeService {
 
     for (const volume of preparedVolumes) {
       try {
-        if (volume.driver === "s3fs" || volume.driver === "vm0") {
-          // Upload S3 or VM0 volumes from local temp to sandbox
+        if (volume.driver === "vm0") {
+          // Upload VM0 volumes from local temp to sandbox
           const stat = await fs.promises
             .stat(volume.localPath!)
             .catch(() => null);
@@ -341,7 +323,7 @@ export class VolumeService {
               volume.mountPath,
             );
             console.log(
-              `[Volume] Uploaded ${volume.driver} volume "${volume.name}" to ${volume.mountPath}`,
+              `[Volume] Uploaded VM0 volume "${volume.name}" to ${volume.mountPath}`,
             );
           }
         } else if (volume.driver === "git") {

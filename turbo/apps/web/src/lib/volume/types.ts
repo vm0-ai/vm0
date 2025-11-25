@@ -1,11 +1,14 @@
 /**
- * Volume configuration from vm0.config.yaml
+ * Supported volume drivers:
+ * - "git": Git repository volumes (supports checkpoint via branch/commit snapshots)
+ * - "vm0": VM0 managed volumes (stored in S3 with versioning)
  */
+export type VolumeDriver = "git" | "vm0";
+
 export interface VolumeConfig {
-  driver: string;
+  driver: VolumeDriver;
   driver_opts: {
     uri: string;
-    region?: string;
     branch?: string;
     token?: string;
   };
@@ -16,10 +19,8 @@ export interface VolumeConfig {
  */
 export interface ResolvedVolume {
   name: string;
-  driver: string;
+  driver: VolumeDriver;
   mountPath: string;
-  s3Uri?: string;
-  region?: string;
   gitUri?: string;
   gitBranch?: string;
   gitToken?: string;
@@ -59,10 +60,9 @@ export interface AgentVolumeConfig {
  */
 export interface PreparedVolume {
   name: string;
-  driver: string;
+  driver: VolumeDriver;
   localPath?: string;
   mountPath: string;
-  s3Uri?: string;
   gitUri?: string;
   gitBranch?: string;
   gitToken?: string;

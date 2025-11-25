@@ -2,12 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { VolumeService } from "../volume-service";
 import type { AgentVolumeConfig, PreparedVolume } from "../types";
 import * as volumeResolver from "../volume-resolver";
-import * as s3Client from "../../s3/s3-client";
 import * as fs from "node:fs";
 
 // Mock dependencies
 vi.mock("../volume-resolver");
-vi.mock("../../s3/s3-client");
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -70,17 +68,17 @@ describe("VolumeService", () => {
       });
     });
 
-    it("should prepare volumes successfully", async () => {
+    it("should prepare git volumes successfully", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["data:/workspace/data"],
+          volumes: ["repo:/workspace"],
         },
         volumes: {
-          data: {
-            driver: "s3fs",
+          repo: {
+            driver: "git",
             driver_opts: {
-              uri: "s3://test-bucket/data",
-              region: "us-east-1",
+              uri: "https://github.com/user/repo.git",
+              branch: "main",
             },
           },
         },
@@ -89,20 +87,14 @@ describe("VolumeService", () => {
       vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
         volumes: [
           {
-            name: "data",
-            driver: "s3fs",
-            s3Uri: "s3://test-bucket/data",
-            mountPath: "/workspace/data",
-            region: "us-east-1",
+            name: "repo",
+            driver: "git",
+            gitUri: "https://github.com/user/repo.git",
+            gitBranch: "main",
+            mountPath: "/workspace",
           },
         ],
         errors: [],
-      });
-
-      vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
-        localPath: "/tmp/vm0-run-test-run-id/data",
-        filesDownloaded: 5,
-        totalBytes: 1024,
       });
 
       const result = await volumeService.prepareVolumes(
@@ -113,11 +105,12 @@ describe("VolumeService", () => {
 
       expect(result.preparedVolumes).toHaveLength(1);
       expect(result.preparedVolumes[0]).toEqual({
-        name: "data",
-        driver: "s3fs",
-        localPath: "/tmp/vm0-run-test-run-id/data",
-        mountPath: "/workspace/data",
-        s3Uri: "s3://test-bucket/data",
+        name: "repo",
+        driver: "git",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/user/repo.git",
+        gitBranch: "main",
+        gitToken: undefined,
       });
       expect(result.tempDir).toBe("/tmp/vm0-run-test-run-id");
       expect(result.errors).toHaveLength(0);
@@ -267,50 +260,6 @@ describe("VolumeService", () => {
       expect(result.errors[0]).toContain("nonexistent-volume");
       expect(result.errors[0]).toContain("not found in database");
     });
-
-    it("should handle download errors", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["data:/workspace/data"],
-        },
-        volumes: {
-          data: {
-            driver: "s3fs",
-            driver_opts: {
-              uri: "s3://test-bucket/data",
-              region: "us-east-1",
-            },
-          },
-        },
-      };
-
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "data",
-            driver: "s3fs",
-            s3Uri: "s3://test-bucket/data",
-            mountPath: "/workspace/data",
-            region: "us-east-1",
-          },
-        ],
-        errors: [],
-      });
-
-      vi.mocked(s3Client.downloadS3Directory).mockRejectedValue(
-        new Error("S3 download failed"),
-      );
-
-      const result = await volumeService.prepareVolumes(
-        agentConfig,
-        {},
-        "test-run-id",
-      );
-
-      expect(result.preparedVolumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("data: Failed to prepare");
-    });
   });
 
   describe("mountVolumes", () => {
@@ -326,7 +275,7 @@ describe("VolumeService", () => {
       expect(mockSandbox.files.write).not.toHaveBeenCalled();
     });
 
-    it("should upload volumes to sandbox", async () => {
+    it("should upload VM0 volumes to sandbox", async () => {
       const mockSandbox = {
         files: {
           write: vi.fn(),
@@ -335,11 +284,10 @@ describe("VolumeService", () => {
 
       const preparedVolumes: PreparedVolume[] = [
         {
-          name: "data",
-          driver: "s3fs",
-          localPath: "/tmp/vm0-run-test/data",
+          name: "dataset",
+          driver: "vm0",
+          localPath: "/tmp/vm0-run-test/dataset",
           mountPath: "/workspace/data",
-          s3Uri: "s3://test-bucket/data",
         },
       ];
 
