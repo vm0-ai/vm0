@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/vm0-ai/vm0/compare/web-v1.3.0...web-v1.3.1) (2025-11-25)
+
+
+### Bug Fixes
+
+* fail agent run when vm0 volume preparation fails ([#188](https://github.com/vm0-ai/vm0/issues/188)) ([406a5ed](https://github.com/vm0-ai/vm0/commit/406a5ed6733077696c97f734be2e8405d19e9782))
+
 ## [1.3.0](https://github.com/vm0-ai/vm0/compare/web-v1.2.1...web-v1.3.0) (2025-11-25)
 
 
