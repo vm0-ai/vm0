@@ -132,6 +132,9 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="nav-right">
+              <a href="mailto:ethan@vm0.ai" className="btn-try-demo">
+                Contact us
+              </a>
               <Link href="/sign-up" className="btn-get-access">
                 Join waitlist
               </Link>
@@ -157,6 +160,9 @@ export default function LandingPage() {
                 <Link href="/sign-up" className="btn-primary-large">
                   Join waitlist
                 </Link>
+                <a href="mailto:ethan@vm0.ai" className="btn-secondary-large">
+                  Contact us
+                </a>
               </div>
             </div>
             <div className="hero-visual">
@@ -640,6 +646,9 @@ export default function LandingPage() {
             <p className="footer-copyright">
               © 2025 VM0.ai All rights reserved.
             </p>
+            <a href="mailto:ethan@vm0.ai" className="footer-link">
+              Contact us
+            </a>
           </div>
         </div>
       </footer>

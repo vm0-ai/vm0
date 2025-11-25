@@ -131,6 +131,20 @@ section {
 .nav-right {
   display: flex;
   gap: 16px;
+  align-items: center;
+}
+
+.nav-link {
+  font-family: "Fira Mono", monospace;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.nav-link:hover {
+  color: var(--primary);
 }
 
 /* ===== BUTTONS ===== */
@@ -1995,7 +2009,8 @@ section {
   }
 
   .hero-buttons button,
-  .hero-buttons .btn-primary-large {
+  .hero-buttons .btn-primary-large,
+  .hero-buttons .btn-secondary-large {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
@@ -2248,7 +2263,8 @@ section {
   }
 
   .hero-buttons button,
-  .hero-buttons .btn-primary-large {
+  .hero-buttons .btn-primary-large,
+  .hero-buttons .btn-secondary-large {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
@@ -2429,7 +2445,8 @@ section {
   }
 
   .hero-buttons button,
-  .hero-buttons .btn-primary-large {
+  .hero-buttons .btn-primary-large,
+  .hero-buttons .btn-secondary-large {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
