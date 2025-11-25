@@ -2,3 +2,6 @@
 # Use 1Password CLI to inject secrets: npm run sync:env
 CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishable_key
 CLERK_SECRET_KEY=op://Development/vm0-env-local/clerk_secret_key
+
+# GitHub token for git volume tests
+CI_GITHUB_TOKEN=op://Development/vm0-env-local/ci_github_token
