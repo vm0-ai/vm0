@@ -142,10 +142,17 @@ EOF
     # Create agent config that uses this volume
     CONFIG_DIR="$(mktemp -d)"
     cat > "$CONFIG_DIR/test-config.yaml" <<EOF
+version: "1.0"
+
 agent:
+  name: test-volume-version
+  description: "Test agent with versioned VM0 volume"
+  image: vm0-claude-code-dev
+  provider: claude-code
+  working_dir: /workspace
   volumes:
     - test-data:/workspace
-  working_dir: /workspace
+
 volumes:
   test-data:
     driver: vm0
