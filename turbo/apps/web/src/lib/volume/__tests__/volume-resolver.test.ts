@@ -250,6 +250,7 @@ describe("resolveVolumes", () => {
       s3Uri: "s3://my-bucket/claude-files",
       mountPath: "/home/user/.claude",
       region: "us-west-2",
+      isDynamic: false,
     });
     expect(result.errors).toHaveLength(0);
   });
@@ -279,6 +280,7 @@ describe("resolveVolumes", () => {
       s3Uri: "s3://my-bucket/users/test-user-123",
       mountPath: "/home/user/workspace",
       region: "us-west-2",
+      isDynamic: true,
     });
     expect(result.errors).toHaveLength(0);
   });

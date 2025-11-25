@@ -342,6 +342,7 @@ describe("VolumeService", () => {
         gitUri: "https://github.com/lancy/question.git",
         gitBranch: "run-test-run-123",
         gitToken: "test-token",
+        isDynamic: true,
       });
       expect(result.errors).toHaveLength(0);
     });
