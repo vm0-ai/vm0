@@ -4,7 +4,6 @@
  */
 
 export { checkpointService } from "./checkpoint-service";
-export { createGitSnapshot, GitSnapshotError } from "./git-snapshot";
 export type {
   CheckpointData,
   CheckpointRequest,
