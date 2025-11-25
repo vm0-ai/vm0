@@ -31,6 +31,10 @@ function isValidVolumeName(name: string): boolean {
 /**
  * POST /api/volumes
  * Upload a volume (zip file) to S3
+ *
+ * Uses database transaction to ensure atomicity:
+ * - If S3 upload fails, volume and version records are rolled back
+ * - Prevents orphaned volumes without HEAD version pointer
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -97,84 +101,89 @@ export async function POST(request: NextRequest) {
       totalSize += stats.size;
     }
 
-    // Find or create volume record
+    // Check if volume already exists (outside transaction for read)
     const existingVolumes = await globalThis.services.db
       .select()
       .from(volumes)
       .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
       .limit(1);
 
-    let volume = existingVolumes[0];
-    if (!volume) {
-      // Create new volume record (without HEAD initially)
-      const newVolumes = await globalThis.services.db
-        .insert(volumes)
+    const existingVolume = existingVolumes[0];
+
+    // Use transaction to ensure atomicity of volume/version creation and S3 upload
+    // If any step fails, all database changes are rolled back
+    const result = await globalThis.services.db.transaction(async (tx) => {
+      let volume = existingVolume;
+
+      if (!volume) {
+        // Create new volume record within transaction
+        const newVolumes = await tx
+          .insert(volumes)
+          .values({
+            userId,
+            name: volumeName,
+            s3Prefix: `${userId}/${volumeName}`,
+            size: totalSize,
+            fileCount,
+          })
+          .returning();
+        volume = newVolumes[0];
+        if (!volume) {
+          throw new Error("Failed to create volume");
+        }
+        console.log(`[Volumes] Created new volume record: ${volume.id}`);
+      }
+
+      // Create new version record within transaction
+      const createdVersions = await tx
+        .insert(volumeVersions)
         .values({
-          userId,
-          name: volumeName,
-          s3Prefix: `${userId}/${volumeName}`, // Base prefix (versions add versionId)
+          volumeId: volume.id,
+          s3Key: `${userId}/${volumeName}/${crypto.randomUUID()}`,
           size: totalSize,
           fileCount,
+          message: null,
+          createdBy: "user",
         })
         .returning();
-      volume = newVolumes[0];
-      if (!volume) {
-        throw new Error("Failed to create volume");
+
+      const version = createdVersions[0];
+
+      if (!version) {
+        throw new Error("Failed to create volume version");
       }
-      console.log(`[Volumes] Created new volume record: ${volume.id}`);
-    }
 
-    // Create new version record
-    const createdVersions = await globalThis.services.db
-      .insert(volumeVersions)
-      .values({
-        volumeId: volume.id,
-        s3Key: `${userId}/${volumeName}/${crypto.randomUUID()}`,
-        size: totalSize,
-        fileCount,
-        message: null,
-        createdBy: "user",
-      })
-      .returning();
+      console.log(`[Volumes] Created version: ${version.id}`);
 
-    const version = createdVersions[0];
+      // Upload files to versioned S3 path
+      // If this fails, the transaction will be rolled back
+      const s3Uri = `s3://${S3_BUCKET}/${version.s3Key}`;
+      console.log(`[Volumes] Uploading ${fileCount} files to ${s3Uri}...`);
+      await uploadS3Directory(extractPath, s3Uri);
 
-    if (!version) {
-      throw new Error("Failed to create volume version");
-    }
+      // Update volume's HEAD pointer and metadata within transaction
+      await tx
+        .update(volumes)
+        .set({
+          headVersionId: version.id,
+          size: totalSize,
+          fileCount,
+          updatedAt: new Date(),
+        })
+        .where(eq(volumes.id, volume.id));
 
-    console.log(`[Volumes] Created version: ${version.id}`);
+      console.log(
+        `[Volumes] Successfully uploaded volume "${volumeName}" version ${version.id}`,
+      );
 
-    // Upload files to versioned S3 path
-    const s3Uri = `s3://${S3_BUCKET}/${version.s3Key}`;
-    console.log(`[Volumes] Uploading ${fileCount} files to ${s3Uri}...`);
-    await uploadS3Directory(extractPath, s3Uri);
-
-    // Update volume's HEAD pointer and metadata
-    await globalThis.services.db
-      .update(volumes)
-      .set({
-        headVersionId: version.id,
-        size: totalSize,
-        fileCount,
-        updatedAt: new Date(),
-      })
-      .where(eq(volumes.id, volume.id));
-
-    console.log(
-      `[Volumes] Successfully uploaded volume "${volumeName}" version ${version.id}`,
-    );
+      return { volumeName, versionId: version.id, size: totalSize, fileCount };
+    });
 
     // Clean up temp directory
     await fs.promises.rm(tempDir, { recursive: true, force: true });
     tempDir = null;
 
-    return NextResponse.json({
-      volumeName,
-      versionId: version.id,
-      size: totalSize,
-      fileCount,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error("[Volumes] Upload error:", error);
 

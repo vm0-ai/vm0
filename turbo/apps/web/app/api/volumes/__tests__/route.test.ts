@@ -75,7 +75,20 @@ vi.mock("adm-zip", () => ({
   })),
 }));
 
-// Mock database
+// Mock transaction executor that forwards calls to mockTx
+const mockTx = {
+  select: vi.fn().mockReturnThis(),
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  limit: vi.fn().mockResolvedValue([]),
+  insert: vi.fn().mockReturnThis(),
+  values: vi.fn().mockReturnThis(),
+  returning: vi.fn().mockResolvedValue([]),
+  update: vi.fn().mockReturnThis(),
+  set: vi.fn().mockReturnThis(),
+};
+
+// Mock database with transaction support
 const mockDb = {
   select: vi.fn().mockReturnThis(),
   from: vi.fn().mockReturnThis(),
@@ -86,6 +99,9 @@ const mockDb = {
   returning: vi.fn().mockResolvedValue([]),
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
+  transaction: vi.fn().mockImplementation(async (callback) => {
+    return callback(mockTx);
+  }),
 };
 
 beforeEach(() => {
@@ -187,9 +203,11 @@ describe("POST /api/volumes", () => {
   it("should successfully upload a valid volume", async () => {
     vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
 
-    // Mock database: no existing volume, create volume and version
+    // Mock database: no existing volume (outside transaction check)
     mockDb.limit.mockResolvedValueOnce([]); // No existing volume
-    mockDb.returning
+
+    // Mock transaction operations: create volume and version
+    mockTx.returning
       .mockResolvedValueOnce([
         { id: "volume-id-123", name: "test-volume", userId: "test-user" },
       ]) // Volume creation
@@ -227,6 +245,109 @@ describe("POST /api/volumes", () => {
     expect(json.versionId).toBe("version-id-456");
     expect(json.fileCount).toBeGreaterThanOrEqual(0);
     expect(json.size).toBeGreaterThanOrEqual(0);
+
+    // Verify transaction was used
+    expect(mockDb.transaction).toHaveBeenCalled();
+  }, 10000);
+
+  it("should rollback transaction when S3 upload fails", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+
+    // Mock database: no existing volume (outside transaction check)
+    mockDb.limit.mockResolvedValueOnce([]); // No existing volume
+
+    // Mock transaction operations: create volume and version
+    mockTx.returning
+      .mockResolvedValueOnce([
+        { id: "volume-id-123", name: "test-volume", userId: "test-user" },
+      ]) // Volume creation
+      .mockResolvedValueOnce([
+        {
+          id: "version-id-456",
+          volumeId: "volume-id-123",
+          s3Key: "test-user/test-volume/version-id-456",
+        },
+      ]); // Version creation
+
+    // Mock S3 upload to fail - this should trigger transaction rollback
+    const s3ClientModule = await import("../../../../src/lib/s3/s3-client");
+    vi.mocked(s3ClientModule.uploadS3Directory).mockRejectedValueOnce(
+      new Error("S3 upload failed: network error"),
+    );
+
+    const formData = new FormData();
+    formData.append("volumeName", "test-volume");
+    const file = new File(["test zip content"], "test.zip", {
+      type: "application/zip",
+    });
+    formData.append("file", file);
+
+    file.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(16)) as never;
+
+    const mockFormData = async () => formData;
+
+    const request = new NextRequest("http://localhost/api/volumes", {
+      method: "POST",
+    });
+    request.formData = mockFormData as never;
+
+    const response = await POST(request);
+
+    // Should return 500 error
+    expect(response.status).toBe(500);
+    const json = await response.json();
+    expect(json.error).toContain("S3 upload failed");
+
+    // Verify transaction was called (and would have rolled back due to error)
+    expect(mockDb.transaction).toHaveBeenCalled();
+  }, 10000);
+
+  it("should use existing volume when uploading new version", async () => {
+    vi.mocked(getUserIdModule.getUserId).mockResolvedValue("test-user");
+
+    // Mock database: existing volume found
+    mockDb.limit.mockResolvedValueOnce([
+      { id: "existing-volume-id", name: "test-volume", userId: "test-user" },
+    ]);
+
+    // Mock transaction operations: only version creation (volume already exists)
+    mockTx.returning.mockResolvedValueOnce([
+      {
+        id: "new-version-id",
+        volumeId: "existing-volume-id",
+        s3Key: "test-user/test-volume/new-version-id",
+      },
+    ]);
+
+    const formData = new FormData();
+    formData.append("volumeName", "test-volume");
+    const file = new File(["test zip content"], "test.zip", {
+      type: "application/zip",
+    });
+    formData.append("file", file);
+
+    file.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(16)) as never;
+
+    const mockFormData = async () => formData;
+
+    const request = new NextRequest("http://localhost/api/volumes", {
+      method: "POST",
+    });
+    request.formData = mockFormData as never;
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.volumeName).toBe("test-volume");
+    expect(json.versionId).toBe("new-version-id");
+
+    // Verify transaction was used
+    expect(mockDb.transaction).toHaveBeenCalled();
+
+    // Verify volume insert was NOT called (since volume already exists)
+    // The first returning call should be for version, not volume
+    expect(mockTx.returning).toHaveBeenCalledTimes(1);
   }, 10000);
 });
 
