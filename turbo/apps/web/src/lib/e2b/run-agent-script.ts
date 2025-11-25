@@ -350,7 +350,7 @@ create_vm0_snapshot() {
 
   echo "[VM0] Created zip file for volume '$volume_name'" >&2
 
-  # Upload to volume webhook API
+  # Upload to volume webhook API (with timeout to prevent hanging)
   local response
   if [ -n "$VERCEL_BYPASS" ]; then
     response=$(curl -X POST "$VOLUME_WEBHOOK_URL" \\
@@ -360,6 +360,8 @@ create_vm0_snapshot() {
       -F "volumeName=$vm0_volume_name" \\
       -F "message=Checkpoint from run $RUN_ID" \\
       -F "file=@$zip_path" \\
+      --connect-timeout 10 \\
+      --max-time 60 \\
       --silent 2>&1)
   else
     response=$(curl -X POST "$VOLUME_WEBHOOK_URL" \\
@@ -368,16 +370,28 @@ create_vm0_snapshot() {
       -F "volumeName=$vm0_volume_name" \\
       -F "message=Checkpoint from run $RUN_ID" \\
       -F "file=@$zip_path" \\
+      --connect-timeout 10 \\
+      --max-time 60 \\
       --silent 2>&1)
   fi
+  local curl_exit=$?
 
   # Cleanup temp files
   rm -rf "$zip_dir"
 
+  # Check curl exit code
+  if [ $curl_exit -ne 0 ]; then
+    echo "[ERROR] curl failed with exit code $curl_exit for volume '$volume_name'" >&2
+    echo "[ERROR] Response: $response" >&2
+    return 1
+  fi
+
   # Check if response is valid JSON and extract versionId
   local version_id=$(echo "$response" | jq -r '.versionId // empty' 2>/dev/null)
   if [ -z "$version_id" ]; then
-    echo "[ERROR] Failed to create VM0 snapshot for '$volume_name': $response" >&2
+    echo "[ERROR] Failed to create VM0 snapshot for '$volume_name'" >&2
+    echo "[ERROR] Webhook URL: $VOLUME_WEBHOOK_URL" >&2
+    echo "[ERROR] Response: $response" >&2
     return 1
   fi
 
