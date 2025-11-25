@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/vm0-ai/vm0/compare/web-v1.3.1...web-v1.3.2) (2025-11-25)
+
+
+### Bug Fixes
+
+* push git branch to remote even when no changes to commit ([#193](https://github.com/vm0-ai/vm0/issues/193)) ([687a71d](https://github.com/vm0-ai/vm0/commit/687a71de1eb7f3869c9beab3fefb9dbe9d0d5151))
+
 ## [1.3.1](https://github.com/vm0-ai/vm0/compare/web-v1.3.0...web-v1.3.1) (2025-11-25)
 
 
