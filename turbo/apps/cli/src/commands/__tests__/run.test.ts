@@ -695,9 +695,7 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       // Errors bubble up to main command handler which displays generic "Run failed" message
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.red("✗ Run failed"),
-      );
+      expect(mockConsoleError).toHaveBeenCalledWith(chalk.red("✗ Run failed"));
       expect(mockConsoleError).toHaveBeenCalledWith(
         chalk.gray("  Network error"),
       );
