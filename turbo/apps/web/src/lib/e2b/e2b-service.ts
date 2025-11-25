@@ -39,6 +39,7 @@ export class E2BService {
           context.resumeVolumes,
           agentConfig,
           context.dynamicVars || {},
+          context.runId, // Pass runId for VM0 volume temp directory
         )
       : await volumeService.prepareVolumes(
           agentConfig,
@@ -333,6 +334,24 @@ export class E2BService {
         envs.VM0_GIT_VOLUMES = JSON.stringify(gitVolumes);
         console.log(
           `[E2B] Configured ${gitVolumes.length} Git volume(s) for checkpoint`,
+        );
+      }
+
+      // Filter VM0 volumes and format for checkpoint
+      const vm0Volumes = preparedVolumes
+        .filter((v) => v.driver === "vm0")
+        .map((v) => ({
+          name: v.name,
+          driver: v.driver,
+          mountPath: v.mountPath,
+          vm0VolumeName: v.vm0VolumeName,
+          vm0VersionId: v.vm0VersionId,
+        }));
+
+      if (vm0Volumes.length > 0) {
+        envs.VM0_VM0_VOLUMES = JSON.stringify(vm0Volumes);
+        console.log(
+          `[E2B] Configured ${vm0Volumes.length} VM0 volume(s) for checkpoint`,
         );
       }
     }

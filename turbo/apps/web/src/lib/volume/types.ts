@@ -66,6 +66,8 @@ export interface PreparedVolume {
   gitUri?: string;
   gitBranch?: string;
   gitToken?: string;
+  vm0VolumeName?: string;
+  vm0VersionId?: string;
 }
 
 /**

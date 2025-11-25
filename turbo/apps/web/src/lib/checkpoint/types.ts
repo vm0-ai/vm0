@@ -11,14 +11,37 @@ export interface GitSnapshot {
 }
 
 /**
+ * VM0 volume snapshot containing version information
+ */
+export interface Vm0Snapshot {
+  versionId: string;
+}
+
+/**
  * Volume snapshot for Git-based volumes
  */
-export interface VolumeSnapshot {
+export interface GitVolumeSnapshot {
   name: string;
   driver: "git";
   mountPath: string;
   snapshot?: GitSnapshot;
 }
+
+/**
+ * Volume snapshot for VM0 managed volumes
+ */
+export interface Vm0VolumeSnapshot {
+  name: string;
+  driver: "vm0";
+  mountPath: string;
+  vm0VolumeName: string;
+  snapshot?: Vm0Snapshot;
+}
+
+/**
+ * Union type for all volume snapshots
+ */
+export type VolumeSnapshot = GitVolumeSnapshot | Vm0VolumeSnapshot;
 
 /**
  * Complete checkpoint data stored in database

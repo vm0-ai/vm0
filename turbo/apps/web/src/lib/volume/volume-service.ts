@@ -13,7 +13,11 @@ import type {
   PreparedVolume,
   VolumePreparationResult,
 } from "./types";
-import type { VolumeSnapshot } from "../checkpoint/types";
+import type {
+  VolumeSnapshot,
+  Vm0VolumeSnapshot,
+  GitVolumeSnapshot,
+} from "../checkpoint/types";
 import { volumes, volumeVersions } from "../../db/schema/volume";
 import { eq, and } from "drizzle-orm";
 
@@ -173,6 +177,8 @@ export class VolumeService {
             driver: "vm0",
             localPath,
             mountPath: volume.mountPath,
+            vm0VolumeName: volume.vm0VolumeName,
+            vm0VersionId: headVersion.id,
           });
         }
       } catch (error) {
@@ -196,15 +202,18 @@ export class VolumeService {
   /**
    * Prepare volumes from checkpoint snapshots (for resume functionality)
    * Resolves Git URI and token from agent config and uses snapshot branch
+   * For VM0 volumes, downloads from the specific version stored in checkpoint
    * @param snapshots - Volume snapshots from checkpoint
    * @param agentConfig - Agent configuration containing volume definitions
    * @param dynamicVars - Dynamic variables for template replacement
+   * @param runId - Run ID for temp directory naming (required for VM0 volumes)
    * @returns Volume preparation result with prepared volumes
    */
   async prepareVolumesFromSnapshots(
     snapshots: VolumeSnapshot[],
     agentConfig: AgentVolumeConfig | undefined,
     dynamicVars: Record<string, string>,
+    runId?: string,
   ): Promise<VolumePreparationResult> {
     const errors: string[] = [];
 
@@ -233,6 +242,15 @@ export class VolumeService {
       `[Volume] Resolved ${resolvedVolumeMap.size} volumes from agent config`,
     );
 
+    // Check if we have VM0 snapshots that need a temp directory
+    const hasVm0Snapshots = snapshots.some((s) => s.driver === "vm0");
+    let tempDir: string | null = null;
+
+    if (hasVm0Snapshots && runId) {
+      tempDir = `/tmp/vm0-run-${runId}`;
+      await fs.promises.mkdir(tempDir, { recursive: true });
+    }
+
     // Process each snapshot
     for (const snapshot of snapshots) {
       try {
@@ -241,22 +259,23 @@ export class VolumeService {
         );
 
         if (snapshot.driver === "git") {
+          const gitSnapshot = snapshot as GitVolumeSnapshot;
           // Debug logging for snapshot structure
           console.log(
-            `[Volume] Snapshot.snapshot exists: ${!!snapshot.snapshot}`,
+            `[Volume] Snapshot.snapshot exists: ${!!gitSnapshot.snapshot}`,
           );
           console.log(
             `[Volume] Snapshot.snapshot value:`,
-            JSON.stringify(snapshot.snapshot, null, 2),
+            JSON.stringify(gitSnapshot.snapshot, null, 2),
           );
 
-          if (!snapshot.snapshot) {
+          if (!gitSnapshot.snapshot) {
             throw new Error("Git snapshot missing snapshot data");
           }
 
-          if (!snapshot.snapshot.branch) {
+          if (!gitSnapshot.snapshot.branch) {
             throw new Error(
-              `Git snapshot missing branch name. Snapshot: ${JSON.stringify(snapshot.snapshot)}`,
+              `Git snapshot missing branch name. Snapshot: ${JSON.stringify(gitSnapshot.snapshot)}`,
             );
           }
 
@@ -273,7 +292,7 @@ export class VolumeService {
           );
 
           console.log(
-            `[Volume] Prepared Git snapshot "${snapshot.name}": branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
+            `[Volume] Prepared Git snapshot "${snapshot.name}": branch ${gitSnapshot.snapshot.branch}, commit ${gitSnapshot.snapshot.commitId}`,
           );
 
           // Use snapshot branch instead of default branch
@@ -282,7 +301,7 @@ export class VolumeService {
             driver: "git",
             mountPath: snapshot.mountPath,
             gitUri: resolvedVolume.gitUri,
-            gitBranch: snapshot.snapshot.branch, // Use snapshot branch
+            gitBranch: gitSnapshot.snapshot.branch, // Use snapshot branch
             gitToken: resolvedVolume.gitToken,
           };
 
@@ -291,6 +310,47 @@ export class VolumeService {
           );
 
           preparedVolumes.push(preparedVolume);
+        } else if (snapshot.driver === "vm0") {
+          const vm0Snapshot = snapshot as Vm0VolumeSnapshot;
+
+          if (!vm0Snapshot.snapshot?.versionId) {
+            throw new Error("VM0 snapshot missing versionId");
+          }
+
+          if (!tempDir) {
+            throw new Error("runId is required for VM0 volume restoration");
+          }
+
+          // Get the version from database to get S3 key
+          const [version] = await globalThis.services.db
+            .select()
+            .from(volumeVersions)
+            .where(eq(volumeVersions.id, vm0Snapshot.snapshot.versionId))
+            .limit(1);
+
+          if (!version) {
+            throw new Error(
+              `VM0 volume version "${vm0Snapshot.snapshot.versionId}" not found`,
+            );
+          }
+
+          // Download from the specific version's S3 path
+          const s3Uri = `s3://vm0-s3-user-volumes/${version.s3Key}`;
+          const localPath = path.join(tempDir, snapshot.name);
+
+          const downloadResult = await downloadS3Directory(s3Uri, localPath);
+          console.log(
+            `[Volume] Downloaded VM0 volume "${snapshot.name}" (${vm0Snapshot.vm0VolumeName}) version ${vm0Snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+          );
+
+          preparedVolumes.push({
+            name: snapshot.name,
+            driver: "vm0",
+            localPath,
+            mountPath: snapshot.mountPath,
+            vm0VolumeName: vm0Snapshot.vm0VolumeName,
+            vm0VersionId: vm0Snapshot.snapshot.versionId,
+          });
         }
       } catch (error) {
         console.error(
@@ -309,7 +369,7 @@ export class VolumeService {
 
     return {
       preparedVolumes,
-      tempDir: null,
+      tempDir,
       errors,
     };
   }

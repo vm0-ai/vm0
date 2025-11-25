@@ -13,11 +13,13 @@ PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 GIT_VOLUMES="\${VM0_GIT_VOLUMES:-[]}"
+VM0_VOLUMES="\${VM0_VM0_VOLUMES:-[]}"
 RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
 
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
+VOLUME_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/volumes"
 
 # Variables for checkpoint (use temp files to persist across subshells)
 SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"
@@ -100,22 +102,12 @@ create_checkpoint() {
 
   echo "[VM0] Session history loaded ($(echo "$SESSION_HISTORY" | wc -l) lines)" >&2
 
-  # Create Git snapshots for each Git volume
-  VOLUME_SNAPSHOTS="[]"
+  # Array to collect all volume snapshots
+  local snapshots_array="[]"
 
+  # Create Git snapshots for each Git volume
   if [ "$GIT_VOLUMES" != "[]" ]; then
     echo "[VM0] Processing $(echo "$GIT_VOLUMES" | jq 'length') Git volume(s)..." >&2
-
-    # Iterate over Git volumes
-    VOLUME_SNAPSHOTS=$(echo "$GIT_VOLUMES" | jq -c '.[] | {
-      name: .name,
-      driver: .driver,
-      mountPath: .mountPath,
-      snapshot: null
-    }')
-
-    # Array to collect all snapshots
-    local snapshots_array="[]"
 
     while IFS= read -r volume; do
       VOLUME_NAME=$(echo "$volume" | jq -r '.name')
@@ -159,9 +151,63 @@ create_checkpoint() {
         return 1
       fi
     done < <(echo "$GIT_VOLUMES" | jq -c '.[]')
-
-    VOLUME_SNAPSHOTS="$snapshots_array"
   fi
+
+  # Create VM0 snapshots for each VM0 volume
+  if [ "$VM0_VOLUMES" != "[]" ]; then
+    echo "[VM0] Processing $(echo "$VM0_VOLUMES" | jq 'length') VM0 volume(s)..." >&2
+
+    while IFS= read -r volume; do
+      VOLUME_NAME=$(echo "$volume" | jq -r '.name')
+      MOUNT_PATH=$(echo "$volume" | jq -r '.mountPath')
+      VM0_VOLUME_NAME=$(echo "$volume" | jq -r '.vm0VolumeName')
+
+      # Create VM0 snapshot
+      SNAPSHOT=$(create_vm0_snapshot "$MOUNT_PATH" "$VOLUME_NAME" "$VM0_VOLUME_NAME")
+
+      if [ $? -eq 0 ] && [ -n "$SNAPSHOT" ]; then
+        # Build VM0 volume snapshot object
+        local vol_tmp="/tmp/vol-$RUN_ID-$VOLUME_NAME.json"
+        local snap_tmp="/tmp/snap-$RUN_ID-$VOLUME_NAME.json"
+        local arr_tmp="/tmp/arr-$RUN_ID.json"
+
+        # Create volume snapshot object with vm0VolumeName
+        jq -n \\
+          --arg name "$VOLUME_NAME" \\
+          --arg driver "vm0" \\
+          --arg mountPath "$MOUNT_PATH" \\
+          --arg vm0VolumeName "$VM0_VOLUME_NAME" \\
+          '{name: $name, driver: $driver, mountPath: $mountPath, vm0VolumeName: $vm0VolumeName}' > "$vol_tmp"
+
+        echo "$SNAPSHOT" > "$snap_tmp"
+        echo "$snapshots_array" > "$arr_tmp"
+
+        # Merge snapshot into volume
+        volume=$(jq --slurpfile snap "$snap_tmp" '. + {snapshot: $snap[0]}' "$vol_tmp" 2>&1)
+        if [ $? -ne 0 ]; then
+          echo "[ERROR] Failed to merge snapshot into volume: $volume" >&2
+          return 1
+        fi
+
+        echo "$volume" > "$vol_tmp"
+        # Append volume to snapshots array
+        snapshots_array=$(jq --slurpfile vol "$vol_tmp" '. + $vol' "$arr_tmp" 2>&1)
+        if [ $? -ne 0 ]; then
+          echo "[ERROR] Failed to append volume to array: $snapshots_array" >&2
+          return 1
+        fi
+
+        rm -f "$vol_tmp" "$snap_tmp"
+
+        echo "[VM0] VM0 snapshot created for '$VOLUME_NAME'" >&2
+      else
+        echo "[ERROR] Failed to create VM0 snapshot for '$VOLUME_NAME'" >&2
+        return 1
+      fi
+    done < <(echo "$VM0_VOLUMES" | jq -c '.[]')
+  fi
+
+  VOLUME_SNAPSHOTS="$snapshots_array"
 
   echo "[VM0] Calling checkpoint API..." >&2
 
@@ -272,6 +318,73 @@ create_git_snapshot() {
 
   # Use jq to generate valid JSON
   jq -n --arg branch "$branch_name" --arg commit "$COMMIT_ID" '{branch: $branch, commitId: $commit}'
+  return 0
+}
+
+# Create VM0 snapshot for a volume
+# Creates a zip of the volume contents and uploads to the volume webhook API
+create_vm0_snapshot() {
+  local mount_path="$1"
+  local volume_name="$2"
+  local vm0_volume_name="$3"
+
+  echo "[VM0] Creating VM0 snapshot for volume '$volume_name' ($vm0_volume_name) at $mount_path" >&2
+
+  # Create temp directory for zip
+  local zip_dir="/tmp/vm0-snapshot-$RUN_ID-$volume_name"
+  mkdir -p "$zip_dir"
+  local zip_path="$zip_dir/volume.zip"
+
+  # Create zip of volume contents
+  cd "$mount_path" || {
+    echo "[ERROR] Failed to cd to $mount_path" >&2
+    return 1
+  }
+
+  # Create zip file (exclude .git directory if present)
+  if ! zip -r "$zip_path" . -x "*.git*" >/dev/null 2>&1; then
+    echo "[ERROR] Failed to create zip for volume '$volume_name'" >&2
+    rm -rf "$zip_dir"
+    return 1
+  fi
+
+  echo "[VM0] Created zip file for volume '$volume_name'" >&2
+
+  # Upload to volume webhook API
+  local response
+  if [ -n "$VERCEL_BYPASS" ]; then
+    response=$(curl -X POST "$VOLUME_WEBHOOK_URL" \\
+      -H "Authorization: Bearer $API_TOKEN" \\
+      -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
+      -F "runId=$RUN_ID" \\
+      -F "volumeName=$vm0_volume_name" \\
+      -F "message=Checkpoint from run $RUN_ID" \\
+      -F "file=@$zip_path" \\
+      --silent 2>&1)
+  else
+    response=$(curl -X POST "$VOLUME_WEBHOOK_URL" \\
+      -H "Authorization: Bearer $API_TOKEN" \\
+      -F "runId=$RUN_ID" \\
+      -F "volumeName=$vm0_volume_name" \\
+      -F "message=Checkpoint from run $RUN_ID" \\
+      -F "file=@$zip_path" \\
+      --silent 2>&1)
+  fi
+
+  # Cleanup temp files
+  rm -rf "$zip_dir"
+
+  # Check if response is valid JSON and extract versionId
+  local version_id=$(echo "$response" | jq -r '.versionId // empty' 2>/dev/null)
+  if [ -z "$version_id" ]; then
+    echo "[ERROR] Failed to create VM0 snapshot for '$volume_name': $response" >&2
+    return 1
+  fi
+
+  echo "[VM0] VM0 snapshot created for '$volume_name': version $version_id" >&2
+
+  # Return JSON snapshot
+  jq -n --arg vid "$version_id" '{versionId: $vid}'
   return 0
 }
 
