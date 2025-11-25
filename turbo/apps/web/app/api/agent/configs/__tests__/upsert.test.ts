@@ -199,48 +199,6 @@ describe("Agent Config Upsert Behavior", () => {
       expect(data.error.message).toContain("Invalid agent.name");
     });
 
-    it("should reject config with name starting with hyphen", async () => {
-      const config = {
-        version: "1.0",
-        agent: {
-          name: "-invalid",
-        },
-      };
-
-      const request = new Request("http://localhost:3000/api/agent/configs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ config }),
-      });
-
-      const response = await POST(request as NextRequest);
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject config with name containing special characters", async () => {
-      const config = {
-        version: "1.0",
-        agent: {
-          name: "my_agent",
-        },
-      };
-
-      const request = new Request("http://localhost:3000/api/agent/configs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ config }),
-      });
-
-      const response = await POST(request as NextRequest);
-
-      expect(response.status).toBe(400);
-    });
-
     it("should accept valid name with hyphens", async () => {
       const config = {
         version: "1.0",

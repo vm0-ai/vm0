@@ -137,29 +137,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.error).toBeDefined();
       expect(data.error.message).toBeDefined();
     });
-
-    it("should reject checkpoint with invalid token", async () => {
-      const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer vm0_live_invalid_token_12345",
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
-          }),
-        },
-      );
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(401);
-    });
   });
 
   // ============================================

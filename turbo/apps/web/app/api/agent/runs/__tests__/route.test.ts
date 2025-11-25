@@ -172,29 +172,23 @@ describe("POST /api/agent/runs - Async Execution", () => {
           createdAt: new Date(),
         });
       }
-
-      // Wait a bit for the async update to complete
-      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it("should update run status to 'completed' after E2B execution finishes successfully", async () => {
-      // Mock successful run execution that completes after a delay
+      // Mock successful run execution that completes immediately
       mockRunService.createRunContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockImplementation(
-        (context: ExecutionContext) =>
-          new Promise((resolve) => {
-            setTimeout(() => {
-              resolve({
-                runId: context.runId || "test-run-id",
-                status: "completed" as const,
-                sandboxId: "test-sandbox-123",
-                output: "Success! Task completed.",
-                executionTimeMs: 5000,
-                createdAt: new Date(),
-                completedAt: new Date(),
-              });
-            }, 100); // 100ms delay
-          }),
+        async (context: ExecutionContext) => {
+          return {
+            runId: context.runId || "test-run-id",
+            status: "completed" as const,
+            sandboxId: "test-sandbox-123",
+            output: "Success! Task completed.",
+            executionTimeMs: 5000,
+            createdAt: new Date(),
+            completedAt: new Date(),
+          };
+        },
       );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
@@ -215,9 +209,15 @@ describe("POST /api/agent/runs - Async Execution", () => {
       // Initially returns running
       expect(data.status).toBe("running");
 
-      // Wait for E2B execution to complete
-      // Increased timeout to handle CI environment delays
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait for database to be updated
+      await vi.waitFor(async () => {
+        const [run] = await globalThis.services.db
+          .select()
+          .from(agentRuns)
+          .where(eq(agentRuns.id, data.runId))
+          .limit(1);
+        expect(run?.status).toBe("completed");
+      });
 
       // Check that run was updated in database
       const [updatedRun] = await globalThis.services.db
@@ -237,15 +237,10 @@ describe("POST /api/agent/runs - Async Execution", () => {
     });
 
     it("should update run status to 'failed' if E2B execution fails", async () => {
-      // Mock run execution failure
+      // Mock run execution failure that rejects immediately
       mockRunService.createRunContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockImplementation(
-        () =>
-          new Promise((_, reject) => {
-            setTimeout(() => {
-              reject(new Error("Sandbox execution failed"));
-            }, 100);
-          }),
+      mockRunService.executeRun.mockRejectedValue(
+        new Error("Sandbox execution failed"),
       );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
@@ -266,8 +261,15 @@ describe("POST /api/agent/runs - Async Execution", () => {
       // Initially returns running
       expect(data.status).toBe("running");
 
-      // Wait for E2B execution to fail
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Wait for database to be updated
+      await vi.waitFor(async () => {
+        const [run] = await globalThis.services.db
+          .select()
+          .from(agentRuns)
+          .where(eq(agentRuns.id, data.runId))
+          .limit(1);
+        expect(run?.status).toBe("failed");
+      });
 
       // Check that run was marked as failed in database
       const [failedRun] = await globalThis.services.db
@@ -282,22 +284,13 @@ describe("POST /api/agent/runs - Async Execution", () => {
     });
 
     it("should not block API response even if E2B takes a long time", async () => {
-      // Mock run service with 5 second delay
+      // Mock run service with a promise that never resolves during the test
+      // This simulates a long-running operation without artificial delays
       mockRunService.createRunContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockImplementation(
-        (context: ExecutionContext) =>
-          new Promise((resolve) => {
-            setTimeout(() => {
-              resolve({
-                runId: context.runId || "test-run-id",
-                status: "completed" as const,
-                sandboxId: "test-sandbox",
-                output: "Completed after delay",
-                executionTimeMs: 5000,
-                createdAt: new Date(),
-              });
-            }, 5000); // 5 second delay
-          }),
+      mockRunService.executeRun.mockReturnValue(
+        new Promise(() => {
+          // Never resolves - simulates long-running operation
+        }) as Promise<never>,
       );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
@@ -315,7 +308,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
       const response = await POST(request);
       const responseTime = Date.now() - startTime;
 
-      // Should return immediately (< 1 second), not wait for 5 seconds
+      // Should return immediately (< 1 second), not wait indefinitely
       expect(responseTime).toBeLessThan(1000);
       expect(response.status).toBe(201);
 

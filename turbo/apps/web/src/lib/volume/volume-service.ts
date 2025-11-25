@@ -211,6 +211,7 @@ export class VolumeService {
     console.log(
       `[Volume] Preparing ${snapshots.length} volumes from snapshots...`,
     );
+    console.log(`[Volume] Snapshots data:`, JSON.stringify(snapshots, null, 2));
 
     if (!agentConfig) {
       return {
@@ -228,12 +229,35 @@ export class VolumeService {
       volumeResult.volumes.map((v) => [v.name, v]),
     );
 
+    console.log(
+      `[Volume] Resolved ${resolvedVolumeMap.size} volumes from agent config`,
+    );
+
     // Process each snapshot
     for (const snapshot of snapshots) {
       try {
+        console.log(
+          `[Volume] Processing snapshot "${snapshot.name}" (driver: ${snapshot.driver})`,
+        );
+
         if (snapshot.driver === "git") {
+          // Debug logging for snapshot structure
+          console.log(
+            `[Volume] Snapshot.snapshot exists: ${!!snapshot.snapshot}`,
+          );
+          console.log(
+            `[Volume] Snapshot.snapshot value:`,
+            JSON.stringify(snapshot.snapshot, null, 2),
+          );
+
           if (!snapshot.snapshot) {
             throw new Error("Git snapshot missing snapshot data");
+          }
+
+          if (!snapshot.snapshot.branch) {
+            throw new Error(
+              `Git snapshot missing branch name. Snapshot: ${JSON.stringify(snapshot.snapshot)}`,
+            );
           }
 
           // Get the resolved volume from agent config
@@ -245,18 +269,28 @@ export class VolumeService {
           }
 
           console.log(
+            `[Volume] Resolved volume "${snapshot.name}": ${sanitizeGitUrlForLogging(resolvedVolume.gitUri!)}`,
+          );
+
+          console.log(
             `[Volume] Prepared Git snapshot "${snapshot.name}": branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
           );
 
           // Use snapshot branch instead of default branch
-          preparedVolumes.push({
+          const preparedVolume: PreparedVolume = {
             name: snapshot.name,
             driver: "git",
             mountPath: snapshot.mountPath,
             gitUri: resolvedVolume.gitUri,
             gitBranch: snapshot.snapshot.branch, // Use snapshot branch
             gitToken: resolvedVolume.gitToken,
-          });
+          };
+
+          console.log(
+            `[Volume] Prepared volume "${snapshot.name}" with branch: ${preparedVolume.gitBranch}`,
+          );
+
+          preparedVolumes.push(preparedVolume);
         }
       } catch (error) {
         console.error(
@@ -268,6 +302,10 @@ export class VolumeService {
         );
       }
     }
+
+    console.log(
+      `[Volume] Prepared ${preparedVolumes.length} volumes from snapshots`,
+    );
 
     return {
       preparedVolumes,
@@ -356,7 +394,7 @@ export class VolumeService {
 
     // Log sanitized command
     console.log(
-      `[Volume] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch})`,
+      `[Volume] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch}) to ${mountPath}`,
     );
 
     // Execute git clone in sandbox
@@ -365,7 +403,18 @@ export class VolumeService {
     // Check for errors
     if (result.exitCode !== 0) {
       const errorMessage = result.stderr || result.stdout || "Unknown error";
-      throw new Error(`Git clone failed: ${errorMessage}`);
+      console.error(
+        `[Volume] Git clone failed with exit code ${result.exitCode}`,
+      );
+      console.error(
+        `[Volume] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`,
+      );
+      console.error(`[Volume] stderr:`, result.stderr);
+      console.error(`[Volume] stdout:`, result.stdout);
+
+      throw new Error(
+        `Git clone failed (exit ${result.exitCode}): Branch "${branch}" - ${errorMessage}`,
+      );
     }
 
     console.log(`[Volume] Git clone successful: ${mountPath}`);

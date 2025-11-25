@@ -256,30 +256,23 @@ export class E2BService {
     const tempPath = "/tmp/run-agent.sh";
     const finalPath = "/usr/local/bin/run-agent.sh";
 
-    try {
-      // Convert script string to ArrayBuffer for E2B
-      const scriptBuffer = Buffer.from(RUN_AGENT_SCRIPT, "utf-8");
-      const arrayBuffer = scriptBuffer.buffer.slice(
-        scriptBuffer.byteOffset,
-        scriptBuffer.byteOffset + scriptBuffer.byteLength,
-      ) as ArrayBuffer;
+    // Convert script string to ArrayBuffer for E2B
+    const scriptBuffer = Buffer.from(RUN_AGENT_SCRIPT, "utf-8");
+    const arrayBuffer = scriptBuffer.buffer.slice(
+      scriptBuffer.byteOffset,
+      scriptBuffer.byteOffset + scriptBuffer.byteLength,
+    ) as ArrayBuffer;
 
-      // Upload to temp location first
-      await sandbox.files.write(tempPath, arrayBuffer);
+    // Upload to temp location first
+    await sandbox.files.write(tempPath, arrayBuffer);
 
-      // Move to /usr/local/bin/ and make executable
-      await sandbox.commands.run(
-        `sudo mv ${tempPath} ${finalPath} && sudo chmod +x ${finalPath}`,
-      );
+    // Move to /usr/local/bin/ and make executable
+    await sandbox.commands.run(
+      `sudo mv ${tempPath} ${finalPath} && sudo chmod +x ${finalPath}`,
+    );
 
-      console.log(`[E2B] Uploaded run-agent.sh to sandbox: ${finalPath}`);
-      return finalPath;
-    } catch (error) {
-      console.error(`[E2B] Failed to upload run-agent.sh:`, error);
-      throw new Error(
-        `Failed to upload run-agent.sh script: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
+    console.log(`[E2B] Uploaded run-agent.sh to sandbox: ${finalPath}`);
+    return finalPath;
   }
 
   /**
