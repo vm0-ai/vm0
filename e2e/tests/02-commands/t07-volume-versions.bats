@@ -165,7 +165,8 @@ EOF
     $CLI_COMMAND build test-config.yaml >/dev/null
 
     # Run agent - should see HEAD version content
-    run $CLI_COMMAND run test-config \
+    # Use the agent name from config, not the filename
+    run $CLI_COMMAND run test-volume-version \
         "Read the file /workspace/message.txt and tell me exactly what it says"
 
     assert_success
