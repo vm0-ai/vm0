@@ -359,9 +359,7 @@ export class E2BService {
 
     // Add volume information for checkpoint
     // Only dynamic volumes create new versions after agent runs
-    console.log(
-      `[E2B] preparedVolumes count: ${preparedVolumes?.length ?? 0}`,
-    );
+    console.log(`[E2B] preparedVolumes count: ${preparedVolumes?.length ?? 0}`);
     if (preparedVolumes && preparedVolumes.length > 0) {
       // Debug: log all prepared volumes to understand filtering
       console.log(

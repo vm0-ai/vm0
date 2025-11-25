@@ -59,12 +59,16 @@ send_event() {
       -H "Authorization: Bearer $API_TOKEN" \\
       -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
       -d "$payload" \\
+      --connect-timeout 10 \\
+      --max-time 30 \\
       --silent --fail || echo "[ERROR] Failed to send event" >&2
   else
     curl -X POST "$WEBHOOK_URL" \\
       -H "Content-Type: application/json" \\
       -H "Authorization: Bearer $API_TOKEN" \\
       -d "$payload" \\
+      --connect-timeout 10 \\
+      --max-time 30 \\
       --silent --fail || echo "[ERROR] Failed to send event" >&2
   fi
 }
@@ -228,13 +232,15 @@ create_checkpoint() {
       volumeSnapshots: $volumes
     }')
 
-  # Call checkpoint API directly (avoid eval)
+  # Call checkpoint API directly (avoid eval) with timeout to prevent hanging
   if [ -n "$VERCEL_BYPASS" ]; then
     if curl -X POST "$CHECKPOINT_URL" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $API_TOKEN" \
       -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \
       -d "$checkpoint_payload" \
+      --connect-timeout 10 \
+      --max-time 60 \
       --silent --fail; then
       echo "[VM0] Checkpoint created successfully" >&2
       return 0
@@ -247,6 +253,8 @@ create_checkpoint() {
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $API_TOKEN" \
       -d "$checkpoint_payload" \
+      --connect-timeout 10 \
+      --max-time 60 \
       --silent --fail; then
       echo "[VM0] Checkpoint created successfully" >&2
       return 0
