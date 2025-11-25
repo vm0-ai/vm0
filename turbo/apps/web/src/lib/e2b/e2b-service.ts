@@ -9,6 +9,7 @@ import {
   COMMON_SCRIPT,
   SEND_EVENT_SCRIPT,
   GIT_SNAPSHOT_SCRIPT,
+  VM0_SNAPSHOT_SCRIPT,
   CREATE_CHECKPOINT_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
@@ -308,6 +309,7 @@ export class E2BService {
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: SEND_EVENT_SCRIPT, path: SCRIPT_PATHS.sendEvent },
       { content: GIT_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.gitSnapshot },
+      { content: VM0_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vm0Snapshot },
       {
         content: CREATE_CHECKPOINT_SCRIPT,
         path: SCRIPT_PATHS.createCheckpoint,

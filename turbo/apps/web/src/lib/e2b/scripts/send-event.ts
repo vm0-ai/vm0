@@ -38,12 +38,16 @@ send_event() {
       -H "Authorization: Bearer $API_TOKEN" \\
       -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
       -d "$payload" \\
+      --connect-timeout 10 \\
+      --max-time 30 \\
       --silent --fail || echo "[ERROR] Failed to send event" >&2
   else
     curl -X POST "$WEBHOOK_URL" \\
       -H "Content-Type: application/json" \\
       -H "Authorization: Bearer $API_TOKEN" \\
       -d "$payload" \\
+      --connect-timeout 10 \\
+      --max-time 30 \\
       --silent --fail || echo "[ERROR] Failed to send event" >&2
   fi
 }

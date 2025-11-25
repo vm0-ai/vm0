@@ -13,11 +13,13 @@ PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 GIT_VOLUMES="\${VM0_GIT_VOLUMES:-[]}"
+VM0_VOLUMES="\${VM0_VM0_VOLUMES:-[]}"
 RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
 
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
+VOLUME_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/volumes"
 
 # Variables for checkpoint (use temp files to persist across subshells)
 SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"

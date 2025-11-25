@@ -10,6 +10,7 @@ SCRIPT_DIR="$(dirname "$0")"
 source "\${SCRIPT_DIR}/lib/common.sh"
 source "\${SCRIPT_DIR}/lib/send-event.sh"
 source "\${SCRIPT_DIR}/lib/git-snapshot.sh"
+source "\${SCRIPT_DIR}/lib/vm0-snapshot.sh"
 source "\${SCRIPT_DIR}/lib/create-checkpoint.sh"
 
 # Change to working directory
