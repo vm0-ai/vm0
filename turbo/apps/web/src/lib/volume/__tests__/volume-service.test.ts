@@ -448,5 +448,207 @@ describe("VolumeService", () => {
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain("Git snapshot missing branch name");
     });
+
+    it("should prepare VM0 volume from snapshot with specific version", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["my-data:/workspace/data"],
+        },
+        dynamic_volumes: {
+          "my-data": {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://test-volume",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "my-data",
+          driver: "vm0" as const,
+          mountPath: "/workspace/data",
+          vm0VolumeName: "test-volume",
+          snapshot: {
+            versionId: "version-123-456",
+          },
+        },
+      ];
+
+      // Mock database query for volumeVersions
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([
+          {
+            id: "version-123-456",
+            volumeId: "volume-id",
+            s3Key: "user-123/test-volume/version-123-456",
+          },
+        ]),
+      };
+
+      globalThis.services = {
+        db: mockDb as never,
+      } as never;
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "my-data",
+            driver: "vm0",
+            vm0VolumeName: "test-volume",
+            mountPath: "/workspace/data",
+          },
+        ],
+        errors: [],
+      });
+
+      vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
+        localPath: "/tmp/vm0-run-test-run-id/my-data",
+        filesDownloaded: 10,
+        totalBytes: 2048,
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedVolumes).toHaveLength(1);
+      expect(result.preparedVolumes[0]).toMatchObject({
+        name: "my-data",
+        driver: "vm0",
+        mountPath: "/workspace/data",
+        vm0VolumeName: "test-volume",
+        vm0VersionId: "version-123-456",
+      });
+      expect(result.tempDir).toBe("/tmp/vm0-run-test-run-id");
+      expect(result.errors).toHaveLength(0);
+
+      // Verify S3 download was called with correct versioned path
+      expect(s3Client.downloadS3Directory).toHaveBeenCalledWith(
+        "s3://vm0-s3-user-volumes/user-123/test-volume/version-123-456",
+        expect.any(String),
+      );
+    });
+
+    it("should return error when VM0 snapshot is missing versionId", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["my-data:/workspace/data"],
+        },
+        dynamic_volumes: {
+          "my-data": {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://test-volume",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "my-data",
+          driver: "vm0" as const,
+          mountPath: "/workspace/data",
+          vm0VolumeName: "test-volume",
+          // No snapshot with versionId
+        },
+      ];
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "my-data",
+            driver: "vm0",
+            vm0VolumeName: "test-volume",
+            mountPath: "/workspace/data",
+          },
+        ],
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("VM0 snapshot missing versionId");
+    });
+
+    it("should return error when VM0 volume version not found in database", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["my-data:/workspace/data"],
+        },
+        dynamic_volumes: {
+          "my-data": {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://test-volume",
+            },
+          },
+        },
+      };
+
+      const snapshots = [
+        {
+          name: "my-data",
+          driver: "vm0" as const,
+          mountPath: "/workspace/data",
+          vm0VolumeName: "test-volume",
+          snapshot: {
+            versionId: "non-existent-version",
+          },
+        },
+      ];
+
+      // Mock database query returning empty result
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      globalThis.services = {
+        db: mockDb as never,
+      } as never;
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "my-data",
+            driver: "vm0",
+            vm0VolumeName: "test-volume",
+            mountPath: "/workspace/data",
+          },
+        ],
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumesFromSnapshots(
+        snapshots,
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(
+        'VM0 volume version "non-existent-version" not found',
+      );
+    });
   });
 });
