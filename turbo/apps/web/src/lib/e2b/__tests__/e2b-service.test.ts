@@ -9,17 +9,24 @@ import type { ExecutionContext } from "../../run/types";
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
 
-// Mock VolumeService
-vi.mock("../volume/volume-service", () => ({
-  volumeService: {
-    prepareVolumes: vi.fn().mockResolvedValue({
-      preparedVolumes: [],
-      tempDir: null,
-      errors: [],
-    }),
-    mountVolumes: vi.fn().mockResolvedValue(undefined),
-    cleanup: vi.fn().mockResolvedValue(undefined),
-  },
+// Mock VolumeService - use vi.hoisted to ensure mock is defined before vi.mock runs
+const mockVolumeService = vi.hoisted(() => ({
+  prepareVolumes: vi.fn().mockResolvedValue({
+    preparedVolumes: [],
+    tempDir: null,
+    errors: [],
+  }),
+  prepareVolumesFromSnapshots: vi.fn().mockResolvedValue({
+    preparedVolumes: [],
+    tempDir: null,
+    errors: [],
+  }),
+  mountVolumes: vi.fn().mockResolvedValue(undefined),
+  cleanup: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../volume/volume-service", () => ({
+  volumeService: mockVolumeService,
 }));
 
 // Mock fs module
@@ -40,6 +47,18 @@ describe("E2B Service - mocked unit tests", () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks();
+
+    // Reset mock implementations to defaults
+    mockVolumeService.prepareVolumes.mockResolvedValue({
+      preparedVolumes: [],
+      tempDir: null,
+      errors: [],
+    });
+    mockVolumeService.prepareVolumesFromSnapshots.mockResolvedValue({
+      preparedVolumes: [],
+      tempDir: null,
+      errors: [],
+    });
   });
 
   /**
@@ -365,6 +384,43 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify Sandbox.create was called but sandbox methods were not
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("should fail when volume preparation returns errors", async () => {
+      // Arrange - Mock volume service to return errors
+      mockVolumeService.prepareVolumes.mockResolvedValueOnce({
+        preparedVolumes: [],
+        tempDir: null,
+        errors: [
+          'claude-system: Volume "claude-files" has no versions',
+          "data: S3 download failed",
+        ],
+      });
+
+      const context: ExecutionContext = {
+        runId: "run-test-volume-error",
+        agentConfigId: "test-agent-volume-error",
+        agentConfig: {},
+        sandboxToken: "vm0_live_test_token",
+        prompt: "This should fail due to volume errors",
+      };
+
+      // Act
+      const result = await e2bService.execute(context);
+
+      // Assert - Should return failed status with volume errors
+      expect(result.status).toBe("failed");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("Volume preparation failed");
+      expect(result.error).toContain("claude-files");
+      expect(result.error).toContain("S3 download failed");
+      expect(result.sandboxId).toBe("unknown");
+
+      // Verify sandbox was never created since volume prep failed
+      expect(Sandbox.create).not.toHaveBeenCalled();
+
+      // Verify cleanup was still called
+      expect(mockVolumeService.cleanup).toHaveBeenCalled();
     });
   });
 

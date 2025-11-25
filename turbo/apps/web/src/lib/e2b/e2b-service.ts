@@ -48,6 +48,12 @@ export class E2BService {
         );
 
     try {
+      // Fail fast if any volumes failed to prepare
+      if (volumeResult.errors.length > 0) {
+        throw new Error(
+          `Volume preparation failed: ${volumeResult.errors.join("; ")}`,
+        );
+      }
       // Get API configuration with dynamic fallback logic
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
       const envVars = globalThis.services?.env;

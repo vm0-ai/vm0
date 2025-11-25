@@ -137,13 +137,9 @@ export class VolumeService {
           }
 
           if (!dbVolume.headVersionId) {
-            console.warn(
-              `[Volume] VM0 volume "${volume.vm0VolumeName}" has no HEAD version, skipping`,
+            throw new Error(
+              `VM0 volume "${volume.vm0VolumeName}" has no HEAD version`,
             );
-            errors.push(
-              `${volume.name}: Volume "${volume.vm0VolumeName}" has no versions`,
-            );
-            continue;
           }
 
           // Get HEAD version details
