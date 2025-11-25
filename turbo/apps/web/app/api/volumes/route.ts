@@ -5,7 +5,6 @@ import { volumes, volumeVersions } from "../../../src/db/schema/volume";
 import { eq, and } from "drizzle-orm";
 import {
   uploadS3Directory,
-  deleteS3Directory,
   downloadS3Directory,
 } from "../../../src/lib/s3/s3-client";
 import * as fs from "node:fs";
