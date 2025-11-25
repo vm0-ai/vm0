@@ -50,11 +50,11 @@ teardown() {
 
     # Step 2: Run agent to:
     # - Create agent-marker.txt (new file)
-    # - Increment counter.txt to 101 (modify existing file)
+    # - Modify counter.txt from 100 to 101
     echo "# Step 2: Running agent to modify volume..."
     run $CLI_COMMAND run vm0-volume-checkpoint-test \
         -e volumeName="$VOLUME_NAME" \
-        "Create a file called agent-marker.txt with content 'created by agent'. Also read counter.txt, increment the number by 1, and write the new value back."
+        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
     assert_output --partial "Checkpoint:"
@@ -84,7 +84,7 @@ teardown() {
     # Step 4: Resume from checkpoint - should get checkpoint version, not HEAD
     echo "# Step 4: Resuming from checkpoint..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        "Run 'ls -la' to list all files, then read counter.txt. Report the exact file names and the counter value."
+        "ls && cat counter.txt"
 
     assert_success
 

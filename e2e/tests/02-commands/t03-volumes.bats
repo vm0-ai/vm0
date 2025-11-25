@@ -172,7 +172,7 @@ EOF
 
     # Run agent - should see HEAD version content (verifies both mounting and versioning)
     run $CLI_COMMAND run "test-vm0-volume-$VOLUME_NAME" \
-        "Read /workspace/message.txt and /workspace/answer.txt, tell me what they contain"
+        "cat /workspace/message.txt && cat /workspace/answer.txt"
 
     assert_success
     # Verify HEAD version content (not old content)
