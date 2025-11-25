@@ -9,17 +9,24 @@ import type { ExecutionContext } from "../../run/types";
 // Mock the E2B SDK module
 vi.mock("@e2b/code-interpreter");
 
-// Mock VolumeService
-vi.mock("../volume/volume-service", () => ({
-  volumeService: {
-    prepareVolumes: vi.fn().mockResolvedValue({
-      preparedVolumes: [],
-      tempDir: null,
-      errors: [],
-    }),
-    mountVolumes: vi.fn().mockResolvedValue(undefined),
-    cleanup: vi.fn().mockResolvedValue(undefined),
-  },
+// Mock VolumeService - use vi.hoisted to ensure mock is defined before vi.mock runs
+const mockVolumeService = vi.hoisted(() => ({
+  prepareVolumes: vi.fn().mockResolvedValue({
+    preparedVolumes: [],
+    tempDir: null,
+    errors: [],
+  }),
+  prepareVolumesFromSnapshots: vi.fn().mockResolvedValue({
+    preparedVolumes: [],
+    tempDir: null,
+    errors: [],
+  }),
+  mountVolumes: vi.fn().mockResolvedValue(undefined),
+  cleanup: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../volume/volume-service", () => ({
+  volumeService: mockVolumeService,
 }));
 
 // Mock fs module
@@ -40,6 +47,18 @@ describe("E2B Service - mocked unit tests", () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks();
+
+    // Reset mock implementations to defaults
+    mockVolumeService.prepareVolumes.mockResolvedValue({
+      preparedVolumes: [],
+      tempDir: null,
+      errors: [],
+    });
+    mockVolumeService.prepareVolumesFromSnapshots.mockResolvedValue({
+      preparedVolumes: [],
+      tempDir: null,
+      errors: [],
+    });
   });
 
   /**
@@ -108,8 +127,8 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      // commands.run called twice: once for "sudo mv && chmod", once for executing script
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
+      // commands.run called: 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -159,9 +178,9 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify both sandboxes were created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
-      // Each sandbox: 2 calls (sudo mv && chmod, then execute script)
-      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(2);
-      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(2);
+      // Each sandbox: 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(7);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(7);
       expect(mockSandbox1.kill).toHaveBeenCalledTimes(1);
       expect(mockSandbox2.kill).toHaveBeenCalledTimes(1);
     });
@@ -191,7 +210,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
+      // 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -224,7 +244,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created and cleaned up
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
+      // 1 (mkdir) + 5 (mv/chmod for each script) + 1 (execute) = 7 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(7);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
     });
 
@@ -289,7 +310,7 @@ describe("E2B Service - mocked unit tests", () => {
       // Verify sandbox command was called with environment variables including working_dir
       expect(mockSandbox.commands.run).toHaveBeenCalled();
       const commandCall = mockSandbox.commands.run.mock.calls.find(
-        (call) => call[0] === "/usr/local/bin/run-agent.sh",
+        (call) => call[0] === "/usr/local/bin/vm0-agent/run-agent.sh",
       );
       expect(commandCall).toBeDefined();
       expect(commandCall?.[1]?.envs).toBeDefined();
@@ -331,7 +352,7 @@ describe("E2B Service - mocked unit tests", () => {
       // Verify sandbox command was called without VM0_WORKING_DIR
       expect(mockSandbox.commands.run).toHaveBeenCalled();
       const commandCall = mockSandbox.commands.run.mock.calls.find(
-        (call) => call[0] === "/usr/local/bin/run-agent.sh",
+        (call) => call[0] === "/usr/local/bin/vm0-agent/run-agent.sh",
       );
       expect(commandCall).toBeDefined();
       expect(commandCall?.[1]?.envs).toBeDefined();
@@ -365,6 +386,43 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify Sandbox.create was called but sandbox methods were not
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("should fail when volume preparation returns errors", async () => {
+      // Arrange - Mock volume service to return errors
+      mockVolumeService.prepareVolumes.mockResolvedValueOnce({
+        preparedVolumes: [],
+        tempDir: null,
+        errors: [
+          'claude-system: Volume "claude-files" has no versions',
+          "data: S3 download failed",
+        ],
+      });
+
+      const context: ExecutionContext = {
+        runId: "run-test-volume-error",
+        agentConfigId: "test-agent-volume-error",
+        agentConfig: {},
+        sandboxToken: "vm0_live_test_token",
+        prompt: "This should fail due to volume errors",
+      };
+
+      // Act
+      const result = await e2bService.execute(context);
+
+      // Assert - Should return failed status with volume errors
+      expect(result.status).toBe("failed");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("Volume preparation failed");
+      expect(result.error).toContain("claude-files");
+      expect(result.error).toContain("S3 download failed");
+      expect(result.sandboxId).toBe("unknown");
+
+      // Verify sandbox was never created since volume prep failed
+      expect(Sandbox.create).not.toHaveBeenCalled();
+
+      // Verify cleanup was still called
+      expect(mockVolumeService.cleanup).toHaveBeenCalled();
     });
   });
 
