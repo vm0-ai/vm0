@@ -13,7 +13,7 @@ create_vm0_snapshot() {
 
   echo "[VM0] Creating VM0 snapshot for volume '$volume_name' ($vm0_volume_name) at $mount_path" >&2
   echo "[VM0] VOLUME_WEBHOOK_URL: $VOLUME_WEBHOOK_URL" >&2
-  echo "[VM0] API_TOKEN length: ${#API_TOKEN}" >&2
+  echo "[VM0] API_TOKEN length: \${#API_TOKEN}" >&2
   echo "[VM0] RUN_ID: $RUN_ID" >&2
 
   # Create temp directory for zip
