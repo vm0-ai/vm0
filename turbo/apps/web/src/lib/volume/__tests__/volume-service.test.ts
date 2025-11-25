@@ -157,6 +157,117 @@ describe("VolumeService", () => {
       expect(result.errors[0]).toBe("data: Volume not found");
     });
 
+    it("should return error when VM0 volume has no HEAD version", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["claude-system:/home/user/.config/claude"],
+        },
+        volumes: {
+          "claude-system": {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://claude-files",
+            },
+          },
+        },
+      };
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "claude-system",
+            driver: "vm0",
+            vm0VolumeName: "claude-files",
+            mountPath: "/home/user/.config/claude",
+          },
+        ],
+        errors: [],
+      });
+
+      // Mock globalThis.services.db to return a volume without HEAD version
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([
+          {
+            id: "vol-123",
+            name: "claude-files",
+            userId: "user-123",
+            headVersionId: null, // No HEAD version
+          },
+        ]),
+      };
+
+      globalThis.services = {
+        db: mockDb,
+      } as never;
+
+      const result = await volumeService.prepareVolumes(
+        agentConfig,
+        {},
+        "test-run-id",
+        "user-123",
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("claude-files");
+      expect(result.errors[0]).toContain("has no HEAD version");
+    });
+
+    it("should return error when VM0 volume not found in database", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: ["claude-system:/home/user/.config/claude"],
+        },
+        volumes: {
+          "claude-system": {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://nonexistent-volume",
+            },
+          },
+        },
+      };
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [
+          {
+            name: "claude-system",
+            driver: "vm0",
+            vm0VolumeName: "nonexistent-volume",
+            mountPath: "/home/user/.config/claude",
+          },
+        ],
+        errors: [],
+      });
+
+      // Mock globalThis.services.db to return empty result
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      globalThis.services = {
+        db: mockDb,
+      } as never;
+
+      const result = await volumeService.prepareVolumes(
+        agentConfig,
+        {},
+        "test-run-id",
+        "user-123",
+      );
+
+      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("nonexistent-volume");
+      expect(result.errors[0]).toContain("not found in database");
+    });
+
     it("should handle download errors", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
