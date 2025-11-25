@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/vm0-ai/vm0/compare/web-v1.4.0...web-v1.5.0) (2025-11-25)
+
+
+### Features
+
+* add contact us and website tracking ([#205](https://github.com/vm0-ai/vm0/issues/205)) ([c3b93a9](https://github.com/vm0-ai/vm0/commit/c3b93a9375efd71c887be86a84ad2749a63d76fa))
+
 ## [1.4.0](https://github.com/vm0-ai/vm0/compare/web-v1.3.3...web-v1.4.0) (2025-11-25)
 
 
