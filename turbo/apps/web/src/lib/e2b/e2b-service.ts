@@ -354,6 +354,17 @@ export class E2BService {
     // Add volume information for checkpoint
     // Only dynamic volumes create new versions after agent runs
     if (preparedVolumes && preparedVolumes.length > 0) {
+      // Debug: log all prepared volumes to understand filtering
+      console.log(
+        `[E2B] Prepared volumes for checkpoint filtering:`,
+        preparedVolumes.map((v) => ({
+          name: v.name,
+          driver: v.driver,
+          isDynamic: v.isDynamic,
+          mountPath: v.mountPath,
+        })),
+      );
+
       // Filter only dynamic Git volumes and format for checkpoint
       const gitVolumes = preparedVolumes
         .filter((v) => v.driver === "git" && v.isDynamic)
