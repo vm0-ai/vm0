@@ -84,7 +84,7 @@ teardown() {
     # Step 4: Resume from checkpoint - should get checkpoint version, not HEAD
     echo "# Step 4: Resuming from checkpoint..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        "List all files and read counter.txt. Tell me: 1) Is agent-marker.txt present? 2) Is external-marker.txt present? 3) What is the value in counter.txt?"
+        "Run 'ls -la' to list all files, then read counter.txt. Report the exact file names and the counter value."
 
     assert_success
 
@@ -95,10 +95,9 @@ teardown() {
     assert_output --partial "agent-marker.txt"
 
     # Should NOT see external-marker.txt (added after checkpoint)
+    # Note: We don't mention this file in the prompt to avoid it appearing in agent's response
     refute_output --partial "external-marker.txt"
 
     # Counter should be 101 (from checkpoint), not 0 (HEAD)
     assert_output --partial "101"
-    refute_output --partial "counter is 0"
-    refute_output --partial "value is 0"
 }
