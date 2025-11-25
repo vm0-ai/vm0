@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/vm0-ai/vm0/compare/web-v1.3.2...web-v1.3.3) (2025-11-25)
+
+
+### Bug Fixes
+
+* push git branch to remote in sandbox script even without changes ([#197](https://github.com/vm0-ai/vm0/issues/197)) ([4213bfe](https://github.com/vm0-ai/vm0/commit/4213bfe6deca858095077d1c7317bc677e77dfe1))
+
 ## [1.3.2](https://github.com/vm0-ai/vm0/compare/web-v1.3.1...web-v1.3.2) (2025-11-25)
 
 
