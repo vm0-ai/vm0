@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/vm0-ai/vm0/compare/web-v1.3.3...web-v1.4.0) (2025-11-25)
+
+
+### Features
+
+* add vm0 driver support for dynamic_volumes with checkpoint versioning ([#190](https://github.com/vm0-ai/vm0/issues/190)) ([a8e10b8](https://github.com/vm0-ai/vm0/commit/a8e10b848d41055686775197d4c650e70d6fe3f9))
+
 ## [1.3.3](https://github.com/vm0-ai/vm0/compare/web-v1.3.2...web-v1.3.3) (2025-11-25)
 
 
