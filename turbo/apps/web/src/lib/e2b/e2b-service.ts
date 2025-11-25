@@ -353,16 +353,22 @@ export class E2BService {
 
     // Add volume information for checkpoint
     // Only dynamic volumes create new versions after agent runs
+    console.log(
+      `[E2B] preparedVolumes count: ${preparedVolumes?.length ?? 0}`,
+    );
     if (preparedVolumes && preparedVolumes.length > 0) {
       // Debug: log all prepared volumes to understand filtering
       console.log(
         `[E2B] Prepared volumes for checkpoint filtering:`,
-        preparedVolumes.map((v) => ({
-          name: v.name,
-          driver: v.driver,
-          isDynamic: v.isDynamic,
-          mountPath: v.mountPath,
-        })),
+        JSON.stringify(
+          preparedVolumes.map((v) => ({
+            name: v.name,
+            driver: v.driver,
+            isDynamic: v.isDynamic,
+            mountPath: v.mountPath,
+            vm0VolumeName: v.vm0VolumeName,
+          })),
+        ),
       );
 
       // Filter only dynamic Git volumes and format for checkpoint
@@ -392,11 +398,17 @@ export class E2BService {
           vm0VersionId: v.vm0VersionId,
         }));
 
+      console.log(
+        `[E2B] Filtered VM0 volumes: ${vm0Volumes.length} (isDynamic filter applied)`,
+      );
+
       if (vm0Volumes.length > 0) {
         envs.VM0_VM0_VOLUMES = JSON.stringify(vm0Volumes);
         console.log(
-          `[E2B] Configured ${vm0Volumes.length} dynamic VM0 volume(s) for checkpoint`,
+          `[E2B] Configured ${vm0Volumes.length} dynamic VM0 volume(s) for checkpoint: ${JSON.stringify(vm0Volumes)}`,
         );
+      } else {
+        console.log(`[E2B] No dynamic VM0 volumes found for checkpoint`);
       }
     }
 
