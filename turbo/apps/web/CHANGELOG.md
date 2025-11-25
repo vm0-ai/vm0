@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/vm0-ai/vm0/compare/web-v1.2.1...web-v1.3.0) (2025-11-25)
+
+
+### Features
+
+* add version management to vm0 volumes ([#182](https://github.com/vm0-ai/vm0/issues/182)) ([96677de](https://github.com/vm0-ai/vm0/commit/96677de998ca22f7e441c4b38d44c1dd47bac64c))
+
 ## [1.2.1](https://github.com/vm0-ai/vm0/compare/web-v1.2.0...web-v1.2.1) (2025-11-24)
 
 
