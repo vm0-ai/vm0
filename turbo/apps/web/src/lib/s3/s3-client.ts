@@ -2,12 +2,14 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { env } from "../../env";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { S3Uri, S3Object, DownloadResult } from "./types";
-import { S3DownloadError } from "./types";
+import type { S3Uri, S3Object, DownloadResult, UploadResult } from "./types";
+import { S3DownloadError, S3UploadError } from "./types";
 
 /**
  * Parse S3 URI into bucket and prefix
@@ -201,4 +203,139 @@ export async function downloadS3Directory(
     filesDownloaded: files.length,
     totalBytes,
   };
+}
+
+/**
+ * Upload single file to S3
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param localPath - Local file path to upload from
+ */
+export async function uploadS3Object(
+  bucket: string,
+  key: string,
+  localPath: string,
+): Promise<void> {
+  const client = getS3Client();
+
+  try {
+    const fileContent = await fs.promises.readFile(localPath);
+
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: fileContent,
+    });
+
+    await client.send(command);
+  } catch (error) {
+    throw new S3UploadError(
+      `Failed to upload ${localPath} to s3://${bucket}/${key}`,
+      bucket,
+      key,
+      error instanceof Error ? error : undefined,
+    );
+  }
+}
+
+/**
+ * Upload entire directory to S3
+ * @param localPath - Local directory path to upload from
+ * @param s3Uri - S3 URI in format s3://bucket/prefix
+ * @returns Upload result with statistics
+ */
+export async function uploadS3Directory(
+  localPath: string,
+  s3Uri: string,
+): Promise<UploadResult> {
+  const { bucket, prefix } = parseS3Uri(s3Uri);
+
+  // Get all files in directory recursively
+  const files = await getAllFiles(localPath);
+
+  if (files.length === 0) {
+    return {
+      s3Prefix: prefix,
+      filesUploaded: 0,
+      totalBytes: 0,
+    };
+  }
+
+  // Upload each file
+  let totalBytes = 0;
+  const uploadPromises = files.map(async (filePath) => {
+    // Calculate relative path from base directory
+    const relativePath = path.relative(localPath, filePath);
+
+    // Create S3 key by combining prefix with relative path
+    const s3Key = prefix ? path.posix.join(prefix, relativePath) : relativePath;
+
+    // Get file size
+    const stats = await fs.promises.stat(filePath);
+    totalBytes += stats.size;
+
+    await uploadS3Object(bucket, s3Key, filePath);
+  });
+
+  await Promise.all(uploadPromises);
+
+  return {
+    s3Prefix: prefix,
+    filesUploaded: files.length,
+    totalBytes,
+  };
+}
+
+/**
+ * Delete all objects under S3 prefix
+ * @param s3Uri - S3 URI in format s3://bucket/prefix
+ */
+export async function deleteS3Directory(s3Uri: string): Promise<void> {
+  const { bucket, prefix } = parseS3Uri(s3Uri);
+  const client = getS3Client();
+
+  // List all objects under prefix
+  const objects = await listS3Objects(bucket, prefix);
+
+  if (objects.length === 0) {
+    return;
+  }
+
+  // Delete in batches of 1000 (AWS limit)
+  const batchSize = 1000;
+  for (let i = 0; i < objects.length; i += batchSize) {
+    const batch = objects.slice(i, i + batchSize);
+
+    const command = new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: {
+        Objects: batch.map((obj) => ({ Key: obj.key })),
+      },
+    });
+
+    await client.send(command);
+  }
+}
+
+/**
+ * Get all files in directory recursively
+ * @param dirPath - Directory path
+ * @returns Array of file paths
+ */
+async function getAllFiles(dirPath: string): Promise<string[]> {
+  const files: string[] = [];
+  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+
+    if (entry.isDirectory()) {
+      const subFiles = await getAllFiles(fullPath);
+      files.push(...subFiles);
+    } else {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
 }

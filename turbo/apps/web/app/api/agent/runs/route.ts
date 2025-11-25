@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
         sandboxToken,
         body.dynamicVars,
         config.config,
+        userId,
       )
       .then((context) => runService.executeRun(context))
       .then((result) => {

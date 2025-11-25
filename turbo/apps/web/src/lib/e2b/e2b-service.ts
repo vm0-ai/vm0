@@ -44,6 +44,7 @@ export class E2BService {
           agentConfig,
           context.dynamicVars || {},
           context.runId,
+          context.userId,
         );
 
     try {
