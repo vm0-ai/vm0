@@ -5,7 +5,14 @@ import type { RunResult, SandboxExecutionResult } from "./types";
 import { volumeService } from "../volume/volume-service";
 import type { AgentVolumeConfig, PreparedVolume } from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
-import { RUN_AGENT_SCRIPT } from "./run-agent-script";
+import {
+  COMMON_SCRIPT,
+  SEND_EVENT_SCRIPT,
+  GIT_SNAPSHOT_SCRIPT,
+  CREATE_CHECKPOINT_SCRIPT,
+  RUN_AGENT_SCRIPT,
+  SCRIPT_PATHS,
+} from "./scripts";
 import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
 
@@ -254,31 +261,51 @@ export class E2BService {
   }
 
   /**
-   * Upload run-agent.sh script to sandbox
-   * The script content is embedded in the application code for reliable deployment
-   * Updated: Using jq for JSON generation in git snapshots
+   * Upload all agent scripts to sandbox
+   * Scripts are split into single-responsibility modules for better maintainability
    */
   private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
-    const tempPath = "/tmp/run-agent.sh";
-    const finalPath = "/usr/local/bin/run-agent.sh";
-
-    // Convert script string to ArrayBuffer for E2B
-    const scriptBuffer = Buffer.from(RUN_AGENT_SCRIPT, "utf-8");
-    const arrayBuffer = scriptBuffer.buffer.slice(
-      scriptBuffer.byteOffset,
-      scriptBuffer.byteOffset + scriptBuffer.byteLength,
-    ) as ArrayBuffer;
-
-    // Upload to temp location first
-    await sandbox.files.write(tempPath, arrayBuffer);
-
-    // Move to /usr/local/bin/ and make executable
+    // Create directory structure
     await sandbox.commands.run(
-      `sudo mv ${tempPath} ${finalPath} && sudo chmod +x ${finalPath}`,
+      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
     );
 
-    console.log(`[E2B] Uploaded run-agent.sh to sandbox: ${finalPath}`);
-    return finalPath;
+    // Define scripts to upload
+    const scripts: Array<{ content: string; path: string }> = [
+      { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
+      { content: SEND_EVENT_SCRIPT, path: SCRIPT_PATHS.sendEvent },
+      { content: GIT_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.gitSnapshot },
+      {
+        content: CREATE_CHECKPOINT_SCRIPT,
+        path: SCRIPT_PATHS.createCheckpoint,
+      },
+      { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+    ];
+
+    // Upload each script
+    for (const script of scripts) {
+      const tempPath = `/tmp/${script.path.split("/").pop()}`;
+
+      // Convert script string to ArrayBuffer for E2B
+      const scriptBuffer = Buffer.from(script.content, "utf-8");
+      const arrayBuffer = scriptBuffer.buffer.slice(
+        scriptBuffer.byteOffset,
+        scriptBuffer.byteOffset + scriptBuffer.byteLength,
+      ) as ArrayBuffer;
+
+      // Upload to temp location first
+      await sandbox.files.write(tempPath, arrayBuffer);
+
+      // Move to final location and make executable
+      await sandbox.commands.run(
+        `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
+      );
+    }
+
+    console.log(
+      `[E2B] Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
+    );
+    return SCRIPT_PATHS.runAgent;
   }
 
   /**
