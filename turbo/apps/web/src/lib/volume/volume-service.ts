@@ -101,6 +101,7 @@ export class VolumeService {
             localPath,
             mountPath: volume.mountPath,
             s3Uri: volume.s3Uri,
+            isDynamic: volume.isDynamic,
           });
         } else if (volume.driver === "git") {
           // Git volumes: store metadata only (clone happens in sandbox)
@@ -115,6 +116,7 @@ export class VolumeService {
             gitUri: volume.gitUri,
             gitBranch: volume.gitBranch,
             gitToken: volume.gitToken,
+            isDynamic: volume.isDynamic,
           });
         } else if (volume.driver === "vm0") {
           // VM0 volumes: download from S3 using HEAD version
@@ -179,6 +181,7 @@ export class VolumeService {
             mountPath: volume.mountPath,
             vm0VolumeName: volume.vm0VolumeName,
             vm0VersionId: headVersion.id,
+            isDynamic: volume.isDynamic,
           });
         }
       } catch (error) {
@@ -296,6 +299,7 @@ export class VolumeService {
           );
 
           // Use snapshot branch instead of default branch
+          // Volumes from snapshots are always dynamic (only dynamic volumes create checkpoints)
           const preparedVolume: PreparedVolume = {
             name: snapshot.name,
             driver: "git",
@@ -303,6 +307,7 @@ export class VolumeService {
             gitUri: resolvedVolume.gitUri,
             gitBranch: gitSnapshot.snapshot.branch, // Use snapshot branch
             gitToken: resolvedVolume.gitToken,
+            isDynamic: true,
           };
 
           console.log(
@@ -343,6 +348,7 @@ export class VolumeService {
             `[Volume] Downloaded VM0 volume "${snapshot.name}" (${vm0Snapshot.vm0VolumeName}) version ${vm0Snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
           );
 
+          // Volumes from snapshots are always dynamic (only dynamic volumes create checkpoints)
           preparedVolumes.push({
             name: snapshot.name,
             driver: "vm0",
@@ -350,6 +356,7 @@ export class VolumeService {
             mountPath: snapshot.mountPath,
             vm0VolumeName: vm0Snapshot.vm0VolumeName,
             vm0VersionId: vm0Snapshot.snapshot.versionId,
+            isDynamic: true,
           });
         }
       } catch (error) {

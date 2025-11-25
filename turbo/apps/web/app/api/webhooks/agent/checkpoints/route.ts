@@ -17,13 +17,19 @@ import type {
   CheckpointRequest,
   CheckpointResponse,
 } from "../../../../../src/lib/checkpoint";
-import { sendVm0ResultEvent } from "../../../../../src/lib/events";
+import {
+  sendVm0ResultEvent,
+  sendVm0ErrorEvent,
+} from "../../../../../src/lib/events";
 
 /**
  * POST /api/webhooks/agent/checkpoints
  * Create checkpoint for completed agent run
  */
 export async function POST(request: NextRequest) {
+  // Track runId at top level for error handling
+  let runId: string | undefined;
+
   try {
     // Initialize services
     initServices();
@@ -36,6 +42,9 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body: CheckpointRequest = await request.json();
+
+    // Store runId for error handling
+    runId = body.runId;
 
     // Validate required fields
     if (!body.runId) {
@@ -95,6 +104,22 @@ export async function POST(request: NextRequest) {
     return successResponse(response, 200);
   } catch (error) {
     console.error("[Checkpoint API] Error:", error);
+
+    // Try to send vm0_error event so CLI doesn't timeout
+    if (runId) {
+      try {
+        await sendVm0ErrorEvent({
+          runId,
+          error: error instanceof Error ? error.message : "Checkpoint failed",
+        });
+      } catch {
+        // Ignore errors when sending error event
+        console.error(
+          "[Checkpoint API] Failed to send vm0_error event after checkpoint failure",
+        );
+      }
+    }
+
     return errorResponse(error);
   }
 }

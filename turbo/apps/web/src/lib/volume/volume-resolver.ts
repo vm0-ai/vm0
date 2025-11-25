@@ -94,6 +94,8 @@ export function resolveVolumes(
       const dynamicVolume = config.dynamic_volumes?.[volumeName];
       const volumeConfig: VolumeConfig | undefined =
         staticVolume || dynamicVolume;
+      // Track if volume is from dynamic_volumes (only dynamic volumes create new versions)
+      const isDynamic = !!dynamicVolume;
 
       if (!volumeConfig) {
         errors.push({
@@ -152,6 +154,7 @@ export function resolveVolumes(
           mountPath,
           s3Uri: uri,
           region: volumeConfig.driver_opts.region,
+          isDynamic,
         });
       }
 
@@ -205,6 +208,7 @@ export function resolveVolumes(
           gitUri: normalizedUrl,
           gitBranch: branch,
           gitToken: volumeConfig.driver_opts.token,
+          isDynamic,
         });
       }
 
@@ -246,6 +250,7 @@ export function resolveVolumes(
           driver: "vm0",
           mountPath,
           vm0VolumeName,
+          isDynamic,
         });
       }
     } catch (error) {
