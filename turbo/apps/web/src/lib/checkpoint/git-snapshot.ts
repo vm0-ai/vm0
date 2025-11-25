@@ -70,7 +70,13 @@ export async function createGitSnapshot(
       console.log(
         `[Checkpoint] No changes to commit in volume "${volumeName}"`,
       );
-      // Still return snapshot with current HEAD commit
+      // Push the branch even without new commits so resume can find it
+      console.log(`[Checkpoint] Pushing branch ${branchName} to remote`);
+      await executeGitCommand(
+        sandbox,
+        mountPath,
+        `git push origin ${branchName}`,
+      );
       const commitId = await getCommitId(sandbox, mountPath);
       return { branch: branchName, commitId };
     }
