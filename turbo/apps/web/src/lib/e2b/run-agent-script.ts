@@ -239,7 +239,12 @@ create_git_snapshot() {
   # Check if there are changes to commit
   if git diff --cached --quiet 2>/dev/null; then
     echo "[VM0] No changes to commit in volume '$volume_name'" >&2
-    # Still return current commit
+    # Push the branch even without new commits so resume can find it
+    if ! git push origin "$branch_name" >/dev/null 2>&1; then
+      echo "[ERROR] Failed to push branch $branch_name" >&2
+      return 1
+    fi
+    # Return current commit
     COMMIT_ID=$(git rev-parse HEAD 2>/dev/null || echo "")
     if [ -n "$COMMIT_ID" ]; then
       # Use jq to generate valid JSON
