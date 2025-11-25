@@ -1,0 +1,104 @@
+#!/usr/bin/env bats
+
+# Test VM0 volume checkpoint versioning
+# This test verifies that:
+# 1. Agent runs create new volume versions during checkpoint
+# 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
+#
+# Test count: 2 tests with 2 vm0 run calls (1 run + 1 resume)
+
+load '../../helpers/setup'
+
+setup() {
+    # Create temporary test directory
+    export TEST_VOLUME_DIR="$(mktemp -d)"
+    # Use unique test volume name with timestamp
+    export VOLUME_NAME="e2e-checkpoint-vol-$(date +%s)"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-test-vm0-volume-checkpoint.yaml"
+}
+
+teardown() {
+    # Clean up temporary directory
+    if [ -n "$TEST_VOLUME_DIR" ] && [ -d "$TEST_VOLUME_DIR" ]; then
+        rm -rf "$TEST_VOLUME_DIR"
+    fi
+}
+
+@test "Build VM0 volume checkpoint test agent configuration" {
+    run $CLI_COMMAND build "$TEST_CONFIG"
+    assert_success
+    assert_output --partial "vm0-volume-checkpoint-test"
+}
+
+@test "VM0 volume checkpoint: agent changes preserved on resume, not HEAD" {
+    # This single test verifies both:
+    # 1. Agent run creates new version during checkpoint
+    # 2. Resume restores checkpoint version (not HEAD)
+    # Optimized from 2 separate tests (4 vm0 runs) to 1 test (2 vm0 runs)
+
+    # Step 1: Create volume with initial content
+    echo "# Step 1: Creating initial volume..."
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    # Initial content: counter at 100, no agent marker
+    echo "100" > counter.txt
+    echo "initial content" > state.txt
+    run $CLI_COMMAND volume push
+    assert_success
+
+    # Step 2: Run agent to:
+    # - Create agent-marker.txt (new file)
+    # - Increment counter.txt to 101 (modify existing file)
+    echo "# Step 2: Running agent to modify volume..."
+    run $CLI_COMMAND run vm0-volume-checkpoint-test \
+        -e volumeName="$VOLUME_NAME" \
+        "Create a file called agent-marker.txt with content 'created by agent'. Also read counter.txt, increment the number by 1, and write the new value back."
+
+    assert_success
+    assert_output --partial "Checkpoint:"
+
+    # Extract checkpoint ID
+    CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Checkpoint ID: $CHECKPOINT_ID"
+    [ -n "$CHECKPOINT_ID" ] || {
+        echo "# Failed to extract checkpoint ID"
+        echo "$output"
+        return 1
+    }
+
+    # Step 3: Push new content to volume (simulating external changes)
+    # This makes HEAD different from the checkpoint version
+    echo "# Step 3: Pushing new content to make HEAD different..."
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    echo "0" > counter.txt               # Reset counter to 0
+    echo "external content" > state.txt  # Change state
+    echo "external marker" > external-marker.txt  # Add new file
+    rm -f agent-marker.txt 2>/dev/null || true    # Remove agent's file
+
+    run $CLI_COMMAND volume push
+    assert_success
+    echo "# New HEAD version pushed"
+
+    # Step 4: Resume from checkpoint - should get checkpoint version, not HEAD
+    echo "# Step 4: Resuming from checkpoint..."
+    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        "List all files and read counter.txt. Tell me: 1) Is agent-marker.txt present? 2) Is external-marker.txt present? 3) What is the value in counter.txt?"
+
+    assert_success
+
+    # Step 5: Verify checkpoint version is restored
+    echo "# Step 5: Verifying checkpoint version is restored..."
+
+    # Should see agent-marker.txt (created during agent run)
+    assert_output --partial "agent-marker.txt"
+
+    # Should NOT see external-marker.txt (added after checkpoint)
+    refute_output --partial "external-marker.txt"
+
+    # Counter should be 101 (from checkpoint), not 0 (HEAD)
+    assert_output --partial "101"
+    refute_output --partial "counter is 0"
+    refute_output --partial "value is 0"
+}
