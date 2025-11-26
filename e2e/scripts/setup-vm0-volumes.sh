@@ -14,7 +14,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 echo "Creating claude-files volume..."
 mkdir -p "$TEMP_DIR/claude-files"
 cat > "$TEMP_DIR/claude-files/CLAUDE.md" << 'EOF'
-Answer my question in question.md, write answer to answer.md file.
+This is a test file for the claude-files volume.
 EOF
 
 # Initialize and push the volume

@@ -3,8 +3,8 @@
 load '../../helpers/setup'
 
 setup() {
-    export TEST_CONFIG_WITH_TOKEN="${TEST_ROOT}/fixtures/configs/vm0-test-env-with-token.yaml"
-    export TEST_CONFIG_WITHOUT_TOKEN="${TEST_ROOT}/fixtures/configs/vm0-test-env-without-token.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-git-artifact.yaml"
+    export TEST_CONFIG_WITHOUT_TOKEN="${TEST_ROOT}/fixtures/configs/vm0-git-artifact-without-token.yaml"
 }
 
 # Environment variable validation tests for vm0 build
@@ -20,11 +20,11 @@ setup() {
 
 @test "vm0 run should fail when template variables are missing" {
     # First build the config
-    run $CLI_COMMAND build "$TEST_CONFIG_WITH_TOKEN"
+    run $CLI_COMMAND build "$TEST_CONFIG"
     assert_success
 
     # Then try to run without providing template vars
-    run $CLI_COMMAND run vm0-vars-test-with-token "echo hello"
+    run $CLI_COMMAND run vm0-git-artifact "echo hello"
     assert_failure
     assert_output --partial "Missing required template variables"
     assert_output --partial "user"

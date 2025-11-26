@@ -109,7 +109,7 @@ teardown() {
     NEW_DIR="$(mktemp -d)"
     cd "$NEW_DIR"
     mkdir -p .vm0
-    cat > .vm0/volume.yaml <<EOF
+    cat > .vm0/storage.yaml <<EOF
 name: $VOLUME_NAME
 EOF
 

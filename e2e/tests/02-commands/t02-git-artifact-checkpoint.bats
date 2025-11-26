@@ -3,20 +3,20 @@
 load '../../helpers/setup'
 
 setup() {
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-test-checkpoint-resume.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-git-artifact.yaml"
 }
 
 @test "Build checkpoint resume test agent configuration" {
     run $CLI_COMMAND build "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-checkpoint-resume-test"
+    assert_output --partial "vm0-git-artifact"
 }
 
 @test "Execute initial run, resume from checkpoint, and verify git volume access" {
     # Step 1: Run initial task that creates a checkpoint
     # Using bash command to read files from git volume (lancy/question.git contains question.md)
     echo "# Step 1: Running initial task to read files from git volume..."
-    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "cat question.md"
+    run $CLI_COMMAND run vm0-git-artifact -e user=lancy "cat question.md"
     assert_success
 
     # Verify mock-claude execution events (deterministic with mock-claude)

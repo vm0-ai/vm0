@@ -14,7 +14,7 @@ setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
     export ARTIFACT_NAME="e2e-checkpoint-art-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-test-vm0-volume-checkpoint.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
 }
 
 teardown() {
@@ -27,7 +27,7 @@ teardown() {
 @test "Build VM0 artifact checkpoint test agent configuration" {
     run $CLI_COMMAND build "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-volume-checkpoint-test"
+    assert_output --partial "vm0-standard"
 }
 
 @test "VM0 artifact checkpoint: agent changes preserved on resume, not HEAD" {
@@ -52,7 +52,7 @@ teardown() {
     # - Create agent-marker.txt (new file)
     # - Modify counter.txt from 100 to 101
     echo "# Step 2: Running agent to modify artifact..."
-    run $CLI_COMMAND run vm0-volume-checkpoint-test \
+    run $CLI_COMMAND run vm0-standard \
         -a "$ARTIFACT_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 

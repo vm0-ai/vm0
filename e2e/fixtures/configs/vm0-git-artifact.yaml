@@ -1,0 +1,18 @@
+version: "1.0"
+
+agent:
+  name: vm0-git-artifact
+  description: "Test agent with git artifact"
+  provider: claude-code
+
+  image: vm0-claude-code-dev
+  volumes:
+    - claude-files:/home/user/.config/claude
+  
+  artifact:
+    working_dir: /home/user/workspace
+    driver: git
+    driver_opts:
+      uri: https://github.com/{{user}}/question.git
+      branch: main
+      token: "${CI_GITHUB_TOKEN}"
