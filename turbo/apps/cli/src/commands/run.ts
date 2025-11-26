@@ -22,11 +22,16 @@ function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
 }
 
-async function pollEvents(runId: string): Promise<void> {
+const DEFAULT_TIMEOUT_SECONDS = 60;
+
+async function pollEvents(
+  runId: string,
+  timeoutSeconds: number,
+): Promise<void> {
   let nextSequence = -1;
   let complete = false;
   const pollIntervalMs = 500;
-  const timeoutMs = 3 * 60 * 1000; // 3 minutes timeout
+  const timeoutMs = timeoutSeconds * 1000;
   const startTime = Date.now();
 
   while (!complete) {
@@ -35,7 +40,7 @@ async function pollEvents(runId: string): Promise<void> {
     if (elapsed > timeoutMs) {
       console.error(
         chalk.red(
-          "\n✗ Agent execution timed out after 3 minutes without receiving events",
+          `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving events`,
         ),
       );
       throw new Error("Agent execution timed out");
@@ -87,12 +92,28 @@ const runCmd = new Command()
     "-a, --artifact <key>",
     "Artifact key to mount (for VM0 driver artifacts)",
   )
+  .option(
+    "-t, --timeout <seconds>",
+    "Polling timeout in seconds (default: 60)",
+    String(DEFAULT_TIMEOUT_SECONDS),
+  )
   .action(
     async (
       identifier: string,
       prompt: string,
-      options: { env: Record<string, string>; artifact?: string },
+      options: {
+        env: Record<string, string>;
+        artifact?: string;
+        timeout: string;
+      },
     ) => {
+      const timeoutSeconds = parseInt(options.timeout, 10);
+      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+        console.error(
+          chalk.red("✗ Invalid timeout value. Must be a positive number."),
+        );
+        process.exit(1);
+      }
       try {
         // 1. Resolve identifier to configId
         let configId: string;
@@ -149,7 +170,7 @@ const runCmd = new Command()
         });
 
         // 4. Poll for events
-        await pollEvents(response.runId);
+        await pollEvents(response.runId, timeoutSeconds);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -179,48 +200,68 @@ runCmd
   .description("Resume an agent run from a checkpoint")
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
-  .action(async (checkpointId: string, prompt: string) => {
-    try {
-      // 1. Validate checkpoint ID format
-      if (!isUUID(checkpointId)) {
+  .option(
+    "-t, --timeout <seconds>",
+    "Polling timeout in seconds (default: 60)",
+    String(DEFAULT_TIMEOUT_SECONDS),
+  )
+  .action(
+    async (
+      checkpointId: string,
+      prompt: string,
+      options: { timeout: string },
+    ) => {
+      const timeoutSeconds = parseInt(options.timeout, 10);
+      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
         console.error(
-          chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
+          chalk.red("✗ Invalid timeout value. Must be a positive number."),
         );
-        console.error(chalk.gray("  Checkpoint ID must be a valid UUID"));
         process.exit(1);
       }
-
-      // 2. Display starting message
-      console.log(chalk.blue("\nResuming agent run from checkpoint..."));
-      console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
-      console.log(chalk.gray(`  Prompt: ${prompt}`));
-      console.log();
-      console.log(chalk.blue("Executing in sandbox..."));
-      console.log();
-
-      // 3. Call resume API
-      const response = await apiClient.resumeRun({
-        checkpointId,
-        prompt,
-      });
-
-      // 4. Poll for events
-      await pollEvents(response.runId);
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else if (error.message.includes("not found")) {
-          console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
-        } else {
-          console.error(chalk.red("✗ Resume failed"));
-          console.error(chalk.gray(`  ${error.message}`));
+      try {
+        // 1. Validate checkpoint ID format
+        if (!isUUID(checkpointId)) {
+          console.error(
+            chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
+          );
+          console.error(chalk.gray("  Checkpoint ID must be a valid UUID"));
+          process.exit(1);
         }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
+
+        // 2. Display starting message
+        console.log(chalk.blue("\nResuming agent run from checkpoint..."));
+        console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
+        console.log(chalk.gray(`  Prompt: ${prompt}`));
+        console.log();
+        console.log(chalk.blue("Executing in sandbox..."));
+        console.log();
+
+        // 3. Call resume API
+        const response = await apiClient.resumeRun({
+          checkpointId,
+          prompt,
+        });
+
+        // 4. Poll for events
+        await pollEvents(response.runId, timeoutSeconds);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes("Not authenticated")) {
+            console.error(
+              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("not found")) {
+            console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
+          } else {
+            console.error(chalk.red("✗ Resume failed"));
+            console.error(chalk.gray(`  ${error.message}`));
+          }
+        } else {
+          console.error(chalk.red("✗ An unexpected error occurred"));
+        }
+        process.exit(1);
       }
-      process.exit(1);
-    }
-  });
+    },
+  );
 
 export const runCommand = runCmd;
