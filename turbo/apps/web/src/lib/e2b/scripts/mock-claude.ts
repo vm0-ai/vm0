@@ -49,18 +49,38 @@ json_escape() {
 # Get current working directory
 CWD="$(pwd)"
 
+# Create session history file for checkpoint compatibility
+# Claude Code stores session history at: ~/.config/claude/projects/-{path}/{session_id}.jsonl
+create_session_history() {
+  local session_dir
+  local project_name
+  project_name=$(echo "$CWD" | sed 's|^/||' | sed 's|/|-|g')
+  session_dir="$HOME/.config/claude/projects/-\${project_name}"
+  mkdir -p "$session_dir"
+  echo "$session_dir/\${SESSION_ID}.jsonl"
+}
+
 if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
-  # Output JSONL events in Claude format
+  # Create session history file path
+  SESSION_HISTORY_FILE=$(create_session_history)
+
+  # Output JSONL events in Claude format and write to session history
 
   # 1. System init event
-  echo '{"type":"system","subtype":"init","cwd":"'"$CWD"'","session_id":"'"$SESSION_ID"'","tools":["Bash"],"model":"mock-claude"}'
+  INIT_EVENT='{"type":"system","subtype":"init","cwd":"'"$CWD"'","session_id":"'"$SESSION_ID"'","tools":["Bash"],"model":"mock-claude"}'
+  echo "$INIT_EVENT"
+  echo "$INIT_EVENT" >> "$SESSION_HISTORY_FILE"
 
   # 2. Assistant text event
-  echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Executing command..."}]},"session_id":"'"$SESSION_ID"'"}'
+  TEXT_EVENT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Executing command..."}]},"session_id":"'"$SESSION_ID"'"}'
+  echo "$TEXT_EVENT"
+  echo "$TEXT_EVENT" >> "$SESSION_HISTORY_FILE"
 
   # 3. Assistant tool_use event
   ESCAPED_PROMPT=$(json_escape "$PROMPT")
-  echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_mock_001","name":"Bash","input":{"command":'$ESCAPED_PROMPT'}}]},"session_id":"'"$SESSION_ID"'"}'
+  TOOL_USE_EVENT='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_mock_001","name":"Bash","input":{"command":'$ESCAPED_PROMPT'}}]},"session_id":"'"$SESSION_ID"'"}'
+  echo "$TOOL_USE_EVENT"
+  echo "$TOOL_USE_EVENT" >> "$SESSION_HISTORY_FILE"
 
   # 4. Execute prompt as bash and capture output
   OUTPUT=$(bash -c "$PROMPT" 2>&1)
@@ -73,14 +93,18 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
   else
     IS_ERROR="true"
   fi
-  echo '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mock_001","content":'$ESCAPED_OUTPUT',"is_error":'$IS_ERROR'}]},"session_id":"'"$SESSION_ID"'"}'
+  TOOL_RESULT_EVENT='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mock_001","content":'$ESCAPED_OUTPUT',"is_error":'$IS_ERROR'}]},"session_id":"'"$SESSION_ID"'"}'
+  echo "$TOOL_RESULT_EVENT"
+  echo "$TOOL_RESULT_EVENT" >> "$SESSION_HISTORY_FILE"
 
   # 6. Result event
   if [[ $EXIT_CODE -eq 0 ]]; then
-    echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":100,"num_turns":1,"result":'$ESCAPED_OUTPUT',"session_id":"'"$SESSION_ID"'","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}'
+    RESULT_EVENT='{"type":"result","subtype":"success","is_error":false,"duration_ms":100,"num_turns":1,"result":'$ESCAPED_OUTPUT',"session_id":"'"$SESSION_ID"'","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}'
   else
-    echo '{"type":"result","subtype":"error","is_error":true,"duration_ms":100,"num_turns":1,"result":'$ESCAPED_OUTPUT',"session_id":"'"$SESSION_ID"'","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}'
+    RESULT_EVENT='{"type":"result","subtype":"error","is_error":true,"duration_ms":100,"num_turns":1,"result":'$ESCAPED_OUTPUT',"session_id":"'"$SESSION_ID"'","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}'
   fi
+  echo "$RESULT_EVENT"
+  echo "$RESULT_EVENT" >> "$SESSION_HISTORY_FILE"
 
   exit $EXIT_CODE
 else
