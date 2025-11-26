@@ -8,6 +8,6 @@ export type {
   CheckpointData,
   CheckpointRequest,
   CheckpointResponse,
-  VolumeSnapshot,
+  ArtifactSnapshot,
   GitSnapshot,
 } from "./types";

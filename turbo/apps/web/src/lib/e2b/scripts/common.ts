@@ -12,14 +12,18 @@ API_TOKEN="\${VM0_API_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
 WORKING_DIR="\${VM0_WORKING_DIR:-/home/user}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
-GIT_VOLUMES="\${VM0_GIT_VOLUMES:-[]}"
-VM0_VOLUMES="\${VM0_VM0_VOLUMES:-[]}"
 RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
+
+# Artifact configuration (replaces GIT_VOLUMES and VM0_VOLUMES)
+ARTIFACT_DRIVER="\${VM0_ARTIFACT_DRIVER:-}"
+ARTIFACT_MOUNT_PATH="\${VM0_ARTIFACT_MOUNT_PATH:-}"
+ARTIFACT_VOLUME_NAME="\${VM0_ARTIFACT_VOLUME_NAME:-}"
+ARTIFACT_VERSION_ID="\${VM0_ARTIFACT_VERSION_ID:-}"
 
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
-VOLUME_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/volumes"
+STORAGE_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages"
 
 # Variables for checkpoint (use temp files to persist across subshells)
 SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"

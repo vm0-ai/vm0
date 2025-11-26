@@ -113,6 +113,13 @@
       "when": 1763984363842,
       "tag": "0015_solid_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1764139680000,
+      "tag": "0016_rename_volumes_to_storages",
+      "breakpoints": true
     }
   ]
 }

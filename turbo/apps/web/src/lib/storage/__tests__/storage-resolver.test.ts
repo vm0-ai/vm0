@@ -552,6 +552,7 @@ describe("resolveVolumes", () => {
   });
 
   it("should error on unsupported volume driver", () => {
+    // Intentionally use invalid driver type to test error handling
     const config = {
       agent: {
         volumes: ["custom-volume:/path"],
@@ -564,7 +565,7 @@ describe("resolveVolumes", () => {
           },
         },
       },
-    } as AgentVolumeConfig;
+    } as unknown as AgentVolumeConfig;
 
     const result = resolveVolumes(config);
 

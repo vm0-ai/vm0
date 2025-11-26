@@ -70,32 +70,3 @@ export interface CheckpointResponse {
   checkpointId: string;
   hasArtifact: boolean;
 }
-
-// Legacy types for backward compatibility during migration
-// TODO: Remove after full migration
-
-/**
- * @deprecated Use ArtifactSnapshot instead
- */
-export interface GitVolumeSnapshot {
-  name: string;
-  driver: "git";
-  mountPath: string;
-  snapshot?: GitSnapshot;
-}
-
-/**
- * @deprecated Use ArtifactSnapshot instead
- */
-export interface Vm0VolumeSnapshot {
-  name: string;
-  driver: "vm0";
-  mountPath: string;
-  vm0StorageName: string;
-  snapshot?: Vm0Snapshot;
-}
-
-/**
- * @deprecated Use ArtifactSnapshot instead
- */
-export type VolumeSnapshot = GitVolumeSnapshot | Vm0VolumeSnapshot;

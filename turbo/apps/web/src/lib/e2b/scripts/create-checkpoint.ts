@@ -1,6 +1,6 @@
 /**
  * Checkpoint creation script
- * Creates checkpoints with session history and volume snapshots (Git and VM0)
+ * Creates checkpoints with session history and artifact snapshot (Git or VM0)
  */
 export const CREATE_CHECKPOINT_SCRIPT = `# Create checkpoint after successful run
 # Requires: COMMON_SCRIPT, GIT_SNAPSHOT_SCRIPT, VM0_SNAPSHOT_SCRIPT to be sourced first
@@ -37,150 +37,83 @@ create_checkpoint() {
 
   echo "[VM0] Session history loaded ($(echo "$SESSION_HISTORY" | wc -l) lines)" >&2
 
-  # Create Git snapshots for each Git volume
-  VOLUME_SNAPSHOTS="[]"
+  # Create artifact snapshot based on driver type
+  ARTIFACT_SNAPSHOT="null"
 
-  if [ "$GIT_VOLUMES" != "[]" ]; then
-    echo "[VM0] Processing $(echo "$GIT_VOLUMES" | jq 'length') Git volume(s)..." >&2
+  if [ -n "$ARTIFACT_DRIVER" ]; then
+    echo "[VM0] Processing artifact with driver: $ARTIFACT_DRIVER" >&2
 
-    # Iterate over Git volumes
-    VOLUME_SNAPSHOTS=$(echo "$GIT_VOLUMES" | jq -c '.[] | {
-      name: .name,
-      driver: .driver,
-      mountPath: .mountPath,
-      snapshot: null
-    }')
-
-    # Array to collect all snapshots
-    local snapshots_array="[]"
-
-    while IFS= read -r volume; do
-      VOLUME_NAME=$(echo "$volume" | jq -r '.name')
-      MOUNT_PATH=$(echo "$volume" | jq -r '.mountPath')
-
-      echo "[VM0] Creating Git snapshot for volume '$VOLUME_NAME' at $MOUNT_PATH" >&2
+    if [ "$ARTIFACT_DRIVER" = "git" ]; then
+      # Git artifact: create git snapshot
+      echo "[VM0] Creating Git snapshot for artifact at $ARTIFACT_MOUNT_PATH" >&2
 
       # Create Git snapshot - redirect stderr to suppress git messages
-      SNAPSHOT=$(create_git_snapshot "$MOUNT_PATH" "$VOLUME_NAME" 2>/dev/null)
+      SNAPSHOT=$(create_git_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" 2>/dev/null)
 
       if [ $? -eq 0 ] && [ -n "$SNAPSHOT" ]; then
-        # Add snapshot to volume using temp files to avoid quoting issues
-        local vol_tmp="/tmp/vol-$RUN_ID-$VOLUME_NAME.json"
-        local snap_tmp="/tmp/snap-$RUN_ID-$VOLUME_NAME.json"
-        local arr_tmp="/tmp/arr-$RUN_ID.json"
-
-        echo "$volume" > "$vol_tmp"
+        # Build artifact snapshot JSON
+        local snap_tmp="/tmp/snap-$RUN_ID-artifact.json"
         echo "$SNAPSHOT" > "$snap_tmp"
-        echo "$snapshots_array" > "$arr_tmp"
 
-        # Merge snapshot into volume
-        volume=$(jq --slurpfile snap "$snap_tmp" '. + {snapshot: $snap[0]}' "$vol_tmp" 2>&1)
-        if [ $? -ne 0 ]; then
-          echo "[ERROR] Failed to merge snapshot into volume: $volume" >&2
-          return 1
-        fi
+        ARTIFACT_SNAPSHOT=$(jq -n \\
+          --arg driver "git" \\
+          --arg mountPath "$ARTIFACT_MOUNT_PATH" \\
+          --slurpfile snap "$snap_tmp" \\
+          '{driver: $driver, mountPath: $mountPath, snapshot: $snap[0]}')
 
-        echo "$volume" > "$vol_tmp"
-        # Append volume to snapshots array
-        snapshots_array=$(jq --slurpfile vol "$vol_tmp" '. + $vol' "$arr_tmp" 2>&1)
-        if [ $? -ne 0 ]; then
-          echo "[ERROR] Failed to append volume to array: $snapshots_array" >&2
-          return 1
-        fi
-
-        rm -f "$vol_tmp" "$snap_tmp"
-
-        echo "[VM0] Git snapshot created for '$VOLUME_NAME'" >&2
+        rm -f "$snap_tmp"
+        echo "[VM0] Git artifact snapshot created" >&2
       else
-        echo "[ERROR] Failed to create Git snapshot for '$VOLUME_NAME'" >&2
+        echo "[ERROR] Failed to create Git snapshot for artifact" >&2
         return 1
       fi
-    done < <(echo "$GIT_VOLUMES" | jq -c '.[]')
 
-    VOLUME_SNAPSHOTS="$snapshots_array"
-  fi
-
-  # Create VM0 snapshots for each VM0 volume
-  echo "[VM0] VM0_VOLUMES value: $VM0_VOLUMES" >&2
-  if [ "$VM0_VOLUMES" != "[]" ]; then
-    echo "[VM0] Processing $(echo "$VM0_VOLUMES" | jq 'length') VM0 volume(s)..." >&2
-
-    # Initialize snapshots array if not already done
-    if [ -z "$VOLUME_SNAPSHOTS" ] || [ "$VOLUME_SNAPSHOTS" = "[]" ]; then
-      local snapshots_array="[]"
-    else
-      local snapshots_array="$VOLUME_SNAPSHOTS"
-    fi
-
-    while IFS= read -r volume; do
-      VOLUME_NAME=$(echo "$volume" | jq -r '.name')
-      MOUNT_PATH=$(echo "$volume" | jq -r '.mountPath')
-      VM0_STORAGE_NAME=$(echo "$volume" | jq -r '.vm0StorageName')
+    elif [ "$ARTIFACT_DRIVER" = "vm0" ]; then
+      # VM0 artifact: create vm0 snapshot
+      echo "[VM0] Creating VM0 snapshot for artifact '$ARTIFACT_VOLUME_NAME' at $ARTIFACT_MOUNT_PATH" >&2
 
       # Create VM0 snapshot
-      SNAPSHOT=$(create_vm0_snapshot "$MOUNT_PATH" "$VOLUME_NAME" "$VM0_STORAGE_NAME")
+      SNAPSHOT=$(create_vm0_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" "$ARTIFACT_VOLUME_NAME")
 
       if [ $? -eq 0 ] && [ -n "$SNAPSHOT" ]; then
-        # Build VM0 volume snapshot object
-        local vol_tmp="/tmp/vol-$RUN_ID-$VOLUME_NAME.json"
-        local snap_tmp="/tmp/snap-$RUN_ID-$VOLUME_NAME.json"
-        local arr_tmp="/tmp/arr-$RUN_ID.json"
-
-        # Create volume snapshot object with vm0StorageName
-        jq -n \\
-          --arg name "$VOLUME_NAME" \\
-          --arg driver "vm0" \\
-          --arg mountPath "$MOUNT_PATH" \\
-          --arg vm0StorageName "$VM0_STORAGE_NAME" \\
-          '{name: $name, driver: $driver, mountPath: $mountPath, vm0StorageName: $vm0StorageName}' > "$vol_tmp"
-
+        # Build artifact snapshot JSON
+        local snap_tmp="/tmp/snap-$RUN_ID-artifact.json"
         echo "$SNAPSHOT" > "$snap_tmp"
-        echo "$snapshots_array" > "$arr_tmp"
 
-        # Merge snapshot into volume
-        volume=$(jq --slurpfile snap "$snap_tmp" '. + {snapshot: $snap[0]}' "$vol_tmp" 2>&1)
-        if [ $? -ne 0 ]; then
-          echo "[ERROR] Failed to merge snapshot into volume: $volume" >&2
-          return 1
-        fi
+        ARTIFACT_SNAPSHOT=$(jq -n \\
+          --arg driver "vm0" \\
+          --arg mountPath "$ARTIFACT_MOUNT_PATH" \\
+          --arg vm0VolumeName "$ARTIFACT_VOLUME_NAME" \\
+          --slurpfile snap "$snap_tmp" \\
+          '{driver: $driver, mountPath: $mountPath, vm0VolumeName: $vm0VolumeName, snapshot: $snap[0]}')
 
-        echo "$volume" > "$vol_tmp"
-        # Append volume to snapshots array
-        snapshots_array=$(jq --slurpfile vol "$vol_tmp" '. + $vol' "$arr_tmp" 2>&1)
-        if [ $? -ne 0 ]; then
-          echo "[ERROR] Failed to append volume to array: $snapshots_array" >&2
-          return 1
-        fi
-
-        rm -f "$vol_tmp" "$snap_tmp"
-
-        echo "[VM0] VM0 snapshot created for '$VOLUME_NAME'" >&2
+        rm -f "$snap_tmp"
+        echo "[VM0] VM0 artifact snapshot created" >&2
       else
-        echo "[ERROR] Failed to create VM0 snapshot for '$VOLUME_NAME'" >&2
+        echo "[ERROR] Failed to create VM0 snapshot for artifact" >&2
         return 1
       fi
-    done < <(echo "$VM0_VOLUMES" | jq -c '.[]')
-
-    VOLUME_SNAPSHOTS="$snapshots_array"
+    else
+      echo "[ERROR] Unknown artifact driver: $ARTIFACT_DRIVER" >&2
+      return 1
+    fi
+  else
+    echo "[VM0] No artifact configured, skipping snapshot" >&2
   fi
 
   echo "[VM0] Calling checkpoint API..." >&2
 
-  # Build checkpoint payload - VOLUME_SNAPSHOTS is already valid JSON
-  if [ -z "$VOLUME_SNAPSHOTS" ] || [ "$VOLUME_SNAPSHOTS" = "[]" ]; then
-    VOLUME_SNAPSHOTS="[]"
-  fi
-
+  # Build checkpoint payload with single artifactSnapshot (or null)
   local checkpoint_payload=$(jq -n \\
     --arg rid "$RUN_ID" \\
     --arg sid "$SESSION_ID" \\
     --arg history "$SESSION_HISTORY" \\
-    --argjson volumes "$VOLUME_SNAPSHOTS" \\
+    --argjson artifact "$ARTIFACT_SNAPSHOT" \\
     '{
       runId: $rid,
       sessionId: $sid,
       sessionHistory: $history,
-      volumeSnapshots: $volumes
+      artifactSnapshot: $artifact
     }')
 
   # Call checkpoint API directly (avoid eval) with timeout to prevent hanging
