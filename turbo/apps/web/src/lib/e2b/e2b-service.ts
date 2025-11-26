@@ -12,6 +12,7 @@ import {
   VM0_SNAPSHOT_SCRIPT,
   CREATE_CHECKPOINT_SCRIPT,
   RUN_AGENT_SCRIPT,
+  MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
@@ -315,6 +316,7 @@ export class E2BService {
         path: SCRIPT_PATHS.createCheckpoint,
       },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+      { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
     ];
 
     // Upload each script
@@ -384,6 +386,12 @@ export class E2BService {
     if (resumeSessionId) {
       envs.VM0_RESUME_SESSION_ID = resumeSessionId;
       console.log(`[E2B] Resume session ID configured: ${resumeSessionId}`);
+    }
+
+    // Pass USE_MOCK_CLAUDE for testing (executes prompt as bash instead of calling LLM)
+    if (process.env.USE_MOCK_CLAUDE === "true") {
+      envs.USE_MOCK_CLAUDE = "true";
+      console.log(`[E2B] Using mock-claude for testing`);
     }
 
     // Add volume information for checkpoint

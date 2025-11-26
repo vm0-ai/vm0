@@ -40,8 +40,16 @@ else
   echo "[VM0] Starting new session" >&2
 fi
 
+# Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
+if [ "$USE_MOCK_CLAUDE" = "true" ]; then
+  CLAUDE_BIN="/usr/local/bin/vm0-agent/lib/mock-claude.sh"
+  echo "[VM0] Using mock-claude for testing" >&2
+else
+  CLAUDE_BIN="claude"
+fi
+
 # Execute Claude and process output stream
-/usr/local/bin/claude $CLAUDE_ARGS "$PROMPT" 2>&1 | while IFS= read -r line; do
+"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>&1 | while IFS= read -r line; do
   # Skip empty lines
   if [ -z "$line" ]; then
     continue
