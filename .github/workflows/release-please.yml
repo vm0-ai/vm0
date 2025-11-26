@@ -103,6 +103,7 @@ jobs:
             AWS_REGION=${{ secrets.AWS_REGION }}
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            S3_USER_STORAGES_NAME=${{ secrets.S3_USER_STORAGES_NAME }}
 
   # Deploy docs app to production
   deploy-docs-production:

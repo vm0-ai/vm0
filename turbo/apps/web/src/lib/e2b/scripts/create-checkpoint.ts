@@ -83,9 +83,9 @@ create_checkpoint() {
         ARTIFACT_SNAPSHOT=$(jq -n \\
           --arg driver "vm0" \\
           --arg mountPath "$ARTIFACT_MOUNT_PATH" \\
-          --arg vm0VolumeName "$ARTIFACT_VOLUME_NAME" \\
+          --arg vm0StorageName "$ARTIFACT_VOLUME_NAME" \\
           --slurpfile snap "$snap_tmp" \\
-          '{driver: $driver, mountPath: $mountPath, vm0VolumeName: $vm0VolumeName, snapshot: $snap[0]}')
+          '{driver: $driver, mountPath: $mountPath, vm0StorageName: $vm0StorageName, snapshot: $snap[0]}')
 
         rm -f "$snap_tmp"
         echo "[VM0] VM0 artifact snapshot created" >&2

@@ -21,8 +21,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import AdmZip from "adm-zip";
-
-const S3_BUCKET = "vm0-s3-user-volumes";
+import { env } from "../../../../../src/env";
 
 interface StorageVersionResponse {
   versionId: string;
@@ -144,7 +143,11 @@ export async function POST(request: NextRequest) {
     console.log(`[Storage Webhook] Created version: ${version.id}`);
 
     // Upload files to versioned S3 path
-    const s3Uri = `s3://${S3_BUCKET}/${s3Key}`;
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+    const s3Uri = `s3://${bucketName}/${s3Key}`;
     console.log(
       `[Storage Webhook] Uploading ${fileCount} files to ${s3Uri}...`,
     );

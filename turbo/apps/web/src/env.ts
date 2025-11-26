@@ -22,6 +22,7 @@ function initEnv() {
       AWS_REGION: z.string().min(1).optional(),
       AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
       AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+      S3_USER_STORAGES_NAME: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -40,6 +41,7 @@ function initEnv() {
       AWS_REGION: process.env.AWS_REGION,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+      S3_USER_STORAGES_NAME: process.env.S3_USER_STORAGES_NAME,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },
