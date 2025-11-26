@@ -14,8 +14,9 @@ setup() {
 
 @test "Execute initial run, resume from checkpoint, and verify git volume access" {
     # Step 1: Run initial task that creates a checkpoint
-    echo "# Step 1: Running initial task 'answer my question'..."
-    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "answer my question"
+    # Using bash command to read files from git volume (lancy/question.git contains message.txt and answer.md)
+    echo "# Step 1: Running initial task to read files from git volume..."
+    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "cat message.txt && cat answer.md"
     assert_success
 
     # Verify we got a checkpoint created
@@ -32,8 +33,9 @@ setup() {
     }
 
     # Step 2: Resume from checkpoint with new prompt
-    echo "# Step 2: Resuming from checkpoint with prompt 'List all files in the current directory'..."
-    run $CLI_COMMAND run resume "$CHECKPOINT_ID" "List all files in the current directory"
+    # Using ls command to list files in current directory
+    echo "# Step 2: Resuming from checkpoint to list files..."
+    run $CLI_COMMAND run resume "$CHECKPOINT_ID" "ls -la"
     assert_success
 
     # Verify the run started and resumed from checkpoint

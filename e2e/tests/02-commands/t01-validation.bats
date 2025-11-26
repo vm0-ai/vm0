@@ -24,7 +24,7 @@ setup() {
     assert_success
 
     # Then try to run without providing template vars
-    run $CLI_COMMAND run vm0-vars-test-with-token "answer my question."
+    run $CLI_COMMAND run vm0-vars-test-with-token "echo hello"
     assert_failure
     assert_output --partial "Missing required template variables"
     assert_output --partial "user"
