@@ -39,6 +39,7 @@ export class StorageService {
     runId: string,
     userId?: string,
     artifactKey?: string,
+    skipArtifact?: boolean,
   ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
 
@@ -53,7 +54,12 @@ export class StorageService {
     }
 
     // Resolve volumes from agent config
-    const volumeResult = resolveVolumes(agentConfig, dynamicVars, artifactKey);
+    const volumeResult = resolveVolumes(
+      agentConfig,
+      dynamicVars,
+      artifactKey,
+      skipArtifact,
+    );
 
     // Log volume resolution errors but don't fail the preparation
     if (volumeResult.errors.length > 0) {

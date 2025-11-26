@@ -67,12 +67,14 @@ export class E2BService {
       );
 
       // Also prepare regular storages (fresh, not from snapshot)
+      // Skip artifact validation since we're using the snapshot
       const freshStorages = await storageService.prepareStorages(
         agentConfig,
         context.dynamicVars || {},
         context.runId,
         context.userId,
-        // Don't pass artifact key for resume - we use the snapshot
+        undefined, // No artifact key for resume
+        true, // Skip artifact validation - using snapshot instead
       );
 
       storageResult = {
