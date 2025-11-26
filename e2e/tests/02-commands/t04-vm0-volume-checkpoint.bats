@@ -57,6 +57,13 @@ teardown() {
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
+
+    # Verify mock-claude execution events (deterministic with mock-claude)
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "echo 'created by agent'"
+    assert_output --partial "[tool_result]"
+    assert_output --partial "[result]"
+
     assert_output --partial "Checkpoint:"
 
     # Extract checkpoint ID
@@ -88,16 +95,25 @@ teardown() {
 
     assert_success
 
+    # Verify mock-claude execution events for resume
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "ls && cat counter.txt"
+    assert_output --partial "[tool_result]"
+
     # Step 5: Verify checkpoint version is restored
     echo "# Step 5: Verifying checkpoint version is restored..."
 
     # Should see agent-marker.txt (created during agent run)
+    # With mock-claude, ls output is deterministic
     assert_output --partial "agent-marker.txt"
 
     # Should NOT see external-marker.txt (added after checkpoint)
-    # Note: We don't mention this file in the prompt to avoid it appearing in agent's response
     refute_output --partial "external-marker.txt"
 
     # Counter should be 101 (from checkpoint), not 0 (HEAD)
+    # With mock-claude, cat output is deterministic
     assert_output --partial "101"
+
+    # Verify we did NOT get HEAD version content
+    refute_output --regexp "^0$"
 }

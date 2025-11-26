@@ -19,6 +19,12 @@ setup() {
     run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "cat question.md"
     assert_success
 
+    # Verify mock-claude execution events (deterministic with mock-claude)
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "cat question.md"
+    assert_output --partial "[tool_result]"
+    assert_output --partial "[result]"
+
     # Verify we got a checkpoint created
     assert_output --partial "Checkpoint:"
 
@@ -44,5 +50,8 @@ setup() {
     # Step 3: Verify git volume is accessible and question.md exists
     echo "# Step 3: Verifying git volume access..."
     # The agent should be able to see question.md from the question.git repository
+    # With mock-claude, the ls -la output is deterministic
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "ls -la"
     assert_output --partial "question.md"
 }

@@ -175,9 +175,20 @@ EOF
         "cat /workspace/message.txt && cat /workspace/answer.txt"
 
     assert_success
+
+    # Verify mock-claude execution events (deterministic with mock-claude)
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "cat /workspace/message.txt"
+    assert_output --partial "[tool_result]"
+    assert_output --partial "[result]"
+
     # Verify HEAD version content (not old content)
+    # With mock-claude, the actual file content appears in tool_result
     assert_output --partial "Hello from HEAD version"
     assert_output --partial "42"
+
+    # Verify we did NOT get old content
+    refute_output --partial "old content - should not see this"
 
     rm -rf "$CONFIG_DIR"
 }
