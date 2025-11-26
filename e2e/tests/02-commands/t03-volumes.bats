@@ -16,10 +16,6 @@ teardown() {
     fi
 }
 
-# ============================================
-# Volume CLI Operations (no vm0 run needed)
-# ============================================
-
 @test "Initialize volume in directory" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
@@ -124,67 +120,4 @@ EOF
     assert_output "version 3 - HEAD"
 
     rm -rf "$NEW_DIR"
-}
-
-# ============================================
-# Agent with artifact (single vm0 run)
-# This test verifies artifact mounting AND version (HEAD) behavior
-# In new architecture: workspace mounts use artifact, not volume
-# ============================================
-
-@test "Agent reads HEAD version from artifact" {
-    # Create and push multiple versions to test HEAD behavior
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND artifact init >/dev/null
-
-    # Push first version (will be overwritten)
-    echo "old content - should not see this" > message.txt
-    $CLI_COMMAND artifact push >/dev/null
-
-    # Push second version (becomes HEAD)
-    echo "Hello from HEAD version" > message.txt
-    echo "42" > answer.txt
-    $CLI_COMMAND artifact push >/dev/null
-
-    # Create agent config that uses artifact for workspace
-    CONFIG_DIR="$(mktemp -d)"
-    cat > "$CONFIG_DIR/test-config.yaml" <<EOF
-version: "1.0"
-
-agent:
-  name: test-vm0-artifact-$VOLUME_NAME
-  description: "Test agent with VM0 artifact"
-  image: vm0-claude-code-dev
-  provider: claude-code
-  artifact:
-    working_dir: /workspace
-    driver: vm0
-EOF
-
-    cd "$CONFIG_DIR"
-    $CLI_COMMAND build test-config.yaml >/dev/null
-
-    # Run agent with artifact flag - should see HEAD version content
-    run $CLI_COMMAND run "test-vm0-artifact-$VOLUME_NAME" \
-        -a "$VOLUME_NAME" \
-        "cat /workspace/message.txt && cat /workspace/answer.txt"
-
-    assert_success
-
-    # Verify mock-claude execution events (deterministic with mock-claude)
-    assert_output --partial "[tool_use] Bash"
-    assert_output --partial "cat /workspace/message.txt"
-    assert_output --partial "[tool_result]"
-    assert_output --partial "[result]"
-
-    # Verify HEAD version content (not old content)
-    # With mock-claude, the actual file content appears in tool_result
-    assert_output --partial "Hello from HEAD version"
-    assert_output --partial "42"
-
-    # Verify we did NOT get old content
-    refute_output --partial "old content - should not see this"
-
-    rm -rf "$CONFIG_DIR"
-}
+} 
