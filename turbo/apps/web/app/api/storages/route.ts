@@ -12,7 +12,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import AdmZip from "adm-zip";
 
-const S3_BUCKET = "vm0-s3-user-volumes";
+const S3_BUCKET = "vm0-s3-user-storages";
 
 /**
  * Validate storage name format

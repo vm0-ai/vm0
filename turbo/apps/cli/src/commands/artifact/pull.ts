@@ -3,7 +3,7 @@ import chalk from "chalk";
 import path from "path";
 import * as fs from "fs";
 import AdmZip from "adm-zip";
-import { readVolumeConfig } from "../../lib/volume-utils";
+import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
 
 /**
@@ -25,7 +25,7 @@ export const pullCommand = new Command()
       const cwd = process.cwd();
 
       // Read config
-      const config = await readVolumeConfig(cwd);
+      const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No artifact initialized in this directory"));
         console.error(chalk.gray("  Run: vm0 artifact init"));
@@ -56,7 +56,7 @@ export const pullCommand = new Command()
           console.error(chalk.red(`✗ Artifact "${config.name}" not found`));
           console.error(
             chalk.gray(
-              "  Make sure the artifact name is correct in .vm0/volume.yaml",
+              "  Make sure the artifact name is correct in .vm0/storage.yaml",
             ),
           );
           console.error(

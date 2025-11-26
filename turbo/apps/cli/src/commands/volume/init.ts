@@ -2,10 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import path from "path";
 import {
-  isValidVolumeName,
-  writeVolumeConfig,
-  readVolumeConfig,
-} from "../../lib/volume-utils";
+  isValidStorageName,
+  writeStorageConfig,
+  readStorageConfig,
+} from "../../lib/storage-utils";
 
 export const initCommand = new Command()
   .name("init")
@@ -15,14 +15,14 @@ export const initCommand = new Command()
       const cwd = process.cwd();
       const dirName = path.basename(cwd);
 
-      // Check if volume config already exists
-      const existingConfig = await readVolumeConfig(cwd);
+      // Check if storage config already exists
+      const existingConfig = await readStorageConfig(cwd);
       if (existingConfig) {
         console.log(
           chalk.yellow(`Volume already initialized: ${existingConfig.name}`),
         );
         console.log(
-          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "volume.yaml")}`),
+          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
         );
         return;
       }
@@ -31,7 +31,7 @@ export const initCommand = new Command()
       const volumeName = dirName;
 
       // Validate volume name
-      if (!isValidVolumeName(volumeName)) {
+      if (!isValidStorageName(volumeName)) {
         console.error(chalk.red(`✗ Invalid volume name: "${dirName}"`));
         console.error(
           chalk.gray(
@@ -45,12 +45,12 @@ export const initCommand = new Command()
       }
 
       // Write config file
-      await writeVolumeConfig(volumeName, cwd);
+      await writeStorageConfig(volumeName, cwd);
 
       console.log(chalk.green(`✓ Initialized volume: ${volumeName}`));
       console.log(
         chalk.gray(
-          `✓ Config saved to ${path.join(cwd, ".vm0", "volume.yaml")}`,
+          `✓ Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
     } catch (error) {

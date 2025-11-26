@@ -1,7 +1,7 @@
 import type { Sandbox } from "@e2b/code-interpreter";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveVolumes } from "./volume-resolver";
+import { resolveVolumes } from "./storage-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
 import {
   buildAuthenticatedUrl,

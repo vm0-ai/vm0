@@ -2,10 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import path from "path";
 import {
-  isValidVolumeName,
-  writeVolumeConfig,
-  readVolumeConfig,
-} from "../../lib/volume-utils";
+  isValidStorageName,
+  writeStorageConfig,
+  readStorageConfig,
+} from "../../lib/storage-utils";
 
 export const initCommand = new Command()
   .name("init")
@@ -16,7 +16,7 @@ export const initCommand = new Command()
       const dirName = path.basename(cwd);
 
       // Check if config already exists
-      const existingConfig = await readVolumeConfig(cwd);
+      const existingConfig = await readStorageConfig(cwd);
       if (existingConfig) {
         if (existingConfig.type === "artifact") {
           console.log(
@@ -32,12 +32,12 @@ export const initCommand = new Command()
           );
           console.log(
             chalk.gray(
-              "  To change type, delete .vm0/volume.yaml and reinitialize",
+              "  To change type, delete .vm0/storage.yaml and reinitialize",
             ),
           );
         }
         console.log(
-          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "volume.yaml")}`),
+          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
         );
         return;
       }
@@ -46,7 +46,7 @@ export const initCommand = new Command()
       const artifactName = dirName;
 
       // Validate name
-      if (!isValidVolumeName(artifactName)) {
+      if (!isValidStorageName(artifactName)) {
         console.error(chalk.red(`✗ Invalid artifact name: "${dirName}"`));
         console.error(
           chalk.gray(
@@ -60,12 +60,12 @@ export const initCommand = new Command()
       }
 
       // Write config file with type: artifact
-      await writeVolumeConfig(artifactName, cwd, "artifact");
+      await writeStorageConfig(artifactName, cwd, "artifact");
 
       console.log(chalk.green(`✓ Initialized artifact: ${artifactName}`));
       console.log(
         chalk.gray(
-          `✓ Config saved to ${path.join(cwd, ".vm0", "volume.yaml")}`,
+          `✓ Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
     } catch (error) {

@@ -4,28 +4,28 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import path from "path";
 
 /**
- * Volume/Artifact type
+ * Storage type
  * - "volume": Static storage that doesn't auto-version after runs
  * - "artifact": Work products that auto-version after runs
  */
 export type StorageType = "volume" | "artifact";
 
-export interface VolumeConfig {
+export interface StorageConfig {
   name: string;
   type: StorageType;
 }
 
 const CONFIG_DIR = ".vm0";
-const CONFIG_FILE = "volume.yaml";
+const CONFIG_FILE = "storage.yaml";
 
 /**
- * Validate volume/artifact name format
+ * Validate storage name format
  * Length: 3-64 characters
  * Characters: lowercase letters, numbers, hyphens
  * Must start and end with alphanumeric
  * No consecutive hyphens
  */
-export function isValidVolumeName(name: string): boolean {
+export function isValidStorageName(name: string): boolean {
   if (name.length < 3 || name.length > 64) {
     return false;
   }
@@ -34,19 +34,29 @@ export function isValidVolumeName(name: string): boolean {
 }
 
 /**
- * Read volume/artifact config from .vm0/volume.yaml
+ * Read storage config from .vm0/storage.yaml
+ * Also supports legacy .vm0/volume.yaml for backward compatibility
  */
-export async function readVolumeConfig(
+export async function readStorageConfig(
   basePath: string = process.cwd(),
-): Promise<VolumeConfig | null> {
+): Promise<StorageConfig | null> {
   const configPath = path.join(basePath, CONFIG_DIR, CONFIG_FILE);
+  const legacyConfigPath = path.join(basePath, CONFIG_DIR, "volume.yaml");
 
-  if (!existsSync(configPath)) {
+  // Check for new config file first, then legacy
+  let actualPath: string | null = null;
+  if (existsSync(configPath)) {
+    actualPath = configPath;
+  } else if (existsSync(legacyConfigPath)) {
+    actualPath = legacyConfigPath;
+  }
+
+  if (!actualPath) {
     return null;
   }
 
-  const content = await readFile(configPath, "utf8");
-  const config = parseYaml(content) as VolumeConfig;
+  const content = await readFile(actualPath, "utf8");
+  const config = parseYaml(content) as StorageConfig;
 
   // Default to "volume" type for backward compatibility
   if (!config.type) {
@@ -57,10 +67,10 @@ export async function readVolumeConfig(
 }
 
 /**
- * Write volume/artifact config to .vm0/volume.yaml
+ * Write storage config to .vm0/storage.yaml
  */
-export async function writeVolumeConfig(
-  volumeName: string,
+export async function writeStorageConfig(
+  storageName: string,
   basePath: string = process.cwd(),
   type: StorageType = "volume",
 ): Promise<void> {
@@ -72,8 +82,8 @@ export async function writeVolumeConfig(
     await mkdir(configDir, { recursive: true });
   }
 
-  const config: VolumeConfig = {
-    name: volumeName,
+  const config: StorageConfig = {
+    name: storageName,
     type,
   };
 

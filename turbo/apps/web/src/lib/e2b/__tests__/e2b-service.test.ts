@@ -303,7 +303,9 @@ describe("E2B Service - mocked unit tests", () => {
             description: "Test agent with working dir",
             image: "test-image",
             provider: "claude-code",
-            working_dir: "/home/user/workspace",
+            artifact: {
+              working_dir: "/home/user/workspace",
+            },
             volumes: [],
           },
         },

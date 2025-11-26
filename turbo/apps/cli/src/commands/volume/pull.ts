@@ -3,7 +3,7 @@ import chalk from "chalk";
 import path from "path";
 import * as fs from "fs";
 import AdmZip from "adm-zip";
-import { readVolumeConfig } from "../../lib/volume-utils";
+import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
 
 /**
@@ -24,8 +24,8 @@ export const pullCommand = new Command()
     try {
       const cwd = process.cwd();
 
-      // Read volume config
-      const config = await readVolumeConfig(cwd);
+      // Read storage config
+      const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No volume initialized in this directory"));
         console.error(chalk.gray("  Run: vm0 volume init"));
@@ -46,7 +46,7 @@ export const pullCommand = new Command()
           console.error(chalk.red(`✗ Volume "${config.name}" not found`));
           console.error(
             chalk.gray(
-              "  Make sure the volume name is correct in .vm0/volume.yaml",
+              "  Make sure the volume name is correct in .vm0/storage.yaml",
             ),
           );
           console.error(
