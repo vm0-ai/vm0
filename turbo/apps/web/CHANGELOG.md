@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/vm0-ai/vm0/compare/web-v1.6.0...web-v1.6.1) (2025-11-26)
+
+
+### Bug Fixes
+
+* fail fast when vm0 artifact configured but no artifact key provided ([#214](https://github.com/vm0-ai/vm0/issues/214)) ([bebcedc](https://github.com/vm0-ai/vm0/commit/bebcedcf21111611607c9b8dc352a539dc2ed473))
+* make s3 bucket name configurable via environment variable ([#212](https://github.com/vm0-ai/vm0/issues/212)) ([6f61cc5](https://github.com/vm0-ai/vm0/commit/6f61cc50ae59a4e3554e428c465ce7e7085b1768))
+
 ## [1.6.0](https://github.com/vm0-ai/vm0/compare/web-v1.5.0...web-v1.6.0) (2025-11-26)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/vm0-ai/vm0/compare/cli-v1.5.0...cli-v1.6.0) (2025-11-26)
+
+
+### Features
+
+* **cli:** add --timeout flag to vm0 run command ([#216](https://github.com/vm0-ai/vm0/issues/216)) ([0b37418](https://github.com/vm0-ai/vm0/commit/0b37418e94c9403238d5489bed5a6fbcebcafed7))
+
+
+### Bug Fixes
+
+* fail fast when vm0 artifact configured but no artifact key provided ([#214](https://github.com/vm0-ai/vm0/issues/214)) ([bebcedc](https://github.com/vm0-ai/vm0/commit/bebcedcf21111611607c9b8dc352a539dc2ed473))
+
 ## [1.5.0](https://github.com/vm0-ai/vm0/compare/cli-v1.4.0...cli-v1.5.0) (2025-11-26)
 
 
