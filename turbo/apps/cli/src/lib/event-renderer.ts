@@ -61,16 +61,12 @@ export class EventRenderer {
     const tool = String(event.data.tool || "");
     console.log(chalk.yellow("[tool_use]") + " " + tool);
 
+    // Show full input without truncation
     const input = event.data.input as Record<string, unknown>;
     if (input && typeof input === "object") {
       for (const [key, value] of Object.entries(input)) {
         if (value !== undefined && value !== null) {
-          const valueStr = String(value);
-          const displayValue =
-            valueStr.length > 100
-              ? valueStr.substring(0, 100) + "..."
-              : valueStr;
-          console.log(`  ${key}: ${chalk.gray(displayValue)}`);
+          console.log(`  ${key}: ${chalk.gray(String(value))}`);
         }
       }
     }
@@ -83,10 +79,9 @@ export class EventRenderer {
 
     console.log(color("[tool_result]") + " " + status);
 
+    // Show full result without truncation
     const result = String(event.data.result || "");
-    const displayResult =
-      result.length > 200 ? result.substring(0, 200) + "..." : result;
-    console.log(`  ${chalk.gray(displayResult)}`);
+    console.log(`  ${chalk.gray(result)}`);
   }
 
   private static renderResult(event: ParsedEvent): void {
@@ -133,10 +128,9 @@ export class EventRenderer {
       console.log(`  Run ID: ${chalk.gray(String(event.data.runId))}`);
     }
 
+    // Show full prompt without truncation
     const prompt = String(event.data.prompt || "");
-    const displayPrompt =
-      prompt.length > 100 ? prompt.substring(0, 100) + "..." : prompt;
-    console.log(`  Prompt: ${chalk.gray(displayPrompt)}`);
+    console.log(`  Prompt: ${chalk.gray(prompt)}`);
 
     if (event.data.agentName) {
       console.log(`  Agent: ${chalk.gray(String(event.data.agentName))}`);
