@@ -14,9 +14,9 @@ setup() {
 
 @test "Execute initial run, resume from checkpoint, and verify git volume access" {
     # Step 1: Run initial task that creates a checkpoint
-    # Using bash command to read files from git volume (lancy/question.git contains message.txt and answer.md)
+    # Using bash command to read files from git volume (lancy/question.git contains question.md)
     echo "# Step 1: Running initial task to read files from git volume..."
-    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "cat message.txt && cat answer.md"
+    run $CLI_COMMAND run vm0-checkpoint-resume-test -e user=lancy "cat question.md"
     assert_success
 
     # Verify we got a checkpoint created
@@ -41,8 +41,8 @@ setup() {
     # Verify the run started and resumed from checkpoint
     assert_output --partial "[vm0_start]"
 
-    # Step 3: Verify git volume is accessible and answer.md exists
+    # Step 3: Verify git volume is accessible and question.md exists
     echo "# Step 3: Verifying git volume access..."
-    # The agent should be able to see answer.md from the question.git repository
-    assert_output --partial "answer.md"
+    # The agent should be able to see question.md from the question.git repository
+    assert_output --partial "question.md"
 }
