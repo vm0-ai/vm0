@@ -11,6 +11,8 @@ init:
 	@git submodule update --init --recursive
 	
 # Run all tests
+# -j 4: run up to 4 files in parallel
+# --no-parallelize-within-files: run tests sequentially within each file
 test:
-	@$(BATS) --abort $(TESTS_DIR)/**/*.bats
+	@$(BATS) --abort -j 4 --no-parallelize-within-files $(TESTS_DIR)/**/*.bats
 
