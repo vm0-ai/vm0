@@ -36,8 +36,8 @@ echo -e "${GREEN}Running BATS tests...${NC}"
 
 # Default: run all tests
 if [[ $# -eq 0 ]]; then
-    "$BATS_BIN" "$SCRIPT_DIR"/tests/**/*.bats
+    "$BATS_BIN" --abort "$SCRIPT_DIR"/tests/**/*.bats
 else
     # Run specific tests passed as arguments
-    "$BATS_BIN" "$@"
+    "$BATS_BIN" --abort "$@"
 fi

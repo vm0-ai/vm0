@@ -12,5 +12,5 @@ init:
 	
 # Run all tests
 test:
-	@$(BATS) $(TESTS_DIR)/**/*.bats
+	@$(BATS) --abort $(TESTS_DIR)/**/*.bats
 
