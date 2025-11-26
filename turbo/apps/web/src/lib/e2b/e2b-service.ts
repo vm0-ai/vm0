@@ -453,7 +453,7 @@ export class E2BService {
         // VM0 artifact - pass info for vm0 snapshot
         envs.VM0_ARTIFACT_DRIVER = "vm0";
         envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
-        envs.VM0_ARTIFACT_STORAGE_NAME = preparedArtifact.vm0StorageName || "";
+        envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vm0StorageName || "";
         envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vm0VersionId || "";
         console.log(`[E2B] Configured VM0 artifact for checkpoint`);
       }
