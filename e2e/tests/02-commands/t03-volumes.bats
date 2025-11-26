@@ -127,51 +127,47 @@ EOF
 }
 
 # ============================================
-# Agent with vm0:// volume (single vm0 run)
-# This test verifies both volume mounting AND version (HEAD) behavior
+# Agent with artifact (single vm0 run)
+# This test verifies artifact mounting AND version (HEAD) behavior
+# In new architecture: workspace mounts use artifact, not volume
 # ============================================
 
-@test "Agent reads HEAD version from vm0:// volume" {
+@test "Agent reads HEAD version from artifact" {
     # Create and push multiple versions to test HEAD behavior
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND artifact init >/dev/null
 
     # Push first version (will be overwritten)
     echo "old content - should not see this" > message.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
     # Push second version (becomes HEAD)
     echo "Hello from HEAD version" > message.txt
     echo "42" > answer.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
-    # Create agent config that uses this volume
+    # Create agent config that uses artifact for workspace
     CONFIG_DIR="$(mktemp -d)"
     cat > "$CONFIG_DIR/test-config.yaml" <<EOF
 version: "1.0"
 
 agent:
-  name: test-vm0-volume-$VOLUME_NAME
-  description: "Test agent with VM0 volume"
+  name: test-vm0-artifact-$VOLUME_NAME
+  description: "Test agent with VM0 artifact"
   image: vm0-claude-code-dev
   provider: claude-code
-  working_dir: /workspace
-  volumes:
-    - test-data:/workspace
-
-volumes:
-  test-data:
+  artifact:
+    working_dir: /workspace
     driver: vm0
-    driver_opts:
-      uri: vm0://$VOLUME_NAME
 EOF
 
     cd "$CONFIG_DIR"
     $CLI_COMMAND build test-config.yaml >/dev/null
 
-    # Run agent - should see HEAD version content (verifies both mounting and versioning)
-    run $CLI_COMMAND run "test-vm0-volume-$VOLUME_NAME" \
+    # Run agent with artifact flag - should see HEAD version content
+    run $CLI_COMMAND run "test-vm0-artifact-$VOLUME_NAME" \
+        -a "$VOLUME_NAME" \
         "cat /workspace/message.txt && cat /workspace/answer.txt"
 
     assert_success
