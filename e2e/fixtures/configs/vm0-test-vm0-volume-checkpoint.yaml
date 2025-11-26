@@ -5,12 +5,6 @@ agent:
   description: "Test agent for VM0 volume checkpoint versioning"
   image: vm0-claude-code-dev
   provider: claude-code
-  working_dir: /workspace
-  volumes:
-    - test-data:/workspace
-
-dynamic_volumes:
-  test-data:
+  artifact:
+    working_dir: /workspace
     driver: vm0
-    driver_opts:
-      uri: vm0://{{volumeName}}

@@ -53,7 +53,7 @@ teardown() {
     # - Modify counter.txt from 100 to 101
     echo "# Step 2: Running agent to modify volume..."
     run $CLI_COMMAND run vm0-volume-checkpoint-test \
-        -e volumeName="$VOLUME_NAME" \
+        -a "$VOLUME_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
