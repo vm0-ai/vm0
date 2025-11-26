@@ -59,9 +59,7 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing sessionHistory");
     }
 
-    if (!body.volumeSnapshots || !Array.isArray(body.volumeSnapshots)) {
-      throw new BadRequestError("Missing or invalid volumeSnapshots array");
-    }
+    // artifactSnapshot is optional (can be null if no artifact configured)
 
     console.log(
       `[Checkpoint API] Received checkpoint request for run ${body.runId} from user ${userId}`,
@@ -85,20 +83,20 @@ export async function POST(request: NextRequest) {
     const result = await checkpointService.createCheckpoint(body);
 
     console.log(
-      `[Checkpoint API] Checkpoint created: ${result.checkpointId} with ${result.volumeSnapshots} snapshot(s)`,
+      `[Checkpoint API] Checkpoint created: ${result.checkpointId}, has artifact: ${result.hasArtifact}`,
     );
 
     // Send vm0_result event
     await sendVm0ResultEvent({
       runId: body.runId,
       checkpointId: result.checkpointId,
-      volumeSnapshots: result.volumeSnapshots,
+      hasArtifact: result.hasArtifact,
     });
 
     // Return response
     const response: CheckpointResponse = {
       checkpointId: result.checkpointId,
-      volumeSnapshots: result.volumeSnapshots,
+      hasArtifact: result.hasArtifact,
     };
 
     return successResponse(response, 200);

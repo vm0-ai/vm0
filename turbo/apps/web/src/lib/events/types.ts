@@ -27,7 +27,7 @@ export interface Vm0ResultEvent {
   runId: string;
   status: "completed";
   checkpointId: string;
-  volumeSnapshots: number;
+  hasArtifact: boolean;
   timestamp: string;
 }
 

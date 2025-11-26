@@ -3,7 +3,11 @@ import { env } from "../../env";
 import { e2bConfig } from "./config";
 import type { RunResult, SandboxExecutionResult } from "./types";
 import { volumeService } from "../volume/volume-service";
-import type { AgentVolumeConfig, PreparedVolume } from "../volume/types";
+import type {
+  AgentVolumeConfig,
+  PreparedVolume,
+  PreparedArtifact,
+} from "../volume/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import {
   COMMON_SCRIPT,
@@ -43,20 +47,50 @@ export class E2BService {
     let sandbox: Sandbox | null = null;
     const agentConfig = context.agentConfig as AgentVolumeConfig | undefined;
 
-    // Prepare volumes - use snapshots for resume, or fresh volumes for new run
-    const volumeResult = context.resumeVolumes
-      ? await volumeService.prepareVolumesFromSnapshots(
-          context.resumeVolumes,
-          agentConfig,
-          context.dynamicVars || {},
-          context.runId, // Pass runId for VM0 volume temp directory
-        )
-      : await volumeService.prepareVolumes(
-          agentConfig,
-          context.dynamicVars || {},
-          context.runId,
-          context.userId,
-        );
+    // Prepare volumes and artifact
+    // For resume: use artifact from snapshot
+    // For new run: prepare fresh volumes and artifact
+    let volumeResult: {
+      preparedVolumes: PreparedVolume[];
+      preparedArtifact: PreparedArtifact | null;
+      tempDir: string | null;
+      errors: string[];
+    };
+
+    if (context.resumeArtifact) {
+      // Resume from artifact snapshot
+      const artifactResult = await volumeService.prepareArtifactFromSnapshot(
+        context.resumeArtifact,
+        agentConfig,
+        context.dynamicVars || {},
+        context.runId,
+      );
+
+      // Also prepare regular volumes (fresh, not from snapshot)
+      const freshVolumes = await volumeService.prepareVolumes(
+        agentConfig,
+        context.dynamicVars || {},
+        context.runId,
+        context.userId,
+        // Don't pass artifact key for resume - we use the snapshot
+      );
+
+      volumeResult = {
+        preparedVolumes: freshVolumes.preparedVolumes,
+        preparedArtifact: artifactResult.preparedArtifact,
+        tempDir: artifactResult.tempDir || freshVolumes.tempDir,
+        errors: [...freshVolumes.errors, ...artifactResult.errors],
+      };
+    } else {
+      // New run - prepare volumes and artifact
+      volumeResult = await volumeService.prepareVolumes(
+        agentConfig,
+        context.dynamicVars || {},
+        context.runId,
+        context.userId,
+        context.artifactKey,
+      );
+    }
 
     try {
       // Fail fast if any volumes failed to prepare
@@ -117,8 +151,12 @@ export class E2BService {
       );
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
-      // Mount volumes to sandbox
-      await volumeService.mountVolumes(sandbox, volumeResult.preparedVolumes);
+      // Mount volumes and artifact to sandbox
+      await volumeService.mountVolumes(
+        sandbox,
+        volumeResult.preparedVolumes,
+        volumeResult.preparedArtifact,
+      );
 
       // Restore session history for resume
       if (context.resumeSession) {
@@ -137,7 +175,7 @@ export class E2BService {
         context.prompt,
         context.sandboxToken,
         context.agentConfig,
-        volumeResult.preparedVolumes,
+        volumeResult.preparedArtifact,
         context.resumeSession?.sessionId,
       );
 
@@ -354,7 +392,7 @@ export class E2BService {
     prompt: string,
     sandboxToken: string,
     agentConfig?: unknown,
-    preparedVolumes?: PreparedVolume[],
+    preparedArtifact?: PreparedArtifact | null,
     resumeSessionId?: string,
   ): Promise<SandboxExecutionResult> {
     const execStart = Date.now();
@@ -365,9 +403,9 @@ export class E2BService {
 
     console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 
-    // Extract working_dir from agent config
+    // Extract working_dir from artifact config (artifact always mounts to working_dir)
     const config = agentConfig as AgentConfigYaml | undefined;
-    const workingDir = config?.agent?.working_dir;
+    const workingDir = config?.agent?.artifact?.working_dir;
 
     // Set environment variables and execute script
     const envs: Record<string, string> = {
@@ -394,63 +432,33 @@ export class E2BService {
       console.log(`[E2B] Using mock-claude for testing`);
     }
 
-    // Add volume information for checkpoint
-    // Only dynamic volumes create new versions after agent runs
-    console.log(`[E2B] preparedVolumes count: ${preparedVolumes?.length ?? 0}`);
-    if (preparedVolumes && preparedVolumes.length > 0) {
-      // Debug: log all prepared volumes to understand filtering
+    // Add artifact information for checkpoint
+    // Only artifact creates new versions after agent runs
+    if (preparedArtifact) {
       console.log(
-        `[E2B] Prepared volumes for checkpoint filtering:`,
-        JSON.stringify(
-          preparedVolumes.map((v) => ({
-            name: v.name,
-            driver: v.driver,
-            isDynamic: v.isDynamic,
-            mountPath: v.mountPath,
-            vm0VolumeName: v.vm0VolumeName,
-          })),
-        ),
+        `[E2B] Prepared artifact for checkpoint:`,
+        JSON.stringify({
+          driver: preparedArtifact.driver,
+          mountPath: preparedArtifact.mountPath,
+          vm0VolumeName: preparedArtifact.vm0VolumeName,
+        }),
       );
 
-      // Filter only dynamic Git volumes and format for checkpoint
-      const gitVolumes = preparedVolumes
-        .filter((v) => v.driver === "git" && v.isDynamic)
-        .map((v) => ({
-          name: v.name,
-          driver: v.driver,
-          mountPath: v.mountPath,
-        }));
-
-      if (gitVolumes.length > 0) {
-        envs.VM0_GIT_VOLUMES = JSON.stringify(gitVolumes);
-        console.log(
-          `[E2B] Configured ${gitVolumes.length} dynamic Git volume(s) for checkpoint`,
-        );
+      if (preparedArtifact.driver === "git") {
+        // Git artifact - pass info for git snapshot
+        envs.VM0_ARTIFACT_DRIVER = "git";
+        envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
+        console.log(`[E2B] Configured Git artifact for checkpoint`);
+      } else if (preparedArtifact.driver === "vm0") {
+        // VM0 artifact - pass info for vm0 snapshot
+        envs.VM0_ARTIFACT_DRIVER = "vm0";
+        envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
+        envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vm0VolumeName || "";
+        envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vm0VersionId || "";
+        console.log(`[E2B] Configured VM0 artifact for checkpoint`);
       }
-
-      // Filter only dynamic VM0 volumes and format for checkpoint
-      const vm0Volumes = preparedVolumes
-        .filter((v) => v.driver === "vm0" && v.isDynamic)
-        .map((v) => ({
-          name: v.name,
-          driver: v.driver,
-          mountPath: v.mountPath,
-          vm0VolumeName: v.vm0VolumeName,
-          vm0VersionId: v.vm0VersionId,
-        }));
-
-      console.log(
-        `[E2B] Filtered VM0 volumes: ${vm0Volumes.length} (isDynamic filter applied)`,
-      );
-
-      if (vm0Volumes.length > 0) {
-        envs.VM0_VM0_VOLUMES = JSON.stringify(vm0Volumes);
-        console.log(
-          `[E2B] Configured ${vm0Volumes.length} dynamic VM0 volume(s) for checkpoint: ${JSON.stringify(vm0Volumes)}`,
-        );
-      } else {
-        console.log(`[E2B] No dynamic VM0 volumes found for checkpoint`);
-      }
+    } else {
+      console.log(`[E2B] No artifact configured for checkpoint`);
     }
 
     // Add Minimax API configuration if available

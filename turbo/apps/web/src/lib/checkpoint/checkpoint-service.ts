@@ -13,7 +13,7 @@ export class CheckpointService {
    * Create a checkpoint for an agent run
    *
    * @param request Checkpoint request data from webhook
-   * @returns Checkpoint ID and snapshot count
+   * @returns Checkpoint ID and artifact status
    * @throws NotFoundError if run doesn't exist
    */
   async createCheckpoint(
@@ -33,7 +33,7 @@ export class CheckpointService {
     }
 
     console.log(
-      `[Checkpoint] Storing ${request.volumeSnapshots.length} volume snapshot(s)`,
+      `[Checkpoint] Storing artifact snapshot: ${request.artifactSnapshot ? "yes" : "no"}`,
     );
 
     // Store checkpoint in database
@@ -45,7 +45,7 @@ export class CheckpointService {
         sessionId: request.sessionId,
         dynamicVars: run.dynamicVars,
         sessionHistory: request.sessionHistory,
-        volumeSnapshots: request.volumeSnapshots as unknown as Record<
+        artifactSnapshot: request.artifactSnapshot as unknown as Record<
           string,
           unknown
         >,
@@ -62,7 +62,7 @@ export class CheckpointService {
 
     return {
       checkpointId: checkpoint.id,
-      volumeSnapshots: request.volumeSnapshots.length,
+      hasArtifact: !!request.artifactSnapshot,
     };
   }
 }

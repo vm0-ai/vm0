@@ -25,6 +25,6 @@ export const checkpoints = pgTable("checkpoints", {
   sessionId: varchar("session_id", { length: 255 }).notNull(),
   dynamicVars: jsonb("dynamic_vars"),
   sessionHistory: text("session_history").notNull(), // JSONL format
-  volumeSnapshots: jsonb("volume_snapshots"), // Array of VolumeSnapshot objects
+  artifactSnapshot: jsonb("artifact_snapshot"), // ArtifactSnapshot object or null
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

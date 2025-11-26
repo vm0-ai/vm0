@@ -1,10 +1,13 @@
 import type {
   AgentVolumeConfig,
   VolumeConfig,
+  ArtifactConfig,
   ResolvedVolume,
+  ResolvedArtifact,
   VolumeResolutionResult,
   VolumeError,
   VolumeDriver,
+  ArtifactDriver,
 } from "./types";
 import { normalizeGitUrl, validateGitUrl } from "../git/git-client";
 
@@ -31,20 +34,20 @@ export function parseMountPath(declaration: string): {
 }
 
 /**
- * Replace template variables in URI
- * @param uri - URI with template variables like {{userId}}
+ * Replace template variables in a string
+ * @param str - String with template variables like {{userId}}
  * @param vars - Variable values
- * @returns URI with variables replaced
+ * @returns String with variables replaced and list of missing vars
  */
 export function replaceTemplateVars(
-  uri: string,
+  str: string,
   vars: Record<string, string>,
 ): { uri: string; missingVars: string[] } {
   const templatePattern = /\{\{(\w+)\}\}/g;
   const missingVars: string[] = [];
-  let result = uri;
+  let result = str;
 
-  const matches = uri.matchAll(templatePattern);
+  const matches = str.matchAll(templatePattern);
   for (const match of matches) {
     const varName = match[1]!;
     const value = vars[varName];
@@ -60,167 +63,257 @@ export function replaceTemplateVars(
 }
 
 /**
+ * Resolve a VM0 volume configuration
+ */
+function resolveVm0Volume(
+  volumeName: string,
+  mountPath: string,
+  volumeConfig: VolumeConfig,
+  dynamicVars: Record<string, string>,
+): { volume: ResolvedVolume; error: VolumeError | null } {
+  // Replace template variables in URI
+  const { uri, missingVars } = replaceTemplateVars(
+    volumeConfig.driver_opts.uri,
+    dynamicVars,
+  );
+
+  if (missingVars.length > 0) {
+    return {
+      volume: null as unknown as ResolvedVolume,
+      error: {
+        volumeName,
+        message: `Missing required variables: ${missingVars.join(", ")}`,
+        type: "missing_variable",
+      },
+    };
+  }
+
+  // Parse vm0:// URI
+  const vm0UriPattern = /^vm0:\/\/(.+)$/;
+  const match = uri.match(vm0UriPattern);
+
+  if (!match) {
+    return {
+      volume: null as unknown as ResolvedVolume,
+      error: {
+        volumeName,
+        message: `Invalid VM0 URI: ${uri}. Expected format: vm0://volume-name`,
+        type: "invalid_uri",
+      },
+    };
+  }
+
+  const vm0VolumeName = match[1];
+
+  return {
+    volume: {
+      name: volumeName,
+      driver: "vm0" as VolumeDriver,
+      mountPath,
+      vm0VolumeName,
+    },
+    error: null,
+  };
+}
+
+/**
+ * Resolve artifact configuration
+ */
+function resolveArtifact(
+  artifactConfig: ArtifactConfig,
+  dynamicVars: Record<string, string>,
+  artifactKey?: string,
+): { artifact: ResolvedArtifact | null; errors: VolumeError[] } {
+  const errors: VolumeError[] = [];
+  const driver: ArtifactDriver = artifactConfig.driver || "vm0";
+
+  if (driver === "git") {
+    // Git driver: resolve URI from config
+    if (!artifactConfig.driver_opts?.uri) {
+      errors.push({
+        volumeName: "artifact",
+        message: "Git artifact requires driver_opts.uri",
+        type: "invalid_uri",
+      });
+      return { artifact: null, errors };
+    }
+
+    // Replace template variables in URI
+    const { uri, missingVars } = replaceTemplateVars(
+      artifactConfig.driver_opts.uri,
+      dynamicVars,
+    );
+
+    if (missingVars.length > 0) {
+      errors.push({
+        volumeName: "artifact",
+        message: `Missing required variables: ${missingVars.join(", ")}`,
+        type: "missing_variable",
+      });
+      return { artifact: null, errors };
+    }
+
+    // Normalize and validate Git URL
+    const normalizedUrl = normalizeGitUrl(uri);
+    if (!validateGitUrl(normalizedUrl)) {
+      errors.push({
+        volumeName: "artifact",
+        message: `Invalid Git URL: ${uri}. Only HTTPS URLs are supported.`,
+        type: "invalid_uri",
+      });
+      return { artifact: null, errors };
+    }
+
+    // Replace template variables in branch (default to main)
+    const branchTemplate = artifactConfig.driver_opts.branch || "main";
+    const { uri: branch, missingVars: branchMissingVars } = replaceTemplateVars(
+      branchTemplate,
+      dynamicVars,
+    );
+
+    if (branchMissingVars.length > 0) {
+      errors.push({
+        volumeName: "artifact",
+        message: `Missing required variables in branch: ${branchMissingVars.join(", ")}`,
+        type: "missing_variable",
+      });
+      return { artifact: null, errors };
+    }
+
+    // Replace template variables in token if present
+    let token: string | undefined;
+    if (artifactConfig.driver_opts.token) {
+      const { uri: resolvedToken, missingVars: tokenMissingVars } =
+        replaceTemplateVars(artifactConfig.driver_opts.token, dynamicVars);
+
+      if (tokenMissingVars.length > 0) {
+        errors.push({
+          volumeName: "artifact",
+          message: `Missing required variables in token: ${tokenMissingVars.join(", ")}`,
+          type: "missing_variable",
+        });
+        return { artifact: null, errors };
+      }
+      token = resolvedToken;
+    }
+
+    return {
+      artifact: {
+        driver: "git",
+        mountPath: artifactConfig.working_dir,
+        gitUri: normalizedUrl,
+        gitBranch: branch,
+        gitToken: token,
+      },
+      errors: [],
+    };
+  }
+
+  // VM0 driver: artifact key is required at runtime
+  if (!artifactKey) {
+    // No artifact key provided - this is valid, just means no artifact mounted
+    return { artifact: null, errors: [] };
+  }
+
+  return {
+    artifact: {
+      driver: "vm0",
+      mountPath: artifactConfig.working_dir,
+      vm0VolumeName: artifactKey,
+    },
+    errors: [],
+  };
+}
+
+/**
  * Resolve volumes from agent configuration
  * @param config - Agent configuration with volume definitions
  * @param dynamicVars - Dynamic variables for template replacement
- * @returns Resolution result with resolved volumes and errors
+ * @param artifactKey - Artifact key for VM0 driver (optional)
+ * @returns Resolution result with resolved volumes, artifact, and errors
  */
 export function resolveVolumes(
   config: AgentVolumeConfig,
   dynamicVars: Record<string, string> = {},
+  artifactKey?: string,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
+  let artifact: ResolvedArtifact | null = null;
 
-  // Check for deprecated 'dynamic-volumes' format
-  if ("dynamic-volumes" in config) {
-    throw new Error(
-      "Configuration error: 'dynamic-volumes' is deprecated. Please use 'dynamic_volumes' instead (snake_case). " +
-        "Migration: Simply rename 'dynamic-volumes:' to 'dynamic_volumes:' in your config file.",
-    );
-  }
+  // Get working_dir from artifact config for validation
+  const workingDir = config.agent?.artifact?.working_dir;
 
-  // If no volume declarations, return empty result
-  if (!config.agent?.volumes || config.agent.volumes.length === 0) {
-    return { volumes, errors };
-  }
+  // Process volume declarations
+  if (config.agent?.volumes && config.agent.volumes.length > 0) {
+    for (const declaration of config.agent.volumes) {
+      try {
+        const { volumeName, mountPath } = parseMountPath(declaration);
 
-  // Process each volume declaration
-  for (const declaration of config.agent.volumes) {
-    try {
-      const { volumeName, mountPath } = parseMountPath(declaration);
+        // Validate: volumes cannot mount to working_dir
+        if (workingDir && mountPath === workingDir) {
+          errors.push({
+            volumeName,
+            message: `Volume "${volumeName}" cannot mount to working_dir (${workingDir}). Only artifact can mount to working_dir.`,
+            type: "working_dir_conflict",
+          });
+          continue;
+        }
 
-      // Look up volume definition (static or dynamic)
-      const staticVolume = config.volumes?.[volumeName];
-      const dynamicVolume = config.dynamic_volumes?.[volumeName];
-      const volumeConfig: VolumeConfig | undefined =
-        staticVolume || dynamicVolume;
-      // Track if volume is from dynamic_volumes (only dynamic volumes create new versions)
-      const isDynamic = !!dynamicVolume;
+        // Look up volume definition
+        const volumeConfig = config.volumes?.[volumeName];
 
-      if (!volumeConfig) {
-        errors.push({
+        if (!volumeConfig) {
+          errors.push({
+            volumeName,
+            message: `Volume "${volumeName}" not found in volumes section`,
+            type: "missing_definition",
+          });
+          continue;
+        }
+
+        // Validate driver (only vm0 supported for volumes)
+        if (volumeConfig.driver !== "vm0") {
+          errors.push({
+            volumeName,
+            message: `Unsupported volume driver: ${volumeConfig.driver}. Only vm0 driver is supported for volumes.`,
+            type: "invalid_uri",
+          });
+          continue;
+        }
+
+        // Resolve VM0 volume
+        const { volume, error } = resolveVm0Volume(
           volumeName,
-          message: `Volume "${volumeName}" not found in volumes or dynamic_volumes`,
-          type: "missing_definition",
-        });
-        continue;
-      }
+          mountPath,
+          volumeConfig,
+          dynamicVars,
+        );
 
-      // Validate driver
-      const supportedDrivers: VolumeDriver[] = ["git", "vm0"];
-      if (!supportedDrivers.includes(volumeConfig.driver)) {
+        if (error) {
+          errors.push(error);
+          continue;
+        }
+
+        volumes.push(volume);
+      } catch (error) {
         errors.push({
-          volumeName,
-          message: `Unsupported volume driver: ${volumeConfig.driver}. Supported drivers: git, vm0.`,
+          volumeName: "unknown",
+          message: error instanceof Error ? error.message : "Unknown error",
           type: "invalid_uri",
         });
-        continue;
       }
-
-      // Handle Git volumes
-      if (volumeConfig.driver === "git") {
-        // Replace template variables in URI
-        const { uri, missingVars } = replaceTemplateVars(
-          volumeConfig.driver_opts.uri,
-          dynamicVars,
-        );
-
-        if (missingVars.length > 0) {
-          errors.push({
-            volumeName,
-            message: `Missing required variables: ${missingVars.join(", ")}`,
-            type: "missing_variable",
-          });
-          continue;
-        }
-
-        // Normalize and validate Git URL
-        const normalizedUrl = normalizeGitUrl(uri);
-        if (!validateGitUrl(normalizedUrl)) {
-          errors.push({
-            volumeName,
-            message: `Invalid Git URL: ${uri}. Only HTTPS URLs are supported.`,
-            type: "invalid_uri",
-          });
-          continue;
-        }
-
-        // Replace template variables in branch (default to main)
-        const branchTemplate = volumeConfig.driver_opts.branch || "main";
-        const { uri: branch, missingVars: branchMissingVars } =
-          replaceTemplateVars(branchTemplate, dynamicVars);
-
-        if (branchMissingVars.length > 0) {
-          errors.push({
-            volumeName,
-            message: `Missing required variables in branch: ${branchMissingVars.join(", ")}`,
-            type: "missing_variable",
-          });
-          continue;
-        }
-
-        // Add resolved Git volume
-        volumes.push({
-          name: volumeName,
-          driver: "git",
-          mountPath,
-          gitUri: normalizedUrl,
-          gitBranch: branch,
-          gitToken: volumeConfig.driver_opts.token,
-          isDynamic,
-        });
-      }
-
-      // Handle VM0 volumes
-      if (volumeConfig.driver === "vm0") {
-        // Replace template variables in URI
-        const { uri, missingVars } = replaceTemplateVars(
-          volumeConfig.driver_opts.uri,
-          dynamicVars,
-        );
-
-        if (missingVars.length > 0) {
-          errors.push({
-            volumeName,
-            message: `Missing required variables: ${missingVars.join(", ")}`,
-            type: "missing_variable",
-          });
-          continue;
-        }
-
-        // Parse vm0:// URI
-        const vm0UriPattern = /^vm0:\/\/(.+)$/;
-        const match = uri.match(vm0UriPattern);
-
-        if (!match) {
-          errors.push({
-            volumeName,
-            message: `Invalid VM0 URI: ${uri}. Expected format: vm0://volume-name`,
-            type: "invalid_uri",
-          });
-          continue;
-        }
-
-        const vm0VolumeName = match[1];
-
-        // Add resolved VM0 volume
-        volumes.push({
-          name: volumeName,
-          driver: "vm0",
-          mountPath,
-          vm0VolumeName,
-          isDynamic,
-        });
-      }
-    } catch (error) {
-      errors.push({
-        volumeName: "unknown",
-        message: error instanceof Error ? error.message : "Unknown error",
-        type: "invalid_uri",
-      });
     }
   }
 
-  return { volumes, errors };
+  // Process artifact configuration
+  if (config.agent?.artifact) {
+    const { artifact: resolvedArtifact, errors: artifactErrors } =
+      resolveArtifact(config.agent.artifact, dynamicVars, artifactKey);
+
+    artifact = resolvedArtifact;
+    errors.push(...artifactErrors);
+  }
+
+  return { volumes, artifact, errors };
 }

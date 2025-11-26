@@ -2,6 +2,8 @@
  * Checkpoint system types for preserving agent run state
  */
 
+import type { ArtifactDriver } from "../volume/types";
+
 /**
  * Git snapshot containing branch and commit information
  */
@@ -11,27 +13,25 @@ export interface GitSnapshot {
 }
 
 /**
- * VM0 volume snapshot containing version information
+ * VM0 artifact snapshot containing version information
  */
 export interface Vm0Snapshot {
   versionId: string;
 }
 
 /**
- * Volume snapshot for Git-based volumes
+ * Artifact snapshot for Git-based artifacts
  */
-export interface GitVolumeSnapshot {
-  name: string;
+export interface GitArtifactSnapshot {
   driver: "git";
   mountPath: string;
   snapshot?: GitSnapshot;
 }
 
 /**
- * Volume snapshot for VM0 managed volumes
+ * Artifact snapshot for VM0 managed artifacts
  */
-export interface Vm0VolumeSnapshot {
-  name: string;
+export interface Vm0ArtifactSnapshot {
   driver: "vm0";
   mountPath: string;
   vm0VolumeName: string;
@@ -39,9 +39,9 @@ export interface Vm0VolumeSnapshot {
 }
 
 /**
- * Union type for all volume snapshots
+ * Union type for artifact snapshots
  */
-export type VolumeSnapshot = GitVolumeSnapshot | Vm0VolumeSnapshot;
+export type ArtifactSnapshot = GitArtifactSnapshot | Vm0ArtifactSnapshot;
 
 /**
  * Complete checkpoint data stored in database
@@ -52,7 +52,7 @@ export interface CheckpointData {
   sessionId: string;
   dynamicVars?: Record<string, string>;
   sessionHistory: string; // JSONL format
-  volumeSnapshots: VolumeSnapshot[];
+  artifactSnapshot: ArtifactSnapshot | null;
 }
 
 /**
@@ -62,7 +62,7 @@ export interface CheckpointRequest {
   runId: string;
   sessionId: string;
   sessionHistory: string;
-  volumeSnapshots: VolumeSnapshot[];
+  artifactSnapshot: ArtifactSnapshot | null;
 }
 
 /**
@@ -70,5 +70,34 @@ export interface CheckpointRequest {
  */
 export interface CheckpointResponse {
   checkpointId: string;
-  volumeSnapshots: number;
+  hasArtifact: boolean;
 }
+
+// Legacy types for backward compatibility during migration
+// TODO: Remove after full migration
+
+/**
+ * @deprecated Use ArtifactSnapshot instead
+ */
+export interface GitVolumeSnapshot {
+  name: string;
+  driver: "git";
+  mountPath: string;
+  snapshot?: GitSnapshot;
+}
+
+/**
+ * @deprecated Use ArtifactSnapshot instead
+ */
+export interface Vm0VolumeSnapshot {
+  name: string;
+  driver: "vm0";
+  mountPath: string;
+  vm0VolumeName: string;
+  snapshot?: Vm0Snapshot;
+}
+
+/**
+ * @deprecated Use ArtifactSnapshot instead
+ */
+export type VolumeSnapshot = GitVolumeSnapshot | Vm0VolumeSnapshot;

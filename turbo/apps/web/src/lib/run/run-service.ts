@@ -4,7 +4,7 @@ import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import { NotFoundError, UnauthorizedError } from "../errors";
 import type { ExecutionContext, ResumeSession } from "./types";
-import type { VolumeSnapshot } from "../checkpoint/types";
+import type { ArtifactSnapshot } from "../checkpoint/types";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 
@@ -35,6 +35,8 @@ export class RunService {
    * @param sandboxToken Temporary bearer token for sandbox
    * @param dynamicVars Dynamic variable replacements
    * @param agentConfig Full agent configuration
+   * @param userId User ID for volume access
+   * @param artifactKey Artifact key for VM0 driver
    * @returns Execution context for e2b-service
    */
   async createRunContext(
@@ -45,6 +47,7 @@ export class RunService {
     dynamicVars: Record<string, string> | undefined,
     agentConfig: unknown,
     userId?: string,
+    artifactKey?: string,
   ): Promise<ExecutionContext> {
     console.log(`[RunService] Creating run context for ${runId}`);
 
@@ -56,6 +59,7 @@ export class RunService {
       dynamicVars,
       sandboxToken,
       userId,
+      artifactKey,
     };
   }
 
@@ -127,11 +131,11 @@ export class RunService {
       `[RunService] Loaded agent config: ${config.name || config.id}`,
     );
 
-    // Extract working directory from agent config
+    // Extract working directory from artifact config
     const agentConfig = config.config as
-      | { agent?: { working_dir?: string } }
+      | { agent?: { artifact?: { working_dir?: string } } }
       | undefined;
-    const workingDir = agentConfig?.agent?.working_dir || "/workspace";
+    const workingDir = agentConfig?.agent?.artifact?.working_dir || "/workspace";
 
     console.log(`[RunService] Working directory: ${workingDir}`);
 
@@ -142,12 +146,12 @@ export class RunService {
       workingDir,
     };
 
-    // Parse volume snapshots from JSONB
-    const resumeVolumes =
-      (checkpoint.volumeSnapshots as unknown as VolumeSnapshot[]) || [];
+    // Parse artifact snapshot from JSONB
+    const resumeArtifact =
+      (checkpoint.artifactSnapshot as unknown as ArtifactSnapshot) || null;
 
     console.log(
-      `[RunService] Resume session: ${checkpoint.sessionId}, volumes: ${resumeVolumes.length}`,
+      `[RunService] Resume session: ${checkpoint.sessionId}, artifact: ${resumeArtifact ? resumeArtifact.driver : "none"}`,
     );
 
     return {
@@ -159,7 +163,7 @@ export class RunService {
       dynamicVars: (checkpoint.dynamicVars as Record<string, string>) || {},
       sandboxToken,
       resumeSession,
-      resumeVolumes,
+      resumeArtifact: resumeArtifact || undefined,
     };
   }
 

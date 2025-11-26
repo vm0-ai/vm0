@@ -1,4 +1,4 @@
-import type { VolumeSnapshot } from "../checkpoint/types";
+import type { ArtifactSnapshot } from "../checkpoint/types";
 
 /**
  * Session history restoration data
@@ -22,7 +22,10 @@ export interface ExecutionContext {
   dynamicVars?: Record<string, string>;
   sandboxToken: string;
 
+  // Artifact key for VM0 driver (new runs only)
+  artifactKey?: string;
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
-  resumeVolumes?: VolumeSnapshot[];
+  resumeArtifact?: ArtifactSnapshot;
 }

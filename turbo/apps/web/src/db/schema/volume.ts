@@ -10,6 +10,13 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
+ * Volume type:
+ * - "volume": Static volumes that don't auto-version after runs
+ * - "artifact": Work products that auto-version after runs
+ */
+export type VolumeTypeEnum = "volume" | "artifact";
+
+/**
  * Volumes table
  * Main table for user volumes with HEAD pointer to current version
  */
@@ -19,6 +26,7 @@ export const volumes = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
+    type: varchar("type", { length: 16 }).notNull().default("volume"),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),

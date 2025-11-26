@@ -11,13 +11,11 @@ import {
 import type {
   AgentVolumeConfig,
   PreparedVolume,
+  PreparedArtifact,
   VolumePreparationResult,
+  ResolvedArtifact,
 } from "./types";
-import type {
-  VolumeSnapshot,
-  Vm0VolumeSnapshot,
-  GitVolumeSnapshot,
-} from "../checkpoint/types";
+import type { ArtifactSnapshot } from "../checkpoint/types";
 import { volumes, volumeVersions } from "../../db/schema/volume";
 import { eq, and } from "drizzle-orm";
 
@@ -32,6 +30,7 @@ export class VolumeService {
    * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
    * @param userId - User ID for VM0 volume access (optional)
+   * @param artifactKey - Artifact key for VM0 driver (optional)
    * @returns Volume preparation result with prepared volumes and temp directory
    */
   async prepareVolumes(
@@ -39,6 +38,7 @@ export class VolumeService {
     dynamicVars: Record<string, string>,
     runId: string,
     userId?: string,
+    artifactKey?: string,
   ): Promise<VolumePreparationResult> {
     const errors: string[] = [];
 
@@ -46,13 +46,14 @@ export class VolumeService {
     if (!agentConfig) {
       return {
         preparedVolumes: [],
+        preparedArtifact: null,
         tempDir: null,
         errors: [],
       };
     }
 
     // Resolve volumes from agent config
-    const volumeResult = resolveVolumes(agentConfig, dynamicVars);
+    const volumeResult = resolveVolumes(agentConfig, dynamicVars, artifactKey);
 
     // Log volume resolution errors but don't fail the preparation
     if (volumeResult.errors.length > 0) {
@@ -62,105 +63,86 @@ export class VolumeService {
       );
     }
 
-    // If no volumes to prepare, return empty result
-    if (volumeResult.volumes.length === 0) {
-      return {
-        preparedVolumes: [],
-        tempDir: null,
-        errors,
-      };
+    // Check if we need a temp directory (for VM0 volumes/artifacts)
+    const hasVm0Volumes = volumeResult.volumes.length > 0;
+    const hasVm0Artifact =
+      volumeResult.artifact && volumeResult.artifact.driver === "vm0";
+    const needsTempDir = hasVm0Volumes || hasVm0Artifact;
+
+    let tempDir: string | null = null;
+    if (needsTempDir) {
+      tempDir = `/tmp/vm0-run-${runId}`;
+      await fs.promises.mkdir(tempDir, { recursive: true });
     }
 
-    // Create temp directory for volume downloads
-    const tempDir = `/tmp/vm0-run-${runId}`;
-    await fs.promises.mkdir(tempDir, { recursive: true });
-
     console.log(
-      `[Volume] Downloading ${volumeResult.volumes.length} volumes...`,
+      `[Volume] Preparing ${volumeResult.volumes.length} volumes and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
     );
 
     const preparedVolumes: PreparedVolume[] = [];
+    let preparedArtifact: PreparedArtifact | null = null;
 
-    // Process each volume based on driver type
+    // Process each volume (VM0 only)
     for (const volume of volumeResult.volumes) {
       try {
-        if (volume.driver === "git") {
-          // Git volumes: store metadata only (clone happens in sandbox)
-          console.log(
-            `[Volume] Prepared Git volume "${volume.name}": ${sanitizeGitUrlForLogging(volume.gitUri!)} (${volume.gitBranch})`,
-          );
-
-          preparedVolumes.push({
-            name: volume.name,
-            driver: "git",
-            mountPath: volume.mountPath,
-            gitUri: volume.gitUri,
-            gitBranch: volume.gitBranch,
-            gitToken: volume.gitToken,
-            isDynamic: volume.isDynamic,
-          });
-        } else if (volume.driver === "vm0") {
-          // VM0 volumes: download from S3 using HEAD version
-          if (!userId) {
-            throw new Error("userId is required for VM0 volumes");
-          }
-
-          // Query database for volume and HEAD version
-          const [dbVolume] = await globalThis.services.db
-            .select()
-            .from(volumes)
-            .where(
-              and(
-                eq(volumes.userId, userId),
-                eq(volumes.name, volume.vm0VolumeName!),
-              ),
-            )
-            .limit(1);
-
-          if (!dbVolume) {
-            throw new Error(
-              `VM0 volume "${volume.vm0VolumeName}" not found in database`,
-            );
-          }
-
-          if (!dbVolume.headVersionId) {
-            throw new Error(
-              `VM0 volume "${volume.vm0VolumeName}" has no HEAD version`,
-            );
-          }
-
-          // Get HEAD version details
-          const [headVersion] = await globalThis.services.db
-            .select()
-            .from(volumeVersions)
-            .where(eq(volumeVersions.id, dbVolume.headVersionId))
-            .limit(1);
-
-          if (!headVersion) {
-            throw new Error(
-              `VM0 volume "${volume.vm0VolumeName}" HEAD version not found`,
-            );
-          }
-
-          // Download from versioned S3 path
-          const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
-          const localPath = path.join(tempDir, volume.name);
-
-          const downloadResult = await downloadS3Directory(s3Uri, localPath);
-          console.log(
-            `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-          );
-
-          preparedVolumes.push({
-            name: volume.name,
-            driver: "vm0",
-            localPath,
-            mountPath: volume.mountPath,
-            vm0VolumeName: volume.vm0VolumeName,
-            vm0VersionId: headVersion.id,
-            isDynamic: volume.isDynamic,
-          });
+        if (!userId) {
+          throw new Error("userId is required for VM0 volumes");
         }
+
+        // Query database for volume and HEAD version
+        const [dbVolume] = await globalThis.services.db
+          .select()
+          .from(volumes)
+          .where(
+            and(
+              eq(volumes.userId, userId),
+              eq(volumes.name, volume.vm0VolumeName!),
+            ),
+          )
+          .limit(1);
+
+        if (!dbVolume) {
+          throw new Error(
+            `VM0 volume "${volume.vm0VolumeName}" not found in database`,
+          );
+        }
+
+        if (!dbVolume.headVersionId) {
+          throw new Error(
+            `VM0 volume "${volume.vm0VolumeName}" has no HEAD version`,
+          );
+        }
+
+        // Get HEAD version details
+        const [headVersion] = await globalThis.services.db
+          .select()
+          .from(volumeVersions)
+          .where(eq(volumeVersions.id, dbVolume.headVersionId))
+          .limit(1);
+
+        if (!headVersion) {
+          throw new Error(
+            `VM0 volume "${volume.vm0VolumeName}" HEAD version not found`,
+          );
+        }
+
+        // Download from versioned S3 path
+        const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
+        const localPath = path.join(tempDir!, volume.name);
+
+        const downloadResult = await downloadS3Directory(s3Uri, localPath);
+        console.log(
+          `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+        );
+
+        preparedVolumes.push({
+          name: volume.name,
+          driver: "vm0",
+          localPath,
+          mountPath: volume.mountPath,
+          vm0VolumeName: volume.vm0VolumeName,
+          vm0VersionId: headVersion.id,
+        });
       } catch (error) {
         console.error(
           `[Volume] Failed to prepare volume "${volume.name}":`,
@@ -172,237 +154,266 @@ export class VolumeService {
       }
     }
 
-    return {
-      preparedVolumes,
-      tempDir,
-      errors,
-    };
-  }
-
-  /**
-   * Prepare volumes from checkpoint snapshots (for resume functionality)
-   * Resolves Git URI and token from agent config and uses snapshot branch
-   * For VM0 volumes, downloads from the specific version stored in checkpoint
-   * @param snapshots - Volume snapshots from checkpoint
-   * @param agentConfig - Agent configuration containing volume definitions
-   * @param dynamicVars - Dynamic variables for template replacement
-   * @param runId - Run ID for temp directory naming (required for VM0 volumes)
-   * @returns Volume preparation result with prepared volumes
-   */
-  async prepareVolumesFromSnapshots(
-    snapshots: VolumeSnapshot[],
-    agentConfig: AgentVolumeConfig | undefined,
-    dynamicVars: Record<string, string>,
-    runId?: string,
-  ): Promise<VolumePreparationResult> {
-    const errors: string[] = [];
-
-    console.log(
-      `[Volume] Preparing ${snapshots.length} volumes from snapshots...`,
-    );
-    console.log(`[Volume] Snapshots data:`, JSON.stringify(snapshots, null, 2));
-
-    if (!agentConfig) {
-      return {
-        preparedVolumes: [],
-        tempDir: null,
-        errors: ["Agent config not provided"],
-      };
-    }
-
-    const preparedVolumes: PreparedVolume[] = [];
-
-    // First resolve volumes from agent config to get URI and token
-    const volumeResult = resolveVolumes(agentConfig, dynamicVars);
-    const resolvedVolumeMap = new Map(
-      volumeResult.volumes.map((v) => [v.name, v]),
-    );
-
-    console.log(
-      `[Volume] Resolved ${resolvedVolumeMap.size} volumes from agent config`,
-    );
-
-    // Check if we have VM0 snapshots that need a temp directory
-    const hasVm0Snapshots = snapshots.some((s) => s.driver === "vm0");
-    let tempDir: string | null = null;
-
-    if (hasVm0Snapshots && runId) {
-      tempDir = `/tmp/vm0-run-${runId}`;
-      await fs.promises.mkdir(tempDir, { recursive: true });
-    }
-
-    // Process each snapshot
-    for (const snapshot of snapshots) {
+    // Process artifact
+    if (volumeResult.artifact) {
       try {
-        console.log(
-          `[Volume] Processing snapshot "${snapshot.name}" (driver: ${snapshot.driver})`,
+        preparedArtifact = await this.prepareArtifact(
+          volumeResult.artifact,
+          tempDir,
+          userId,
         );
-
-        if (snapshot.driver === "git") {
-          const gitSnapshot = snapshot as GitVolumeSnapshot;
-          // Debug logging for snapshot structure
-          console.log(
-            `[Volume] Snapshot.snapshot exists: ${!!gitSnapshot.snapshot}`,
-          );
-          console.log(
-            `[Volume] Snapshot.snapshot value:`,
-            JSON.stringify(gitSnapshot.snapshot, null, 2),
-          );
-
-          if (!gitSnapshot.snapshot) {
-            throw new Error("Git snapshot missing snapshot data");
-          }
-
-          if (!gitSnapshot.snapshot.branch) {
-            throw new Error(
-              `Git snapshot missing branch name. Snapshot: ${JSON.stringify(gitSnapshot.snapshot)}`,
-            );
-          }
-
-          // Get the resolved volume from agent config
-          const resolvedVolume = resolvedVolumeMap.get(snapshot.name);
-          if (!resolvedVolume) {
-            throw new Error(
-              `Volume "${snapshot.name}" not found in agent config`,
-            );
-          }
-
-          console.log(
-            `[Volume] Resolved volume "${snapshot.name}": ${sanitizeGitUrlForLogging(resolvedVolume.gitUri!)}`,
-          );
-
-          console.log(
-            `[Volume] Prepared Git snapshot "${snapshot.name}": branch ${gitSnapshot.snapshot.branch}, commit ${gitSnapshot.snapshot.commitId}`,
-          );
-
-          // Use snapshot branch instead of default branch
-          // Volumes from snapshots are always dynamic (only dynamic volumes create checkpoints)
-          const preparedVolume: PreparedVolume = {
-            name: snapshot.name,
-            driver: "git",
-            mountPath: snapshot.mountPath,
-            gitUri: resolvedVolume.gitUri,
-            gitBranch: gitSnapshot.snapshot.branch, // Use snapshot branch
-            gitToken: resolvedVolume.gitToken,
-            isDynamic: true,
-          };
-
-          console.log(
-            `[Volume] Prepared volume "${snapshot.name}" with branch: ${preparedVolume.gitBranch}`,
-          );
-
-          preparedVolumes.push(preparedVolume);
-        } else if (snapshot.driver === "vm0") {
-          const vm0Snapshot = snapshot as Vm0VolumeSnapshot;
-
-          if (!vm0Snapshot.snapshot?.versionId) {
-            throw new Error("VM0 snapshot missing versionId");
-          }
-
-          if (!tempDir) {
-            throw new Error("runId is required for VM0 volume restoration");
-          }
-
-          // Get the version from database to get S3 key
-          const [version] = await globalThis.services.db
-            .select()
-            .from(volumeVersions)
-            .where(eq(volumeVersions.id, vm0Snapshot.snapshot.versionId))
-            .limit(1);
-
-          if (!version) {
-            throw new Error(
-              `VM0 volume version "${vm0Snapshot.snapshot.versionId}" not found`,
-            );
-          }
-
-          // Download from the specific version's S3 path
-          const s3Uri = `s3://vm0-s3-user-volumes/${version.s3Key}`;
-          const localPath = path.join(tempDir, snapshot.name);
-
-          const downloadResult = await downloadS3Directory(s3Uri, localPath);
-          console.log(
-            `[Volume] Downloaded VM0 volume "${snapshot.name}" (${vm0Snapshot.vm0VolumeName}) version ${vm0Snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-          );
-
-          // Volumes from snapshots are always dynamic (only dynamic volumes create checkpoints)
-          preparedVolumes.push({
-            name: snapshot.name,
-            driver: "vm0",
-            localPath,
-            mountPath: snapshot.mountPath,
-            vm0VolumeName: vm0Snapshot.vm0VolumeName,
-            vm0VersionId: vm0Snapshot.snapshot.versionId,
-            isDynamic: true,
-          });
-        }
       } catch (error) {
-        console.error(
-          `[Volume] Failed to prepare snapshot "${snapshot.name}":`,
-          error,
-        );
+        console.error(`[Volume] Failed to prepare artifact:`, error);
         errors.push(
-          `${snapshot.name}: Failed to prepare snapshot - ${error instanceof Error ? error.message : "Unknown error"}`,
+          `artifact: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     }
 
-    console.log(
-      `[Volume] Prepared ${preparedVolumes.length} volumes from snapshots`,
-    );
-
     return {
       preparedVolumes,
+      preparedArtifact,
       tempDir,
       errors,
     };
   }
 
   /**
-   * Mount volumes: upload prepared volumes from local temp to sandbox
+   * Prepare a single artifact
+   */
+  private async prepareArtifact(
+    artifact: ResolvedArtifact,
+    tempDir: string | null,
+    userId?: string,
+  ): Promise<PreparedArtifact> {
+    if (artifact.driver === "git") {
+      // Git artifact: store metadata only (clone happens in sandbox)
+      console.log(
+        `[Volume] Prepared Git artifact: ${sanitizeGitUrlForLogging(artifact.gitUri!)} (${artifact.gitBranch})`,
+      );
+
+      return {
+        driver: "git",
+        mountPath: artifact.mountPath,
+        gitUri: artifact.gitUri,
+        gitBranch: artifact.gitBranch,
+        gitToken: artifact.gitToken,
+      };
+    }
+
+    // VM0 artifact: download from S3
+    if (!userId) {
+      throw new Error("userId is required for VM0 artifacts");
+    }
+
+    if (!tempDir) {
+      throw new Error("tempDir is required for VM0 artifacts");
+    }
+
+    // Query database for artifact volume and HEAD version
+    const [dbVolume] = await globalThis.services.db
+      .select()
+      .from(volumes)
+      .where(
+        and(
+          eq(volumes.userId, userId),
+          eq(volumes.name, artifact.vm0VolumeName!),
+        ),
+      )
+      .limit(1);
+
+    if (!dbVolume) {
+      throw new Error(
+        `VM0 artifact "${artifact.vm0VolumeName}" not found in database`,
+      );
+    }
+
+    if (!dbVolume.headVersionId) {
+      throw new Error(
+        `VM0 artifact "${artifact.vm0VolumeName}" has no HEAD version`,
+      );
+    }
+
+    // Get HEAD version details
+    const [headVersion] = await globalThis.services.db
+      .select()
+      .from(volumeVersions)
+      .where(eq(volumeVersions.id, dbVolume.headVersionId))
+      .limit(1);
+
+    if (!headVersion) {
+      throw new Error(
+        `VM0 artifact "${artifact.vm0VolumeName}" HEAD version not found`,
+      );
+    }
+
+    // Download from versioned S3 path
+    const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
+    const localPath = path.join(tempDir, "artifact");
+
+    const downloadResult = await downloadS3Directory(s3Uri, localPath);
+    console.log(
+      `[Volume] Downloaded VM0 artifact (${artifact.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    );
+
+    return {
+      driver: "vm0",
+      localPath,
+      mountPath: artifact.mountPath,
+      vm0VolumeName: artifact.vm0VolumeName,
+      vm0VersionId: headVersion.id,
+    };
+  }
+
+  /**
+   * Prepare artifact from checkpoint snapshot (for resume functionality)
+   * @param snapshot - Artifact snapshot from checkpoint
+   * @param agentConfig - Agent configuration containing artifact definition
+   * @param dynamicVars - Dynamic variables for template replacement
+   * @param runId - Run ID for temp directory naming
+   * @returns Prepared artifact
+   */
+  async prepareArtifactFromSnapshot(
+    snapshot: ArtifactSnapshot,
+    agentConfig: AgentVolumeConfig | undefined,
+    dynamicVars: Record<string, string>,
+    runId: string,
+  ): Promise<{ preparedArtifact: PreparedArtifact | null; tempDir: string | null; errors: string[] }> {
+    const errors: string[] = [];
+
+    if (!agentConfig?.agent?.artifact) {
+      return {
+        preparedArtifact: null,
+        tempDir: null,
+        errors: ["Agent config missing artifact definition"],
+      };
+    }
+
+    console.log(
+      `[Volume] Preparing artifact from snapshot (driver: ${snapshot.driver})...`,
+    );
+
+    if (snapshot.driver === "git") {
+      // Git artifact: resolve from config but use snapshot branch
+      if (!snapshot.snapshot?.branch) {
+        return {
+          preparedArtifact: null,
+          tempDir: null,
+          errors: ["Git snapshot missing branch"],
+        };
+      }
+
+      // Resolve artifact config to get URI and token
+      const volumeResult = resolveVolumes(agentConfig, dynamicVars);
+      if (!volumeResult.artifact || volumeResult.artifact.driver !== "git") {
+        return {
+          preparedArtifact: null,
+          tempDir: null,
+          errors: ["Agent config artifact is not a git artifact"],
+        };
+      }
+
+      console.log(
+        `[Volume] Prepared Git artifact from snapshot: branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
+      );
+
+      return {
+        preparedArtifact: {
+          driver: "git",
+          mountPath: snapshot.mountPath,
+          gitUri: volumeResult.artifact.gitUri,
+          gitBranch: snapshot.snapshot.branch,
+          gitToken: volumeResult.artifact.gitToken,
+        },
+        tempDir: null,
+        errors: [],
+      };
+    }
+
+    // VM0 artifact: download from specific version
+    if (!snapshot.snapshot?.versionId) {
+      return {
+        preparedArtifact: null,
+        tempDir: null,
+        errors: ["VM0 snapshot missing versionId"],
+      };
+    }
+
+    const tempDir = `/tmp/vm0-run-${runId}`;
+    await fs.promises.mkdir(tempDir, { recursive: true });
+
+    // Get the version from database to get S3 key
+    const [version] = await globalThis.services.db
+      .select()
+      .from(volumeVersions)
+      .where(eq(volumeVersions.id, snapshot.snapshot.versionId))
+      .limit(1);
+
+    if (!version) {
+      return {
+        preparedArtifact: null,
+        tempDir,
+        errors: [`VM0 artifact version "${snapshot.snapshot.versionId}" not found`],
+      };
+    }
+
+    // Download from the specific version's S3 path
+    const s3Uri = `s3://vm0-s3-user-volumes/${version.s3Key}`;
+    const localPath = path.join(tempDir, "artifact");
+
+    const downloadResult = await downloadS3Directory(s3Uri, localPath);
+    console.log(
+      `[Volume] Downloaded VM0 artifact (${snapshot.vm0VolumeName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    );
+
+    return {
+      preparedArtifact: {
+        driver: "vm0",
+        localPath,
+        mountPath: snapshot.mountPath,
+        vm0VolumeName: snapshot.vm0VolumeName,
+        vm0VersionId: snapshot.snapshot.versionId,
+      },
+      tempDir,
+      errors: [],
+    };
+  }
+
+  /**
+   * Mount volumes and artifact: upload prepared volumes from local temp to sandbox
    * @param sandbox - E2B sandbox instance
    * @param preparedVolumes - Volumes that have been downloaded to local temp
+   * @param preparedArtifact - Artifact that has been prepared (optional)
    */
   async mountVolumes(
     sandbox: Sandbox,
     preparedVolumes: PreparedVolume[],
+    preparedArtifact?: PreparedArtifact | null,
   ): Promise<void> {
-    if (preparedVolumes.length === 0) {
+    const totalMounts =
+      preparedVolumes.length + (preparedArtifact ? 1 : 0);
+
+    if (totalMounts === 0) {
       return;
     }
 
-    console.log(
-      `[Volume] Mounting ${preparedVolumes.length} volumes to sandbox...`,
-    );
+    console.log(`[Volume] Mounting ${totalMounts} items to sandbox...`);
 
+    // Mount volumes
     for (const volume of preparedVolumes) {
       try {
-        if (volume.driver === "vm0") {
-          // Upload VM0 volumes from local temp to sandbox
-          const stat = await fs.promises
-            .stat(volume.localPath!)
-            .catch(() => null);
-          if (stat) {
-            await this.uploadDirectoryToSandbox(
-              sandbox,
-              volume.localPath!,
-              volume.mountPath,
-            );
-            console.log(
-              `[Volume] Uploaded VM0 volume "${volume.name}" to ${volume.mountPath}`,
-            );
-          }
-        } else if (volume.driver === "git") {
-          // Clone Git repository directly in sandbox
-          await this.cloneGitRepo(
+        // VM0 volumes: upload from local temp to sandbox
+        const stat = await fs.promises
+          .stat(volume.localPath!)
+          .catch(() => null);
+        if (stat) {
+          await this.uploadDirectoryToSandbox(
             sandbox,
-            volume.gitUri!,
-            volume.gitBranch!,
+            volume.localPath!,
             volume.mountPath,
-            volume.gitToken,
           );
           console.log(
-            `[Volume] Cloned Git volume "${volume.name}" to ${volume.mountPath}`,
+            `[Volume] Uploaded VM0 volume "${volume.name}" to ${volume.mountPath}`,
           );
         }
       } catch (error) {
@@ -410,6 +421,43 @@ export class VolumeService {
           `[Volume] Failed to mount volume "${volume.name}":`,
           error,
         );
+        throw error;
+      }
+    }
+
+    // Mount artifact
+    if (preparedArtifact) {
+      try {
+        if (preparedArtifact.driver === "vm0") {
+          // VM0 artifact: upload from local temp to sandbox
+          const stat = await fs.promises
+            .stat(preparedArtifact.localPath!)
+            .catch(() => null);
+          if (stat) {
+            await this.uploadDirectoryToSandbox(
+              sandbox,
+              preparedArtifact.localPath!,
+              preparedArtifact.mountPath,
+            );
+            console.log(
+              `[Volume] Uploaded VM0 artifact to ${preparedArtifact.mountPath}`,
+            );
+          }
+        } else if (preparedArtifact.driver === "git") {
+          // Git artifact: clone directly in sandbox
+          await this.cloneGitRepo(
+            sandbox,
+            preparedArtifact.gitUri!,
+            preparedArtifact.gitBranch!,
+            preparedArtifact.mountPath,
+            preparedArtifact.gitToken,
+          );
+          console.log(
+            `[Volume] Cloned Git artifact to ${preparedArtifact.mountPath}`,
+          );
+        }
+      } catch (error) {
+        console.error(`[Volume] Failed to mount artifact:`, error);
         throw error;
       }
     }
