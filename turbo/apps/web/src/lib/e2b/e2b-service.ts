@@ -2,12 +2,12 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
 import { e2bConfig } from "./config";
 import type { RunResult, SandboxExecutionResult } from "./types";
-import { volumeService } from "../volume/volume-service";
+import { storageService } from "../storage/storage-service";
 import type {
   AgentVolumeConfig,
-  PreparedVolume,
+  PreparedStorage,
   PreparedArtifact,
-} from "../volume/types";
+} from "../storage/types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 import {
   COMMON_SCRIPT,
@@ -47,11 +47,11 @@ export class E2BService {
     let sandbox: Sandbox | null = null;
     const agentConfig = context.agentConfig as AgentVolumeConfig | undefined;
 
-    // Prepare volumes and artifact
+    // Prepare storages and artifact
     // For resume: use artifact from snapshot
-    // For new run: prepare fresh volumes and artifact
-    let volumeResult: {
-      preparedVolumes: PreparedVolume[];
+    // For new run: prepare fresh storages and artifact
+    let storageResult: {
+      preparedStorages: PreparedStorage[];
       preparedArtifact: PreparedArtifact | null;
       tempDir: string | null;
       errors: string[];
@@ -59,15 +59,15 @@ export class E2BService {
 
     if (context.resumeArtifact) {
       // Resume from artifact snapshot
-      const artifactResult = await volumeService.prepareArtifactFromSnapshot(
+      const artifactResult = await storageService.prepareArtifactFromSnapshot(
         context.resumeArtifact,
         agentConfig,
         context.dynamicVars || {},
         context.runId,
       );
 
-      // Also prepare regular volumes (fresh, not from snapshot)
-      const freshVolumes = await volumeService.prepareVolumes(
+      // Also prepare regular storages (fresh, not from snapshot)
+      const freshStorages = await storageService.prepareStorages(
         agentConfig,
         context.dynamicVars || {},
         context.runId,
@@ -75,15 +75,15 @@ export class E2BService {
         // Don't pass artifact key for resume - we use the snapshot
       );
 
-      volumeResult = {
-        preparedVolumes: freshVolumes.preparedVolumes,
+      storageResult = {
+        preparedStorages: freshStorages.preparedStorages,
         preparedArtifact: artifactResult.preparedArtifact,
-        tempDir: artifactResult.tempDir || freshVolumes.tempDir,
-        errors: [...freshVolumes.errors, ...artifactResult.errors],
+        tempDir: artifactResult.tempDir || freshStorages.tempDir,
+        errors: [...freshStorages.errors, ...artifactResult.errors],
       };
     } else {
-      // New run - prepare volumes and artifact
-      volumeResult = await volumeService.prepareVolumes(
+      // New run - prepare storages and artifact
+      storageResult = await storageService.prepareStorages(
         agentConfig,
         context.dynamicVars || {},
         context.runId,
@@ -93,10 +93,10 @@ export class E2BService {
     }
 
     try {
-      // Fail fast if any volumes failed to prepare
-      if (volumeResult.errors.length > 0) {
+      // Fail fast if any storages failed to prepare
+      if (storageResult.errors.length > 0) {
         throw new Error(
-          `Volume preparation failed: ${volumeResult.errors.join("; ")}`,
+          `Storage preparation failed: ${storageResult.errors.join("; ")}`,
         );
       }
       // Get API configuration with dynamic fallback logic
@@ -151,11 +151,11 @@ export class E2BService {
       );
       console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
 
-      // Mount volumes and artifact to sandbox
-      await volumeService.mountVolumes(
+      // Mount storages and artifact to sandbox
+      await storageService.mountStorages(
         sandbox,
-        volumeResult.preparedVolumes,
-        volumeResult.preparedArtifact,
+        storageResult.preparedStorages,
+        storageResult.preparedArtifact,
       );
 
       // Restore session history for resume
@@ -175,7 +175,7 @@ export class E2BService {
         context.prompt,
         context.sandboxToken,
         context.agentConfig,
-        volumeResult.preparedArtifact,
+        storageResult.preparedArtifact,
         context.resumeSession?.sessionId,
       );
 
@@ -250,7 +250,7 @@ export class E2BService {
       }
 
       // Cleanup temp directory
-      await volumeService.cleanup(volumeResult.tempDir);
+      await storageService.cleanup(storageResult.tempDir);
     }
   }
 
@@ -440,7 +440,7 @@ export class E2BService {
         JSON.stringify({
           driver: preparedArtifact.driver,
           mountPath: preparedArtifact.mountPath,
-          vm0VolumeName: preparedArtifact.vm0VolumeName,
+          vm0StorageName: preparedArtifact.vm0StorageName,
         }),
       );
 
@@ -453,7 +453,7 @@ export class E2BService {
         // VM0 artifact - pass info for vm0 snapshot
         envs.VM0_ARTIFACT_DRIVER = "vm0";
         envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
-        envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vm0VolumeName || "";
+        envs.VM0_ARTIFACT_STORAGE_NAME = preparedArtifact.vm0StorageName || "";
         envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vm0VersionId || "";
         console.log(`[E2B] Configured VM0 artifact for checkpoint`);
       }

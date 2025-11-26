@@ -125,7 +125,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session",
             sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -173,7 +173,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             // runId: missing
             sessionId: "test-session",
             sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -198,7 +198,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             // sessionId: missing
             sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -223,7 +223,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session",
             // sessionHistory: missing
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -233,31 +233,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.message).toContain("sessionHistory");
-    });
-
-    it("should reject checkpoint without volumeSnapshots", async () => {
-      const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            // volumeSnapshots: missing
-          }),
-        },
-      );
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("volumeSnapshots");
     });
   });
 
@@ -297,7 +272,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: nonExistentRunId,
             sessionId: "test-session",
             sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -334,7 +309,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session",
             sessionHistory: '{"type":"test"}',
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -352,7 +327,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   // ============================================
 
   describe("Success", () => {
-    it("should create checkpoint with empty volume snapshots", async () => {
+    it("should create checkpoint with null artifact snapshot", async () => {
       // Mock headers() to return the test token
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -396,7 +371,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session-123",
             sessionHistory,
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -407,7 +382,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.checkpointId).toBeDefined();
-      expect(data.volumeSnapshots).toBe(0);
+      expect(data.hasArtifact).toBe(false);
 
       // Verify database
       const savedCheckpoints = await globalThis.services.db
@@ -419,10 +394,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const checkpoint = savedCheckpoints[0];
       expect(checkpoint?.sessionId).toBe("test-session-123");
       expect(checkpoint?.sessionHistory).toBe(sessionHistory);
-      expect(checkpoint?.volumeSnapshots).toEqual([]);
+      expect(checkpoint?.artifactSnapshot).toBeNull();
     });
 
-    it("should create checkpoint with git volume snapshots", async () => {
+    it("should create checkpoint with git artifact snapshot", async () => {
       // Mock headers() to return the test token
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -455,17 +430,14 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         sessionId: "test-session-456",
       });
 
-      const volumeSnapshots = [
-        {
-          name: "user-workspace",
-          driver: "git" as const,
-          mountPath: "/home/user/workspace",
-          snapshot: {
-            branch: "run-test-run-123",
-            commitId: "abc123def456",
-          },
+      const artifactSnapshot = {
+        driver: "git" as const,
+        mountPath: "/home/user/workspace",
+        snapshot: {
+          branch: "run-test-run-123",
+          commitId: "abc123def456",
         },
-      ];
+      };
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -479,7 +451,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session-456",
             sessionHistory,
-            volumeSnapshots,
+            artifactSnapshot,
           }),
         },
       );
@@ -490,7 +462,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.checkpointId).toBeDefined();
-      expect(data.volumeSnapshots).toBe(1);
+      expect(data.hasArtifact).toBe(true);
 
       // Verify database
       const savedCheckpoints = await globalThis.services.db
@@ -504,15 +476,14 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(checkpoint?.sessionHistory).toBe(sessionHistory);
       expect(checkpoint?.agentConfigId).toBe(testConfigId);
       expect(checkpoint?.dynamicVars).toEqual({ user: "testuser" });
-      expect(checkpoint?.volumeSnapshots).toEqual(volumeSnapshots);
+      expect(checkpoint?.artifactSnapshot).toEqual(artifactSnapshot);
 
       // Verify snapshot structure
-      const snapshots = checkpoint?.volumeSnapshots as typeof volumeSnapshots;
-      expect(snapshots[0]?.name).toBe("user-workspace");
-      expect(snapshots[0]?.driver).toBe("git");
-      expect(snapshots[0]?.mountPath).toBe("/home/user/workspace");
-      expect(snapshots[0]?.snapshot?.branch).toBe("run-test-run-123");
-      expect(snapshots[0]?.snapshot?.commitId).toBe("abc123def456");
+      const snapshot = checkpoint?.artifactSnapshot as typeof artifactSnapshot;
+      expect(snapshot?.driver).toBe("git");
+      expect(snapshot?.mountPath).toBe("/home/user/workspace");
+      expect(snapshot?.snapshot?.branch).toBe("run-test-run-123");
+      expect(snapshot?.snapshot?.commitId).toBe("abc123def456");
     });
   });
 
@@ -572,7 +543,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             runId: testRunId,
             sessionId: "test-session-789",
             sessionHistory,
-            volumeSnapshots: [],
+            artifactSnapshot: null,
           }),
         },
       );
@@ -633,7 +604,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         runId: testRunId,
         sessionId: "test-session-unique",
         sessionHistory,
-        volumeSnapshots: [],
+        artifactSnapshot: null,
       };
 
       // First request - should succeed

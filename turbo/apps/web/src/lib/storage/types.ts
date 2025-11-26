@@ -1,25 +1,25 @@
 /**
- * Supported volume drivers:
- * - "vm0": VM0 managed volumes (stored in S3 with versioning)
+ * Supported storage drivers for static volumes:
+ * - "vm0": VM0 managed storage (stored in S3 with versioning)
  *
  * Artifact-only drivers:
  * - "git": Git repository artifacts (supports checkpoint via branch/commit snapshots)
  */
-export type VolumeDriver = "vm0";
+export type StorageDriver = "vm0";
 export type ArtifactDriver = "vm0" | "git";
 
 /**
- * Volume type distinguishes between static volumes and artifacts
+ * Storage type distinguishes between static volumes and artifacts
  */
-export type VolumeType = "volume" | "artifact";
+export type StorageType = "volume" | "artifact";
 
 /**
- * Volume config for static volumes (vm0 driver only)
+ * Volume config for static volumes in agent.yaml (vm0 driver only)
  */
 export interface VolumeConfig {
-  driver: VolumeDriver;
+  driver: StorageDriver;
   driver_opts: {
-    uri: string; // vm0://volume-name format
+    uri: string; // vm0://storage-name format
   };
 }
 
@@ -41,9 +41,9 @@ export interface ArtifactConfig {
  */
 export interface ResolvedVolume {
   name: string;
-  driver: VolumeDriver;
+  driver: StorageDriver;
   mountPath: string;
-  vm0VolumeName?: string;
+  vm0StorageName?: string;
 }
 
 /**
@@ -53,7 +53,7 @@ export interface ResolvedArtifact {
   driver: ArtifactDriver;
   mountPath: string; // Same as working_dir
   // VM0 driver fields
-  vm0VolumeName?: string;
+  vm0StorageName?: string;
   // Git driver fields
   gitUri?: string;
   gitBranch?: string;
@@ -94,14 +94,14 @@ export interface AgentVolumeConfig {
 }
 
 /**
- * Prepared volume with local path and mount information
+ * Prepared storage with local path and mount information
  */
-export interface PreparedVolume {
+export interface PreparedStorage {
   name: string;
-  driver: VolumeDriver;
+  driver: StorageDriver;
   localPath?: string;
   mountPath: string;
-  vm0VolumeName?: string;
+  vm0StorageName?: string;
   vm0VersionId?: string;
 }
 
@@ -113,7 +113,7 @@ export interface PreparedArtifact {
   localPath?: string;
   mountPath: string;
   // VM0 driver fields
-  vm0VolumeName?: string;
+  vm0StorageName?: string;
   vm0VersionId?: string;
   // Git driver fields
   gitUri?: string;
@@ -122,10 +122,10 @@ export interface PreparedArtifact {
 }
 
 /**
- * Result of volume preparation (resolution + download)
+ * Result of storage preparation (resolution + download)
  */
-export interface VolumePreparationResult {
-  preparedVolumes: PreparedVolume[];
+export interface StoragePreparationResult {
+  preparedStorages: PreparedStorage[];
   preparedArtifact: PreparedArtifact | null;
   tempDir: string | null;
   errors: string[];

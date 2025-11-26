@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { volumes, volumeVersions } from "../../../../../src/db/schema/volume";
+import {
+  storages,
+  storageVersions,
+} from "../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import {
@@ -21,17 +24,17 @@ import AdmZip from "adm-zip";
 
 const S3_BUCKET = "vm0-s3-user-volumes";
 
-interface VolumeVersionResponse {
+interface StorageVersionResponse {
   versionId: string;
-  volumeName: string;
+  storageName: string;
   size: number;
   fileCount: number;
 }
 
 /**
- * POST /api/webhooks/agent/volumes
- * Create a new version of a VM0 volume from sandbox
- * Accepts multipart form data with volume content as tar.gz
+ * POST /api/webhooks/agent/storages
+ * Create a new version of a storage from sandbox
+ * Accepts multipart form data with storage content as zip
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Parse multipart form data
     const formData = await request.formData();
     const runId = formData.get("runId") as string;
-    const volumeName = formData.get("volumeName") as string;
+    const storageName = formData.get("storageName") as string;
     const message = formData.get("message") as string | null;
     const file = formData.get("file") as File;
 
@@ -58,8 +61,8 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing runId");
     }
 
-    if (!volumeName) {
-      throw new BadRequestError("Missing volumeName");
+    if (!storageName) {
+      throw new BadRequestError("Missing storageName");
     }
 
     if (!file) {
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[Volume Webhook] Received volume version request for "${volumeName}" from run ${runId}`,
+      `[Storage Webhook] Received storage version request for "${storageName}" from run ${runId}`,
     );
 
     // Verify run exists and belongs to the authenticated user
@@ -81,19 +84,19 @@ export async function POST(request: NextRequest) {
       throw new NotFoundError("Agent run");
     }
 
-    // Find the volume by name and user
-    const [volume] = await globalThis.services.db
+    // Find the storage by name and user
+    const [storage] = await globalThis.services.db
       .select()
-      .from(volumes)
-      .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
+      .from(storages)
+      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
       .limit(1);
 
-    if (!volume) {
-      throw new NotFoundError(`Volume "${volumeName}"`);
+    if (!storage) {
+      throw new NotFoundError(`Storage "${storageName}"`);
     }
 
     // Create temp directory for extraction
-    tempDir = path.join(os.tmpdir(), `vm0-volume-webhook-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `vm0-storage-webhook-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Save uploaded file to temp location
@@ -106,7 +109,7 @@ export async function POST(request: NextRequest) {
     const extractPath = path.join(tempDir, "extracted");
     zip.extractAllTo(extractPath, true);
 
-    console.log(`[Volume Webhook] Extracted zip to ${extractPath}`);
+    console.log(`[Storage Webhook] Extracted zip to ${extractPath}`);
 
     // Calculate file count and size
     const files = await getAllFiles(extractPath);
@@ -119,13 +122,13 @@ export async function POST(request: NextRequest) {
 
     // Create new version record
     const versionId = crypto.randomUUID();
-    const s3Key = `${userId}/${volumeName}/${versionId}`;
+    const s3Key = `${userId}/${storageName}/${versionId}`;
 
     const [version] = await globalThis.services.db
-      .insert(volumeVersions)
+      .insert(storageVersions)
       .values({
         id: versionId,
-        volumeId: volume.id,
+        storageId: storage.id,
         s3Key,
         size: totalSize,
         fileCount,
@@ -135,29 +138,31 @@ export async function POST(request: NextRequest) {
       .returning();
 
     if (!version) {
-      throw new Error("Failed to create volume version");
+      throw new Error("Failed to create storage version");
     }
 
-    console.log(`[Volume Webhook] Created version: ${version.id}`);
+    console.log(`[Storage Webhook] Created version: ${version.id}`);
 
     // Upload files to versioned S3 path
     const s3Uri = `s3://${S3_BUCKET}/${s3Key}`;
-    console.log(`[Volume Webhook] Uploading ${fileCount} files to ${s3Uri}...`);
+    console.log(
+      `[Storage Webhook] Uploading ${fileCount} files to ${s3Uri}...`,
+    );
     await uploadS3Directory(extractPath, s3Uri);
 
-    // Update volume's HEAD pointer and metadata
+    // Update storage's HEAD pointer and metadata
     await globalThis.services.db
-      .update(volumes)
+      .update(storages)
       .set({
         headVersionId: version.id,
         size: totalSize,
         fileCount,
         updatedAt: new Date(),
       })
-      .where(eq(volumes.id, volume.id));
+      .where(eq(storages.id, storage.id));
 
     console.log(
-      `[Volume Webhook] Successfully created version ${version.id} for volume "${volumeName}"`,
+      `[Storage Webhook] Successfully created version ${version.id} for storage "${storageName}"`,
     );
 
     // Clean up temp directory
@@ -165,16 +170,16 @@ export async function POST(request: NextRequest) {
     tempDir = null;
 
     // Return response
-    const response: VolumeVersionResponse = {
+    const response: StorageVersionResponse = {
       versionId: version.id,
-      volumeName,
+      storageName,
       size: totalSize,
       fileCount,
     };
 
     return successResponse(response, 200);
   } catch (error) {
-    console.error("[Volume Webhook] Error:", error);
+    console.error("[Storage Webhook] Error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {

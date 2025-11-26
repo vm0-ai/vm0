@@ -115,10 +115,10 @@ create_checkpoint() {
     while IFS= read -r volume; do
       VOLUME_NAME=$(echo "$volume" | jq -r '.name')
       MOUNT_PATH=$(echo "$volume" | jq -r '.mountPath')
-      VM0_VOLUME_NAME=$(echo "$volume" | jq -r '.vm0VolumeName')
+      VM0_STORAGE_NAME=$(echo "$volume" | jq -r '.vm0StorageName')
 
       # Create VM0 snapshot
-      SNAPSHOT=$(create_vm0_snapshot "$MOUNT_PATH" "$VOLUME_NAME" "$VM0_VOLUME_NAME")
+      SNAPSHOT=$(create_vm0_snapshot "$MOUNT_PATH" "$VOLUME_NAME" "$VM0_STORAGE_NAME")
 
       if [ $? -eq 0 ] && [ -n "$SNAPSHOT" ]; then
         # Build VM0 volume snapshot object
@@ -126,13 +126,13 @@ create_checkpoint() {
         local snap_tmp="/tmp/snap-$RUN_ID-$VOLUME_NAME.json"
         local arr_tmp="/tmp/arr-$RUN_ID.json"
 
-        # Create volume snapshot object with vm0VolumeName
+        # Create volume snapshot object with vm0StorageName
         jq -n \\
           --arg name "$VOLUME_NAME" \\
           --arg driver "vm0" \\
           --arg mountPath "$MOUNT_PATH" \\
-          --arg vm0VolumeName "$VM0_VOLUME_NAME" \\
-          '{name: $name, driver: $driver, mountPath: $mountPath, vm0VolumeName: $vm0VolumeName}' > "$vol_tmp"
+          --arg vm0StorageName "$VM0_STORAGE_NAME" \\
+          '{name: $name, driver: $driver, mountPath: $mountPath, vm0StorageName: $vm0StorageName}' > "$vol_tmp"
 
         echo "$SNAPSHOT" > "$snap_tmp"
         echo "$snapshots_array" > "$arr_tmp"

@@ -48,7 +48,7 @@ export const pullCommand = new Command()
       console.log(chalk.gray("Downloading..."));
 
       const response = await apiClient.get(
-        `/api/volumes?name=${encodeURIComponent(config.name)}`,
+        `/api/storages?name=${encodeURIComponent(config.name)}`,
       );
 
       if (!response.ok) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { volumes, volumeVersions } from "../../../src/db/schema/volume";
+import { storages, storageVersions } from "../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import {
   uploadS3Directory,
@@ -15,12 +15,12 @@ import AdmZip from "adm-zip";
 const S3_BUCKET = "vm0-s3-user-volumes";
 
 /**
- * Validate volume name format
+ * Validate storage name format
  * Length: 3-64 characters
  * Characters: lowercase letters, numbers, hyphens
  * Must start and end with alphanumeric
  */
-function isValidVolumeName(name: string): boolean {
+function isValidStorageName(name: string): boolean {
   if (name.length < 3 || name.length > 64) {
     return false;
   }
@@ -29,12 +29,12 @@ function isValidVolumeName(name: string): boolean {
 }
 
 /**
- * POST /api/volumes
- * Upload a volume (zip file) to S3
+ * POST /api/storages
+ * Upload a storage (zip file) to S3
  *
  * Uses database transaction to ensure atomicity:
- * - If S3 upload fails, volume and version records are rolled back
- * - Prevents orphaned volumes without HEAD version pointer
+ * - If S3 upload fails, storage and version records are rolled back
+ * - Prevents orphaned storages without HEAD version pointer
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -51,42 +51,42 @@ export async function POST(request: NextRequest) {
 
     // Parse multipart form data
     const formData = await request.formData();
-    const volumeName = formData.get("volumeName") as string;
+    const storageName = formData.get("name") as string;
     const file = formData.get("file") as File;
-    const volumeType = (formData.get("type") as string) || "volume"; // Default to "volume"
+    const storageType = (formData.get("type") as string) || "volume"; // Default to "volume"
 
-    if (!volumeName || !file) {
+    if (!storageName || !file) {
       return NextResponse.json(
-        { error: "Missing volumeName or file" },
+        { error: "Missing name or file" },
         { status: 400 },
       );
     }
 
-    // Validate volume type
-    if (volumeType !== "volume" && volumeType !== "artifact") {
+    // Validate storage type
+    if (storageType !== "volume" && storageType !== "artifact") {
       return NextResponse.json(
         { error: "Invalid type. Must be 'volume' or 'artifact'" },
         { status: 400 },
       );
     }
 
-    // Validate volume name
-    if (!isValidVolumeName(volumeName)) {
+    // Validate storage name
+    if (!isValidStorageName(storageName)) {
       return NextResponse.json(
         {
           error:
-            "Invalid volume name. Must be 3-64 characters, lowercase alphanumeric with hyphens, no consecutive hyphens",
+            "Invalid storage name. Must be 3-64 characters, lowercase alphanumeric with hyphens, no consecutive hyphens",
         },
         { status: 400 },
       );
     }
 
     console.log(
-      `[Volumes] Uploading volume "${volumeName}" for user ${userId}`,
+      `[Storage] Uploading storage "${storageName}" (type: ${storageType}) for user ${userId}`,
     );
 
     // Create temp directory for extraction
-    tempDir = path.join(os.tmpdir(), `vm0-volume-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Save uploaded file to temp location
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const extractPath = path.join(tempDir, "extracted");
     zip.extractAllTo(extractPath, true);
 
-    console.log(`[Volumes] Extracted zip to ${extractPath}`);
+    console.log(`[Storage] Extracted zip to ${extractPath}`);
 
     // Calculate file count and size
     const files = await getAllFiles(extractPath);
@@ -110,46 +110,46 @@ export async function POST(request: NextRequest) {
       totalSize += stats.size;
     }
 
-    // Check if volume already exists (outside transaction for read)
-    const existingVolumes = await globalThis.services.db
+    // Check if storage already exists (outside transaction for read)
+    const existingStorages = await globalThis.services.db
       .select()
-      .from(volumes)
-      .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
+      .from(storages)
+      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
       .limit(1);
 
-    const existingVolume = existingVolumes[0];
+    const existingStorage = existingStorages[0];
 
-    // Use transaction to ensure atomicity of volume/version creation and S3 upload
+    // Use transaction to ensure atomicity of storage/version creation and S3 upload
     // If any step fails, all database changes are rolled back
     const result = await globalThis.services.db.transaction(async (tx) => {
-      let volume = existingVolume;
+      let storage = existingStorage;
 
-      if (!volume) {
-        // Create new volume record within transaction
-        const newVolumes = await tx
-          .insert(volumes)
+      if (!storage) {
+        // Create new storage record within transaction
+        const newStorages = await tx
+          .insert(storages)
           .values({
             userId,
-            name: volumeName,
-            s3Prefix: `${userId}/${volumeName}`,
+            name: storageName,
+            s3Prefix: `${userId}/${storageName}`,
             size: totalSize,
             fileCount,
-            type: volumeType,
+            type: storageType,
           })
           .returning();
-        volume = newVolumes[0];
-        if (!volume) {
-          throw new Error("Failed to create volume");
+        storage = newStorages[0];
+        if (!storage) {
+          throw new Error("Failed to create storage");
         }
-        console.log(`[Volumes] Created new volume record: ${volume.id}`);
+        console.log(`[Storage] Created new storage record: ${storage.id}`);
       }
 
       // Create new version record within transaction
       const createdVersions = await tx
-        .insert(volumeVersions)
+        .insert(storageVersions)
         .values({
-          volumeId: volume.id,
-          s3Key: `${userId}/${volumeName}/${crypto.randomUUID()}`,
+          storageId: storage.id,
+          s3Key: `${userId}/${storageName}/${crypto.randomUUID()}`,
           size: totalSize,
           fileCount,
           message: null,
@@ -160,38 +160,38 @@ export async function POST(request: NextRequest) {
       const version = createdVersions[0];
 
       if (!version) {
-        throw new Error("Failed to create volume version");
+        throw new Error("Failed to create storage version");
       }
 
-      console.log(`[Volumes] Created version: ${version.id}`);
+      console.log(`[Storage] Created version: ${version.id}`);
 
       // Upload files to versioned S3 path
       // If this fails, the transaction will be rolled back
       const s3Uri = `s3://${S3_BUCKET}/${version.s3Key}`;
-      console.log(`[Volumes] Uploading ${fileCount} files to ${s3Uri}...`);
+      console.log(`[Storage] Uploading ${fileCount} files to ${s3Uri}...`);
       await uploadS3Directory(extractPath, s3Uri);
 
-      // Update volume's HEAD pointer and metadata within transaction
+      // Update storage's HEAD pointer and metadata within transaction
       await tx
-        .update(volumes)
+        .update(storages)
         .set({
           headVersionId: version.id,
           size: totalSize,
           fileCount,
           updatedAt: new Date(),
         })
-        .where(eq(volumes.id, volume.id));
+        .where(eq(storages.id, storage.id));
 
       console.log(
-        `[Volumes] Successfully uploaded volume "${volumeName}" version ${version.id}`,
+        `[Storage] Successfully uploaded storage "${storageName}" version ${version.id}`,
       );
 
       return {
-        volumeName,
+        name: storageName,
         versionId: version.id,
         size: totalSize,
         fileCount,
-        type: volumeType,
+        type: storageType,
       };
     });
 
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("[Volumes] Upload error:", error);
+    console.error("[Storage] Upload error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {
@@ -220,8 +220,8 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/volumes?name=volumeName
- * Download a volume as a zip file
+ * GET /api/storages?name=storageName
+ * Download a storage as a zip file
  */
 export async function GET(request: NextRequest) {
   let tempDir: string | null = null;
@@ -236,11 +236,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Get volume name from query parameter
+    // Get storage name from query parameter
     const { searchParams } = new URL(request.url);
-    const volumeName = searchParams.get("name");
+    const storageName = searchParams.get("name");
 
-    if (!volumeName) {
+    if (!storageName) {
       return NextResponse.json(
         { error: "Missing name parameter" },
         { status: 400 },
@@ -248,27 +248,27 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(
-      `[Volumes] Downloading volume "${volumeName}" for user ${userId}`,
+      `[Storage] Downloading storage "${storageName}" for user ${userId}`,
     );
 
-    // Check if volume exists and belongs to user
-    const [volume] = await globalThis.services.db
+    // Check if storage exists and belongs to user
+    const [storage] = await globalThis.services.db
       .select()
-      .from(volumes)
-      .where(and(eq(volumes.userId, userId), eq(volumes.name, volumeName)))
+      .from(storages)
+      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
       .limit(1);
 
-    if (!volume) {
+    if (!storage) {
       return NextResponse.json(
-        { error: `Volume "${volumeName}" not found` },
+        { error: `Storage "${storageName}" not found` },
         { status: 404 },
       );
     }
 
-    // Check if volume has a HEAD version
-    if (!volume.headVersionId) {
+    // Check if storage has a HEAD version
+    if (!storage.headVersionId) {
       return NextResponse.json(
-        { error: `Volume "${volumeName}" has no versions` },
+        { error: `Storage "${storageName}" has no versions` },
         { status: 404 },
       );
     }
@@ -276,38 +276,38 @@ export async function GET(request: NextRequest) {
     // Get HEAD version details
     const [headVersion] = await globalThis.services.db
       .select()
-      .from(volumeVersions)
-      .where(eq(volumeVersions.id, volume.headVersionId))
+      .from(storageVersions)
+      .where(eq(storageVersions.id, storage.headVersionId))
       .limit(1);
 
     if (!headVersion) {
       return NextResponse.json(
-        { error: `Volume "${volumeName}" HEAD version not found` },
+        { error: `Storage "${storageName}" HEAD version not found` },
         { status: 404 },
       );
     }
 
     console.log(
-      `[Volumes] Downloading HEAD version ${headVersion.id} (${headVersion.fileCount} files)`,
+      `[Storage] Downloading HEAD version ${headVersion.id} (${headVersion.fileCount} files)`,
     );
 
     // Create temp directory for download
-    tempDir = path.join(os.tmpdir(), `vm0-volume-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Download files from versioned S3 path
     const s3Uri = `s3://${S3_BUCKET}/${headVersion.s3Key}`;
     const downloadPath = path.join(tempDir, "download");
-    console.log(`[Volumes] Downloading from S3: ${s3Uri}`);
+    console.log(`[Storage] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);
 
     // Create zip file
-    const zipPath = path.join(tempDir, "volume.zip");
+    const zipPath = path.join(tempDir, "storage.zip");
     const zip = new AdmZip();
     zip.addLocalFolder(downloadPath);
     zip.writeZip(zipPath);
 
-    console.log(`[Volumes] Created zip file at ${zipPath}`);
+    console.log(`[Storage] Created zip file at ${zipPath}`);
 
     // Read zip file
     const zipBuffer = await fs.promises.readFile(zipPath);
@@ -320,11 +320,11 @@ export async function GET(request: NextRequest) {
     return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${volumeName}.zip"`,
+        "Content-Disposition": `attachment; filename="${storageName}.zip"`,
       },
     });
   } catch (error) {
-    console.error("[Volumes] Download error:", error);
+    console.error("[Storage] Download error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {

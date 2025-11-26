@@ -17,24 +17,25 @@ vi.mock("../config", () => ({
   },
 }));
 
-// Mock VolumeService - use vi.hoisted to ensure mock is defined before vi.mock runs
-const mockVolumeService = vi.hoisted(() => ({
-  prepareVolumes: vi.fn().mockResolvedValue({
-    preparedVolumes: [],
+// Mock StorageService - use vi.hoisted to ensure mock is defined before vi.mock runs
+const mockStorageService = vi.hoisted(() => ({
+  prepareStorages: vi.fn().mockResolvedValue({
+    preparedStorages: [],
+    preparedArtifact: null,
     tempDir: null,
     errors: [],
   }),
-  prepareVolumesFromSnapshots: vi.fn().mockResolvedValue({
-    preparedVolumes: [],
+  prepareArtifactFromSnapshot: vi.fn().mockResolvedValue({
+    preparedArtifact: null,
     tempDir: null,
     errors: [],
   }),
-  mountVolumes: vi.fn().mockResolvedValue(undefined),
+  mountStorages: vi.fn().mockResolvedValue(undefined),
   cleanup: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../volume/volume-service", () => ({
-  volumeService: mockVolumeService,
+vi.mock("../../storage/storage-service", () => ({
+  storageService: mockStorageService,
 }));
 
 // Mock fs module
@@ -57,13 +58,14 @@ describe("E2B Service - mocked unit tests", () => {
     vi.clearAllMocks();
 
     // Reset mock implementations to defaults
-    mockVolumeService.prepareVolumes.mockResolvedValue({
-      preparedVolumes: [],
+    mockStorageService.prepareStorages.mockResolvedValue({
+      preparedStorages: [],
+      preparedArtifact: null,
       tempDir: null,
       errors: [],
     });
-    mockVolumeService.prepareVolumesFromSnapshots.mockResolvedValue({
-      preparedVolumes: [],
+    mockStorageService.prepareArtifactFromSnapshot.mockResolvedValue({
+      preparedArtifact: null,
       tempDir: null,
       errors: [],
     });
@@ -396,41 +398,42 @@ describe("E2B Service - mocked unit tests", () => {
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
     });
 
-    it("should fail when volume preparation returns errors", async () => {
-      // Arrange - Mock volume service to return errors
-      mockVolumeService.prepareVolumes.mockResolvedValueOnce({
-        preparedVolumes: [],
+    it("should fail when storage preparation returns errors", async () => {
+      // Arrange - Mock storage service to return errors
+      mockStorageService.prepareStorages.mockResolvedValueOnce({
+        preparedStorages: [],
+        preparedArtifact: null,
         tempDir: null,
         errors: [
-          'claude-system: Volume "claude-files" has no versions',
+          'claude-system: Storage "claude-files" has no versions',
           "data: S3 download failed",
         ],
       });
 
       const context: ExecutionContext = {
-        runId: "run-test-volume-error",
-        agentConfigId: "test-agent-volume-error",
+        runId: "run-test-storage-error",
+        agentConfigId: "test-agent-storage-error",
         agentConfig: {},
         sandboxToken: "vm0_live_test_token",
-        prompt: "This should fail due to volume errors",
+        prompt: "This should fail due to storage errors",
       };
 
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert - Should return failed status with volume errors
+      // Assert - Should return failed status with storage errors
       expect(result.status).toBe("failed");
       expect(result.error).toBeDefined();
-      expect(result.error).toContain("Volume preparation failed");
+      expect(result.error).toContain("Storage preparation failed");
       expect(result.error).toContain("claude-files");
       expect(result.error).toContain("S3 download failed");
       expect(result.sandboxId).toBe("unknown");
 
-      // Verify sandbox was never created since volume prep failed
+      // Verify sandbox was never created since storage prep failed
       expect(Sandbox.create).not.toHaveBeenCalled();
 
       // Verify cleanup was still called
-      expect(mockVolumeService.cleanup).toHaveBeenCalled();
+      expect(mockStorageService.cleanup).toHaveBeenCalled();
     });
   });
 

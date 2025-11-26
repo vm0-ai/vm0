@@ -10,42 +10,42 @@ import {
 } from "../git/git-client";
 import type {
   AgentVolumeConfig,
-  PreparedVolume,
+  PreparedStorage,
   PreparedArtifact,
-  VolumePreparationResult,
+  StoragePreparationResult,
   ResolvedArtifact,
 } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import { volumes, volumeVersions } from "../../db/schema/volume";
+import { storages, storageVersions } from "../../db/schema/storage";
 import { eq, and } from "drizzle-orm";
 
 /**
- * Volume Service
- * Manages volume preparation, mounting, and cleanup operations
+ * Storage Service
+ * Manages storage preparation, mounting, and cleanup operations
  */
-export class VolumeService {
+export class StorageService {
   /**
-   * Prepare volumes: resolve configurations and download from S3 to temp directory
+   * Prepare storages: resolve configurations and download from S3 to temp directory
    * @param agentConfig - Agent configuration containing volume definitions
    * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
-   * @param userId - User ID for VM0 volume access (optional)
+   * @param userId - User ID for storage access (optional)
    * @param artifactKey - Artifact key for VM0 driver (optional)
-   * @returns Volume preparation result with prepared volumes and temp directory
+   * @returns Storage preparation result with prepared storages and temp directory
    */
-  async prepareVolumes(
+  async prepareStorages(
     agentConfig: AgentVolumeConfig | undefined,
     dynamicVars: Record<string, string>,
     runId: string,
     userId?: string,
     artifactKey?: string,
-  ): Promise<VolumePreparationResult> {
+  ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
 
     // If no agent config, return empty result
     if (!agentConfig) {
       return {
-        preparedVolumes: [],
+        preparedStorages: [],
         preparedArtifact: null,
         tempDir: null,
         errors: [],
@@ -57,17 +57,17 @@ export class VolumeService {
 
     // Log volume resolution errors but don't fail the preparation
     if (volumeResult.errors.length > 0) {
-      console.warn(`[Volume] Volume resolution errors:`, volumeResult.errors);
+      console.warn(`[Storage] Volume resolution errors:`, volumeResult.errors);
       errors.push(
         ...volumeResult.errors.map((e) => `${e.volumeName}: ${e.message}`),
       );
     }
 
-    // Check if we need a temp directory (for VM0 volumes/artifacts)
-    const hasVm0Volumes = volumeResult.volumes.length > 0;
+    // Check if we need a temp directory (for VM0 storages/artifacts)
+    const hasVm0Storages = volumeResult.volumes.length > 0;
     const hasVm0Artifact =
       volumeResult.artifact && volumeResult.artifact.driver === "vm0";
-    const needsTempDir = hasVm0Volumes || hasVm0Artifact;
+    const needsTempDir = hasVm0Storages || hasVm0Artifact;
 
     let tempDir: string | null = null;
     if (needsTempDir) {
@@ -76,53 +76,53 @@ export class VolumeService {
     }
 
     console.log(
-      `[Volume] Preparing ${volumeResult.volumes.length} volumes and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
+      `[Storage] Preparing ${volumeResult.volumes.length} storages and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
     );
 
-    const preparedVolumes: PreparedVolume[] = [];
+    const preparedStorages: PreparedStorage[] = [];
     let preparedArtifact: PreparedArtifact | null = null;
 
     // Process each volume (VM0 only)
     for (const volume of volumeResult.volumes) {
       try {
         if (!userId) {
-          throw new Error("userId is required for VM0 volumes");
+          throw new Error("userId is required for VM0 storages");
         }
 
-        // Query database for volume and HEAD version
-        const [dbVolume] = await globalThis.services.db
+        // Query database for storage and HEAD version
+        const [dbStorage] = await globalThis.services.db
           .select()
-          .from(volumes)
+          .from(storages)
           .where(
             and(
-              eq(volumes.userId, userId),
-              eq(volumes.name, volume.vm0VolumeName!),
+              eq(storages.userId, userId),
+              eq(storages.name, volume.vm0StorageName!),
             ),
           )
           .limit(1);
 
-        if (!dbVolume) {
+        if (!dbStorage) {
           throw new Error(
-            `VM0 volume "${volume.vm0VolumeName}" not found in database`,
+            `VM0 storage "${volume.vm0StorageName}" not found in database`,
           );
         }
 
-        if (!dbVolume.headVersionId) {
+        if (!dbStorage.headVersionId) {
           throw new Error(
-            `VM0 volume "${volume.vm0VolumeName}" has no HEAD version`,
+            `VM0 storage "${volume.vm0StorageName}" has no HEAD version`,
           );
         }
 
         // Get HEAD version details
         const [headVersion] = await globalThis.services.db
           .select()
-          .from(volumeVersions)
-          .where(eq(volumeVersions.id, dbVolume.headVersionId))
+          .from(storageVersions)
+          .where(eq(storageVersions.id, dbStorage.headVersionId))
           .limit(1);
 
         if (!headVersion) {
           throw new Error(
-            `VM0 volume "${volume.vm0VolumeName}" HEAD version not found`,
+            `VM0 storage "${volume.vm0StorageName}" HEAD version not found`,
           );
         }
 
@@ -132,20 +132,20 @@ export class VolumeService {
 
         const downloadResult = await downloadS3Directory(s3Uri, localPath);
         console.log(
-          `[Volume] Downloaded VM0 volume "${volume.name}" (${volume.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+          `[Storage] Downloaded VM0 storage "${volume.name}" (${volume.vm0StorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
         );
 
-        preparedVolumes.push({
+        preparedStorages.push({
           name: volume.name,
           driver: "vm0",
           localPath,
           mountPath: volume.mountPath,
-          vm0VolumeName: volume.vm0VolumeName,
+          vm0StorageName: volume.vm0StorageName,
           vm0VersionId: headVersion.id,
         });
       } catch (error) {
         console.error(
-          `[Volume] Failed to prepare volume "${volume.name}":`,
+          `[Storage] Failed to prepare storage "${volume.name}":`,
           error,
         );
         errors.push(
@@ -163,7 +163,7 @@ export class VolumeService {
           userId,
         );
       } catch (error) {
-        console.error(`[Volume] Failed to prepare artifact:`, error);
+        console.error(`[Storage] Failed to prepare artifact:`, error);
         errors.push(
           `artifact: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
@@ -171,7 +171,7 @@ export class VolumeService {
     }
 
     return {
-      preparedVolumes,
+      preparedStorages,
       preparedArtifact,
       tempDir,
       errors,
@@ -189,7 +189,7 @@ export class VolumeService {
     if (artifact.driver === "git") {
       // Git artifact: store metadata only (clone happens in sandbox)
       console.log(
-        `[Volume] Prepared Git artifact: ${sanitizeGitUrlForLogging(artifact.gitUri!)} (${artifact.gitBranch})`,
+        `[Storage] Prepared Git artifact: ${sanitizeGitUrlForLogging(artifact.gitUri!)} (${artifact.gitBranch})`,
       );
 
       return {
@@ -210,40 +210,40 @@ export class VolumeService {
       throw new Error("tempDir is required for VM0 artifacts");
     }
 
-    // Query database for artifact volume and HEAD version
-    const [dbVolume] = await globalThis.services.db
+    // Query database for artifact storage and HEAD version
+    const [dbStorage] = await globalThis.services.db
       .select()
-      .from(volumes)
+      .from(storages)
       .where(
         and(
-          eq(volumes.userId, userId),
-          eq(volumes.name, artifact.vm0VolumeName!),
+          eq(storages.userId, userId),
+          eq(storages.name, artifact.vm0StorageName!),
         ),
       )
       .limit(1);
 
-    if (!dbVolume) {
+    if (!dbStorage) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0VolumeName}" not found in database`,
+        `VM0 artifact "${artifact.vm0StorageName}" not found in database`,
       );
     }
 
-    if (!dbVolume.headVersionId) {
+    if (!dbStorage.headVersionId) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0VolumeName}" has no HEAD version`,
+        `VM0 artifact "${artifact.vm0StorageName}" has no HEAD version`,
       );
     }
 
     // Get HEAD version details
     const [headVersion] = await globalThis.services.db
       .select()
-      .from(volumeVersions)
-      .where(eq(volumeVersions.id, dbVolume.headVersionId))
+      .from(storageVersions)
+      .where(eq(storageVersions.id, dbStorage.headVersionId))
       .limit(1);
 
     if (!headVersion) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0VolumeName}" HEAD version not found`,
+        `VM0 artifact "${artifact.vm0StorageName}" HEAD version not found`,
       );
     }
 
@@ -253,14 +253,14 @@ export class VolumeService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Volume] Downloaded VM0 artifact (${artifact.vm0VolumeName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VM0 artifact (${artifact.vm0StorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
       driver: "vm0",
       localPath,
       mountPath: artifact.mountPath,
-      vm0VolumeName: artifact.vm0VolumeName,
+      vm0StorageName: artifact.vm0StorageName,
       vm0VersionId: headVersion.id,
     };
   }
@@ -292,7 +292,7 @@ export class VolumeService {
     }
 
     console.log(
-      `[Volume] Preparing artifact from snapshot (driver: ${snapshot.driver})...`,
+      `[Storage] Preparing artifact from snapshot (driver: ${snapshot.driver})...`,
     );
 
     if (snapshot.driver === "git") {
@@ -316,7 +316,7 @@ export class VolumeService {
       }
 
       console.log(
-        `[Volume] Prepared Git artifact from snapshot: branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
+        `[Storage] Prepared Git artifact from snapshot: branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
       );
 
       return {
@@ -347,8 +347,8 @@ export class VolumeService {
     // Get the version from database to get S3 key
     const [version] = await globalThis.services.db
       .select()
-      .from(volumeVersions)
-      .where(eq(volumeVersions.id, snapshot.snapshot.versionId))
+      .from(storageVersions)
+      .where(eq(storageVersions.id, snapshot.snapshot.versionId))
       .limit(1);
 
     if (!version) {
@@ -367,7 +367,7 @@ export class VolumeService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Volume] Downloaded VM0 artifact (${snapshot.vm0VolumeName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VM0 artifact (${snapshot.vm0StorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -375,7 +375,7 @@ export class VolumeService {
         driver: "vm0",
         localPath,
         mountPath: snapshot.mountPath,
-        vm0VolumeName: snapshot.vm0VolumeName,
+        vm0StorageName: snapshot.vm0StorageName,
         vm0VersionId: snapshot.snapshot.versionId,
       },
       tempDir,
@@ -384,44 +384,44 @@ export class VolumeService {
   }
 
   /**
-   * Mount volumes and artifact: upload prepared volumes from local temp to sandbox
+   * Mount storages and artifact: upload prepared storages from local temp to sandbox
    * @param sandbox - E2B sandbox instance
-   * @param preparedVolumes - Volumes that have been downloaded to local temp
+   * @param preparedStorages - Storages that have been downloaded to local temp
    * @param preparedArtifact - Artifact that has been prepared (optional)
    */
-  async mountVolumes(
+  async mountStorages(
     sandbox: Sandbox,
-    preparedVolumes: PreparedVolume[],
+    preparedStorages: PreparedStorage[],
     preparedArtifact?: PreparedArtifact | null,
   ): Promise<void> {
-    const totalMounts = preparedVolumes.length + (preparedArtifact ? 1 : 0);
+    const totalMounts = preparedStorages.length + (preparedArtifact ? 1 : 0);
 
     if (totalMounts === 0) {
       return;
     }
 
-    console.log(`[Volume] Mounting ${totalMounts} items to sandbox...`);
+    console.log(`[Storage] Mounting ${totalMounts} items to sandbox...`);
 
-    // Mount volumes
-    for (const volume of preparedVolumes) {
+    // Mount storages
+    for (const storage of preparedStorages) {
       try {
-        // VM0 volumes: upload from local temp to sandbox
+        // VM0 storages: upload from local temp to sandbox
         const stat = await fs.promises
-          .stat(volume.localPath!)
+          .stat(storage.localPath!)
           .catch(() => null);
         if (stat) {
           await this.uploadDirectoryToSandbox(
             sandbox,
-            volume.localPath!,
-            volume.mountPath,
+            storage.localPath!,
+            storage.mountPath,
           );
           console.log(
-            `[Volume] Uploaded VM0 volume "${volume.name}" to ${volume.mountPath}`,
+            `[Storage] Uploaded VM0 storage "${storage.name}" to ${storage.mountPath}`,
           );
         }
       } catch (error) {
         console.error(
-          `[Volume] Failed to mount volume "${volume.name}":`,
+          `[Storage] Failed to mount storage "${storage.name}":`,
           error,
         );
         throw error;
@@ -443,7 +443,7 @@ export class VolumeService {
               preparedArtifact.mountPath,
             );
             console.log(
-              `[Volume] Uploaded VM0 artifact to ${preparedArtifact.mountPath}`,
+              `[Storage] Uploaded VM0 artifact to ${preparedArtifact.mountPath}`,
             );
           }
         } else if (preparedArtifact.driver === "git") {
@@ -456,11 +456,11 @@ export class VolumeService {
             preparedArtifact.gitToken,
           );
           console.log(
-            `[Volume] Cloned Git artifact to ${preparedArtifact.mountPath}`,
+            `[Storage] Cloned Git artifact to ${preparedArtifact.mountPath}`,
           );
         }
       } catch (error) {
-        console.error(`[Volume] Failed to mount artifact:`, error);
+        console.error(`[Storage] Failed to mount artifact:`, error);
         throw error;
       }
     }
@@ -489,7 +489,7 @@ export class VolumeService {
 
     // Log sanitized command
     console.log(
-      `[Volume] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch}) to ${mountPath}`,
+      `[Storage] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch}) to ${mountPath}`,
     );
 
     // Execute git clone in sandbox
@@ -499,20 +499,20 @@ export class VolumeService {
     if (result.exitCode !== 0) {
       const errorMessage = result.stderr || result.stdout || "Unknown error";
       console.error(
-        `[Volume] Git clone failed with exit code ${result.exitCode}`,
+        `[Storage] Git clone failed with exit code ${result.exitCode}`,
       );
       console.error(
-        `[Volume] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`,
+        `[Storage] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`,
       );
-      console.error(`[Volume] stderr:`, result.stderr);
-      console.error(`[Volume] stdout:`, result.stdout);
+      console.error(`[Storage] stderr:`, result.stderr);
+      console.error(`[Storage] stdout:`, result.stdout);
 
       throw new Error(
         `Git clone failed (exit ${result.exitCode}): Branch "${branch}" - ${errorMessage}`,
       );
     }
 
-    console.log(`[Volume] Git clone successful: ${mountPath}`);
+    console.log(`[Storage] Git clone successful: ${mountPath}`);
   }
 
   /**
@@ -559,12 +559,12 @@ export class VolumeService {
 
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
-      console.log(`[Volume] Cleaned up temp directory: ${tempDir}`);
+      console.log(`[Storage] Cleaned up temp directory: ${tempDir}`);
     } catch (error) {
-      console.error(`[Volume] Failed to cleanup temp directory:`, error);
+      console.error(`[Storage] Failed to cleanup temp directory:`, error);
     }
   }
 }
 
 // Export singleton instance
-export const volumeService = new VolumeService();
+export const storageService = new StorageService();

@@ -32,7 +32,7 @@ export interface GitArtifactSnapshot {
 export interface Vm0ArtifactSnapshot {
   driver: "vm0";
   mountPath: string;
-  vm0VolumeName: string;
+  vm0StorageName: string;
   snapshot?: Vm0Snapshot;
 }
 
@@ -91,7 +91,7 @@ export interface Vm0VolumeSnapshot {
   name: string;
   driver: "vm0";
   mountPath: string;
-  vm0VolumeName: string;
+  vm0StorageName: string;
   snapshot?: Vm0Snapshot;
 }
 

@@ -6,7 +6,7 @@ import type {
   ResolvedArtifact,
   VolumeResolutionResult,
   VolumeError,
-  VolumeDriver,
+  StorageDriver,
   ArtifactDriver,
 } from "./types";
 import { normalizeGitUrl, validateGitUrl } from "../git/git-client";
@@ -103,14 +103,14 @@ function resolveVm0Volume(
     };
   }
 
-  const vm0VolumeName = match[1];
+  const vm0StorageName = match[1];
 
   return {
     volume: {
       name: volumeName,
-      driver: "vm0" as VolumeDriver,
+      driver: "vm0" as StorageDriver,
       mountPath,
-      vm0VolumeName,
+      vm0StorageName,
     },
     error: null,
   };
@@ -219,7 +219,7 @@ function resolveArtifact(
     artifact: {
       driver: "vm0",
       mountPath: artifactConfig.working_dir,
-      vm0VolumeName: artifactKey,
+      vm0StorageName: artifactKey,
     },
     errors: [],
   };

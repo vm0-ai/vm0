@@ -112,15 +112,15 @@ export const pushCommand = new Command()
       console.log(chalk.gray("Uploading..."));
 
       const formData = new FormData();
-      formData.append("volumeName", config.name);
-      formData.append("type", "artifact"); // Indicate this is an artifact
+      formData.append("name", config.name);
+      formData.append("type", "artifact");
       formData.append(
         "file",
         new Blob([zipBuffer], { type: "application/zip" }),
         "artifact.zip",
       );
 
-      const response = await apiClient.post("/api/volumes", {
+      const response = await apiClient.post("/api/storages", {
         body: formData,
       });
 
@@ -130,7 +130,7 @@ export const pushCommand = new Command()
       }
 
       const result = (await response.json()) as {
-        volumeName: string;
+        name: string;
         versionId: string;
         size: number;
         fileCount: number;
