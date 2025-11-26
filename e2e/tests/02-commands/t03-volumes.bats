@@ -28,8 +28,8 @@ teardown() {
     assert_success
     assert_output --partial "$VOLUME_NAME"
 
-    # Verify .vm0/volume.yaml file is created
-    [ -f ".vm0/volume.yaml" ]
+    # Verify .vm0/storage.yaml file is created
+    [ -f ".vm0/storage.yaml" ]
 }
 
 @test "Initialize volume with auto-detected name" {

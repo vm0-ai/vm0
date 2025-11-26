@@ -5,21 +5,18 @@ agent:
   description: "Test agent for checkpoint resume functionality"
   image: vm0-claude-code-dev
   provider: claude-code
-  working_dir: /home/user/workspace
   volumes:
     - claude-system:/home/user/.config/claude
-    - user-workspace:/home/user/workspace
+  artifact:
+    working_dir: /home/user/workspace
+    driver: git
+    driver_opts:
+      uri: https://github.com/{{user}}/question.git
+      branch: main
+      token: "${CI_GITHUB_TOKEN}"
 
 volumes:
   claude-system:
     driver: vm0
     driver_opts:
       uri: vm0://claude-files
-
-dynamic_volumes:
-  user-workspace:
-    driver: git
-    driver_opts:
-      uri: https://github.com/{{user}}/question.git
-      branch: main
-      token: "${CI_GITHUB_TOKEN}"
