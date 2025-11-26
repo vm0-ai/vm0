@@ -18,6 +18,7 @@ import type {
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { eq, and } from "drizzle-orm";
+import { env } from "../../env";
 
 /**
  * Storage Service
@@ -127,7 +128,13 @@ export class StorageService {
         }
 
         // Download from versioned S3 path
-        const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
+        const bucketName = env().S3_USER_STORAGES_NAME;
+        if (!bucketName) {
+          throw new Error(
+            "S3_USER_STORAGES_NAME environment variable is not set",
+          );
+        }
+        const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
         const localPath = path.join(tempDir!, volume.name);
 
         const downloadResult = await downloadS3Directory(s3Uri, localPath);
@@ -248,7 +255,11 @@ export class StorageService {
     }
 
     // Download from versioned S3 path
-    const s3Uri = `s3://vm0-s3-user-volumes/${headVersion.s3Key}`;
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+    const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
@@ -362,7 +373,15 @@ export class StorageService {
     }
 
     // Download from the specific version's S3 path
-    const s3Uri = `s3://vm0-s3-user-volumes/${version.s3Key}`;
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      return {
+        preparedArtifact: null,
+        tempDir,
+        errors: ["S3_USER_STORAGES_NAME environment variable is not set"],
+      };
+    }
+    const s3Uri = `s3://${bucketName}/${version.s3Key}`;
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);

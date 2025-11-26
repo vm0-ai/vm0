@@ -8,6 +8,11 @@ import * as fs from "node:fs";
 // Mock dependencies
 vi.mock("../storage-resolver");
 vi.mock("../../s3/s3-client");
+vi.mock("../../../env", () => ({
+  env: () => ({
+    S3_USER_STORAGES_NAME: "vm0-s3-user-volumes",
+  }),
+}));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {

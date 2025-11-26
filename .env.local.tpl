@@ -9,3 +9,4 @@ MINIMAX_API_KEY=op://Development/vm0-env-local/minimax_api_key
 AWS_REGION=op://Development/vm0-env-local/aws_region
 AWS_ACCESS_KEY_ID=op://Development/vm0-env-local/aws_access_key_id
 AWS_SECRET_ACCESS_KEY=op://Development/vm0-env-local/aws_secret_access_key
+S3_USER_STORAGES_NAME=op://Development/vm0-env-local/s3_user_storages_name
