@@ -260,16 +260,19 @@ export function resolveVolumes(
           continue;
         }
 
-        // Look up volume definition
-        const volumeConfig = config.volumes?.[volumeName];
+        // Look up volume definition, or auto-resolve by name
+        let volumeConfig = config.volumes?.[volumeName];
 
+        // If no explicit volume definition, auto-resolve as VM0 volume by name
+        // This allows simple volume declarations like "my-volume:/mount/path"
+        // to automatically resolve to vm0://my-volume
         if (!volumeConfig) {
-          errors.push({
-            volumeName,
-            message: `Volume "${volumeName}" not found in volumes section`,
-            type: "missing_definition",
-          });
-          continue;
+          volumeConfig = {
+            driver: "vm0",
+            driver_opts: {
+              uri: `vm0://${volumeName}`,
+            },
+          };
         }
 
         // Validate driver (only vm0 supported for volumes)

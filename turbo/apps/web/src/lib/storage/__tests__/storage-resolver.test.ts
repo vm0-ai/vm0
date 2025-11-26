@@ -522,20 +522,24 @@ describe("resolveVolumes", () => {
     });
   });
 
-  it("should detect missing volume definition", () => {
+  it("should auto-resolve volume by name when no explicit definition", () => {
+    // When no volumes section defines the volume, it should auto-resolve
+    // as a VM0 volume with uri vm0://<volumeName>
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: ["unknown-volume:/path"],
+        volumes: ["my-data:/path"],
       },
     };
 
     const result = resolveVolumes(config);
 
-    expect(result.volumes).toHaveLength(0);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      volumeName: "unknown-volume",
-      type: "missing_definition",
+    expect(result.volumes).toHaveLength(1);
+    expect(result.errors).toHaveLength(0);
+    expect(result.volumes[0]).toMatchObject({
+      name: "my-data",
+      driver: "vm0",
+      mountPath: "/path",
+      vm0StorageName: "my-data",
     });
   });
 
