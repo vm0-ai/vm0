@@ -132,7 +132,7 @@ describe("EventRenderer", () => {
       expect(consoleLogSpy.mock.calls[2][0]).toContain("hello world");
     });
 
-    it("should truncate long input values", () => {
+    it("should show full input values without truncation", () => {
       const longValue = "x".repeat(200);
       const event: ParsedEvent = {
         type: "tool_use",
@@ -150,8 +150,7 @@ describe("EventRenderer", () => {
 
       expect(consoleLogSpy).toHaveBeenCalled();
       const commandOutput = consoleLogSpy.mock.calls[1][0];
-      expect(commandOutput).toContain("...");
-      expect(commandOutput.length).toBeLessThan(longValue.length + 50);
+      expect(commandOutput).toContain(longValue);
     });
 
     it("should handle empty input", () => {
@@ -217,7 +216,7 @@ describe("EventRenderer", () => {
       expect(consoleLogSpy.mock.calls[1][0]).toContain("Error: File not found");
     });
 
-    it("should truncate long result content", () => {
+    it("should show full result content without truncation", () => {
       const longResult = "y".repeat(300);
       const event: ParsedEvent = {
         type: "tool_result",
@@ -233,8 +232,7 @@ describe("EventRenderer", () => {
 
       expect(consoleLogSpy).toHaveBeenCalled();
       const resultOutput = consoleLogSpy.mock.calls[1][0];
-      expect(resultOutput).toContain("...");
-      expect(resultOutput.length).toBeLessThan(longResult.length + 50);
+      expect(resultOutput).toContain(longResult);
     });
   });
 
