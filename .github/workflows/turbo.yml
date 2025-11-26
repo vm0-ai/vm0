@@ -267,6 +267,9 @@ jobs:
       - name: Setup CLI globally
         run: cd turbo/apps/cli && pnpm link --global
 
+      - name: Install GNU parallel for bats
+        run: sudo apt-get update && sudo apt-get install -y parallel
+
       - name: Install E2E dependencies
         run: cd e2e && npm install
 
