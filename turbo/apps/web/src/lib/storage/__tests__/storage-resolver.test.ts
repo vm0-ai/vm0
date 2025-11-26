@@ -244,7 +244,7 @@ describe("resolveVolumes", () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should return null artifact when no artifact key provided for VM0 driver", () => {
+    it("should error when no artifact key provided for VM0 driver", () => {
       const config: AgentVolumeConfig = {
         agent: {
           artifact: {
@@ -257,7 +257,13 @@ describe("resolveVolumes", () => {
       const result = resolveVolumes(config); // No artifact key
 
       expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "artifact",
+        type: "missing_artifact_key",
+        message:
+          "VM0 artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
+      });
     });
 
     it("should resolve Git artifact with full configuration", () => {

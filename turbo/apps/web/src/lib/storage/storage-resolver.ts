@@ -211,8 +211,13 @@ function resolveArtifact(
 
   // VM0 driver: artifact key is required at runtime
   if (!artifactKey) {
-    // No artifact key provided - this is valid, just means no artifact mounted
-    return { artifact: null, errors: [] };
+    errors.push({
+      volumeName: "artifact",
+      message:
+        "VM0 artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
+      type: "missing_artifact_key",
+    });
+    return { artifact: null, errors };
   }
 
   return {

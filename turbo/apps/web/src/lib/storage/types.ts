@@ -79,7 +79,8 @@ export interface VolumeError {
     | "missing_definition"
     | "missing_variable"
     | "invalid_uri"
-    | "working_dir_conflict";
+    | "working_dir_conflict"
+    | "missing_artifact_key";
 }
 
 /**
