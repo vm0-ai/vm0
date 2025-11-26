@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/vm0-ai/vm0/compare/web-v1.5.0...web-v1.6.0) (2025-11-26)
+
+
+### Features
+
+* add mock-claude for faster e2e testing ([#207](https://github.com/vm0-ai/vm0/issues/207)) ([745ba86](https://github.com/vm0-ai/vm0/commit/745ba86306c71af8b8c2f45b63819f8283dbeb70))
+* replace dynamic_volumes with artifact concept ([#210](https://github.com/vm0-ai/vm0/issues/210)) ([5cc831c](https://github.com/vm0-ai/vm0/commit/5cc831c81041ae8f80c425d68b9491354eaafa2b))
+
 ## [1.5.0](https://github.com/vm0-ai/vm0/compare/web-v1.4.0...web-v1.5.0) (2025-11-25)
 
 
