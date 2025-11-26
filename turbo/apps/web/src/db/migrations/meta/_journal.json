@@ -127,6 +127,13 @@
       "when": 1764139681000,
       "tag": "0017_rename_volume_snapshots_to_artifact_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1764139682000,
+      "tag": "0018_add_type_to_storages",
+      "breakpoints": true
     }
   ]
 }
