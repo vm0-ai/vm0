@@ -11,8 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import AdmZip from "adm-zip";
-
-const S3_BUCKET = "vm0-s3-user-storages";
+import { env } from "../../../src/env";
 
 /**
  * Validate storage name format
@@ -167,7 +166,13 @@ export async function POST(request: NextRequest) {
 
       // Upload files to versioned S3 path
       // If this fails, the transaction will be rolled back
-      const s3Uri = `s3://${S3_BUCKET}/${version.s3Key}`;
+      const bucketName = env().S3_USER_STORAGES_NAME;
+      if (!bucketName) {
+        throw new Error(
+          "S3_USER_STORAGES_NAME environment variable is not set",
+        );
+      }
+      const s3Uri = `s3://${bucketName}/${version.s3Key}`;
       console.log(`[Storage] Uploading ${fileCount} files to ${s3Uri}...`);
       await uploadS3Directory(extractPath, s3Uri);
 
@@ -296,7 +301,14 @@ export async function GET(request: NextRequest) {
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Download files from versioned S3 path
-    const s3Uri = `s3://${S3_BUCKET}/${headVersion.s3Key}`;
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      return NextResponse.json(
+        { error: "S3_USER_STORAGES_NAME environment variable is not set" },
+        { status: 500 },
+      );
+    }
+    const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
     const downloadPath = path.join(tempDir, "download");
     console.log(`[Storage] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);
