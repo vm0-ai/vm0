@@ -278,9 +278,11 @@ export class VolumeService {
     agentConfig: AgentVolumeConfig | undefined,
     dynamicVars: Record<string, string>,
     runId: string,
-  ): Promise<{ preparedArtifact: PreparedArtifact | null; tempDir: string | null; errors: string[] }> {
-    const errors: string[] = [];
-
+  ): Promise<{
+    preparedArtifact: PreparedArtifact | null;
+    tempDir: string | null;
+    errors: string[];
+  }> {
     if (!agentConfig?.agent?.artifact) {
       return {
         preparedArtifact: null,
@@ -353,7 +355,9 @@ export class VolumeService {
       return {
         preparedArtifact: null,
         tempDir,
-        errors: [`VM0 artifact version "${snapshot.snapshot.versionId}" not found`],
+        errors: [
+          `VM0 artifact version "${snapshot.snapshot.versionId}" not found`,
+        ],
       };
     }
 
@@ -390,8 +394,7 @@ export class VolumeService {
     preparedVolumes: PreparedVolume[],
     preparedArtifact?: PreparedArtifact | null,
   ): Promise<void> {
-    const totalMounts =
-      preparedVolumes.length + (preparedArtifact ? 1 : 0);
+    const totalMounts = preparedVolumes.length + (preparedArtifact ? 1 : 0);
 
     if (totalMounts === 0) {
       return;

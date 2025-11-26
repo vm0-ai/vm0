@@ -6,6 +6,7 @@ export interface CreateAgentRunRequest {
   agentConfigId: string;
   prompt: string;
   dynamicVars?: Record<string, string>;
+  artifactKey?: string; // Artifact key for VM0 driver artifacts
 }
 
 export interface CreateAgentRunResponse {

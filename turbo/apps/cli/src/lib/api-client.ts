@@ -123,6 +123,7 @@ class ApiClient {
     agentConfigId: string;
     prompt: string;
     dynamicVars?: Record<string, string>;
+    artifactKey?: string;
   }): Promise<CreateRunResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();

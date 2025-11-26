@@ -2,8 +2,6 @@
  * Checkpoint system types for preserving agent run state
  */
 
-import type { ArtifactDriver } from "../volume/types";
-
 /**
  * Git snapshot containing branch and commit information
  */

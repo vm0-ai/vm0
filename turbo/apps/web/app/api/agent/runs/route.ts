@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
         body.dynamicVars,
         config.config,
         userId,
+        body.artifactKey,
       )
       .then((context) => runService.executeRun(context))
       .then((result) => {

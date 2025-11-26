@@ -77,7 +77,7 @@ describe("volume-utils", () => {
       await writeVolumeConfig("mnist", tempDir);
 
       const config = await readVolumeConfig(tempDir);
-      expect(config).toEqual({ name: "mnist" });
+      expect(config).toEqual({ name: "mnist", type: "volume" });
     });
 
     it("should return null when config does not exist", async () => {
@@ -97,7 +97,7 @@ describe("volume-utils", () => {
       await writeVolumeConfig("volume2", tempDir);
 
       const config = await readVolumeConfig(tempDir);
-      expect(config).toEqual({ name: "volume2" });
+      expect(config).toEqual({ name: "volume2", type: "volume" });
     });
 
     it("should write valid YAML format", async () => {

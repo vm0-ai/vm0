@@ -53,10 +53,19 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const volumeName = formData.get("volumeName") as string;
     const file = formData.get("file") as File;
+    const volumeType = (formData.get("type") as string) || "volume"; // Default to "volume"
 
     if (!volumeName || !file) {
       return NextResponse.json(
         { error: "Missing volumeName or file" },
+        { status: 400 },
+      );
+    }
+
+    // Validate volume type
+    if (volumeType !== "volume" && volumeType !== "artifact") {
+      return NextResponse.json(
+        { error: "Invalid type. Must be 'volume' or 'artifact'" },
         { status: 400 },
       );
     }
@@ -125,6 +134,7 @@ export async function POST(request: NextRequest) {
             s3Prefix: `${userId}/${volumeName}`,
             size: totalSize,
             fileCount,
+            type: volumeType,
           })
           .returning();
         volume = newVolumes[0];
@@ -176,7 +186,13 @@ export async function POST(request: NextRequest) {
         `[Volumes] Successfully uploaded volume "${volumeName}" version ${version.id}`,
       );
 
-      return { volumeName, versionId: version.id, size: totalSize, fileCount };
+      return {
+        volumeName,
+        versionId: version.id,
+        size: totalSize,
+        fileCount,
+        type: volumeType,
+      };
     });
 
     // Clean up temp directory

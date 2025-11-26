@@ -6,6 +6,7 @@ import { getApiUrl } from "./lib/config";
 import { buildCommand } from "./commands/build";
 import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
+import { artifactCommand } from "./commands/artifact";
 
 const program = new Command();
 
@@ -59,10 +60,11 @@ authCommand
     await checkAuthStatus();
   });
 
-// Register build, run, and volume commands
+// Register build, run, volume, and artifact commands
 program.addCommand(buildCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
+program.addCommand(artifactCommand);
 
 export { program };
 

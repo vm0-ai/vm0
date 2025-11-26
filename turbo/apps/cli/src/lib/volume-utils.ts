@@ -3,15 +3,23 @@ import { existsSync } from "fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import path from "path";
 
-interface VolumeConfig {
+/**
+ * Volume/Artifact type
+ * - "volume": Static storage that doesn't auto-version after runs
+ * - "artifact": Work products that auto-version after runs
+ */
+export type StorageType = "volume" | "artifact";
+
+export interface VolumeConfig {
   name: string;
+  type: StorageType;
 }
 
 const CONFIG_DIR = ".vm0";
 const CONFIG_FILE = "volume.yaml";
 
 /**
- * Validate volume name format
+ * Validate volume/artifact name format
  * Length: 3-64 characters
  * Characters: lowercase letters, numbers, hyphens
  * Must start and end with alphanumeric
@@ -26,7 +34,7 @@ export function isValidVolumeName(name: string): boolean {
 }
 
 /**
- * Read volume config from .vm0/volume.yaml
+ * Read volume/artifact config from .vm0/volume.yaml
  */
 export async function readVolumeConfig(
   basePath: string = process.cwd(),
@@ -40,15 +48,21 @@ export async function readVolumeConfig(
   const content = await readFile(configPath, "utf8");
   const config = parseYaml(content) as VolumeConfig;
 
+  // Default to "volume" type for backward compatibility
+  if (!config.type) {
+    config.type = "volume";
+  }
+
   return config;
 }
 
 /**
- * Write volume config to .vm0/volume.yaml
+ * Write volume/artifact config to .vm0/volume.yaml
  */
 export async function writeVolumeConfig(
   volumeName: string,
   basePath: string = process.cwd(),
+  type: StorageType = "volume",
 ): Promise<void> {
   const configDir = path.join(basePath, CONFIG_DIR);
   const configPath = path.join(configDir, CONFIG_FILE);
@@ -60,6 +74,7 @@ export async function writeVolumeConfig(
 
   const config: VolumeConfig = {
     name: volumeName,
+    type,
   };
 
   const yamlContent = stringifyYaml(config);

@@ -1,0 +1,78 @@
+import { Command } from "commander";
+import chalk from "chalk";
+import path from "path";
+import {
+  isValidVolumeName,
+  writeVolumeConfig,
+  readVolumeConfig,
+} from "../../lib/volume-utils";
+
+export const initCommand = new Command()
+  .name("init")
+  .description("Initialize an artifact in the current directory")
+  .action(async () => {
+    try {
+      const cwd = process.cwd();
+      const dirName = path.basename(cwd);
+
+      // Check if config already exists
+      const existingConfig = await readVolumeConfig(cwd);
+      if (existingConfig) {
+        if (existingConfig.type === "artifact") {
+          console.log(
+            chalk.yellow(
+              `Artifact already initialized: ${existingConfig.name}`,
+            ),
+          );
+        } else {
+          console.log(
+            chalk.yellow(
+              `Directory already initialized as volume: ${existingConfig.name}`,
+            ),
+          );
+          console.log(
+            chalk.gray(
+              "  To change type, delete .vm0/volume.yaml and reinitialize",
+            ),
+          );
+        }
+        console.log(
+          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "volume.yaml")}`),
+        );
+        return;
+      }
+
+      // Use directory name as artifact name
+      const artifactName = dirName;
+
+      // Validate name
+      if (!isValidVolumeName(artifactName)) {
+        console.error(chalk.red(`✗ Invalid artifact name: "${dirName}"`));
+        console.error(
+          chalk.gray(
+            "  Artifact names must be 3-64 characters, lowercase alphanumeric with hyphens",
+          ),
+        );
+        console.error(
+          chalk.gray("  Example: my-project, user-workspace, code-artifact"),
+        );
+        process.exit(1);
+      }
+
+      // Write config file with type: artifact
+      await writeVolumeConfig(artifactName, cwd, "artifact");
+
+      console.log(chalk.green(`✓ Initialized artifact: ${artifactName}`));
+      console.log(
+        chalk.gray(
+          `✓ Config saved to ${path.join(cwd, ".vm0", "volume.yaml")}`,
+        ),
+      );
+    } catch (error) {
+      console.error(chalk.red("✗ Failed to initialize artifact"));
+      if (error instanceof Error) {
+        console.error(chalk.gray(`  ${error.message}`));
+      }
+      process.exit(1);
+    }
+  });

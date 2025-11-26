@@ -135,7 +135,8 @@ export class RunService {
     const agentConfig = config.config as
       | { agent?: { artifact?: { working_dir?: string } } }
       | undefined;
-    const workingDir = agentConfig?.agent?.artifact?.working_dir || "/workspace";
+    const workingDir =
+      agentConfig?.agent?.artifact?.working_dir || "/workspace";
 
     console.log(`[RunService] Working directory: ${workingDir}`);
 

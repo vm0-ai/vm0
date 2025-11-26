@@ -40,6 +40,7 @@ describe("VolumeService", () => {
 
       expect(result).toEqual({
         preparedVolumes: [],
+        preparedArtifact: null,
         tempDir: null,
         errors: [],
       });
@@ -54,6 +55,7 @@ describe("VolumeService", () => {
 
       vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
         volumes: [],
+        artifact: null,
         errors: [],
       });
 
@@ -65,61 +67,10 @@ describe("VolumeService", () => {
 
       expect(result).toEqual({
         preparedVolumes: [],
+        preparedArtifact: null,
         tempDir: null,
         errors: [],
       });
-    });
-
-    it("should prepare git volumes successfully", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["repo:/workspace"],
-        },
-        volumes: {
-          repo: {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "repo",
-            driver: "git",
-            gitUri: "https://github.com/user/repo.git",
-            gitBranch: "main",
-            mountPath: "/workspace",
-          },
-        ],
-        errors: [],
-      });
-
-      const result = await volumeService.prepareVolumes(
-        agentConfig,
-        {},
-        "test-run-id",
-      );
-
-      expect(result.preparedVolumes).toHaveLength(1);
-      expect(result.preparedVolumes[0]).toEqual({
-        name: "repo",
-        driver: "git",
-        mountPath: "/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "main",
-        gitToken: undefined,
-      });
-      expect(result.tempDir).toBe("/tmp/vm0-run-test-run-id");
-      expect(result.errors).toHaveLength(0);
-      expect(fs.promises.mkdir).toHaveBeenCalledWith(
-        "/tmp/vm0-run-test-run-id",
-        { recursive: true },
-      );
     });
 
     it("should handle volume resolution errors", async () => {
@@ -131,6 +82,7 @@ describe("VolumeService", () => {
 
       vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
         volumes: [],
+        artifact: null,
         errors: [
           {
             volumeName: "data",
@@ -176,6 +128,7 @@ describe("VolumeService", () => {
             mountPath: "/home/user/.config/claude",
           },
         ],
+        artifact: null,
         errors: [],
       });
 
@@ -235,6 +188,7 @@ describe("VolumeService", () => {
             mountPath: "/home/user/.config/claude",
           },
         ],
+        artifact: null,
         errors: [],
       });
 
@@ -261,6 +215,139 @@ describe("VolumeService", () => {
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain("nonexistent-volume");
       expect(result.errors[0]).toContain("not found in database");
+    });
+  });
+
+  describe("prepareVolumes with artifact", () => {
+    it("should prepare Git artifact successfully", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+              branch: "main",
+            },
+          },
+        },
+      };
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [],
+        artifact: {
+          driver: "git",
+          mountPath: "/workspace",
+          gitUri: "https://github.com/user/repo.git",
+          gitBranch: "main",
+        },
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumes(
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact).toMatchObject({
+        driver: "git",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/user/repo.git",
+        gitBranch: "main",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should prepare VM0 artifact successfully", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
+            driver: "vm0",
+          },
+        },
+      };
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [],
+        artifact: {
+          driver: "vm0",
+          mountPath: "/workspace",
+          vm0VolumeName: "my-artifact",
+        },
+        errors: [],
+      });
+
+      // Mock database for VM0 artifact with two calls (volume lookup + version lookup)
+      const mockDbVolumeResult = {
+        id: "vol-123",
+        name: "my-artifact",
+        userId: "user-123",
+        headVersionId: "version-456",
+      };
+
+      const mockDbVersionResult = {
+        id: "version-456",
+        volumeId: "vol-123",
+        s3Key: "user-123/my-artifact/version-456",
+      };
+
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValueOnce([mockDbVolumeResult])
+          .mockResolvedValueOnce([mockDbVersionResult]),
+      };
+
+      globalThis.services = {
+        db: mockDb,
+      } as never;
+
+      vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
+        localPath: "/tmp/vm0-run-test-run-id/artifact",
+        filesDownloaded: 5,
+        totalBytes: 1024,
+      });
+
+      const result = await volumeService.prepareVolumes(
+        agentConfig,
+        {},
+        "test-run-id",
+        "my-artifact",
+        "user-123",
+      );
+
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact?.driver).toBe("vm0");
+      expect(result.preparedArtifact?.mountPath).toBe("/workspace");
+    });
+
+    it("should return null artifact when no artifact configured", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: [],
+        },
+      };
+
+      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
+        volumes: [],
+        artifact: null,
+        errors: [],
+      });
+
+      const result = await volumeService.prepareVolumes(
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedArtifact).toBeNull();
+      expect(result.errors).toHaveLength(0);
     });
   });
 
@@ -312,6 +399,43 @@ describe("VolumeService", () => {
 
       expect(mockSandbox.files.write).toHaveBeenCalled();
     });
+
+    it("should mount artifact when provided", async () => {
+      const mockSandbox = {
+        files: {
+          write: vi.fn(),
+        },
+      };
+
+      const preparedArtifact = {
+        driver: "vm0" as const,
+        localPath: "/tmp/vm0-run-test/artifact",
+        mountPath: "/workspace",
+      };
+
+      vi.mocked(fs.promises.stat).mockResolvedValue({
+        isDirectory: () => true,
+      } as never);
+
+      vi.mocked(fs.promises.readdir).mockResolvedValue([
+        {
+          name: "file.txt",
+          isDirectory: () => false,
+        } as never,
+      ]);
+
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("test content"),
+      );
+
+      await volumeService.mountVolumes(
+        mockSandbox as never,
+        [],
+        preparedArtifact,
+      );
+
+      expect(mockSandbox.files.write).toHaveBeenCalled();
+    });
   });
 
   describe("cleanup", () => {
@@ -345,17 +469,15 @@ describe("VolumeService", () => {
     });
   });
 
-  describe("prepareVolumesFromSnapshots", () => {
-    it("should prepare Git volume from snapshot with correct branch", async () => {
+  describe("prepareArtifactFromSnapshot", () => {
+    it("should prepare Git artifact from snapshot with correct branch", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["user-workspace:/home/user/workspace"],
-        },
-        dynamic_volumes: {
-          "user-workspace": {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
-              uri: "https://github.com/{{user}}/question.git",
+              uri: "https://github.com/{{user}}/repo.git",
               branch: "main",
               token: "${CI_GITHUB_TOKEN}",
             },
@@ -363,180 +485,95 @@ describe("VolumeService", () => {
         },
       };
 
-      const snapshots = [
-        {
-          name: "user-workspace",
-          driver: "git" as const,
-          mountPath: "/home/user/workspace",
-          snapshot: {
-            branch: "run-test-run-123",
-            commitId: "abc123def456",
-          },
+      const snapshot = {
+        driver: "git" as const,
+        mountPath: "/workspace",
+        snapshot: {
+          branch: "run-test-run-123",
+          commitId: "abc123def456",
         },
-      ];
+      };
 
       vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "user-workspace",
-            driver: "git",
-            gitUri: "https://github.com/lancy/question.git",
-            gitBranch: "main",
-            gitToken: "test-token",
-            mountPath: "/home/user/workspace",
-          },
-        ],
+        volumes: [],
+        artifact: {
+          driver: "git",
+          mountPath: "/workspace",
+          gitUri: "https://github.com/lancy/repo.git",
+          gitBranch: "main",
+          gitToken: "test-token",
+        },
         errors: [],
       });
 
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
         agentConfig,
         { user: "lancy" },
+        "test-run-id",
       );
 
-      expect(result.preparedVolumes).toHaveLength(1);
-      expect(result.preparedVolumes[0]).toEqual({
-        name: "user-workspace",
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact).toMatchObject({
         driver: "git",
-        mountPath: "/home/user/workspace",
-        gitUri: "https://github.com/lancy/question.git",
-        gitBranch: "run-test-run-123",
+        mountPath: "/workspace",
+        gitUri: "https://github.com/lancy/repo.git",
+        gitBranch: "run-test-run-123", // From snapshot, not config
         gitToken: "test-token",
-        isDynamic: true,
       });
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should return error when snapshot is missing snapshot data", async () => {
+    it("should return error when Git snapshot is missing branch", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["user-workspace:/home/user/workspace"],
-        },
-        dynamic_volumes: {
-          "user-workspace": {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
-              uri: "https://github.com/{{user}}/question.git",
+              uri: "https://github.com/user/repo.git",
               branch: "main",
             },
           },
         },
       };
 
-      const snapshots = [
-        {
-          name: "user-workspace",
-          driver: "git" as const,
-          mountPath: "/home/user/workspace",
-        },
-      ];
-
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "user-workspace",
-            driver: "git",
-            gitUri: "https://github.com/lancy/question.git",
-            gitBranch: "main",
-            mountPath: "/home/user/workspace",
-          },
-        ],
-        errors: [],
-      });
-
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
-        agentConfig,
-        { user: "lancy" },
-      );
-
-      expect(result.preparedVolumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain(
-        "user-workspace: Failed to prepare snapshot",
-      );
-      expect(result.errors[0]).toContain("Git snapshot missing snapshot data");
-    });
-
-    it("should return error when snapshot is missing branch name", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["user-workspace:/home/user/workspace"],
-        },
-        dynamic_volumes: {
-          "user-workspace": {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/{{user}}/question.git",
-              branch: "main",
-            },
-          },
-        },
+      const snapshot = {
+        driver: "git" as const,
+        mountPath: "/workspace",
+        // No snapshot data
       };
 
-      const snapshots = [
-        {
-          name: "user-workspace",
-          driver: "git" as const,
-          mountPath: "/home/user/workspace",
-          snapshot: {
-            branch: "",
-            commitId: "abc123",
-          },
-        },
-      ];
-
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "user-workspace",
-            driver: "git",
-            gitUri: "https://github.com/lancy/question.git",
-            gitBranch: "main",
-            mountPath: "/home/user/workspace",
-          },
-        ],
-        errors: [],
-      });
-
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
         agentConfig,
-        { user: "lancy" },
+        {},
+        "test-run-id",
       );
 
-      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.preparedArtifact).toBeNull();
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("Git snapshot missing branch name");
+      expect(result.errors[0]).toContain("Git snapshot missing branch");
     });
 
-    it("should prepare VM0 volume from snapshot with specific version", async () => {
+    it("should prepare VM0 artifact from snapshot with specific version", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["my-data:/workspace/data"],
-        },
-        dynamic_volumes: {
-          "my-data": {
+          artifact: {
+            working_dir: "/workspace",
             driver: "vm0",
-            driver_opts: {
-              uri: "vm0://test-volume",
-            },
           },
         },
       };
 
-      const snapshots = [
-        {
-          name: "my-data",
-          driver: "vm0" as const,
-          mountPath: "/workspace/data",
-          vm0VolumeName: "test-volume",
-          snapshot: {
-            versionId: "version-123-456",
-          },
+      const snapshot = {
+        driver: "vm0" as const,
+        mountPath: "/workspace",
+        vm0VolumeName: "test-artifact",
+        snapshot: {
+          versionId: "version-123-456",
         },
-      ];
+      };
 
       // Mock database query for volumeVersions
       const mockDb = {
@@ -547,7 +584,7 @@ describe("VolumeService", () => {
           {
             id: "version-123-456",
             volumeId: "volume-id",
-            s3Key: "user-123/test-volume/version-123-456",
+            s3Key: "user-123/test-artifact/version-123-456",
           },
         ]),
       };
@@ -556,37 +593,24 @@ describe("VolumeService", () => {
         db: mockDb as never,
       } as never;
 
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "my-data",
-            driver: "vm0",
-            vm0VolumeName: "test-volume",
-            mountPath: "/workspace/data",
-          },
-        ],
-        errors: [],
-      });
-
       vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
-        localPath: "/tmp/vm0-run-test-run-id/my-data",
+        localPath: "/tmp/vm0-run-test-run-id/artifact",
         filesDownloaded: 10,
         totalBytes: 2048,
       });
 
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
         agentConfig,
         {},
         "test-run-id",
       );
 
-      expect(result.preparedVolumes).toHaveLength(1);
-      expect(result.preparedVolumes[0]).toMatchObject({
-        name: "my-data",
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact).toMatchObject({
         driver: "vm0",
-        mountPath: "/workspace/data",
-        vm0VolumeName: "test-volume",
+        mountPath: "/workspace",
+        vm0VolumeName: "test-artifact",
         vm0VersionId: "version-123-456",
       });
       expect(result.tempDir).toBe("/tmp/vm0-run-test-run-id");
@@ -594,7 +618,7 @@ describe("VolumeService", () => {
 
       // Verify S3 download was called with correct versioned path
       expect(s3Client.downloadS3Directory).toHaveBeenCalledWith(
-        "s3://vm0-s3-user-volumes/user-123/test-volume/version-123-456",
+        "s3://vm0-s3-user-volumes/user-123/test-artifact/version-123-456",
         expect.any(String),
       );
     });
@@ -602,78 +626,50 @@ describe("VolumeService", () => {
     it("should return error when VM0 snapshot is missing versionId", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["my-data:/workspace/data"],
-        },
-        dynamic_volumes: {
-          "my-data": {
+          artifact: {
+            working_dir: "/workspace",
             driver: "vm0",
-            driver_opts: {
-              uri: "vm0://test-volume",
-            },
           },
         },
       };
 
-      const snapshots = [
-        {
-          name: "my-data",
-          driver: "vm0" as const,
-          mountPath: "/workspace/data",
-          vm0VolumeName: "test-volume",
-          // No snapshot with versionId
-        },
-      ];
+      const snapshot = {
+        driver: "vm0" as const,
+        mountPath: "/workspace",
+        vm0VolumeName: "test-artifact",
+        // No snapshot with versionId
+      };
 
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "my-data",
-            driver: "vm0",
-            vm0VolumeName: "test-volume",
-            mountPath: "/workspace/data",
-          },
-        ],
-        errors: [],
-      });
-
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
         agentConfig,
         {},
         "test-run-id",
       );
 
-      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.preparedArtifact).toBeNull();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain("VM0 snapshot missing versionId");
     });
 
-    it("should return error when VM0 volume version not found in database", async () => {
+    it("should return error when VM0 artifact version not found in database", async () => {
       const agentConfig: AgentVolumeConfig = {
         agent: {
-          volumes: ["my-data:/workspace/data"],
-        },
-        dynamic_volumes: {
-          "my-data": {
+          artifact: {
+            working_dir: "/workspace",
             driver: "vm0",
-            driver_opts: {
-              uri: "vm0://test-volume",
-            },
           },
         },
       };
 
-      const snapshots = [
-        {
-          name: "my-data",
-          driver: "vm0" as const,
-          mountPath: "/workspace/data",
-          vm0VolumeName: "test-volume",
-          snapshot: {
-            versionId: "non-existent-version",
-          },
+      const snapshot = {
+        driver: "vm0" as const,
+        mountPath: "/workspace",
+        vm0VolumeName: "test-artifact",
+        snapshot: {
+          versionId: "non-existent-version",
         },
-      ];
+      };
 
       // Mock database query returning empty result
       const mockDb = {
@@ -687,29 +683,47 @@ describe("VolumeService", () => {
         db: mockDb as never,
       } as never;
 
-      vi.mocked(volumeResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "my-data",
-            driver: "vm0",
-            vm0VolumeName: "test-volume",
-            mountPath: "/workspace/data",
-          },
-        ],
-        errors: [],
-      });
-
-      const result = await volumeService.prepareVolumesFromSnapshots(
-        snapshots,
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
         agentConfig,
         {},
         "test-run-id",
       );
 
-      expect(result.preparedVolumes).toHaveLength(0);
+      expect(result.preparedArtifact).toBeNull();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain(
-        'VM0 volume version "non-existent-version" not found',
+        'VM0 artifact version "non-existent-version" not found',
+      );
+    });
+
+    it("should return error when agent config missing artifact definition", async () => {
+      const agentConfig: AgentVolumeConfig = {
+        agent: {
+          volumes: [],
+        },
+      };
+
+      const snapshot = {
+        driver: "git" as const,
+        mountPath: "/workspace",
+        snapshot: {
+          branch: "main",
+          commitId: "abc123",
+        },
+      };
+
+      const result = await volumeService.prepareArtifactFromSnapshot(
+        snapshot,
+        agentConfig,
+        {},
+        "test-run-id",
+      );
+
+      expect(result.preparedArtifact).toBeNull();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(
+        "Agent config missing artifact definition",
       );
     });
   });

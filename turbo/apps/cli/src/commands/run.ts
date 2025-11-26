@@ -83,11 +83,15 @@ const runCmd = new Command()
     collectEnvVars,
     {},
   )
+  .option(
+    "-a, --artifact <key>",
+    "Artifact key to mount (for VM0 driver artifacts)",
+  )
   .action(
     async (
       identifier: string,
       prompt: string,
-      options: { env: Record<string, string> },
+      options: { env: Record<string, string>; artifact?: string },
     ) => {
       try {
         // 1. Resolve identifier to configId
@@ -127,6 +131,10 @@ const runCmd = new Command()
           );
         }
 
+        if (options.artifact) {
+          console.log(chalk.gray(`  Artifact: ${options.artifact}`));
+        }
+
         console.log();
         console.log(chalk.blue("Executing in sandbox..."));
         console.log();
@@ -137,6 +145,7 @@ const runCmd = new Command()
           prompt,
           dynamicVars:
             Object.keys(options.env).length > 0 ? options.env : undefined,
+          artifactKey: options.artifact,
         });
 
         // 4. Poll for events

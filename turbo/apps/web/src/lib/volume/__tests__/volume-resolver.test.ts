@@ -117,59 +117,6 @@ describe("replaceTemplateVars", () => {
       });
     });
 
-    it("should resolve VM0 volume with template variables", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
-        dynamic_volumes: {
-          dataset: {
-            driver: "vm0",
-            driver_opts: {
-              uri: "vm0://{{datasetName}}",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, { datasetName: "cifar10" });
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.errors).toHaveLength(0);
-      expect(result.volumes[0]).toMatchObject({
-        name: "dataset",
-        driver: "vm0",
-        mountPath: "/workspace/data",
-        vm0VolumeName: "cifar10",
-      });
-    });
-
-    it("should error on missing template variables in VM0 URI", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
-        dynamic_volumes: {
-          dataset: {
-            driver: "vm0",
-            driver_opts: {
-              uri: "vm0://{{datasetName}}",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config); // No dynamic vars provided
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "missing_variable",
-        message: "Missing required variables: datasetName",
-      });
-    });
-
     it("should error on invalid VM0 URI format", () => {
       const config: AgentVolumeConfig = {
         agent: {
@@ -248,56 +195,26 @@ describe("resolveVolumes", () => {
       driver: "vm0",
       mountPath: "/workspace/data",
       vm0VolumeName: "my-dataset",
-      isDynamic: false,
     });
     expect(result.errors).toHaveLength(0);
   });
 
-  it("should resolve dynamic VM0 volume with template variables", () => {
+  it("should resolve multiple VM0 volumes", () => {
     const config: AgentVolumeConfig = {
       agent: {
-        volumes: ["dataset:/workspace/data"],
-      },
-      dynamic_volumes: {
-        dataset: {
-          driver: "vm0",
-          driver_opts: {
-            uri: "vm0://{{datasetName}}",
-          },
-        },
-      },
-    };
-
-    const result = resolveVolumes(config, { datasetName: "cifar10" });
-
-    expect(result.volumes).toHaveLength(1);
-    expect(result.volumes[0]).toEqual({
-      name: "dataset",
-      driver: "vm0",
-      mountPath: "/workspace/data",
-      vm0VolumeName: "cifar10",
-      isDynamic: true,
-    });
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it("should resolve multiple volumes (git and vm0)", () => {
-    const config: AgentVolumeConfig = {
-      agent: {
-        volumes: ["repo:/workspace", "dataset:/data"],
+        volumes: ["dataset1:/data1", "dataset2:/data2"],
       },
       volumes: {
-        repo: {
-          driver: "git",
-          driver_opts: {
-            uri: "https://github.com/user/repo.git",
-            branch: "main",
-          },
-        },
-        dataset: {
+        dataset1: {
           driver: "vm0",
           driver_opts: {
-            uri: "vm0://my-dataset",
+            uri: "vm0://my-dataset-1",
+          },
+        },
+        dataset2: {
+          driver: "vm0",
+          driver_opts: {
+            uri: "vm0://my-dataset-2",
           },
         },
       },
@@ -326,32 +243,6 @@ describe("resolveVolumes", () => {
     });
   });
 
-  it("should detect missing template variables", () => {
-    const config: AgentVolumeConfig = {
-      agent: {
-        volumes: ["dataset:/path"],
-      },
-      dynamic_volumes: {
-        dataset: {
-          driver: "vm0",
-          driver_opts: {
-            uri: "vm0://{{datasetName}}",
-          },
-        },
-      },
-    };
-
-    const result = resolveVolumes(config, {});
-
-    expect(result.volumes).toHaveLength(0);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      volumeName: "dataset",
-      type: "missing_variable",
-      message: "Missing required variables: datasetName",
-    });
-  });
-
   it("should return empty result for no volume declarations", () => {
     const config: AgentVolumeConfig = {
       agent: {},
@@ -360,7 +251,36 @@ describe("resolveVolumes", () => {
     const result = resolveVolumes(config);
 
     expect(result.volumes).toHaveLength(0);
+    expect(result.artifact).toBeNull();
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("should reject git driver for volumes (git only for artifacts)", () => {
+    const config = {
+      agent: {
+        volumes: ["repo:/workspace"],
+      },
+      volumes: {
+        repo: {
+          driver: "git",
+          driver_opts: {
+            uri: "https://github.com/user/repo.git",
+            branch: "main",
+          },
+        },
+      },
+    } as AgentVolumeConfig;
+
+    const result = resolveVolumes(config);
+
+    expect(result.volumes).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      volumeName: "repo",
+      type: "invalid_uri",
+      message:
+        "Unsupported volume driver: git. Only vm0 driver is supported for volumes.",
+    });
   });
 
   it("should handle unsupported driver", () => {
@@ -385,23 +305,41 @@ describe("resolveVolumes", () => {
     expect(result.errors[0]).toMatchObject({
       volumeName: "custom-volume",
       type: "invalid_uri",
-      message: "Unsupported volume driver: nfs. Supported drivers: git, vm0.",
     });
   });
 
-  describe("Git volumes", () => {
-    it("should resolve Git volume with full URL", () => {
+  describe("Artifact resolution", () => {
+    it("should resolve VM0 artifact with artifact key", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
+          artifact: {
+            working_dir: "/workspace",
+            driver: "vm0",
+          },
         },
-        volumes: {
-          repo: {
+      };
+
+      const result = resolveVolumes(config, {}, "my-artifact");
+
+      expect(result.artifact).not.toBeNull();
+      expect(result.artifact).toMatchObject({
+        driver: "vm0",
+        mountPath: "/workspace",
+        vm0VolumeName: "my-artifact",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should resolve Git artifact", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "https://github.com/user/repo.git",
               branch: "main",
-              token: "ghp_test123",
+              token: "ghp_token123",
             },
           },
         },
@@ -409,54 +347,22 @@ describe("resolveVolumes", () => {
 
       const result = resolveVolumes(config);
 
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]).toMatchObject({
-        name: "repo",
+      expect(result.artifact).not.toBeNull();
+      expect(result.artifact).toMatchObject({
         driver: "git",
         mountPath: "/workspace",
         gitUri: "https://github.com/user/repo.git",
         gitBranch: "main",
-        gitToken: "ghp_test123",
+        gitToken: "ghp_token123",
       });
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should resolve Git volume with short format", () => {
+    it("should use main as default branch for Git artifact", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
-        },
-        volumes: {
-          repo: {
-            driver: "git",
-            driver_opts: {
-              uri: "user/repo",
-              branch: "develop",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]).toMatchObject({
-        name: "repo",
-        driver: "git",
-        mountPath: "/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "develop",
-      });
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should use main as default branch for Git volumes", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["repo:/workspace"],
-        },
-        volumes: {
-          repo: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "https://github.com/user/repo.git",
@@ -467,18 +373,14 @@ describe("resolveVolumes", () => {
 
       const result = resolveVolumes(config);
 
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]?.gitBranch).toBe("main");
-      expect(result.errors).toHaveLength(0);
+      expect(result.artifact?.gitBranch).toBe("main");
     });
 
-    it("should replace template variables in Git URI", () => {
+    it("should replace template variables in Git artifact URI", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
-        },
-        dynamic_volumes: {
-          repo: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "https://github.com/{{user}}/{{project}}.git",
@@ -493,49 +395,17 @@ describe("resolveVolumes", () => {
         project: "testrepo",
       });
 
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]).toMatchObject({
-        name: "repo",
-        driver: "git",
-        mountPath: "/workspace",
-        gitUri: "https://github.com/testuser/testrepo.git",
-        gitBranch: "main",
-      });
+      expect(result.artifact?.gitUri).toBe(
+        "https://github.com/testuser/testrepo.git",
+      );
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should replace template variables in Git branch", () => {
+    it("should error on missing template variables in Git artifact URI", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
-        },
-        dynamic_volumes: {
-          repo: {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "{{branchName}}",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {
-        branchName: "feature-123",
-      });
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]?.gitBranch).toBe("feature-123");
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should error on missing template variables in Git URI", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["repo:/workspace"],
-        },
-        dynamic_volumes: {
-          repo: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "https://github.com/{{user}}/repo.git",
@@ -547,22 +417,50 @@ describe("resolveVolumes", () => {
 
       const result = resolveVolumes(config, {});
 
-      expect(result.volumes).toHaveLength(0);
+      expect(result.artifact).toBeNull();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toMatchObject({
-        volumeName: "repo",
+        volumeName: "artifact",
         type: "missing_variable",
         message: "Missing required variables: user",
       });
     });
 
-    it("should error on invalid Git URL", () => {
+    it("should error when volume mounts to working_dir", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
+          volumes: ["dataset:/workspace"],
+          artifact: {
+            working_dir: "/workspace",
+            driver: "vm0",
+          },
         },
         volumes: {
-          repo: {
+          dataset: {
+            driver: "vm0",
+            driver_opts: {
+              uri: "vm0://my-dataset",
+            },
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "my-artifact");
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        volumeName: "dataset",
+        type: "working_dir_conflict",
+        message:
+          'Volume "dataset" cannot mount to working_dir (/workspace). Only artifact can mount to working_dir.',
+      });
+    });
+
+    it("should error on invalid Git URL for artifact", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "git@github.com:user/repo.git",
@@ -574,23 +472,59 @@ describe("resolveVolumes", () => {
 
       const result = resolveVolumes(config);
 
-      expect(result.volumes).toHaveLength(0);
+      expect(result.artifact).toBeNull();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toMatchObject({
-        volumeName: "repo",
+        volumeName: "artifact",
         type: "invalid_uri",
         message:
           "Invalid Git URL: git@github.com:user/repo.git. Only HTTPS URLs are supported.",
       });
     });
 
+    it("should not require artifact key for Git artifact", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
+            driver: "git",
+            driver_opts: {
+              uri: "https://github.com/user/repo.git",
+            },
+          },
+        },
+      };
+
+      // No artifact key provided, but Git artifact should still resolve
+      const result = resolveVolumes(config);
+
+      expect(result.artifact).not.toBeNull();
+      expect(result.artifact?.driver).toBe("git");
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should return null artifact when VM0 artifact has no artifact key (valid case)", () => {
+      const config: AgentVolumeConfig = {
+        agent: {
+          artifact: {
+            working_dir: "/workspace",
+            driver: "vm0",
+          },
+        },
+      };
+
+      // No artifact key provided for VM0 artifact - this is valid, just means no artifact mounted
+      const result = resolveVolumes(config);
+
+      expect(result.artifact).toBeNull();
+      expect(result.errors).toHaveLength(0); // No error, just no artifact
+    });
+
     it("should preserve token with environment variable pattern", () => {
       const config: AgentVolumeConfig = {
         agent: {
-          volumes: ["repo:/workspace"],
-        },
-        volumes: {
-          repo: {
+          artifact: {
+            working_dir: "/workspace",
             driver: "git",
             driver_opts: {
               uri: "https://github.com/user/repo.git",
@@ -603,29 +537,8 @@ describe("resolveVolumes", () => {
 
       const result = resolveVolumes(config);
 
-      expect(result.volumes).toHaveLength(1);
-      expect(result.volumes[0]?.gitToken).toBe("${CI_GITHUB_TOKEN}");
+      expect(result.artifact?.gitToken).toBe("${CI_GITHUB_TOKEN}");
       expect(result.errors).toHaveLength(0);
     });
-  });
-
-  it("should reject deprecated 'dynamic-volumes' format", () => {
-    const config = {
-      agent: {
-        volumes: ["dataset:/path"],
-      },
-      "dynamic-volumes": {
-        dataset: {
-          driver: "vm0",
-          driver_opts: {
-            uri: "vm0://my-dataset",
-          },
-        },
-      },
-    };
-
-    expect(() => resolveVolumes(config as AgentVolumeConfig)).toThrow(
-      "Configuration error: 'dynamic-volumes' is deprecated. Please use 'dynamic_volumes' instead (snake_case)",
-    );
   });
 });
