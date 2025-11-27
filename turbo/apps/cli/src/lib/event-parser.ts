@@ -83,7 +83,8 @@ interface Vm0ResultEvent {
   runId: string;
   status: "completed";
   checkpointId: string;
-  volumeSnapshots: number;
+  agentSessionId: string;
+  hasArtifact: boolean;
   timestamp: string;
 }
 
@@ -261,7 +262,8 @@ export class ClaudeEventParser {
       data: {
         runId: event.runId,
         checkpointId: event.checkpointId,
-        volumeSnapshots: event.volumeSnapshots,
+        agentSessionId: event.agentSessionId,
+        hasArtifact: event.hasArtifact,
       },
     };
   }

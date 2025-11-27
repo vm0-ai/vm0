@@ -145,9 +145,8 @@ export class EventRenderer {
     console.log(
       `  Session: ${chalk.gray(String(event.data.agentSessionId || ""))}`,
     );
-    const volumeSnapshots = Number(event.data.volumeSnapshots || 0);
-    if (volumeSnapshots > 0) {
-      console.log(`  Volume snapshots: ${chalk.gray(String(volumeSnapshots))}`);
+    if (event.data.hasArtifact) {
+      console.log(`  Artifact: ${chalk.gray("saved")}`);
     }
   }
 
