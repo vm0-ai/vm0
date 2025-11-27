@@ -70,7 +70,14 @@ describe("run command", () => {
         nextSequence: 1,
       });
 
-      await runCommand.parseAsync(["node", "cli", validUuid, "test prompt"]);
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        validUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
 
       expect(apiClient.createRun).toHaveBeenCalled();
     });
@@ -106,12 +113,21 @@ describe("run command", () => {
         nextSequence: 1,
       });
 
-      await runCommand.parseAsync(["node", "cli", "my-agent", "test prompt"]);
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
 
       expect(apiClient.getConfigByName).toHaveBeenCalledWith("my-agent");
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
         dynamicVars: undefined,
       });
     });
@@ -127,6 +143,8 @@ describe("run command", () => {
           "cli",
           "nonexistent-agent",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -172,6 +190,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "-e",
         "KEY1=value1",
       ]);
@@ -179,6 +199,8 @@ describe("run command", () => {
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
         dynamicVars: { KEY1: "value1" },
       });
     });
@@ -189,6 +211,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "-e",
         "KEY1=value1",
         "-e",
@@ -198,6 +222,8 @@ describe("run command", () => {
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
         dynamicVars: { KEY1: "value1", KEY2: "value2" },
       });
     });
@@ -208,6 +234,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "-e",
         "URL=https://example.com?foo=bar",
       ]);
@@ -215,6 +243,8 @@ describe("run command", () => {
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
         dynamicVars: { URL: "https://example.com?foo=bar" },
       });
     });
@@ -226,6 +256,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-e",
           "EMPTY=",
         ]);
@@ -239,6 +271,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-e",
           "INVALID",
         ]);
@@ -252,6 +286,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-e",
           "=value",
         ]);
@@ -264,11 +300,15 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
         dynamicVars: undefined,
       });
     });
@@ -306,6 +346,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -331,6 +373,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "-e",
         "KEY=value",
       ]);
@@ -355,6 +399,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -378,6 +424,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -401,6 +449,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -419,6 +469,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -460,6 +512,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "-t",
         "30",
       ]);
@@ -473,6 +527,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
         "--timeout",
         "120",
       ]);
@@ -487,6 +543,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-t",
           "invalid",
         ]);
@@ -505,6 +563,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-t",
           "0",
         ]);
@@ -523,6 +583,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
           "-t",
           "-10",
         ]);
@@ -540,6 +602,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       // Command should complete successfully with default timeout
@@ -627,6 +691,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
@@ -671,6 +737,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       expect(ClaudeEventParser.parse).toHaveBeenCalledWith({
@@ -713,6 +781,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       // Should only call getEvents once since result was received
@@ -771,6 +841,8 @@ describe("run command", () => {
         "cli",
         "550e8400-e29b-41d4-a716-446655440000",
         "test prompt",
+        "--artifact-name",
+        "test-artifact",
       ]);
 
       // Should only render the result event, not the unknown one
@@ -809,6 +881,8 @@ describe("run command", () => {
           "cli",
           "550e8400-e29b-41d4-a716-446655440000",
           "test prompt",
+          "--artifact-name",
+          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
