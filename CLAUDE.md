@@ -155,3 +155,15 @@ export async function GET() {
 3. Never commit code that fails any of these checks
 4. Use proper conventional commit message format
 5. These checks help maintain the high standards defined in our design principles
+
+## Language Standard
+
+**All project content must be written in English.** This ensures accessibility for international contributors and maintains consistency across the codebase.
+
+### Applies to:
+- **Source code** - Variable names, function names, class names
+- **Comments** - Inline comments and documentation comments
+- **Commit messages** - All git commit messages
+- **Pull requests** - PR titles, descriptions, and review comments
+- **Issues** - Bug reports, feature requests, and discussions
+- **Documentation** - README, guides, and all markdown files
