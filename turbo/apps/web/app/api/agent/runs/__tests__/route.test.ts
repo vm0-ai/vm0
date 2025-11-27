@@ -81,16 +81,21 @@ describe("POST /api/agent/runs - Async Execution", () => {
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testConfigId));
 
-    // Create test agent config
+    // Create test agent config with new agents array format
     await globalThis.services.db.insert(agentConfigs).values({
       id: testConfigId,
       userId: testUserId,
       name: "test-agent",
       config: {
-        agent: {
-          name: "test-agent",
-          model: "claude-3-5-sonnet-20241022",
-        },
+        version: "1.0",
+        agents: [
+          {
+            name: "test-agent",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       },
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -135,6 +140,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: testConfigId,
           prompt: "Test prompt",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -199,6 +205,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: testConfigId,
           prompt: "Test async completion",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -251,6 +258,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: testConfigId,
           prompt: "Test async failure",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -301,6 +309,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: testConfigId,
           prompt: "Long running task",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -330,6 +339,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         },
         body: JSON.stringify({
           prompt: "Test prompt",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -348,6 +358,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         },
         body: JSON.stringify({
           agentConfigId: testConfigId,
+          artifactName: "test-artifact",
         }),
       });
 
@@ -356,6 +367,25 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.message).toContain("prompt");
+    });
+
+    it("should reject request without artifactName", async () => {
+      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agentConfigId: testConfigId,
+          prompt: "Test prompt",
+        }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("artifactName");
     });
 
     it("should reject request for non-existent agent config", async () => {
@@ -369,6 +399,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: nonExistentConfigId,
           prompt: "Test prompt",
+          artifactName: "test-artifact",
         }),
       });
 
@@ -398,6 +429,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         body: JSON.stringify({
           agentConfigId: testConfigId,
           prompt: "Test prompt",
+          artifactName: "test-artifact",
         }),
       });
 
