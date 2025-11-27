@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { listLocalFiles, removeExtraFiles } from "../file-utils";
+import AdmZip from "adm-zip";
+import { getRemoteFilesFromZip, removeExtraFiles } from "../file-utils";
 
 describe("file-utils", () => {
   let tempDir: string;
@@ -15,76 +16,46 @@ describe("file-utils", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  describe("listLocalFiles", () => {
-    it("should list all files in a directory", async () => {
-      // Create test files
-      fs.writeFileSync(path.join(tempDir, "file1.txt"), "content1");
-      fs.writeFileSync(path.join(tempDir, "file2.txt"), "content2");
+  describe("getRemoteFilesFromZip", () => {
+    it("should extract file paths from zip entries", () => {
+      const zip = new AdmZip();
+      zip.addFile("file1.txt", Buffer.from("content1"));
+      zip.addFile("file2.txt", Buffer.from("content2"));
 
-      const files = await listLocalFiles(tempDir);
+      const remoteFiles = getRemoteFilesFromZip(zip.getEntries());
 
-      expect(files).toHaveLength(2);
-      expect(files).toContain("file1.txt");
-      expect(files).toContain("file2.txt");
+      expect(remoteFiles.size).toBe(2);
+      expect(remoteFiles.has("file1.txt")).toBe(true);
+      expect(remoteFiles.has("file2.txt")).toBe(true);
     });
 
-    it("should list files in nested directories", async () => {
-      // Create nested structure
-      const subDir = path.join(tempDir, "subdir");
-      fs.mkdirSync(subDir);
-      fs.writeFileSync(path.join(tempDir, "root.txt"), "root");
-      fs.writeFileSync(path.join(subDir, "nested.txt"), "nested");
+    it("should handle nested paths", () => {
+      const zip = new AdmZip();
+      zip.addFile("dir/subdir/file.txt", Buffer.from("content"));
 
-      const files = await listLocalFiles(tempDir);
+      const remoteFiles = getRemoteFilesFromZip(zip.getEntries());
 
-      expect(files).toHaveLength(2);
-      expect(files).toContain("root.txt");
-      expect(files).toContain(path.join("subdir", "nested.txt"));
+      expect(remoteFiles.size).toBe(1);
+      expect(remoteFiles.has("dir/subdir/file.txt")).toBe(true);
     });
 
-    it("should exclude .vm0 directory by default", async () => {
-      // Create files including .vm0 directory
-      fs.writeFileSync(path.join(tempDir, "file.txt"), "content");
-      const vm0Dir = path.join(tempDir, ".vm0");
-      fs.mkdirSync(vm0Dir);
-      fs.writeFileSync(path.join(vm0Dir, "storage.yaml"), "name: test");
+    it("should exclude directory entries", () => {
+      const zip = new AdmZip();
+      zip.addFile("dir/", Buffer.alloc(0));
+      zip.addFile("dir/file.txt", Buffer.from("content"));
 
-      const files = await listLocalFiles(tempDir);
+      const remoteFiles = getRemoteFilesFromZip(zip.getEntries());
 
-      expect(files).toHaveLength(1);
-      expect(files).toContain("file.txt");
-      expect(files).not.toContain(path.join(".vm0", "storage.yaml"));
+      expect(remoteFiles.size).toBe(1);
+      expect(remoteFiles.has("dir/file.txt")).toBe(true);
     });
 
-    it("should allow custom exclude directories", async () => {
-      // Create files
-      fs.writeFileSync(path.join(tempDir, "file.txt"), "content");
-      const nodeModules = path.join(tempDir, "node_modules");
-      fs.mkdirSync(nodeModules);
-      fs.writeFileSync(path.join(nodeModules, "package.json"), "{}");
+    it("should return empty set for empty zip", () => {
+      const zip = new AdmZip();
 
-      const files = await listLocalFiles(tempDir, ["node_modules"]);
+      const remoteFiles = getRemoteFilesFromZip(zip.getEntries());
 
-      expect(files).toHaveLength(1);
-      expect(files).toContain("file.txt");
-    });
-
-    it("should return empty array for empty directory", async () => {
-      const files = await listLocalFiles(tempDir);
-
-      expect(files).toHaveLength(0);
-    });
-
-    it("should handle deeply nested structures", async () => {
-      // Create deep structure
-      const deepDir = path.join(tempDir, "a", "b", "c");
-      fs.mkdirSync(deepDir, { recursive: true });
-      fs.writeFileSync(path.join(deepDir, "deep.txt"), "deep");
-
-      const files = await listLocalFiles(tempDir);
-
-      expect(files).toHaveLength(1);
-      expect(files).toContain(path.join("a", "b", "c", "deep.txt"));
+      expect(remoteFiles.size).toBe(0);
     });
   });
 

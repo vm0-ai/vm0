@@ -1,11 +1,27 @@
 import * as fs from "fs";
 import * as path from "path";
+import type AdmZip from "adm-zip";
+
+/**
+ * Extract file paths from zip entries, normalizing path separators.
+ */
+export function getRemoteFilesFromZip(
+  zipEntries: AdmZip.IZipEntry[],
+): Set<string> {
+  const remoteFiles = new Set<string>();
+  for (const entry of zipEntries) {
+    if (!entry.isDirectory) {
+      remoteFiles.add(entry.entryName.replace(/\\/g, "/"));
+    }
+  }
+  return remoteFiles;
+}
 
 /**
  * Recursively list all files in a directory, excluding specified directories.
  * Returns relative paths from the base directory.
  */
-export async function listLocalFiles(
+async function listLocalFiles(
   dir: string,
   excludeDirs: string[] = [".vm0"],
 ): Promise<string[]> {
