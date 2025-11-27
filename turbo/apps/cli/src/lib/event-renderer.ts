@@ -142,6 +142,9 @@ export class EventRenderer {
     console.log(
       `  Checkpoint: ${chalk.gray(String(event.data.checkpointId || ""))}`,
     );
+    console.log(
+      `  Session: ${chalk.gray(String(event.data.agentSessionId || ""))}`,
+    );
     const volumeSnapshots = Number(event.data.volumeSnapshots || 0);
     if (volumeSnapshots > 0) {
       console.log(`  Volume snapshots: ${chalk.gray(String(volumeSnapshots))}`);
