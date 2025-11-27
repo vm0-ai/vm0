@@ -25,7 +25,7 @@ RUN curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-am
     && chmod +x /usr/local/bin/jq
 
 # Install global npm packages for CI/CD
-RUN npm install -g pnpm@10.15.0 lefthook@1.12.3 vercel@46.1.1 neonctl@2.15.0
+RUN npm install -g pnpm@10.15.0 lefthook@1.12.3 vercel@48.11.0 neonctl@2.15.0
 
 # Install Playwright system dependencies for Chromium
 # This is needed for e2e tests in CI
