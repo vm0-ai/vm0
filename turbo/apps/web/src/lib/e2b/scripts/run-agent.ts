@@ -41,7 +41,7 @@ fi
 
 # Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
 if [ "$USE_MOCK_CLAUDE" = "true" ]; then
-  CLAUDE_BIN="/usr/local/bin/vas-agent/lib/mock-claude.sh"
+  CLAUDE_BIN="/usr/local/bin/vm0-agent/lib/mock-claude.sh"
   echo "[VAS] Using mock-claude for testing" >&2
 else
   CLAUDE_BIN="claude"
