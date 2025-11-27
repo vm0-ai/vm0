@@ -24,7 +24,8 @@ setup() {
     assert_success
 
     # Then try to run without providing template vars
-    run $CLI_COMMAND run vm0-template-validation "echo hello"
+    # Note: --artifact-name is required for run command, so provide a dummy one
+    run $CLI_COMMAND run vm0-template-validation --artifact-name test-artifact "echo hello"
     assert_failure
     assert_output --partial "Missing required template variables"
     assert_output --partial "userName"

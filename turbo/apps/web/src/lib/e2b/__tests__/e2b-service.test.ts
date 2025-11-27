@@ -298,16 +298,15 @@ describe("E2B Service - mocked unit tests", () => {
         agentConfigId: "test-agent-006",
         agentConfig: {
           version: "1.0",
-          agent: {
-            name: "test-agent",
-            description: "Test agent with working dir",
-            image: "test-image",
-            provider: "claude-code",
-            artifact: {
+          agents: [
+            {
+              name: "test-agent",
+              description: "Test agent with working dir",
+              image: "test-image",
+              provider: "claude-code",
               working_dir: "/home/user/workspace",
             },
-            volumes: [],
-          },
+          ],
         },
         sandboxToken: "vm0_live_test_token",
         prompt: "Read files from workspace",
@@ -343,13 +342,14 @@ describe("E2B Service - mocked unit tests", () => {
         agentConfigId: "test-agent-007",
         agentConfig: {
           version: "1.0",
-          agent: {
-            name: "test-agent",
-            description: "Test agent without working dir",
-            image: "test-image",
-            provider: "claude-code",
-            volumes: [],
-          },
+          agents: [
+            {
+              name: "test-agent",
+              description: "Test agent without working dir",
+              image: "test-image",
+              provider: "claude-code",
+            },
+          ],
         },
         sandboxToken: "vm0_live_test_token",
         prompt: "Read files",
@@ -452,14 +452,15 @@ describe("E2B Service - mocked unit tests", () => {
         agentConfigId: "test-agent-template-001",
         agentConfig: {
           version: "1.0",
-          agent: {
-            name: "test-agent",
-            description: "Test agent with custom image",
-            image: "custom-template-name",
-            provider: "claude-code",
-            working_dir: "/workspace",
-            volumes: [],
-          },
+          agents: [
+            {
+              name: "test-agent",
+              description: "Test agent with custom image",
+              image: "custom-template-name",
+              provider: "claude-code",
+              working_dir: "/workspace",
+            },
+          ],
         },
         sandboxToken: "vm0_live_test_token",
         prompt: "Test with custom image",

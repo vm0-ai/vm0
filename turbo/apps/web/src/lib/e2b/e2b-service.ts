@@ -63,7 +63,7 @@ export class E2BService {
         | AgentConfigYaml
         | undefined;
       const mountPath =
-        agentConfigYaml?.agent?.artifact?.working_dir || "/workspace";
+        agentConfigYaml?.agents?.[0]?.working_dir || "/workspace";
 
       const artifactResult = await storageService.prepareArtifactFromSnapshot(
         context.resumeArtifact,
@@ -77,8 +77,9 @@ export class E2BService {
         agentConfig,
         context.dynamicVars || {},
         context.runId,
-        context.userId,
-        undefined, // No artifact key for resume
+        context.userId || "",
+        undefined, // No artifact name for resume
+        undefined, // No artifact version for resume
         true, // Skip artifact validation - using snapshot instead
       );
 
@@ -94,8 +95,9 @@ export class E2BService {
         agentConfig,
         context.dynamicVars || {},
         context.runId,
-        context.userId,
-        context.artifactKey,
+        context.userId || "",
+        context.artifactName,
+        context.artifactVersion,
       );
     }
 
@@ -321,18 +323,19 @@ export class E2BService {
       envs: envVars, // Pass environment variables to sandbox
     };
 
-    // Priority: agent.image > E2B_TEMPLATE_NAME
-    const templateName = agentConfig?.agent?.image || e2bConfig.defaultTemplate;
+    // Priority: agents[0].image > E2B_TEMPLATE_NAME
+    const templateName =
+      agentConfig?.agents?.[0]?.image || e2bConfig.defaultTemplate;
 
     if (!templateName) {
       throw new Error(
-        "[E2B] No template specified. Either set agent.image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
+        "[E2B] No template specified. Either set agents[0].image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
       );
     }
 
     console.log(`[E2B] Using template: ${templateName}`);
     console.log(
-      `[E2B] Template source: ${agentConfig?.agent?.image ? "agent.image" : "E2B_TEMPLATE_NAME"}`,
+      `[E2B] Template source: ${agentConfig?.agents?.[0]?.image ? "agents[0].image" : "E2B_TEMPLATE_NAME"}`,
     );
     console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
 
@@ -409,9 +412,9 @@ export class E2BService {
 
     console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
 
-    // Extract working_dir from artifact config (artifact always mounts to working_dir)
+    // Extract working_dir from agent config
     const config = agentConfig as AgentConfigYaml | undefined;
-    const workingDir = config?.agent?.artifact?.working_dir;
+    const workingDir = config?.agents?.[0]?.working_dir;
 
     // Set environment variables and execute script
     const envs: Record<string, string> = {
@@ -453,8 +456,8 @@ export class E2BService {
       // VAS artifact - pass info for vas snapshot
       envs.VM0_ARTIFACT_DRIVER = "vas";
       envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
-      envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName || "";
-      envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId || "";
+      envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName;
+      envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId;
       console.log(`[E2B] Configured VAS artifact for checkpoint`);
     } else {
       console.log(`[E2B] No artifact configured for checkpoint`);

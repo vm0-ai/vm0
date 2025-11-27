@@ -1,7 +1,6 @@
 import type {
   AgentVolumeConfig,
   VolumeConfig,
-  ArtifactConfig,
   ResolvedVolume,
   ResolvedArtifact,
   VolumeResolutionResult,
@@ -40,7 +39,7 @@ export function parseMountPath(declaration: string): {
 export function replaceTemplateVars(
   str: string,
   vars: Record<string, string>,
-): { uri: string; missingVars: string[] } {
+): { result: string; missingVars: string[] } {
   const templatePattern = /\{\{(\w+)\}\}/g;
   const missingVars: string[] = [];
   let result = str;
@@ -57,7 +56,7 @@ export function replaceTemplateVars(
     }
   }
 
-  return { uri: result, missingVars };
+  return { result, missingVars };
 }
 
 /**
@@ -68,16 +67,16 @@ function resolveVasVolume(
   mountPath: string,
   volumeConfig: VolumeConfig,
   dynamicVars: Record<string, string>,
-): { volume: ResolvedVolume; error: VolumeError | null } {
-  // Replace template variables in URI
-  const { uri, missingVars } = replaceTemplateVars(
-    volumeConfig.driver_opts.uri,
+): { volume: ResolvedVolume | null; error: VolumeError | null } {
+  // Replace template variables in storage name
+  const { result: storageName, missingVars } = replaceTemplateVars(
+    volumeConfig.name,
     dynamicVars,
   );
 
   if (missingVars.length > 0) {
     return {
-      volume: null as unknown as ResolvedVolume,
+      volume: null,
       error: {
         volumeName,
         message: `Missing required variables: ${missingVars.join(", ")}`,
@@ -86,29 +85,28 @@ function resolveVasVolume(
     };
   }
 
-  // Parse vas:// URI
-  const vasUriPattern = /^vas:\/\/(.+)$/;
-  const match = uri.match(vasUriPattern);
+  // Replace template variables in version
+  const { result: version, missingVars: versionMissingVars } =
+    replaceTemplateVars(volumeConfig.version, dynamicVars);
 
-  if (!match) {
+  if (versionMissingVars.length > 0) {
     return {
-      volume: null as unknown as ResolvedVolume,
+      volume: null,
       error: {
         volumeName,
-        message: `Invalid VAS URI: ${uri}. Expected format: vas://volume-name`,
-        type: "invalid_uri",
+        message: `Missing required variables in version: ${versionMissingVars.join(", ")}`,
+        type: "missing_variable",
       },
     };
   }
-
-  const vasStorageName = match[1];
 
   return {
     volume: {
       name: volumeName,
       driver: "vas" as StorageDriver,
       mountPath,
-      vasStorageName,
+      vasStorageName: storageName,
+      vasVersion: version,
     },
     error: null,
   };
@@ -116,29 +114,21 @@ function resolveVasVolume(
 
 /**
  * Resolve artifact configuration
+ * @param workingDir - Working directory where artifact will be mounted
+ * @param artifactName - Required artifact storage name
+ * @param artifactVersion - Optional version (defaults to "latest")
  */
 function resolveArtifact(
-  artifactConfig: ArtifactConfig,
-  artifactKey?: string,
-): { artifact: ResolvedArtifact | null; errors: VolumeError[] } {
-  const errors: VolumeError[] = [];
-
-  // VAS driver: artifact key is required at runtime
-  if (!artifactKey) {
-    errors.push({
-      volumeName: "artifact",
-      message:
-        "VAS artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
-      type: "missing_artifact_key",
-    });
-    return { artifact: null, errors };
-  }
-
+  workingDir: string,
+  artifactName: string,
+  artifactVersion: string = "latest",
+): { artifact: ResolvedArtifact; errors: VolumeError[] } {
   return {
     artifact: {
       driver: "vas",
-      mountPath: artifactConfig.working_dir,
-      vasStorageName: artifactKey,
+      mountPath: workingDir,
+      vasStorageName: artifactName,
+      vasVersion: artifactVersion,
     },
     errors: [],
   };
@@ -148,60 +138,52 @@ function resolveArtifact(
  * Resolve volumes from agent configuration
  * @param config - Agent configuration with volume definitions
  * @param dynamicVars - Dynamic variables for template replacement
- * @param artifactKey - Artifact key for VAS driver (optional)
+ * @param artifactName - Required artifact storage name
+ * @param artifactVersion - Optional artifact version (defaults to "latest")
  * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
  * @returns Resolution result with resolved volumes, artifact, and errors
  */
 export function resolveVolumes(
   config: AgentVolumeConfig,
   dynamicVars: Record<string, string> = {},
-  artifactKey?: string,
+  artifactName?: string,
+  artifactVersion?: string,
   skipArtifact?: boolean,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
   let artifact: ResolvedArtifact | null = null;
 
-  // Get working_dir from artifact config for validation
-  const workingDir = config.agent?.artifact?.working_dir;
+  // Get first agent (currently only support one agent)
+  const agent = config.agents?.[0];
+
+  // Get working_dir from agent config for validation
+  const workingDir = agent?.working_dir;
 
   // Process volume declarations
-  if (config.agent?.volumes && config.agent.volumes.length > 0) {
-    for (const declaration of config.agent.volumes) {
+  if (agent?.volumes && agent.volumes.length > 0) {
+    for (const declaration of agent.volumes) {
       try {
         const { volumeName, mountPath } = parseMountPath(declaration);
 
-        // Validate: volumes cannot mount to working_dir
-        if (workingDir && mountPath === workingDir) {
+        // Look up volume definition - required in new format
+        const volumeConfig = config.volumes?.[volumeName];
+
+        if (!volumeConfig) {
           errors.push({
             volumeName,
-            message: `Volume "${volumeName}" cannot mount to working_dir (${workingDir}). Only artifact can mount to working_dir.`,
-            type: "working_dir_conflict",
+            message: `Volume "${volumeName}" is not defined in the volumes section. Each volume must have explicit name and version.`,
+            type: "missing_definition",
           });
           continue;
         }
 
-        // Look up volume definition, or auto-resolve by name
-        let volumeConfig = config.volumes?.[volumeName];
-
-        // If no explicit volume definition, auto-resolve as VAS volume by name
-        // This allows simple volume declarations like "my-volume:/mount/path"
-        // to automatically resolve to vas://my-volume
-        if (!volumeConfig) {
-          volumeConfig = {
-            driver: "vas",
-            driver_opts: {
-              uri: `vas://${volumeName}`,
-            },
-          };
-        }
-
-        // Validate driver (only vas supported for volumes)
-        if (volumeConfig.driver !== "vas") {
+        // Validate required fields
+        if (!volumeConfig.name || !volumeConfig.version) {
           errors.push({
             volumeName,
-            message: `Unsupported volume driver: ${volumeConfig.driver}. Only vas driver is supported for volumes.`,
-            type: "invalid_uri",
+            message: `Volume "${volumeName}" must have both 'name' and 'version' fields.`,
+            type: "invalid_config",
           });
           continue;
         }
@@ -219,24 +201,35 @@ export function resolveVolumes(
           continue;
         }
 
-        volumes.push(volume);
+        if (volume) {
+          volumes.push(volume);
+        }
       } catch (error) {
         errors.push({
           volumeName: "unknown",
           message: error instanceof Error ? error.message : "Unknown error",
-          type: "invalid_uri",
+          type: "invalid_config",
         });
       }
     }
   }
 
-  // Process artifact configuration (skip when resuming from checkpoint)
-  if (config.agent?.artifact && !skipArtifact) {
-    const { artifact: resolvedArtifact, errors: artifactErrors } =
-      resolveArtifact(config.agent.artifact, artifactKey);
+  // Process artifact (skip when resuming from checkpoint)
+  if (workingDir && !skipArtifact) {
+    if (!artifactName) {
+      errors.push({
+        volumeName: "artifact",
+        message:
+          "Artifact name is required. Use --artifact-name flag to specify artifact.",
+        type: "missing_artifact_name",
+      });
+    } else {
+      const { artifact: resolvedArtifact, errors: artifactErrors } =
+        resolveArtifact(workingDir, artifactName, artifactVersion);
 
-    artifact = resolvedArtifact;
-    errors.push(...artifactErrors);
+      artifact = resolvedArtifact;
+      errors.push(...artifactErrors);
+    }
   }
 
   return { volumes, artifact, errors };

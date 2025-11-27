@@ -41,6 +41,7 @@ describe("StorageService", () => {
         undefined,
         {},
         "test-run-id",
+        "user-123",
       );
 
       expect(result).toEqual({
@@ -53,9 +54,12 @@ describe("StorageService", () => {
 
     it("should return empty result when no volumes or artifact configured", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: [],
-        },
+        agents: [
+          {
+            volumes: [],
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -68,6 +72,10 @@ describe("StorageService", () => {
         agentConfig,
         {},
         "test-run-id",
+        "user-123",
+        undefined,
+        undefined,
+        true, // skipArtifact
       );
 
       expect(result).toEqual({
@@ -80,9 +88,12 @@ describe("StorageService", () => {
 
     it("should handle volume resolution errors", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["data:/workspace/data"],
-        },
+        agents: [
+          {
+            volumes: ["data:/workspace/data"],
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -101,6 +112,8 @@ describe("StorageService", () => {
         agentConfig,
         {},
         "test-run-id",
+        "user-123",
+        "my-artifact",
       );
 
       expect(result.preparedStorages).toHaveLength(0);
@@ -109,117 +122,74 @@ describe("StorageService", () => {
       expect(result.errors[0]).toBe("data: Volume not found");
     });
 
-    it("should return error when VAS storage has no HEAD version", async () => {
+    it("should prepare VAS artifact when artifact name is provided", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["claude-system:/home/user/.config/claude"],
-        },
-        volumes: {
-          "claude-system": {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://claude-files",
-            },
+        agents: [
+          {
+            working_dir: "/home/user/workspace",
           },
-        },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "claude-system",
-            driver: "vas",
-            vasStorageName: "claude-files",
-            mountPath: "/home/user/.config/claude",
-          },
-        ],
-        artifact: null,
+        volumes: [],
+        artifact: {
+          driver: "vas",
+          mountPath: "/home/user/workspace",
+          vasStorageName: "my-artifact",
+          vasVersion: "latest",
+        },
         errors: [],
       });
 
-      // Mock globalThis.services.db to return a storage without HEAD version
+      // Mock database queries
       const mockDb = {
         select: vi.fn().mockReturnThis(),
         from: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([
-          {
-            id: "storage-123",
-            name: "claude-files",
-            userId: "user-123",
-            headVersionId: null, // No HEAD version
-          },
-        ]),
-      };
-
-      globalThis.services = {
-        db: mockDb,
-      } as never;
-
-      const result = await storageService.prepareStorages(
-        agentConfig,
-        {},
-        "test-run-id",
-        "user-123",
-      );
-
-      expect(result.preparedStorages).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("claude-files");
-      expect(result.errors[0]).toContain("has no HEAD version");
-    });
-
-    it("should return error when VAS storage not found in database", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["claude-system:/home/user/.config/claude"],
-        },
-        volumes: {
-          "claude-system": {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://nonexistent-storage",
+        limit: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: "storage-123",
+              name: "my-artifact",
+              userId: "user-123",
+              headVersionId: "version-123",
             },
-          },
-        },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "claude-system",
-            driver: "vas",
-            vasStorageName: "nonexistent-storage",
-            mountPath: "/home/user/.config/claude",
-          },
-        ],
-        artifact: null,
-        errors: [],
-      });
-
-      // Mock globalThis.services.db to return empty result
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([]),
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: "version-123",
+              storageId: "storage-123",
+              s3Key: "user-123/my-artifact/version-123",
+            },
+          ]),
       };
 
       globalThis.services = {
         db: mockDb as never,
       } as never;
 
+      vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
+        localPath: "/tmp/vas-run-test-run-id/artifact",
+        filesDownloaded: 5,
+        totalBytes: 1024,
+      });
+
       const result = await storageService.prepareStorages(
         agentConfig,
         {},
         "test-run-id",
         "user-123",
+        "my-artifact",
+        "latest",
       );
 
-      expect(result.preparedStorages).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("nonexistent-storage");
-      expect(result.errors[0]).toContain("not found");
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact?.driver).toBe("vas");
+      expect(result.preparedArtifact?.vasStorageName).toBe("my-artifact");
+      expect(result.preparedArtifact?.vasVersionId).toBe("version-123");
+      expect(result.errors).toHaveLength(0);
     });
   });
 
@@ -256,6 +226,8 @@ describe("StorageService", () => {
           driver: "vas",
           localPath: "/tmp/vas-run-test/dataset",
           mountPath: "/workspace/data",
+          vasStorageName: "my-dataset",
+          vasVersionId: "version-123",
         },
       ];
 

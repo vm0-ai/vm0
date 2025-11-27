@@ -1,16 +1,15 @@
 version: "1.0"
 
-agent:
-  name: vm0-template-validation
-  description: "Test agent for template variable validation"
-  provider: claude-code
-
-  image: vm0-claude-code-dev
-  volumes:
-    - user-data:/home/user/data
+agents:
+  - name: vm0-template-validation
+    description: "Test agent for template variable validation"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+    volumes:
+      - user-data:/home/user/data
 
 volumes:
   user-data:
-    driver: vas
-    driver_opts:
-      uri: vas://{{userName}}-data
+    name: "{{userName}}-data"
+    version: "latest"

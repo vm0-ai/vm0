@@ -33,10 +33,14 @@ describe("Agent Config Upsert Behavior", () => {
     it("should create new config when name does not exist", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "test-agent-create",
-          instructions: "Test instructions",
-        },
+        agents: [
+          {
+            name: "test-agent-create",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       const request = new Request("http://localhost:3000/api/agent/configs", {
@@ -60,10 +64,15 @@ describe("Agent Config Upsert Behavior", () => {
     it("should update existing config when name matches", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "test-agent-update",
-          instructions: "Initial instructions",
-        },
+        agents: [
+          {
+            name: "test-agent-update",
+            description: "Initial description",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       // First create
@@ -84,10 +93,12 @@ describe("Agent Config Upsert Behavior", () => {
       // Then update with same name
       const updatedConfig = {
         ...config,
-        agent: {
-          ...config.agent,
-          instructions: "Updated instructions",
-        },
+        agents: [
+          {
+            ...config.agents[0],
+            description: "Updated description",
+          },
+        ],
       };
 
       const request2 = new Request("http://localhost:3000/api/agent/configs", {
@@ -120,15 +131,22 @@ describe("Agent Config Upsert Behavior", () => {
       });
       const configData = await getResponse.json();
 
-      expect(configData.config.agent.instructions).toBe("Updated instructions");
+      expect(configData.config.agents[0].description).toBe(
+        "Updated description",
+      );
     });
 
     it("should maintain unique constraint on (userId, name)", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "test-unique-constraint",
-        },
+        agents: [
+          {
+            name: "test-unique-constraint",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       // Create config for user 1
@@ -175,13 +193,18 @@ describe("Agent Config Upsert Behavior", () => {
     });
   });
 
-  describe("agent.name validation", () => {
+  describe("agents[0].name validation", () => {
     it("should reject config with invalid name format", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "ab", // Too short
-        },
+        agents: [
+          {
+            name: "ab", // Too short
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       const request = new Request("http://localhost:3000/api/agent/configs", {
@@ -196,15 +219,20 @@ describe("Agent Config Upsert Behavior", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("Invalid agent.name");
+      expect(data.error.message).toContain("Invalid agents[0].name");
     });
 
     it("should accept valid name with hyphens", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "my-test-agent-123",
-        },
+        agents: [
+          {
+            name: "my-test-agent-123",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       const request = new Request("http://localhost:3000/api/agent/configs", {
@@ -231,10 +259,15 @@ describe("Agent Config Upsert Behavior", () => {
     it("should return config with name field", async () => {
       const config = {
         version: "1.0",
-        agent: {
-          name: "test-get-config",
-          instructions: "Test",
-        },
+        agents: [
+          {
+            name: "test-get-config",
+            description: "Test",
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       // Create config
@@ -268,7 +301,7 @@ describe("Agent Config Upsert Behavior", () => {
       const getData = await getResponse.json();
 
       expect(getData.name).toBe("test-get-config");
-      expect(getData.config.agent.name).toBe("test-get-config");
+      expect(getData.config.agents[0].name).toBe("test-get-config");
 
       // Cleanup
       await globalThis.services.db

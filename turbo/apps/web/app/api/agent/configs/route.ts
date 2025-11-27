@@ -96,12 +96,19 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing config.version");
     }
 
-    if (!body.config.agent) {
-      throw new BadRequestError("Missing config.agent");
+    if (!body.config.agents || !Array.isArray(body.config.agents)) {
+      throw new BadRequestError("Missing config.agents array");
     }
 
+    if (body.config.agents.length === 0) {
+      throw new BadRequestError("config.agents array must not be empty");
+    }
+
+    // Get first agent (currently only process first agent)
+    const firstAgent = body.config.agents[0];
+
     // Validate agent.name
-    const agentName = body.config.agent?.name;
+    const agentName = firstAgent?.name;
     if (!agentName) {
       throw new BadRequestError("Missing agent.name in config");
     }
@@ -110,7 +117,7 @@ export async function POST(request: NextRequest) {
     const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
-        "Invalid agent.name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+        "Invalid agents[0].name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
       );
     }
 

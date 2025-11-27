@@ -146,6 +146,7 @@ describe("ApiClient", () => {
       const mockRequest = {
         agentConfigId: "cfg-123",
         prompt: "test prompt",
+        artifactName: "my-artifact",
       };
       const mockResponse = {
         runId: "run-456",
@@ -183,6 +184,7 @@ describe("ApiClient", () => {
         agentConfigId: "cfg-123",
         prompt: "test prompt",
         dynamicVars: { key1: "value1", key2: "value2" },
+        artifactName: "my-artifact",
       };
 
       mockFetch.mockResolvedValue({
@@ -225,6 +227,7 @@ describe("ApiClient", () => {
       const result = await apiClient.createRun({
         agentConfigId: "cfg-123",
         prompt: "test",
+        artifactName: "my-artifact",
       });
 
       expect(result.status).toBe("completed");
@@ -251,6 +254,7 @@ describe("ApiClient", () => {
       const result = await apiClient.createRun({
         agentConfigId: "cfg-123",
         prompt: "test",
+        artifactName: "my-artifact",
       });
 
       expect(result.status).toBe("failed");
@@ -264,6 +268,7 @@ describe("ApiClient", () => {
         apiClient.createRun({
           agentConfigId: "cfg-123",
           prompt: "test",
+          artifactName: "my-artifact",
         }),
       ).rejects.toThrow("Not authenticated");
     });
@@ -275,6 +280,7 @@ describe("ApiClient", () => {
         apiClient.createRun({
           agentConfigId: "cfg-123",
           prompt: "test",
+          artifactName: "my-artifact",
         }),
       ).rejects.toThrow("API URL not configured");
     });
@@ -291,6 +297,7 @@ describe("ApiClient", () => {
         apiClient.createRun({
           agentConfigId: "cfg-123",
           prompt: "test",
+          artifactName: "my-artifact",
         }),
       ).rejects.toThrow("Config not found");
     });
@@ -307,6 +314,7 @@ describe("ApiClient", () => {
         apiClient.createRun({
           agentConfigId: "cfg-123",
           prompt: "test",
+          artifactName: "my-artifact",
         }),
       ).rejects.toThrow("Failed to create run");
     });

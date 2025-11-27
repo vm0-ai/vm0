@@ -40,48 +40,48 @@ describe("parseMountPath", () => {
 
 describe("replaceTemplateVars", () => {
   it("should replace single template variable", () => {
-    const result = replaceTemplateVars("vas://{{storageName}}", {
+    const result = replaceTemplateVars("{{storageName}}", {
       storageName: "test-storage-123",
     });
 
     expect(result).toEqual({
-      uri: "vas://test-storage-123",
+      result: "test-storage-123",
       missingVars: [],
     });
   });
 
   it("should replace multiple template variables", () => {
-    const result = replaceTemplateVars("vas://{{userId}}-{{storageName}}", {
+    const result = replaceTemplateVars("{{userId}}-{{storageName}}", {
       userId: "user1",
       storageName: "my-storage",
     });
 
     expect(result).toEqual({
-      uri: "vas://user1-my-storage",
+      result: "user1-my-storage",
       missingVars: [],
     });
   });
 
   it("should detect missing variables", () => {
-    const result = replaceTemplateVars("vas://{{storageName}}", {});
+    const result = replaceTemplateVars("{{storageName}}", {});
 
     expect(result).toEqual({
-      uri: "vas://{{storageName}}",
+      result: "{{storageName}}",
       missingVars: ["storageName"],
     });
   });
 
   it("should detect multiple missing variables", () => {
-    const result = replaceTemplateVars("vas://{{userId}}/{{storageName}}", {});
+    const result = replaceTemplateVars("{{userId}}/{{storageName}}", {});
 
     expect(result.missingVars).toEqual(["userId", "storageName"]);
   });
 
-  it("should handle URIs without template variables", () => {
-    const result = replaceTemplateVars("vas://static-storage", {});
+  it("should handle strings without template variables", () => {
+    const result = replaceTemplateVars("static-storage", {});
 
     expect(result).toEqual({
-      uri: "vas://static-storage",
+      result: "static-storage",
       missingVars: [],
     });
   });
@@ -89,22 +89,23 @@ describe("replaceTemplateVars", () => {
 
 describe("resolveVolumes", () => {
   describe("VAS volumes", () => {
-    it("should resolve VAS volume with valid URI", () => {
+    it("should resolve VAS volume with explicit definition", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
+        agents: [
+          {
+            volumes: ["dataset:/workspace/data"],
+            working_dir: "/home/user/workspace",
+          },
+        ],
         volumes: {
           dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://mnist",
-            },
+            name: "mnist",
+            version: "latest",
           },
         },
       };
 
-      const result = resolveVolumes(config);
+      const result = resolveVolumes(config, {}, "my-artifact", "latest");
 
       expect(result.volumes).toHaveLength(1);
       expect(result.errors).toHaveLength(0);
@@ -113,25 +114,32 @@ describe("resolveVolumes", () => {
         driver: "vas",
         mountPath: "/workspace/data",
         vasStorageName: "mnist",
+        vasVersion: "latest",
       });
     });
 
-    it("should resolve VAS volume with template variables", () => {
+    it("should resolve VAS volume with template variables in name", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
+        agents: [
+          {
+            volumes: ["dataset:/workspace/data"],
+            working_dir: "/home/user/workspace",
+          },
+        ],
         volumes: {
           dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://{{datasetName}}",
-            },
+            name: "{{datasetName}}",
+            version: "latest",
           },
         },
       };
 
-      const result = resolveVolumes(config, { datasetName: "cifar10" });
+      const result = resolveVolumes(
+        config,
+        { datasetName: "cifar10" },
+        "my-artifact",
+        "latest",
+      );
 
       expect(result.volumes).toHaveLength(1);
       expect(result.errors).toHaveLength(0);
@@ -140,28 +148,30 @@ describe("resolveVolumes", () => {
         driver: "vas",
         mountPath: "/workspace/data",
         vasStorageName: "cifar10",
+        vasVersion: "latest",
       });
     });
 
-    it("should error on missing template variables in VAS URI", () => {
+    it("should error on missing template variables in volume name", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
+        agents: [
+          {
+            volumes: ["dataset:/workspace/data"],
+            working_dir: "/home/user/workspace",
+          },
+        ],
         volumes: {
           dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://{{datasetName}}",
-            },
+            name: "{{datasetName}}",
+            version: "latest",
           },
         },
       };
 
-      const result = resolveVolumes(config); // No dynamic vars provided
+      const result = resolveVolumes(config, {}, "my-artifact", "latest");
 
       expect(result.volumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
+      expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0]).toMatchObject({
         volumeName: "dataset",
         type: "missing_variable",
@@ -169,68 +179,62 @@ describe("resolveVolumes", () => {
       });
     });
 
-    it("should error on invalid VAS URI format", () => {
+    it("should error when volume is not defined in volumes section", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
-        volumes: {
-          dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "invalid://mnist",
-            },
+        agents: [
+          {
+            volumes: ["dataset:/workspace/data"],
+            working_dir: "/home/user/workspace",
           },
-        },
+        ],
+        // No volumes section
       };
 
-      const result = resolveVolumes(config);
+      const result = resolveVolumes(config, {}, "my-artifact", "latest");
 
       expect(result.volumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
+      expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0]).toMatchObject({
         volumeName: "dataset",
-        type: "invalid_uri",
-        message:
-          "Invalid VAS URI: invalid://mnist. Expected format: vas://volume-name",
-      });
-    });
-
-    it("should error on missing vas:// prefix", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-        },
-        volumes: {
-          dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "mnist",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "invalid_uri",
+        type: "missing_definition",
       });
     });
   });
 
   describe("artifact resolution", () => {
-    it("should resolve VAS artifact when artifact key is provided", () => {
+    it("should resolve VAS artifact when artifact name is provided", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
+        agents: [
+          {
             working_dir: "/home/user/workspace",
-            driver: "vas",
           },
-        },
+        ],
+      };
+
+      const result = resolveVolumes(
+        config,
+        {},
+        "my-artifact-storage",
+        "abc123",
+      );
+
+      expect(result.artifact).not.toBeNull();
+      expect(result.artifact).toMatchObject({
+        driver: "vas",
+        mountPath: "/home/user/workspace",
+        vasStorageName: "my-artifact-storage",
+        vasVersion: "abc123",
+      });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should use latest as default version when not specified", () => {
+      const config: AgentVolumeConfig = {
+        agents: [
+          {
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       const result = resolveVolumes(config, {}, "my-artifact-storage");
@@ -240,49 +244,50 @@ describe("resolveVolumes", () => {
         driver: "vas",
         mountPath: "/home/user/workspace",
         vasStorageName: "my-artifact-storage",
+        vasVersion: "latest",
       });
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should error when no artifact key provided for VAS driver", () => {
+    it("should error when no artifact name provided", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
+        agents: [
+          {
             working_dir: "/home/user/workspace",
-            driver: "vas",
           },
-        },
+        ],
       };
 
-      const result = resolveVolumes(config); // No artifact key
+      const result = resolveVolumes(config); // No artifact name
 
       expect(result.artifact).toBeNull();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toMatchObject({
         volumeName: "artifact",
-        type: "missing_artifact_key",
+        type: "missing_artifact_name",
         message:
-          "VAS artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
+          "Artifact name is required. Use --artifact-name flag to specify artifact.",
       });
     });
 
-    it("should default to VAS driver when driver not specified", () => {
+    it("should skip artifact when skipArtifact is true", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
+        agents: [
+          {
             working_dir: "/home/user/workspace",
           },
-        },
+        ],
       };
 
-      const result = resolveVolumes(config, {}, "my-artifact");
+      const result = resolveVolumes(
+        config,
+        {},
+        undefined,
+        undefined,
+        true, // skipArtifact
+      );
 
-      expect(result.artifact).not.toBeNull();
-      expect(result.artifact).toMatchObject({
-        driver: "vas",
-        mountPath: "/home/user/workspace",
-        vasStorageName: "my-artifact",
-      });
+      expect(result.artifact).toBeNull();
       expect(result.errors).toHaveLength(0);
     });
   });
@@ -290,120 +295,47 @@ describe("resolveVolumes", () => {
   describe("volume and artifact combination", () => {
     it("should resolve both volumes and artifact together", () => {
       const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/workspace/data"],
-          artifact: {
+        agents: [
+          {
+            volumes: ["dataset:/workspace/data"],
             working_dir: "/home/user/workspace",
-            driver: "vas",
           },
-        },
+        ],
         volumes: {
           dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://my-dataset",
-            },
+            name: "my-dataset",
+            version: "v1",
           },
         },
       };
 
-      const result = resolveVolumes(config, {}, "my-artifact");
+      const result = resolveVolumes(config, {}, "my-artifact", "latest");
 
       expect(result.volumes).toHaveLength(1);
       expect(result.artifact).not.toBeNull();
       expect(result.errors).toHaveLength(0);
     });
-
-    it("should error when volume tries to mount to artifact working_dir", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          volumes: ["dataset:/home/user/workspace"], // Same as working_dir
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "vas",
-          },
-        },
-        volumes: {
-          dataset: {
-            driver: "vas",
-            driver_opts: {
-              uri: "vas://my-dataset",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact");
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "working_dir_conflict",
-        message:
-          'Volume "dataset" cannot mount to working_dir (/home/user/workspace). Only artifact can mount to working_dir.',
-      });
-    });
-  });
-
-  it("should auto-resolve volume by name when no explicit definition", () => {
-    // When no volumes section defines the volume, it should auto-resolve
-    // as a VAS volume with uri vas://<volumeName>
-    const config: AgentVolumeConfig = {
-      agent: {
-        volumes: ["my-data:/path"],
-      },
-    };
-
-    const result = resolveVolumes(config);
-
-    expect(result.volumes).toHaveLength(1);
-    expect(result.errors).toHaveLength(0);
-    expect(result.volumes[0]).toMatchObject({
-      name: "my-data",
-      driver: "vas",
-      mountPath: "/path",
-      vasStorageName: "my-data",
-    });
   });
 
   it("should return empty result for no volume declarations", () => {
     const config: AgentVolumeConfig = {
-      agent: {},
+      agents: [
+        {
+          working_dir: "/home/user/workspace",
+        },
+      ],
     };
 
-    const result = resolveVolumes(config);
+    const result = resolveVolumes(
+      config,
+      {},
+      undefined,
+      undefined,
+      true, // skipArtifact to avoid artifact error
+    );
 
     expect(result.volumes).toHaveLength(0);
     expect(result.artifact).toBeNull();
     expect(result.errors).toHaveLength(0);
-  });
-
-  it("should error on unsupported volume driver", () => {
-    // Intentionally use invalid driver type to test error handling
-    const config = {
-      agent: {
-        volumes: ["custom-volume:/path"],
-      },
-      volumes: {
-        "custom-volume": {
-          driver: "nfs",
-          driver_opts: {
-            uri: "nfs://server/path",
-          },
-        },
-      },
-    } as unknown as AgentVolumeConfig;
-
-    const result = resolveVolumes(config);
-
-    expect(result.volumes).toHaveLength(0);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      volumeName: "custom-volume",
-      type: "invalid_uri",
-      message:
-        "Unsupported volume driver: nfs. Only vas driver is supported for volumes.",
-    });
   });
 });

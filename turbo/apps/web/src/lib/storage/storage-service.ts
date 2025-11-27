@@ -9,6 +9,7 @@ import type {
   PreparedArtifact,
   StoragePreparationResult,
   ResolvedArtifact,
+  ResolvedVolume,
 } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import { storages, storageVersions } from "../../db/schema/storage";
@@ -21,20 +22,86 @@ import { env } from "../../env";
  */
 export class StorageService {
   /**
+   * Resolve version ID from version string
+   * @param userId - User ID for storage access
+   * @param storageName - Storage name
+   * @param version - Version string ("latest" or specific hash)
+   * @returns Version ID and S3 key
+   */
+  private async resolveVersion(
+    userId: string,
+    storageName: string,
+    version: string,
+  ): Promise<{ versionId: string; s3Key: string }> {
+    // Query database for storage
+    const [dbStorage] = await globalThis.services.db
+      .select()
+      .from(storages)
+      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .limit(1);
+
+    if (!dbStorage) {
+      throw new Error(`Storage "${storageName}" not found in database`);
+    }
+
+    if (version === "latest") {
+      // Get HEAD version
+      if (!dbStorage.headVersionId) {
+        throw new Error(`Storage "${storageName}" has no HEAD version`);
+      }
+
+      const [headVersion] = await globalThis.services.db
+        .select()
+        .from(storageVersions)
+        .where(eq(storageVersions.id, dbStorage.headVersionId))
+        .limit(1);
+
+      if (!headVersion) {
+        throw new Error(`Storage "${storageName}" HEAD version not found`);
+      }
+
+      return { versionId: headVersion.id, s3Key: headVersion.s3Key };
+    }
+
+    // Query for specific version by ID (hash)
+    const [specificVersion] = await globalThis.services.db
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, dbStorage.id),
+          eq(storageVersions.id, version),
+        ),
+      )
+      .limit(1);
+
+    if (!specificVersion) {
+      throw new Error(
+        `Storage "${storageName}" version "${version}" not found`,
+      );
+    }
+
+    return { versionId: specificVersion.id, s3Key: specificVersion.s3Key };
+  }
+
+  /**
    * Prepare storages: resolve configurations and download from S3 to temp directory
    * @param agentConfig - Agent configuration containing volume definitions
    * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
-   * @param userId - User ID for storage access (optional)
-   * @param artifactKey - Artifact key for VAS driver (optional)
+   * @param userId - User ID for storage access
+   * @param artifactName - Artifact storage name (required)
+   * @param artifactVersion - Artifact version (defaults to "latest")
+   * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
    * @returns Storage preparation result with prepared storages and temp directory
    */
   async prepareStorages(
     agentConfig: AgentVolumeConfig | undefined,
     dynamicVars: Record<string, string>,
     runId: string,
-    userId?: string,
-    artifactKey?: string,
+    userId: string,
+    artifactName?: string,
+    artifactVersion?: string,
     skipArtifact?: boolean,
   ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
@@ -53,7 +120,8 @@ export class StorageService {
     const volumeResult = resolveVolumes(
       agentConfig,
       dynamicVars,
-      artifactKey,
+      artifactName,
+      artifactVersion,
       skipArtifact,
     );
 
@@ -83,73 +151,11 @@ export class StorageService {
     const preparedStorages: PreparedStorage[] = [];
     let preparedArtifact: PreparedArtifact | null = null;
 
-    // Process each volume (VAS only)
+    // Process each volume
     for (const volume of volumeResult.volumes) {
       try {
-        if (!userId) {
-          throw new Error("userId is required for VAS storages");
-        }
-
-        // Query database for storage and HEAD version
-        const [dbStorage] = await globalThis.services.db
-          .select()
-          .from(storages)
-          .where(
-            and(
-              eq(storages.userId, userId),
-              eq(storages.name, volume.vasStorageName!),
-            ),
-          )
-          .limit(1);
-
-        if (!dbStorage) {
-          throw new Error(
-            `VAS storage "${volume.vasStorageName}" not found in database`,
-          );
-        }
-
-        if (!dbStorage.headVersionId) {
-          throw new Error(
-            `VAS storage "${volume.vasStorageName}" has no HEAD version`,
-          );
-        }
-
-        // Get HEAD version details
-        const [headVersion] = await globalThis.services.db
-          .select()
-          .from(storageVersions)
-          .where(eq(storageVersions.id, dbStorage.headVersionId))
-          .limit(1);
-
-        if (!headVersion) {
-          throw new Error(
-            `VAS storage "${volume.vasStorageName}" HEAD version not found`,
-          );
-        }
-
-        // Download from versioned S3 path
-        const bucketName = env().S3_USER_STORAGES_NAME;
-        if (!bucketName) {
-          throw new Error(
-            "S3_USER_STORAGES_NAME environment variable is not set",
-          );
-        }
-        const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
-        const localPath = path.join(tempDir!, volume.name);
-
-        const downloadResult = await downloadS3Directory(s3Uri, localPath);
-        console.log(
-          `[Storage] Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
-        );
-
-        preparedStorages.push({
-          name: volume.name,
-          driver: "vas",
-          localPath,
-          mountPath: volume.mountPath,
-          vasStorageName: volume.vasStorageName,
-          vasVersionId: headVersion.id,
-        });
+        const prepared = await this.prepareVolume(volume, tempDir!, userId);
+        preparedStorages.push(prepared);
       } catch (error) {
         console.error(
           `[Storage] Failed to prepare storage "${volume.name}":`,
@@ -166,7 +172,7 @@ export class StorageService {
       try {
         preparedArtifact = await this.prepareArtifact(
           volumeResult.artifact,
-          tempDir,
+          tempDir!,
           userId,
         );
       } catch (error) {
@@ -186,70 +192,69 @@ export class StorageService {
   }
 
   /**
-   * Prepare a single artifact
+   * Prepare a single volume
    */
-  private async prepareArtifact(
-    artifact: ResolvedArtifact,
-    tempDir: string | null,
-    userId?: string,
-  ): Promise<PreparedArtifact> {
-    // VAS artifact: download from S3
-    if (!userId) {
-      throw new Error("userId is required for VAS artifacts");
-    }
+  private async prepareVolume(
+    volume: ResolvedVolume,
+    tempDir: string,
+    userId: string,
+  ): Promise<PreparedStorage> {
+    // Resolve version
+    const { versionId, s3Key } = await this.resolveVersion(
+      userId,
+      volume.vasStorageName,
+      volume.vasVersion,
+    );
 
-    if (!tempDir) {
-      throw new Error("tempDir is required for VAS artifacts");
-    }
-
-    // Query database for artifact storage and HEAD version
-    const [dbStorage] = await globalThis.services.db
-      .select()
-      .from(storages)
-      .where(
-        and(
-          eq(storages.userId, userId),
-          eq(storages.name, artifact.vasStorageName!),
-        ),
-      )
-      .limit(1);
-
-    if (!dbStorage) {
-      throw new Error(
-        `VAS artifact "${artifact.vasStorageName}" not found in database`,
-      );
-    }
-
-    if (!dbStorage.headVersionId) {
-      throw new Error(
-        `VAS artifact "${artifact.vasStorageName}" has no HEAD version`,
-      );
-    }
-
-    // Get HEAD version details
-    const [headVersion] = await globalThis.services.db
-      .select()
-      .from(storageVersions)
-      .where(eq(storageVersions.id, dbStorage.headVersionId))
-      .limit(1);
-
-    if (!headVersion) {
-      throw new Error(
-        `VAS artifact "${artifact.vasStorageName}" HEAD version not found`,
-      );
-    }
-
-    // Download from versioned S3 path
+    // Download from S3
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
       throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
     }
-    const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
+    const s3Uri = `s3://${bucketName}/${s3Key}`;
+    const localPath = path.join(tempDir, volume.name);
+
+    const downloadResult = await downloadS3Directory(s3Uri, localPath);
+    console.log(
+      `[Storage] Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    );
+
+    return {
+      name: volume.name,
+      driver: "vas",
+      localPath,
+      mountPath: volume.mountPath,
+      vasStorageName: volume.vasStorageName,
+      vasVersionId: versionId,
+    };
+  }
+
+  /**
+   * Prepare a single artifact
+   */
+  private async prepareArtifact(
+    artifact: ResolvedArtifact,
+    tempDir: string,
+    userId: string,
+  ): Promise<PreparedArtifact> {
+    // Resolve version
+    const { versionId, s3Key } = await this.resolveVersion(
+      userId,
+      artifact.vasStorageName,
+      artifact.vasVersion,
+    );
+
+    // Download from S3
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+    const s3Uri = `s3://${bucketName}/${s3Key}`;
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VAS artifact (${artifact.vasStorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${artifact.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -257,7 +262,7 @@ export class StorageService {
       localPath,
       mountPath: artifact.mountPath,
       vasStorageName: artifact.vasStorageName,
-      vasVersionId: headVersion.id,
+      vasVersionId: versionId,
     };
   }
 
@@ -277,8 +282,6 @@ export class StorageService {
     tempDir: string | null;
     errors: string[];
   }> {
-    console.log(`[Storage] Preparing artifact from snapshot...`);
-
     // VAS artifact: download from specific version
     if (!snapshot.artifactVersion) {
       return {
@@ -287,6 +290,10 @@ export class StorageService {
         errors: ["Artifact snapshot missing artifactVersion"],
       };
     }
+
+    console.log(
+      `[Storage] Preparing artifact from snapshot: ${snapshot.artifactName}@${snapshot.artifactVersion}`,
+    );
 
     const tempDir = `/tmp/vas-run-${runId}`;
     await fs.promises.mkdir(tempDir, { recursive: true });

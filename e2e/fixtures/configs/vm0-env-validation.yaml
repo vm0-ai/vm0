@@ -1,16 +1,15 @@
 version: "1.0"
 
-agent:
-  name: vm0-env-validation
-  description: "Test agent for environment variable validation"
-  provider: claude-code
-
-  image: vm0-claude-code-dev
-  volumes:
-    - claude-files:/home/user/.config/claude
+agents:
+  - name: vm0-env-validation
+    description: "Test agent for environment variable validation"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+    volumes:
+      - claude-files:/home/user/.config/claude
 
 volumes:
   claude-files:
-    driver: vas
-    driver_opts:
-      uri: vas://${MISSING_ENV_VAR}-storage
+    name: "${MISSING_ENV_VAR}-storage"
+    version: "latest"

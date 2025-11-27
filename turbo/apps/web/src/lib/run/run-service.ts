@@ -39,7 +39,8 @@ export class RunService {
    * @param dynamicVars Dynamic variable replacements
    * @param agentConfig Full agent configuration
    * @param userId User ID for volume access
-   * @param artifactKey Artifact key for VM0 driver
+   * @param artifactName Artifact storage name (required)
+   * @param artifactVersion Artifact version (optional, defaults to "latest")
    * @returns Execution context for e2b-service
    */
   async createRunContext(
@@ -50,7 +51,8 @@ export class RunService {
     dynamicVars: Record<string, string> | undefined,
     agentConfig: unknown,
     userId?: string,
-    artifactKey?: string,
+    artifactName?: string,
+    artifactVersion?: string,
   ): Promise<ExecutionContext> {
     console.log(`[RunService] Creating run context for ${runId}`);
 
@@ -62,7 +64,8 @@ export class RunService {
       dynamicVars,
       sandboxToken,
       userId,
-      artifactKey,
+      artifactName,
+      artifactVersion,
     };
   }
 
@@ -136,10 +139,9 @@ export class RunService {
 
     // Extract working directory from agent config snapshot
     const agentConfig = agentConfigSnapshot.config as
-      | { agent?: { artifact?: { working_dir?: string } } }
+      | { agents?: Array<{ working_dir?: string }> }
       | undefined;
-    const workingDir =
-      agentConfig?.agent?.artifact?.working_dir || "/workspace";
+    const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
 
     console.log(`[RunService] Working directory: ${workingDir}`);
 

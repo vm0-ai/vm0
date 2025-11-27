@@ -51,6 +51,12 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing prompt");
     }
 
+    if (!body.artifactName) {
+      throw new BadRequestError(
+        "Missing artifactName. Use --artifact-name flag to specify artifact.",
+      );
+    }
+
     console.log(`[API] Creating run for config: ${body.agentConfigId}`);
 
     // Fetch agent config from database
@@ -130,7 +136,8 @@ export async function POST(request: NextRequest) {
         body.dynamicVars,
         config.config,
         userId,
-        body.artifactKey,
+        body.artifactName,
+        body.artifactVersion,
       )
       .then((context) => runService.executeRun(context))
       .then((result) => {
