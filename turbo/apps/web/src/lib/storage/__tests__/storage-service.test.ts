@@ -322,22 +322,9 @@ describe("StorageService", () => {
 
   describe("prepareArtifactFromSnapshot", () => {
     it("should prepare VAS artifact from snapshot with specific version", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/workspace",
-            driver: "vas",
-          },
-        },
-      };
-
       const snapshot = {
-        driver: "vas" as const,
-        mountPath: "/workspace",
-        vasStorageName: "test-artifact",
-        snapshot: {
-          versionId: "version-123-456",
-        },
+        artifactName: "test-artifact",
+        artifactVersion: "version-123-456",
       };
 
       // Mock database query for storageVersions
@@ -358,16 +345,6 @@ describe("StorageService", () => {
         db: mockDb as never,
       } as never;
 
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "vas",
-          mountPath: "/workspace",
-          vasStorageName: "test-artifact",
-        },
-        errors: [],
-      });
-
       vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
         localPath: "/tmp/vas-run-test-run-id/artifact",
         filesDownloaded: 10,
@@ -376,8 +353,7 @@ describe("StorageService", () => {
 
       const result = await storageService.prepareArtifactFromSnapshot(
         snapshot,
-        agentConfig,
-        {},
+        "/workspace",
         "test-run-id",
       );
 
@@ -394,43 +370,21 @@ describe("StorageService", () => {
       );
     });
 
-    it("should return error when VAS snapshot is missing versionId", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/workspace",
-            driver: "vas",
-          },
-        },
-      };
-
+    it("should return error when artifact snapshot is missing artifactVersion", async () => {
       const snapshot = {
-        driver: "vas" as const,
-        mountPath: "/workspace",
-        vasStorageName: "test-artifact",
-        // No snapshot with versionId
+        artifactName: "test-artifact",
+        artifactVersion: "", // Empty version
       };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "vas",
-          mountPath: "/workspace",
-          vasStorageName: "test-artifact",
-        },
-        errors: [],
-      });
 
       const result = await storageService.prepareArtifactFromSnapshot(
         snapshot,
-        agentConfig,
-        {},
+        "/workspace",
         "test-run-id",
       );
 
       expect(result.preparedArtifact).toBeNull();
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("VAS snapshot missing versionId");
+      expect(result.errors[0]).toContain("artifactVersion");
     });
   });
 

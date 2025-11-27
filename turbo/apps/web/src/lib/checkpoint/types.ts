@@ -2,21 +2,34 @@
  * Checkpoint system types for preserving agent run state
  */
 
+import type { AgentConfigYaml } from "../../types/agent-config";
+
 /**
- * VAS artifact snapshot containing version information
+ * Agent configuration snapshot stored in checkpoint
+ * Contains full config for reproducibility (configs have no versioning)
  */
-export interface VasSnapshot {
-  versionId: string;
+export interface AgentConfigSnapshot {
+  config: AgentConfigYaml;
+  templateVars?: Record<string, string>;
 }
 
 /**
  * Artifact snapshot for VAS managed artifacts
+ * Fields align with CLI parameters --artifact-name and --artifact-version
  */
 export interface ArtifactSnapshot {
-  driver: "vas";
-  mountPath: string;
-  vasStorageName: string;
-  snapshot?: VasSnapshot;
+  artifactName: string;
+  artifactVersion: string;
+}
+
+/**
+ * Conversation data for CLI agent session
+ */
+export interface ConversationData {
+  runId: string;
+  cliAgentType: string;
+  cliAgentSessionId: string;
+  cliAgentSessionHistory: string;
 }
 
 /**
@@ -24,11 +37,9 @@ export interface ArtifactSnapshot {
  */
 export interface CheckpointData {
   runId: string;
-  agentConfigId: string;
-  sessionId: string;
-  dynamicVars?: Record<string, string>;
-  sessionHistory: string; // JSONL format
-  artifactSnapshot: ArtifactSnapshot | null;
+  conversationId: string;
+  agentConfigSnapshot: AgentConfigSnapshot;
+  artifactSnapshot: ArtifactSnapshot;
 }
 
 /**
@@ -36,9 +47,10 @@ export interface CheckpointData {
  */
 export interface CheckpointRequest {
   runId: string;
-  sessionId: string;
-  sessionHistory: string;
-  artifactSnapshot: ArtifactSnapshot | null;
+  cliAgentType: string;
+  cliAgentSessionId: string;
+  cliAgentSessionHistory: string;
+  artifactSnapshot: ArtifactSnapshot;
 }
 
 /**

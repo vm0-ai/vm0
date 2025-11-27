@@ -15,6 +15,7 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
+import { conversations } from "../../../../../../src/db/schema/conversation";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
 import { agentConfigs } from "../../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -61,7 +62,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    // Delete agent_runs first - CASCADE will delete related checkpoints
+    // Delete agent_runs first - CASCADE will delete related checkpoints and conversations
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -80,9 +81,14 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       userId: testUserId,
       name: "test-agent",
       config: {
+        version: "1.0",
         agent: {
           name: "test-agent",
-          model: "claude-3-5-sonnet-20241022",
+          image: "test-image",
+          provider: "claude-code",
+          artifact: {
+            working_dir: "/workspace",
+          },
         },
       },
       createdAt: new Date(),
@@ -92,7 +98,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    // Delete agent_runs first - CASCADE will delete related checkpoints
+    // Delete agent_runs first - CASCADE will delete related checkpoints and conversations
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -123,9 +129,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -171,9 +181,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             // runId: missing
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -185,7 +199,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.error.message).toContain("runId");
     });
 
-    it("should reject checkpoint without sessionId", async () => {
+    it("should reject checkpoint without cliAgentSessionId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -196,9 +210,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            // sessionId: missing
-            sessionHistory: '{"type":"test"}',
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            // cliAgentSessionId: missing
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -207,10 +225,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("sessionId");
+      expect(data.error.message).toContain("cliAgentSessionId");
     });
 
-    it("should reject checkpoint without sessionHistory", async () => {
+    it("should reject checkpoint without cliAgentSessionHistory", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -221,9 +239,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            sessionId: "test-session",
-            // sessionHistory: missing
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            // cliAgentSessionHistory: missing
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -232,7 +254,33 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("sessionHistory");
+      expect(data.error.message).toContain("cliAgentSessionHistory");
+    });
+
+    it("should reject checkpoint without artifactSnapshot", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: '{"type":"test"}',
+            // artifactSnapshot: missing (now required)
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("artifactSnapshot");
     });
   });
 
@@ -270,9 +318,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: nonExistentRunId,
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -307,9 +359,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            sessionId: "test-session",
-            sessionHistory: '{"type":"test"}',
-            artifactSnapshot: null,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "version-123",
+            },
           }),
         },
       );
@@ -323,81 +379,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   });
 
   // ============================================
-  // P0 Tests: Success (2 tests)
+  // P0 Tests: Success (1 test - artifact is now required)
   // ============================================
 
   describe("Success", () => {
-    it("should create checkpoint with null artifact snapshot", async () => {
-      // Mock headers() to return the test token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
-      // Setup
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentConfigId: testConfigId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const sessionHistory = JSON.stringify({
-        type: "queue-operation",
-        operation: "enqueue",
-        timestamp: "2025-11-22T04:00:00.000Z",
-        content: "test prompt",
-        sessionId: "test-session-123",
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            sessionId: "test-session-123",
-            sessionHistory,
-            artifactSnapshot: null,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-
-      // Verify response
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.checkpointId).toBeDefined();
-      expect(data.hasArtifact).toBe(false);
-
-      // Verify database
-      const savedCheckpoints = await globalThis.services.db
-        .select()
-        .from(checkpoints)
-        .where(eq(checkpoints.runId, testRunId));
-
-      expect(savedCheckpoints).toHaveLength(1);
-      const checkpoint = savedCheckpoints[0];
-      expect(checkpoint?.sessionId).toBe("test-session-123");
-      expect(checkpoint?.sessionHistory).toBe(sessionHistory);
-      expect(checkpoint?.artifactSnapshot).toBeNull();
-    });
-
-    it("should create checkpoint with VAS artifact snapshot", async () => {
+    it("should create checkpoint with artifact snapshot", async () => {
       // Mock headers() to return the test token
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -431,12 +417,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       });
 
       const artifactSnapshot = {
-        driver: "vas" as const,
-        mountPath: "/home/user/workspace",
-        vasStorageName: "test-artifact",
-        snapshot: {
-          versionId: "version-123-456",
-        },
+        artifactName: "test-artifact",
+        artifactVersion: "version-123-456",
       };
 
       const request = new NextRequest(
@@ -449,8 +431,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            sessionId: "test-session-456",
-            sessionHistory,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-456",
+            cliAgentSessionHistory: sessionHistory,
             artifactSnapshot,
           }),
         },
@@ -464,7 +447,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.checkpointId).toBeDefined();
       expect(data.hasArtifact).toBe(true);
 
-      // Verify database
+      // Verify checkpoint in database
       const savedCheckpoints = await globalThis.services.db
         .select()
         .from(checkpoints)
@@ -472,94 +455,28 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       expect(savedCheckpoints).toHaveLength(1);
       const checkpoint = savedCheckpoints[0];
-      expect(checkpoint?.sessionId).toBe("test-session-456");
-      expect(checkpoint?.sessionHistory).toBe(sessionHistory);
-      expect(checkpoint?.agentConfigId).toBe(testConfigId);
-      expect(checkpoint?.dynamicVars).toEqual({ user: "testuser" });
+      expect(checkpoint?.conversationId).toBeDefined();
+      expect(checkpoint?.agentConfigSnapshot).toBeDefined();
       expect(checkpoint?.artifactSnapshot).toEqual(artifactSnapshot);
 
-      // Verify snapshot structure
-      const snapshot = checkpoint?.artifactSnapshot as typeof artifactSnapshot;
-      expect(snapshot?.driver).toBe("vas");
-      expect(snapshot?.mountPath).toBe("/home/user/workspace");
-      expect(snapshot?.vasStorageName).toBe("test-artifact");
-      expect(snapshot?.snapshot?.versionId).toBe("version-123-456");
-    });
-  });
-
-  // ============================================
-  // P1 Tests: Data Integrity (1 test)
-  // ============================================
-
-  describe("Data Integrity", () => {
-    it("should preserve dynamic variables from run", async () => {
-      // Mock headers() to return the test token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
-      // Setup
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-
-      const dynamicVars = {
-        user: "alice",
-        repo: "myrepo",
-        branch: "main",
-      };
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentConfigId: testConfigId,
-        status: "running",
-        prompt: "Test prompt",
-        dynamicVars,
-        createdAt: new Date(),
-      });
-
-      const sessionHistory = JSON.stringify({
-        type: "queue-operation",
-        operation: "enqueue",
-        timestamp: "2025-11-22T04:00:00.000Z",
-        content: "test prompt",
-        sessionId: "test-session-789",
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            sessionId: "test-session-789",
-            sessionHistory,
-            artifactSnapshot: null,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Verify database
-      const savedCheckpoints = await globalThis.services.db
+      // Verify conversation in database
+      const savedConversations = await globalThis.services.db
         .select()
-        .from(checkpoints)
-        .where(eq(checkpoints.runId, testRunId));
+        .from(conversations)
+        .where(eq(conversations.id, checkpoint!.conversationId));
 
-      expect(savedCheckpoints).toHaveLength(1);
-      const checkpoint = savedCheckpoints[0];
-      expect(checkpoint?.dynamicVars).toEqual(dynamicVars);
+      expect(savedConversations).toHaveLength(1);
+      const conversation = savedConversations[0];
+      expect(conversation?.cliAgentType).toBe("claude-code");
+      expect(conversation?.cliAgentSessionId).toBe("test-session-456");
+      expect(conversation?.cliAgentSessionHistory).toBe(sessionHistory);
+
+      // Verify agentConfigSnapshot contains templateVars
+      const configSnapshot = checkpoint?.agentConfigSnapshot as {
+        config: unknown;
+        templateVars?: Record<string, string>;
+      };
+      expect(configSnapshot?.templateVars).toEqual({ user: "testuser" });
     });
   });
 
@@ -602,9 +519,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       const requestBody = {
         runId: testRunId,
-        sessionId: "test-session-unique",
-        sessionHistory,
-        artifactSnapshot: null,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "test-session-unique",
+        cliAgentSessionHistory: sessionHistory,
+        artifactSnapshot: {
+          artifactName: "test-artifact",
+          artifactVersion: "version-123",
+        },
       };
 
       // First request - should succeed

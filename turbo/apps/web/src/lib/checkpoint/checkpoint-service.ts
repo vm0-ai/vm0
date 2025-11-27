@@ -1,8 +1,15 @@
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
+import { agentConfigs } from "../../db/schema/agent-config";
+import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
-import type { CheckpointRequest, CheckpointResponse } from "./types";
+import type {
+  CheckpointRequest,
+  CheckpointResponse,
+  AgentConfigSnapshot,
+} from "./types";
+import type { AgentConfigYaml } from "../../types/agent-config";
 
 /**
  * Checkpoint Service
@@ -32,19 +39,56 @@ export class CheckpointService {
       throw new NotFoundError("Agent run");
     }
 
+    // Fetch agent config to create snapshot
+    const [config] = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(eq(agentConfigs.id, run.agentConfigId))
+      .limit(1);
+
+    if (!config) {
+      throw new NotFoundError("Agent config");
+    }
+
     console.log(
-      `[Checkpoint] Storing artifact snapshot: ${request.artifactSnapshot ? "yes" : "no"}`,
+      `[Checkpoint] Creating conversation record for CLI agent: ${request.cliAgentType}`,
     );
+
+    // Create conversation record first
+    const [conversation] = await globalThis.services.db
+      .insert(conversations)
+      .values({
+        runId: request.runId,
+        cliAgentType: request.cliAgentType,
+        cliAgentSessionId: request.cliAgentSessionId,
+        cliAgentSessionHistory: request.cliAgentSessionHistory,
+      })
+      .returning();
+
+    if (!conversation) {
+      throw new Error("Failed to create conversation record");
+    }
+
+    console.log(
+      `[Checkpoint] Conversation created: ${conversation.id}, storing checkpoint...`,
+    );
+
+    // Build agent config snapshot
+    const agentConfigSnapshot: AgentConfigSnapshot = {
+      config: config.config as AgentConfigYaml,
+      templateVars: (run.dynamicVars as Record<string, string>) || undefined,
+    };
 
     // Store checkpoint in database
     const [checkpoint] = await globalThis.services.db
       .insert(checkpoints)
       .values({
         runId: request.runId,
-        agentConfigId: run.agentConfigId,
-        sessionId: request.sessionId,
-        dynamicVars: run.dynamicVars,
-        sessionHistory: request.sessionHistory,
+        conversationId: conversation.id,
+        agentConfigSnapshot: agentConfigSnapshot as unknown as Record<
+          string,
+          unknown
+        >,
         artifactSnapshot: request.artifactSnapshot as unknown as Record<
           string,
           unknown
@@ -62,7 +106,7 @@ export class CheckpointService {
 
     return {
       checkpointId: checkpoint.id,
-      hasArtifact: !!request.artifactSnapshot,
+      hasArtifact: true, // artifact is now always required
     };
   }
 }

@@ -263,14 +263,14 @@ export class StorageService {
 
   /**
    * Prepare artifact from checkpoint snapshot (for resume functionality)
-   * @param snapshot - Artifact snapshot from checkpoint
+   * @param snapshot - Artifact snapshot from checkpoint (artifactName + artifactVersion)
+   * @param mountPath - Mount path for the artifact in sandbox
    * @param runId - Run ID for temp directory naming
    * @returns Prepared artifact
    */
   async prepareArtifactFromSnapshot(
     snapshot: ArtifactSnapshot,
-    _agentConfig: AgentVolumeConfig | undefined,
-    _dynamicVars: Record<string, string>,
+    mountPath: string,
     runId: string,
   ): Promise<{
     preparedArtifact: PreparedArtifact | null;
@@ -280,11 +280,11 @@ export class StorageService {
     console.log(`[Storage] Preparing artifact from snapshot...`);
 
     // VAS artifact: download from specific version
-    if (!snapshot.snapshot?.versionId) {
+    if (!snapshot.artifactVersion) {
       return {
         preparedArtifact: null,
         tempDir: null,
-        errors: ["VAS snapshot missing versionId"],
+        errors: ["Artifact snapshot missing artifactVersion"],
       };
     }
 
@@ -295,7 +295,7 @@ export class StorageService {
     const [version] = await globalThis.services.db
       .select()
       .from(storageVersions)
-      .where(eq(storageVersions.id, snapshot.snapshot.versionId))
+      .where(eq(storageVersions.id, snapshot.artifactVersion))
       .limit(1);
 
     if (!version) {
@@ -303,7 +303,7 @@ export class StorageService {
         preparedArtifact: null,
         tempDir,
         errors: [
-          `VAS artifact version "${snapshot.snapshot.versionId}" not found`,
+          `VAS artifact version "${snapshot.artifactVersion}" not found`,
         ],
       };
     }
@@ -322,16 +322,16 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VAS artifact (${snapshot.vasStorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${snapshot.artifactName}) version ${snapshot.artifactVersion}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
       preparedArtifact: {
         driver: "vas",
         localPath,
-        mountPath: snapshot.mountPath,
-        vasStorageName: snapshot.vasStorageName,
-        vasVersionId: snapshot.snapshot.versionId,
+        mountPath,
+        vasStorageName: snapshot.artifactName,
+        vasVersionId: snapshot.artifactVersion,
       },
       tempDir,
       errors: [],

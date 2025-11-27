@@ -51,15 +51,23 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing runId");
     }
 
-    if (!body.sessionId) {
-      throw new BadRequestError("Missing sessionId");
+    if (!body.cliAgentType) {
+      throw new BadRequestError("Missing cliAgentType");
     }
 
-    if (!body.sessionHistory) {
-      throw new BadRequestError("Missing sessionHistory");
+    if (!body.cliAgentSessionId) {
+      throw new BadRequestError("Missing cliAgentSessionId");
     }
 
-    // artifactSnapshot is optional (can be null if no artifact configured)
+    if (!body.cliAgentSessionHistory) {
+      throw new BadRequestError("Missing cliAgentSessionHistory");
+    }
+
+    if (!body.artifactSnapshot) {
+      throw new BadRequestError(
+        "Missing artifactSnapshot (artifact is required)",
+      );
+    }
 
     console.log(
       `[Checkpoint API] Received checkpoint request for run ${body.runId} from user ${userId}`,

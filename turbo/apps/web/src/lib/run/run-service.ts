@@ -1,10 +1,13 @@
 import { eq, and } from "drizzle-orm";
-import { agentConfigs } from "../../db/schema/agent-config";
 import { checkpoints } from "../../db/schema/checkpoint";
+import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { NotFoundError, UnauthorizedError } from "../errors";
 import type { ExecutionContext, ResumeSession } from "./types";
-import type { ArtifactSnapshot } from "../checkpoint/types";
+import type {
+  ArtifactSnapshot,
+  AgentConfigSnapshot,
+} from "../checkpoint/types";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 
@@ -112,27 +115,27 @@ export class RunService {
       );
     }
 
-    console.log(
-      `[RunService] Checkpoint verified for user ${userId}, agent config ${checkpoint.agentConfigId}`,
-    );
-
-    // Load agent config
-    const [config] = await globalThis.services.db
+    // Load conversation from database
+    const [conversation] = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, checkpoint.agentConfigId))
+      .from(conversations)
+      .where(eq(conversations.id, checkpoint.conversationId))
       .limit(1);
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    if (!conversation) {
+      throw new NotFoundError("Conversation");
     }
 
+    // Extract agent config snapshot
+    const agentConfigSnapshot =
+      checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
+
     console.log(
-      `[RunService] Loaded agent config: ${config.name || config.id}`,
+      `[RunService] Checkpoint verified for user ${userId}, loaded conversation ${conversation.id}`,
     );
 
-    // Extract working directory from artifact config
-    const agentConfig = config.config as
+    // Extract working directory from agent config snapshot
+    const agentConfig = agentConfigSnapshot.config as
       | { agent?: { artifact?: { working_dir?: string } } }
       | undefined;
     const workingDir =
@@ -140,31 +143,31 @@ export class RunService {
 
     console.log(`[RunService] Working directory: ${workingDir}`);
 
-    // Build resume session data
+    // Build resume session data from conversation
     const resumeSession: ResumeSession = {
-      sessionId: checkpoint.sessionId,
-      sessionHistory: checkpoint.sessionHistory,
+      sessionId: conversation.cliAgentSessionId,
+      sessionHistory: conversation.cliAgentSessionHistory,
       workingDir,
     };
 
     // Parse artifact snapshot from JSONB
     const resumeArtifact =
-      (checkpoint.artifactSnapshot as unknown as ArtifactSnapshot) || null;
+      checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
 
     console.log(
-      `[RunService] Resume session: ${checkpoint.sessionId}, artifact: ${resumeArtifact ? resumeArtifact.driver : "none"}`,
+      `[RunService] Resume session: ${conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@${resumeArtifact.artifactVersion}`,
     );
 
     return {
       runId,
       userId,
-      agentConfigId: checkpoint.agentConfigId,
-      agentConfig: config.config,
+      agentConfigId: originalRun.agentConfigId,
+      agentConfig: agentConfigSnapshot.config,
       prompt,
-      dynamicVars: (checkpoint.dynamicVars as Record<string, string>) || {},
+      dynamicVars: agentConfigSnapshot.templateVars || {},
       sandboxToken,
       resumeSession,
-      resumeArtifact: resumeArtifact || undefined,
+      resumeArtifact,
     };
   }
 
