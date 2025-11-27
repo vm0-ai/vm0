@@ -293,7 +293,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Run CLI E2E Tests
-        run: ./e2e/test/libs/bats/bin/bats --abort -j 4 --no-parallelize-within-files ./e2e/tests/**/*.bats
+        run: ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/**/*.bats
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
