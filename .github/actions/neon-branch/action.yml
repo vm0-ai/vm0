@@ -58,8 +58,11 @@ runs:
 
         if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
           echo "Branch $BRANCH_NAME already exists"
+          echo "Resetting branch to sync with parent (main)..."
+          neonctl branches reset $BRANCH_NAME --project-id $NEON_PROJECT_ID --parent
+          echo "Branch reset complete"
         else
-          echo "Create branch $BRANCH_NAME"
+          echo "Creating branch $BRANCH_NAME"
           neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
         fi
 
@@ -87,7 +90,9 @@ runs:
       run: |
         if [ -n "$DATABASE_URL" ]; then
           echo "Running database migrations..."
-          cd turbo && pnpm -F web db:migrate
+          echo "Migration output:"
+          cd turbo && pnpm -F web db:migrate 2>&1
+          echo "Migration complete"
         else
           echo "No database URL provided, skipping migrations"
         fi
