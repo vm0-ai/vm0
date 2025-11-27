@@ -93,6 +93,7 @@ export class StorageService {
    * @param artifactName - Artifact storage name (required)
    * @param artifactVersion - Artifact version (defaults to "latest")
    * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
+   * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
    * @returns Storage preparation result with prepared storages and temp directory
    */
   async prepareStorages(
@@ -103,6 +104,7 @@ export class StorageService {
     artifactName?: string,
     artifactVersion?: string,
     skipArtifact?: boolean,
+    volumeVersionOverrides?: Record<string, string>,
   ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
 
@@ -116,13 +118,14 @@ export class StorageService {
       };
     }
 
-    // Resolve volumes from agent config
+    // Resolve volumes from agent config (with optional version overrides)
     const volumeResult = resolveVolumes(
       agentConfig,
       templateVars,
       artifactName,
       artifactVersion,
       skipArtifact,
+      volumeVersionOverrides,
     );
 
     // Log volume resolution errors but don't fail the preparation

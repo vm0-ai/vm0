@@ -95,6 +95,12 @@ export class CheckpointService {
           string,
           unknown
         >,
+        volumeVersionsSnapshot: request.volumeVersionsSnapshot
+          ? (request.volumeVersionsSnapshot as unknown as Record<
+              string,
+              unknown
+            >)
+          : null,
       })
       .returning();
 

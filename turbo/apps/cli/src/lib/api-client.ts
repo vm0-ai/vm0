@@ -143,12 +143,23 @@ class ApiClient {
     return (await response.json()) as CreateConfigResponse;
   }
 
+  /**
+   * Create a run with unified request format
+   * Supports new runs, checkpoint resume, and session continue
+   */
   async createRun(body: {
-    agentConfigId: string;
-    prompt: string;
-    templateVars?: Record<string, string>;
-    artifactName: string;
+    // Shortcuts (mutually exclusive)
+    checkpointId?: string;
+    sessionId?: string;
+    // Base parameters
+    agentConfigId?: string;
+    conversationId?: string;
+    artifactName?: string;
     artifactVersion?: string;
+    templateVars?: Record<string, string>;
+    volumeVersions?: Record<string, string>;
+    // Required
+    prompt: string;
   }): Promise<CreateRunResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();

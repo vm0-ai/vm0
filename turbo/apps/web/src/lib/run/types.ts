@@ -26,6 +26,9 @@ export interface ExecutionContext {
   artifactName?: string;
   artifactVersion?: string;
 
+  // Volume version overrides (volume name -> version)
+  volumeVersions?: Record<string, string>;
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;

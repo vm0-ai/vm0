@@ -17,5 +17,6 @@ export const checkpoints = pgTable("checkpoints", {
     .notNull(),
   agentConfigSnapshot: jsonb("agent_config_snapshot").notNull(),
   artifactSnapshot: jsonb("artifact_snapshot").notNull(),
+  volumeVersionsSnapshot: jsonb("volume_versions_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

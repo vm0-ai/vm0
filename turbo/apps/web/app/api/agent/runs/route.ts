@@ -16,7 +16,7 @@ import {
   UnauthorizedError,
 } from "../../../../src/lib/errors";
 import type {
-  CreateAgentRunRequest,
+  UnifiedRunRequest,
   CreateAgentRunResponse,
 } from "../../../../src/types/agent-run";
 import {
@@ -27,7 +27,18 @@ import { extractTemplateVars } from "../../../../src/lib/config-validator";
 
 /**
  * POST /api/agent/runs
- * Create and execute an agent run
+ *
+ * Unified API for creating and executing agent runs.
+ * Supports three modes via optional parameters:
+ *
+ * 1. New run: Provide agentConfigId, artifactName, prompt
+ * 2. Checkpoint resume: Provide checkpointId, prompt (expands to snapshot parameters)
+ * 3. Session continue: Provide sessionId, prompt (uses latest artifact version)
+ *
+ * Parameters can be combined for fine-grained control:
+ * - volumeVersions: Override volume versions (volume name -> version)
+ * - artifactVersion: Override artifact version
+ * - templateVars: Template variables
  */
 export async function POST(request: NextRequest) {
   try {
@@ -41,59 +52,121 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body: CreateAgentRunRequest = await request.json();
+    const body: UnifiedRunRequest = await request.json();
 
-    if (!body.agentConfigId) {
-      throw new BadRequestError("Missing agentConfigId");
-    }
-
+    // Validate prompt is provided
     if (!body.prompt) {
       throw new BadRequestError("Missing prompt");
     }
 
-    if (!body.artifactName) {
+    // Validate mutually exclusive shortcuts
+    if (body.checkpointId && body.sessionId) {
       throw new BadRequestError(
-        "Missing artifactName. Use --artifact-name flag to specify artifact.",
+        "Cannot specify both checkpointId and sessionId. Use one or the other.",
       );
     }
 
-    console.log(`[API] Creating run for config: ${body.agentConfigId}`);
+    // Determine run mode and validate required parameters
+    const isCheckpointResume = !!body.checkpointId;
+    const isSessionContinue = !!body.sessionId;
+    const isNewRun = !isCheckpointResume && !isSessionContinue;
 
-    // Fetch agent config from database
-    const [config] = await globalThis.services.db
-      .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, body.agentConfigId))
-      .limit(1);
-
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    // For new runs, require agentConfigId and artifactName
+    if (isNewRun) {
+      if (!body.agentConfigId) {
+        throw new BadRequestError(
+          "Missing agentConfigId. For new runs, agentConfigId is required.",
+        );
+      }
+      if (!body.artifactName) {
+        throw new BadRequestError(
+          "Missing artifactName. Use --artifact-name flag to specify artifact.",
+        );
+      }
     }
 
-    console.log(`[API] Found agent config: ${config.id}`);
-
-    // Validate template variables
-    const requiredVars = extractTemplateVars(config.config);
-    const providedVars = body.templateVars || {};
-    const missingVars = requiredVars.filter(
-      (varName) => providedVars[varName] === undefined,
+    console.log(
+      `[API] Creating run - mode: ${isCheckpointResume ? "checkpoint" : isSessionContinue ? "session" : "new"}`,
     );
 
-    if (missingVars.length > 0) {
-      throw new BadRequestError(
-        `Missing required template variables: ${missingVars.join(", ")}`,
+    // Determine agentConfigId for run record creation
+    // For new runs: from request
+    // For checkpoint/session: will be resolved by buildExecutionContext, but we need it early
+    let agentConfigId: string;
+    let agentConfigName: string | undefined;
+
+    if (isNewRun) {
+      agentConfigId = body.agentConfigId!;
+
+      // Fetch config for validation and metadata
+      const [config] = await globalThis.services.db
+        .select()
+        .from(agentConfigs)
+        .where(eq(agentConfigs.id, agentConfigId))
+        .limit(1);
+
+      if (!config) {
+        throw new NotFoundError("Agent config");
+      }
+
+      agentConfigName = config.name || undefined;
+
+      // Validate template variables for new runs
+      const requiredVars = extractTemplateVars(config.config);
+      const providedVars = body.templateVars || {};
+      const missingVars = requiredVars.filter(
+        (varName) => providedVars[varName] === undefined,
       );
+
+      if (missingVars.length > 0) {
+        throw new BadRequestError(
+          `Missing required template variables: ${missingVars.join(", ")}`,
+        );
+      }
+    } else if (isCheckpointResume) {
+      // Validate checkpoint first to get agentConfigId
+      const sessionData = await runService.validateCheckpoint(
+        body.checkpointId!,
+        userId,
+      );
+      agentConfigId = sessionData.agentConfigId;
+
+      // Get config name for metadata
+      const [config] = await globalThis.services.db
+        .select()
+        .from(agentConfigs)
+        .where(eq(agentConfigs.id, agentConfigId))
+        .limit(1);
+      agentConfigName = config?.name || undefined;
+    } else {
+      // Session continue
+      const sessionData = await runService.validateAgentSession(
+        body.sessionId!,
+        userId,
+      );
+      agentConfigId = sessionData.agentConfigId;
+
+      // Get config name for metadata
+      const [config] = await globalThis.services.db
+        .select()
+        .from(agentConfigs)
+        .where(eq(agentConfigs.id, agentConfigId))
+        .limit(1);
+      agentConfigName = config?.name || undefined;
     }
+
+    console.log(`[API] Resolved agentConfigId: ${agentConfigId}`);
 
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId,
-        agentConfigId: body.agentConfigId,
+        agentConfigId,
         status: "pending",
         prompt: body.prompt,
         templateVars: body.templateVars || null,
+        resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();
 
@@ -119,26 +192,30 @@ export async function POST(request: NextRequest) {
     // Send vm0_start event
     await sendVm0StartEvent({
       runId: run.id,
-      agentConfigId: body.agentConfigId,
-      agentName: config.name || undefined,
+      agentConfigId,
+      agentName: agentConfigName,
       prompt: body.prompt,
       templateVars: body.templateVars,
+      resumedFromCheckpointId: body.checkpointId,
     });
 
     // Execute in E2B asynchronously (don't await)
-    // First create execution context
+    // Use unified buildExecutionContext for all modes
     runService
-      .createRunContext(
-        run.id,
-        body.agentConfigId,
-        body.prompt,
+      .buildExecutionContext({
+        checkpointId: body.checkpointId,
+        sessionId: body.sessionId,
+        agentConfigId: body.agentConfigId,
+        conversationId: body.conversationId,
+        artifactName: body.artifactName,
+        artifactVersion: body.artifactVersion,
+        templateVars: body.templateVars,
+        volumeVersions: body.volumeVersions,
+        prompt: body.prompt,
+        runId: run.id,
         sandboxToken,
-        body.templateVars,
-        config.config,
         userId,
-        body.artifactName,
-        body.artifactVersion,
-      )
+      })
       .then((context) => runService.executeRun(context))
       .then((result) => {
         // Update run with results on success

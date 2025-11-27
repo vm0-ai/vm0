@@ -141,6 +141,7 @@ function resolveArtifact(
  * @param artifactName - Required artifact storage name
  * @param artifactVersion - Optional artifact version (defaults to "latest")
  * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
+ * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
  * @returns Resolution result with resolved volumes, artifact, and errors
  */
 export function resolveVolumes(
@@ -149,6 +150,7 @@ export function resolveVolumes(
   artifactName?: string,
   artifactVersion?: string,
   skipArtifact?: boolean,
+  volumeVersionOverrides?: Record<string, string>,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
@@ -188,11 +190,17 @@ export function resolveVolumes(
           continue;
         }
 
-        // Resolve VAS volume
+        // Check for version override
+        const versionOverride = volumeVersionOverrides?.[volumeName];
+        const effectiveVolumeConfig = versionOverride
+          ? { ...volumeConfig, version: versionOverride }
+          : volumeConfig;
+
+        // Resolve VAS volume (with possible version override)
         const { volume, error } = resolveVasVolume(
           volumeName,
           mountPath,
-          volumeConfig,
+          effectiveVolumeConfig,
           templateVars,
         );
 

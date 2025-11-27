@@ -1,0 +1,19 @@
+version: "1.0"
+
+agents:
+  - name: vm0-volume-override
+    description: "Test agent with volume for override testing"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    volumes:
+      - test-volume:/home/user/data
+      - claude-files:/home/user/.config/claude
+    working_dir: /home/user/workspace
+
+volumes:
+  test-volume:
+    name: test-volume
+    version: latest
+  claude-files:
+    name: claude-files
+    version: latest

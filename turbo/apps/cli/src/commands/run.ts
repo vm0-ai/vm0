@@ -18,6 +18,26 @@ function collectVars(
   return { ...previous, [key]: val };
 }
 
+/**
+ * Collector for --volume-version flags
+ * Format: volumeName=version
+ */
+function collectVolumeVersions(
+  value: string,
+  previous: Record<string, string>,
+): Record<string, string> {
+  const [volumeName, ...versionParts] = value.split("=");
+  const version = versionParts.join("=");
+
+  if (!volumeName || version === undefined || version === "") {
+    throw new Error(
+      `Invalid volume-version format: ${value} (expected volumeName=version)`,
+    );
+  }
+
+  return { ...previous, [volumeName]: version };
+}
+
 function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
 }
@@ -94,6 +114,16 @@ const runCmd = new Command()
     "Artifact version hash (defaults to latest)",
   )
   .option(
+    "--volume-version <name=version>",
+    "Volume version override (repeatable, format: volumeName=version)",
+    collectVolumeVersions,
+    {},
+  )
+  .option(
+    "--conversation <id>",
+    "Resume from conversation ID (for fine-grained control)",
+  )
+  .option(
     "-t, --timeout <seconds>",
     "Polling timeout in seconds (default: 60)",
     String(DEFAULT_TIMEOUT_SECONDS),
@@ -106,6 +136,8 @@ const runCmd = new Command()
         vars: Record<string, string>;
         artifactName?: string;
         artifactVersion?: string;
+        volumeVersion: Record<string, string>;
+        conversation?: string;
         timeout: string;
       },
     ) => {
@@ -173,11 +205,23 @@ const runCmd = new Command()
           );
         }
 
+        if (Object.keys(options.volumeVersion).length > 0) {
+          console.log(
+            chalk.gray(
+              `  Volume versions: ${JSON.stringify(options.volumeVersion)}`,
+            ),
+          );
+        }
+
+        if (options.conversation) {
+          console.log(chalk.gray(`  Conversation: ${options.conversation}`));
+        }
+
         console.log();
         console.log(chalk.blue("Executing in sandbox..."));
         console.log();
 
-        // 3. Call API (async)
+        // 3. Call unified API
         const response = await apiClient.createRun({
           agentConfigId: configId,
           prompt,
@@ -185,6 +229,11 @@ const runCmd = new Command()
             Object.keys(options.vars).length > 0 ? options.vars : undefined,
           artifactName: options.artifactName,
           artifactVersion: options.artifactVersion,
+          volumeVersions:
+            Object.keys(options.volumeVersion).length > 0
+              ? options.volumeVersion
+              : undefined,
+          conversationId: options.conversation,
         });
 
         // 4. Poll for events
@@ -219,6 +268,12 @@ runCmd
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
   .option(
+    "--volume-version <name=version>",
+    "Volume version override (repeatable)",
+    collectVolumeVersions,
+    {},
+  )
+  .option(
     "-t, --timeout <seconds>",
     "Polling timeout in seconds (default: 60)",
     String(DEFAULT_TIMEOUT_SECONDS),
@@ -227,7 +282,7 @@ runCmd
     async (
       checkpointId: string,
       prompt: string,
-      options: { timeout: string },
+      options: { volumeVersion: Record<string, string>; timeout: string },
     ) => {
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
@@ -250,14 +305,27 @@ runCmd
         console.log(chalk.blue("\nResuming agent run from checkpoint..."));
         console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
         console.log(chalk.gray(`  Prompt: ${prompt}`));
+
+        if (Object.keys(options.volumeVersion).length > 0) {
+          console.log(
+            chalk.gray(
+              `  Volume overrides: ${JSON.stringify(options.volumeVersion)}`,
+            ),
+          );
+        }
+
         console.log();
         console.log(chalk.blue("Executing in sandbox..."));
         console.log();
 
-        // 3. Call resume API
-        const response = await apiClient.resumeRun({
+        // 3. Call unified API with checkpointId
+        const response = await apiClient.createRun({
           checkpointId,
           prompt,
+          volumeVersions:
+            Object.keys(options.volumeVersion).length > 0
+              ? options.volumeVersion
+              : undefined,
         });
 
         // 4. Poll for events
@@ -291,6 +359,12 @@ runCmd
   .argument("<agentSessionId>", "Agent session ID to continue from")
   .argument("<prompt>", "Prompt for the continued agent")
   .option(
+    "--volume-version <name=version>",
+    "Volume version override (repeatable)",
+    collectVolumeVersions,
+    {},
+  )
+  .option(
     "-t, --timeout <seconds>",
     "Polling timeout in seconds (default: 60)",
     String(DEFAULT_TIMEOUT_SECONDS),
@@ -299,7 +373,7 @@ runCmd
     async (
       agentSessionId: string,
       prompt: string,
-      options: { timeout: string },
+      options: { volumeVersion: Record<string, string>; timeout: string },
     ) => {
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
@@ -323,14 +397,27 @@ runCmd
         console.log(chalk.gray(`  Session ID: ${agentSessionId}`));
         console.log(chalk.gray(`  Prompt: ${prompt}`));
         console.log(chalk.gray(`  Note: Using latest artifact version`));
+
+        if (Object.keys(options.volumeVersion).length > 0) {
+          console.log(
+            chalk.gray(
+              `  Volume overrides: ${JSON.stringify(options.volumeVersion)}`,
+            ),
+          );
+        }
+
         console.log();
         console.log(chalk.blue("Executing in sandbox..."));
         console.log();
 
-        // 3. Call continue API
-        const response = await apiClient.continueSession({
-          agentSessionId,
+        // 3. Call unified API with sessionId
+        const response = await apiClient.createRun({
+          sessionId: agentSessionId,
           prompt,
+          volumeVersions:
+            Object.keys(options.volumeVersion).length > 0
+              ? options.volumeVersion
+              : undefined,
         });
 
         // 4. Poll for events

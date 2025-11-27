@@ -23,6 +23,15 @@ export interface ArtifactSnapshot {
 }
 
 /**
+ * Volume versions snapshot for checkpoint
+ * Stores resolved volume versions at checkpoint time for exact reproducibility
+ */
+export interface VolumeVersionsSnapshot {
+  // Map of volume name to resolved version ID
+  versions: Record<string, string>;
+}
+
+/**
  * Conversation data for CLI agent session
  */
 export interface ConversationData {
@@ -40,6 +49,7 @@ export interface CheckpointData {
   conversationId: string;
   agentConfigSnapshot: AgentConfigSnapshot;
   artifactSnapshot: ArtifactSnapshot;
+  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
 /**
@@ -51,6 +61,7 @@ export interface CheckpointRequest {
   cliAgentSessionId: string;
   cliAgentSessionHistory: string;
   artifactSnapshot: ArtifactSnapshot;
+  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
 /**

@@ -74,6 +74,7 @@ export class E2BService {
 
       // Also prepare regular storages (fresh, not from snapshot)
       // Skip artifact validation since we're using the snapshot
+      // Apply volume version overrides if provided
       const freshStorages = await storageService.prepareStorages(
         agentConfig,
         context.templateVars || {},
@@ -82,6 +83,7 @@ export class E2BService {
         undefined, // No artifact name for resume
         undefined, // No artifact version for resume
         true, // Skip artifact validation - using snapshot instead
+        context.volumeVersions, // Volume version overrides
       );
 
       storageResult = {
@@ -92,6 +94,7 @@ export class E2BService {
       };
     } else {
       // New run - prepare storages and artifact
+      // Apply volume version overrides if provided
       storageResult = await storageService.prepareStorages(
         agentConfig,
         context.templateVars || {},
@@ -99,6 +102,8 @@ export class E2BService {
         context.userId || "",
         context.artifactName,
         context.artifactVersion,
+        undefined, // Don't skip artifact
+        context.volumeVersions, // Volume version overrides
       );
     }
 
