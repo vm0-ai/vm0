@@ -89,8 +89,10 @@ teardown() {
     echo "# New HEAD version pushed"
 
     # Step 4: Resume from checkpoint - should get checkpoint version, not HEAD
+    # Use 120s timeout as resume involves S3 download + sandbox startup + session restore
     echo "# Step 4: Resuming from checkpoint..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        --timeout 120 \
         "ls && cat counter.txt"
 
     assert_success

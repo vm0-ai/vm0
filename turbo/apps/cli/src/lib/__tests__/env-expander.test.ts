@@ -113,21 +113,17 @@ describe("env-expander", () => {
           name: "test-agent",
           volumes: ["dataset:/data", "workspace:/work"],
         },
-        dynamic_volumes: {
-          workspace: {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/${TEST_USER}/repo",
-              token: "${TEST_TOKEN}",
-              branch: "main",
-            },
-          },
-        },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://${TEST_USER}-dataset",
+              uri: "vas://${TEST_USER}-dataset",
+            },
+          },
+          workspace: {
+            driver: "vas",
+            driver_opts: {
+              uri: "vas://${TEST_TOKEN}-workspace",
             },
           },
         },
@@ -139,21 +135,17 @@ describe("env-expander", () => {
           name: "test-agent",
           volumes: ["dataset:/data", "workspace:/work"],
         },
-        dynamic_volumes: {
-          workspace: {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/testuser/repo",
-              token: "secret-token-123",
-              branch: "main",
-            },
-          },
-        },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://testuser-dataset",
+              uri: "vas://testuser-dataset",
+            },
+          },
+          workspace: {
+            driver: "vas",
+            driver_opts: {
+              uri: "vas://secret-token-123-workspace",
             },
           },
         },
@@ -255,27 +247,24 @@ describe("env-expander", () => {
         agent: {
           name: "test-agent",
         },
-        dynamic_volumes: {
-          workspace: {
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/${TEST_USER}/repo",
-              token: "${TEST_TOKEN}",
-            },
-          },
-        },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://${TEST_REGION}-dataset",
+              uri: "vas://${TEST_REGION}-dataset",
+            },
+          },
+          workspace: {
+            driver: "vas",
+            driver_opts: {
+              uri: "vas://${TEST_USER}-${TEST_TOKEN}-workspace",
             },
           },
         },
       };
 
       const result = extractEnvVarReferences(obj);
-      expect(result).toEqual(["TEST_USER", "TEST_TOKEN", "TEST_REGION"]);
+      expect(result).toEqual(["TEST_REGION", "TEST_USER", "TEST_TOKEN"]);
     });
   });
 

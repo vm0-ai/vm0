@@ -5,6 +5,7 @@ import * as fs from "fs";
 import AdmZip from "adm-zip";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
+import { getRemoteFilesFromZip, removeExtraFiles } from "../../lib/file-utils";
 
 /**
  * Format bytes to human-readable format
@@ -20,7 +21,8 @@ function formatBytes(bytes: number): string {
 export const pullCommand = new Command()
   .name("pull")
   .description("Pull cloud files to local directory")
-  .action(async () => {
+  .argument("[versionId]", "Version ID to pull (default: latest)")
+  .action(async (versionId?: string) => {
     try {
       const cwd = process.cwd();
 
@@ -32,14 +34,23 @@ export const pullCommand = new Command()
         process.exit(1);
       }
 
-      console.log(chalk.cyan(`Pulling volume: ${config.name}`));
+      if (versionId) {
+        console.log(
+          chalk.cyan(`Pulling volume: ${config.name} (version: ${versionId})`),
+        );
+      } else {
+        console.log(chalk.cyan(`Pulling volume: ${config.name}`));
+      }
 
       // Download from API
       console.log(chalk.gray("Downloading..."));
 
-      const response = await apiClient.get(
-        `/api/storages?name=${encodeURIComponent(config.name)}`,
-      );
+      let url = `/api/storages?name=${encodeURIComponent(config.name)}`;
+      if (versionId) {
+        url += `&version=${encodeURIComponent(versionId)}`;
+      }
+
+      const response = await apiClient.get(url);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -70,6 +81,17 @@ export const pullCommand = new Command()
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
 
+      // Remove local files not in remote
+      const remoteFiles = getRemoteFilesFromZip(zipEntries);
+      console.log(chalk.gray("Syncing local files..."));
+      const removedCount = await removeExtraFiles(cwd, remoteFiles);
+      if (removedCount > 0) {
+        console.log(
+          chalk.green(`✓ Removed ${removedCount} files not in remote`),
+        );
+      }
+
+      // Extract files from zip
       let extractedCount = 0;
       for (const entry of zipEntries) {
         if (!entry.isDirectory) {

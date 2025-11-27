@@ -10,7 +10,7 @@ vi.mock("../storage-resolver");
 vi.mock("../../s3/s3-client");
 vi.mock("../../../env", () => ({
   env: () => ({
-    S3_USER_STORAGES_NAME: "vm0-s3-user-volumes",
+    S3_USER_STORAGES_NAME: "vas-s3-user-volumes",
   }),
 }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -122,7 +122,7 @@ describe("StorageService", () => {
       expect(result.errors[0]).toBe("data: Volume not found");
     });
 
-    it("should prepare VM0 artifact when artifact name is provided", async () => {
+    it("should prepare VAS artifact when artifact name is provided", async () => {
       const agentConfig: AgentVolumeConfig = {
         agents: [
           {
@@ -134,10 +134,10 @@ describe("StorageService", () => {
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
         volumes: [],
         artifact: {
-          driver: "vm0",
+          driver: "vas",
           mountPath: "/home/user/workspace",
-          vm0StorageName: "my-artifact",
-          vm0Version: "latest",
+          vasStorageName: "my-artifact",
+          vasVersion: "latest",
         },
         errors: [],
       });
@@ -171,7 +171,7 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
-        localPath: "/tmp/vm0-run-test-run-id/artifact",
+        localPath: "/tmp/vas-run-test-run-id/artifact",
         filesDownloaded: 5,
         totalBytes: 1024,
       });
@@ -186,9 +186,9 @@ describe("StorageService", () => {
       );
 
       expect(result.preparedArtifact).not.toBeNull();
-      expect(result.preparedArtifact?.driver).toBe("vm0");
-      expect(result.preparedArtifact?.vm0StorageName).toBe("my-artifact");
-      expect(result.preparedArtifact?.vm0VersionId).toBe("version-123");
+      expect(result.preparedArtifact?.driver).toBe("vas");
+      expect(result.preparedArtifact?.vasStorageName).toBe("my-artifact");
+      expect(result.preparedArtifact?.vasVersionId).toBe("version-123");
       expect(result.errors).toHaveLength(0);
     });
   });
@@ -210,7 +210,7 @@ describe("StorageService", () => {
       expect(mockSandbox.commands.run).not.toHaveBeenCalled();
     });
 
-    it("should upload VM0 storages to sandbox", async () => {
+    it("should upload VAS storages to sandbox", async () => {
       const mockSandbox = {
         files: {
           write: vi.fn(),
@@ -223,11 +223,11 @@ describe("StorageService", () => {
       const preparedStorages: PreparedStorage[] = [
         {
           name: "dataset",
-          driver: "vm0",
-          localPath: "/tmp/vm0-run-test/dataset",
+          driver: "vas",
+          localPath: "/tmp/vas-run-test/dataset",
           mountPath: "/workspace/data",
-          vm0StorageName: "my-dataset",
-          vm0VersionId: "version-123",
+          vasStorageName: "my-dataset",
+          vasVersionId: "version-123",
         },
       ];
 
@@ -255,7 +255,7 @@ describe("StorageService", () => {
       expect(mockSandbox.files.write).toHaveBeenCalled();
     });
 
-    it("should upload VM0 artifact to sandbox", async () => {
+    it("should upload VAS artifact to sandbox", async () => {
       const mockSandbox = {
         files: {
           write: vi.fn(),
@@ -281,11 +281,11 @@ describe("StorageService", () => {
       );
 
       await storageService.mountStorages(mockSandbox as never, [], {
-        driver: "vm0",
-        localPath: "/tmp/vm0-run-test/artifact",
+        driver: "vas",
+        localPath: "/tmp/vas-run-test/artifact",
         mountPath: "/home/user/workspace",
-        vm0StorageName: "my-artifact",
-        vm0VersionId: "version-123",
+        vasStorageName: "my-artifact",
+        vasVersionId: "version-123",
       });
 
       expect(mockSandbox.files.write).toHaveBeenCalled();
@@ -293,11 +293,11 @@ describe("StorageService", () => {
   });
 
   describe("prepareArtifactFromSnapshot", () => {
-    it("should prepare VM0 artifact from snapshot with specific version", async () => {
+    it("should prepare VAS artifact from snapshot with specific version", async () => {
       const snapshot = {
-        driver: "vm0" as const,
+        driver: "vas" as const,
         mountPath: "/workspace",
-        vm0StorageName: "test-artifact",
+        vasStorageName: "test-artifact",
         snapshot: {
           versionId: "version-123-456",
         },
@@ -322,7 +322,7 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
-        localPath: "/tmp/vm0-run-test-run-id/artifact",
+        localPath: "/tmp/vas-run-test-run-id/artifact",
         filesDownloaded: 10,
         totalBytes: 2048,
       });
@@ -333,23 +333,23 @@ describe("StorageService", () => {
       );
 
       expect(result.preparedArtifact).not.toBeNull();
-      expect(result.preparedArtifact?.driver).toBe("vm0");
-      expect(result.preparedArtifact?.vm0VersionId).toBe("version-123-456");
-      expect(result.tempDir).toBe("/tmp/vm0-run-test-run-id");
+      expect(result.preparedArtifact?.driver).toBe("vas");
+      expect(result.preparedArtifact?.vasVersionId).toBe("version-123-456");
+      expect(result.tempDir).toBe("/tmp/vas-run-test-run-id");
       expect(result.errors).toHaveLength(0);
 
       // Verify S3 download was called with correct versioned path
       expect(s3Client.downloadS3Directory).toHaveBeenCalledWith(
-        "s3://vm0-s3-user-volumes/user-123/test-artifact/version-123-456",
+        "s3://vas-s3-user-volumes/user-123/test-artifact/version-123-456",
         expect.any(String),
       );
     });
 
-    it("should return error when VM0 snapshot is missing versionId", async () => {
+    it("should return error when VAS snapshot is missing versionId", async () => {
       const snapshot = {
-        driver: "vm0" as const,
+        driver: "vas" as const,
         mountPath: "/workspace",
-        vm0StorageName: "test-artifact",
+        vasStorageName: "test-artifact",
         // No snapshot with versionId
       };
 
@@ -360,7 +360,7 @@ describe("StorageService", () => {
 
       expect(result.preparedArtifact).toBeNull();
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("VM0 snapshot missing versionId");
+      expect(result.errors[0]).toContain("VAS snapshot missing versionId");
     });
   });
 
@@ -372,7 +372,7 @@ describe("StorageService", () => {
     });
 
     it("should remove temp directory", async () => {
-      const tempDir = "/tmp/vm0-run-test";
+      const tempDir = "/tmp/vas-run-test";
 
       await storageService.cleanup(tempDir);
 
@@ -383,7 +383,7 @@ describe("StorageService", () => {
     });
 
     it("should handle cleanup errors gracefully", async () => {
-      const tempDir = "/tmp/vm0-run-test";
+      const tempDir = "/tmp/vas-run-test";
 
       vi.mocked(fs.promises.rm).mockRejectedValue(
         new Error("Permission denied"),

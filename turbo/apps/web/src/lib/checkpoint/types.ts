@@ -3,20 +3,20 @@
  */
 
 /**
- * VM0 artifact snapshot containing version information
+ * VAS artifact snapshot containing version information
  */
-export interface Vm0Snapshot {
+export interface VasSnapshot {
   versionId: string;
 }
 
 /**
- * Artifact snapshot for VM0 managed artifacts
+ * Artifact snapshot for VAS managed artifacts
  */
 export interface ArtifactSnapshot {
-  driver: "vm0";
+  driver: "vas";
   mountPath: string;
-  vm0StorageName: string;
-  snapshot?: Vm0Snapshot;
+  vasStorageName: string;
+  snapshot?: VasSnapshot;
 }
 
 /**

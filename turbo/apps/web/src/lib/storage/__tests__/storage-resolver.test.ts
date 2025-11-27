@@ -88,8 +88,8 @@ describe("replaceTemplateVars", () => {
 });
 
 describe("resolveVolumes", () => {
-  describe("VM0 volumes", () => {
-    it("should resolve VM0 volume with explicit definition", () => {
+  describe("VAS volumes", () => {
+    it("should resolve VAS volume with explicit definition", () => {
       const config: AgentVolumeConfig = {
         agents: [
           {
@@ -111,14 +111,14 @@ describe("resolveVolumes", () => {
       expect(result.errors).toHaveLength(0);
       expect(result.volumes[0]).toMatchObject({
         name: "dataset",
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/workspace/data",
-        vm0StorageName: "mnist",
-        vm0Version: "latest",
+        vasStorageName: "mnist",
+        vasVersion: "latest",
       });
     });
 
-    it("should resolve VM0 volume with template variables in name", () => {
+    it("should resolve VAS volume with template variables in name", () => {
       const config: AgentVolumeConfig = {
         agents: [
           {
@@ -145,10 +145,10 @@ describe("resolveVolumes", () => {
       expect(result.errors).toHaveLength(0);
       expect(result.volumes[0]).toMatchObject({
         name: "dataset",
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/workspace/data",
-        vm0StorageName: "cifar10",
-        vm0Version: "latest",
+        vasStorageName: "cifar10",
+        vasVersion: "latest",
       });
     });
 
@@ -202,7 +202,7 @@ describe("resolveVolumes", () => {
   });
 
   describe("artifact resolution", () => {
-    it("should resolve VM0 artifact when artifact name is provided", () => {
+    it("should resolve VAS artifact when artifact name is provided", () => {
       const config: AgentVolumeConfig = {
         agents: [
           {
@@ -220,10 +220,10 @@ describe("resolveVolumes", () => {
 
       expect(result.artifact).not.toBeNull();
       expect(result.artifact).toMatchObject({
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/home/user/workspace",
-        vm0StorageName: "my-artifact-storage",
-        vm0Version: "abc123",
+        vasStorageName: "my-artifact-storage",
+        vasVersion: "abc123",
       });
       expect(result.errors).toHaveLength(0);
     });
@@ -241,10 +241,10 @@ describe("resolveVolumes", () => {
 
       expect(result.artifact).not.toBeNull();
       expect(result.artifact).toMatchObject({
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/home/user/workspace",
-        vm0StorageName: "my-artifact-storage",
-        vm0Version: "latest",
+        vasStorageName: "my-artifact-storage",
+        vasVersion: "latest",
       });
       expect(result.errors).toHaveLength(0);
     });

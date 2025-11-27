@@ -225,8 +225,10 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/storages?name=storageName
+ * GET /api/storages?name=storageName&version=versionId
  * Download a storage as a zip file
+ * If version is specified, download that specific version
+ * Otherwise, download the HEAD (latest) version
  */
 export async function GET(request: NextRequest) {
   let tempDir: string | null = null;
@@ -241,9 +243,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Get storage name from query parameter
+    // Get query parameters
     const { searchParams } = new URL(request.url);
     const storageName = searchParams.get("name");
+    const versionId = searchParams.get("version");
 
     if (!storageName) {
       return NextResponse.json(
@@ -253,7 +256,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(
-      `[Storage] Downloading storage "${storageName}" for user ${userId}`,
+      `[Storage] Downloading storage "${storageName}"${versionId ? ` version ${versionId}` : ""} for user ${userId}`,
     );
 
     // Check if storage exists and belongs to user
@@ -270,22 +273,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if storage has a HEAD version
-    if (!storage.headVersionId) {
-      return NextResponse.json(
-        { error: `Storage "${storageName}" has no versions` },
-        { status: 404 },
-      );
+    // Determine which version to download
+    let targetVersionId: string;
+    if (versionId) {
+      // Use specified version
+      targetVersionId = versionId;
+    } else {
+      // Use HEAD version
+      if (!storage.headVersionId) {
+        return NextResponse.json(
+          { error: `Storage "${storageName}" has no versions` },
+          { status: 404 },
+        );
+      }
+      targetVersionId = storage.headVersionId;
     }
 
-    // Get HEAD version details
-    const [headVersion] = await globalThis.services.db
+    // Get version details
+    const [version] = await globalThis.services.db
       .select()
       .from(storageVersions)
-      .where(eq(storageVersions.id, storage.headVersionId))
+      .where(
+        and(
+          eq(storageVersions.id, targetVersionId),
+          eq(storageVersions.storageId, storage.id),
+        ),
+      )
       .limit(1);
 
-    if (!headVersion) {
+    if (!version) {
+      if (versionId) {
+        return NextResponse.json(
+          {
+            error: `Version "${versionId}" not found for storage "${storageName}"`,
+          },
+          { status: 404 },
+        );
+      }
       return NextResponse.json(
         { error: `Storage "${storageName}" HEAD version not found` },
         { status: 404 },
@@ -293,7 +317,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(
-      `[Storage] Downloading HEAD version ${headVersion.id} (${headVersion.fileCount} files)`,
+      `[Storage] Downloading version ${version.id} (${version.fileCount} files)`,
     );
 
     // Create temp directory for download
@@ -308,7 +332,7 @@ export async function GET(request: NextRequest) {
         { status: 500 },
       );
     }
-    const s3Uri = `s3://${bucketName}/${headVersion.s3Key}`;
+    const s3Uri = `s3://${bucketName}/${version.s3Key}`;
     const downloadPath = path.join(tempDir, "download");
     console.log(`[Storage] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);

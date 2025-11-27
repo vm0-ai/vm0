@@ -33,16 +33,16 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalledTimes(4);
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[init]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain(
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[init]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain(
         "Starting Claude Code agent",
       );
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("Session:");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("session-123");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("Model:");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("claude-sonnet-4-5");
-      expect(consoleLogSpy.mock.calls[3][0]).toContain("Tools:");
-      expect(consoleLogSpy.mock.calls[3][0]).toContain(
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("Session:");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("session-123");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("Model:");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("claude-sonnet-4-5");
+      expect(consoleLogSpy.mock.calls[3]![0]).toContain("Tools:");
+      expect(consoleLogSpy.mock.calls[3]![0]).toContain(
         "Bash, Read, Write, Edit",
       );
     });
@@ -81,8 +81,8 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalledTimes(1);
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[text]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain(
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[text]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain(
         "I'll create a hello.md file with content.",
       );
     });
@@ -98,7 +98,7 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalledTimes(1);
-      expect(consoleLogSpy.mock.calls[0][0]).toContain(longText);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain(longText);
     });
   });
 
@@ -124,12 +124,12 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[tool_use]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("Write");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("file_path:");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("/tmp/test.txt");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("content:");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("hello world");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[tool_use]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("Write");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("file_path:");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("/tmp/test.txt");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("content:");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("hello world");
     });
 
     it("should show full input values without truncation", () => {
@@ -149,7 +149,7 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      const commandOutput = consoleLogSpy.mock.calls[1][0];
+      const commandOutput = consoleLogSpy.mock.calls[1]![0];
       expect(commandOutput).toContain(longValue);
     });
 
@@ -167,7 +167,7 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalledTimes(1);
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("Read");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("Read");
     });
   });
 
@@ -190,9 +190,9 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[tool_result]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("Completed");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain(
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[tool_result]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("Completed");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain(
         "File created successfully",
       );
     });
@@ -211,9 +211,11 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[tool_result]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("Error");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("Error: File not found");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[tool_result]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("Error");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain(
+        "Error: File not found",
+      );
     });
 
     it("should show full result content without truncation", () => {
@@ -231,7 +233,7 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      const resultOutput = consoleLogSpy.mock.calls[1][0];
+      const resultOutput = consoleLogSpy.mock.calls[1]![0];
       expect(resultOutput).toContain(longResult);
     });
   });
@@ -262,20 +264,20 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[result]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("✓");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain(
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[result]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("✓");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain(
         "completed successfully",
       );
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("Duration:");
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("45.2s");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("Cost:");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("$0.0261");
-      expect(consoleLogSpy.mock.calls[3][0]).toContain("Turns:");
-      expect(consoleLogSpy.mock.calls[3][0]).toContain("2");
-      expect(consoleLogSpy.mock.calls[4][0]).toContain("Tokens:");
-      expect(consoleLogSpy.mock.calls[4][0]).toContain("input=7k");
-      expect(consoleLogSpy.mock.calls[4][0]).toContain("output=116");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("Duration:");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("45.2s");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("Cost:");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("$0.0261");
+      expect(consoleLogSpy.mock.calls[3]![0]).toContain("Turns:");
+      expect(consoleLogSpy.mock.calls[3]![0]).toContain("2");
+      expect(consoleLogSpy.mock.calls[4]![0]).toContain("Tokens:");
+      expect(consoleLogSpy.mock.calls[4]![0]).toContain("input=7k");
+      expect(consoleLogSpy.mock.calls[4]![0]).toContain("output=116");
     });
 
     it("should render failed result", () => {
@@ -298,9 +300,9 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("[result]");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("✗");
-      expect(consoleLogSpy.mock.calls[0][0]).toContain("failed");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[result]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("✗");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("failed");
     });
 
     it("should format tokens in thousands", () => {
@@ -323,7 +325,7 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      const tokensOutput = consoleLogSpy.mock.calls[4][0];
+      const tokensOutput = consoleLogSpy.mock.calls[4]![0];
       expect(tokensOutput).toContain("input=28k");
       expect(tokensOutput).toContain("output=242");
     });
@@ -348,8 +350,8 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[1][0]).toContain("0.0s");
-      expect(consoleLogSpy.mock.calls[2][0]).toContain("$0.0000");
+      expect(consoleLogSpy.mock.calls[1]![0]).toContain("0.0s");
+      expect(consoleLogSpy.mock.calls[2]![0]).toContain("$0.0000");
     });
   });
 

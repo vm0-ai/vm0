@@ -4,79 +4,81 @@ load '../../helpers/setup'
 
 setup() {
     # Create temporary test directory
-    export TEST_VOLUME_DIR="$(mktemp -d)"
-    # Use unique test volume name with timestamp to avoid conflicts
-    export VOLUME_NAME="e2e-test-volume-$(date +%s)"
+    export TEST_ARTIFACT_DIR="$(mktemp -d)"
+    # Use unique test artifact name with timestamp to avoid conflicts
+    export ARTIFACT_NAME="e2e-test-artifact-$(date +%s)"
 }
 
 teardown() {
     # Clean up temporary directory
-    if [ -n "$TEST_VOLUME_DIR" ] && [ -d "$TEST_VOLUME_DIR" ]; then
-        rm -rf "$TEST_VOLUME_DIR"
+    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
+        rm -rf "$TEST_ARTIFACT_DIR"
     fi
 }
 
-@test "Initialize volume in directory" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+@test "Initialize artifact in directory" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
 
-    run $CLI_COMMAND volume init
+    run $CLI_COMMAND artifact init
     assert_success
-    assert_output --partial "$VOLUME_NAME"
+    assert_output --partial "$ARTIFACT_NAME"
 
-    # Verify .vm0/storage.yaml file is created
+    # Verify .vm0/storage.yaml file is created with type: artifact
     [ -f ".vm0/storage.yaml" ]
+    run cat .vm0/storage.yaml
+    assert_output --partial "type: artifact"
 }
 
-@test "Initialize volume with auto-detected name" {
-    mkdir -p "$TEST_VOLUME_DIR/my-dataset"
-    cd "$TEST_VOLUME_DIR/my-dataset"
-    run $CLI_COMMAND volume init
+@test "Initialize artifact with auto-detected name" {
+    mkdir -p "$TEST_ARTIFACT_DIR/my-project"
+    cd "$TEST_ARTIFACT_DIR/my-project"
+    run $CLI_COMMAND artifact init
     assert_success
-    assert_output --partial "my-dataset"
+    assert_output --partial "my-project"
 }
 
-@test "volume init rejects invalid volume name" {
-    mkdir -p "$TEST_VOLUME_DIR/INVALID_NAME"
-    cd "$TEST_VOLUME_DIR/INVALID_NAME"
+@test "artifact init rejects invalid artifact name" {
+    mkdir -p "$TEST_ARTIFACT_DIR/INVALID_NAME"
+    cd "$TEST_ARTIFACT_DIR/INVALID_NAME"
 
-    run $CLI_COMMAND volume init
+    run $CLI_COMMAND artifact init
     assert_failure
-    assert_output --partial "Invalid volume name"
+    assert_output --partial "Invalid artifact name"
 }
 
-@test "Push volume to cloud and returns versionId" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+@test "Push artifact to cloud and returns versionId" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
 
     echo "Hello from E2E test" > test-file.txt
-    mkdir -p data
-    echo "42" > data/answer.txt
+    mkdir -p src
+    echo "console.log('hello')" > src/index.js
 
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
     assert_output --partial "Uploading"
-    assert_output --partial "$VOLUME_NAME"
+    assert_output --partial "$ARTIFACT_NAME"
     # Verify versionId is returned (UUID format)
     assert_output --partial "Version:"
     assert_output --regexp "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 }
 
 @test "Multiple pushes create different versions" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
 
     # First push
     echo "version 1" > data.txt
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
 
     # Second push with different content
     echo "version 2" > data.txt
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
     VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
 
@@ -84,32 +86,33 @@ teardown() {
     [ "$VERSION1" != "$VERSION2" ]
 }
 
-@test "Pull volume from cloud gets HEAD version" {
+@test "Pull artifact from cloud gets HEAD version" {
     # First push multiple versions
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
 
     echo "version 1" > data.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
     echo "version 2" > data.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
     echo "version 3 - HEAD" > data.txt
     mkdir -p subdir
     echo "nested file" > subdir/nested.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
     # Pull in a different directory
     NEW_DIR="$(mktemp -d)"
     cd "$NEW_DIR"
     mkdir -p .vm0
     cat > .vm0/storage.yaml <<EOF
-name: $VOLUME_NAME
+name: $ARTIFACT_NAME
+type: artifact
 EOF
 
-    run $CLI_COMMAND volume pull
+    run $CLI_COMMAND artifact pull
     assert_success
     assert_output --partial "Downloading"
 
@@ -124,24 +127,24 @@ EOF
 
 @test "Pull specific version by versionId" {
     # Push multiple versions and capture their IDs
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
 
     # Push version 1
     echo "content from version 1" > data.txt
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
 
     # Push version 2
     echo "content from version 2" > data.txt
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
 
     # Push version 3 (HEAD)
     echo "content from version 3 - HEAD" > data.txt
-    run $CLI_COMMAND volume push
+    run $CLI_COMMAND artifact push
     assert_success
 
     # Pull version 1 specifically (not HEAD)
@@ -149,10 +152,11 @@ EOF
     cd "$NEW_DIR"
     mkdir -p .vm0
     cat > .vm0/storage.yaml <<EOF
-name: $VOLUME_NAME
+name: $ARTIFACT_NAME
+type: artifact
 EOF
 
-    run $CLI_COMMAND volume pull "$VERSION1"
+    run $CLI_COMMAND artifact pull "$VERSION1"
     assert_success
     assert_output --partial "version: $VERSION1"
 
@@ -165,25 +169,26 @@ EOF
 }
 
 @test "Pull non-existent version fails with error" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
 
     echo "some content" > data.txt
-    $CLI_COMMAND volume push >/dev/null
+    $CLI_COMMAND artifact push >/dev/null
 
     # Try to pull a non-existent version
     NEW_DIR="$(mktemp -d)"
     cd "$NEW_DIR"
     mkdir -p .vm0
     cat > .vm0/storage.yaml <<EOF
-name: $VOLUME_NAME
+name: $ARTIFACT_NAME
+type: artifact
 EOF
 
     FAKE_VERSION="00000000-0000-0000-0000-000000000000"
-    run $CLI_COMMAND volume pull "$FAKE_VERSION"
+    run $CLI_COMMAND artifact pull "$FAKE_VERSION"
     assert_failure
     assert_output --partial "not found"
 
     rm -rf "$NEW_DIR"
-} 
+}

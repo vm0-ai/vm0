@@ -1,23 +1,23 @@
 /**
- * VM0 storage snapshot script
+ * VAS (Versioned Artifact Storage) snapshot script
  * Creates snapshots by uploading storage contents to the storage webhook API
  */
-export const VM0_SNAPSHOT_SCRIPT = `# Create VM0 snapshot for a storage
+export const VAS_SNAPSHOT_SCRIPT = `# Create VAS snapshot for a storage
 # Creates a zip of the storage contents and uploads to the storage webhook API
 # Requires: COMMON_SCRIPT to be sourced first
 
-create_vm0_snapshot() {
+create_vas_snapshot() {
   local mount_path="$1"
   local storage_name="$2"
-  local vm0_storage_name="$3"
+  local vas_storage_name="$3"
 
-  echo "[VM0] Creating VM0 snapshot for storage '$storage_name' ($vm0_storage_name) at $mount_path" >&2
+  echo "[VM0] Creating VAS snapshot for storage '$storage_name' ($vas_storage_name) at $mount_path" >&2
   echo "[VM0] STORAGE_WEBHOOK_URL: $STORAGE_WEBHOOK_URL" >&2
   echo "[VM0] API_TOKEN length: \${#API_TOKEN}" >&2
   echo "[VM0] RUN_ID: $RUN_ID" >&2
 
   # Create temp directory for zip
-  local zip_dir="/tmp/vm0-snapshot-$RUN_ID-$storage_name"
+  local zip_dir="/tmp/vas-snapshot-$RUN_ID-$storage_name"
   mkdir -p "$zip_dir"
   local zip_path="$zip_dir/storage.zip"
 
@@ -27,10 +27,10 @@ create_vm0_snapshot() {
     return 1
   }
 
-  # Create zip file (exclude .git and .vm0 directories)
+  # Create zip file (exclude .git and .vas directories)
   # Try 'zip' command first, fallback to 'python3' zipfile module
   if command -v zip >/dev/null 2>&1; then
-    if ! zip -r "$zip_path" . -x "*.git*" -x "*.vm0*" >/dev/null 2>&1; then
+    if ! zip -r "$zip_path" . -x "*.git*" -x "*.vas*" >/dev/null 2>&1; then
       echo "[ERROR] Failed to create zip for storage '$storage_name'" >&2
       rm -rf "$zip_dir"
       return 1
@@ -43,8 +43,8 @@ import zipfile
 import os
 with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
     for root, dirs, files in os.walk('.'):
-        # Exclude .git and .vm0 directories
-        dirs[:] = [d for d in dirs if d not in ['.git', '.vm0']]
+        # Exclude .git and .vas directories
+        dirs[:] = [d for d in dirs if d not in ['.git', '.vas']]
         for file in files:
             filepath = os.path.join(root, file)
             arcname = os.path.relpath(filepath, '.')
@@ -65,7 +65,7 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
       -H "Authorization: Bearer $API_TOKEN" \\
       -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
       -F "runId=$RUN_ID" \\
-      -F "storageName=$vm0_storage_name" \\
+      -F "storageName=$vas_storage_name" \\
       -F "message=Checkpoint from run $RUN_ID" \\
       -F "file=@$zip_path" \\
       --connect-timeout 10 \\
@@ -75,7 +75,7 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
     response=$(curl -X POST "$STORAGE_WEBHOOK_URL" \\
       -H "Authorization: Bearer $API_TOKEN" \\
       -F "runId=$RUN_ID" \\
-      -F "storageName=$vm0_storage_name" \\
+      -F "storageName=$vas_storage_name" \\
       -F "message=Checkpoint from run $RUN_ID" \\
       -F "file=@$zip_path" \\
       --connect-timeout 10 \\
@@ -97,13 +97,13 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
   # Check if response is valid JSON and extract versionId
   local version_id=$(echo "$response" | jq -r '.versionId // empty' 2>/dev/null)
   if [ -z "$version_id" ]; then
-    echo "[ERROR] Failed to create VM0 snapshot for '$storage_name'" >&2
+    echo "[ERROR] Failed to create VAS snapshot for '$storage_name'" >&2
     echo "[ERROR] Webhook URL: $STORAGE_WEBHOOK_URL" >&2
     echo "[ERROR] Response: $response" >&2
     return 1
   fi
 
-  echo "[VM0] VM0 snapshot created for '$storage_name': version $version_id" >&2
+  echo "[VM0] VAS snapshot created for '$storage_name': version $version_id" >&2
 
   # Return JSON snapshot
   jq -n --arg vid "$version_id" '{versionId: $vid}'

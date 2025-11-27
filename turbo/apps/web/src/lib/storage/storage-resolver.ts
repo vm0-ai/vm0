@@ -60,9 +60,9 @@ export function replaceTemplateVars(
 }
 
 /**
- * Resolve a VM0 volume configuration
+ * Resolve a VAS volume configuration
  */
-function resolveVm0Volume(
+function resolveVasVolume(
   volumeName: string,
   mountPath: string,
   volumeConfig: VolumeConfig,
@@ -103,10 +103,10 @@ function resolveVm0Volume(
   return {
     volume: {
       name: volumeName,
-      driver: "vm0" as StorageDriver,
+      driver: "vas" as StorageDriver,
       mountPath,
-      vm0StorageName: storageName,
-      vm0Version: version,
+      vasStorageName: storageName,
+      vasVersion: version,
     },
     error: null,
   };
@@ -125,10 +125,10 @@ function resolveArtifact(
 ): { artifact: ResolvedArtifact; errors: VolumeError[] } {
   return {
     artifact: {
-      driver: "vm0",
+      driver: "vas",
       mountPath: workingDir,
-      vm0StorageName: artifactName,
-      vm0Version: artifactVersion,
+      vasStorageName: artifactName,
+      vasVersion: artifactVersion,
     },
     errors: [],
   };
@@ -198,8 +198,8 @@ export function resolveVolumes(
           continue;
         }
 
-        // Resolve VM0 volume
-        const { volume, error } = resolveVm0Volume(
+        // Resolve VAS volume
+        const { volume, error } = resolveVasVolume(
           volumeName,
           mountPath,
           volumeConfig,

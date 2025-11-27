@@ -5,8 +5,8 @@ import { saveConfig, clearConfig, loadConfig, getApiUrl } from "./config";
  * Build headers with optional Vercel bypass secret
  * Used to bypass Vercel deployment protection in CI/preview environments
  */
-function buildHeaders(): HeadersInit {
-  const headers: HeadersInit = {
+function buildHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
 

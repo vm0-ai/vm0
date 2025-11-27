@@ -12,8 +12,7 @@ import type { AgentConfigYaml } from "../../types/agent-config";
 import {
   COMMON_SCRIPT,
   SEND_EVENT_SCRIPT,
-  GIT_SNAPSHOT_SCRIPT,
-  VM0_SNAPSHOT_SCRIPT,
+  VAS_SNAPSHOT_SCRIPT,
   CREATE_CHECKPOINT_SCRIPT,
   RUN_AGENT_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
@@ -350,8 +349,7 @@ export class E2BService {
     const scripts: Array<{ content: string; path: string }> = [
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: SEND_EVENT_SCRIPT, path: SCRIPT_PATHS.sendEvent },
-      { content: GIT_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.gitSnapshot },
-      { content: VM0_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vm0Snapshot },
+      { content: VAS_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vasSnapshot },
       {
         content: CREATE_CHECKPOINT_SCRIPT,
         path: SCRIPT_PATHS.createCheckpoint,
@@ -443,16 +441,16 @@ export class E2BService {
         JSON.stringify({
           driver: preparedArtifact.driver,
           mountPath: preparedArtifact.mountPath,
-          vm0StorageName: preparedArtifact.vm0StorageName,
+          vasStorageName: preparedArtifact.vasStorageName,
         }),
       );
 
-      // VM0 artifact - pass info for vm0 snapshot
-      envs.VM0_ARTIFACT_DRIVER = "vm0";
+      // VAS artifact - pass info for vas snapshot
+      envs.VM0_ARTIFACT_DRIVER = "vas";
       envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
-      envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vm0StorageName;
-      envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vm0VersionId;
-      console.log(`[E2B] Configured VM0 artifact for checkpoint`);
+      envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName;
+      envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId;
+      console.log(`[E2B] Configured VAS artifact for checkpoint`);
     } else {
       console.log(`[E2B] No artifact configured for checkpoint`);
     }

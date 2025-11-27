@@ -1,8 +1,8 @@
 /**
- * Supported storage drivers for volumes and artifacts:
- * - "vm0": VM0 managed storage (stored in S3 with versioning)
+ * Supported storage drivers:
+ * - "vas": Versioned Artifact Storage (stored in S3 with versioning)
  */
-export type StorageDriver = "vm0";
+export type StorageDriver = "vas";
 
 /**
  * Storage type distinguishes between static volumes and artifacts
@@ -25,18 +25,18 @@ export interface ResolvedVolume {
   name: string;
   driver: StorageDriver;
   mountPath: string;
-  vm0StorageName: string;
-  vm0Version: string; // Version hash or "latest"
+  vasStorageName: string;
+  vasVersion: string; // Version hash or "latest"
 }
 
 /**
- * Resolved artifact (VM0 only)
+ * Resolved artifact (VAS only)
  */
 export interface ResolvedArtifact {
   driver: StorageDriver;
   mountPath: string; // Same as working_dir
-  vm0StorageName: string;
-  vm0Version: string; // Version hash or "latest"
+  vasStorageName: string;
+  vasVersion: string; // Version hash or "latest"
 }
 
 /**
@@ -82,19 +82,19 @@ export interface PreparedStorage {
   driver: StorageDriver;
   localPath?: string;
   mountPath: string;
-  vm0StorageName: string;
-  vm0VersionId: string;
+  vasStorageName: string;
+  vasVersionId: string;
 }
 
 /**
- * Prepared artifact with local path and mount information (VM0 only)
+ * Prepared artifact with local path and mount information (VAS only)
  */
 export interface PreparedArtifact {
   driver: StorageDriver;
   localPath?: string;
   mountPath: string;
-  vm0StorageName: string;
-  vm0VersionId: string;
+  vasStorageName: string;
+  vasVersionId: string;
 }
 
 /**

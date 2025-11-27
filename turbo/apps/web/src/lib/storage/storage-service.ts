@@ -133,14 +133,14 @@ export class StorageService {
       );
     }
 
-    // Check if we need a temp directory
-    const hasStorages = volumeResult.volumes.length > 0;
-    const hasArtifact = volumeResult.artifact !== null;
-    const needsTempDir = hasStorages || hasArtifact;
+    // Check if we need a temp directory (for VAS storages/artifacts)
+    const hasVasStorages = volumeResult.volumes.length > 0;
+    const hasVasArtifact = volumeResult.artifact !== null;
+    const needsTempDir = hasVasStorages || hasVasArtifact;
 
     let tempDir: string | null = null;
     if (needsTempDir) {
-      tempDir = `/tmp/vm0-run-${runId}`;
+      tempDir = `/tmp/vas-run-${runId}`;
       await fs.promises.mkdir(tempDir, { recursive: true });
     }
 
@@ -202,8 +202,8 @@ export class StorageService {
     // Resolve version
     const { versionId, s3Key } = await this.resolveVersion(
       userId,
-      volume.vm0StorageName,
-      volume.vm0Version,
+      volume.vasStorageName,
+      volume.vasVersion,
     );
 
     // Download from S3
@@ -216,16 +216,16 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VM0 storage "${volume.name}" (${volume.vm0StorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
       name: volume.name,
-      driver: "vm0",
+      driver: "vas",
       localPath,
       mountPath: volume.mountPath,
-      vm0StorageName: volume.vm0StorageName,
-      vm0VersionId: versionId,
+      vasStorageName: volume.vasStorageName,
+      vasVersionId: versionId,
     };
   }
 
@@ -240,8 +240,8 @@ export class StorageService {
     // Resolve version
     const { versionId, s3Key } = await this.resolveVersion(
       userId,
-      artifact.vm0StorageName,
-      artifact.vm0Version,
+      artifact.vasStorageName,
+      artifact.vasVersion,
     );
 
     // Download from S3
@@ -254,15 +254,15 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VM0 artifact (${artifact.vm0StorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${artifact.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
-      driver: "vm0",
+      driver: "vas",
       localPath,
       mountPath: artifact.mountPath,
-      vm0StorageName: artifact.vm0StorageName,
-      vm0VersionId: versionId,
+      vasStorageName: artifact.vasStorageName,
+      vasVersionId: versionId,
     };
   }
 
@@ -280,12 +280,12 @@ export class StorageService {
     tempDir: string | null;
     errors: string[];
   }> {
-    // VM0 artifact: download from specific version
+    // VAS artifact: download from specific version
     if (!snapshot.snapshot?.versionId) {
       return {
         preparedArtifact: null,
         tempDir: null,
-        errors: ["VM0 snapshot missing versionId"],
+        errors: ["VAS snapshot missing versionId"],
       };
     }
 
@@ -293,7 +293,7 @@ export class StorageService {
       `[Storage] Preparing artifact from snapshot (driver: ${snapshot.driver})...`,
     );
 
-    const tempDir = `/tmp/vm0-run-${runId}`;
+    const tempDir = `/tmp/vas-run-${runId}`;
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Get the version from database to get S3 key
@@ -308,7 +308,7 @@ export class StorageService {
         preparedArtifact: null,
         tempDir,
         errors: [
-          `VM0 artifact version "${snapshot.snapshot.versionId}" not found`,
+          `VAS artifact version "${snapshot.snapshot.versionId}" not found`,
         ],
       };
     }
@@ -327,16 +327,16 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VM0 artifact (${snapshot.vm0StorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${snapshot.vasStorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
       preparedArtifact: {
-        driver: "vm0",
+        driver: "vas",
         localPath,
         mountPath: snapshot.mountPath,
-        vm0StorageName: snapshot.vm0StorageName,
-        vm0VersionId: snapshot.snapshot.versionId,
+        vasStorageName: snapshot.vasStorageName,
+        vasVersionId: snapshot.snapshot.versionId,
       },
       tempDir,
       errors: [],
@@ -365,6 +365,7 @@ export class StorageService {
     // Mount storages
     for (const storage of preparedStorages) {
       try {
+        // VAS storages: upload from local temp to sandbox
         const stat = await fs.promises
           .stat(storage.localPath!)
           .catch(() => null);
@@ -375,7 +376,7 @@ export class StorageService {
             storage.mountPath,
           );
           console.log(
-            `[Storage] Uploaded VM0 storage "${storage.name}" to ${storage.mountPath}`,
+            `[Storage] Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
           );
         }
       } catch (error) {
@@ -390,6 +391,7 @@ export class StorageService {
     // Mount artifact
     if (preparedArtifact) {
       try {
+        // VAS artifact: upload from local temp to sandbox
         const stat = await fs.promises
           .stat(preparedArtifact.localPath!)
           .catch(() => null);
@@ -400,7 +402,7 @@ export class StorageService {
             preparedArtifact.mountPath,
           );
           console.log(
-            `[Storage] Uploaded VM0 artifact to ${preparedArtifact.mountPath}`,
+            `[Storage] Uploaded VAS artifact to ${preparedArtifact.mountPath}`,
           );
         }
       } catch (error) {
