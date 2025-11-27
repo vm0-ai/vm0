@@ -155,6 +155,13 @@
       "when": 1764600000000,
       "tag": "0021_add_template_vars_to_agent_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1764700000000,
+      "tag": "0022_rename_dynamic_vars_to_template_vars",
+      "breakpoints": true
     }
   ]
 }
