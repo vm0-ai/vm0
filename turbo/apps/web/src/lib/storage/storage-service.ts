@@ -271,12 +271,14 @@ export class StorageService {
    * @param snapshot - Artifact snapshot from checkpoint (artifactName + artifactVersion)
    * @param mountPath - Mount path for the artifact in sandbox
    * @param runId - Run ID for temp directory naming
+   * @param userId - User ID for storage access (required for resolving "latest" version)
    * @returns Prepared artifact
    */
   async prepareArtifactFromSnapshot(
     snapshot: ArtifactSnapshot,
     mountPath: string,
     runId: string,
+    userId: string,
   ): Promise<{
     preparedArtifact: PreparedArtifact | null;
     tempDir: string | null;
@@ -298,24 +300,28 @@ export class StorageService {
     const tempDir = `/tmp/vas-run-${runId}`;
     await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Get the version from database to get S3 key
-    const [version] = await globalThis.services.db
-      .select()
-      .from(storageVersions)
-      .where(eq(storageVersions.id, snapshot.artifactVersion))
-      .limit(1);
-
-    if (!version) {
+    // Resolve version (handles "latest" by looking up HEAD)
+    let versionId: string;
+    let s3Key: string;
+    try {
+      const resolved = await this.resolveVersion(
+        userId,
+        snapshot.artifactName,
+        snapshot.artifactVersion,
+      );
+      versionId = resolved.versionId;
+      s3Key = resolved.s3Key;
+    } catch (error) {
       return {
         preparedArtifact: null,
         tempDir,
         errors: [
-          `VAS artifact version "${snapshot.artifactVersion}" not found`,
+          `Failed to resolve artifact version: ${error instanceof Error ? error.message : "Unknown error"}`,
         ],
       };
     }
 
-    // Download from the specific version's S3 path
+    // Download from the resolved version's S3 path
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
       return {
@@ -324,12 +330,12 @@ export class StorageService {
         errors: ["S3_USER_STORAGES_NAME environment variable is not set"],
       };
     }
-    const s3Uri = `s3://${bucketName}/${version.s3Key}`;
+    const s3Uri = `s3://${bucketName}/${s3Key}`;
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VAS artifact (${snapshot.artifactName}) version ${snapshot.artifactVersion}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${snapshot.artifactName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -338,7 +344,7 @@ export class StorageService {
         localPath,
         mountPath,
         vasStorageName: snapshot.artifactName,
-        vasVersionId: snapshot.artifactVersion,
+        vasVersionId: versionId,
       },
       tempDir,
       errors: [],

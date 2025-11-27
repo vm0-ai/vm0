@@ -69,6 +69,7 @@ export class E2BService {
         context.resumeArtifact,
         mountPath,
         context.runId,
+        context.userId || "",
       );
 
       // Also prepare regular storages (fresh, not from snapshot)

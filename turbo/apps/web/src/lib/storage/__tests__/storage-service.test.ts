@@ -299,18 +299,35 @@ describe("StorageService", () => {
         artifactVersion: "version-123-456",
       };
 
-      // Mock database query for storageVersions
+      // Mock database queries for resolveVersion
+      // First call: storages table, Second call: storageVersions table
+      let queryCount = 0;
       const mockDb = {
         select: vi.fn().mockReturnThis(),
         from: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([
-          {
-            id: "version-123-456",
-            storageId: "storage-id",
-            s3Key: "user-123/test-artifact/version-123-456",
-          },
-        ]),
+        limit: vi.fn().mockImplementation(() => {
+          queryCount++;
+          if (queryCount === 1) {
+            // First query: storages table
+            return Promise.resolve([
+              {
+                id: "storage-id",
+                name: "test-artifact",
+                userId: "user-123",
+                headVersionId: "head-version-id",
+              },
+            ]);
+          }
+          // Second query: storageVersions table
+          return Promise.resolve([
+            {
+              id: "version-123-456",
+              storageId: "storage-id",
+              s3Key: "user-123/test-artifact/version-123-456",
+            },
+          ]);
+        }),
       };
 
       globalThis.services = {
@@ -327,6 +344,7 @@ describe("StorageService", () => {
         snapshot,
         "/workspace",
         "test-run-id",
+        "user-123",
       );
 
       expect(result.preparedArtifact).not.toBeNull();
@@ -352,6 +370,7 @@ describe("StorageService", () => {
         snapshot,
         "/workspace",
         "test-run-id",
+        "user-123",
       );
 
       expect(result.preparedArtifact).toBeNull();
