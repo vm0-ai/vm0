@@ -6,6 +6,7 @@ import * as agentRunSchema from "./schema/agent-run";
 import * as agentRunEventSchema from "./schema/agent-run-event";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
+import * as agentSessionSchema from "./schema/agent-session";
 
 export const schema = {
   ...userSchema,
@@ -16,4 +17,5 @@ export const schema = {
   ...agentRunEventSchema,
   ...conversationSchema,
   ...checkpointSchema,
+  ...agentSessionSchema,
 };

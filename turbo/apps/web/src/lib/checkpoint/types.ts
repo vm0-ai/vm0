@@ -58,5 +58,6 @@ export interface CheckpointRequest {
  */
 export interface CheckpointResponse {
   checkpointId: string;
+  agentSessionId: string;
   hasArtifact: boolean;
 }

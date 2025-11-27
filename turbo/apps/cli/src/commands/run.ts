@@ -212,10 +212,10 @@ const runCmd = new Command()
     },
   );
 
-// Add resume subcommand
+// Add resume subcommand (alias for --checkpoint)
 runCmd
   .command("resume")
-  .description("Resume an agent run from a checkpoint")
+  .description("Resume an agent run from a checkpoint (uses all snapshot data)")
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
   .option(
@@ -272,6 +272,81 @@ runCmd
             console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
           } else {
             console.error(chalk.red("✗ Resume failed"));
+            console.error(chalk.gray(`  ${error.message}`));
+          }
+        } else {
+          console.error(chalk.red("✗ An unexpected error occurred"));
+        }
+        process.exit(1);
+      }
+    },
+  );
+
+// Add continue subcommand (alias for --session)
+runCmd
+  .command("continue")
+  .description(
+    "Continue an agent run from a session (uses latest artifact version)",
+  )
+  .argument("<agentSessionId>", "Agent session ID to continue from")
+  .argument("<prompt>", "Prompt for the continued agent")
+  .option(
+    "-t, --timeout <seconds>",
+    "Polling timeout in seconds (default: 60)",
+    String(DEFAULT_TIMEOUT_SECONDS),
+  )
+  .action(
+    async (
+      agentSessionId: string,
+      prompt: string,
+      options: { timeout: string },
+    ) => {
+      const timeoutSeconds = parseInt(options.timeout, 10);
+      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+        console.error(
+          chalk.red("✗ Invalid timeout value. Must be a positive number."),
+        );
+        process.exit(1);
+      }
+      try {
+        // 1. Validate session ID format
+        if (!isUUID(agentSessionId)) {
+          console.error(
+            chalk.red(`✗ Invalid agent session ID format: ${agentSessionId}`),
+          );
+          console.error(chalk.gray("  Agent session ID must be a valid UUID"));
+          process.exit(1);
+        }
+
+        // 2. Display starting message
+        console.log(chalk.blue("\nContinuing agent run from session..."));
+        console.log(chalk.gray(`  Session ID: ${agentSessionId}`));
+        console.log(chalk.gray(`  Prompt: ${prompt}`));
+        console.log(chalk.gray(`  Note: Using latest artifact version`));
+        console.log();
+        console.log(chalk.blue("Executing in sandbox..."));
+        console.log();
+
+        // 3. Call continue API
+        const response = await apiClient.continueSession({
+          agentSessionId,
+          prompt,
+        });
+
+        // 4. Poll for events
+        await pollEvents(response.runId, timeoutSeconds);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes("Not authenticated")) {
+            console.error(
+              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("not found")) {
+            console.error(
+              chalk.red(`✗ Agent session not found: ${agentSessionId}`),
+            );
+          } else {
+            console.error(chalk.red("✗ Continue failed"));
             console.error(chalk.gray(`  ${error.message}`));
           }
         } else {

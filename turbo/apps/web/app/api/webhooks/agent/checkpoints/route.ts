@@ -91,19 +91,21 @@ export async function POST(request: NextRequest) {
     const result = await checkpointService.createCheckpoint(body);
 
     console.log(
-      `[Checkpoint API] Checkpoint created: ${result.checkpointId}, has artifact: ${result.hasArtifact}`,
+      `[Checkpoint API] Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, has artifact: ${result.hasArtifact}`,
     );
 
     // Send vm0_result event
     await sendVm0ResultEvent({
       runId: body.runId,
       checkpointId: result.checkpointId,
+      agentSessionId: result.agentSessionId,
       hasArtifact: result.hasArtifact,
     });
 
     // Return response
     const response: CheckpointResponse = {
       checkpointId: result.checkpointId,
+      agentSessionId: result.agentSessionId,
       hasArtifact: result.hasArtifact,
     };
 

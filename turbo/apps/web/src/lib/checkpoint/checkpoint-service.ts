@@ -4,10 +4,12 @@ import { agentConfigs } from "../../db/schema/agent-config";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
+import { agentSessionService } from "../agent-session";
 import type {
   CheckpointRequest,
   CheckpointResponse,
   AgentConfigSnapshot,
+  ArtifactSnapshot,
 } from "./types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 
@@ -104,8 +106,22 @@ export class CheckpointService {
       `[Checkpoint] Checkpoint created successfully: ${checkpoint.id}`,
     );
 
+    // Find or create agent session
+    const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
+    const { session: agentSession } = await agentSessionService.findOrCreate(
+      run.userId,
+      run.agentConfigId,
+      artifactSnapshot.artifactName,
+      conversation.id,
+    );
+
+    console.log(
+      `[Checkpoint] Agent session updated/created: ${agentSession.id}`,
+    );
+
     return {
       checkpointId: checkpoint.id,
+      agentSessionId: agentSession.id,
       hasArtifact: true, // artifact is now always required
     };
   }

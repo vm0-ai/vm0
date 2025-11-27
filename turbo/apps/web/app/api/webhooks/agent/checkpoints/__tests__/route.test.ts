@@ -16,6 +16,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
+import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
 import { agentConfigs } from "../../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -98,7 +99,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    // Delete agent_runs first - CASCADE will delete related checkpoints and conversations
+    // Delete agent_sessions first (references conversations)
+    await globalThis.services.db
+      .delete(agentSessions)
+      .where(eq(agentSessions.agentConfigId, testConfigId));
+
+    // Delete agent_runs - CASCADE will delete related checkpoints and conversations
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -445,6 +451,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.checkpointId).toBeDefined();
+      expect(data.agentSessionId).toBeDefined();
       expect(data.hasArtifact).toBe(true);
 
       // Verify checkpoint in database
@@ -477,6 +484,19 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         templateVars?: Record<string, string>;
       };
       expect(configSnapshot?.templateVars).toEqual({ user: "testuser" });
+
+      // Verify agent session was created/updated
+      const savedSessions = await globalThis.services.db
+        .select()
+        .from(agentSessions)
+        .where(eq(agentSessions.id, data.agentSessionId));
+
+      expect(savedSessions).toHaveLength(1);
+      const session = savedSessions[0];
+      expect(session?.userId).toBe(testUserId);
+      expect(session?.agentConfigId).toBe(testConfigId);
+      expect(session?.artifactName).toBe("test-artifact");
+      expect(session?.conversationId).toBe(checkpoint!.conversationId);
     });
   });
 

@@ -2,12 +2,14 @@ import { eq, and } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
+import { agentConfigs } from "../../db/schema/agent-config";
 import { NotFoundError, UnauthorizedError } from "../errors";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type {
   ArtifactSnapshot,
   AgentConfigSnapshot,
 } from "../checkpoint/types";
+import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 
@@ -167,6 +169,106 @@ export class RunService {
       agentConfig: agentConfigSnapshot.config,
       prompt,
       dynamicVars: agentConfigSnapshot.templateVars || {},
+      sandboxToken,
+      resumeSession,
+      resumeArtifact,
+    };
+  }
+
+  /**
+   * Create execution context for continuing from an agent session
+   * Unlike checkpoint resume, this uses the LATEST artifact version
+   *
+   * @param runId New run ID for the continue
+   * @param agentSessionId Agent session ID to continue from
+   * @param prompt New prompt for continued execution
+   * @param sandboxToken Temporary bearer token for sandbox
+   * @param userId User ID for authorization check
+   * @returns Execution context for e2b-service
+   * @throws NotFoundError if session doesn't exist
+   * @throws UnauthorizedError if session doesn't belong to user
+   */
+  async createContinueContext(
+    runId: string,
+    agentSessionId: string,
+    prompt: string,
+    sandboxToken: string,
+    userId: string,
+  ): Promise<ExecutionContext> {
+    console.log(
+      `[RunService] Creating continue context for ${runId} from session ${agentSessionId}`,
+    );
+
+    // Load session with conversation data
+    const session =
+      await agentSessionService.getByIdWithConversation(agentSessionId);
+
+    if (!session) {
+      throw new NotFoundError("Agent session");
+    }
+
+    // Verify session belongs to user
+    if (session.userId !== userId) {
+      throw new UnauthorizedError(
+        "Agent session does not belong to authenticated user",
+      );
+    }
+
+    // Session must have a conversation to continue from
+    if (!session.conversation) {
+      throw new NotFoundError(
+        "Agent session has no conversation history to continue from",
+      );
+    }
+
+    console.log(
+      `[RunService] Session verified for user ${userId}, loaded conversation ${session.conversationId}`,
+    );
+
+    // Load agent config for working directory
+    const [config] = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(eq(agentConfigs.id, session.agentConfigId))
+      .limit(1);
+
+    if (!config) {
+      throw new NotFoundError("Agent config");
+    }
+
+    // Extract working directory from agent config
+    const agentConfig = config.config as
+      | { agents?: Array<{ working_dir?: string }> }
+      | undefined;
+    const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
+
+    console.log(`[RunService] Working directory: ${workingDir}`);
+
+    // Build resume session data from conversation
+    const resumeSession: ResumeSession = {
+      sessionId: session.conversation.cliAgentSessionId,
+      sessionHistory: session.conversation.cliAgentSessionHistory,
+      workingDir,
+    };
+
+    // For continue, use LATEST artifact version (not a snapshot)
+    // This is the key difference from checkpoint resume
+    const resumeArtifact: ArtifactSnapshot = {
+      artifactName: session.artifactName,
+      artifactVersion: "latest", // Always use latest for continue
+    };
+
+    console.log(
+      `[RunService] Continue session: ${session.conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@latest`,
+    );
+
+    return {
+      runId,
+      userId,
+      agentConfigId: session.agentConfigId,
+      agentConfig: config.config,
+      prompt,
+      dynamicVars: {},
       sandboxToken,
       resumeSession,
       resumeArtifact,

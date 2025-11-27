@@ -24,6 +24,30 @@ export interface ResumeRunResponse {
   createdAt: string;
 }
 
+export interface ContinueRunResponse {
+  runId: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface AgentSessionResponse {
+  session: {
+    id: string;
+    userId: string;
+    agentConfigId: string;
+    conversationId: string | null;
+    artifactName: string;
+    createdAt: string;
+    updatedAt: string;
+    conversation?: {
+      id: string;
+      cliAgentType: string;
+      cliAgentSessionId: string;
+      cliAgentSessionHistory: string;
+    } | null;
+  };
+}
+
 export interface GetConfigResponse {
   id: string;
   name: string;
@@ -189,6 +213,44 @@ class ApiClient {
     }
 
     return (await response.json()) as ResumeRunResponse;
+  }
+
+  async continueSession(body: {
+    agentSessionId: string;
+    prompt: string;
+  }): Promise<ContinueRunResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/agent/runs/continue`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to continue session");
+    }
+
+    return (await response.json()) as ContinueRunResponse;
+  }
+
+  async getAgentSession(id: string): Promise<AgentSessionResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/agent/sessions/${id}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to get agent session");
+    }
+
+    return (await response.json()) as AgentSessionResponse;
   }
 
   /**

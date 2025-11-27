@@ -27,6 +27,7 @@ export interface Vm0ResultEvent {
   runId: string;
   status: "completed";
   checkpointId: string;
+  agentSessionId: string;
   hasArtifact: boolean;
   timestamp: string;
 }
