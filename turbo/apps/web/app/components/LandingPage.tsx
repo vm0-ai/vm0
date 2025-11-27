@@ -72,25 +72,15 @@ export default function LandingPage() {
       };
 
       const handlePointerMove = (event: PointerEvent) => {
-        const rect = sandboxContainer.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width;
-        const y = (event.clientY - rect.top) / rect.height;
-        const clampedX = Math.max(0, Math.min(1, x)) - 0.5;
-        const clampedY = Math.max(0, Math.min(1, y)) - 0.5;
-        setTilt(clampedX * 2, clampedY * 2);
+        const x = event.clientX / window.innerWidth - 0.5;
+        const y = event.clientY / window.innerHeight - 0.5;
+        setTilt(x * 2, y * 2);
       };
 
-      const resetTilt = () => {
-        sandboxContainer.style.setProperty("--tiltX", "0deg");
-        sandboxContainer.style.setProperty("--tiltY", "0deg");
-      };
-
-      sandboxContainer.addEventListener("pointermove", handlePointerMove);
-      sandboxContainer.addEventListener("pointerleave", resetTilt);
+      window.addEventListener("pointermove", handlePointerMove);
 
       return () => {
-        sandboxContainer.removeEventListener("pointermove", handlePointerMove);
-        sandboxContainer.removeEventListener("pointerleave", resetTilt);
+        window.removeEventListener("pointermove", handlePointerMove);
       };
     }
 
