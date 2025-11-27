@@ -20,7 +20,8 @@ function formatBytes(bytes: number): string {
 export const pullCommand = new Command()
   .name("pull")
   .description("Pull cloud files to local directory")
-  .action(async () => {
+  .argument("[versionId]", "Version ID to pull (default: latest)")
+  .action(async (versionId?: string) => {
     try {
       const cwd = process.cwd();
 
@@ -32,14 +33,23 @@ export const pullCommand = new Command()
         process.exit(1);
       }
 
-      console.log(chalk.cyan(`Pulling volume: ${config.name}`));
+      if (versionId) {
+        console.log(
+          chalk.cyan(`Pulling volume: ${config.name} (version: ${versionId})`),
+        );
+      } else {
+        console.log(chalk.cyan(`Pulling volume: ${config.name}`));
+      }
 
       // Download from API
       console.log(chalk.gray("Downloading..."));
 
-      const response = await apiClient.get(
-        `/api/storages?name=${encodeURIComponent(config.name)}`,
-      );
+      let url = `/api/storages?name=${encodeURIComponent(config.name)}`;
+      if (versionId) {
+        url += `&version=${encodeURIComponent(versionId)}`;
+      }
+
+      const response = await apiClient.get(url);
 
       if (!response.ok) {
         if (response.status === 404) {
