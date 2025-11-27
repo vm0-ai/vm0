@@ -166,16 +166,6 @@ export function resolveVolumes(
       try {
         const { volumeName, mountPath } = parseMountPath(declaration);
 
-        // Validate: volumes cannot mount to working_dir
-        if (workingDir && mountPath === workingDir) {
-          errors.push({
-            volumeName,
-            message: `Volume "${volumeName}" cannot mount to working_dir (${workingDir}). Only artifact can mount to working_dir.`,
-            type: "working_dir_conflict",
-          });
-          continue;
-        }
-
         // Look up volume definition - required in new format
         const volumeConfig = config.volumes?.[volumeName];
 

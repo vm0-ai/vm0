@@ -315,34 +315,6 @@ describe("resolveVolumes", () => {
       expect(result.artifact).not.toBeNull();
       expect(result.errors).toHaveLength(0);
     });
-
-    it("should error when volume tries to mount to artifact working_dir", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/home/user/workspace"], // Same as working_dir
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        volumes: {
-          dataset: {
-            name: "my-dataset",
-            version: "latest",
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact", "latest");
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "working_dir_conflict",
-        message:
-          'Volume "dataset" cannot mount to working_dir (/home/user/workspace). Only artifact can mount to working_dir.',
-      });
-    });
   });
 
   it("should return empty result for no volume declarations", () => {

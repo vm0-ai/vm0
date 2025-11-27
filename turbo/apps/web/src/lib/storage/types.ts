@@ -1,3 +1,5 @@
+import type { VolumeConfig } from "../../types/agent-config";
+
 /**
  * Supported storage drivers:
  * - "vas": Versioned Artifact Storage (stored in S3 with versioning)
@@ -9,14 +11,8 @@ export type StorageDriver = "vas";
  */
 export type StorageType = "volume" | "artifact";
 
-/**
- * Volume config for static volumes in agent.yaml
- * Each volume requires explicit name and version
- */
-export interface VolumeConfig {
-  name: string; // Required: actual storage name
-  version: string; // Required: version hash or "latest"
-}
+// Re-export VolumeConfig from agent-config for convenience
+export type { VolumeConfig };
 
 /**
  * Resolved volume with all template variables replaced
@@ -58,7 +54,6 @@ export interface VolumeError {
     | "missing_definition"
     | "missing_variable"
     | "invalid_config"
-    | "working_dir_conflict"
     | "missing_artifact_name";
 }
 
