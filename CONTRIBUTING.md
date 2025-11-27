@@ -40,6 +40,14 @@ To run the web application locally with HTTPS:
 4. **Access the application**:
    Open https://vm7.ai:8443/ in your browser.
 
+### Local Testing
+
+Run tests inside the dev container:
+
+```bash
+cd turbo && pnpm install && pnpm test
+```
+
 ## Pull Request Process
 
 1. Create a new branch from `main`
