@@ -88,7 +88,7 @@ const runCmd = new Command()
     collectEnvVars,
     {},
   )
-  .requiredOption("--artifact-name <name>", "Artifact storage name (required)")
+  .option("--artifact-name <name>", "Artifact storage name (required for run)")
   .option(
     "--artifact-version <hash>",
     "Artifact version hash (defaults to latest)",
@@ -104,7 +104,7 @@ const runCmd = new Command()
       prompt: string,
       options: {
         env: Record<string, string>;
-        artifactName: string;
+        artifactName?: string;
         artifactVersion?: string;
         timeout: string;
       },
@@ -116,6 +116,18 @@ const runCmd = new Command()
         );
         process.exit(1);
       }
+
+      // Validate artifact-name is provided for non-resume runs
+      if (!options.artifactName) {
+        console.error(
+          chalk.red("✗ Missing required option: --artifact-name <name>"),
+        );
+        console.error(
+          chalk.gray("  The artifact-name is required for new agent runs."),
+        );
+        process.exit(1);
+      }
+
       try {
         // 1. Resolve identifier to configId
         let configId: string;
