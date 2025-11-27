@@ -478,7 +478,7 @@ export class E2BService {
 
     const executionTimeMs = Date.now() - execStart;
 
-    // Always log stderr to capture [VAS] checkpoint logs (even on success)
+    // Always log stderr to capture [VM0] checkpoint logs (even on success)
     console.log(`[E2B] stderr (${result.stderr.length} chars):`, result.stderr);
 
     if (result.exitCode === 0) {

@@ -11,10 +11,10 @@ create_vas_snapshot() {
   local storage_name="$2"
   local vas_storage_name="$3"
 
-  echo "[VAS] Creating VAS snapshot for storage '$storage_name' ($vas_storage_name) at $mount_path" >&2
-  echo "[VAS] STORAGE_WEBHOOK_URL: $STORAGE_WEBHOOK_URL" >&2
-  echo "[VAS] API_TOKEN length: \${#API_TOKEN}" >&2
-  echo "[VAS] RUN_ID: $RUN_ID" >&2
+  echo "[VM0] Creating VAS snapshot for storage '$storage_name' ($vas_storage_name) at $mount_path" >&2
+  echo "[VM0] STORAGE_WEBHOOK_URL: $STORAGE_WEBHOOK_URL" >&2
+  echo "[VM0] API_TOKEN length: \${#API_TOKEN}" >&2
+  echo "[VM0] RUN_ID: $RUN_ID" >&2
 
   # Create temp directory for zip
   local zip_dir="/tmp/vas-snapshot-$RUN_ID-$storage_name"
@@ -37,7 +37,7 @@ create_vas_snapshot() {
     fi
   else
     # Fallback: use Python's zipfile module (always available with Claude Code)
-    echo "[VAS] 'zip' not found, using Python zipfile" >&2
+    echo "[VM0] 'zip' not found, using Python zipfile" >&2
     python3 -c "
 import zipfile
 import os
@@ -56,7 +56,7 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
     }
   fi
 
-  echo "[VAS] Created zip file for storage '$storage_name'" >&2
+  echo "[VM0] Created zip file for storage '$storage_name'" >&2
 
   # Upload to storage webhook API (with timeout to prevent hanging)
   local response
@@ -103,7 +103,7 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
     return 1
   fi
 
-  echo "[VAS] VAS snapshot created for '$storage_name': version $version_id" >&2
+  echo "[VM0] VAS snapshot created for '$storage_name': version $version_id" >&2
 
   # Return JSON snapshot
   jq -n --arg vid "$version_id" '{versionId: $vid}'

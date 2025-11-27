@@ -6,7 +6,7 @@ export const CREATE_CHECKPOINT_SCRIPT = `# Create checkpoint after successful ru
 # Requires: COMMON_SCRIPT, VAS_SNAPSHOT_SCRIPT to be sourced first
 
 create_checkpoint() {
-  echo "[VAS] Creating checkpoint..." >&2
+  echo "[VM0] Creating checkpoint..." >&2
 
   # Read session ID from temp file
   if [ ! -f "$SESSION_ID_FILE" ]; then
@@ -35,17 +35,17 @@ create_checkpoint() {
     return 1
   fi
 
-  echo "[VAS] Session history loaded ($(echo "$SESSION_HISTORY" | wc -l) lines)" >&2
+  echo "[VM0] Session history loaded ($(echo "$SESSION_HISTORY" | wc -l) lines)" >&2
 
   # Create artifact snapshot (VAS only)
   ARTIFACT_SNAPSHOT="null"
 
   if [ -n "$ARTIFACT_DRIVER" ]; then
-    echo "[VAS] Processing artifact with driver: $ARTIFACT_DRIVER" >&2
+    echo "[VM0] Processing artifact with driver: $ARTIFACT_DRIVER" >&2
 
     if [ "$ARTIFACT_DRIVER" = "vas" ]; then
       # VAS artifact: create vas snapshot
-      echo "[VAS] Creating VAS snapshot for artifact '$ARTIFACT_VOLUME_NAME' at $ARTIFACT_MOUNT_PATH" >&2
+      echo "[VM0] Creating VAS snapshot for artifact '$ARTIFACT_VOLUME_NAME' at $ARTIFACT_MOUNT_PATH" >&2
 
       # Create VAS snapshot
       SNAPSHOT=$(create_vas_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" "$ARTIFACT_VOLUME_NAME")
@@ -63,7 +63,7 @@ create_checkpoint() {
           '{driver: $driver, mountPath: $mountPath, vasStorageName: $vasStorageName, snapshot: $snap[0]}')
 
         rm -f "$snap_tmp"
-        echo "[VAS] VAS artifact snapshot created" >&2
+        echo "[VM0] VAS artifact snapshot created" >&2
       else
         echo "[ERROR] Failed to create VAS snapshot for artifact" >&2
         return 1
@@ -73,10 +73,10 @@ create_checkpoint() {
       return 1
     fi
   else
-    echo "[VAS] No artifact configured, skipping snapshot" >&2
+    echo "[VM0] No artifact configured, skipping snapshot" >&2
   fi
 
-  echo "[VAS] Calling checkpoint API..." >&2
+  echo "[VM0] Calling checkpoint API..." >&2
 
   # Build checkpoint payload with single artifactSnapshot (or null)
   local checkpoint_payload=$(jq -n \\
@@ -101,7 +101,7 @@ create_checkpoint() {
       --connect-timeout 10 \\
       --max-time 60 \\
       --silent --fail; then
-      echo "[VAS] Checkpoint created successfully" >&2
+      echo "[VM0] Checkpoint created successfully" >&2
       return 0
     else
       echo "[ERROR] Failed to create checkpoint" >&2
@@ -115,7 +115,7 @@ create_checkpoint() {
       --connect-timeout 10 \\
       --max-time 60 \\
       --silent --fail; then
-      echo "[VAS] Checkpoint created successfully" >&2
+      echo "[VM0] Checkpoint created successfully" >&2
       return 0
     else
       echo "[ERROR] Failed to create checkpoint" >&2
