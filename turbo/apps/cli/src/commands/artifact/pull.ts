@@ -5,6 +5,7 @@ import * as fs from "fs";
 import AdmZip from "adm-zip";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
+import { removeExtraFiles } from "../../lib/file-utils";
 
 /**
  * Format bytes to human-readable format
@@ -80,6 +81,24 @@ export const pullCommand = new Command()
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
 
+      // Get set of remote files (normalize path separators)
+      const remoteFiles = new Set<string>();
+      for (const entry of zipEntries) {
+        if (!entry.isDirectory) {
+          remoteFiles.add(entry.entryName.replace(/\\/g, "/"));
+        }
+      }
+
+      // Remove local files not in remote
+      console.log(chalk.gray("Syncing local files..."));
+      const removedCount = await removeExtraFiles(cwd, remoteFiles);
+      if (removedCount > 0) {
+        console.log(
+          chalk.green(`✓ Removed ${removedCount} files not in remote`),
+        );
+      }
+
+      // Extract files from zip
       let extractedCount = 0;
       for (const entry of zipEntries) {
         if (!entry.isDirectory) {
