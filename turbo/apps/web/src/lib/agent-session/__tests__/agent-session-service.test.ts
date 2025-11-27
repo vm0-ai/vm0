@@ -1,21 +1,14 @@
 /**
  * @vitest-environment node
  */
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initServices } from "../../init-services";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { agentConfigs } from "../../../db/schema/agent-config";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
 import { AgentSessionService } from "../agent-session-service";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 describe("AgentSessionService", () => {
