@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         agentConfigId: sessionData.agentConfigId,
         status: "pending",
         prompt: body.prompt,
-        dynamicVars: sessionData.templateVars || null,
+        templateVars: sessionData.templateVars || null,
       })
       .returning();
 
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       agentConfigId: sessionData.agentConfigId,
       agentName: config?.name || undefined,
       prompt: body.prompt,
-      dynamicVars: sessionData.templateVars || undefined,
+      templateVars: sessionData.templateVars || undefined,
     });
 
     // Execute in E2B asynchronously (don't await)

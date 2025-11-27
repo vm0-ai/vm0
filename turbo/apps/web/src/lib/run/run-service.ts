@@ -321,7 +321,7 @@ export class RunService {
       agentConfigId: session.agentConfigId,
       agentConfig: config.config,
       prompt,
-      dynamicVars: session.templateVars || {},
+      templateVars: session.templateVars || {},
       sandboxToken,
       resumeSession,
       resumeArtifact,

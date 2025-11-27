@@ -109,7 +109,7 @@ export class CheckpointService {
     // Find or create agent session
     const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
     const templateVars =
-      (run.dynamicVars as Record<string, string>) || undefined;
+      (run.templateVars as Record<string, string>) || undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
       run.agentConfigId,
