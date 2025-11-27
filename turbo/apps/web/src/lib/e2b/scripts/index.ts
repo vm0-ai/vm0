@@ -4,8 +4,7 @@
  */
 export { COMMON_SCRIPT } from "./common";
 export { SEND_EVENT_SCRIPT } from "./send-event";
-export { GIT_SNAPSHOT_SCRIPT } from "./git-snapshot";
-export { VM0_SNAPSHOT_SCRIPT } from "./vm0-snapshot";
+export { VAS_SNAPSHOT_SCRIPT } from "./vas-snapshot";
 export { CREATE_CHECKPOINT_SCRIPT } from "./create-checkpoint";
 export { RUN_AGENT_SCRIPT } from "./run-agent";
 export { MOCK_CLAUDE_SCRIPT } from "./mock-claude";
@@ -14,13 +13,12 @@ export { MOCK_CLAUDE_SCRIPT } from "./mock-claude";
  * Script paths in the E2B sandbox
  */
 export const SCRIPT_PATHS = {
-  baseDir: "/usr/local/bin/vm0-agent",
-  libDir: "/usr/local/bin/vm0-agent/lib",
-  runAgent: "/usr/local/bin/vm0-agent/run-agent.sh",
-  common: "/usr/local/bin/vm0-agent/lib/common.sh",
-  sendEvent: "/usr/local/bin/vm0-agent/lib/send-event.sh",
-  gitSnapshot: "/usr/local/bin/vm0-agent/lib/git-snapshot.sh",
-  vm0Snapshot: "/usr/local/bin/vm0-agent/lib/vm0-snapshot.sh",
-  createCheckpoint: "/usr/local/bin/vm0-agent/lib/create-checkpoint.sh",
-  mockClaude: "/usr/local/bin/vm0-agent/lib/mock-claude.sh",
+  baseDir: "/usr/local/bin/vas-agent",
+  libDir: "/usr/local/bin/vas-agent/lib",
+  runAgent: "/usr/local/bin/vas-agent/run-agent.sh",
+  common: "/usr/local/bin/vas-agent/lib/common.sh",
+  sendEvent: "/usr/local/bin/vas-agent/lib/send-event.sh",
+  vasSnapshot: "/usr/local/bin/vas-agent/lib/vas-snapshot.sh",
+  createCheckpoint: "/usr/local/bin/vas-agent/lib/create-checkpoint.sh",
+  mockClaude: "/usr/local/bin/vas-agent/lib/mock-claude.sh",
 } as const;

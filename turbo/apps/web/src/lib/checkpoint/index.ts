@@ -9,5 +9,5 @@ export type {
   CheckpointRequest,
   CheckpointResponse,
   ArtifactSnapshot,
-  GitSnapshot,
+  VasSnapshot,
 } from "./types";

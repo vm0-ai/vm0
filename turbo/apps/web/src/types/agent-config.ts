@@ -8,12 +8,7 @@
  */
 export interface ArtifactConfig {
   working_dir: string;
-  driver?: "vm0" | "git"; // default: vm0
-  driver_opts?: {
-    uri?: string; // git only: repository URL with template variables
-    branch?: string; // git only: branch name (default: main)
-    token?: string; // git only: authentication token
-  };
+  driver?: "vas"; // default: vas
 }
 
 /**
@@ -21,9 +16,9 @@ export interface ArtifactConfig {
  * Volumes are referenced by key and looked up at runtime
  */
 export interface VolumeConfig {
-  driver: "vm0";
+  driver: "vas";
   driver_opts: {
-    uri: string; // vm0://volume-name format
+    uri: string; // vas://volume-name format
   };
 }
 

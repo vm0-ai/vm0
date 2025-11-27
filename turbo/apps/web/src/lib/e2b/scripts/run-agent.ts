@@ -9,12 +9,11 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 source "\${SCRIPT_DIR}/lib/common.sh"
 source "\${SCRIPT_DIR}/lib/send-event.sh"
-source "\${SCRIPT_DIR}/lib/git-snapshot.sh"
-source "\${SCRIPT_DIR}/lib/vm0-snapshot.sh"
+source "\${SCRIPT_DIR}/lib/vas-snapshot.sh"
 source "\${SCRIPT_DIR}/lib/create-checkpoint.sh"
 
 # Change to working directory
-echo "[VM0] Working directory: $WORKING_DIR" >&2
+echo "[VAS] Working directory: $WORKING_DIR" >&2
 cd "$WORKING_DIR" || {
   echo "[ERROR] Failed to change to working directory: $WORKING_DIR" >&2
   exit 1
@@ -22,11 +21,11 @@ cd "$WORKING_DIR" || {
 
 # Set Claude config directory to ensure consistent session history location
 export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
-echo "[VM0] Claude config directory: $CLAUDE_CONFIG_DIR" >&2
+echo "[VAS] Claude config directory: $CLAUDE_CONFIG_DIR" >&2
 
 # Execute Claude Code with JSONL output
-echo "[VM0] Starting Claude Code execution..." >&2
-echo "[VM0] Prompt: $PROMPT" >&2
+echo "[VAS] Starting Claude Code execution..." >&2
+echo "[VAS] Prompt: $PROMPT" >&2
 
 # Run Claude Code and capture output
 set +e  # Don't exit on Claude error
@@ -34,16 +33,16 @@ set +e  # Don't exit on Claude error
 # Build Claude command - unified for both new and resume sessions
 CLAUDE_ARGS="--print --verbose --output-format stream-json --dangerously-skip-permissions"
 if [ -n "$RESUME_SESSION_ID" ]; then
-  echo "[VM0] Resuming session: $RESUME_SESSION_ID" >&2
+  echo "[VAS] Resuming session: $RESUME_SESSION_ID" >&2
   CLAUDE_ARGS="$CLAUDE_ARGS --resume $RESUME_SESSION_ID"
 else
-  echo "[VM0] Starting new session" >&2
+  echo "[VAS] Starting new session" >&2
 fi
 
 # Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
 if [ "$USE_MOCK_CLAUDE" = "true" ]; then
-  CLAUDE_BIN="/usr/local/bin/vm0-agent/lib/mock-claude.sh"
-  echo "[VM0] Using mock-claude for testing" >&2
+  CLAUDE_BIN="/usr/local/bin/vas-agent/lib/mock-claude.sh"
+  echo "[VAS] Using mock-claude for testing" >&2
 else
   CLAUDE_BIN="claude"
 fi
@@ -82,7 +81,7 @@ echo ""
 
 # Handle completion
 if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
-  echo "[VM0] Claude Code completed successfully" >&2
+  echo "[VAS] Claude Code completed successfully" >&2
 
   # Create checkpoint - this is mandatory for successful runs
   if ! create_checkpoint; then
@@ -92,7 +91,7 @@ if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
     exit 1
   fi
 else
-  echo "[VM0] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
+  echo "[VAS] Claude Code failed with exit code $CLAUDE_EXIT_CODE" >&2
 fi
 
 # Cleanup temp files

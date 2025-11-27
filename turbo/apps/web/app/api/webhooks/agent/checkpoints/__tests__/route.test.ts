@@ -397,7 +397,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(checkpoint?.artifactSnapshot).toBeNull();
     });
 
-    it("should create checkpoint with git artifact snapshot", async () => {
+    it("should create checkpoint with VAS artifact snapshot", async () => {
       // Mock headers() to return the test token
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -431,11 +431,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       });
 
       const artifactSnapshot = {
-        driver: "git" as const,
+        driver: "vas" as const,
         mountPath: "/home/user/workspace",
+        vasStorageName: "test-artifact",
         snapshot: {
-          branch: "run-test-run-123",
-          commitId: "abc123def456",
+          versionId: "version-123-456",
         },
       };
 
@@ -480,10 +480,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       // Verify snapshot structure
       const snapshot = checkpoint?.artifactSnapshot as typeof artifactSnapshot;
-      expect(snapshot?.driver).toBe("git");
+      expect(snapshot?.driver).toBe("vas");
       expect(snapshot?.mountPath).toBe("/home/user/workspace");
-      expect(snapshot?.snapshot?.branch).toBe("run-test-run-123");
-      expect(snapshot?.snapshot?.commitId).toBe("abc123def456");
+      expect(snapshot?.vasStorageName).toBe("test-artifact");
+      expect(snapshot?.snapshot?.versionId).toBe("version-123-456");
     });
   });
 

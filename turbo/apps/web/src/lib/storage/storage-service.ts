@@ -3,11 +3,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveVolumes } from "./storage-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
-import {
-  buildAuthenticatedUrl,
-  buildGitCloneCommand,
-  sanitizeGitUrlForLogging,
-} from "../git/git-client";
 import type {
   AgentVolumeConfig,
   PreparedStorage,
@@ -31,7 +26,7 @@ export class StorageService {
    * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
    * @param userId - User ID for storage access (optional)
-   * @param artifactKey - Artifact key for VM0 driver (optional)
+   * @param artifactKey - Artifact key for VAS driver (optional)
    * @returns Storage preparation result with prepared storages and temp directory
    */
   async prepareStorages(
@@ -70,15 +65,14 @@ export class StorageService {
       );
     }
 
-    // Check if we need a temp directory (for VM0 storages/artifacts)
-    const hasVm0Storages = volumeResult.volumes.length > 0;
-    const hasVm0Artifact =
-      volumeResult.artifact && volumeResult.artifact.driver === "vm0";
-    const needsTempDir = hasVm0Storages || hasVm0Artifact;
+    // Check if we need a temp directory (for VAS storages/artifacts)
+    const hasVasStorages = volumeResult.volumes.length > 0;
+    const hasVasArtifact = volumeResult.artifact !== null;
+    const needsTempDir = hasVasStorages || hasVasArtifact;
 
     let tempDir: string | null = null;
     if (needsTempDir) {
-      tempDir = `/tmp/vm0-run-${runId}`;
+      tempDir = `/tmp/vas-run-${runId}`;
       await fs.promises.mkdir(tempDir, { recursive: true });
     }
 
@@ -89,11 +83,11 @@ export class StorageService {
     const preparedStorages: PreparedStorage[] = [];
     let preparedArtifact: PreparedArtifact | null = null;
 
-    // Process each volume (VM0 only)
+    // Process each volume (VAS only)
     for (const volume of volumeResult.volumes) {
       try {
         if (!userId) {
-          throw new Error("userId is required for VM0 storages");
+          throw new Error("userId is required for VAS storages");
         }
 
         // Query database for storage and HEAD version
@@ -103,20 +97,20 @@ export class StorageService {
           .where(
             and(
               eq(storages.userId, userId),
-              eq(storages.name, volume.vm0StorageName!),
+              eq(storages.name, volume.vasStorageName!),
             ),
           )
           .limit(1);
 
         if (!dbStorage) {
           throw new Error(
-            `VM0 storage "${volume.vm0StorageName}" not found in database`,
+            `VAS storage "${volume.vasStorageName}" not found in database`,
           );
         }
 
         if (!dbStorage.headVersionId) {
           throw new Error(
-            `VM0 storage "${volume.vm0StorageName}" has no HEAD version`,
+            `VAS storage "${volume.vasStorageName}" has no HEAD version`,
           );
         }
 
@@ -129,7 +123,7 @@ export class StorageService {
 
         if (!headVersion) {
           throw new Error(
-            `VM0 storage "${volume.vm0StorageName}" HEAD version not found`,
+            `VAS storage "${volume.vasStorageName}" HEAD version not found`,
           );
         }
 
@@ -145,16 +139,16 @@ export class StorageService {
 
         const downloadResult = await downloadS3Directory(s3Uri, localPath);
         console.log(
-          `[Storage] Downloaded VM0 storage "${volume.name}" (${volume.vm0StorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+          `[Storage] Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
         );
 
         preparedStorages.push({
           name: volume.name,
-          driver: "vm0",
+          driver: "vas",
           localPath,
           mountPath: volume.mountPath,
-          vm0StorageName: volume.vm0StorageName,
-          vm0VersionId: headVersion.id,
+          vasStorageName: volume.vasStorageName,
+          vasVersionId: headVersion.id,
         });
       } catch (error) {
         console.error(
@@ -199,28 +193,13 @@ export class StorageService {
     tempDir: string | null,
     userId?: string,
   ): Promise<PreparedArtifact> {
-    if (artifact.driver === "git") {
-      // Git artifact: store metadata only (clone happens in sandbox)
-      console.log(
-        `[Storage] Prepared Git artifact: ${sanitizeGitUrlForLogging(artifact.gitUri!)} (${artifact.gitBranch})`,
-      );
-
-      return {
-        driver: "git",
-        mountPath: artifact.mountPath,
-        gitUri: artifact.gitUri,
-        gitBranch: artifact.gitBranch,
-        gitToken: artifact.gitToken,
-      };
-    }
-
-    // VM0 artifact: download from S3
+    // VAS artifact: download from S3
     if (!userId) {
-      throw new Error("userId is required for VM0 artifacts");
+      throw new Error("userId is required for VAS artifacts");
     }
 
     if (!tempDir) {
-      throw new Error("tempDir is required for VM0 artifacts");
+      throw new Error("tempDir is required for VAS artifacts");
     }
 
     // Query database for artifact storage and HEAD version
@@ -230,20 +209,20 @@ export class StorageService {
       .where(
         and(
           eq(storages.userId, userId),
-          eq(storages.name, artifact.vm0StorageName!),
+          eq(storages.name, artifact.vasStorageName!),
         ),
       )
       .limit(1);
 
     if (!dbStorage) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0StorageName}" not found in database`,
+        `VAS artifact "${artifact.vasStorageName}" not found in database`,
       );
     }
 
     if (!dbStorage.headVersionId) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0StorageName}" has no HEAD version`,
+        `VAS artifact "${artifact.vasStorageName}" has no HEAD version`,
       );
     }
 
@@ -256,7 +235,7 @@ export class StorageService {
 
     if (!headVersion) {
       throw new Error(
-        `VM0 artifact "${artifact.vm0StorageName}" HEAD version not found`,
+        `VAS artifact "${artifact.vasStorageName}" HEAD version not found`,
       );
     }
 
@@ -270,95 +249,46 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VM0 artifact (${artifact.vm0StorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${artifact.vasStorageName}) version ${headVersion.id}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
-      driver: "vm0",
+      driver: "vas",
       localPath,
       mountPath: artifact.mountPath,
-      vm0StorageName: artifact.vm0StorageName,
-      vm0VersionId: headVersion.id,
+      vasStorageName: artifact.vasStorageName,
+      vasVersionId: headVersion.id,
     };
   }
 
   /**
    * Prepare artifact from checkpoint snapshot (for resume functionality)
    * @param snapshot - Artifact snapshot from checkpoint
-   * @param agentConfig - Agent configuration containing artifact definition
-   * @param dynamicVars - Dynamic variables for template replacement
    * @param runId - Run ID for temp directory naming
    * @returns Prepared artifact
    */
   async prepareArtifactFromSnapshot(
     snapshot: ArtifactSnapshot,
-    agentConfig: AgentVolumeConfig | undefined,
-    dynamicVars: Record<string, string>,
+    _agentConfig: AgentVolumeConfig | undefined,
+    _dynamicVars: Record<string, string>,
     runId: string,
   ): Promise<{
     preparedArtifact: PreparedArtifact | null;
     tempDir: string | null;
     errors: string[];
   }> {
-    if (!agentConfig?.agent?.artifact) {
-      return {
-        preparedArtifact: null,
-        tempDir: null,
-        errors: ["Agent config missing artifact definition"],
-      };
-    }
+    console.log(`[Storage] Preparing artifact from snapshot...`);
 
-    console.log(
-      `[Storage] Preparing artifact from snapshot (driver: ${snapshot.driver})...`,
-    );
-
-    if (snapshot.driver === "git") {
-      // Git artifact: resolve from config but use snapshot branch
-      if (!snapshot.snapshot?.branch) {
-        return {
-          preparedArtifact: null,
-          tempDir: null,
-          errors: ["Git snapshot missing branch"],
-        };
-      }
-
-      // Resolve artifact config to get URI and token
-      const volumeResult = resolveVolumes(agentConfig, dynamicVars);
-      if (!volumeResult.artifact || volumeResult.artifact.driver !== "git") {
-        return {
-          preparedArtifact: null,
-          tempDir: null,
-          errors: ["Agent config artifact is not a git artifact"],
-        };
-      }
-
-      console.log(
-        `[Storage] Prepared Git artifact from snapshot: branch ${snapshot.snapshot.branch}, commit ${snapshot.snapshot.commitId}`,
-      );
-
-      return {
-        preparedArtifact: {
-          driver: "git",
-          mountPath: snapshot.mountPath,
-          gitUri: volumeResult.artifact.gitUri,
-          gitBranch: snapshot.snapshot.branch,
-          gitToken: volumeResult.artifact.gitToken,
-        },
-        tempDir: null,
-        errors: [],
-      };
-    }
-
-    // VM0 artifact: download from specific version
+    // VAS artifact: download from specific version
     if (!snapshot.snapshot?.versionId) {
       return {
         preparedArtifact: null,
         tempDir: null,
-        errors: ["VM0 snapshot missing versionId"],
+        errors: ["VAS snapshot missing versionId"],
       };
     }
 
-    const tempDir = `/tmp/vm0-run-${runId}`;
+    const tempDir = `/tmp/vas-run-${runId}`;
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Get the version from database to get S3 key
@@ -373,7 +303,7 @@ export class StorageService {
         preparedArtifact: null,
         tempDir,
         errors: [
-          `VM0 artifact version "${snapshot.snapshot.versionId}" not found`,
+          `VAS artifact version "${snapshot.snapshot.versionId}" not found`,
         ],
       };
     }
@@ -392,16 +322,16 @@ export class StorageService {
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
     console.log(
-      `[Storage] Downloaded VM0 artifact (${snapshot.vm0StorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+      `[Storage] Downloaded VAS artifact (${snapshot.vasStorageName}) version ${snapshot.snapshot.versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
       preparedArtifact: {
-        driver: "vm0",
+        driver: "vas",
         localPath,
         mountPath: snapshot.mountPath,
-        vm0StorageName: snapshot.vm0StorageName,
-        vm0VersionId: snapshot.snapshot.versionId,
+        vasStorageName: snapshot.vasStorageName,
+        vasVersionId: snapshot.snapshot.versionId,
       },
       tempDir,
       errors: [],
@@ -430,7 +360,7 @@ export class StorageService {
     // Mount storages
     for (const storage of preparedStorages) {
       try {
-        // VM0 storages: upload from local temp to sandbox
+        // VAS storages: upload from local temp to sandbox
         const stat = await fs.promises
           .stat(storage.localPath!)
           .catch(() => null);
@@ -441,7 +371,7 @@ export class StorageService {
             storage.mountPath,
           );
           console.log(
-            `[Storage] Uploaded VM0 storage "${storage.name}" to ${storage.mountPath}`,
+            `[Storage] Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
           );
         }
       } catch (error) {
@@ -456,32 +386,18 @@ export class StorageService {
     // Mount artifact
     if (preparedArtifact) {
       try {
-        if (preparedArtifact.driver === "vm0") {
-          // VM0 artifact: upload from local temp to sandbox
-          const stat = await fs.promises
-            .stat(preparedArtifact.localPath!)
-            .catch(() => null);
-          if (stat) {
-            await this.uploadDirectoryToSandbox(
-              sandbox,
-              preparedArtifact.localPath!,
-              preparedArtifact.mountPath,
-            );
-            console.log(
-              `[Storage] Uploaded VM0 artifact to ${preparedArtifact.mountPath}`,
-            );
-          }
-        } else if (preparedArtifact.driver === "git") {
-          // Git artifact: clone directly in sandbox
-          await this.cloneGitRepo(
+        // VAS artifact: upload from local temp to sandbox
+        const stat = await fs.promises
+          .stat(preparedArtifact.localPath!)
+          .catch(() => null);
+        if (stat) {
+          await this.uploadDirectoryToSandbox(
             sandbox,
-            preparedArtifact.gitUri!,
-            preparedArtifact.gitBranch!,
+            preparedArtifact.localPath!,
             preparedArtifact.mountPath,
-            preparedArtifact.gitToken,
           );
           console.log(
-            `[Storage] Cloned Git artifact to ${preparedArtifact.mountPath}`,
+            `[Storage] Uploaded VAS artifact to ${preparedArtifact.mountPath}`,
           );
         }
       } catch (error) {
@@ -489,55 +405,6 @@ export class StorageService {
         throw error;
       }
     }
-  }
-
-  /**
-   * Clone Git repository directly in E2B sandbox
-   * @param sandbox - E2B sandbox instance
-   * @param gitUri - Git repository URL
-   * @param branch - Branch to clone
-   * @param mountPath - Target directory path
-   * @param token - Authentication token (optional)
-   */
-  private async cloneGitRepo(
-    sandbox: Sandbox,
-    gitUri: string,
-    branch: string,
-    mountPath: string,
-    token?: string,
-  ): Promise<void> {
-    // Build authenticated URL if token provided
-    const authUrl = buildAuthenticatedUrl(gitUri, token);
-
-    // Build clone command
-    const cloneCommand = buildGitCloneCommand(authUrl, branch, mountPath);
-
-    // Log sanitized command
-    console.log(
-      `[Storage] Cloning Git repo: ${sanitizeGitUrlForLogging(gitUri)} (branch: ${branch}) to ${mountPath}`,
-    );
-
-    // Execute git clone in sandbox
-    const result = await sandbox.commands.run(cloneCommand);
-
-    // Check for errors
-    if (result.exitCode !== 0) {
-      const errorMessage = result.stderr || result.stdout || "Unknown error";
-      console.error(
-        `[Storage] Git clone failed with exit code ${result.exitCode}`,
-      );
-      console.error(
-        `[Storage] Command: git clone --single-branch --branch "${branch}" [url] "${mountPath}"`,
-      );
-      console.error(`[Storage] stderr:`, result.stderr);
-      console.error(`[Storage] stdout:`, result.stdout);
-
-      throw new Error(
-        `Git clone failed (exit ${result.exitCode}): Branch "${branch}" - ${errorMessage}`,
-      );
-    }
-
-    console.log(`[Storage] Git clone successful: ${mountPath}`);
   }
 
   /**

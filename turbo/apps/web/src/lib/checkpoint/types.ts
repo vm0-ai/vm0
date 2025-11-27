@@ -3,43 +3,21 @@
  */
 
 /**
- * Git snapshot containing branch and commit information
+ * VAS artifact snapshot containing version information
  */
-export interface GitSnapshot {
-  branch: string;
-  commitId: string;
-}
-
-/**
- * VM0 artifact snapshot containing version information
- */
-export interface Vm0Snapshot {
+export interface VasSnapshot {
   versionId: string;
 }
 
 /**
- * Artifact snapshot for Git-based artifacts
+ * Artifact snapshot for VAS managed artifacts
  */
-export interface GitArtifactSnapshot {
-  driver: "git";
+export interface ArtifactSnapshot {
+  driver: "vas";
   mountPath: string;
-  snapshot?: GitSnapshot;
+  vasStorageName: string;
+  snapshot?: VasSnapshot;
 }
-
-/**
- * Artifact snapshot for VM0 managed artifacts
- */
-export interface Vm0ArtifactSnapshot {
-  driver: "vm0";
-  mountPath: string;
-  vm0StorageName: string;
-  snapshot?: Vm0Snapshot;
-}
-
-/**
- * Union type for artifact snapshots
- */
-export type ArtifactSnapshot = GitArtifactSnapshot | Vm0ArtifactSnapshot;
 
 /**
  * Complete checkpoint data stored in database

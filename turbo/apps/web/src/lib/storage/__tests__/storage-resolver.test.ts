@@ -40,65 +40,65 @@ describe("parseMountPath", () => {
 
 describe("replaceTemplateVars", () => {
   it("should replace single template variable", () => {
-    const result = replaceTemplateVars("vm0://{{storageName}}", {
+    const result = replaceTemplateVars("vas://{{storageName}}", {
       storageName: "test-storage-123",
     });
 
     expect(result).toEqual({
-      uri: "vm0://test-storage-123",
+      uri: "vas://test-storage-123",
       missingVars: [],
     });
   });
 
   it("should replace multiple template variables", () => {
-    const result = replaceTemplateVars("vm0://{{userId}}-{{storageName}}", {
+    const result = replaceTemplateVars("vas://{{userId}}-{{storageName}}", {
       userId: "user1",
       storageName: "my-storage",
     });
 
     expect(result).toEqual({
-      uri: "vm0://user1-my-storage",
+      uri: "vas://user1-my-storage",
       missingVars: [],
     });
   });
 
   it("should detect missing variables", () => {
-    const result = replaceTemplateVars("vm0://{{storageName}}", {});
+    const result = replaceTemplateVars("vas://{{storageName}}", {});
 
     expect(result).toEqual({
-      uri: "vm0://{{storageName}}",
+      uri: "vas://{{storageName}}",
       missingVars: ["storageName"],
     });
   });
 
   it("should detect multiple missing variables", () => {
-    const result = replaceTemplateVars("vm0://{{userId}}/{{storageName}}", {});
+    const result = replaceTemplateVars("vas://{{userId}}/{{storageName}}", {});
 
     expect(result.missingVars).toEqual(["userId", "storageName"]);
   });
 
   it("should handle URIs without template variables", () => {
-    const result = replaceTemplateVars("vm0://static-storage", {});
+    const result = replaceTemplateVars("vas://static-storage", {});
 
     expect(result).toEqual({
-      uri: "vm0://static-storage",
+      uri: "vas://static-storage",
       missingVars: [],
     });
   });
 });
 
 describe("resolveVolumes", () => {
-  describe("VM0 volumes", () => {
-    it("should resolve VM0 volume with valid URI", () => {
+  describe("VAS volumes", () => {
+    it("should resolve VAS volume with valid URI", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["dataset:/workspace/data"],
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://mnist",
+              uri: "vas://mnist",
             },
           },
         },
@@ -110,22 +110,22 @@ describe("resolveVolumes", () => {
       expect(result.errors).toHaveLength(0);
       expect(result.volumes[0]).toMatchObject({
         name: "dataset",
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/workspace/data",
-        vm0StorageName: "mnist",
+        vasStorageName: "mnist",
       });
     });
 
-    it("should resolve VM0 volume with template variables", () => {
+    it("should resolve VAS volume with template variables", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["dataset:/workspace/data"],
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://{{datasetName}}",
+              uri: "vas://{{datasetName}}",
             },
           },
         },
@@ -137,22 +137,22 @@ describe("resolveVolumes", () => {
       expect(result.errors).toHaveLength(0);
       expect(result.volumes[0]).toMatchObject({
         name: "dataset",
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/workspace/data",
-        vm0StorageName: "cifar10",
+        vasStorageName: "cifar10",
       });
     });
 
-    it("should error on missing template variables in VM0 URI", () => {
+    it("should error on missing template variables in VAS URI", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["dataset:/workspace/data"],
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://{{datasetName}}",
+              uri: "vas://{{datasetName}}",
             },
           },
         },
@@ -169,14 +169,14 @@ describe("resolveVolumes", () => {
       });
     });
 
-    it("should error on invalid VM0 URI format", () => {
+    it("should error on invalid VAS URI format", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["dataset:/workspace/data"],
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
               uri: "invalid://mnist",
             },
@@ -192,18 +192,18 @@ describe("resolveVolumes", () => {
         volumeName: "dataset",
         type: "invalid_uri",
         message:
-          "Invalid VM0 URI: invalid://mnist. Expected format: vm0://volume-name",
+          "Invalid VAS URI: invalid://mnist. Expected format: vas://volume-name",
       });
     });
 
-    it("should error on missing vm0:// prefix", () => {
+    it("should error on missing vas:// prefix", () => {
       const config: AgentVolumeConfig = {
         agent: {
           volumes: ["dataset:/workspace/data"],
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
               uri: "mnist",
             },
@@ -223,12 +223,12 @@ describe("resolveVolumes", () => {
   });
 
   describe("artifact resolution", () => {
-    it("should resolve VM0 artifact when artifact key is provided", () => {
+    it("should resolve VAS artifact when artifact key is provided", () => {
       const config: AgentVolumeConfig = {
         agent: {
           artifact: {
             working_dir: "/home/user/workspace",
-            driver: "vm0",
+            driver: "vas",
           },
         },
       };
@@ -237,19 +237,19 @@ describe("resolveVolumes", () => {
 
       expect(result.artifact).not.toBeNull();
       expect(result.artifact).toMatchObject({
-        driver: "vm0",
+        driver: "vas",
         mountPath: "/home/user/workspace",
-        vm0StorageName: "my-artifact-storage",
+        vasStorageName: "my-artifact-storage",
       });
       expect(result.errors).toHaveLength(0);
     });
 
-    it("should error when no artifact key provided for VM0 driver", () => {
+    it("should error when no artifact key provided for VAS driver", () => {
       const config: AgentVolumeConfig = {
         agent: {
           artifact: {
             working_dir: "/home/user/workspace",
-            driver: "vm0",
+            driver: "vas",
           },
         },
       };
@@ -262,202 +262,28 @@ describe("resolveVolumes", () => {
         volumeName: "artifact",
         type: "missing_artifact_key",
         message:
-          "VM0 artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
+          "VAS artifact configured but no artifact key provided. Use --artifact flag to specify artifact.",
       });
     });
 
-    it("should resolve Git artifact with full configuration", () => {
+    it("should default to VAS driver when driver not specified", () => {
       const config: AgentVolumeConfig = {
         agent: {
           artifact: {
             working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "main",
-              token: "ghp_test123",
-            },
           },
         },
       };
 
-      const result = resolveVolumes(config);
+      const result = resolveVolumes(config, {}, "my-artifact");
 
       expect(result.artifact).not.toBeNull();
       expect(result.artifact).toMatchObject({
-        driver: "git",
+        driver: "vas",
         mountPath: "/home/user/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "main",
-        gitToken: "ghp_test123",
+        vasStorageName: "my-artifact",
       });
       expect(result.errors).toHaveLength(0);
-    });
-
-    it("should resolve Git artifact with short format URL", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "user/repo",
-              branch: "develop",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.artifact).not.toBeNull();
-      expect(result.artifact).toMatchObject({
-        driver: "git",
-        mountPath: "/home/user/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "develop",
-      });
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should use main as default branch for Git artifacts", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.artifact?.gitBranch).toBe("main");
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should replace template variables in Git URI", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/{{user}}/{{project}}.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {
-        user: "testuser",
-        project: "testrepo",
-      });
-
-      expect(result.artifact).toMatchObject({
-        gitUri: "https://github.com/testuser/testrepo.git",
-        gitBranch: "main",
-      });
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should replace template variables in Git branch", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "{{branchName}}",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {
-        branchName: "feature-123",
-      });
-
-      expect(result.artifact?.gitBranch).toBe("feature-123");
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should error when Git artifact is missing URI", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {},
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "artifact",
-        message: "Git artifact requires driver_opts.uri",
-        type: "invalid_uri",
-      });
-    });
-
-    it("should error on invalid Git URL (SSH format)", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "git@github.com:user/repo.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config);
-
-      expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "artifact",
-        type: "invalid_uri",
-        message:
-          "Invalid Git URL: git@github.com:user/repo.git. Only HTTPS URLs are supported.",
-      });
-    });
-
-    it("should error on missing template variables in Git URI", () => {
-      const config: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/{{user}}/repo.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {});
-
-      expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "artifact",
-        type: "missing_variable",
-        message: "Missing required variables: user",
-      });
     });
   });
 
@@ -468,24 +294,20 @@ describe("resolveVolumes", () => {
           volumes: ["dataset:/workspace/data"],
           artifact: {
             working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "main",
-            },
+            driver: "vas",
           },
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://my-dataset",
+              uri: "vas://my-dataset",
             },
           },
         },
       };
 
-      const result = resolveVolumes(config);
+      const result = resolveVolumes(config, {}, "my-artifact");
 
       expect(result.volumes).toHaveLength(1);
       expect(result.artifact).not.toBeNull();
@@ -498,24 +320,20 @@ describe("resolveVolumes", () => {
           volumes: ["dataset:/home/user/workspace"], // Same as working_dir
           artifact: {
             working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "main",
-            },
+            driver: "vas",
           },
         },
         volumes: {
           dataset: {
-            driver: "vm0",
+            driver: "vas",
             driver_opts: {
-              uri: "vm0://my-dataset",
+              uri: "vas://my-dataset",
             },
           },
         },
       };
 
-      const result = resolveVolumes(config);
+      const result = resolveVolumes(config, {}, "my-artifact");
 
       expect(result.volumes).toHaveLength(0);
       expect(result.errors).toHaveLength(1);
@@ -530,7 +348,7 @@ describe("resolveVolumes", () => {
 
   it("should auto-resolve volume by name when no explicit definition", () => {
     // When no volumes section defines the volume, it should auto-resolve
-    // as a VM0 volume with uri vm0://<volumeName>
+    // as a VAS volume with uri vas://<volumeName>
     const config: AgentVolumeConfig = {
       agent: {
         volumes: ["my-data:/path"],
@@ -543,9 +361,9 @@ describe("resolveVolumes", () => {
     expect(result.errors).toHaveLength(0);
     expect(result.volumes[0]).toMatchObject({
       name: "my-data",
-      driver: "vm0",
+      driver: "vas",
       mountPath: "/path",
-      vm0StorageName: "my-data",
+      vasStorageName: "my-data",
     });
   });
 
@@ -585,7 +403,7 @@ describe("resolveVolumes", () => {
       volumeName: "custom-volume",
       type: "invalid_uri",
       message:
-        "Unsupported volume driver: nfs. Only vm0 driver is supported for volumes.",
+        "Unsupported volume driver: nfs. Only vas driver is supported for volumes.",
     });
   });
 });
