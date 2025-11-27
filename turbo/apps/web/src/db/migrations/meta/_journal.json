@@ -134,6 +134,13 @@
       "when": 1764139682000,
       "tag": "0018_add_type_to_storages",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1764400000000,
+      "tag": "0019_restructure_checkpoints",
+      "breakpoints": true
     }
   ]
 }
