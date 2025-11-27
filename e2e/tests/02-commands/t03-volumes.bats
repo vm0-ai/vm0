@@ -120,4 +120,70 @@ EOF
     assert_output "version 3 - HEAD"
 
     rm -rf "$NEW_DIR"
+}
+
+@test "Pull specific version by versionId" {
+    # Push multiple versions and capture their IDs
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    # Push version 1
+    echo "content from version 1" > data.txt
+    run $CLI_COMMAND volume push
+    assert_success
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+
+    # Push version 2
+    echo "content from version 2" > data.txt
+    run $CLI_COMMAND volume push
+    assert_success
+
+    # Push version 3 (HEAD)
+    echo "content from version 3 - HEAD" > data.txt
+    run $CLI_COMMAND volume push
+    assert_success
+
+    # Pull version 1 specifically (not HEAD)
+    NEW_DIR="$(mktemp -d)"
+    cd "$NEW_DIR"
+    mkdir -p .vm0
+    cat > .vm0/storage.yaml <<EOF
+name: $VOLUME_NAME
+EOF
+
+    run $CLI_COMMAND volume pull "$VERSION1"
+    assert_success
+    assert_output --partial "version: $VERSION1"
+
+    # Verify we got version 1 content (not HEAD)
+    [ -f "data.txt" ]
+    run cat data.txt
+    assert_output "content from version 1"
+
+    rm -rf "$NEW_DIR"
+}
+
+@test "Pull non-existent version fails with error" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    echo "some content" > data.txt
+    $CLI_COMMAND volume push >/dev/null
+
+    # Try to pull a non-existent version
+    NEW_DIR="$(mktemp -d)"
+    cd "$NEW_DIR"
+    mkdir -p .vm0
+    cat > .vm0/storage.yaml <<EOF
+name: $VOLUME_NAME
+EOF
+
+    FAKE_VERSION="00000000-0000-0000-0000-000000000000"
+    run $CLI_COMMAND volume pull "$FAKE_VERSION"
+    assert_failure
+    assert_output --partial "not found"
+
+    rm -rf "$NEW_DIR"
 } 
