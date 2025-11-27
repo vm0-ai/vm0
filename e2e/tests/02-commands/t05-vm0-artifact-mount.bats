@@ -42,7 +42,7 @@ teardown() {
 
     # Step 2: Run agent with artifact, list files
     run $CLI_COMMAND run vm0-standard \
-        -a "$ARTIFACT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     assert_success
@@ -70,7 +70,7 @@ teardown() {
 
     # Simple run that should complete
     run $CLI_COMMAND run vm0-standard \
-        -a "$ARTIFACT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
         "echo done"
 
     assert_success
