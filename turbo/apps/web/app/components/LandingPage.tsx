@@ -132,6 +132,20 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="nav-right">
+              <a
+                href="https://github.com/vm0-ai/vm0"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="nav-github"
+                aria-label="GitHub"
+              >
+                <Image
+                  src="/assets/github.svg"
+                  alt="GitHub"
+                  width={24}
+                  height={24}
+                />
+              </a>
               <a href="mailto:ethan@vm0.ai" className="btn-try-demo">
                 Contact us
               </a>

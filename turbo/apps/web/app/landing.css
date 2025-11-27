@@ -147,6 +147,18 @@ section {
   color: var(--primary);
 }
 
+.nav-github {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.nav-github:hover {
+  opacity: 1;
+}
+
 /* ===== BUTTONS ===== */
 .btn-try-demo,
 .btn-get-access {
