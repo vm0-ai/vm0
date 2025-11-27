@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
-        "Invalid agent.name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+        "Invalid agents[0].name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
       );
     }
 
