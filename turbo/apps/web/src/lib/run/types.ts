@@ -19,7 +19,7 @@ export interface ExecutionContext {
   agentConfigId: string;
   agentConfig: unknown;
   prompt: string;
-  dynamicVars?: Record<string, string>;
+  templateVars?: Record<string, string>;
   sandboxToken: string;
 
   // Artifact settings (new runs only)

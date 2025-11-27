@@ -38,7 +38,7 @@ export class RunService {
    * @param agentConfigId Agent configuration ID
    * @param prompt User prompt
    * @param sandboxToken Temporary bearer token for sandbox
-   * @param dynamicVars Dynamic variable replacements
+   * @param templateVars Template variable replacements
    * @param agentConfig Full agent configuration
    * @param userId User ID for volume access
    * @param artifactName Artifact storage name (required)
@@ -50,7 +50,7 @@ export class RunService {
     agentConfigId: string,
     prompt: string,
     sandboxToken: string,
-    dynamicVars: Record<string, string> | undefined,
+    templateVars: Record<string, string> | undefined,
     agentConfig: unknown,
     userId?: string,
     artifactName?: string,
@@ -63,7 +63,7 @@ export class RunService {
       agentConfigId,
       agentConfig,
       prompt,
-      dynamicVars,
+      templateVars,
       sandboxToken,
       userId,
       artifactName,
@@ -168,7 +168,7 @@ export class RunService {
       agentConfigId: originalRun.agentConfigId,
       agentConfig: agentConfigSnapshot.config,
       prompt,
-      dynamicVars: agentConfigSnapshot.templateVars || {},
+      templateVars: agentConfigSnapshot.templateVars || {},
       sandboxToken,
       resumeSession,
       resumeArtifact,

@@ -128,7 +128,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        dynamicVars: undefined,
+        templateVars: undefined,
       });
     });
 
@@ -158,7 +158,7 @@ describe("run command", () => {
     });
   });
 
-  describe("environment variables", () => {
+  describe("template variables", () => {
     beforeEach(() => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
@@ -184,7 +184,7 @@ describe("run command", () => {
       });
     });
 
-    it("should parse single environment variable", async () => {
+    it("should parse single template variable", async () => {
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -192,7 +192,7 @@ describe("run command", () => {
         "test prompt",
         "--artifact-name",
         "test-artifact",
-        "-e",
+        "--vars",
         "KEY1=value1",
       ]);
 
@@ -201,11 +201,11 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        dynamicVars: { KEY1: "value1" },
+        templateVars: { KEY1: "value1" },
       });
     });
 
-    it("should parse multiple environment variables", async () => {
+    it("should parse multiple template variables", async () => {
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -213,9 +213,9 @@ describe("run command", () => {
         "test prompt",
         "--artifact-name",
         "test-artifact",
-        "-e",
+        "--vars",
         "KEY1=value1",
-        "-e",
+        "--vars",
         "KEY2=value2",
       ]);
 
@@ -224,7 +224,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        dynamicVars: { KEY1: "value1", KEY2: "value2" },
+        templateVars: { KEY1: "value1", KEY2: "value2" },
       });
     });
 
@@ -236,7 +236,7 @@ describe("run command", () => {
         "test prompt",
         "--artifact-name",
         "test-artifact",
-        "-e",
+        "--vars",
         "URL=https://example.com?foo=bar",
       ]);
 
@@ -245,11 +245,11 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        dynamicVars: { URL: "https://example.com?foo=bar" },
+        templateVars: { URL: "https://example.com?foo=bar" },
       });
     });
 
-    it("should reject empty environment variable values", async () => {
+    it("should reject empty template variable values", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
@@ -258,13 +258,13 @@ describe("run command", () => {
           "test prompt",
           "--artifact-name",
           "test-artifact",
-          "-e",
+          "--vars",
           "EMPTY=",
         ]);
-      }).rejects.toThrow("Invalid env var format: EMPTY=");
+      }).rejects.toThrow("Invalid variable format: EMPTY=");
     });
 
-    it("should reject invalid environment variable format (missing value)", async () => {
+    it("should reject invalid template variable format (missing value)", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
@@ -273,13 +273,13 @@ describe("run command", () => {
           "test prompt",
           "--artifact-name",
           "test-artifact",
-          "-e",
+          "--vars",
           "INVALID",
         ]);
       }).rejects.toThrow();
     });
 
-    it("should reject invalid environment variable format (missing key)", async () => {
+    it("should reject invalid template variable format (missing key)", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
@@ -288,13 +288,13 @@ describe("run command", () => {
           "test prompt",
           "--artifact-name",
           "test-artifact",
-          "-e",
+          "--vars",
           "=value",
         ]);
       }).rejects.toThrow();
     });
 
-    it("should omit dynamicVars when no env vars provided", async () => {
+    it("should omit templateVars when no vars provided", async () => {
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -309,7 +309,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        dynamicVars: undefined,
+        templateVars: undefined,
       });
     });
   });
@@ -358,7 +358,7 @@ describe("run command", () => {
       );
     });
 
-    it("should display env vars when provided", async () => {
+    it("should display vars when provided", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -375,7 +375,7 @@ describe("run command", () => {
         "test prompt",
         "--artifact-name",
         "test-artifact",
-        "-e",
+        "--vars",
         "KEY=value",
       ]);
 

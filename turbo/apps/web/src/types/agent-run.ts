@@ -5,7 +5,7 @@
 export interface CreateAgentRunRequest {
   agentConfigId: string;
   prompt: string;
-  dynamicVars?: Record<string, string>;
+  templateVars?: Record<string, string>;
   artifactName: string; // Required: artifact storage name
   artifactVersion?: string; // Optional: version hash (defaults to "latest")
 }
@@ -25,7 +25,7 @@ export interface GetAgentRunResponse {
   agentConfigId: string;
   status: "pending" | "running" | "completed" | "failed";
   prompt: string;
-  dynamicVars?: Record<string, string>;
+  templateVars?: Record<string, string>;
   sandboxId?: string;
   result?: {
     output: string;

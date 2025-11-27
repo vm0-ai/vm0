@@ -104,7 +104,7 @@ describe("E2B Service - mocked unit tests", () => {
         agentConfig: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
-        dynamicVars: { testVar: "testValue" },
+        templateVars: { testVar: "testValue" },
       };
 
       // Act

@@ -66,12 +66,12 @@ function resolveVasVolume(
   volumeName: string,
   mountPath: string,
   volumeConfig: VolumeConfig,
-  dynamicVars: Record<string, string>,
+  templateVars: Record<string, string>,
 ): { volume: ResolvedVolume | null; error: VolumeError | null } {
   // Replace template variables in storage name
   const { result: storageName, missingVars } = replaceTemplateVars(
     volumeConfig.name,
-    dynamicVars,
+    templateVars,
   );
 
   if (missingVars.length > 0) {
@@ -87,7 +87,7 @@ function resolveVasVolume(
 
   // Replace template variables in version
   const { result: version, missingVars: versionMissingVars } =
-    replaceTemplateVars(volumeConfig.version, dynamicVars);
+    replaceTemplateVars(volumeConfig.version, templateVars);
 
   if (versionMissingVars.length > 0) {
     return {
@@ -137,7 +137,7 @@ function resolveArtifact(
 /**
  * Resolve volumes from agent configuration
  * @param config - Agent configuration with volume definitions
- * @param dynamicVars - Dynamic variables for template replacement
+ * @param templateVars - Template variables for placeholder replacement
  * @param artifactName - Required artifact storage name
  * @param artifactVersion - Optional artifact version (defaults to "latest")
  * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
@@ -145,7 +145,7 @@ function resolveArtifact(
  */
 export function resolveVolumes(
   config: AgentVolumeConfig,
-  dynamicVars: Record<string, string> = {},
+  templateVars: Record<string, string> = {},
   artifactName?: string,
   artifactVersion?: string,
   skipArtifact?: boolean,
@@ -193,7 +193,7 @@ export function resolveVolumes(
           volumeName,
           mountPath,
           volumeConfig,
-          dynamicVars,
+          templateVars,
         );
 
         if (error) {

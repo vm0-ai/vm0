@@ -410,7 +410,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         agentConfigId: testConfigId,
         status: "running",
         prompt: "Test prompt",
-        dynamicVars: { user: "testuser" },
+        templateVars: { user: "testuser" },
         createdAt: new Date(),
       });
 

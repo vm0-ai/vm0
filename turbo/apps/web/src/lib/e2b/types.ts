@@ -5,7 +5,7 @@
 export interface CreateRunOptions {
   agentConfigId: string;
   prompt: string;
-  dynamicVars?: Record<string, string>;
+  templateVars?: Record<string, string>;
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
   agentConfig?: unknown; // Full agent config JSONB for volume resolution
   apiUrl?: string; // Override API URL (auto-detected from request or from env)

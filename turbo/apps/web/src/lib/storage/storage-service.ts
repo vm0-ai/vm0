@@ -87,7 +87,7 @@ export class StorageService {
   /**
    * Prepare storages: resolve configurations and download from S3 to temp directory
    * @param agentConfig - Agent configuration containing volume definitions
-   * @param dynamicVars - Dynamic variables for template replacement
+   * @param templateVars - Template variables for placeholder replacement
    * @param runId - Run ID for temp directory naming
    * @param userId - User ID for storage access
    * @param artifactName - Artifact storage name (required)
@@ -97,7 +97,7 @@ export class StorageService {
    */
   async prepareStorages(
     agentConfig: AgentVolumeConfig | undefined,
-    dynamicVars: Record<string, string>,
+    templateVars: Record<string, string>,
     runId: string,
     userId: string,
     artifactName?: string,
@@ -119,7 +119,7 @@ export class StorageService {
     // Resolve volumes from agent config
     const volumeResult = resolveVolumes(
       agentConfig,
-      dynamicVars,
+      templateVars,
       artifactName,
       artifactVersion,
       skipArtifact,

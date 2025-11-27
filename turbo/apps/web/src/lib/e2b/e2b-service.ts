@@ -76,7 +76,7 @@ export class E2BService {
       // Skip artifact validation since we're using the snapshot
       const freshStorages = await storageService.prepareStorages(
         agentConfig,
-        context.dynamicVars || {},
+        context.templateVars || {},
         context.runId,
         context.userId || "",
         undefined, // No artifact name for resume
@@ -94,7 +94,7 @@ export class E2BService {
       // New run - prepare storages and artifact
       storageResult = await storageService.prepareStorages(
         agentConfig,
-        context.dynamicVars || {},
+        context.templateVars || {},
         context.runId,
         context.userId || "",
         context.artifactName,

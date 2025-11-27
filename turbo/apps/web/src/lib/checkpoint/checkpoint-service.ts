@@ -78,7 +78,7 @@ export class CheckpointService {
     // Build agent config snapshot
     const agentConfigSnapshot: AgentConfigSnapshot = {
       config: config.config as AgentConfigYaml,
-      templateVars: (run.dynamicVars as Record<string, string>) || undefined,
+      templateVars: (run.templateVars as Record<string, string>) || undefined,
     };
 
     // Store checkpoint in database

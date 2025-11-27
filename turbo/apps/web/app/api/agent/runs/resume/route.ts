@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         resumedFromCheckpointId: body.checkpointId,
         status: "pending",
         prompt: body.prompt,
-        dynamicVars: context.dynamicVars || null,
+        templateVars: context.templateVars || null,
       })
       .returning();
 
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       agentConfigId: context.agentConfigId,
       agentName: config?.name || undefined,
       prompt: body.prompt,
-      dynamicVars: context.dynamicVars,
+      templateVars: context.templateVars,
       resumedFromCheckpointId: body.checkpointId,
     });
 

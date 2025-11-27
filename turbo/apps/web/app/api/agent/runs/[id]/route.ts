@@ -51,7 +51,7 @@ export async function GET(
       agentConfigId: run.agentConfigId,
       status: run.status as "pending" | "running" | "completed" | "failed",
       prompt: run.prompt,
-      dynamicVars: run.dynamicVars as Record<string, string> | undefined,
+      templateVars: run.templateVars as Record<string, string> | undefined,
       sandboxId: run.sandboxId || undefined,
       result: run.result as
         | { output: string; executionTimeMs: number }

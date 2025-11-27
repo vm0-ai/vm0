@@ -146,7 +146,7 @@ class ApiClient {
   async createRun(body: {
     agentConfigId: string;
     prompt: string;
-    dynamicVars?: Record<string, string>;
+    templateVars?: Record<string, string>;
     artifactName: string;
     artifactVersion?: string;
   }): Promise<CreateRunResponse> {

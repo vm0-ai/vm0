@@ -179,11 +179,11 @@ describe("ApiClient", () => {
       expect(result).toEqual(mockResponse);
     });
 
-    it("should support dynamic variables", async () => {
+    it("should support template variables", async () => {
       const mockRequest = {
         agentConfigId: "cfg-123",
         prompt: "test prompt",
-        dynamicVars: { key1: "value1", key2: "value2" },
+        templateVars: { key1: "value1", key2: "value2" },
         artifactName: "my-artifact",
       };
 

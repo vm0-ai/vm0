@@ -4,7 +4,7 @@ import { apiClient } from "../lib/api-client";
 import { ClaudeEventParser } from "../lib/event-parser";
 import { EventRenderer } from "../lib/event-renderer";
 
-function collectEnvVars(
+function collectVars(
   value: string,
   previous: Record<string, string>,
 ): Record<string, string> {
@@ -12,7 +12,7 @@ function collectEnvVars(
   const val = valueParts.join("="); // Support values with '='
 
   if (!key || val === undefined || val === "") {
-    throw new Error(`Invalid env var format: ${value} (expected key=value)`);
+    throw new Error(`Invalid variable format: ${value} (expected KEY=value)`);
   }
 
   return { ...previous, [key]: val };
@@ -83,9 +83,9 @@ const runCmd = new Command()
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
-    "-e, --env <key=value>",
-    "Environment variables (repeatable)",
-    collectEnvVars,
+    "--vars <KEY=value>",
+    "Template variables for config placeholders (repeatable)",
+    collectVars,
     {},
   )
   .option("--artifact-name <name>", "Artifact storage name (required for run)")
@@ -103,7 +103,7 @@ const runCmd = new Command()
       identifier: string,
       prompt: string,
       options: {
-        env: Record<string, string>;
+        vars: Record<string, string>;
         artifactName?: string;
         artifactVersion?: string;
         timeout: string;
@@ -160,9 +160,9 @@ const runCmd = new Command()
         console.log(chalk.blue("\nCreating agent run..."));
         console.log(chalk.gray(`  Prompt: ${prompt}`));
 
-        if (Object.keys(options.env).length > 0) {
+        if (Object.keys(options.vars).length > 0) {
           console.log(
-            chalk.gray(`  Variables: ${JSON.stringify(options.env)}`),
+            chalk.gray(`  Variables: ${JSON.stringify(options.vars)}`),
           );
         }
 
@@ -181,8 +181,8 @@ const runCmd = new Command()
         const response = await apiClient.createRun({
           agentConfigId: configId,
           prompt,
-          dynamicVars:
-            Object.keys(options.env).length > 0 ? options.env : undefined,
+          templateVars:
+            Object.keys(options.vars).length > 0 ? options.vars : undefined,
           artifactName: options.artifactName,
           artifactVersion: options.artifactVersion,
         });

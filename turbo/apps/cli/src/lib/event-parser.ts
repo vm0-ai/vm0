@@ -74,7 +74,7 @@ interface Vm0StartEvent {
   agentConfigId: string;
   agentName?: string;
   prompt: string;
-  dynamicVars?: Record<string, unknown>;
+  templateVars?: Record<string, unknown>;
   timestamp: string;
 }
 
@@ -248,7 +248,7 @@ export class ClaudeEventParser {
         agentConfigId: event.agentConfigId,
         agentName: event.agentName,
         prompt: event.prompt,
-        dynamicVars: event.dynamicVars,
+        templateVars: event.templateVars,
       },
     };
   }

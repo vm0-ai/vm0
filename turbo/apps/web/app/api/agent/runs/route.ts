@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Validate template variables
     const requiredVars = extractTemplateVars(config.config);
-    const providedVars = body.dynamicVars || {};
+    const providedVars = body.templateVars || {};
     const missingVars = requiredVars.filter(
       (varName) => providedVars[varName] === undefined,
     );
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         agentConfigId: body.agentConfigId,
         status: "pending",
         prompt: body.prompt,
-        dynamicVars: body.dynamicVars || null,
+        templateVars: body.templateVars || null,
       })
       .returning();
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       agentConfigId: body.agentConfigId,
       agentName: config.name || undefined,
       prompt: body.prompt,
-      dynamicVars: body.dynamicVars,
+      templateVars: body.templateVars,
     });
 
     // Execute in E2B asynchronously (don't await)
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
         body.agentConfigId,
         body.prompt,
         sandboxToken,
-        body.dynamicVars,
+        body.templateVars,
         config.config,
         userId,
         body.artifactName,

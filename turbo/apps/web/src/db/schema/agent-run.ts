@@ -21,7 +21,7 @@ export const agentRuns = pgTable("agent_runs", {
   resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
   status: varchar("status", { length: 20 }).notNull(),
   prompt: text("prompt").notNull(),
-  dynamicVars: jsonb("dynamic_vars"),
+  templateVars: jsonb("template_vars"),
   sandboxId: varchar("sandbox_id", { length: 255 }),
   result: jsonb("result"),
   error: text("error"),
