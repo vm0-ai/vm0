@@ -176,9 +176,9 @@ teardown() {
 
     # Step 2: Run agent WITH template variables (even though config doesn't use them)
     # This tests that templateVars are properly stored in the session
-    echo "# Step 2: Running agent with -e testKey=testValue..."
+    echo "# Step 2: Running agent with --vars testKey=testValue..."
     run $CLI_COMMAND run vm0-standard \
-        -e "testKey=testValue" \
+        --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'initial run' && cat testfile.txt"
 
