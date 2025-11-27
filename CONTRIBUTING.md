@@ -17,6 +17,29 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 4. The container will build and set up the development environment automatically
 5. Initialize git hooks: `lefthook install`
 
+### Local Web Development
+
+To run the web application locally with HTTPS:
+
+1. **Generate certificates** (on host machine):
+   ```bash
+   bash scripts/generate-certs.sh
+   ```
+
+2. **Configure hosts** (on host machine):
+   Add the following entries to your hosts file (`/etc/hosts` on macOS/Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows):
+   ```
+   127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai
+   ```
+
+3. **Start the dev server** (inside dev container):
+   ```bash
+   cd turbo && pnpm install && pnpm dev
+   ```
+
+4. **Access the application**:
+   Open https://vm7.ai in your browser.
+
 ## Pull Request Process
 
 1. Create a new branch from `main`
