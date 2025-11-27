@@ -38,7 +38,7 @@ To run the web application locally with HTTPS:
    ```
 
 4. **Access the application**:
-   Open https://vm7.ai in your browser.
+   Open https://vm7.ai:8443/ in your browser.
 
 ## Pull Request Process
 
