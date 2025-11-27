@@ -82,9 +82,7 @@ teardown() {
     # Step 4: Continue from session - should get LATEST artifact (HEAD), not checkpoint
     # This is the KEY DIFFERENCE from checkpoint resume
     echo "# Step 4: Continuing from session (should use latest artifact)..."
-    run $CLI_COMMAND run continue "$SESSION_ID" \
-        --timeout 120 \
-        "ls && cat counter.txt"
+    run $CLI_COMMAND run continue --timeout 120 "$SESSION_ID" "ls && cat counter.txt"
 
     assert_success
     assert_output --partial "[tool_use] Bash"
