@@ -12,6 +12,7 @@ export interface AgentSessionData {
   agentConfigId: string;
   conversationId: string | null;
   artifactName: string;
+  templateVars: Record<string, string> | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +25,7 @@ export interface CreateAgentSessionInput {
   agentConfigId: string;
   artifactName: string;
   conversationId?: string;
+  templateVars?: Record<string, string>;
 }
 
 /**
@@ -31,6 +33,7 @@ export interface CreateAgentSessionInput {
  */
 export interface UpdateAgentSessionInput {
   conversationId: string;
+  templateVars?: Record<string, string>;
 }
 
 /**

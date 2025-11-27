@@ -25,6 +25,7 @@ export class AgentSessionService {
         agentConfigId: input.agentConfigId,
         artifactName: input.artifactName,
         conversationId: input.conversationId,
+        templateVars: input.templateVars,
       })
       .returning();
 
@@ -36,18 +37,28 @@ export class AgentSessionService {
   }
 
   /**
-   * Update an existing agent session's conversation reference
+   * Update an existing agent session's conversation reference and templateVars
    */
   async update(
     id: string,
     input: UpdateAgentSessionInput,
   ): Promise<AgentSessionData> {
+    const updateData: {
+      conversationId: string;
+      updatedAt: Date;
+      templateVars?: Record<string, string>;
+    } = {
+      conversationId: input.conversationId,
+      updatedAt: new Date(),
+    };
+
+    if (input.templateVars !== undefined) {
+      updateData.templateVars = input.templateVars;
+    }
+
     const [session] = await globalThis.services.db
       .update(agentSessions)
-      .set({
-        conversationId: input.conversationId,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(agentSessions.id, id))
       .returning();
 
@@ -129,6 +140,7 @@ export class AgentSessionService {
     agentConfigId: string,
     artifactName: string,
     conversationId?: string,
+    templateVars?: Record<string, string>,
   ): Promise<{ session: AgentSessionData; created: boolean }> {
     // First try to find existing session with same config and artifact
     const [existing] = await globalThis.services.db
@@ -144,9 +156,12 @@ export class AgentSessionService {
       .limit(1);
 
     if (existing) {
-      // Update conversation if provided
+      // Update conversation and templateVars if provided
       if (conversationId) {
-        const updated = await this.update(existing.id, { conversationId });
+        const updated = await this.update(existing.id, {
+          conversationId,
+          templateVars,
+        });
         return { session: updated, created: false };
       }
       return { session: this.mapToAgentSessionData(existing), created: false };
@@ -158,6 +173,7 @@ export class AgentSessionService {
       agentConfigId,
       artifactName,
       conversationId,
+      templateVars,
     });
 
     return { session, created: true };
@@ -184,6 +200,7 @@ export class AgentSessionService {
       agentConfigId: session.agentConfigId,
       conversationId: session.conversationId,
       artifactName: session.artifactName,
+      templateVars: session.templateVars,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };

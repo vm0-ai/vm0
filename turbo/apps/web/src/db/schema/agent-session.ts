@@ -1,4 +1,11 @@
-import { pgTable, uuid, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  jsonb,
+} from "drizzle-orm/pg-core";
 import { agentConfigs } from "./agent-config";
 import { conversations } from "./conversation";
 
@@ -17,6 +24,7 @@ export const agentSessions = pgTable("agent_sessions", {
     onDelete: "set null",
   }),
   artifactName: varchar("artifact_name", { length: 255 }).notNull(),
+  templateVars: jsonb("template_vars").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

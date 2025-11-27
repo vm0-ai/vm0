@@ -61,17 +61,14 @@ export async function POST(request: NextRequest) {
       `[API] Continuing from session: ${body.agentSessionId} for user ${userId}`,
     );
 
-    // Create continue context (this validates session and loads data)
-    const context = await runService.createContinueContext(
-      "", // Temporary, will be replaced with actual run ID
+    // Validate session and get config ID (lightweight validation without full context)
+    const sessionData = await runService.validateAgentSession(
       body.agentSessionId,
-      body.prompt,
-      "", // Temporary, will be replaced with actual token
       userId,
     );
 
     console.log(
-      `[API] Continue context created for agent config: ${context.agentConfigId}`,
+      `[API] Session validated for agent config: ${sessionData.agentConfigId}`,
     );
 
     // Create run record in database
@@ -79,10 +76,10 @@ export async function POST(request: NextRequest) {
       .insert(agentRuns)
       .values({
         userId,
-        agentConfigId: context.agentConfigId,
+        agentConfigId: sessionData.agentConfigId,
         status: "pending",
         prompt: body.prompt,
-        dynamicVars: context.dynamicVars || null,
+        dynamicVars: sessionData.templateVars || null,
       })
       .returning();
 
@@ -102,7 +99,7 @@ export async function POST(request: NextRequest) {
     const [config] = await globalThis.services.db
       .select()
       .from(agentConfigs)
-      .where(eq(agentConfigs.id, context.agentConfigId))
+      .where(eq(agentConfigs.id, sessionData.agentConfigId))
       .limit(1);
 
     // Update run status to 'running' before starting E2B execution
@@ -117,14 +114,14 @@ export async function POST(request: NextRequest) {
     // Send vm0_start event
     await sendVm0StartEvent({
       runId: run.id,
-      agentConfigId: context.agentConfigId,
+      agentConfigId: sessionData.agentConfigId,
       agentName: config?.name || undefined,
       prompt: body.prompt,
-      dynamicVars: context.dynamicVars,
+      dynamicVars: sessionData.templateVars || undefined,
     });
 
     // Execute in E2B asynchronously (don't await)
-    // Create new context with actual run ID and token
+    // Create full context with actual run ID and token
     runService
       .createContinueContext(
         run.id,
@@ -133,7 +130,7 @@ export async function POST(request: NextRequest) {
         sandboxToken,
         userId,
       )
-      .then((finalContext) => runService.executeRun(finalContext))
+      .then((context) => runService.executeRun(context))
       .then((result) => {
         // Update run with results on success
         return globalThis.services.db

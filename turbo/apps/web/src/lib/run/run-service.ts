@@ -176,6 +176,59 @@ export class RunService {
   }
 
   /**
+   * Validate an agent session for continue operation
+   * Returns session data without creating full execution context
+   *
+   * @param agentSessionId Agent session ID to validate
+   * @param userId User ID for authorization check
+   * @returns Session data with agentConfigId and templateVars
+   * @throws NotFoundError if session doesn't exist
+   * @throws UnauthorizedError if session doesn't belong to user
+   */
+  async validateAgentSession(
+    agentSessionId: string,
+    userId: string,
+  ): Promise<{
+    agentConfigId: string;
+    templateVars: Record<string, string> | null;
+  }> {
+    console.log(
+      `[RunService] Validating agent session ${agentSessionId} for user ${userId}`,
+    );
+
+    // Load session with conversation data
+    const session =
+      await agentSessionService.getByIdWithConversation(agentSessionId);
+
+    if (!session) {
+      throw new NotFoundError("Agent session");
+    }
+
+    // Verify session belongs to user
+    if (session.userId !== userId) {
+      throw new UnauthorizedError(
+        "Agent session does not belong to authenticated user",
+      );
+    }
+
+    // Session must have a conversation to continue from
+    if (!session.conversation) {
+      throw new NotFoundError(
+        "Agent session has no conversation history to continue from",
+      );
+    }
+
+    console.log(
+      `[RunService] Session validated: agentConfigId=${session.agentConfigId}`,
+    );
+
+    return {
+      agentConfigId: session.agentConfigId,
+      templateVars: session.templateVars,
+    };
+  }
+
+  /**
    * Create execution context for continuing from an agent session
    * Unlike checkpoint resume, this uses the LATEST artifact version
    *
@@ -268,7 +321,7 @@ export class RunService {
       agentConfigId: session.agentConfigId,
       agentConfig: config.config,
       prompt,
-      dynamicVars: {},
+      dynamicVars: session.templateVars || {},
       sandboxToken,
       resumeSession,
       resumeArtifact,

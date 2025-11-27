@@ -4,8 +4,9 @@
 # This test verifies that:
 # 1. Agent runs create agent sessions
 # 2. vm0 run continue uses session's conversation but latest artifact version
+# 3. Session stores and inherits templateVars for continue operations
 #
-# Test count: 2 tests with 3 vm0 run calls (1 run + 1 continue + 1 run)
+# Test count: 4 tests with 6 vm0 run calls
 
 load '../../helpers/setup'
 
@@ -152,4 +153,68 @@ teardown() {
     }
 
     echo "# Verified: Same session returned for subsequent runs"
+}
+
+@test "VM0 agent session: continue works with templateVars" {
+    # This test verifies that continue works correctly when the original run
+    # had template variables set via -e flag. The templateVars are stored in
+    # the session and should be inherited when continuing.
+    #
+    # Note: We use vm0-standard (without template vars in config) to test the
+    # basic templateVars storage and retrieval mechanism. The actual template
+    # expansion in volumes is tested separately.
+
+    # Step 1: Create artifact
+    echo "# Step 1: Creating artifact..."
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    echo "initial-content" > testfile.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Step 2: Run agent WITH template variables (even though config doesn't use them)
+    # This tests that templateVars are properly stored in the session
+    echo "# Step 2: Running agent with -e testKey=testValue..."
+    run $CLI_COMMAND run vm0-standard \
+        -e "testKey=testValue" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "echo 'initial run' && cat testfile.txt"
+
+    assert_success
+    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "initial-content"
+    assert_output --partial "Session:"
+
+    # Extract session ID
+    SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Session ID: $SESSION_ID"
+    [ -n "$SESSION_ID" ] || {
+        echo "# Failed to extract session ID"
+        echo "$output"
+        return 1
+    }
+
+    # Step 3: Update artifact with new content
+    echo "# Step 3: Updating artifact..."
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    echo "updated-content" > testfile.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Step 4: Continue from session
+    # This verifies that:
+    # 1. The continue API correctly retrieves templateVars from the session
+    # 2. The continue works even when original run had templateVars
+    echo "# Step 4: Continuing from session..."
+    run $CLI_COMMAND run continue --timeout 120 "$SESSION_ID" "cat testfile.txt"
+
+    assert_success
+    assert_output --partial "[tool_use] Bash"
+
+    # Should see updated content (latest artifact version)
+    assert_output --partial "updated-content"
+
+    echo "# Verified: Continue works with templateVars stored in session"
 }

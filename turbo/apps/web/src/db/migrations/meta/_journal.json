@@ -148,6 +148,13 @@
       "when": 1764500000000,
       "tag": "0020_add_agent_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1764600000000,
+      "tag": "0021_add_template_vars_to_agent_sessions",
+      "breakpoints": true
     }
   ]
 }
