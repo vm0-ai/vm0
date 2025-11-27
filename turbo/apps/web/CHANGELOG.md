@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/vm0-ai/vm0/compare/web-v2.0.0...web-v2.1.0) (2025-11-27)
+
+
+### Features
+
+* introduce Agent Session concept and refactor vm0 run CLI ([#243](https://github.com/vm0-ai/vm0/issues/243)) ([2211c97](https://github.com/vm0-ai/vm0/commit/2211c972d5ee295a9f84780dd938c27ebec40ff7))
+
 ## [2.0.0](https://github.com/vm0-ai/vm0/compare/web-v1.6.1...web-v2.0.0) (2025-11-27)
 
 
