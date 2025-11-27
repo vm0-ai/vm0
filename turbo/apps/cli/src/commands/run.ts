@@ -88,9 +88,10 @@ const runCmd = new Command()
     collectEnvVars,
     {},
   )
+  .requiredOption("--artifact-name <name>", "Artifact storage name (required)")
   .option(
-    "-a, --artifact <key>",
-    "Artifact key to mount (for VM0 driver artifacts)",
+    "--artifact-version <hash>",
+    "Artifact version hash (defaults to latest)",
   )
   .option(
     "-t, --timeout <seconds>",
@@ -103,7 +104,8 @@ const runCmd = new Command()
       prompt: string,
       options: {
         env: Record<string, string>;
-        artifact?: string;
+        artifactName: string;
+        artifactVersion?: string;
         timeout: string;
       },
     ) => {
@@ -152,8 +154,11 @@ const runCmd = new Command()
           );
         }
 
-        if (options.artifact) {
-          console.log(chalk.gray(`  Artifact: ${options.artifact}`));
+        console.log(chalk.gray(`  Artifact: ${options.artifactName}`));
+        if (options.artifactVersion) {
+          console.log(
+            chalk.gray(`  Artifact version: ${options.artifactVersion}`),
+          );
         }
 
         console.log();
@@ -166,7 +171,8 @@ const runCmd = new Command()
           prompt,
           dynamicVars:
             Object.keys(options.env).length > 0 ? options.env : undefined,
-          artifactKey: options.artifact,
+          artifactName: options.artifactName,
+          artifactVersion: options.artifactVersion,
         });
 
         // 4. Poll for events

@@ -1,13 +1,15 @@
 version: "1.0"
 
-agent:
-  name: vm0-standard
-  description: "Test agent with standard config"
-  provider: claude-code
-
-  image: vm0-claude-code-dev
-  volumes:
-    - claude-files:/home/user/.config/claude
-
-  artifact:
+agents:
+  - name: vm0-standard
+    description: "Test agent with standard config"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    volumes:
+      - claude-files:/home/user/.config/claude
     working_dir: /home/user/workspace
+
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest

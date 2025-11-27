@@ -82,7 +82,11 @@ export const buildCommand = new Command()
       console.log(chalk.gray(`  Config ID: ${response.configId}`));
       console.log();
       console.log("  Run your agent:");
-      console.log(chalk.cyan(`    vm0 run ${response.name} "your prompt"`));
+      console.log(
+        chalk.cyan(
+          `    vm0 run ${response.name} --artifact-name <artifact> "your prompt"`,
+        ),
+      );
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {

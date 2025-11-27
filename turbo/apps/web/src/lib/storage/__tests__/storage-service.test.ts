@@ -41,6 +41,7 @@ describe("StorageService", () => {
         undefined,
         {},
         "test-run-id",
+        "user-123",
       );
 
       expect(result).toEqual({
@@ -53,9 +54,12 @@ describe("StorageService", () => {
 
     it("should return empty result when no volumes or artifact configured", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: [],
-        },
+        agents: [
+          {
+            volumes: [],
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -68,6 +72,10 @@ describe("StorageService", () => {
         agentConfig,
         {},
         "test-run-id",
+        "user-123",
+        undefined,
+        undefined,
+        true, // skipArtifact
       );
 
       expect(result).toEqual({
@@ -78,53 +86,14 @@ describe("StorageService", () => {
       });
     });
 
-    it("should prepare Git artifact successfully", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/user/repo.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "git",
-          mountPath: "/home/user/workspace",
-          gitUri: "https://github.com/user/repo.git",
-          gitBranch: "main",
-        },
-        errors: [],
-      });
-
-      const result = await storageService.prepareStorages(
-        agentConfig,
-        {},
-        "test-run-id",
-      );
-
-      expect(result.preparedArtifact).toEqual({
-        driver: "git",
-        mountPath: "/home/user/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "main",
-        gitToken: undefined,
-      });
-      expect(result.tempDir).toBeNull();
-      expect(result.errors).toHaveLength(0);
-    });
-
     it("should handle volume resolution errors", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["data:/workspace/data"],
-        },
+        agents: [
+          {
+            volumes: ["data:/workspace/data"],
+            working_dir: "/home/user/workspace",
+          },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -143,6 +112,8 @@ describe("StorageService", () => {
         agentConfig,
         {},
         "test-run-id",
+        "user-123",
+        "my-artifact",
       );
 
       expect(result.preparedStorages).toHaveLength(0);
@@ -151,117 +122,74 @@ describe("StorageService", () => {
       expect(result.errors[0]).toBe("data: Volume not found");
     });
 
-    it("should return error when VM0 storage has no HEAD version", async () => {
+    it("should prepare VM0 artifact when artifact name is provided", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["claude-system:/home/user/.config/claude"],
-        },
-        volumes: {
-          "claude-system": {
-            driver: "vm0",
-            driver_opts: {
-              uri: "vm0://claude-files",
-            },
+        agents: [
+          {
+            working_dir: "/home/user/workspace",
           },
-        },
+        ],
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "claude-system",
-            driver: "vm0",
-            vm0StorageName: "claude-files",
-            mountPath: "/home/user/.config/claude",
-          },
-        ],
-        artifact: null,
+        volumes: [],
+        artifact: {
+          driver: "vm0",
+          mountPath: "/home/user/workspace",
+          vm0StorageName: "my-artifact",
+          vm0Version: "latest",
+        },
         errors: [],
       });
 
-      // Mock globalThis.services.db to return a storage without HEAD version
+      // Mock database queries
       const mockDb = {
         select: vi.fn().mockReturnThis(),
         from: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([
-          {
-            id: "storage-123",
-            name: "claude-files",
-            userId: "user-123",
-            headVersionId: null, // No HEAD version
-          },
-        ]),
-      };
-
-      globalThis.services = {
-        db: mockDb,
-      } as never;
-
-      const result = await storageService.prepareStorages(
-        agentConfig,
-        {},
-        "test-run-id",
-        "user-123",
-      );
-
-      expect(result.preparedStorages).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("claude-files");
-      expect(result.errors[0]).toContain("has no HEAD version");
-    });
-
-    it("should return error when VM0 storage not found in database", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          volumes: ["claude-system:/home/user/.config/claude"],
-        },
-        volumes: {
-          "claude-system": {
-            driver: "vm0",
-            driver_opts: {
-              uri: "vm0://nonexistent-storage",
+        limit: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: "storage-123",
+              name: "my-artifact",
+              userId: "user-123",
+              headVersionId: "version-123",
             },
-          },
-        },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "claude-system",
-            driver: "vm0",
-            vm0StorageName: "nonexistent-storage",
-            mountPath: "/home/user/.config/claude",
-          },
-        ],
-        artifact: null,
-        errors: [],
-      });
-
-      // Mock globalThis.services.db to return empty result
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([]),
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: "version-123",
+              storageId: "storage-123",
+              s3Key: "user-123/my-artifact/version-123",
+            },
+          ]),
       };
 
       globalThis.services = {
         db: mockDb as never,
       } as never;
 
+      vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
+        localPath: "/tmp/vm0-run-test-run-id/artifact",
+        filesDownloaded: 5,
+        totalBytes: 1024,
+      });
+
       const result = await storageService.prepareStorages(
         agentConfig,
         {},
         "test-run-id",
         "user-123",
+        "my-artifact",
+        "latest",
       );
 
-      expect(result.preparedStorages).toHaveLength(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("nonexistent-storage");
-      expect(result.errors[0]).toContain("not found");
+      expect(result.preparedArtifact).not.toBeNull();
+      expect(result.preparedArtifact?.driver).toBe("vm0");
+      expect(result.preparedArtifact?.vm0StorageName).toBe("my-artifact");
+      expect(result.preparedArtifact?.vm0VersionId).toBe("version-123");
+      expect(result.errors).toHaveLength(0);
     });
   });
 
@@ -298,6 +226,8 @@ describe("StorageService", () => {
           driver: "vm0",
           localPath: "/tmp/vm0-run-test/dataset",
           mountPath: "/workspace/data",
+          vm0StorageName: "my-dataset",
+          vm0VersionId: "version-123",
         },
       ];
 
@@ -325,136 +255,45 @@ describe("StorageService", () => {
       expect(mockSandbox.files.write).toHaveBeenCalled();
     });
 
-    it("should clone Git artifact to sandbox", async () => {
+    it("should upload VM0 artifact to sandbox", async () => {
       const mockSandbox = {
         files: {
           write: vi.fn(),
         },
         commands: {
-          run: vi
-            .fn()
-            .mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" }),
+          run: vi.fn().mockResolvedValue({ exitCode: 0 }),
         },
       };
 
+      vi.mocked(fs.promises.stat).mockResolvedValue({
+        isDirectory: () => true,
+      } as never);
+
+      vi.mocked(fs.promises.readdir).mockResolvedValue([
+        {
+          name: "file.txt",
+          isDirectory: () => false,
+        } as never,
+      ]);
+
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        Buffer.from("test content"),
+      );
+
       await storageService.mountStorages(mockSandbox as never, [], {
-        driver: "git",
+        driver: "vm0",
+        localPath: "/tmp/vm0-run-test/artifact",
         mountPath: "/home/user/workspace",
-        gitUri: "https://github.com/user/repo.git",
-        gitBranch: "main",
+        vm0StorageName: "my-artifact",
+        vm0VersionId: "version-123",
       });
 
-      // Should run git clone command
-      expect(mockSandbox.commands.run).toHaveBeenCalled();
-      const commandCall = mockSandbox.commands.run.mock.calls[0];
-      expect(commandCall?.[0]).toContain("git clone");
+      expect(mockSandbox.files.write).toHaveBeenCalled();
     });
   });
 
   describe("prepareArtifactFromSnapshot", () => {
-    it("should prepare Git artifact from snapshot with correct branch", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/{{user}}/question.git",
-              branch: "main",
-              token: "test-token",
-            },
-          },
-        },
-      };
-
-      const snapshot = {
-        driver: "git" as const,
-        mountPath: "/home/user/workspace",
-        snapshot: {
-          branch: "run-test-run-123",
-          commitId: "abc123def456",
-        },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "git",
-          mountPath: "/home/user/workspace",
-          gitUri: "https://github.com/lancy/question.git",
-          gitBranch: "main",
-          gitToken: "test-token",
-        },
-        errors: [],
-      });
-
-      const result = await storageService.prepareArtifactFromSnapshot(
-        snapshot,
-        agentConfig,
-        { user: "lancy" },
-        "test-run-id",
-      );
-
-      expect(result.preparedArtifact).not.toBeNull();
-      expect(result.preparedArtifact?.driver).toBe("git");
-      expect(result.preparedArtifact?.gitBranch).toBe("run-test-run-123");
-      expect(result.preparedArtifact?.gitToken).toBe("test-token");
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it("should return error when snapshot is missing snapshot data", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/home/user/workspace",
-            driver: "git",
-            driver_opts: {
-              uri: "https://github.com/{{user}}/question.git",
-              branch: "main",
-            },
-          },
-        },
-      };
-
-      const snapshot = {
-        driver: "git" as const,
-        mountPath: "/home/user/workspace",
-        // Missing snapshot.branch
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "git",
-          mountPath: "/home/user/workspace",
-          gitUri: "https://github.com/lancy/question.git",
-          gitBranch: "main",
-        },
-        errors: [],
-      });
-
-      const result = await storageService.prepareArtifactFromSnapshot(
-        snapshot,
-        agentConfig,
-        { user: "lancy" },
-        "test-run-id",
-      );
-
-      expect(result.preparedArtifact).toBeNull();
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("Git snapshot missing branch");
-    });
-
     it("should prepare VM0 artifact from snapshot with specific version", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/workspace",
-            driver: "vm0",
-          },
-        },
-      };
-
       const snapshot = {
         driver: "vm0" as const,
         mountPath: "/workspace",
@@ -482,16 +321,6 @@ describe("StorageService", () => {
         db: mockDb as never,
       } as never;
 
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "vm0",
-          mountPath: "/workspace",
-          vm0StorageName: "test-artifact",
-        },
-        errors: [],
-      });
-
       vi.mocked(s3Client.downloadS3Directory).mockResolvedValue({
         localPath: "/tmp/vm0-run-test-run-id/artifact",
         filesDownloaded: 10,
@@ -500,8 +329,6 @@ describe("StorageService", () => {
 
       const result = await storageService.prepareArtifactFromSnapshot(
         snapshot,
-        agentConfig,
-        {},
         "test-run-id",
       );
 
@@ -519,15 +346,6 @@ describe("StorageService", () => {
     });
 
     it("should return error when VM0 snapshot is missing versionId", async () => {
-      const agentConfig: AgentVolumeConfig = {
-        agent: {
-          artifact: {
-            working_dir: "/workspace",
-            driver: "vm0",
-          },
-        },
-      };
-
       const snapshot = {
         driver: "vm0" as const,
         mountPath: "/workspace",
@@ -535,20 +353,8 @@ describe("StorageService", () => {
         // No snapshot with versionId
       };
 
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "vm0",
-          mountPath: "/workspace",
-          vm0StorageName: "test-artifact",
-        },
-        errors: [],
-      });
-
       const result = await storageService.prepareArtifactFromSnapshot(
         snapshot,
-        agentConfig,
-        {},
         "test-run-id",
       );
 

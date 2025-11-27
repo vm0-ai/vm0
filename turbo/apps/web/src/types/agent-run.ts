@@ -6,7 +6,8 @@ export interface CreateAgentRunRequest {
   agentConfigId: string;
   prompt: string;
   dynamicVars?: Record<string, string>;
-  artifactKey?: string; // Artifact key for VM0 driver artifacts
+  artifactName: string; // Required: artifact storage name
+  artifactVersion?: string; // Optional: version hash (defaults to "latest")
 }
 
 export interface CreateAgentRunResponse {

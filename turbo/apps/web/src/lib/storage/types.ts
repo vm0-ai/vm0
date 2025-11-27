@@ -1,12 +1,8 @@
 /**
- * Supported storage drivers for static volumes:
+ * Supported storage drivers for volumes and artifacts:
  * - "vm0": VM0 managed storage (stored in S3 with versioning)
- *
- * Artifact-only drivers:
- * - "git": Git repository artifacts (supports checkpoint via branch/commit snapshots)
  */
 export type StorageDriver = "vm0";
-export type ArtifactDriver = "vm0" | "git";
 
 /**
  * Storage type distinguishes between static volumes and artifacts
@@ -14,26 +10,12 @@ export type ArtifactDriver = "vm0" | "git";
 export type StorageType = "volume" | "artifact";
 
 /**
- * Volume config for static volumes in agent.yaml (vm0 driver only)
+ * Volume config for static volumes in agent.yaml
+ * Each volume requires explicit name and version
  */
 export interface VolumeConfig {
-  driver: StorageDriver;
-  driver_opts: {
-    uri: string; // vm0://storage-name format
-  };
-}
-
-/**
- * Artifact config for work products (vm0 or git driver)
- */
-export interface ArtifactConfig {
-  working_dir: string;
-  driver?: ArtifactDriver; // default: vm0
-  driver_opts?: {
-    uri?: string; // git only: repository URL
-    branch?: string; // git only: branch name
-    token?: string; // git only: authentication token
-  };
+  name: string; // Required: actual storage name
+  version: string; // Required: version hash or "latest"
 }
 
 /**
@@ -43,21 +25,18 @@ export interface ResolvedVolume {
   name: string;
   driver: StorageDriver;
   mountPath: string;
-  vm0StorageName?: string;
+  vm0StorageName: string;
+  vm0Version: string; // Version hash or "latest"
 }
 
 /**
- * Resolved artifact with all template variables replaced
+ * Resolved artifact (VM0 only)
  */
 export interface ResolvedArtifact {
-  driver: ArtifactDriver;
+  driver: StorageDriver;
   mountPath: string; // Same as working_dir
-  // VM0 driver fields
-  vm0StorageName?: string;
-  // Git driver fields
-  gitUri?: string;
-  gitBranch?: string;
-  gitToken?: string;
+  vm0StorageName: string;
+  vm0Version: string; // Version hash or "latest"
 }
 
 /**
@@ -78,19 +57,20 @@ export interface VolumeError {
   type:
     | "missing_definition"
     | "missing_variable"
-    | "invalid_uri"
+    | "invalid_config"
     | "working_dir_conflict"
-    | "missing_artifact_key";
+    | "missing_artifact_name";
 }
 
 /**
  * Agent configuration sections related to volumes
+ * Matches the new agent.yaml structure
  */
 export interface AgentVolumeConfig {
-  agent?: {
+  agents?: Array<{
     volumes?: string[];
-    artifact?: ArtifactConfig;
-  };
+    working_dir: string;
+  }>;
   volumes?: Record<string, VolumeConfig>;
 }
 
@@ -102,24 +82,19 @@ export interface PreparedStorage {
   driver: StorageDriver;
   localPath?: string;
   mountPath: string;
-  vm0StorageName?: string;
-  vm0VersionId?: string;
+  vm0StorageName: string;
+  vm0VersionId: string;
 }
 
 /**
- * Prepared artifact with local path and mount information
+ * Prepared artifact with local path and mount information (VM0 only)
  */
 export interface PreparedArtifact {
-  driver: ArtifactDriver;
+  driver: StorageDriver;
   localPath?: string;
   mountPath: string;
-  // VM0 driver fields
-  vm0StorageName?: string;
-  vm0VersionId?: string;
-  // Git driver fields
-  gitUri?: string;
-  gitBranch?: string;
-  gitToken?: string;
+  vm0StorageName: string;
+  vm0VersionId: string;
 }
 
 /**

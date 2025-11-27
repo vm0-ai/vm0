@@ -3,14 +3,6 @@
  */
 
 /**
- * Git snapshot containing branch and commit information
- */
-export interface GitSnapshot {
-  branch: string;
-  commitId: string;
-}
-
-/**
  * VM0 artifact snapshot containing version information
  */
 export interface Vm0Snapshot {
@@ -18,28 +10,14 @@ export interface Vm0Snapshot {
 }
 
 /**
- * Artifact snapshot for Git-based artifacts
- */
-export interface GitArtifactSnapshot {
-  driver: "git";
-  mountPath: string;
-  snapshot?: GitSnapshot;
-}
-
-/**
  * Artifact snapshot for VM0 managed artifacts
  */
-export interface Vm0ArtifactSnapshot {
+export interface ArtifactSnapshot {
   driver: "vm0";
   mountPath: string;
   vm0StorageName: string;
   snapshot?: Vm0Snapshot;
 }
-
-/**
- * Union type for artifact snapshots
- */
-export type ArtifactSnapshot = GitArtifactSnapshot | Vm0ArtifactSnapshot;
 
 /**
  * Complete checkpoint data stored in database
