@@ -32,10 +32,15 @@ describe("GET /api/agent/configs?name=<name>", () => {
     // Create a test config
     const config = {
       version: "1.0",
-      agent: {
-        name: "test-get-by-name-success",
-        instructions: "Test instructions",
-      },
+      agents: [
+        {
+          name: "test-get-by-name-success",
+          description: "Test description",
+          image: "vm0-claude-code-dev",
+          provider: "claude-code",
+          working_dir: "/home/user/workspace",
+        },
+      ],
     };
 
     const createRequest = new Request(
@@ -67,8 +72,8 @@ describe("GET /api/agent/configs?name=<name>", () => {
     expect(getResponse.status).toBe(200);
     expect(getData.id).toBe(createData.configId);
     expect(getData.name).toBe("test-get-by-name-success");
-    expect(getData.config.agent.name).toBe("test-get-by-name-success");
-    expect(getData.config.agent.instructions).toBe("Test instructions");
+    expect(getData.config.agents[0].name).toBe("test-get-by-name-success");
+    expect(getData.config.agents[0].description).toBe("Test description");
     expect(getData.createdAt).toBeDefined();
     expect(getData.updatedAt).toBeDefined();
 
@@ -111,10 +116,15 @@ describe("GET /api/agent/configs?name=<name>", () => {
     mockUserId = "user-1-isolation";
     const config = {
       version: "1.0",
-      agent: {
-        name: "test-user-isolation",
-        instructions: "Test",
-      },
+      agents: [
+        {
+          name: "test-user-isolation",
+          description: "Test",
+          image: "vm0-claude-code-dev",
+          provider: "claude-code",
+          working_dir: "/home/user/workspace",
+        },
+      ],
     };
 
     const createRequest = new Request(
@@ -163,10 +173,15 @@ describe("GET /api/agent/configs?name=<name>", () => {
     // Create a test config with hyphens
     const config = {
       version: "1.0",
-      agent: {
-        name: "test-agent-with-hyphens",
-        instructions: "Test instructions",
-      },
+      agents: [
+        {
+          name: "test-agent-with-hyphens",
+          description: "Test description",
+          image: "vm0-claude-code-dev",
+          provider: "claude-code",
+          working_dir: "/home/user/workspace",
+        },
+      ],
     };
 
     const createRequest = new Request(
