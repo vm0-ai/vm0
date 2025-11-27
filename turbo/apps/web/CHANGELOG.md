@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.0](https://github.com/vm0-ai/vm0/compare/web-v1.6.1...web-v2.0.0) (2025-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Checkpoint schema changed, requires database migration
+
+### Features
+
+* **cli:** add version selection support for volume and artifact pull ([#223](https://github.com/vm0-ai/vm0/issues/223)) ([7981119](https://github.com/vm0-ai/vm0/commit/7981119217f138b912773808a98e85725c7f4752))
+* **config:** restructure agent.yaml format and artifact handling ([#224](https://github.com/vm0-ai/vm0/issues/224)) ([b60d92e](https://github.com/vm0-ai/vm0/commit/b60d92ef1e97aef54fc9a39b6c13e09aa593b928))
+* remove git driver and rename vm0 to VAS ([#230](https://github.com/vm0-ai/vm0/issues/230)) ([0c5bdad](https://github.com/vm0-ai/vm0/commit/0c5bdadf09a0d281d42a90951e5e89bc5e47550b))
+* **web:** add github repository link to navbar ([#245](https://github.com/vm0-ai/vm0/issues/245)) ([f13cbbb](https://github.com/vm0-ai/vm0/commit/f13cbbba4203bbfdaf11f8b45885a914ebe837b7))
+
+
+### Code Refactoring
+
+* restructure checkpoint schema with conversations table ([#231](https://github.com/vm0-ai/vm0/issues/231)) ([#239](https://github.com/vm0-ai/vm0/issues/239)) ([8f05f0b](https://github.com/vm0-ai/vm0/commit/8f05f0b7a38dbd7ac9c24da2f442517de8c70a29))
+
 ## [1.6.1](https://github.com/vm0-ai/vm0/compare/web-v1.6.0...web-v1.6.1) (2025-11-26)
 
 

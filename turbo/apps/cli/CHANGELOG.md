@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/vm0-ai/vm0/compare/cli-v1.6.0...cli-v1.7.0) (2025-11-27)
+
+
+### Features
+
+* **cli:** add version selection support for volume and artifact pull ([#223](https://github.com/vm0-ai/vm0/issues/223)) ([7981119](https://github.com/vm0-ai/vm0/commit/7981119217f138b912773808a98e85725c7f4752))
+* **config:** restructure agent.yaml format and artifact handling ([#224](https://github.com/vm0-ai/vm0/issues/224)) ([b60d92e](https://github.com/vm0-ai/vm0/commit/b60d92ef1e97aef54fc9a39b6c13e09aa593b928))
+* remove git driver and rename vm0 to VAS ([#230](https://github.com/vm0-ai/vm0/issues/230)) ([0c5bdad](https://github.com/vm0-ai/vm0/commit/0c5bdadf09a0d281d42a90951e5e89bc5e47550b))
+
+
+### Bug Fixes
+
+* **cli:** remove local files not present in remote during pull ([#225](https://github.com/vm0-ai/vm0/issues/225)) ([90ddd24](https://github.com/vm0-ai/vm0/commit/90ddd2402346385c185dfc3ef93903802c9c9408))
+
 ## [1.6.0](https://github.com/vm0-ai/vm0/compare/cli-v1.5.0...cli-v1.6.0) (2025-11-26)
 
 
