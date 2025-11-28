@@ -136,23 +136,7 @@ export class EventRenderer {
       console.log(`  Agent: ${chalk.gray(String(event.data.agentName))}`);
     }
 
-    // Show artifact info (format: { artifactName: version })
-    const artifact = event.data.artifact as Record<string, string> | undefined;
-    if (artifact && Object.keys(artifact).length > 0) {
-      console.log(`  Artifact:`);
-      for (const [name, version] of Object.entries(artifact)) {
-        console.log(`    ${name}: ${chalk.gray(version)}`);
-      }
-    }
-
-    // Show volume versions (format: { volumeName: version })
-    const volumes = event.data.volumes as Record<string, string> | undefined;
-    if (volumes && Object.keys(volumes).length > 0) {
-      console.log(`  Volumes:`);
-      for (const [name, version] of Object.entries(volumes)) {
-        console.log(`    ${name}: ${chalk.gray(version)}`);
-      }
-    }
+    this.renderArtifactAndVolumes(event.data);
   }
 
   private static renderVm0Result(event: ParsedEvent): void {
@@ -167,8 +151,17 @@ export class EventRenderer {
       `  Conversation: ${chalk.gray(String(event.data.conversationId || ""))}`,
     );
 
-    // Show artifact info (format: { artifactName: version })
-    const artifact = event.data.artifact as Record<string, string> | undefined;
+    this.renderArtifactAndVolumes(event.data);
+  }
+
+  /**
+   * Render artifact and volumes info
+   * Used by both vm0_start and vm0_result events
+   */
+  private static renderArtifactAndVolumes(
+    data: Record<string, unknown>,
+  ): void {
+    const artifact = data.artifact as Record<string, string> | undefined;
     if (artifact && Object.keys(artifact).length > 0) {
       console.log(`  Artifact:`);
       for (const [name, version] of Object.entries(artifact)) {
@@ -176,8 +169,7 @@ export class EventRenderer {
       }
     }
 
-    // Show volume versions (format: { volumeName: version })
-    const volumes = event.data.volumes as Record<string, string> | undefined;
+    const volumes = data.volumes as Record<string, string> | undefined;
     if (volumes && Object.keys(volumes).length > 0) {
       console.log(`  Volumes:`);
       for (const [name, version] of Object.entries(volumes)) {
