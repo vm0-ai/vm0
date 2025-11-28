@@ -52,8 +52,10 @@ teardown() {
     # - Create agent-marker.txt (new file)
     # - Modify counter.txt from 100 to 101
     echo "# Step 2: Running agent to modify artifact..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success

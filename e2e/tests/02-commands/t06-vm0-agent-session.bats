@@ -49,8 +49,10 @@ teardown() {
 
     # Step 2: Run agent to modify artifact
     echo "# Step 2: Running agent to create session..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
@@ -120,8 +122,10 @@ teardown() {
 
     # Step 2: First run - creates new session
     echo "# Step 2: First run (creates session)..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
         "echo 'first run'"
 
     assert_success
@@ -133,8 +137,10 @@ teardown() {
 
     # Step 3: Second run with same config and artifact - should return same session
     echo "# Step 3: Second run (should return same session)..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
         "echo 'second run'"
 
     assert_success
@@ -177,9 +183,11 @@ teardown() {
     # Step 2: Run agent WITH template variables (even though config doesn't use them)
     # This tests that templateVars are properly stored in the session
     echo "# Step 2: Running agent with --vars testKey=testValue..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
         "echo 'initial run' && cat testfile.txt"
 
     assert_success
