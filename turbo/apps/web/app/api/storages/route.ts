@@ -125,10 +125,6 @@ export async function POST(request: NextRequest) {
       fileEntries.push({ path: relativePath, content });
     }
 
-    // Compute content-addressable hash for version ID
-    const contentHash = computeContentHash(fileEntries);
-    log.debug(`Computed content hash: ${contentHash}`);
-
     // Check if storage already exists (outside transaction for read)
     const existingStorages = await globalThis.services.db
       .select()
@@ -162,6 +158,10 @@ export async function POST(request: NextRequest) {
         }
         log.debug(`Created new storage record: ${storage.id}`);
       }
+
+      // Compute content-addressable hash for version ID (includes storageId for uniqueness per storage)
+      const contentHash = computeContentHash(storage.id, fileEntries);
+      log.debug(`Computed content hash: ${contentHash}`);
 
       // Check if version with same content hash already exists (deduplication)
       const [existingVersion] = await tx

@@ -8,23 +8,27 @@ import {
   FULL_VERSION_LENGTH,
 } from "../content-hash";
 
+// Test storage IDs (UUIDs)
+const STORAGE_ID_1 = "11111111-1111-1111-1111-111111111111";
+const STORAGE_ID_2 = "22222222-2222-2222-2222-222222222222";
+
 describe("computeContentHash", () => {
   it("should return 64-character hex string", () => {
     const files = [{ path: "test.txt", content: Buffer.from("hello") }];
-    const hash = computeContentHash(files);
+    const hash = computeContentHash(STORAGE_ID_1, files);
 
     expect(hash).toHaveLength(FULL_VERSION_LENGTH);
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("should be deterministic - same content produces same hash", () => {
+  it("should be deterministic - same storageId and content produces same hash", () => {
     const files = [
       { path: "a.txt", content: Buffer.from("content a") },
       { path: "b.txt", content: Buffer.from("content b") },
     ];
 
-    const hash1 = computeContentHash(files);
-    const hash2 = computeContentHash(files);
+    const hash1 = computeContentHash(STORAGE_ID_1, files);
+    const hash2 = computeContentHash(STORAGE_ID_1, files);
 
     expect(hash1).toBe(hash2);
   });
@@ -40,8 +44,8 @@ describe("computeContentHash", () => {
       { path: "a.txt", content: Buffer.from("content a") },
     ];
 
-    const hash1 = computeContentHash(filesOrder1);
-    const hash2 = computeContentHash(filesOrder2);
+    const hash1 = computeContentHash(STORAGE_ID_1, filesOrder1);
+    const hash2 = computeContentHash(STORAGE_ID_1, filesOrder2);
 
     expect(hash1).toBe(hash2);
   });
@@ -50,8 +54,8 @@ describe("computeContentHash", () => {
     const files1 = [{ path: "test.txt", content: Buffer.from("hello") }];
     const files2 = [{ path: "test.txt", content: Buffer.from("world") }];
 
-    const hash1 = computeContentHash(files1);
-    const hash2 = computeContentHash(files2);
+    const hash1 = computeContentHash(STORAGE_ID_1, files1);
+    const hash2 = computeContentHash(STORAGE_ID_1, files2);
 
     expect(hash1).not.toBe(hash2);
   });
@@ -60,22 +64,38 @@ describe("computeContentHash", () => {
     const files1 = [{ path: "a.txt", content: Buffer.from("content") }];
     const files2 = [{ path: "b.txt", content: Buffer.from("content") }];
 
-    const hash1 = computeContentHash(files1);
-    const hash2 = computeContentHash(files2);
+    const hash1 = computeContentHash(STORAGE_ID_1, files1);
+    const hash2 = computeContentHash(STORAGE_ID_1, files2);
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it("should produce different hash for different storageId (same content)", () => {
+    const files = [{ path: "test.txt", content: Buffer.from("same content") }];
+
+    const hash1 = computeContentHash(STORAGE_ID_1, files);
+    const hash2 = computeContentHash(STORAGE_ID_2, files);
 
     expect(hash1).not.toBe(hash2);
   });
 
   it("should handle empty file list", () => {
-    const hash = computeContentHash([]);
+    const hash = computeContentHash(STORAGE_ID_1, []);
 
     expect(hash).toHaveLength(FULL_VERSION_LENGTH);
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("should produce different hash for empty file list with different storageId", () => {
+    const hash1 = computeContentHash(STORAGE_ID_1, []);
+    const hash2 = computeContentHash(STORAGE_ID_2, []);
+
+    expect(hash1).not.toBe(hash2);
+  });
+
   it("should handle files with empty content", () => {
     const files = [{ path: "empty.txt", content: Buffer.from("") }];
-    const hash = computeContentHash(files);
+    const hash = computeContentHash(STORAGE_ID_1, files);
 
     expect(hash).toHaveLength(FULL_VERSION_LENGTH);
   });
@@ -86,7 +106,7 @@ describe("computeContentHash", () => {
       { path: "root.txt", content: Buffer.from("root") },
     ];
 
-    const hash = computeContentHash(files);
+    const hash = computeContentHash(STORAGE_ID_1, files);
     expect(hash).toHaveLength(FULL_VERSION_LENGTH);
   });
 
@@ -94,7 +114,7 @@ describe("computeContentHash", () => {
     const binaryContent = Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd]);
     const files = [{ path: "binary.bin", content: binaryContent }];
 
-    const hash = computeContentHash(files);
+    const hash = computeContentHash(STORAGE_ID_1, files);
     expect(hash).toHaveLength(FULL_VERSION_LENGTH);
   });
 });
