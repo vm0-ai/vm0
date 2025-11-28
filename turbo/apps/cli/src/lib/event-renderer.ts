@@ -158,9 +158,7 @@ export class EventRenderer {
    * Render artifact and volumes info
    * Used by both vm0_start and vm0_result events
    */
-  private static renderArtifactAndVolumes(
-    data: Record<string, unknown>,
-  ): void {
+  private static renderArtifactAndVolumes(data: Record<string, unknown>): void {
     const artifact = data.artifact as Record<string, string> | undefined;
     if (artifact && Object.keys(artifact).length > 0) {
       console.log(`  Artifact:`);
