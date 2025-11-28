@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/vm0-ai/vm0/compare/cli-v1.8.1...cli-v1.9.0) (2025-11-28)
+
+
+### Features
+
+* **cli:** increase default timeout from 60 to 120 seconds ([#267](https://github.com/vm0-ai/vm0/issues/267)) ([359fc7d](https://github.com/vm0-ai/vm0/commit/359fc7d47ce3b7729e7b11631a1953a1041c64f3))
+
+
+### Bug Fixes
+
+* **cli:** read version from package.json instead of hardcoded value ([#268](https://github.com/vm0-ai/vm0/issues/268)) ([ca36a01](https://github.com/vm0-ai/vm0/commit/ca36a0125ccd5d0f7d2aa8048d6f52ae3dbb17bc))
+
 ## [1.8.1](https://github.com/vm0-ai/vm0/compare/cli-v1.8.0...cli-v1.8.1) (2025-11-28)
 
 
