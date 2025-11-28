@@ -375,6 +375,7 @@ runCmd
       prompt: string,
       options: { volumeVersion: Record<string, string>; timeout: string },
     ) => {
+      console.log(`[DEBUG] Continue options: ${JSON.stringify(options)}`);
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
         console.error(
