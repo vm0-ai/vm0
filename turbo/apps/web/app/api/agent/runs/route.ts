@@ -88,6 +88,9 @@ export async function POST(request: NextRequest) {
     console.log(
       `[API] Creating run - mode: ${isCheckpointResume ? "checkpoint" : isSessionContinue ? "session" : "new"}`,
     );
+    console.log(
+      `[API] Request body.volumeVersions=${JSON.stringify(body.volumeVersions)}`,
+    );
 
     // Determine agentConfigId for run record creation
     // For new runs: from request

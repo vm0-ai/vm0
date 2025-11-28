@@ -108,6 +108,16 @@ export class StorageService {
   ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
 
+    console.log(
+      `[Storage] prepareStorages called with volumeVersionOverrides=${JSON.stringify(volumeVersionOverrides)}`,
+    );
+    console.log(
+      `[Storage] agentConfig volumes: ${JSON.stringify((agentConfig as { volumes?: unknown })?.volumes)}`,
+    );
+    console.log(
+      `[Storage] agentConfig agents: ${JSON.stringify((agentConfig as { agents?: unknown })?.agents)}`,
+    );
+
     // If no agent config, return empty result
     if (!agentConfig) {
       return {

@@ -419,6 +419,9 @@ export class RunService {
     userId: string;
   }): Promise<ExecutionContext> {
     console.log(`[RunService] Building execution context for ${params.runId}`);
+    console.log(
+      `[RunService] params.volumeVersions=${JSON.stringify(params.volumeVersions)}`,
+    );
 
     // Initialize context variables
     let agentConfigId: string | undefined = params.agentConfigId;
