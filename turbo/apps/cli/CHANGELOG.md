@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/vm0-ai/vm0/compare/cli-v1.11.0...cli-v1.12.0) (2025-11-28)
+
+
+### Features
+
+* use content-based sha-256 hash for storage version ids ([#289](https://github.com/vm0-ai/vm0/issues/289)) ([69eb252](https://github.com/vm0-ai/vm0/commit/69eb252d85883f4cb9943613142f6feafbe947b6))
+
 ## [1.11.0](https://github.com/vm0-ai/vm0/compare/cli-v1.10.0...cli-v1.11.0) (2025-11-28)
 
 
