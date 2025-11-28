@@ -365,7 +365,7 @@ export default function LandingPage() {
                     className="cli-icon-img"
                   />
                 </div>
-                <h3 className="cli-tool-name">Claude code</h3>
+                <h3 className="cli-tool-name">Claude Code</h3>
               </div>
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
