@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { storages, storageVersions } from "../../../src/db/schema/storage";
-import { eq, and, like } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   uploadS3Directory,
   downloadS3Directory,
@@ -14,10 +14,9 @@ import AdmZip from "adm-zip";
 import { env } from "../../../src/env";
 import {
   computeContentHash,
-  isValidVersionPrefix,
-  MIN_VERSION_PREFIX_LENGTH,
   type FileEntry,
 } from "../../../src/lib/storage/content-hash";
+import { resolveVersionByPrefix } from "../../../src/lib/storage/version-resolver";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("api:storages");
@@ -338,7 +337,7 @@ export async function GET(request: NextRequest) {
     let version;
     if (versionId) {
       // Resolve version (supports short prefix)
-      const resolveResult = await resolveVersionById(storage.id, versionId);
+      const resolveResult = await resolveVersionByPrefix(storage.id, versionId);
       if ("error" in resolveResult) {
         return NextResponse.json(
           { error: resolveResult.error },
@@ -450,82 +449,4 @@ async function getAllFiles(dirPath: string): Promise<string[]> {
   }
 
   return files;
-}
-
-/**
- * Resolve version ID by exact match or prefix match
- * Supports short version prefixes (minimum 8 characters)
- */
-type StorageVersion = typeof storageVersions.$inferSelect;
-
-async function resolveVersionById(
-  storageId: string,
-  versionIdOrPrefix: string,
-): Promise<{ version: StorageVersion } | { error: string; status: number }> {
-  // First, try exact match
-  const [exactMatch] = await globalThis.services.db
-    .select()
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, storageId),
-        eq(storageVersions.id, versionIdOrPrefix),
-      ),
-    )
-    .limit(1);
-
-  if (exactMatch) {
-    return { version: exactMatch };
-  }
-
-  // If not exact match, try prefix match (for short version IDs)
-  if (!isValidVersionPrefix(versionIdOrPrefix)) {
-    // Too short or invalid format
-    if (versionIdOrPrefix.length < MIN_VERSION_PREFIX_LENGTH) {
-      return {
-        error: `Version prefix too short. Minimum ${MIN_VERSION_PREFIX_LENGTH} characters required.`,
-        status: 400,
-      };
-    }
-    return {
-      error: `Version "${versionIdOrPrefix}" not found`,
-      status: 404,
-    };
-  }
-
-  // Search by prefix using LIKE
-  const prefixMatches = await globalThis.services.db
-    .select()
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, storageId),
-        like(storageVersions.id, `${versionIdOrPrefix.toLowerCase()}%`),
-      ),
-    )
-    .limit(2); // Only need to know if there's more than one
-
-  if (prefixMatches.length === 0) {
-    return {
-      error: `Version "${versionIdOrPrefix}" not found`,
-      status: 404,
-    };
-  }
-
-  if (prefixMatches.length > 1) {
-    return {
-      error: `Ambiguous version prefix "${versionIdOrPrefix}". Please use more characters.`,
-      status: 400,
-    };
-  }
-
-  const matchedVersion = prefixMatches[0];
-  if (!matchedVersion) {
-    return {
-      error: `Version "${versionIdOrPrefix}" not found`,
-      status: 404,
-    };
-  }
-
-  return { version: matchedVersion };
 }
