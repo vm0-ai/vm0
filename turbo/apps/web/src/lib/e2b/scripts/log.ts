@@ -3,23 +3,26 @@
  * Provides consistent log format across all sandbox scripts
  */
 export const LOG_SCRIPT = `# Unified logging functions
-# Format: [VM0][LEVEL] message
+# Format: [LEVEL] [sandbox:SCRIPT_NAME] message
+
+# Default script name, can be overridden by sourcing script
+LOG_SCRIPT_NAME="\${LOG_SCRIPT_NAME:-run-agent}"
 
 log_info() {
-  echo "[VM0][INFO] $*" >&2
+  echo "[INFO] [sandbox:\${LOG_SCRIPT_NAME}] $*" >&2
 }
 
 log_warn() {
-  echo "[VM0][WARN] $*" >&2
+  echo "[WARN] [sandbox:\${LOG_SCRIPT_NAME}] $*" >&2
 }
 
 log_error() {
-  echo "[VM0][ERROR] $*" >&2
+  echo "[ERROR] [sandbox:\${LOG_SCRIPT_NAME}] $*" >&2
 }
 
 log_debug() {
   if [ "$VM0_DEBUG" = "1" ]; then
-    echo "[VM0][DEBUG] $*" >&2
+    echo "[DEBUG] [sandbox:\${LOG_SCRIPT_NAME}] $*" >&2
   fi
 }
 `;
