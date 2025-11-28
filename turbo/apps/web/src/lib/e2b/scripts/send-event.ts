@@ -3,7 +3,7 @@
  * Sends JSONL events to the webhook endpoint
  */
 export const SEND_EVENT_SCRIPT = `# Send single event immediately
-# Requires: COMMON_SCRIPT to be sourced first
+# Requires: COMMON_SCRIPT, LOG_SCRIPT, REQUEST_SCRIPT to be sourced first
 
 send_event() {
   local event_json="$1"
@@ -14,7 +14,7 @@ send_event() {
   if [ "$event_type" = "system" ] && [ "$event_subtype" = "init" ] && [ ! -f "$SESSION_ID_FILE" ]; then
     local session_id=$(echo "$event_json" | jq -r '.session_id // empty' 2>/dev/null)
     if [ -n "$session_id" ]; then
-      echo "[VM0] Captured session ID: $session_id" >&2
+      log_info "Captured session ID: $session_id"
       # Save to temp file to persist across subshells
       echo "$session_id" > "$SESSION_ID_FILE"
       # Calculate session history path
@@ -22,7 +22,7 @@ send_event() {
       local project_name=$(echo "$WORKING_DIR" | sed 's|^/||' | sed 's|/|-|g')
       local session_history_path="$HOME/.config/claude/projects/-\${project_name}/\${session_id}.jsonl"
       echo "$session_history_path" > "$SESSION_HISTORY_PATH_FILE"
-      echo "[VM0] Session history will be at: $session_history_path" >&2
+      log_info "Session history will be at: $session_history_path"
     fi
   fi
 
@@ -31,24 +31,14 @@ send_event() {
     --argjson event "$event_json" \\
     '{runId: $rid, events: [$event]}')
 
-  # Send event directly with curl (avoid eval to prevent shell injection)
-  if [ -n "$VERCEL_BYPASS" ]; then
-    curl -X POST "$WEBHOOK_URL" \\
-      -H "Content-Type: application/json" \\
-      -H "Authorization: Bearer $API_TOKEN" \\
-      -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
-      -d "$payload" \\
-      --connect-timeout 10 \\
-      --max-time 30 \\
-      --silent --fail || echo "[ERROR] Failed to send event" >&2
-  else
-    curl -X POST "$WEBHOOK_URL" \\
-      -H "Content-Type: application/json" \\
-      -H "Authorization: Bearer $API_TOKEN" \\
-      -d "$payload" \\
-      --connect-timeout 10 \\
-      --max-time 30 \\
-      --silent --fail || echo "[ERROR] Failed to send event" >&2
+  # Send event using unified HTTP request function
+  if ! http_post_json "$WEBHOOK_URL" "$payload" >/dev/null; then
+    log_error "Failed to send event after retries"
+    # Mark that event sending failed - run-agent.sh will check this
+    touch "$EVENT_ERROR_FLAG"
+    return 1
   fi
+
+  return 0
 }
 `;

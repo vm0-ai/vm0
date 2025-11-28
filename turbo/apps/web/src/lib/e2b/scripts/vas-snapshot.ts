@@ -4,17 +4,17 @@
  */
 export const VAS_SNAPSHOT_SCRIPT = `# Create VAS snapshot for a storage
 # Creates a zip of the storage contents and uploads to the storage webhook API
-# Requires: COMMON_SCRIPT to be sourced first
+# Requires: COMMON_SCRIPT, LOG_SCRIPT, REQUEST_SCRIPT to be sourced first
 
 create_vas_snapshot() {
   local mount_path="$1"
   local storage_name="$2"
   local vas_storage_name="$3"
 
-  echo "[VM0] Creating VAS snapshot for storage '$storage_name' ($vas_storage_name) at $mount_path" >&2
-  echo "[VM0] STORAGE_WEBHOOK_URL: $STORAGE_WEBHOOK_URL" >&2
-  echo "[VM0] API_TOKEN length: \${#API_TOKEN}" >&2
-  echo "[VM0] RUN_ID: $RUN_ID" >&2
+  log_info "Creating VAS snapshot for storage '$storage_name' ($vas_storage_name) at $mount_path"
+  log_debug "STORAGE_WEBHOOK_URL: $STORAGE_WEBHOOK_URL"
+  log_debug "API_TOKEN length: \${#API_TOKEN}"
+  log_debug "RUN_ID: $RUN_ID"
 
   # Create temp directory for zip
   local zip_dir="/tmp/vas-snapshot-$RUN_ID-$storage_name"
@@ -23,7 +23,7 @@ create_vas_snapshot() {
 
   # Create zip of storage contents
   cd "$mount_path" || {
-    echo "[ERROR] Failed to cd to $mount_path" >&2
+    log_error "Failed to cd to $mount_path"
     return 1
   }
 
@@ -31,13 +31,13 @@ create_vas_snapshot() {
   # Try 'zip' command first, fallback to 'python3' zipfile module
   if command -v zip >/dev/null 2>&1; then
     if ! zip -r "$zip_path" . -x "*.git*" -x "*.vas*" >/dev/null 2>&1; then
-      echo "[ERROR] Failed to create zip for storage '$storage_name'" >&2
+      log_error "Failed to create zip for storage '$storage_name'"
       rm -rf "$zip_dir"
       return 1
     fi
   else
     # Fallback: use Python's zipfile module (always available with Claude Code)
-    echo "[VM0] 'zip' not found, using Python zipfile" >&2
+    log_info "'zip' not found, using Python zipfile"
     python3 -c "
 import zipfile
 import os
@@ -50,60 +50,42 @@ with zipfile.ZipFile('$zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
             arcname = os.path.relpath(filepath, '.')
             zf.write(filepath, arcname)
 " 2>&1 || {
-      echo "[ERROR] Failed to create zip using Python for storage '$storage_name'" >&2
+      log_error "Failed to create zip using Python for storage '$storage_name'"
       rm -rf "$zip_dir"
       return 1
     }
   fi
 
-  echo "[VM0] Created zip file for storage '$storage_name'" >&2
+  log_info "Created zip file for storage '$storage_name'"
 
-  # Upload to storage webhook API (with timeout to prevent hanging)
+  # Upload to storage webhook API using unified HTTP request function
   local response
-  if [ -n "$VERCEL_BYPASS" ]; then
-    response=$(curl -X POST "$STORAGE_WEBHOOK_URL" \\
-      -H "Authorization: Bearer $API_TOKEN" \\
-      -H "x-vercel-protection-bypass: $VERCEL_BYPASS" \\
-      -F "runId=$RUN_ID" \\
-      -F "storageName=$vas_storage_name" \\
-      -F "message=Checkpoint from run $RUN_ID" \\
-      -F "file=@$zip_path" \\
-      --connect-timeout 10 \\
-      --max-time 60 \\
-      --silent 2>&1)
-  else
-    response=$(curl -X POST "$STORAGE_WEBHOOK_URL" \\
-      -H "Authorization: Bearer $API_TOKEN" \\
-      -F "runId=$RUN_ID" \\
-      -F "storageName=$vas_storage_name" \\
-      -F "message=Checkpoint from run $RUN_ID" \\
-      -F "file=@$zip_path" \\
-      --connect-timeout 10 \\
-      --max-time 60 \\
-      --silent 2>&1)
-  fi
-  local curl_exit=$?
+  response=$(http_post_form "$STORAGE_WEBHOOK_URL" "$HTTP_MAX_RETRIES" \\
+    -F "runId=$RUN_ID" \\
+    -F "storageName=$vas_storage_name" \\
+    -F "message=Checkpoint from run $RUN_ID" \\
+    -F "file=@$zip_path")
+  local http_exit=$?
 
   # Cleanup temp files
   rm -rf "$zip_dir"
 
-  # Check curl exit code
-  if [ $curl_exit -ne 0 ]; then
-    echo "[ERROR] curl failed with exit code $curl_exit for storage '$storage_name'" >&2
-    echo "[ERROR] Response: $response" >&2
+  # Check HTTP request result
+  if [ $http_exit -ne 0 ]; then
+    log_error "Failed to upload snapshot for storage '$storage_name'"
     return 1
   fi
 
   # Check if response is valid JSON and extract versionId
   local version_id=$(echo "$response" | jq -r '.versionId // empty' 2>/dev/null)
   if [ -z "$version_id" ]; then
-    echo "[ERROR] Failed to create VAS snapshot for '$storage_name'" >&2
-    echo "[ERROR] Webhook URL: $STORAGE_WEBHOOK_URL" >&2
-    echo "[ERROR] Response: $response" >&2
+    log_error "Failed to create VAS snapshot for '$storage_name'"
+    log_error "Webhook URL: $STORAGE_WEBHOOK_URL"
+    log_error "Response: $response"
     return 1
   fi
 
-  echo "[VM0] VAS snapshot created for '$storage_name': version $version_id" >&2
+  log_info "VAS snapshot created for '$storage_name': version $version_id"
 
   # Return JSON snapshot
   jq -n --arg vid "$version_id" '{versionId: $vid}'

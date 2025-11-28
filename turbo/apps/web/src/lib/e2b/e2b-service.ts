@@ -11,6 +11,8 @@ import type {
 import type { AgentConfigYaml } from "../../types/agent-config";
 import {
   COMMON_SCRIPT,
+  LOG_SCRIPT,
+  REQUEST_SCRIPT,
   SEND_EVENT_SCRIPT,
   VAS_SNAPSHOT_SCRIPT,
   CREATE_CHECKPOINT_SCRIPT,
@@ -365,6 +367,8 @@ export class E2BService {
     // Define scripts to upload
     const scripts: Array<{ content: string; path: string }> = [
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
+      { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
+      { content: REQUEST_SCRIPT, path: SCRIPT_PATHS.request },
       { content: SEND_EVENT_SCRIPT, path: SCRIPT_PATHS.sendEvent },
       { content: VAS_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vasSnapshot },
       {

@@ -28,4 +28,13 @@ STORAGE_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages"
 # Variables for checkpoint (use temp files to persist across subshells)
 SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"
 SESSION_HISTORY_PATH_FILE="/tmp/vm0-session-history-$RUN_ID.txt"
+
+# HTTP request configuration
+HTTP_CONNECT_TIMEOUT=10
+HTTP_MAX_TIME=30
+HTTP_MAX_TIME_UPLOAD=60
+HTTP_MAX_RETRIES=3
+
+# Event error flag file - used to track if any events failed to send
+EVENT_ERROR_FLAG="/tmp/vm0-event-error-$RUN_ID"
 `;
