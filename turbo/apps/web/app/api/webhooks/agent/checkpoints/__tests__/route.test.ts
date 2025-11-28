@@ -452,7 +452,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const data = await response.json();
       expect(data.checkpointId).toBeDefined();
       expect(data.agentSessionId).toBeDefined();
-      expect(data.hasArtifact).toBe(true);
+      expect(data.conversationId).toBeDefined();
+      expect(data.artifact).toEqual(artifactSnapshot);
 
       // Verify checkpoint in database
       const savedCheckpoints = await globalThis.services.db

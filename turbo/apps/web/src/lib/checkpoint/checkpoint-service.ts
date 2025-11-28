@@ -10,6 +10,7 @@ import type {
   CheckpointResponse,
   AgentConfigSnapshot,
   ArtifactSnapshot,
+  VolumeVersionsSnapshot,
 } from "./types";
 import type { AgentConfigYaml } from "../../types/agent-config";
 
@@ -128,10 +129,18 @@ export class CheckpointService {
       `[Checkpoint] Agent session updated/created: ${agentSession.id}`,
     );
 
+    // Extract volume versions from snapshot
+    const volumeSnapshot = request.volumeVersionsSnapshot as
+      | VolumeVersionsSnapshot
+      | undefined;
+    const volumes = volumeSnapshot?.versions;
+
     return {
       checkpointId: checkpoint.id,
       agentSessionId: agentSession.id,
-      hasArtifact: true, // artifact is now always required
+      conversationId: conversation.id,
+      artifact: artifactSnapshot,
+      volumes,
     };
   }
 }

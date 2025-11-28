@@ -70,5 +70,7 @@ export interface CheckpointRequest {
 export interface CheckpointResponse {
   checkpointId: string;
   agentSessionId: string;
-  hasArtifact: boolean;
+  conversationId: string;
+  artifact: ArtifactSnapshot;
+  volumes?: Record<string, string>;
 }

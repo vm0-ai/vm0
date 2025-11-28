@@ -23,7 +23,14 @@ import {
   sendVm0StartEvent,
   sendVm0ErrorEvent,
 } from "../../../../src/lib/events";
+import type { Vm0ArtifactInfo } from "../../../../src/lib/events/types";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
+import { checkpoints } from "../../../../src/db/schema/checkpoint";
+import { agentSessions } from "../../../../src/db/schema/agent-session";
+import type {
+  ArtifactSnapshot,
+  VolumeVersionsSnapshot,
+} from "../../../../src/lib/checkpoint/types";
 
 /**
  * POST /api/agent/runs
@@ -160,6 +167,57 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Resolved agentConfigId: ${agentConfigId}`);
 
+    // Resolve artifact and volume info for vm0_start event
+    let startArtifact: Vm0ArtifactInfo | undefined;
+    let startVolumes: Record<string, string> | undefined;
+
+    if (isCheckpointResume) {
+      // Load checkpoint to get artifact and volume info
+      const [checkpoint] = await globalThis.services.db
+        .select()
+        .from(checkpoints)
+        .where(eq(checkpoints.id, body.checkpointId!))
+        .limit(1);
+
+      if (checkpoint) {
+        const artifactSnapshot =
+          checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
+        const volumeSnapshot =
+          checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
+
+        startArtifact = {
+          name: artifactSnapshot.artifactName,
+          version: artifactSnapshot.artifactVersion,
+        };
+        // Use request volume overrides if provided, otherwise use snapshot
+        startVolumes = body.volumeVersions || volumeSnapshot?.versions;
+      }
+    } else if (isSessionContinue) {
+      // Load session to get artifact info
+      const [session] = await globalThis.services.db
+        .select()
+        .from(agentSessions)
+        .where(eq(agentSessions.id, body.sessionId!))
+        .limit(1);
+
+      if (session) {
+        startArtifact = {
+          name: session.artifactName,
+          version: "latest", // Session continue always uses latest
+        };
+        startVolumes = body.volumeVersions;
+      }
+    } else {
+      // New run - use request parameters
+      if (body.artifactName) {
+        startArtifact = {
+          name: body.artifactName,
+          version: body.artifactVersion || "latest",
+        };
+      }
+      startVolumes = body.volumeVersions;
+    }
+
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
@@ -192,7 +250,7 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(agentRuns.id, run.id));
 
-    // Send vm0_start event
+    // Send vm0_start event with execution context
     await sendVm0StartEvent({
       runId: run.id,
       agentConfigId,
@@ -200,6 +258,9 @@ export async function POST(request: NextRequest) {
       prompt: body.prompt,
       templateVars: body.templateVars,
       resumedFromCheckpointId: body.checkpointId,
+      continuedFromSessionId: body.sessionId,
+      artifact: startArtifact,
+      volumes: startVolumes,
     });
 
     // Execute in E2B asynchronously (don't await)
