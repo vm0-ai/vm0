@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.0](https://github.com/vm0-ai/vm0/compare/web-v2.2.0...web-v2.3.0) (2025-11-28)
+
+
+### Features
+
+* enhance vm0 run output with complete execution context ([#283](https://github.com/vm0-ai/vm0/issues/283)) ([5f4eeb6](https://github.com/vm0-ai/vm0/commit/5f4eeb624522f109f4afb916b374cf005528d5cc))
+* **web:** add structured logging system ([#277](https://github.com/vm0-ai/vm0/issues/277)) ([c2788b4](https://github.com/vm0-ai/vm0/commit/c2788b4ceb3bd140656efb890d4a55e686df4f0c))
+
+
+### Bug Fixes
+
+* extract stderr from E2B CommandExitError for better error reporting ([#287](https://github.com/vm0-ai/vm0/issues/287)) ([80df946](https://github.com/vm0-ai/vm0/commit/80df9464df9512ecf0281c29e6c3b4bca0b9b106))
+* improve sandbox script error handling with retry and unified logging ([#273](https://github.com/vm0-ai/vm0/issues/273)) ([5201591](https://github.com/vm0-ai/vm0/commit/5201591864b327579050d94112734cc13a08adbd))
+
 ## [2.2.0](https://github.com/vm0-ai/vm0/compare/web-v2.1.1...web-v2.2.0) (2025-11-28)
 
 
