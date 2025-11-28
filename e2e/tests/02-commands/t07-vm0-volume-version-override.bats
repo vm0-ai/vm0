@@ -72,7 +72,7 @@ EOF
     echo "version-1" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Version 1 ID: $VERSION1"
     [ -n "$VERSION1" ]
 
@@ -80,7 +80,7 @@ EOF
     echo "version-2" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Version 2 ID: $VERSION2"
     [ -n "$VERSION2" ]
 
@@ -132,7 +132,7 @@ EOF
     echo "checkpoint-version" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    CHECKPOINT_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    CHECKPOINT_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Checkpoint version ID: $CHECKPOINT_VERSION"
     [ -n "$CHECKPOINT_VERSION" ]
 
@@ -162,7 +162,7 @@ EOF
     echo "override-version" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    OVERRIDE_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    OVERRIDE_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Override version ID: $OVERRIDE_VERSION"
     [ -n "$OVERRIDE_VERSION" ]
 
@@ -199,7 +199,7 @@ EOF
     echo "initial-volume-content" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    INITIAL_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    INITIAL_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Initial version ID: $INITIAL_VERSION"
     [ -n "$INITIAL_VERSION" ]
 
@@ -229,7 +229,7 @@ EOF
     echo "new-volume-content" > data.txt
     run $CLI_COMMAND volume push
     assert_success
-    NEW_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    NEW_VERSION=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# New version ID: $NEW_VERSION"
     [ -n "$NEW_VERSION" ]
 

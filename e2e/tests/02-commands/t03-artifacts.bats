@@ -60,9 +60,9 @@ teardown() {
     assert_success
     assert_output --partial "Uploading"
     assert_output --partial "$ARTIFACT_NAME"
-    # Verify versionId is returned (UUID format)
+    # Verify versionId is returned (SHA-256 format - 64 hex chars, displayed as 8 char short version)
     assert_output --partial "Version:"
-    assert_output --regexp "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    assert_output --regexp "[0-9a-f]{8}"
 }
 
 @test "Multiple pushes create different versions" {
@@ -74,13 +74,13 @@ teardown() {
     echo "version 1" > data.txt
     run $CLI_COMMAND artifact push
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
     # Second push with different content
     echo "version 2" > data.txt
     run $CLI_COMMAND artifact push
     assert_success
-    VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
     # Versions should be different
     [ "$VERSION1" != "$VERSION2" ]
@@ -135,7 +135,7 @@ EOF
     echo "content from version 1" > data.txt
     run $CLI_COMMAND artifact push
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f-]+')
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
     # Push version 2
     echo "content from version 2" > data.txt
@@ -185,7 +185,8 @@ name: $ARTIFACT_NAME
 type: artifact
 EOF
 
-    FAKE_VERSION="00000000-0000-0000-0000-000000000000"
+    # Use a valid-looking SHA-256 hash that doesn't exist (minimum 8 chars for short version)
+    FAKE_VERSION="00000000"
     run $CLI_COMMAND artifact pull "$FAKE_VERSION"
     assert_failure
     assert_output --partial "not found"
