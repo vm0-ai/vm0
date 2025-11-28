@@ -3,6 +3,7 @@
   "ui": "tui",
   "globalEnv": [
     "DATABASE_URL",
+    "DEBUG",
     "NODE_ENV",
     "SKIP_ENV_VALIDATION",
     "VERCEL",

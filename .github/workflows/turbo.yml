@@ -206,6 +206,7 @@ jobs:
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             S3_USER_STORAGES_NAME=${{ secrets.CI_S3_USER_STORAGES_NAME }}
             USE_MOCK_CLAUDE=true
+            DEBUG=*
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 

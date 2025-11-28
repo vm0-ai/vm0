@@ -46,4 +46,26 @@ export const nextJsConfig = [
       "react/react-in-jsx-scope": "off",
     },
   },
+  {
+    // Prevent log.info() from being committed - it's for development only
+    // Exclude test files since they need to test info() functionality
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'CallExpression[callee.property.name="info"][callee.object.name="log"]',
+          message:
+            "log.info() is for development only. Use log.debug(), log.warn(), or log.error() instead.",
+        },
+      ],
+    },
+  },
 ];

@@ -21,6 +21,9 @@ import {
 import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
 import { sendVm0ErrorEvent } from "../events";
+import { logger } from "../logger";
+
+const log = logger("service:e2b");
 
 /**
  * E2B Service
@@ -39,8 +42,8 @@ export class E2BService {
     const startTime = Date.now();
     const isResume = !!context.resumeSession;
 
-    console.log(
-      `[E2B] ${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentConfigId}...`,
+    log.debug(
+      `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentConfigId}...`,
     );
 
     let sandbox: Sandbox | null = null;
@@ -133,11 +136,11 @@ export class E2BService {
 
       const webhookEndpoint = `${apiUrl}/api/webhooks/agent/events`;
 
-      console.log(
-        `[E2B] Environment - VERCEL_ENV: ${vercelEnv}, VERCEL_URL: ${vercelUrl}, VM0_API_URL: ${apiUrl}`,
+      log.debug(
+        `Environment - VERCEL_ENV: ${vercelEnv}, VERCEL_URL: ${vercelUrl}, VM0_API_URL: ${apiUrl}`,
       );
-      console.log(`[E2B] Computed API URL: ${apiUrl}`);
-      console.log(`[E2B] Webhook: ${webhookEndpoint}`);
+      log.debug(`Computed API URL: ${apiUrl}`);
+      log.debug(`Webhook: ${webhookEndpoint}`);
 
       // Create E2B sandbox with environment variables
       const sandboxEnvVars: Record<string, string> = {
@@ -150,16 +153,14 @@ export class E2BService {
       const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       if (vercelBypassSecret) {
         sandboxEnvVars.VERCEL_PROTECTION_BYPASS = vercelBypassSecret;
-        console.log(
-          `[E2B] Added Vercel protection bypass for preview deployment`,
-        );
+        log.debug(`Added Vercel protection bypass for preview deployment`);
       }
 
       sandbox = await this.createSandbox(
         sandboxEnvVars,
         agentConfig as AgentConfigYaml | undefined,
       );
-      console.log(`[E2B] Sandbox created: ${sandbox.sandboxId}`);
+      log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
       // Mount storages and artifact to sandbox
       await storageService.mountStorages(
@@ -192,9 +193,7 @@ export class E2BService {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
 
-      console.log(
-        `[E2B] Run ${context.runId} completed in ${executionTimeMs}ms`,
-      );
+      log.debug(`Run ${context.runId} completed in ${executionTimeMs}ms`);
 
       // If sandbox script failed, send vm0_error event
       // This ensures CLI doesn't timeout waiting for events
@@ -205,8 +204,8 @@ export class E2BService {
             error: result.stderr || "Agent execution failed",
           });
         } catch (e) {
-          console.error(
-            `[E2B] Failed to send vm0_error event for run ${context.runId}:`,
+          log.error(
+            `Failed to send vm0_error event for run ${context.runId}:`,
             e,
           );
         }
@@ -228,7 +227,7 @@ export class E2BService {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
-      console.error(`[E2B] Run ${context.runId} failed:`, error);
+      log.error(`Run ${context.runId} failed:`, error);
 
       // Send vm0_error event so CLI doesn't timeout
       try {
@@ -237,8 +236,8 @@ export class E2BService {
           error: errorMessage,
         });
       } catch (e) {
-        console.error(
-          `[E2B] Failed to send vm0_error event for run ${context.runId}:`,
+        log.error(
+          `Failed to send vm0_error event for run ${context.runId}:`,
           e,
         );
       }
@@ -279,7 +278,7 @@ export class E2BService {
     sessionHistory: string,
     workingDir: string,
   ): Promise<void> {
-    console.log(`[E2B] Restoring session history for ${sessionId}...`);
+    log.debug(`Restoring session history for ${sessionId}...`);
 
     // Calculate session history path using same logic as run-agent-script
     const sessionHistoryPath = calculateSessionHistoryPath(
@@ -287,7 +286,7 @@ export class E2BService {
       sessionId,
     );
 
-    console.log(`[E2B] Session history path: ${sessionHistoryPath}`);
+    log.debug(`Session history path: ${sessionHistoryPath}`);
 
     // Create directory structure
     const dirPath = sessionHistoryPath.substring(
@@ -305,8 +304,8 @@ export class E2BService {
 
     await sandbox.files.write(sessionHistoryPath, arrayBuffer);
 
-    console.log(
-      `[E2B] Session history restored (${sessionHistory.split("\n").length} lines)`,
+    log.debug(
+      `Session history restored (${sessionHistory.split("\n").length} lines)`,
     );
   }
 
@@ -334,11 +333,11 @@ export class E2BService {
       );
     }
 
-    console.log(`[E2B] Using template: ${templateName}`);
-    console.log(
-      `[E2B] Template source: ${agentConfig?.agents?.[0]?.image ? "agents[0].image" : "E2B_TEMPLATE_NAME"}`,
+    log.debug(`Using template: ${templateName}`);
+    log.debug(
+      `Template source: ${agentConfig?.agents?.[0]?.image ? "agents[0].image" : "E2B_TEMPLATE_NAME"}`,
     );
-    console.log(`[E2B] Sandbox env vars:`, Object.keys(envVars));
+    log.debug(`Sandbox env vars:`, Object.keys(envVars));
 
     const sandbox = await Sandbox.create(templateName, sandboxOptions);
     return sandbox;
@@ -387,8 +386,8 @@ export class E2BService {
       );
     }
 
-    console.log(
-      `[E2B] Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
+    log.debug(
+      `Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
     );
     return SCRIPT_PATHS.runAgent;
   }
@@ -411,7 +410,7 @@ export class E2BService {
     // This allows script changes without rebuilding the E2B template
     const scriptPath = await this.uploadRunAgentScript(sandbox);
 
-    console.log(`[E2B] Executing run-agent.sh for run ${runId}...`);
+    log.debug(`Executing run-agent.sh for run ${runId}...`);
 
     // Extract working_dir from agent config
     const config = agentConfig as AgentConfigYaml | undefined;
@@ -427,41 +426,38 @@ export class E2BService {
     // Add working directory if configured
     if (workingDir) {
       envs.VM0_WORKING_DIR = workingDir;
-      console.log(`[E2B] Working directory configured: ${workingDir}`);
+      log.debug(`Working directory configured: ${workingDir}`);
     }
 
     // Add resume session ID if provided
     if (resumeSessionId) {
       envs.VM0_RESUME_SESSION_ID = resumeSessionId;
-      console.log(`[E2B] Resume session ID configured: ${resumeSessionId}`);
+      log.debug(`Resume session ID configured: ${resumeSessionId}`);
     }
 
     // Pass USE_MOCK_CLAUDE for testing (executes prompt as bash instead of calling LLM)
     if (process.env.USE_MOCK_CLAUDE === "true") {
       envs.USE_MOCK_CLAUDE = "true";
-      console.log(`[E2B] Using mock-claude for testing`);
+      log.debug(`Using mock-claude for testing`);
     }
 
     // Add artifact information for checkpoint
     // Only artifact creates new versions after agent runs
     if (preparedArtifact) {
-      console.log(
-        `[E2B] Prepared artifact for checkpoint:`,
-        JSON.stringify({
-          driver: preparedArtifact.driver,
-          mountPath: preparedArtifact.mountPath,
-          vasStorageName: preparedArtifact.vasStorageName,
-        }),
-      );
+      log.debug(`Prepared artifact for checkpoint:`, {
+        driver: preparedArtifact.driver,
+        mountPath: preparedArtifact.mountPath,
+        vasStorageName: preparedArtifact.vasStorageName,
+      });
 
       // VAS artifact - pass info for vas snapshot
       envs.VM0_ARTIFACT_DRIVER = "vas";
       envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
       envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName;
       envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId;
-      console.log(`[E2B] Configured VAS artifact for checkpoint`);
+      log.debug(`Configured VAS artifact for checkpoint`);
     } else {
-      console.log(`[E2B] No artifact configured for checkpoint`);
+      log.debug(`No artifact configured for checkpoint`);
     }
 
     // Add Minimax API configuration if available
@@ -478,7 +474,7 @@ export class E2BService {
       envs.ANTHROPIC_DEFAULT_SONNET_MODEL = "MiniMax-M2";
       envs.ANTHROPIC_DEFAULT_OPUS_MODEL = "MiniMax-M2";
       envs.ANTHROPIC_DEFAULT_HAIKU_MODEL = "MiniMax-M2";
-      console.log(`[E2B] Using Minimax API (${minimaxBaseUrl})`);
+      log.debug(`Using Minimax API (${minimaxBaseUrl})`);
     }
 
     const result = await sandbox.commands.run(scriptPath, {
@@ -489,14 +485,12 @@ export class E2BService {
     const executionTimeMs = Date.now() - execStart;
 
     // Always log stderr to capture [VM0] checkpoint logs (even on success)
-    console.log(`[E2B] stderr (${result.stderr.length} chars):`, result.stderr);
+    log.debug(`stderr (${result.stderr.length} chars):`, result.stderr);
 
     if (result.exitCode === 0) {
-      console.log(`[E2B] Run ${runId} completed successfully`);
+      log.debug(`Run ${runId} completed successfully`);
     } else {
-      console.error(
-        `[E2B] Run ${runId} failed with exit code ${result.exitCode}`,
-      );
+      log.error(`Run ${runId} failed with exit code ${result.exitCode}`);
     }
 
     return {
@@ -512,14 +506,11 @@ export class E2BService {
    */
   private async cleanupSandbox(sandbox: Sandbox): Promise<void> {
     try {
-      console.log(`[E2B] Cleaning up sandbox ${sandbox.sandboxId}...`);
+      log.debug(`Cleaning up sandbox ${sandbox.sandboxId}...`);
       await sandbox.kill();
-      console.log(`[E2B] Sandbox ${sandbox.sandboxId} cleaned up`);
+      log.debug(`Sandbox ${sandbox.sandboxId} cleaned up`);
     } catch (error) {
-      console.error(
-        `[E2B] Failed to cleanup sandbox ${sandbox.sandboxId}:`,
-        error,
-      );
+      log.error(`Failed to cleanup sandbox ${sandbox.sandboxId}:`, error);
     }
   }
 }
