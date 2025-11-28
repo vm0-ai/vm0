@@ -192,9 +192,6 @@ export function resolveVolumes(
 
         // Check for version override
         const versionOverride = volumeVersionOverrides?.[volumeName];
-        console.log(
-          `[Storage] Volume override check: volumeName=${volumeName}, override=${versionOverride}, overrides=${JSON.stringify(volumeVersionOverrides)}`,
-        );
         const effectiveVolumeConfig = versionOverride
           ? { ...volumeConfig, version: versionOverride }
           : volumeConfig;

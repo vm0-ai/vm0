@@ -282,8 +282,15 @@ runCmd
     async (
       checkpointId: string,
       prompt: string,
-      options: { volumeVersion: Record<string, string>; timeout: string },
+      options: { timeout: string },
+      command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
+      // Commander.js quirk: when parent command has same option name,
+      // the option value goes to parent. Use optsWithGlobals() to get all options.
+      const allOpts = command.optsWithGlobals() as {
+        volumeVersion: Record<string, string>;
+        timeout: string;
+      };
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
         console.error(
@@ -306,10 +313,10 @@ runCmd
         console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
         console.log(chalk.gray(`  Prompt: ${prompt}`));
 
-        if (Object.keys(options.volumeVersion).length > 0) {
+        if (Object.keys(allOpts.volumeVersion).length > 0) {
           console.log(
             chalk.gray(
-              `  Volume overrides: ${JSON.stringify(options.volumeVersion)}`,
+              `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
             ),
           );
         }
@@ -323,8 +330,8 @@ runCmd
           checkpointId,
           prompt,
           volumeVersions:
-            Object.keys(options.volumeVersion).length > 0
-              ? options.volumeVersion
+            Object.keys(allOpts.volumeVersion).length > 0
+              ? allOpts.volumeVersion
               : undefined,
         });
 
@@ -373,9 +380,15 @@ runCmd
     async (
       agentSessionId: string,
       prompt: string,
-      options: { volumeVersion: Record<string, string>; timeout: string },
+      options: { timeout: string },
+      command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
-      console.log(`[DEBUG] Continue options: ${JSON.stringify(options)}`);
+      // Commander.js quirk: when parent command has same option name,
+      // the option value goes to parent. Use optsWithGlobals() to get all options.
+      const allOpts = command.optsWithGlobals() as {
+        volumeVersion: Record<string, string>;
+        timeout: string;
+      };
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
         console.error(
@@ -399,10 +412,10 @@ runCmd
         console.log(chalk.gray(`  Prompt: ${prompt}`));
         console.log(chalk.gray(`  Note: Using latest artifact version`));
 
-        if (Object.keys(options.volumeVersion).length > 0) {
+        if (Object.keys(allOpts.volumeVersion).length > 0) {
           console.log(
             chalk.gray(
-              `  Volume overrides: ${JSON.stringify(options.volumeVersion)}`,
+              `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
             ),
           );
         }
@@ -416,8 +429,8 @@ runCmd
           sessionId: agentSessionId,
           prompt,
           volumeVersions:
-            Object.keys(options.volumeVersion).length > 0
-              ? options.volumeVersion
+            Object.keys(allOpts.volumeVersion).length > 0
+              ? allOpts.volumeVersion
               : undefined,
         });
 
