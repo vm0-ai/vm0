@@ -18,18 +18,6 @@ export interface CreateRunResponse {
   createdAt: string;
 }
 
-export interface ResumeRunResponse {
-  runId: string;
-  status: string;
-  createdAt: string;
-}
-
-export interface ContinueRunResponse {
-  runId: string;
-  status: string;
-  createdAt: string;
-}
-
 export interface AgentSessionResponse {
   session: {
     id: string;
@@ -203,48 +191,6 @@ class ApiClient {
     }
 
     return (await response.json()) as GetEventsResponse;
-  }
-
-  async resumeRun(body: {
-    checkpointId: string;
-    prompt: string;
-  }): Promise<ResumeRunResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const response = await fetch(`${baseUrl}/api/agent/runs/resume`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to resume run");
-    }
-
-    return (await response.json()) as ResumeRunResponse;
-  }
-
-  async continueSession(body: {
-    agentSessionId: string;
-    prompt: string;
-  }): Promise<ContinueRunResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const response = await fetch(`${baseUrl}/api/agent/runs/continue`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to continue session");
-    }
-
-    return (await response.json()) as ContinueRunResponse;
   }
 
   async getAgentSession(id: string): Promise<AgentSessionResponse> {
