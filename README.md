@@ -23,6 +23,7 @@
 
 <p align="center">
   <a href="https://www.vm0.ai/sign-up">Join Waitlist</a> •
+  <a href="https://www.vm0.ai">Website</a> •
   <a href="mailto:ethan@vm0.ai">Contact Us</a> •
   <a href="https://discord.gg/WMpAmHFfp6">Discord</a>
 </p>
