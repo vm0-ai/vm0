@@ -169,6 +169,13 @@
       "when": 1764800000000,
       "tag": "0023_add_volume_versions_to_checkpoints",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1764900000000,
+      "tag": "0024_storage_version_sha256",
+      "breakpoints": true
     }
   ]
 }
