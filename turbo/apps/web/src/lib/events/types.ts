@@ -4,14 +4,6 @@
  */
 
 /**
- * Artifact info for display
- */
-export interface Vm0ArtifactInfo {
-  name: string;
-  version: string;
-}
-
-/**
  * VM0 Start Event
  * Sent when a run is created and starting
  */
@@ -24,8 +16,8 @@ export interface Vm0StartEvent {
   templateVars?: Record<string, unknown>;
   resumedFromCheckpointId?: string;
   continuedFromSessionId?: string;
-  artifact?: Vm0ArtifactInfo;
-  volumes?: Record<string, string>;
+  artifact?: Record<string, string>; // { artifactName: version }
+  volumes?: Record<string, string>; // { volumeName: version }
   timestamp: string;
 }
 
@@ -40,8 +32,8 @@ export interface Vm0ResultEvent {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifact: Vm0ArtifactInfo;
-  volumes?: Record<string, string>;
+  artifact: Record<string, string>; // { artifactName: version }
+  volumes?: Record<string, string>; // { volumeName: version }
   timestamp: string;
 }
 

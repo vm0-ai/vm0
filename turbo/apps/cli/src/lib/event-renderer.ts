@@ -136,16 +136,16 @@ export class EventRenderer {
       console.log(`  Agent: ${chalk.gray(String(event.data.agentName))}`);
     }
 
-    // Show artifact info
-    const artifact = event.data.artifact as
-      | { name: string; version: string }
-      | undefined;
-    if (artifact) {
+    // Show artifact info (format: { artifactName: version })
+    const artifact = event.data.artifact as Record<string, string> | undefined;
+    if (artifact && Object.keys(artifact).length > 0) {
       console.log(`  Artifact:`);
-      console.log(`    ${artifact.name}: ${chalk.gray(artifact.version)}`);
+      for (const [name, version] of Object.entries(artifact)) {
+        console.log(`    ${name}: ${chalk.gray(version)}`);
+      }
     }
 
-    // Show volume versions
+    // Show volume versions (format: { volumeName: version })
     const volumes = event.data.volumes as Record<string, string> | undefined;
     if (volumes && Object.keys(volumes).length > 0) {
       console.log(`  Volumes:`);
@@ -167,16 +167,16 @@ export class EventRenderer {
       `  Conversation: ${chalk.gray(String(event.data.conversationId || ""))}`,
     );
 
-    // Show artifact info
-    const artifact = event.data.artifact as
-      | { name: string; version: string }
-      | undefined;
-    if (artifact) {
+    // Show artifact info (format: { artifactName: version })
+    const artifact = event.data.artifact as Record<string, string> | undefined;
+    if (artifact && Object.keys(artifact).length > 0) {
       console.log(`  Artifact:`);
-      console.log(`    ${artifact.name}: ${chalk.gray(artifact.version)}`);
+      for (const [name, version] of Object.entries(artifact)) {
+        console.log(`    ${name}: ${chalk.gray(version)}`);
+      }
     }
 
-    // Show volume versions
+    // Show volume versions (format: { volumeName: version })
     const volumes = event.data.volumes as Record<string, string> | undefined;
     if (volumes && Object.keys(volumes).length > 0) {
       console.log(`  Volumes:`);

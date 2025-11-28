@@ -23,7 +23,6 @@ import {
   sendVm0StartEvent,
   sendVm0ErrorEvent,
 } from "../../../../src/lib/events";
-import type { Vm0ArtifactInfo } from "../../../../src/lib/events/types";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { checkpoints } from "../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../src/db/schema/agent-session";
@@ -168,7 +167,8 @@ export async function POST(request: NextRequest) {
     console.log(`[API] Resolved agentConfigId: ${agentConfigId}`);
 
     // Resolve artifact and volume info for vm0_start event
-    let startArtifact: Vm0ArtifactInfo | undefined;
+    // artifact format: { artifactName: version }
+    let startArtifact: Record<string, string> | undefined;
     let startVolumes: Record<string, string> | undefined;
 
     if (isCheckpointResume) {
@@ -186,8 +186,7 @@ export async function POST(request: NextRequest) {
           checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
         startArtifact = {
-          name: artifactSnapshot.artifactName,
-          version: artifactSnapshot.artifactVersion,
+          [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
         };
         // Use request volume overrides if provided, otherwise use snapshot
         startVolumes = body.volumeVersions || volumeSnapshot?.versions;
@@ -202,8 +201,7 @@ export async function POST(request: NextRequest) {
 
       if (session) {
         startArtifact = {
-          name: session.artifactName,
-          version: "latest", // Session continue always uses latest
+          [session.artifactName]: "latest", // Session continue always uses latest
         };
         startVolumes = body.volumeVersions;
       }
@@ -211,8 +209,7 @@ export async function POST(request: NextRequest) {
       // New run - use request parameters
       if (body.artifactName) {
         startArtifact = {
-          name: body.artifactName,
-          version: body.artifactVersion || "latest",
+          [body.artifactName]: body.artifactVersion || "latest",
         };
       }
       startVolumes = body.volumeVersions;

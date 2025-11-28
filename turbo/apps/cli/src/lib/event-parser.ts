@@ -68,11 +68,6 @@ interface ResultEvent {
   usage: Record<string, unknown>;
 }
 
-interface Vm0ArtifactInfo {
-  name: string;
-  version: string;
-}
-
 interface Vm0StartEvent {
   type: "vm0_start";
   runId: string;
@@ -82,8 +77,8 @@ interface Vm0StartEvent {
   templateVars?: Record<string, unknown>;
   resumedFromCheckpointId?: string;
   continuedFromSessionId?: string;
-  artifact?: Vm0ArtifactInfo;
-  volumes?: Record<string, string>;
+  artifact?: Record<string, string>; // { artifactName: version }
+  volumes?: Record<string, string>; // { volumeName: version }
   timestamp: string;
 }
 
@@ -94,8 +89,8 @@ interface Vm0ResultEvent {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifact: Vm0ArtifactInfo;
-  volumes?: Record<string, string>;
+  artifact: Record<string, string>; // { artifactName: version }
+  volumes?: Record<string, string>; // { volumeName: version }
   timestamp: string;
 }
 

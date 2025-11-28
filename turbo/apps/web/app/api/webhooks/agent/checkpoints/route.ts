@@ -95,14 +95,14 @@ export async function POST(request: NextRequest) {
     );
 
     // Send vm0_result event with full context
+    // artifact format: { artifactName: version }
     await sendVm0ResultEvent({
       runId: body.runId,
       checkpointId: result.checkpointId,
       agentSessionId: result.agentSessionId,
       conversationId: result.conversationId,
       artifact: {
-        name: result.artifact.artifactName,
-        version: result.artifact.artifactVersion,
+        [result.artifact.artifactName]: result.artifact.artifactVersion,
       },
       volumes: result.volumes,
     });
