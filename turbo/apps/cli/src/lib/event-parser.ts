@@ -68,6 +68,11 @@ interface ResultEvent {
   usage: Record<string, unknown>;
 }
 
+interface Vm0ArtifactInfo {
+  name: string;
+  version: string;
+}
+
 interface Vm0StartEvent {
   type: "vm0_start";
   runId: string;
@@ -75,6 +80,10 @@ interface Vm0StartEvent {
   agentName?: string;
   prompt: string;
   templateVars?: Record<string, unknown>;
+  resumedFromCheckpointId?: string;
+  continuedFromSessionId?: string;
+  artifact?: Vm0ArtifactInfo;
+  volumes?: Record<string, string>;
   timestamp: string;
 }
 
@@ -84,7 +93,9 @@ interface Vm0ResultEvent {
   status: "completed";
   checkpointId: string;
   agentSessionId: string;
-  hasArtifact: boolean;
+  conversationId: string;
+  artifact: Vm0ArtifactInfo;
+  volumes?: Record<string, string>;
   timestamp: string;
 }
 
@@ -249,6 +260,10 @@ export class ClaudeEventParser {
         agentName: event.agentName,
         prompt: event.prompt,
         templateVars: event.templateVars,
+        resumedFromCheckpointId: event.resumedFromCheckpointId,
+        continuedFromSessionId: event.continuedFromSessionId,
+        artifact: event.artifact,
+        volumes: event.volumes,
       },
     };
   }
@@ -263,7 +278,9 @@ export class ClaudeEventParser {
         runId: event.runId,
         checkpointId: event.checkpointId,
         agentSessionId: event.agentSessionId,
-        hasArtifact: event.hasArtifact,
+        conversationId: event.conversationId,
+        artifact: event.artifact,
+        volumes: event.volumes,
       },
     };
   }
