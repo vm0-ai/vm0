@@ -12,7 +12,7 @@ function collectVars(
   const val = valueParts.join("="); // Support values with '='
 
   if (!key || val === undefined || val === "") {
-    throw new Error(`Invalid variable format: ${value} (expected KEY=value)`);
+    throw new Error(`Invalid variable format: ${value} (expected key=value)`);
   }
 
   return { ...previous, [key]: val };
