@@ -1,338 +1,353 @@
-import { describe, it, expect } from "vitest";
+import { describe, test, expect } from "vitest";
 import {
   parseMountPath,
   replaceTemplateVars,
   resolveVolumes,
 } from "../storage-resolver";
-import type { AgentVolumeConfig } from "../types";
+import type { AgentVolumeConfig, VolumeConfig } from "../types";
 
 describe("parseMountPath", () => {
-  it("should parse valid mount path declaration", () => {
-    const result = parseMountPath("user-workspace:/home/user/workspace");
-
-    expect(result).toEqual({
-      volumeName: "user-workspace",
-      mountPath: "/home/user/workspace",
-    });
+  test("parses valid volume declaration", () => {
+    const result = parseMountPath("my-volume:/mount/path");
+    expect(result.volumeName).toBe("my-volume");
+    expect(result.mountPath).toBe("/mount/path");
   });
 
-  it("should handle volume names with hyphens", () => {
-    const result = parseMountPath("claude-system:/home/user/.claude");
-
-    expect(result).toEqual({
-      volumeName: "claude-system",
-      mountPath: "/home/user/.claude",
-    });
+  test("trims whitespace from volume name and mount path", () => {
+    const result = parseMountPath("  volume-name  :  /path/to/mount  ");
+    expect(result.volumeName).toBe("volume-name");
+    expect(result.mountPath).toBe("/path/to/mount");
   });
 
-  it("should throw error for invalid format", () => {
-    expect(() => parseMountPath("invalid-format")).toThrow(
+  test("handles nested mount paths", () => {
+    const result = parseMountPath("data:/var/lib/app/data");
+    expect(result.volumeName).toBe("data");
+    expect(result.mountPath).toBe("/var/lib/app/data");
+  });
+
+  test("throws error for missing separator", () => {
+    expect(() => parseMountPath("invalid-declaration")).toThrow(
       "Invalid volume declaration",
     );
   });
 
-  it("should throw error for missing mount path", () => {
+  test("throws error for empty volume name", () => {
+    expect(() => parseMountPath(":/mount/path")).toThrow(
+      "Invalid volume declaration",
+    );
+  });
+
+  test("throws error for empty mount path", () => {
     expect(() => parseMountPath("volume-name:")).toThrow(
+      "Invalid volume declaration",
+    );
+  });
+
+  test("throws error for whitespace-only volume name", () => {
+    expect(() => parseMountPath("   :/mount/path")).toThrow(
+      "Invalid volume declaration",
+    );
+  });
+
+  test("throws error for whitespace-only mount path", () => {
+    expect(() => parseMountPath("volume-name:   ")).toThrow(
+      "Invalid volume declaration",
+    );
+  });
+
+  test("throws error for too many separators", () => {
+    expect(() => parseMountPath("vol:path:extra")).toThrow(
       "Invalid volume declaration",
     );
   });
 });
 
 describe("replaceTemplateVars", () => {
-  it("should replace single template variable", () => {
-    const result = replaceTemplateVars("{{storageName}}", {
-      storageName: "test-storage-123",
-    });
-
-    expect(result).toEqual({
-      result: "test-storage-123",
-      missingVars: [],
-    });
+  test("replaces single variable", () => {
+    const result = replaceTemplateVars("Hello {{name}}", { name: "World" });
+    expect(result.result).toBe("Hello World");
+    expect(result.missingVars).toEqual([]);
   });
 
-  it("should replace multiple template variables", () => {
-    const result = replaceTemplateVars("{{userId}}-{{storageName}}", {
-      userId: "user1",
-      storageName: "my-storage",
+  test("replaces multiple variables", () => {
+    const result = replaceTemplateVars("{{greeting}} {{name}}!", {
+      greeting: "Hello",
+      name: "World",
     });
-
-    expect(result).toEqual({
-      result: "user1-my-storage",
-      missingVars: [],
-    });
+    expect(result.result).toBe("Hello World!");
+    expect(result.missingVars).toEqual([]);
   });
 
-  it("should detect missing variables", () => {
-    const result = replaceTemplateVars("{{storageName}}", {});
-
-    expect(result).toEqual({
-      result: "{{storageName}}",
-      missingVars: ["storageName"],
-    });
+  test("reports missing variables", () => {
+    const result = replaceTemplateVars("Hello {{name}}", {});
+    expect(result.result).toBe("Hello {{name}}");
+    expect(result.missingVars).toEqual(["name"]);
   });
 
-  it("should detect multiple missing variables", () => {
-    const result = replaceTemplateVars("{{userId}}/{{storageName}}", {});
-
-    expect(result.missingVars).toEqual(["userId", "storageName"]);
+  test("reports multiple missing variables", () => {
+    const result = replaceTemplateVars("{{greeting}} {{name}}!", {});
+    expect(result.missingVars).toContain("greeting");
+    expect(result.missingVars).toContain("name");
   });
 
-  it("should handle strings without template variables", () => {
-    const result = replaceTemplateVars("static-storage", {});
+  test("handles string with no variables", () => {
+    const result = replaceTemplateVars("No variables here", { foo: "bar" });
+    expect(result.result).toBe("No variables here");
+    expect(result.missingVars).toEqual([]);
+  });
 
-    expect(result).toEqual({
-      result: "static-storage",
-      missingVars: [],
+  test("handles empty string", () => {
+    const result = replaceTemplateVars("", { foo: "bar" });
+    expect(result.result).toBe("");
+    expect(result.missingVars).toEqual([]);
+  });
+
+  test("handles variable in the middle of text", () => {
+    const result = replaceTemplateVars("user-{{userId}}-data", {
+      userId: "123",
     });
+    expect(result.result).toBe("user-123-data");
+  });
+
+  test("replaces same variable multiple times", () => {
+    const result = replaceTemplateVars("{{x}} + {{x}} = 2{{x}}", { x: "1" });
+    expect(result.result).toBe("1 + 1 = 21");
   });
 });
 
 describe("resolveVolumes", () => {
-  describe("VAS volumes", () => {
-    it("should resolve VAS volume with explicit definition", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/workspace/data"],
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        volumes: {
-          dataset: {
-            name: "mnist",
-            version: "latest",
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact", "latest");
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.errors).toHaveLength(0);
-      expect(result.volumes[0]).toMatchObject({
-        name: "dataset",
-        driver: "vas",
-        mountPath: "/workspace/data",
-        vasStorageName: "mnist",
-        vasVersion: "latest",
-      });
-    });
-
-    it("should resolve VAS volume with template variables in name", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/workspace/data"],
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        volumes: {
-          dataset: {
-            name: "{{datasetName}}",
-            version: "latest",
-          },
-        },
-      };
-
-      const result = resolveVolumes(
-        config,
-        { datasetName: "cifar10" },
-        "my-artifact",
-        "latest",
-      );
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.errors).toHaveLength(0);
-      expect(result.volumes[0]).toMatchObject({
-        name: "dataset",
-        driver: "vas",
-        mountPath: "/workspace/data",
-        vasStorageName: "cifar10",
-        vasVersion: "latest",
-      });
-    });
-
-    it("should error on missing template variables in volume name", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/workspace/data"],
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        volumes: {
-          dataset: {
-            name: "{{datasetName}}",
-            version: "latest",
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact", "latest");
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "missing_variable",
-        message: "Missing required variables: datasetName",
-      });
-    });
-
-    it("should error when volume is not defined in volumes section", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/workspace/data"],
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        // No volumes section
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact", "latest");
-
-      expect(result.volumes).toHaveLength(0);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "dataset",
-        type: "missing_definition",
-      });
-    });
+  const createConfig = (
+    volumes: string[] = [],
+    volumeDefinitions: Record<string, VolumeConfig> = {},
+    workingDir = "/workspace",
+  ): AgentVolumeConfig => ({
+    agents: [
+      {
+        working_dir: workingDir,
+        volumes,
+      },
+    ],
+    volumes: volumeDefinitions,
   });
 
-  describe("artifact resolution", () => {
-    it("should resolve VAS artifact when artifact name is provided", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
-
-      const result = resolveVolumes(
-        config,
-        {},
-        "my-artifact-storage",
-        "abc123",
-      );
-
-      expect(result.artifact).not.toBeNull();
-      expect(result.artifact).toMatchObject({
-        driver: "vas",
-        mountPath: "/home/user/workspace",
-        vasStorageName: "my-artifact-storage",
-        vasVersion: "abc123",
-      });
-      expect(result.errors).toHaveLength(0);
+  test("resolves VAS volume with explicit name and version", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "storage-name",
+        version: "v1.0.0",
+      },
     });
 
-    it("should use latest as default version when not specified", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
 
-      const result = resolveVolumes(config, {}, "my-artifact-storage");
-
-      expect(result.artifact).not.toBeNull();
-      expect(result.artifact).toMatchObject({
-        driver: "vas",
-        mountPath: "/home/user/workspace",
-        vasStorageName: "my-artifact-storage",
-        vasVersion: "latest",
-      });
-      expect(result.errors).toHaveLength(0);
+    expect(result.volumes).toHaveLength(1);
+    expect(result.volumes[0]).toEqual({
+      name: "data",
+      driver: "vas",
+      mountPath: "/mnt/data",
+      vasStorageName: "storage-name",
+      vasVersion: "v1.0.0",
     });
-
-    it("should error when no artifact name provided", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
-
-      const result = resolveVolumes(config); // No artifact name
-
-      expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatchObject({
-        volumeName: "artifact",
-        type: "missing_artifact_name",
-        message:
-          "Artifact name is required. Use --artifact-name flag to specify artifact.",
-      });
-    });
-
-    it("should skip artifact when skipArtifact is true", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
-
-      const result = resolveVolumes(
-        config,
-        {},
-        undefined,
-        undefined,
-        true, // skipArtifact
-      );
-
-      expect(result.artifact).toBeNull();
-      expect(result.errors).toHaveLength(0);
-    });
+    expect(result.errors).toHaveLength(0);
   });
 
-  describe("volume and artifact combination", () => {
-    it("should resolve both volumes and artifact together", () => {
-      const config: AgentVolumeConfig = {
-        agents: [
-          {
-            volumes: ["dataset:/workspace/data"],
-            working_dir: "/home/user/workspace",
-          },
-        ],
-        volumes: {
-          dataset: {
-            name: "my-dataset",
-            version: "v1",
-          },
-        },
-      };
-
-      const result = resolveVolumes(config, {}, "my-artifact", "latest");
-
-      expect(result.volumes).toHaveLength(1);
-      expect(result.artifact).not.toBeNull();
-      expect(result.errors).toHaveLength(0);
+  test("resolves volume with template variables in name", () => {
+    const config = createConfig(["user-data:/mnt/data"], {
+      "user-data": {
+        name: "user-{{userId}}-storage",
+        version: "latest",
+      },
     });
-  });
-
-  it("should return empty result for no volume declarations", () => {
-    const config: AgentVolumeConfig = {
-      agents: [
-        {
-          working_dir: "/home/user/workspace",
-        },
-      ],
-    };
 
     const result = resolveVolumes(
       config,
-      {},
-      undefined,
-      undefined,
-      true, // skipArtifact to avoid artifact error
+      { userId: "123" },
+      "artifact-1",
+      "v1",
     );
+
+    expect(result.volumes).toHaveLength(1);
+    expect(result.volumes[0]?.vasStorageName).toBe("user-123-storage");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("resolves volume with template variables in version", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "storage",
+        version: "{{version}}",
+      },
+    });
+
+    const result = resolveVolumes(
+      config,
+      { version: "v2.0.0" },
+      "artifact-1",
+      "v1",
+    );
+
+    expect(result.volumes).toHaveLength(1);
+    expect(result.volumes[0]?.vasVersion).toBe("v2.0.0");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("reports error for missing volume definition", () => {
+    const config = createConfig(["undefined-vol:/mnt/data"], {});
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.volumes).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("missing_definition");
+    expect(result.errors[0]?.volumeName).toBe("undefined-vol");
+  });
+
+  test("reports error for missing template variable in name", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "user-{{userId}}-storage",
+        version: "v1",
+      },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.volumes).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("missing_variable");
+    expect(result.errors[0]?.message).toContain("userId");
+  });
+
+  test("reports error for missing template variable in version", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "storage",
+        version: "{{version}}",
+      },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.volumes).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("missing_variable");
+  });
+
+  test("reports error for volume without name field", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "",
+        version: "v1",
+      },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("invalid_config");
+  });
+
+  test("reports error for volume without version field", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "storage",
+        version: "",
+      },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("invalid_config");
+  });
+
+  test("resolves artifact with working directory", () => {
+    const config = createConfig([], {}, "/workspace");
+
+    const result = resolveVolumes(config, {}, "my-artifact", "v1.0");
+
+    expect(result.artifact).toEqual({
+      driver: "vas",
+      mountPath: "/workspace",
+      vasStorageName: "my-artifact",
+      vasVersion: "v1.0",
+    });
+  });
+
+  test("defaults artifact version to 'latest' when not provided", () => {
+    const config = createConfig([], {}, "/workspace");
+
+    const result = resolveVolumes(config, {}, "my-artifact");
+
+    expect(result.artifact?.vasVersion).toBe("latest");
+  });
+
+  test("reports error when artifact name is required but not provided", () => {
+    const config = createConfig([], {}, "/workspace");
+
+    const result = resolveVolumes(config, {});
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.type).toBe("missing_artifact_name");
+  });
+
+  test("skips artifact resolution when skipArtifact is true", () => {
+    const config = createConfig([], {}, "/workspace");
+
+    const result = resolveVolumes(config, {}, undefined, undefined, true);
+
+    expect(result.artifact).toBeNull();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("applies volume version override", () => {
+    const config = createConfig(["data:/mnt/data"], {
+      data: {
+        name: "storage",
+        version: "v1",
+      },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1", false, {
+      data: "v2-override",
+    });
+
+    expect(result.volumes).toHaveLength(1);
+    expect(result.volumes[0]?.vasVersion).toBe("v2-override");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("only applies override to matching volume", () => {
+    const config = createConfig(["data:/mnt/data", "logs:/mnt/logs"], {
+      data: { name: "storage", version: "v1" },
+      logs: { name: "logs-storage", version: "v1" },
+    });
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1", false, {
+      data: "v2-override",
+    });
+
+    expect(result.volumes).toHaveLength(2);
+    const dataVol = result.volumes.find((v) => v.name === "data");
+    const logsVol = result.volumes.find((v) => v.name === "logs");
+    expect(dataVol?.vasVersion).toBe("v2-override");
+    expect(logsVol?.vasVersion).toBe("v1");
+  });
+
+  test("handles empty volumes array", () => {
+    const config = createConfig([], {}, "/workspace");
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+    expect(result.volumes).toHaveLength(0);
+    expect(result.artifact).not.toBeNull();
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("handles config without agents", () => {
+    const config: AgentVolumeConfig = {};
+
+    const result = resolveVolumes(config, {}, "artifact-1", "v1");
 
     expect(result.volumes).toHaveLength(0);
     expect(result.artifact).toBeNull();
