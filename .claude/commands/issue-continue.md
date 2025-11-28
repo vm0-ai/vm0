@@ -60,7 +60,6 @@ Your job is to continue working on the GitHub issue from the current conversatio
      - **If checks pass** (after fixes or initially): Post success comment to issue
      - **If unable to fix after retries**: Post comment with failure details and add "pending" label, then exit
    - Post comment to issue: `gh issue comment <issue_id> --body "Work completed. PR created: <PR_URL>\n\n✅ All CI checks passing"`
-   - Add "pending" label for user to review PR
    - Keep issue open (user will close it after merging PR)
 
 ## Label Management
@@ -68,7 +67,6 @@ Your job is to continue working on the GitHub issue from the current conversatio
 - **Add "pending" label** when:
   - Waiting for plan approval (revised plan)
   - Blocked and need user input
-  - Work completed and PR ready for review
   - Optional: intermediate progress checkpoints
 
 ## Error Handling
