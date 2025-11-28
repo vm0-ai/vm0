@@ -56,14 +56,44 @@ runs:
       run: |
         BRANCH_NAME="preview/${{ inputs.branch-name }}"
 
+        # Function to wait for branch to be ready
+        wait_for_branch_ready() {
+          local branch_name=$1
+          local max_attempts=30
+          local attempt=0
+
+          echo "Waiting for branch to be ready..."
+          while [ $attempt -lt $max_attempts ]; do
+            STATUS=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$branch_name\") | .current_state")
+            echo "Branch status: $STATUS (attempt $((attempt + 1))/$max_attempts)"
+
+            if [ "$STATUS" = "ready" ] || [ "$STATUS" = "idle" ] || [ -z "$STATUS" ]; then
+              echo "Branch is ready"
+              return 0
+            fi
+
+            sleep 2
+            attempt=$((attempt + 1))
+          done
+
+          echo "Warning: Branch may not be ready after $max_attempts attempts"
+          return 0
+        }
+
         if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
           echo "Branch $BRANCH_NAME already exists"
           echo "Resetting branch to sync with parent (main)..."
           neonctl branches reset $BRANCH_NAME --project-id $NEON_PROJECT_ID --parent
+
+          # Wait for reset to complete
+          wait_for_branch_ready "$BRANCH_NAME"
           echo "Branch reset complete"
         else
           echo "Creating branch $BRANCH_NAME"
           neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
+
+          # Wait for branch creation to complete
+          wait_for_branch_ready "$BRANCH_NAME"
         fi
 
         DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} --pooled)
