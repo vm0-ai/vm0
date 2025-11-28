@@ -33,6 +33,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("../../../../../src/lib/run", () => ({
   runService: {
     createRunContext: vi.fn(),
+    buildExecutionContext: vi.fn(),
     executeRun: vi.fn(),
   },
 }));
@@ -127,7 +128,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
       const executionPromise = new Promise((resolve) => {
         resolveExecution = resolve;
       });
-      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.buildExecutionContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockReturnValue(
         executionPromise as Promise<never>,
       );
@@ -182,7 +183,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
 
     it("should update run status to 'completed' after E2B execution finishes successfully", async () => {
       // Mock successful run execution that completes immediately
-      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.buildExecutionContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockImplementation(
         async (context: ExecutionContext) => {
           return {
@@ -245,7 +246,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
 
     it("should update run status to 'failed' if E2B execution fails", async () => {
       // Mock run execution failure that rejects immediately
-      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.buildExecutionContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockRejectedValue(
         new Error("Sandbox execution failed"),
       );
@@ -294,7 +295,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
     it("should not block API response even if E2B takes a long time", async () => {
       // Mock run service with a promise that never resolves during the test
       // This simulates a long-running operation without artificial delays
-      mockRunService.createRunContext.mockResolvedValue({} as never);
+      mockRunService.buildExecutionContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockReturnValue(
         new Promise(() => {
           // Never resolves - simulates long-running operation
