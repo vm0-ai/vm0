@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/vm0-ai/vm0/compare/web-v2.1.0...web-v2.1.1) (2025-11-28)
+
+
+### Bug Fixes
+
+* **web:** make landing page cube respond to window-wide mouse movement ([#252](https://github.com/vm0-ai/vm0/issues/252)) ([ea50d7f](https://github.com/vm0-ai/vm0/commit/ea50d7f19356b5b741910d4ddd42938a00fb1c73))
+
 ## [2.1.0](https://github.com/vm0-ai/vm0/compare/web-v2.0.0...web-v2.1.0) (2025-11-27)
 
 
