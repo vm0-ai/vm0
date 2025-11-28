@@ -22,6 +22,13 @@ import * as path from "node:path";
 import * as os from "node:os";
 import AdmZip from "adm-zip";
 import { env } from "../../../../../src/env";
+import {
+  computeContentHash,
+  type FileEntry,
+} from "../../../../../src/lib/storage/content-hash";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("webhook:storages");
 
 interface StorageVersionResponse {
   versionId: string;
@@ -68,8 +75,8 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing file");
     }
 
-    console.log(
-      `[Storage Webhook] Received storage version request for "${storageName}" from run ${runId}`,
+    log.debug(
+      `Received storage version request for "${storageName}" from run ${runId}`,
     );
 
     // Verify run exists and belongs to the authenticated user
@@ -108,64 +115,100 @@ export async function POST(request: NextRequest) {
     const extractPath = path.join(tempDir, "extracted");
     zip.extractAllTo(extractPath, true);
 
-    console.log(`[Storage Webhook] Extracted zip to ${extractPath}`);
+    log.debug(`Extracted zip to ${extractPath}`);
 
-    // Calculate file count and size
-    const files = await getAllFiles(extractPath);
-    const fileCount = files.length;
+    // Calculate file count, size, and collect file entries for hashing
+    const filePaths = await getAllFiles(extractPath);
+    const fileCount = filePaths.length;
     let totalSize = 0;
-    for (const filePath of files) {
+    const fileEntries: FileEntry[] = [];
+
+    for (const filePath of filePaths) {
       const stats = await fs.promises.stat(filePath);
       totalSize += stats.size;
+
+      // Read file content for hash computation
+      const content = await fs.promises.readFile(filePath);
+      const relativePath = path.relative(extractPath, filePath);
+      fileEntries.push({ path: relativePath, content });
     }
 
-    // Create new version record
-    const versionId = crypto.randomUUID();
-    const s3Key = `${userId}/${storageName}/${versionId}`;
+    // Compute content-addressable hash for version ID
+    const contentHash = computeContentHash(fileEntries);
+    log.debug(`Computed content hash: ${contentHash}`);
 
-    const [version] = await globalThis.services.db
-      .insert(storageVersions)
-      .values({
-        id: versionId,
-        storageId: storage.id,
-        s3Key,
-        size: totalSize,
-        fileCount,
-        message: message || `Checkpoint from run ${runId}`,
-        createdBy: "agent",
-      })
-      .returning();
+    // Check if version with same content hash already exists (deduplication)
+    const [existingVersion] = await globalThis.services.db
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, storage.id),
+          eq(storageVersions.id, contentHash),
+        ),
+      )
+      .limit(1);
 
-    if (!version) {
-      throw new Error("Failed to create storage version");
+    let versionId: string;
+    let deduplicated = false;
+
+    if (existingVersion) {
+      // Content already exists, use existing version (deduplication)
+      log.debug(
+        `Version with same content already exists: ${existingVersion.id}`,
+      );
+      versionId = existingVersion.id;
+      deduplicated = true;
+    } else {
+      // Create new version record with content hash as ID
+      const s3Key = `${userId}/${storageName}/${contentHash}`;
+
+      const [version] = await globalThis.services.db
+        .insert(storageVersions)
+        .values({
+          id: contentHash,
+          storageId: storage.id,
+          s3Key,
+          size: totalSize,
+          fileCount,
+          message: message || `Checkpoint from run ${runId}`,
+          createdBy: "agent",
+        })
+        .returning();
+
+      if (!version) {
+        throw new Error("Failed to create storage version");
+      }
+
+      log.debug(`Created version: ${version.id}`);
+
+      // Upload files to versioned S3 path
+      const bucketName = env().S3_USER_STORAGES_NAME;
+      if (!bucketName) {
+        throw new Error(
+          "S3_USER_STORAGES_NAME environment variable is not set",
+        );
+      }
+      const s3Uri = `s3://${bucketName}/${s3Key}`;
+      log.debug(`Uploading ${fileCount} files to ${s3Uri}...`);
+      await uploadS3Directory(extractPath, s3Uri);
+
+      versionId = version.id;
     }
-
-    console.log(`[Storage Webhook] Created version: ${version.id}`);
-
-    // Upload files to versioned S3 path
-    const bucketName = env().S3_USER_STORAGES_NAME;
-    if (!bucketName) {
-      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
-    }
-    const s3Uri = `s3://${bucketName}/${s3Key}`;
-    console.log(
-      `[Storage Webhook] Uploading ${fileCount} files to ${s3Uri}...`,
-    );
-    await uploadS3Directory(extractPath, s3Uri);
 
     // Update storage's HEAD pointer and metadata
     await globalThis.services.db
       .update(storages)
       .set({
-        headVersionId: version.id,
+        headVersionId: versionId,
         size: totalSize,
         fileCount,
         updatedAt: new Date(),
       })
       .where(eq(storages.id, storage.id));
 
-    console.log(
-      `[Storage Webhook] Successfully created version ${version.id} for storage "${storageName}"`,
+    log.debug(
+      `Successfully ${deduplicated ? "reused" : "created"} version ${versionId} for storage "${storageName}"`,
     );
 
     // Clean up temp directory
@@ -174,7 +217,7 @@ export async function POST(request: NextRequest) {
 
     // Return response
     const response: StorageVersionResponse = {
-      versionId: version.id,
+      versionId,
       storageName,
       size: totalSize,
       fileCount,
@@ -182,7 +225,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse(response, 200);
   } catch (error) {
-    console.error("[Storage Webhook] Error:", error);
+    log.error("Error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {

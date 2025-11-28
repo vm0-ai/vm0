@@ -134,10 +134,18 @@ export const pushCommand = new Command()
         versionId: string;
         size: number;
         fileCount: number;
+        deduplicated?: boolean;
       };
 
-      console.log(chalk.green("✓ Upload complete"));
-      console.log(chalk.gray(`  Version: ${result.versionId}`));
+      // Display short version (8 characters) by default
+      const shortVersion = result.versionId.slice(0, 8);
+
+      if (result.deduplicated) {
+        console.log(chalk.green("✓ Content unchanged (deduplicated)"));
+      } else {
+        console.log(chalk.green("✓ Upload complete"));
+      }
+      console.log(chalk.gray(`  Version: ${shortVersion}`));
       console.log(chalk.gray(`  Files: ${result.fileCount.toLocaleString()}`));
       console.log(chalk.gray(`  Size: ${formatBytes(result.size)}`));
     } catch (error) {

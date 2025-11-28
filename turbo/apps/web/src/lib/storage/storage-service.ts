@@ -14,8 +14,12 @@ import type {
 } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import { storages, storageVersions } from "../../db/schema/storage";
-import { eq, and } from "drizzle-orm";
+import { eq, and, like } from "drizzle-orm";
 import { env } from "../../env";
+import {
+  isValidVersionPrefix,
+  MIN_VERSION_PREFIX_LENGTH,
+} from "./content-hash";
 
 const log = logger("service:storage");
 
@@ -66,8 +70,8 @@ export class StorageService {
       return { versionId: headVersion.id, s3Key: headVersion.s3Key };
     }
 
-    // Query for specific version by ID (hash)
-    const [specificVersion] = await globalThis.services.db
+    // First, try exact match for specific version by ID (full hash)
+    const [exactMatch] = await globalThis.services.db
       .select()
       .from(storageVersions)
       .where(
@@ -78,13 +82,55 @@ export class StorageService {
       )
       .limit(1);
 
-    if (!specificVersion) {
+    if (exactMatch) {
+      return { versionId: exactMatch.id, s3Key: exactMatch.s3Key };
+    }
+
+    // If not exact match, try prefix match (for short version IDs)
+    if (!isValidVersionPrefix(version)) {
+      // Too short or invalid format
+      if (version.length < MIN_VERSION_PREFIX_LENGTH) {
+        throw new Error(
+          `Version prefix too short. Minimum ${MIN_VERSION_PREFIX_LENGTH} characters required.`,
+        );
+      }
       throw new Error(
         `Storage "${storageName}" version "${version}" not found`,
       );
     }
 
-    return { versionId: specificVersion.id, s3Key: specificVersion.s3Key };
+    // Search by prefix using LIKE
+    const prefixMatches = await globalThis.services.db
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, dbStorage.id),
+          like(storageVersions.id, `${version.toLowerCase()}%`),
+        ),
+      )
+      .limit(2); // Only need to know if there's more than one
+
+    if (prefixMatches.length === 0) {
+      throw new Error(
+        `Storage "${storageName}" version "${version}" not found`,
+      );
+    }
+
+    if (prefixMatches.length > 1) {
+      throw new Error(
+        `Ambiguous version prefix "${version}" for storage "${storageName}". Please use more characters.`,
+      );
+    }
+
+    const matchedVersion = prefixMatches[0];
+    if (!matchedVersion) {
+      throw new Error(
+        `Storage "${storageName}" version "${version}" not found`,
+      );
+    }
+
+    return { versionId: matchedVersion.id, s3Key: matchedVersion.s3Key };
   }
 
   /**

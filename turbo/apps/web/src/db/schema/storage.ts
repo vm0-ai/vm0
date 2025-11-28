@@ -30,7 +30,7 @@ export const storages = pgTable(
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),
-    headVersionId: uuid("head_version_id"),
+    headVersionId: varchar("head_version_id", { length: 64 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -44,10 +44,11 @@ export const storages = pgTable(
 
 /**
  * Storage versions table
- * Stores individual versions of each storage with versioned S3 paths
+ * Stores individual versions of each storage with content-addressable SHA-256 hash IDs
+ * Version ID is computed from the content itself, enabling deduplication and verification
  */
 export const storageVersions = pgTable("storage_versions", {
-  id: uuid("id").defaultRandom().primaryKey(),
+  id: varchar("id", { length: 64 }).primaryKey(),
   storageId: uuid("storage_id")
     .notNull()
     .references(() => storages.id, { onDelete: "cascade" }),

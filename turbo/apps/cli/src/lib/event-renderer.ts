@@ -155,6 +155,18 @@ export class EventRenderer {
   }
 
   /**
+   * Format version ID for display (show short 8-character prefix)
+   */
+  private static formatVersion(version: string): string {
+    // SHA-256 hashes are 64 characters, show first 8
+    if (version.length === 64 && /^[a-f0-9]+$/i.test(version)) {
+      return version.slice(0, 8);
+    }
+    // For "latest" or other formats, show as-is
+    return version;
+  }
+
+  /**
    * Render artifact and volumes info
    * Used by both vm0_start and vm0_result events
    */
@@ -163,7 +175,7 @@ export class EventRenderer {
     if (artifact && Object.keys(artifact).length > 0) {
       console.log(`  Artifact:`);
       for (const [name, version] of Object.entries(artifact)) {
-        console.log(`    ${name}: ${chalk.gray(version)}`);
+        console.log(`    ${name}: ${chalk.gray(this.formatVersion(version))}`);
       }
     }
 
@@ -171,7 +183,7 @@ export class EventRenderer {
     if (volumes && Object.keys(volumes).length > 0) {
       console.log(`  Volumes:`);
       for (const [name, version] of Object.entries(volumes)) {
-        console.log(`    ${name}: ${chalk.gray(version)}`);
+        console.log(`    ${name}: ${chalk.gray(this.formatVersion(version))}`);
       }
     }
   }
