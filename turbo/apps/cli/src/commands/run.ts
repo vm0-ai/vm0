@@ -22,7 +22,7 @@ function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
 }
 
-const DEFAULT_TIMEOUT_SECONDS = 60;
+const DEFAULT_TIMEOUT_SECONDS = 120;
 
 async function pollEvents(
   runId: string,
@@ -95,7 +95,7 @@ const runCmd = new Command()
   )
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 60)",
+    "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .action(
@@ -220,7 +220,7 @@ runCmd
   .argument("<prompt>", "Prompt for the resumed agent")
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 60)",
+    "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .action(
@@ -292,7 +292,7 @@ runCmd
   .argument("<prompt>", "Prompt for the continued agent")
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 60)",
+    "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .action(

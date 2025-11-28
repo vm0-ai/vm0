@@ -596,7 +596,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should use default timeout (60 seconds) when not specified", async () => {
+    it("should use default timeout (120 seconds) when not specified", async () => {
       await runCommand.parseAsync([
         "node",
         "cli",
