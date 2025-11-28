@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/vm0-ai/vm0/compare/cli-v1.9.0...cli-v1.10.0) (2025-11-28)
+
+
+### Features
+
+* unify agent run API with volume version override support ([#258](https://github.com/vm0-ai/vm0/issues/258)) ([7a5260e](https://github.com/vm0-ai/vm0/commit/7a5260e573dbd42ef084e30d739d7a7773ec65c5))
+
 ## [1.9.0](https://github.com/vm0-ai/vm0/compare/cli-v1.8.1...cli-v1.9.0) (2025-11-28)
 
 
