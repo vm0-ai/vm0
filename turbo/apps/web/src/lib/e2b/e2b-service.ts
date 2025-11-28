@@ -234,10 +234,19 @@ export class E2BService {
     } catch (error) {
       const executionTimeMs = Date.now() - startTime;
       const completedAt = new Date();
-      const errorMessage =
+
+      // Extract error message - E2B CommandExitError includes result with stderr
+      let errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
-      log.error(`Run ${context.runId} failed:`, error);
+      // Check if error has result property (E2B CommandExitError)
+      const errorWithResult = error as { result?: { stderr?: string } };
+      if (errorWithResult.result?.stderr) {
+        errorMessage = errorWithResult.result.stderr;
+        log.error(`Run ${context.runId} failed with stderr:`, errorMessage);
+      } else {
+        log.error(`Run ${context.runId} failed:`, error);
+      }
 
       // Send vm0_error event so CLI doesn't timeout
       try {
@@ -503,6 +512,7 @@ export class E2BService {
       log.debug(`Run ${runId} completed successfully`);
     } else {
       log.error(`Run ${runId} failed with exit code ${result.exitCode}`);
+      log.error(`stderr: ${result.stderr}`);
     }
 
     return {

@@ -240,13 +240,23 @@ export async function POST(request: NextRequest) {
         console.log(`[API] Run ${run.id} completed successfully`);
       })
       .catch(async (error) => {
+        // Extract error message - E2B CommandExitError includes result with stderr
+        let errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+
+        // Check if error has result property (E2B CommandExitError)
+        const errorWithResult = error as { result?: { stderr?: string } };
+        if (errorWithResult.result?.stderr) {
+          errorMessage = errorWithResult.result.stderr;
+        }
+
         // Update run with error on failure
-        console.error(`[API] Run ${run.id} failed:`, error);
+        console.error(`[API] Run ${run.id} failed:`, errorMessage);
         await globalThis.services.db
           .update(agentRuns)
           .set({
             status: "failed",
-            error: error instanceof Error ? error.message : "Unknown error",
+            error: errorMessage,
             completedAt: new Date(),
           })
           .where(eq(agentRuns.id, run.id));
@@ -254,7 +264,7 @@ export async function POST(request: NextRequest) {
         // Send vm0_error event
         await sendVm0ErrorEvent({
           runId: run.id,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMessage,
           errorType: "sandbox_error",
         });
       });
