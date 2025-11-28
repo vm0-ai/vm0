@@ -1,15 +1,19 @@
-# VM0
-
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/vm0-ai/vm0)
-![NPM Type Definitions](https://img.shields.io/npm/types/@vm0/cli)
-![NPM Version](https://img.shields.io/npm/v/@vm0/cli)
-![npm package minimized gzipped size](https://img.shields.io/bundlejs/size/@vm0/cli)
-[![CI](https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg)](https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml)
 
 <p align="center">
   <img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="120" />
 </p>
 
+<p align="center">
+  <a href="https://deepwiki.com/vm0-ai/vm0">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
+  </a>
+  <img src="https://img.shields.io/npm/types/@vm0/cli" alt="NPM Type Definitions" />
+  <img src="https://img.shields.io/npm/v/@vm0/cli" alt="NPM Version" />
+  <img src="https://img.shields.io/bundlejs/size/@vm0/cli" alt="Bundle Size" />
+  <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml">
+    <img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg" alt="CI" />
+  </a>
+</p>
 
 <p align="center">
   <strong>The modern runtime for agent-native development</strong>
