@@ -414,6 +414,10 @@ export class RunService {
     runId: string;
     sandboxToken: string;
     userId: string;
+    // Metadata for vm0_start event
+    agentName?: string;
+    resumedFromCheckpointId?: string;
+    continuedFromSessionId?: string;
   }): Promise<ExecutionContext> {
     log.debug(`Building execution context for ${params.runId}`);
     log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
@@ -622,6 +626,10 @@ export class RunService {
       volumeVersions,
       resumeSession,
       resumeArtifact,
+      // Metadata for vm0_start event
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.continuedFromSessionId,
     };
   }
 

@@ -22,7 +22,7 @@ import {
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
-import { sendVm0ErrorEvent } from "../events";
+import { sendVm0ErrorEvent, sendVm0StartEvent } from "../events";
 import { logger } from "../logger";
 
 const log = logger("service:e2b");
@@ -122,6 +122,39 @@ export class E2BService {
           `Storage preparation failed: ${storageResult.errors.join("; ")}`,
         );
       }
+
+      // Build artifact and volumes info from prepared storages
+      const startArtifact = storageResult.preparedArtifact
+        ? {
+            [storageResult.preparedArtifact.vasStorageName]:
+              storageResult.preparedArtifact.vasVersionId,
+          }
+        : undefined;
+
+      const startVolumes =
+        storageResult.preparedStorages.length > 0
+          ? storageResult.preparedStorages.reduce(
+              (acc, vol) => {
+                acc[vol.name] = vol.vasVersionId;
+                return acc;
+              },
+              {} as Record<string, string>,
+            )
+          : undefined;
+
+      // Send vm0_start event now that storages are prepared
+      await sendVm0StartEvent({
+        runId: context.runId,
+        agentConfigId: context.agentConfigId,
+        agentName: context.agentName,
+        prompt: context.prompt,
+        templateVars: context.templateVars,
+        resumedFromCheckpointId: context.resumedFromCheckpointId,
+        continuedFromSessionId: context.continuedFromSessionId,
+        artifact: startArtifact,
+        volumes: startVolumes,
+      });
+
       // Get API configuration with dynamic fallback logic
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
       const envVars = globalThis.services?.env;

@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bService } from "../e2b-service";
+import { sendVm0StartEvent } from "../../events";
 import type { ExecutionContext } from "../../run/types";
 
 // Mock the E2B SDK module
@@ -36,6 +37,12 @@ const mockStorageService = vi.hoisted(() => ({
 
 vi.mock("../../storage/storage-service", () => ({
   storageService: mockStorageService,
+}));
+
+// Mock events module
+vi.mock("../../events", () => ({
+  sendVm0StartEvent: vi.fn().mockResolvedValue(undefined),
+  sendVm0ErrorEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock fs module
@@ -140,6 +147,106 @@ describe("E2B Service - mocked unit tests", () => {
       // commands.run called: 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute) = 10 times
       expect(mockSandbox.commands.run).toHaveBeenCalledTimes(10);
       expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it("should send vm0_start event with correct parameters", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      const context: ExecutionContext = {
+        runId: "run-test-event",
+        agentConfigId: "test-agent-event",
+        agentConfig: {},
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Test prompt",
+        templateVars: { key: "value" },
+        agentName: "My Agent",
+        resumedFromCheckpointId: "checkpoint-123",
+        continuedFromSessionId: undefined,
+      };
+
+      // Act
+      await e2bService.execute(context);
+
+      // Assert - Verify vm0_start event was sent with correct parameters
+      expect(sendVm0StartEvent).toHaveBeenCalledTimes(1);
+      expect(sendVm0StartEvent).toHaveBeenCalledWith({
+        runId: "run-test-event",
+        agentConfigId: "test-agent-event",
+        agentName: "My Agent",
+        prompt: "Test prompt",
+        templateVars: { key: "value" },
+        resumedFromCheckpointId: "checkpoint-123",
+        continuedFromSessionId: undefined,
+        artifact: undefined,
+        volumes: undefined,
+      });
+    });
+
+    it("should include artifact and volumes in vm0_start event when prepared", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      // Mock storage service to return prepared artifact and volumes
+      mockStorageService.prepareStorages.mockResolvedValueOnce({
+        preparedStorages: [
+          {
+            name: "data-volume",
+            driver: "vas",
+            localPath: "/tmp/data",
+            mountPath: "/data",
+            vasStorageName: "data-storage",
+            vasVersionId: "vol-version-abc",
+          },
+          {
+            name: "models",
+            driver: "vas",
+            localPath: "/tmp/models",
+            mountPath: "/models",
+            vasStorageName: "models-storage",
+            vasVersionId: "vol-version-xyz",
+          },
+        ],
+        preparedArtifact: {
+          driver: "vas",
+          localPath: "/tmp/artifact",
+          mountPath: "/workspace",
+          vasStorageName: "my-artifact",
+          vasVersionId: "art-version-123",
+        },
+        tempDir: "/tmp/e2b-test",
+        errors: [],
+      });
+
+      const context: ExecutionContext = {
+        runId: "run-test-storages",
+        agentConfigId: "test-agent-storages",
+        agentConfig: {},
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Test with storages",
+      };
+
+      // Act
+      await e2bService.execute(context);
+
+      // Assert - Verify vm0_start event includes artifact and volumes
+      expect(sendVm0StartEvent).toHaveBeenCalledTimes(1);
+      expect(sendVm0StartEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runId: "run-test-storages",
+          artifact: { "my-artifact": "art-version-123" },
+          volumes: {
+            "data-volume": "vol-version-abc",
+            models: "vol-version-xyz",
+          },
+        }),
+      );
     });
 
     it("should use provided run IDs for multiple calls", async () => {
