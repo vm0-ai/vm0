@@ -4,6 +4,7 @@ import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentConfigs } from "../../db/schema/agent-config";
 import { NotFoundError, UnauthorizedError } from "../errors";
+import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type {
   ArtifactSnapshot,
@@ -13,6 +14,8 @@ import type {
 import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
+
+const log = logger("service:run");
 
 /**
  * Calculate session history path based on working directory
@@ -57,7 +60,7 @@ export class RunService {
     artifactName?: string,
     artifactVersion?: string,
   ): Promise<ExecutionContext> {
-    console.log(`[RunService] Creating run context for ${runId}`);
+    log.debug(`Creating run context for ${runId}`);
 
     return {
       runId,
@@ -91,8 +94,8 @@ export class RunService {
     sandboxToken: string,
     userId: string,
   ): Promise<ExecutionContext> {
-    console.log(
-      `[RunService] Creating resume context for ${runId} from checkpoint ${checkpointId}`,
+    log.debug(
+      `Creating resume context for ${runId} from checkpoint ${checkpointId}`,
     );
 
     // Load checkpoint from database
@@ -136,8 +139,8 @@ export class RunService {
     const agentConfigSnapshot =
       checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
 
-    console.log(
-      `[RunService] Checkpoint verified for user ${userId}, loaded conversation ${conversation.id}`,
+    log.debug(
+      `Checkpoint verified for user ${userId}, loaded conversation ${conversation.id}`,
     );
 
     // Extract working directory from agent config snapshot
@@ -146,7 +149,7 @@ export class RunService {
       | undefined;
     const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
 
-    console.log(`[RunService] Working directory: ${workingDir}`);
+    log.debug(`Working directory: ${workingDir}`);
 
     // Build resume session data from conversation
     const resumeSession: ResumeSession = {
@@ -163,8 +166,8 @@ export class RunService {
     const volumeVersionsSnapshot =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
-    console.log(
-      `[RunService] Resume session: ${conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@${resumeArtifact.artifactVersion}`,
+    log.debug(
+      `Resume session: ${conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@${resumeArtifact.artifactVersion}`,
     );
 
     return {
@@ -197,9 +200,7 @@ export class RunService {
   ): Promise<{
     agentConfigId: string;
   }> {
-    console.log(
-      `[RunService] Validating checkpoint ${checkpointId} for user ${userId}`,
-    );
+    log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
     // Load checkpoint from database
     const [checkpoint] = await globalThis.services.db
@@ -227,8 +228,8 @@ export class RunService {
       );
     }
 
-    console.log(
-      `[RunService] Checkpoint validated: agentConfigId=${originalRun.agentConfigId}`,
+    log.debug(
+      `Checkpoint validated: agentConfigId=${originalRun.agentConfigId}`,
     );
 
     return {
@@ -253,9 +254,7 @@ export class RunService {
     agentConfigId: string;
     templateVars: Record<string, string> | null;
   }> {
-    console.log(
-      `[RunService] Validating agent session ${agentSessionId} for user ${userId}`,
-    );
+    log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
     // Load session with conversation data
     const session =
@@ -279,9 +278,7 @@ export class RunService {
       );
     }
 
-    console.log(
-      `[RunService] Session validated: agentConfigId=${session.agentConfigId}`,
-    );
+    log.debug(`Session validated: agentConfigId=${session.agentConfigId}`);
 
     return {
       agentConfigId: session.agentConfigId,
@@ -309,8 +306,8 @@ export class RunService {
     sandboxToken: string,
     userId: string,
   ): Promise<ExecutionContext> {
-    console.log(
-      `[RunService] Creating continue context for ${runId} from session ${agentSessionId}`,
+    log.debug(
+      `Creating continue context for ${runId} from session ${agentSessionId}`,
     );
 
     // Load session with conversation data
@@ -335,8 +332,8 @@ export class RunService {
       );
     }
 
-    console.log(
-      `[RunService] Session verified for user ${userId}, loaded conversation ${session.conversationId}`,
+    log.debug(
+      `Session verified for user ${userId}, loaded conversation ${session.conversationId}`,
     );
 
     // Load agent config for working directory
@@ -356,7 +353,7 @@ export class RunService {
       | undefined;
     const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
 
-    console.log(`[RunService] Working directory: ${workingDir}`);
+    log.debug(`Working directory: ${workingDir}`);
 
     // Build resume session data from conversation
     const resumeSession: ResumeSession = {
@@ -372,8 +369,8 @@ export class RunService {
       artifactVersion: "latest", // Always use latest for continue
     };
 
-    console.log(
-      `[RunService] Continue session: ${session.conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@latest`,
+    log.debug(
+      `Continue session: ${session.conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@latest`,
     );
 
     return {
@@ -418,10 +415,8 @@ export class RunService {
     sandboxToken: string;
     userId: string;
   }): Promise<ExecutionContext> {
-    console.log(`[RunService] Building execution context for ${params.runId}`);
-    console.log(
-      `[RunService] params.volumeVersions=${JSON.stringify(params.volumeVersions)}`,
-    );
+    log.debug(`Building execution context for ${params.runId}`);
+    log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
     // Initialize context variables
     let agentConfigId: string | undefined = params.agentConfigId;
@@ -438,7 +433,7 @@ export class RunService {
 
     // Step 1: Expand checkpoint if provided
     if (params.checkpointId) {
-      console.log(`[RunService] Expanding checkpoint ${params.checkpointId}`);
+      log.debug(`Expanding checkpoint ${params.checkpointId}`);
 
       const [checkpoint] = await globalThis.services.db
         .select()
@@ -516,13 +511,13 @@ export class RunService {
         artifactVersion: artifactVersion,
       };
 
-      console.log(
-        `[RunService] Checkpoint expanded: artifact=${artifactName}@${artifactVersion}`,
+      log.debug(
+        `Checkpoint expanded: artifact=${artifactName}@${artifactVersion}`,
       );
     }
     // Step 2: Expand session if provided (mutually exclusive with checkpoint)
     else if (params.sessionId) {
-      console.log(`[RunService] Expanding session ${params.sessionId}`);
+      log.debug(`Expanding session ${params.sessionId}`);
 
       const session = await agentSessionService.getByIdWithConversation(
         params.sessionId,
@@ -585,9 +580,7 @@ export class RunService {
         artifactVersion: "latest",
       };
 
-      console.log(
-        `[RunService] Session expanded: artifact=${artifactName}@latest`,
-      );
+      log.debug(`Session expanded: artifact=${artifactName}@latest`);
     }
     // Step 3: New run - load agent config if agentConfigId provided
     else if (agentConfigId) {
@@ -640,8 +633,8 @@ export class RunService {
    * @returns Run result
    */
   async executeRun(context: ExecutionContext): Promise<RunResult> {
-    console.log(
-      `[RunService] Executing run ${context.runId} (resume: ${!!context.resumeSession})`,
+    log.debug(
+      `Executing run ${context.runId} (resume: ${!!context.resumeSession})`,
     );
     return await e2bService.execute(context);
   }

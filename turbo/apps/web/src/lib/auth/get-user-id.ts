@@ -3,6 +3,9 @@ import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
+import { logger } from "../logger";
+
+const log = logger("auth:user");
 
 /**
  * Get the current user ID from CLI token or Clerk session
@@ -31,7 +34,7 @@ export async function getUserId(): Promise<string | null> {
         .update(cliTokens)
         .set({ lastUsedAt: new Date() })
         .where(eq(cliTokens.token, token))
-        .catch(console.error);
+        .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
       return tokenRecord.userId;
     }

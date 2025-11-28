@@ -2,6 +2,9 @@ import { randomBytes } from "crypto";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { eq, and, lt } from "drizzle-orm";
+import { logger } from "../logger";
+
+const log = logger("auth:sandbox");
 
 /**
  * Generate a temporary CLI token for E2B sandbox
@@ -32,7 +35,7 @@ export async function generateSandboxToken(
     createdAt: now,
   });
 
-  console.log(`Generated sandbox token for run ${runId}`);
+  log.debug(`Generated sandbox token for run ${runId}`);
   return token;
 }
 
@@ -48,5 +51,5 @@ async function cleanupExpiredSandboxTokens(userId: string): Promise<void> {
       and(eq(cliTokens.userId, userId), lt(cliTokens.expiresAt, new Date())),
     );
 
-  console.log(`Cleaned up expired sandbox tokens for user ${userId}`);
+  log.debug(`Cleaned up expired sandbox tokens for user ${userId}`);
 }

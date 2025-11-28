@@ -47,8 +47,8 @@ export class E2BService {
     log.debug(
       `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentConfigId}...`,
     );
-    console.log(
-      `[E2B] context.volumeVersions=${JSON.stringify(context.volumeVersions)}`,
+    log.debug(
+      `context.volumeVersions=${JSON.stringify(context.volumeVersions)}`,
     );
 
     let sandbox: Sandbox | null = null;

@@ -5,6 +5,7 @@ import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
 import { agentSessionService } from "../agent-session";
+import { logger } from "../logger";
 import type {
   CheckpointRequest,
   CheckpointResponse,
@@ -12,6 +13,8 @@ import type {
   ArtifactSnapshot,
 } from "./types";
 import type { AgentConfigYaml } from "../../types/agent-config";
+
+const log = logger("service:checkpoint");
 
 /**
  * Checkpoint Service
@@ -28,7 +31,7 @@ export class CheckpointService {
   async createCheckpoint(
     request: CheckpointRequest,
   ): Promise<CheckpointResponse> {
-    console.log(`[Checkpoint] Creating checkpoint for run ${request.runId}`);
+    log.debug(`Creating checkpoint for run ${request.runId}`);
 
     // Fetch agent run from database
     const [run] = await globalThis.services.db
@@ -52,8 +55,8 @@ export class CheckpointService {
       throw new NotFoundError("Agent config");
     }
 
-    console.log(
-      `[Checkpoint] Creating conversation record for CLI agent: ${request.cliAgentType}`,
+    log.debug(
+      `Creating conversation record for CLI agent: ${request.cliAgentType}`,
     );
 
     // Create conversation record first
@@ -71,8 +74,8 @@ export class CheckpointService {
       throw new Error("Failed to create conversation record");
     }
 
-    console.log(
-      `[Checkpoint] Conversation created: ${conversation.id}, storing checkpoint...`,
+    log.debug(
+      `Conversation created: ${conversation.id}, storing checkpoint...`,
     );
 
     // Build agent config snapshot
@@ -108,9 +111,7 @@ export class CheckpointService {
       throw new Error("Failed to create checkpoint record");
     }
 
-    console.log(
-      `[Checkpoint] Checkpoint created successfully: ${checkpoint.id}`,
-    );
+    log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
     // Find or create agent session
     const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
@@ -124,9 +125,7 @@ export class CheckpointService {
       templateVars,
     );
 
-    console.log(
-      `[Checkpoint] Agent session updated/created: ${agentSession.id}`,
-    );
+    log.debug(`Agent session updated/created: ${agentSession.id}`);
 
     return {
       checkpointId: checkpoint.id,

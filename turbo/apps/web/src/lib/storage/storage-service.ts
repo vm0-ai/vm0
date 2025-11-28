@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveVolumes } from "./storage-resolver";
 import { downloadS3Directory } from "../s3/s3-client";
+import { logger } from "../logger";
 import type {
   AgentVolumeConfig,
   PreparedStorage,
@@ -15,6 +16,8 @@ import type { ArtifactSnapshot } from "../checkpoint/types";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
+
+const log = logger("service:storage");
 
 /**
  * Storage Service
@@ -108,14 +111,14 @@ export class StorageService {
   ): Promise<StoragePreparationResult> {
     const errors: string[] = [];
 
-    console.log(
-      `[Storage] prepareStorages called with volumeVersionOverrides=${JSON.stringify(volumeVersionOverrides)}`,
+    log.debug(
+      `prepareStorages called with volumeVersionOverrides=${JSON.stringify(volumeVersionOverrides)}`,
     );
-    console.log(
-      `[Storage] agentConfig volumes: ${JSON.stringify((agentConfig as { volumes?: unknown })?.volumes)}`,
+    log.debug(
+      `agentConfig volumes: ${JSON.stringify((agentConfig as { volumes?: unknown })?.volumes)}`,
     );
-    console.log(
-      `[Storage] agentConfig agents: ${JSON.stringify((agentConfig as { agents?: unknown })?.agents)}`,
+    log.debug(
+      `agentConfig agents: ${JSON.stringify((agentConfig as { agents?: unknown })?.agents)}`,
     );
 
     // If no agent config, return empty result
@@ -140,7 +143,7 @@ export class StorageService {
 
     // Log volume resolution errors but don't fail the preparation
     if (volumeResult.errors.length > 0) {
-      console.warn(`[Storage] Volume resolution errors:`, volumeResult.errors);
+      log.warn(`Volume resolution errors:`, volumeResult.errors);
       errors.push(
         ...volumeResult.errors.map((e) => `${e.volumeName}: ${e.message}`),
       );
@@ -157,8 +160,8 @@ export class StorageService {
       await fs.promises.mkdir(tempDir, { recursive: true });
     }
 
-    console.log(
-      `[Storage] Preparing ${volumeResult.volumes.length} storages and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
+    log.debug(
+      `Preparing ${volumeResult.volumes.length} storages and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
     );
 
     const preparedStorages: PreparedStorage[] = [];
@@ -170,10 +173,7 @@ export class StorageService {
         const prepared = await this.prepareVolume(volume, tempDir!, userId);
         preparedStorages.push(prepared);
       } catch (error) {
-        console.error(
-          `[Storage] Failed to prepare storage "${volume.name}":`,
-          error,
-        );
+        log.error(`Failed to prepare storage "${volume.name}":`, error);
         errors.push(
           `${volume.name}: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
@@ -189,7 +189,7 @@ export class StorageService {
           userId,
         );
       } catch (error) {
-        console.error(`[Storage] Failed to prepare artifact:`, error);
+        log.error(`Failed to prepare artifact:`, error);
         errors.push(
           `artifact: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
@@ -228,8 +228,8 @@ export class StorageService {
     const localPath = path.join(tempDir, volume.name);
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
-    console.log(
-      `[Storage] Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    log.debug(
+      `Downloaded VAS storage "${volume.name}" (${volume.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -266,8 +266,8 @@ export class StorageService {
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
-    console.log(
-      `[Storage] Downloaded VAS artifact (${artifact.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    log.debug(
+      `Downloaded VAS artifact (${artifact.vasStorageName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -306,8 +306,8 @@ export class StorageService {
       };
     }
 
-    console.log(
-      `[Storage] Preparing artifact from snapshot: ${snapshot.artifactName}@${snapshot.artifactVersion}`,
+    log.debug(
+      `Preparing artifact from snapshot: ${snapshot.artifactName}@${snapshot.artifactVersion}`,
     );
 
     const tempDir = `/tmp/vas-run-${runId}`;
@@ -347,8 +347,8 @@ export class StorageService {
     const localPath = path.join(tempDir, "artifact");
 
     const downloadResult = await downloadS3Directory(s3Uri, localPath);
-    console.log(
-      `[Storage] Downloaded VAS artifact (${snapshot.artifactName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
+    log.debug(
+      `Downloaded VAS artifact (${snapshot.artifactName}) version ${versionId}: ${downloadResult.filesDownloaded} files, ${downloadResult.totalBytes} bytes`,
     );
 
     return {
@@ -381,7 +381,7 @@ export class StorageService {
       return;
     }
 
-    console.log(`[Storage] Mounting ${totalMounts} items to sandbox...`);
+    log.debug(`Mounting ${totalMounts} items to sandbox...`);
 
     // Mount storages
     for (const storage of preparedStorages) {
@@ -396,15 +396,12 @@ export class StorageService {
             storage.localPath!,
             storage.mountPath,
           );
-          console.log(
-            `[Storage] Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
+          log.debug(
+            `Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
           );
         }
       } catch (error) {
-        console.error(
-          `[Storage] Failed to mount storage "${storage.name}":`,
-          error,
-        );
+        log.error(`Failed to mount storage "${storage.name}":`, error);
         throw error;
       }
     }
@@ -422,12 +419,10 @@ export class StorageService {
             preparedArtifact.localPath!,
             preparedArtifact.mountPath,
           );
-          console.log(
-            `[Storage] Uploaded VAS artifact to ${preparedArtifact.mountPath}`,
-          );
+          log.debug(`Uploaded VAS artifact to ${preparedArtifact.mountPath}`);
         }
       } catch (error) {
-        console.error(`[Storage] Failed to mount artifact:`, error);
+        log.error(`Failed to mount artifact:`, error);
         throw error;
       }
     }
@@ -477,9 +472,9 @@ export class StorageService {
 
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
-      console.log(`[Storage] Cleaned up temp directory: ${tempDir}`);
+      log.debug(`Cleaned up temp directory: ${tempDir}`);
     } catch (error) {
-      console.error(`[Storage] Failed to cleanup temp directory:`, error);
+      log.error(`Failed to cleanup temp directory:`, error);
     }
   }
 }

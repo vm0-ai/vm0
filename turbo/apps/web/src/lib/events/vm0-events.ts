@@ -5,6 +5,9 @@
 
 import { agentRunEvents } from "../../db/schema/agent-run-event";
 import type { Vm0StartEvent, Vm0ResultEvent, Vm0ErrorEvent } from "./types";
+import { logger } from "../logger";
+
+const log = logger("events:vm0");
 
 /**
  * Send a VM0 start event
@@ -77,5 +80,5 @@ async function sendVm0Event(
     eventData: event,
   });
 
-  console.log(`[VM0 Events] Sent ${event.type} event for run ${runId}`);
+  log.debug(`Sent ${event.type} event for run ${runId}`);
 }

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { ApiError } from "./errors";
+import { logger } from "./logger";
+
+const log = logger("api:response");
 
 /**
  * Standard success response
@@ -25,7 +28,7 @@ export function errorResponse(error: unknown) {
   }
 
   // Unexpected error
-  console.error("Unexpected error:", error);
+  log.error("Unexpected error:", error);
   return NextResponse.json(
     {
       error: {
