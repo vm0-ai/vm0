@@ -16,7 +16,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
-import { uploadS3Directory } from "../../../../../src/lib/s3/s3-client";
+import { uploadS3DirectoryWithManifestAndArchive } from "../../../../../src/lib/s3/s3-client";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
 
       log.debug(`Created version: ${version.id}`);
 
-      // Upload files to versioned S3 path
+      // Upload files to versioned S3 path with manifest and archive
       const bucketName = env().S3_USER_STORAGES_NAME;
       if (!bucketName) {
         throw new Error(
@@ -191,7 +191,12 @@ export async function POST(request: NextRequest) {
       }
       const s3Uri = `s3://${bucketName}/${s3Key}`;
       log.debug(`Uploading ${fileCount} files to ${s3Uri}...`);
-      await uploadS3Directory(extractPath, s3Uri);
+      await uploadS3DirectoryWithManifestAndArchive(
+        extractPath,
+        s3Uri,
+        contentHash,
+        fileEntries,
+      );
 
       versionId = version.id;
     }

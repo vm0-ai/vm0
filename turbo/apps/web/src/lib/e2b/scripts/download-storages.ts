@@ -1,23 +1,22 @@
 /**
  * Download storages script for E2B sandbox
- * Downloads files directly from S3 using presigned URLs
+ * Downloads ZIP archives directly from S3 using presigned URLs
  *
  * This script is uploaded to the sandbox and executed to download
- * storage files directly from S3, bypassing the VM0 server.
+ * storage archives directly from S3, bypassing the VM0 server.
  */
 
 // Use template literal to inject $ signs without escaping
 const dollar = "$";
 
 export const DOWNLOAD_STORAGES_SCRIPT = `#!/bin/bash
-# Download storages from S3 using presigned URLs
+# Download storages from S3 using presigned URLs (ZIP archive mode)
 # Usage: download-storages.sh <manifest_path>
-# Requires: curl, jq
+# Requires: curl, jq, unzip
 
 set -e
 
 MANIFEST_PATH="${dollar}1"
-MAX_PARALLEL=${dollar}{VM0_DOWNLOAD_PARALLEL:-10}
 
 # Source common utilities
 source /usr/local/bin/vm0-agent/lib/common.sh
@@ -30,83 +29,59 @@ fi
 
 log_info "Starting storage download from manifest: ${dollar}MANIFEST_PATH"
 
-# Create temp files for tracking
-DOWNLOAD_TASKS=${dollar}(mktemp)
-DOWNLOAD_ERRORS=${dollar}(mktemp)
-trap "rm -f ${dollar}DOWNLOAD_TASKS ${dollar}DOWNLOAD_ERRORS" EXIT
+# Download and extract a single storage/artifact
+download_storage() {
+  local mount_path="${dollar}1"
+  local archive_url="${dollar}2"
+  local temp_zip="/tmp/storage-${dollar}(date +%s%N).zip"
 
-# Parse manifest and generate download tasks for storages
-# Format: <local_path>\\t<url>\\t<expected_size>
-jq -r '
-  (.storages // [])[] | .mountPath as ${dollar}mount |
-    .files[] | "\\(${dollar}mount)/\\(.path)\\t\\(.url)\\t\\(.size)"
-' "${dollar}MANIFEST_PATH" >> "${dollar}DOWNLOAD_TASKS"
+  log_info "Downloading storage to ${dollar}mount_path"
 
-# Add artifact files if present
-jq -r '
-  .artifact // empty | .mountPath as ${dollar}mount |
-    .files[] | "\\(${dollar}mount)/\\(.path)\\t\\(.url)\\t\\(.size)"
-' "${dollar}MANIFEST_PATH" >> "${dollar}DOWNLOAD_TASKS"
-
-TOTAL_FILES=${dollar}(wc -l < "${dollar}DOWNLOAD_TASKS" | tr -d ' ')
-log_info "Found ${dollar}TOTAL_FILES files to download"
-
-if [ "${dollar}TOTAL_FILES" -eq 0 ]; then
-  log_info "No files to download"
-  exit 0
-fi
-
-# Create all directories first
-cut -f1 "${dollar}DOWNLOAD_TASKS" | xargs -I{} dirname {} | sort -u | while read dir; do
-  mkdir -p "${dollar}dir"
-done
-
-# Download function for parallel execution
-download_file() {
-  local line="${dollar}1"
-  local path=${dollar}(echo "${dollar}line" | cut -f1)
-  local url=${dollar}(echo "${dollar}line" | cut -f2)
-  local expected_size=${dollar}(echo "${dollar}line" | cut -f3)
-
-  # Download with retry
+  # Download ZIP with retry
   local attempt=1
   local max_attempts=3
 
   while [ ${dollar}attempt -le ${dollar}max_attempts ]; do
-    if curl -fsSL -o "${dollar}path" "${dollar}url" 2>/dev/null; then
-      # Verify file size if provided and not empty
-      if [ -n "${dollar}expected_size" ] && [ "${dollar}expected_size" != "null" ] && [ "${dollar}expected_size" != "0" ]; then
-        local actual_size=${dollar}(stat -c%s "${dollar}path" 2>/dev/null || stat -f%z "${dollar}path" 2>/dev/null)
-        if [ "${dollar}actual_size" != "${dollar}expected_size" ]; then
-          echo "Size mismatch for ${dollar}path: expected ${dollar}expected_size, got ${dollar}actual_size" >> "${dollar}DOWNLOAD_ERRORS"
-          return 1
-        fi
-      fi
-      return 0
+    if curl -fsSL -o "${dollar}temp_zip" "${dollar}archive_url" 2>/dev/null; then
+      break
     fi
-
     attempt=${dollar}((attempt + 1))
     [ ${dollar}attempt -le ${dollar}max_attempts ] && sleep 1
   done
 
-  echo "Failed to download ${dollar}path after ${dollar}max_attempts attempts" >> "${dollar}DOWNLOAD_ERRORS"
-  return 1
+  if [ ! -f "${dollar}temp_zip" ]; then
+    log_error "Failed to download archive for ${dollar}mount_path after ${dollar}max_attempts attempts"
+    return 1
+  fi
+
+  # Extract to mount path
+  mkdir -p "${dollar}mount_path"
+  unzip -q -o "${dollar}temp_zip" -d "${dollar}mount_path"
+  rm -f "${dollar}temp_zip"
+
+  log_info "Successfully extracted to ${dollar}mount_path"
 }
 
-export -f download_file
-export DOWNLOAD_ERRORS
+# Count total storages
+STORAGE_COUNT=${dollar}(jq -r '(.storages // []) | length' "${dollar}MANIFEST_PATH")
+HAS_ARTIFACT=${dollar}(jq -r '.artifact != null' "${dollar}MANIFEST_PATH")
 
-# Execute downloads in parallel using xargs
-log_info "Downloading files with ${dollar}MAX_PARALLEL parallel connections..."
+log_info "Found ${dollar}STORAGE_COUNT storages, artifact: ${dollar}HAS_ARTIFACT"
 
-cat "${dollar}DOWNLOAD_TASKS" | xargs -P "${dollar}MAX_PARALLEL" -I{} bash -c 'download_file "${dollar}@"' _ {}
+# Process storages
+jq -r '(.storages // [])[] | "\\(.mountPath)\\t\\(.archiveUrl)"' "${dollar}MANIFEST_PATH" | \\
+  while IFS=${dollar}'\\t' read -r mount_path archive_url; do
+    if [ -n "${dollar}archive_url" ] && [ "${dollar}archive_url" != "null" ]; then
+      download_storage "${dollar}mount_path" "${dollar}archive_url"
+    fi
+  done
 
-# Check for errors
-if [ -s "${dollar}DOWNLOAD_ERRORS" ]; then
-  log_error "Some downloads failed:"
-  cat "${dollar}DOWNLOAD_ERRORS" >&2
-  exit 1
+# Process artifact
+artifact_mount=${dollar}(jq -r '.artifact.mountPath // empty' "${dollar}MANIFEST_PATH")
+artifact_url=${dollar}(jq -r '.artifact.archiveUrl // empty' "${dollar}MANIFEST_PATH")
+if [ -n "${dollar}artifact_url" ] && [ "${dollar}artifact_url" != "null" ]; then
+  download_storage "${dollar}artifact_mount" "${dollar}artifact_url"
 fi
 
-log_info "Successfully downloaded ${dollar}TOTAL_FILES files"
+log_info "All storages downloaded successfully"
 `;

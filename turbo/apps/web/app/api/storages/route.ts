@@ -4,7 +4,7 @@ import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { storages, storageVersions } from "../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import {
-  uploadS3Directory,
+  uploadS3DirectoryWithManifestAndArchive,
   downloadS3Directory,
 } from "../../../src/lib/s3/s3-client";
 import * as fs from "node:fs";
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
 
       log.debug(`Created version: ${version.id}`);
 
-      // Upload files to versioned S3 path
+      // Upload files to versioned S3 path with manifest and archive
       // If this fails, the transaction will be rolled back
       const bucketName = env().S3_USER_STORAGES_NAME;
       if (!bucketName) {
@@ -235,7 +235,12 @@ export async function POST(request: NextRequest) {
       }
       const s3Uri = `s3://${bucketName}/${version.s3Key}`;
       log.debug(`Uploading ${fileCount} files to ${s3Uri}...`);
-      await uploadS3Directory(extractPath, s3Uri);
+      await uploadS3DirectoryWithManifestAndArchive(
+        extractPath,
+        s3Uri,
+        contentHash,
+        fileEntries,
+      );
 
       // Update storage's HEAD pointer and metadata within transaction
       await tx

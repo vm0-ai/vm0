@@ -18,7 +18,7 @@ export interface FileEntry {
 /**
  * Compute SHA-256 hash of a single file's content
  */
-function hashFileContent(content: Buffer): string {
+export function hashFileContent(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 

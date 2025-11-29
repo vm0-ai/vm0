@@ -119,6 +119,10 @@ export interface ManifestStorage {
   mountPath: string;
   vasStorageName: string;
   vasVersionId: string;
+  /** Presigned URL for downloading archive.zip */
+  archiveUrl: string;
+  /** Size of archive.zip in bytes */
+  archiveSize: number;
   files: ManifestFile[];
 }
 
@@ -129,6 +133,10 @@ export interface ManifestArtifact {
   mountPath: string;
   vasStorageName: string;
   vasVersionId: string;
+  /** Presigned URL for downloading archive.zip */
+  archiveUrl: string;
+  /** Size of archive.zip in bytes */
+  archiveSize: number;
   files: ManifestFile[];
 }
 

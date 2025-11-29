@@ -74,3 +74,40 @@ export class S3UploadError extends Error {
     this.name = "S3UploadError";
   }
 }
+
+/**
+ * File entry with hash for manifest generation
+ */
+export interface FileEntryWithHash {
+  /** Relative path within the storage */
+  path: string;
+  /** SHA-256 hash of file content */
+  hash: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
+ * Storage manifest for incremental upload support
+ * Stored as manifest.json alongside archive.zip in S3
+ */
+export interface S3StorageManifest {
+  /** Version ID (overall content hash) */
+  version: string;
+  /** ISO timestamp when manifest was created */
+  createdAt: string;
+  /** Total size of all files in bytes */
+  totalSize: number;
+  /** Number of files in the storage */
+  fileCount: number;
+  /** Array of files with their paths, hashes, and sizes */
+  files: FileEntryWithHash[];
+}
+
+/**
+ * Result of uploading directory with manifest and archive
+ */
+export interface UploadWithManifestResult extends UploadResult {
+  /** The generated storage manifest */
+  manifest: S3StorageManifest;
+}

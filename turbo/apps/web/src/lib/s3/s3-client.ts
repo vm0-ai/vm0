@@ -15,8 +15,12 @@ import type {
   DownloadResult,
   UploadResult,
   PresignedFile,
+  S3StorageManifest,
+  UploadWithManifestResult,
 } from "./types";
 import { S3DownloadError, S3UploadError } from "./types";
+import { hashFileContent, type FileEntry } from "../storage/content-hash";
+import AdmZip from "adm-zip";
 
 /**
  * Parse S3 URI into bucket and prefix
@@ -246,6 +250,37 @@ export async function uploadS3Object(
 }
 
 /**
+ * Upload buffer data directly to S3
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param data - Buffer data to upload
+ */
+export async function uploadS3Buffer(
+  bucket: string,
+  key: string,
+  data: Buffer,
+): Promise<void> {
+  const client = getS3Client();
+
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: data,
+    });
+
+    await client.send(command);
+  } catch (error) {
+    throw new S3UploadError(
+      `Failed to upload buffer to s3://${bucket}/${key}`,
+      bucket,
+      key,
+      error instanceof Error ? error : undefined,
+    );
+  }
+}
+
+/**
  * Upload entire directory to S3
  * @param localPath - Local directory path to upload from
  * @param s3Uri - S3 URI in format s3://bucket/prefix
@@ -410,4 +445,67 @@ export async function generatePresignedUrlsForPrefix(
   );
 
   return presignedFiles;
+}
+
+/**
+ * Upload directory with manifest.json and archive.zip
+ *
+ * Creates the new S3 structure:
+ * - {prefix}/manifest.json - File manifest with hashes for incremental upload
+ * - {prefix}/archive.zip - Complete archive for fast download
+ * - {prefix}/files/* - Individual files for potential future incremental sync
+ *
+ * @param localPath - Local directory path to upload from
+ * @param s3Uri - S3 URI in format s3://bucket/prefix
+ * @param versionId - Version ID (content hash) for the manifest
+ * @param fileEntries - Array of file entries with content (for hash computation and ZIP creation)
+ * @returns Upload result with manifest
+ */
+export async function uploadS3DirectoryWithManifestAndArchive(
+  localPath: string,
+  s3Uri: string,
+  versionId: string,
+  fileEntries: FileEntry[],
+): Promise<UploadWithManifestResult> {
+  const { bucket, prefix } = parseS3Uri(s3Uri);
+
+  // 1. Upload individual files to files/ subdirectory
+  const filesPrefix = `${prefix}/files`;
+  const filesS3Uri = `s3://${bucket}/${filesPrefix}`;
+  const uploadResult = await uploadS3Directory(localPath, filesS3Uri);
+
+  // 2. Create manifest with file hashes
+  const manifest: S3StorageManifest = {
+    version: versionId,
+    createdAt: new Date().toISOString(),
+    totalSize: uploadResult.totalBytes,
+    fileCount: uploadResult.filesUploaded,
+    files: fileEntries.map((f) => ({
+      path: f.path,
+      hash: hashFileContent(f.content),
+      size: f.content.length,
+    })),
+  };
+
+  // 3. Upload manifest.json
+  const manifestJson = JSON.stringify(manifest, null, 2);
+  await uploadS3Buffer(
+    bucket,
+    `${prefix}/manifest.json`,
+    Buffer.from(manifestJson),
+  );
+
+  // 4. Create and upload archive.zip
+  const zip = new AdmZip();
+  for (const file of fileEntries) {
+    zip.addFile(file.path, file.content);
+  }
+  await uploadS3Buffer(bucket, `${prefix}/archive.zip`, zip.toBuffer());
+
+  return {
+    s3Prefix: prefix,
+    filesUploaded: uploadResult.filesUploaded,
+    totalBytes: uploadResult.totalBytes,
+    manifest,
+  };
 }
