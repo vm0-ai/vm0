@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/vm0-ai/vm0/compare/web-v2.5.0...web-v2.6.0) (2025-11-29)
+
+
+### Features
+
+* enforce promise await with eslint rules ([#303](https://github.com/vm0-ai/vm0/issues/303)) ([1989958](https://github.com/vm0-ai/vm0/commit/19899587084d866c462bf552b4e78f352163e5e0))
+
 ## [2.5.0](https://github.com/vm0-ai/vm0/compare/web-v2.4.1...web-v2.5.0) (2025-11-29)
 
 
