@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.1](https://github.com/vm0-ai/vm0/compare/web-v2.6.0...web-v2.6.1) (2025-11-29)
+
+
+### Bug Fixes
+
+* handle empty zip uploads in storage webhook ([#306](https://github.com/vm0-ai/vm0/issues/306)) ([cad45a8](https://github.com/vm0-ai/vm0/commit/cad45a874ab6006db3106b3aca8d36dde7f57804))
+
 ## [2.6.0](https://github.com/vm0-ai/vm0/compare/web-v2.5.0...web-v2.6.0) (2025-11-29)
 
 
