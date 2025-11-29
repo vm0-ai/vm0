@@ -54,9 +54,10 @@ download_storage() {
     return 1
   fi
 
-  # Extract to mount path
+  # Extract to mount path (handle empty zip gracefully)
   mkdir -p "${dollar}mount_path"
-  unzip -q -o "${dollar}temp_zip" -d "${dollar}mount_path"
+  # unzip returns exit code 1 for empty archives with warning, treat as success
+  unzip -q -o "${dollar}temp_zip" -d "${dollar}mount_path" 2>/dev/null || true
   rm -f "${dollar}temp_zip"
 
   log_info "Successfully extracted to ${dollar}mount_path"

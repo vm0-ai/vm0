@@ -383,7 +383,7 @@ export async function GET(request: NextRequest) {
     tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Download files from versioned S3 path
+    // Download files from versioned S3 path (files/ subdirectory)
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
       return NextResponse.json(
@@ -391,7 +391,7 @@ export async function GET(request: NextRequest) {
         { status: 500 },
       );
     }
-    const s3Uri = `s3://${bucketName}/${version.s3Key}`;
+    const s3Uri = `s3://${bucketName}/${version.s3Key}/files`;
     const downloadPath = path.join(tempDir, "download");
     console.log(`[Storage] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);
