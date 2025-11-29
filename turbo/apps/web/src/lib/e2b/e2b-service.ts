@@ -476,17 +476,11 @@ export class E2BService {
       log.debug(`Using Minimax API (${minimaxBaseUrl})`);
     }
 
-    // Build environment export string for background execution
-    const envExports = Object.entries(envs)
-      .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-      .join("; ");
-
-    // Start script in background using nohup
-    // This ensures the script continues running after we return
-    const backgroundCommand = `nohup bash -c '${envExports}; ${scriptPath}' > /tmp/run-agent-${runId}.log 2>&1 &`;
-
-    await sandbox.commands.run(backgroundCommand, {
-      timeoutMs: 10000, // Short timeout - just starting the background process
+    // Start script in background using E2B's native background mode
+    // This returns immediately while the command continues executing in the sandbox
+    await sandbox.commands.run(scriptPath, {
+      envs,
+      background: true,
     });
 
     log.debug(`Agent execution started in background for run ${runId}`);
