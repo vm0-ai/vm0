@@ -6,7 +6,7 @@ const c = initContract();
 export const HelloRequestSchema = z.object({
   name: z.string().min(1).describe("Your name"),
   language: z
-    .enum(["en", "zh", "ja", "es"])
+    .enum(["en", "es", "fr", "de"])
     .optional()
     .default("en")
     .describe("Preferred language for greeting"),
@@ -68,7 +68,7 @@ export const helloContract = c.router({
     }),
     query: z.object({
       lang: z
-        .enum(["en", "zh", "ja", "es"])
+        .enum(["en", "es", "fr", "de"])
         .optional()
         .describe("Language for greeting"),
     }),
