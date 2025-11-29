@@ -165,37 +165,47 @@ export class StorageService {
       `Preparing ${volumeResult.volumes.length} storages and ${volumeResult.artifact ? "1 artifact" : "no artifact"}...`,
     );
 
-    const preparedStorages: PreparedStorage[] = [];
-    let preparedArtifact: PreparedArtifact | null = null;
-
-    // Process each volume
-    for (const volume of volumeResult.volumes) {
+    // Process all volumes and artifact in parallel for better performance
+    const volumePromises = volumeResult.volumes.map(async (volume) => {
       try {
-        const prepared = await this.prepareVolume(volume, tempDir!, userId);
-        preparedStorages.push(prepared);
+        return await this.prepareVolume(volume, tempDir!, userId);
       } catch (error) {
         log.error(`Failed to prepare storage "${volume.name}":`, error);
         errors.push(
           `${volume.name}: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
         );
+        return null;
       }
-    }
+    });
 
-    // Process artifact
-    if (volumeResult.artifact) {
-      try {
-        preparedArtifact = await this.prepareArtifact(
-          volumeResult.artifact,
-          tempDir!,
-          userId,
-        );
-      } catch (error) {
-        log.error(`Failed to prepare artifact:`, error);
-        errors.push(
-          `artifact: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
-      }
-    }
+    const artifactPromise = volumeResult.artifact
+      ? (async () => {
+          try {
+            return await this.prepareArtifact(
+              volumeResult.artifact!,
+              tempDir!,
+              userId,
+            );
+          } catch (error) {
+            log.error(`Failed to prepare artifact:`, error);
+            errors.push(
+              `artifact: Failed to prepare - ${error instanceof Error ? error.message : "Unknown error"}`,
+            );
+            return null;
+          }
+        })()
+      : Promise.resolve(null);
+
+    // Wait for all downloads to complete in parallel
+    const [volumeResults, preparedArtifact] = await Promise.all([
+      Promise.all(volumePromises),
+      artifactPromise,
+    ]);
+
+    // Filter out failed volumes (nulls)
+    const preparedStorages = volumeResults.filter(
+      (v): v is PreparedStorage => v !== null,
+    );
 
     return {
       preparedStorages,
@@ -384,53 +394,69 @@ export class StorageService {
 
     log.debug(`Mounting ${totalMounts} items to sandbox...`);
 
-    // Mount storages
+    // Mount all storages and artifact in parallel for better performance
+    const mountPromises: Promise<void>[] = [];
+
+    // Add storage mount promises
     for (const storage of preparedStorages) {
-      try {
-        // VAS storages: upload from local temp to sandbox
-        const stat = await fs.promises
-          .stat(storage.localPath!)
-          .catch(() => null);
-        if (stat) {
-          await this.uploadDirectoryToSandbox(
-            sandbox,
-            storage.localPath!,
-            storage.mountPath,
-          );
-          log.debug(
-            `Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
-          );
-        }
-      } catch (error) {
-        log.error(`Failed to mount storage "${storage.name}":`, error);
-        throw error;
-      }
+      mountPromises.push(
+        (async () => {
+          const stat = await fs.promises
+            .stat(storage.localPath!)
+            .catch(() => null);
+          if (stat) {
+            await this.uploadDirectoryToSandbox(
+              sandbox,
+              storage.localPath!,
+              storage.mountPath,
+            );
+            log.debug(
+              `Uploaded VAS storage "${storage.name}" to ${storage.mountPath}`,
+            );
+          }
+        })(),
+      );
     }
 
-    // Mount artifact
+    // Add artifact mount promise
     if (preparedArtifact) {
-      try {
-        // VAS artifact: upload from local temp to sandbox
-        const stat = await fs.promises
-          .stat(preparedArtifact.localPath!)
-          .catch(() => null);
-        if (stat) {
-          await this.uploadDirectoryToSandbox(
-            sandbox,
-            preparedArtifact.localPath!,
-            preparedArtifact.mountPath,
-          );
-          log.debug(`Uploaded VAS artifact to ${preparedArtifact.mountPath}`);
-        }
-      } catch (error) {
-        log.error(`Failed to mount artifact:`, error);
-        throw error;
+      mountPromises.push(
+        (async () => {
+          const stat = await fs.promises
+            .stat(preparedArtifact.localPath!)
+            .catch(() => null);
+          if (stat) {
+            await this.uploadDirectoryToSandbox(
+              sandbox,
+              preparedArtifact.localPath!,
+              preparedArtifact.mountPath,
+            );
+            log.debug(`Uploaded VAS artifact to ${preparedArtifact.mountPath}`);
+          }
+        })(),
+      );
+    }
+
+    // Wait for all mounts to complete in parallel
+    const results = await Promise.allSettled(mountPromises);
+
+    // Check for failures and throw the first error
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result && result.status === "rejected") {
+        const isArtifact = i >= preparedStorages.length;
+        const name = isArtifact
+          ? "artifact"
+          : preparedStorages[i]?.name || "unknown";
+        log.error(`Failed to mount ${name}:`, result.reason);
+        throw result.reason;
       }
     }
   }
 
   /**
    * Upload directory contents to E2B sandbox recursively
+   * Files within a directory are uploaded in parallel for better performance
    * @param sandbox - E2B sandbox instance
    * @param localDir - Local directory path
    * @param remotePath - Remote path in sandbox
@@ -444,22 +470,29 @@ export class StorageService {
       withFileTypes: true,
     });
 
-    for (const entry of entries) {
-      const localPath = path.join(localDir, entry.name);
-      const remoteFilePath = path.posix.join(remotePath, entry.name);
+    // Upload all entries in parallel
+    await Promise.all(
+      entries.map(async (entry) => {
+        const localPath = path.join(localDir, entry.name);
+        const remoteFilePath = path.posix.join(remotePath, entry.name);
 
-      if (entry.isDirectory()) {
-        await this.uploadDirectoryToSandbox(sandbox, localPath, remoteFilePath);
-      } else {
-        const content = await fs.promises.readFile(localPath);
-        // Convert Buffer to ArrayBuffer for E2B
-        const arrayBuffer = content.buffer.slice(
-          content.byteOffset,
-          content.byteOffset + content.byteLength,
-        ) as ArrayBuffer;
-        await sandbox.files.write(remoteFilePath, arrayBuffer);
-      }
-    }
+        if (entry.isDirectory()) {
+          await this.uploadDirectoryToSandbox(
+            sandbox,
+            localPath,
+            remoteFilePath,
+          );
+        } else {
+          const content = await fs.promises.readFile(localPath);
+          // Convert Buffer to ArrayBuffer for E2B
+          const arrayBuffer = content.buffer.slice(
+            content.byteOffset,
+            content.byteOffset + content.byteLength,
+          ) as ArrayBuffer;
+          await sandbox.files.write(remoteFilePath, arrayBuffer);
+        }
+      }),
+    );
   }
 
   /**

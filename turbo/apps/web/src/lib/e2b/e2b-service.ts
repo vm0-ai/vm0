@@ -420,25 +420,27 @@ export class E2BService {
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
     ];
 
-    // Upload each script
-    for (const script of scripts) {
-      const tempPath = `/tmp/${script.path.split("/").pop()}`;
+    // Upload all scripts in parallel for better performance
+    await Promise.all(
+      scripts.map(async (script) => {
+        const tempPath = `/tmp/${script.path.split("/").pop()}`;
 
-      // Convert script string to ArrayBuffer for E2B
-      const scriptBuffer = Buffer.from(script.content, "utf-8");
-      const arrayBuffer = scriptBuffer.buffer.slice(
-        scriptBuffer.byteOffset,
-        scriptBuffer.byteOffset + scriptBuffer.byteLength,
-      ) as ArrayBuffer;
+        // Convert script string to ArrayBuffer for E2B
+        const scriptBuffer = Buffer.from(script.content, "utf-8");
+        const arrayBuffer = scriptBuffer.buffer.slice(
+          scriptBuffer.byteOffset,
+          scriptBuffer.byteOffset + scriptBuffer.byteLength,
+        ) as ArrayBuffer;
 
-      // Upload to temp location first
-      await sandbox.files.write(tempPath, arrayBuffer);
+        // Upload to temp location first
+        await sandbox.files.write(tempPath, arrayBuffer);
 
-      // Move to final location and make executable
-      await sandbox.commands.run(
-        `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
-      );
-    }
+        // Move to final location and make executable
+        await sandbox.commands.run(
+          `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
+        );
+      }),
+    );
 
     log.debug(
       `Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
