@@ -2,13 +2,19 @@ import type { Sandbox } from "@e2b/code-interpreter";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveVolumes } from "./storage-resolver";
-import { downloadS3Directory } from "../s3/s3-client";
+import {
+  downloadS3Directory,
+  generatePresignedUrlsForPrefix,
+} from "../s3/s3-client";
 import { logger } from "../logger";
 import type {
   AgentVolumeConfig,
   PreparedStorage,
   PreparedArtifact,
   StoragePreparationResult,
+  StorageManifest,
+  ManifestStorage,
+  ManifestArtifact,
   ResolvedArtifact,
   ResolvedVolume,
 } from "./types";
@@ -460,6 +466,118 @@ export class StorageService {
         await sandbox.files.write(remoteFilePath, arrayBuffer);
       }
     }
+  }
+
+  /**
+   * Prepare storage manifest with presigned URLs for direct download to sandbox
+   * This method generates presigned URLs instead of downloading files to local temp
+   *
+   * @param agentConfig - Agent configuration containing volume definitions
+   * @param templateVars - Template variables for placeholder replacement
+   * @param userId - User ID for storage access
+   * @param artifactName - Artifact storage name
+   * @param artifactVersion - Artifact version (defaults to "latest")
+   * @param volumeVersionOverrides - Optional volume version overrides
+   * @returns Storage manifest with presigned URLs
+   */
+  async prepareStorageManifest(
+    agentConfig: AgentVolumeConfig | undefined,
+    templateVars: Record<string, string>,
+    userId: string,
+    artifactName?: string,
+    artifactVersion?: string,
+    volumeVersionOverrides?: Record<string, string>,
+  ): Promise<StorageManifest> {
+    log.debug("Preparing storage manifest with presigned URLs...");
+
+    // If no agent config, return empty manifest
+    if (!agentConfig) {
+      return { storages: [], artifact: null };
+    }
+
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+
+    // Resolve volumes from agent config
+    const volumeResult = resolveVolumes(
+      agentConfig,
+      templateVars,
+      artifactName,
+      artifactVersion,
+      false,
+      volumeVersionOverrides,
+    );
+
+    // Process all volumes and artifact in parallel
+    const volumePromises = volumeResult.volumes.map(async (volume) => {
+      const { versionId, s3Key } = await this.resolveVersion(
+        userId,
+        volume.vasStorageName,
+        volume.vasVersion,
+      );
+
+      const files = await generatePresignedUrlsForPrefix(bucketName, s3Key);
+
+      const manifestStorage: ManifestStorage = {
+        name: volume.name,
+        mountPath: volume.mountPath,
+        vasStorageName: volume.vasStorageName,
+        vasVersionId: versionId,
+        files,
+      };
+
+      log.debug(
+        `Generated ${files.length} presigned URLs for volume "${volume.name}"`,
+      );
+
+      return manifestStorage;
+    });
+
+    const artifactPromise = volumeResult.artifact
+      ? (async () => {
+          const { versionId, s3Key } = await this.resolveVersion(
+            userId,
+            volumeResult.artifact!.vasStorageName,
+            volumeResult.artifact!.vasVersion,
+          );
+
+          const files = await generatePresignedUrlsForPrefix(bucketName, s3Key);
+
+          const manifestArtifact: ManifestArtifact = {
+            mountPath: volumeResult.artifact!.mountPath,
+            vasStorageName: volumeResult.artifact!.vasStorageName,
+            vasVersionId: versionId,
+            files,
+          };
+
+          log.debug(
+            `Generated ${files.length} presigned URLs for artifact "${volumeResult.artifact!.vasStorageName}"`,
+          );
+
+          return manifestArtifact;
+        })()
+      : Promise.resolve(null);
+
+    // Wait for all URL generation to complete in parallel
+    const [storageResults, artifact] = await Promise.all([
+      Promise.all(volumePromises),
+      artifactPromise,
+    ]);
+
+    const totalFiles =
+      storageResults.reduce((sum, s) => sum + s.files.length, 0) +
+      (artifact?.files.length || 0);
+
+    log.debug(
+      `Storage manifest prepared: ${storageResults.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${totalFiles} total files`,
+    );
+
+    return {
+      storages: storageResults,
+      artifact,
+    };
   }
 
   /**

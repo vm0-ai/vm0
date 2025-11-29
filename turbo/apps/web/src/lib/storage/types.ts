@@ -101,3 +101,42 @@ export interface StoragePreparationResult {
   tempDir: string | null;
   errors: string[];
 }
+
+/**
+ * File entry in storage manifest with presigned URL
+ */
+export interface ManifestFile {
+  path: string;
+  url: string;
+  size: number;
+}
+
+/**
+ * Storage entry in manifest
+ */
+export interface ManifestStorage {
+  name: string;
+  mountPath: string;
+  vasStorageName: string;
+  vasVersionId: string;
+  files: ManifestFile[];
+}
+
+/**
+ * Artifact entry in manifest
+ */
+export interface ManifestArtifact {
+  mountPath: string;
+  vasStorageName: string;
+  vasVersionId: string;
+  files: ManifestFile[];
+}
+
+/**
+ * Storage manifest for direct S3 download
+ * Contains presigned URLs for all files to be downloaded directly to sandbox
+ */
+export interface StorageManifest {
+  storages: ManifestStorage[];
+  artifact: ManifestArtifact | null;
+}

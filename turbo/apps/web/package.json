@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.936.0",
+    "@aws-sdk/s3-request-presigner": "^3.940.0",
     "@clerk/nextjs": "^6.35.1",
     "@e2b/code-interpreter": "^2.2.0",
     "@neondatabase/serverless": "^1.0.1",

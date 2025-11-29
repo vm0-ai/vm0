@@ -34,6 +34,18 @@ export interface UploadResult {
 }
 
 /**
+ * File with presigned URL for direct download
+ */
+export interface PresignedFile {
+  /** Relative path within the storage */
+  path: string;
+  /** Presigned URL for downloading the file */
+  url: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
  * S3 download error
  */
 export class S3DownloadError extends Error {
