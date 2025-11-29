@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.2](https://github.com/vm0-ai/vm0/compare/web-v2.6.1...web-v2.6.2) (2025-11-29)
+
+
+### Bug Fixes
+
+* handle empty artifact/volume in storage operations ([#312](https://github.com/vm0-ai/vm0/issues/312)) ([053b658](https://github.com/vm0-ai/vm0/commit/053b658412e12b8a5f91072d781d8f3eaaa24193))
+
 ## [2.6.1](https://github.com/vm0-ai/vm0/compare/web-v2.6.0...web-v2.6.1) (2025-11-29)
 
 
