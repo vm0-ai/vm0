@@ -1,7 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
 import { e2bConfig } from "./config";
-import type { RunResult, SandboxExecutionResult } from "./types";
+import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
 import type {
   AgentVolumeConfig,
@@ -180,8 +180,9 @@ export class E2BService {
         );
       }
 
-      // Execute Claude Code via run-agent.sh
-      const result = await this.executeCommand(
+      // Start Claude Code via run-agent.sh (fire-and-forget)
+      // The script will send events via webhook and update status when complete
+      await this.startAgentExecution(
         sandbox,
         context.runId,
         context.prompt,
@@ -191,36 +192,20 @@ export class E2BService {
         context.resumeSession?.sessionId,
       );
 
-      const executionTimeMs = Date.now() - startTime;
-      const completedAt = new Date();
+      const prepTimeMs = Date.now() - startTime;
+      log.debug(
+        `Run ${context.runId} sandbox prepared in ${prepTimeMs}ms, agent execution started (fire-and-forget)`,
+      );
 
-      log.debug(`Run ${context.runId} completed in ${executionTimeMs}ms`);
-
-      // If sandbox script failed, send vm0_error event
-      // This ensures CLI doesn't timeout waiting for events
-      if (result.exitCode !== 0) {
-        try {
-          await sendVm0ErrorEvent({
-            runId: context.runId,
-            error: result.stderr || "Agent execution failed",
-          });
-        } catch (e) {
-          log.error(
-            `Failed to send vm0_error event for run ${context.runId}:`,
-            e,
-          );
-        }
-      }
-
+      // Return immediately with "running" status
+      // Final status will be updated by webhook when run-agent.sh completes
       return {
         runId: context.runId,
         sandboxId: sandbox.sandboxId,
-        status: result.exitCode === 0 ? "completed" : "failed",
-        output: result.stdout,
-        error: result.exitCode !== 0 ? result.stderr : undefined,
-        executionTimeMs,
+        status: "running",
+        output: "",
+        executionTimeMs: prepTimeMs,
         createdAt: new Date(startTime),
-        completedAt,
       };
     } catch (error) {
       const executionTimeMs = Date.now() - startTime;
@@ -252,6 +237,11 @@ export class E2BService {
         );
       }
 
+      // Cleanup sandbox on preparation failure
+      if (sandbox) {
+        await this.cleanupSandbox(sandbox);
+      }
+
       return {
         runId: context.runId,
         sandboxId: sandbox?.sandboxId || "unknown",
@@ -262,13 +252,9 @@ export class E2BService {
         createdAt: new Date(startTime),
         completedAt,
       };
-    } finally {
-      // Always cleanup sandbox
-      if (sandbox) {
-        await this.cleanupSandbox(sandbox);
-      }
-      // No temp directory cleanup needed - direct download doesn't use local storage
     }
+    // Note: No finally cleanup - sandbox continues running for fire-and-forget execution
+    // Sandbox will auto-terminate after timeout (1 hour) or when run-agent.sh completes
   }
 
   /**
@@ -407,9 +393,10 @@ export class E2BService {
   }
 
   /**
-   * Execute Claude Code via run-agent.sh script
+   * Start agent execution (fire-and-forget)
+   * Uploads scripts and starts run-agent.sh in background without waiting
    */
-  private async executeCommand(
+  private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
     prompt: string,
@@ -417,20 +404,18 @@ export class E2BService {
     agentConfig?: unknown,
     preparedArtifact?: PreparedArtifact | null,
     resumeSessionId?: string,
-  ): Promise<SandboxExecutionResult> {
-    const execStart = Date.now();
-
+  ): Promise<void> {
     // Upload run-agent.sh script to sandbox at runtime
     // This allows script changes without rebuilding the E2B template
     const scriptPath = await this.uploadRunAgentScript(sandbox);
 
-    log.debug(`Executing run-agent.sh for run ${runId}...`);
+    log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
     // Extract working_dir from agent config
     const config = agentConfig as AgentConfigYaml | undefined;
     const workingDir = config?.agents?.[0]?.working_dir;
 
-    // Set environment variables and execute script
+    // Set environment variables
     const envs: Record<string, string> = {
       VM0_RUN_ID: runId,
       VM0_API_TOKEN: sandboxToken,
@@ -491,29 +476,20 @@ export class E2BService {
       log.debug(`Using Minimax API (${minimaxBaseUrl})`);
     }
 
-    const result = await sandbox.commands.run(scriptPath, {
-      envs,
-      timeoutMs: 0, // No timeout - allows indefinite execution
+    // Build environment export string for background execution
+    const envExports = Object.entries(envs)
+      .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
+      .join("; ");
+
+    // Start script in background using nohup
+    // This ensures the script continues running after we return
+    const backgroundCommand = `nohup bash -c '${envExports}; ${scriptPath}' > /tmp/run-agent-${runId}.log 2>&1 &`;
+
+    await sandbox.commands.run(backgroundCommand, {
+      timeoutMs: 10000, // Short timeout - just starting the background process
     });
 
-    const executionTimeMs = Date.now() - execStart;
-
-    // Always log stderr to capture [VM0] checkpoint logs (even on success)
-    log.debug(`stderr (${result.stderr.length} chars):`, result.stderr);
-
-    if (result.exitCode === 0) {
-      log.debug(`Run ${runId} completed successfully`);
-    } else {
-      log.error(`Run ${runId} failed with exit code ${result.exitCode}`);
-      log.error(`stderr: ${result.stderr}`);
-    }
-
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: result.exitCode,
-      executionTimeMs,
-    };
+    log.debug(`Agent execution started in background for run ${runId}`);
   }
 
   /**

@@ -13,7 +13,6 @@ import {
 import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
-import type { ExecutionContext } from "../../../../../src/lib/run/types";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentConfigs } from "../../../../../src/db/schema/agent-config";
 import { eq } from "drizzle-orm";
@@ -53,7 +52,7 @@ const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 const mockRunService = vi.mocked(runService);
 
-describe("POST /api/agent/runs - Async Execution", () => {
+describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testConfigId = randomUUID();
@@ -119,21 +118,21 @@ describe("POST /api/agent/runs - Async Execution", () => {
   afterAll(async () => {});
 
   // ============================================
-  // Async Execution Tests
+  // Fire-and-Forget Execution Tests
   // ============================================
 
-  describe("Async Execution", () => {
-    it("should return immediately with 'running' status without waiting for completion", async () => {
-      // Mock run service to simulate long-running execution
-      // Use a promise that never resolves to verify we don't wait for it
-      let resolveExecution: ((value: unknown) => void) | undefined;
-      const executionPromise = new Promise((resolve) => {
-        resolveExecution = resolve;
-      });
+  describe("Fire-and-Forget Execution", () => {
+    it("should return immediately with 'running' status after sandbox preparation", async () => {
+      // Mock run service - executeRun returns immediately with 'running' status
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockReturnValue(
-        executionPromise as Promise<never>,
-      );
+      mockRunService.executeRun.mockResolvedValue({
+        runId: "test-run-id",
+        status: "running" as const,
+        sandboxId: "test-sandbox-123",
+        output: "",
+        executionTimeMs: 500,
+        createdAt: new Date(),
+      });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -151,8 +150,8 @@ describe("POST /api/agent/runs - Async Execution", () => {
       const response = await POST(request);
       const endTime = Date.now();
 
-      // Should return quickly (< 1 second) even though E2B hasn't completed
-      expect(endTime - startTime).toBeLessThan(1000);
+      // Should return quickly (sandbox prep only, not agent execution)
+      expect(endTime - startTime).toBeLessThan(2000);
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -169,36 +168,20 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(run).toBeDefined();
       expect(run!.status).toBe("running");
       expect(run!.prompt).toBe("Test prompt");
-
-      // Clean up: resolve the execution promise to avoid memory leaks
-      if (resolveExecution) {
-        resolveExecution({
-          runId: data.runId,
-          status: "completed" as const,
-          sandboxId: "test-sandbox",
-          output: "test output",
-          executionTimeMs: 1000,
-          createdAt: new Date(),
-        });
-      }
+      expect(run!.sandboxId).toBe("test-sandbox-123");
     });
 
-    it("should update run status to 'completed' after E2B execution finishes successfully", async () => {
-      // Mock successful run execution that completes immediately
+    it("should update sandboxId in database after successful preparation", async () => {
+      // Mock successful sandbox preparation
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockImplementation(
-        async (context: ExecutionContext) => {
-          return {
-            runId: context.runId || "test-run-id",
-            status: "completed" as const,
-            sandboxId: "test-sandbox-123",
-            output: "Success! Task completed.",
-            executionTimeMs: 5000,
-            createdAt: new Date(),
-            completedAt: new Date(),
-          };
-        },
-      );
+      mockRunService.executeRun.mockResolvedValue({
+        runId: "test-run-id",
+        status: "running" as const,
+        sandboxId: "sandbox-abc-123",
+        output: "",
+        executionTimeMs: 300,
+        createdAt: new Date(),
+      });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -207,7 +190,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         },
         body: JSON.stringify({
           agentConfigId: testConfigId,
-          prompt: "Test async completion",
+          prompt: "Test sandbox ID",
           artifactName: "test-artifact",
         }),
       });
@@ -216,41 +199,24 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // Initially returns running
-      expect(data.status).toBe("running");
-
-      // Wait for database to be updated
-      await vi.waitFor(async () => {
-        const [run] = await globalThis.services.db
-          .select()
-          .from(agentRuns)
-          .where(eq(agentRuns.id, data.runId))
-          .limit(1);
-        expect(run?.status).toBe("completed");
-      });
-
-      // Check that run was updated in database
-      const [updatedRun] = await globalThis.services.db
+      // Check that sandboxId was saved in database
+      const [run] = await globalThis.services.db
         .select()
         .from(agentRuns)
         .where(eq(agentRuns.id, data.runId))
         .limit(1);
 
-      expect(updatedRun!.status).toBe("completed");
-      expect(updatedRun!.sandboxId).toBe("test-sandbox-123");
-      expect(updatedRun!.result).toEqual({
-        output: "Success! Task completed.",
-        executionTimeMs: 5000,
-      });
-      expect(updatedRun!.startedAt).toBeDefined();
-      expect(updatedRun!.completedAt).toBeDefined();
+      expect(run!.sandboxId).toBe("sandbox-abc-123");
+      expect(run!.status).toBe("running");
+      // completedAt should NOT be set yet (agent still running)
+      expect(run!.completedAt).toBeNull();
     });
 
-    it("should update run status to 'failed' if E2B execution fails", async () => {
-      // Mock run execution failure that rejects immediately
+    it("should return 'failed' status if sandbox preparation fails", async () => {
+      // Mock sandbox preparation failure
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
       mockRunService.executeRun.mockRejectedValue(
-        new Error("Sandbox execution failed"),
+        new Error("Sandbox preparation failed"),
       );
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
@@ -260,7 +226,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         },
         body: JSON.stringify({
           agentConfigId: testConfigId,
-          prompt: "Test async failure",
+          prompt: "Test preparation failure",
           artifactName: "test-artifact",
         }),
       });
@@ -269,18 +235,8 @@ describe("POST /api/agent/runs - Async Execution", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // Initially returns running
-      expect(data.status).toBe("running");
-
-      // Wait for database to be updated
-      await vi.waitFor(async () => {
-        const [run] = await globalThis.services.db
-          .select()
-          .from(agentRuns)
-          .where(eq(agentRuns.id, data.runId))
-          .limit(1);
-        expect(run?.status).toBe("failed");
-      });
+      // Returns failed status immediately for preparation failures
+      expect(data.status).toBe("failed");
 
       // Check that run was marked as failed in database
       const [failedRun] = await globalThis.services.db
@@ -290,19 +246,21 @@ describe("POST /api/agent/runs - Async Execution", () => {
         .limit(1);
 
       expect(failedRun!.status).toBe("failed");
-      expect(failedRun!.error).toBe("Sandbox execution failed");
+      expect(failedRun!.error).toBe("Sandbox preparation failed");
       expect(failedRun!.completedAt).toBeDefined();
     });
 
-    it("should not block API response even if E2B takes a long time", async () => {
-      // Mock run service with a promise that never resolves during the test
-      // This simulates a long-running operation without artificial delays
+    it("should return quickly even with complex context building", async () => {
+      // Mock run service with realistic timing
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockReturnValue(
-        new Promise(() => {
-          // Never resolves - simulates long-running operation
-        }) as Promise<never>,
-      );
+      mockRunService.executeRun.mockResolvedValue({
+        runId: "test-run-id",
+        status: "running" as const,
+        sandboxId: "test-sandbox",
+        output: "",
+        executionTimeMs: 1000,
+        createdAt: new Date(),
+      });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -311,7 +269,7 @@ describe("POST /api/agent/runs - Async Execution", () => {
         },
         body: JSON.stringify({
           agentConfigId: testConfigId,
-          prompt: "Long running task",
+          prompt: "Quick response test",
           artifactName: "test-artifact",
         }),
       });
@@ -320,8 +278,8 @@ describe("POST /api/agent/runs - Async Execution", () => {
       const response = await POST(request);
       const responseTime = Date.now() - startTime;
 
-      // Should return immediately (< 1 second), not wait indefinitely
-      expect(responseTime).toBeLessThan(1000);
+      // Should return after sandbox prep, not after agent execution
+      expect(responseTime).toBeLessThan(3000);
       expect(response.status).toBe(201);
 
       const data = await response.json();

@@ -189,10 +189,9 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(agentRuns.id, run.id));
 
-    // Execute in E2B and wait for completion
+    // Build execution context and start sandbox (fire-and-forget)
     // vm0_start event is sent by E2B service after storage preparation
-    let finalStatus: "completed" | "failed" = "completed";
-
+    // Final status will be updated by webhook when run-agent.sh completes
     try {
       const context = await runService.buildExecutionContext({
         checkpointId: body.checkpointId,
@@ -213,25 +212,21 @@ export async function POST(request: NextRequest) {
         continuedFromSessionId: body.sessionId,
       });
 
+      // Start execution - returns immediately after sandbox is prepared
+      // Agent execution continues in background (fire-and-forget)
       const result = await runService.executeRun(context);
 
-      // Update run with results on success
+      // Update run with sandboxId
       await globalThis.services.db
         .update(agentRuns)
         .set({
-          status: result.status,
           sandboxId: result.sandboxId,
-          result: {
-            output: result.output,
-            executionTimeMs: result.executionTimeMs,
-          },
-          error: result.error || null,
-          completedAt: result.completedAt || new Date(),
         })
         .where(eq(agentRuns.id, run.id));
 
-      console.log(`[API] Run ${run.id} completed successfully`);
-      finalStatus = result.status === "failed" ? "failed" : "completed";
+      console.log(
+        `[API] Run ${run.id} started successfully (sandbox: ${result.sandboxId})`,
+      );
     } catch (error) {
       // Extract error message - E2B CommandExitError includes result with stderr
       let errorMessage =
@@ -243,8 +238,8 @@ export async function POST(request: NextRequest) {
         errorMessage = errorWithResult.result.stderr;
       }
 
-      // Update run with error on failure
-      console.error(`[API] Run ${run.id} failed:`, errorMessage);
+      // Update run with error on preparation failure
+      console.error(`[API] Run ${run.id} preparation failed:`, errorMessage);
       await globalThis.services.db
         .update(agentRuns)
         .set({
@@ -261,13 +256,20 @@ export async function POST(request: NextRequest) {
         errorType: "sandbox_error",
       });
 
-      finalStatus = "failed";
+      // Return error response for preparation failures
+      const response: CreateAgentRunResponse = {
+        runId: run.id,
+        status: "failed",
+        createdAt: run.createdAt.toISOString(),
+      };
+      return successResponse(response, 201);
     }
 
-    // Return response with final status
+    // Return response with 'running' status
+    // Final status will be updated by webhook when agent completes
     const response: CreateAgentRunResponse = {
       runId: run.id,
-      status: finalStatus,
+      status: "running",
       createdAt: run.createdAt.toISOString(),
     };
 
