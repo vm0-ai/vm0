@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.5.0](https://github.com/vm0-ai/vm0/compare/web-v2.4.1...web-v2.5.0) (2025-11-29)
+
+
+### Features
+
+* add direct S3 download to sandbox for faster storage preparation ([#299](https://github.com/vm0-ai/vm0/issues/299)) ([297d508](https://github.com/vm0-ai/vm0/commit/297d508674d009d059d7dc7bad60cb297bc5bc93))
+* support empty artifact and volume push ([#296](https://github.com/vm0-ai/vm0/issues/296)) ([d1449e9](https://github.com/vm0-ai/vm0/commit/d1449e9cc691d28cc9a69f622d9bf5fe5076ec3d))
+
+
+### Bug Fixes
+
+* use waituntil to ensure background execution completes ([#302](https://github.com/vm0-ai/vm0/issues/302)) ([f95f1aa](https://github.com/vm0-ai/vm0/commit/f95f1aab327308a8097b065050eebf2078a46361))
+
+
+### Performance Improvements
+
+* parallelize storage operations for faster agent startup ([#298](https://github.com/vm0-ai/vm0/issues/298)) ([7a643c2](https://github.com/vm0-ai/vm0/commit/7a643c2b72df679566e1d7276c81b1b2844c87d9))
+
 ## [2.4.1](https://github.com/vm0-ai/vm0/compare/web-v2.4.0...web-v2.4.1) (2025-11-29)
 
 
