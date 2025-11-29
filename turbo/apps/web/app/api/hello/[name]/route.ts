@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const greetings = {
   en: "Hello",
-  zh: "你好",
-  ja: "こんにちは",
   es: "Hola",
+  fr: "Bonjour",
+  de: "Hallo",
 } as const;
 
 export async function GET(

@@ -25,9 +25,87 @@ const firaMono = Fira_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VM0 - Modern Infrastructure for Agent Development",
+  metadataBase: new URL('https://vm0.ai'),
+  title: {
+    default: "VM0 - The Modern Runtime for Agent-Native Development",
+    template: "%s | VM0"
+  },
   description:
-    "Build and evolve AI agents, just natural language. VM0 gives you a built-in sandbox with everything needed to build modern agents.",
+    "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
+  keywords: [
+    "AI agents",
+    "agent development",
+    "agent runtime",
+    "sandbox environment",
+    "CLI agents",
+    "Claude Code",
+    "agent infrastructure",
+    "natural language agents",
+    "VM0",
+    "agent sandbox",
+    "AI runtime",
+    "agent deployment"
+  ],
+  authors: [{ name: "VM0", url: "https://vm0.ai" }],
+  creator: "VM0",
+  publisher: "VM0",
+  applicationName: "VM0",
+  referrer: "origin-when-cross-origin",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  alternates: {
+    canonical: "https://vm0.ai",
+  },
+  verification: {
+    // Add verification codes when available
+    // google: "your-google-verification-code",
+    // yandex: "your-yandex-verification-code",
+    // bing: "your-bing-verification-code",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://vm0.ai",
+    title: "VM0 - The Modern Runtime for Agent-Native Development",
+    description:
+      "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
+    siteName: "VM0",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "VM0 - The Modern Runtime for Agent-Native Development",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "VM0 - The Modern Runtime for Agent-Native Development",
+    description:
+      "Infrastructure for AI agents, not workflows. Build and iterate on modern agents with VM0's built-in sandbox.",
+    images: ["/og-image.png"],
+    creator: "@vm0_ai",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -54,6 +132,75 @@ export default function RootLayout({
         <body
           className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable}`}
         >
+          <Script
+            id="json-ld"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "VM0",
+                url: "https://vm0.ai",
+                logo: "https://vm0.ai/assets/vm0-logo.svg",
+                description:
+                  "The modern runtime for agent-native development. Infrastructure for AI agents, not workflows.",
+                email: "ethan@vm0.ai",
+                foundingDate: "2025",
+                sameAs: [
+                  // Add social media links if available
+                  // "https://twitter.com/vm0_ai",
+                  // "https://github.com/vm0",
+                  // "https://linkedin.com/company/vm0",
+                ],
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  email: "ethan@vm0.ai",
+                  contactType: "customer support",
+                },
+              }),
+            }}
+          />
+          <Script
+            id="json-ld-website"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                name: "VM0",
+                url: "https://vm0.ai",
+                description:
+                  "The modern runtime for agent-native development",
+                potentialAction: {
+                  "@type": "SearchAction",
+                  target: "https://vm0.ai/search?q={search_term_string}",
+                  "query-input": "required name=search_term_string",
+                },
+              }),
+            }}
+          />
+          <Script
+            id="json-ld-software"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "SoftwareApplication",
+                name: "VM0",
+                applicationCategory: "DeveloperApplication",
+                operatingSystem: "Web, Linux, macOS, Windows",
+                offers: {
+                  "@type": "Offer",
+                  price: "0",
+                  priceCurrency: "USD",
+                },
+                description:
+                  "The modern runtime for agent-native development. Infrastructure for AI agents, not workflows.",
+                url: "https://vm0.ai",
+                image: "https://vm0.ai/og-image.png",
+              }),
+            }}
+          />
           {children}
         </body>
       </html>

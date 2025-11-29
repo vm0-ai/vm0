@@ -112,7 +112,7 @@ export default function LandingPage() {
               <div className="logo">
                 <Image
                   src="/assets/vm0-logo.svg"
-                  alt="VM0"
+                  alt="VM0 - Modern Runtime for Agent Development"
                   width={120}
                   height={30}
                 />
@@ -273,7 +273,7 @@ export default function LandingPage() {
                   <div className="tool-logo">
                     <Image
                       src="/assets/n8n.svg"
-                      alt="n8n"
+                      alt="n8n workflow automation tool"
                       width={80}
                       height={40}
                     />
@@ -281,7 +281,7 @@ export default function LandingPage() {
                   <div className="tool-logo">
                     <Image
                       src="/assets/dify.svg"
-                      alt="Dify"
+                      alt="Dify AI application platform"
                       width={80}
                       height={40}
                     />
@@ -289,7 +289,7 @@ export default function LandingPage() {
                   <div className="tool-logo">
                     <Image
                       src="/assets/modal.svg"
-                      alt="Modal"
+                      alt="Modal cloud computing platform"
                       width={80}
                       height={40}
                     />
@@ -297,7 +297,7 @@ export default function LandingPage() {
                   <div className="tool-logo">
                     <Image
                       src="/assets/e2b.svg"
-                      alt="E2B"
+                      alt="E2B code interpreter sandbox"
                       width={80}
                       height={40}
                     />
@@ -305,7 +305,7 @@ export default function LandingPage() {
                   <div className="tool-logo">
                     <Image
                       src="/assets/langgraph.svg"
-                      alt="LangGraph"
+                      alt="LangGraph agent framework"
                       width={80}
                       height={40}
                     />
@@ -349,7 +349,7 @@ export default function LandingPage() {
                 <div className="cli-icon-wrapper">
                   <Image
                     src="/assets/claudecode.svg"
-                    alt="Claude"
+                    alt="Claude Code - AI coding assistant"
                     width={40}
                     height={40}
                     className="cli-icon-img"
@@ -361,7 +361,7 @@ export default function LandingPage() {
                 <div className="cli-icon-wrapper">
                   <Image
                     src="/assets/codex.svg"
-                    alt="OpenAI"
+                    alt="OpenAI Codex - AI code generation"
                     width={40}
                     height={40}
                     className="cli-icon-img"
@@ -373,7 +373,7 @@ export default function LandingPage() {
                 <div className="cli-icon-wrapper">
                   <Image
                     src="/assets/gemini.svg"
-                    alt="Gemini"
+                    alt="Google Gemini CLI agent"
                     width={40}
                     height={40}
                     className="cli-icon-img full-height"
@@ -385,7 +385,7 @@ export default function LandingPage() {
                 <div className="cli-icon-wrapper">
                   <Image
                     src="/assets/cursor-cli.svg"
-                    alt="Cursor"
+                    alt="Cursor CLI - AI code editor"
                     width={40}
                     height={40}
                     className="cli-icon-img"
@@ -397,7 +397,7 @@ export default function LandingPage() {
                 <div className="cli-icon-wrapper">
                   <Image
                     src="/assets/qianwen.svg"
-                    alt="Other"
+                    alt="Other CLI agents and tools"
                     width={40}
                     height={40}
                     className="cli-icon-img"
@@ -412,7 +412,7 @@ export default function LandingPage() {
                 <div className="use-case-icon-wrapper">
                   <Image
                     src="/assets/computer.svg"
-                    alt="Computer"
+                    alt="Marketing agent automation icon"
                     width={24}
                     height={24}
                   />
@@ -427,7 +427,7 @@ export default function LandingPage() {
                 <div className="use-case-icon-wrapper">
                   <Image
                     src="/assets/circle-five-line.svg"
-                    alt="Circle Five"
+                    alt="Productivity agent automation icon"
                     width={24}
                     height={24}
                   />
@@ -442,7 +442,7 @@ export default function LandingPage() {
                 <div className="use-case-icon-wrapper">
                   <Image
                     src="/assets/book-one.svg"
-                    alt="Book"
+                    alt="Research agent icon"
                     width={24}
                     height={24}
                   />
@@ -457,7 +457,7 @@ export default function LandingPage() {
                 <div className="use-case-icon-wrapper">
                   <Image
                     src="/assets/code-download.svg"
-                    alt="Code Download"
+                    alt="Coding agent icon"
                     width={24}
                     height={24}
                   />
@@ -495,7 +495,7 @@ export default function LandingPage() {
               <div className="feature-visual prompt-visual">
                 <Image
                   src="/assets/code_illustration.svg"
-                  alt="Code Illustration"
+                  alt="Simple prompt-based agent configuration"
                   width={400}
                   height={300}
                   className="code-illustration"
@@ -518,7 +518,7 @@ export default function LandingPage() {
               <div className="feature-visual agent-visual">
                 <Image
                   src="/assets/code_2.svg"
-                  alt="Agent Illustration"
+                  alt="Purpose-built agent runtime with session preservation"
                   width={400}
                   height={300}
                   className="agent-illustration"
@@ -538,7 +538,7 @@ export default function LandingPage() {
               <div className="feature-visual observable-visual">
                 <Image
                   src="/assets/code_3.svg"
-                  alt="Observable Illustration"
+                  alt="Real-time agent observability and debugging"
                   width={400}
                   height={300}
                   className="observable-illustration"
@@ -559,7 +559,7 @@ export default function LandingPage() {
               <div className="feature-visual persistent-visual">
                 <Image
                   src="/assets/code_4.svg"
-                  alt="Persistent Illustration"
+                  alt="Reproducible agent checkpoints and persistence"
                   width={400}
                   height={300}
                   className="persistent-illustration"

@@ -4,9 +4,9 @@ import { z } from "zod";
 
 const greetings = {
   en: "Hello",
-  zh: "你好",
-  ja: "こんにちは",
   es: "Hola",
+  fr: "Bonjour",
+  de: "Hallo",
 } as const;
 
 export async function POST(request: NextRequest) {
