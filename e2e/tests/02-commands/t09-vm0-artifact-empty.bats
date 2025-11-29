@@ -1,0 +1,79 @@
+#!/usr/bin/env bats
+
+# Test VM0 agent run with empty/unchanged artifact
+# Verifies that storage webhook correctly handles empty zip uploads
+#
+# This test covers issue #305: storage webhook fails with 500 when artifact has no changes
+
+load '../../helpers/setup'
+
+setup() {
+    export TEST_ARTIFACT_DIR="$(mktemp -d)"
+    export ARTIFACT_NAME="e2e-empty-artifact-$(date +%s)"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+}
+
+teardown() {
+    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
+        rm -rf "$TEST_ARTIFACT_DIR"
+    fi
+}
+
+@test "Build VM0 empty artifact test agent configuration" {
+    run $CLI_COMMAND build "$TEST_CONFIG"
+    assert_success
+    assert_output --partial "vm0-standard"
+}
+
+@test "VM0 run with empty artifact completes successfully" {
+    # Create empty artifact (no files)
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # Push empty artifact
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Run agent with operation that doesn't create any files
+    # This tests the storage webhook handling of empty zip uploads
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "echo 'hello world'"
+
+    assert_success
+
+    # Verify run completes properly with checkpoint
+    assert_output --partial "[result]"
+    assert_output --partial "Checkpoint:"
+}
+
+@test "VM0 run with unchanged artifact completes successfully" {
+    # Create artifact with files
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    echo "existing content" > data.txt
+    mkdir -p subdir
+    echo "nested file" > subdir/nested.txt
+
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Run agent that only reads files (no modifications)
+    # The storage webhook should handle unchanged artifact content correctly
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "cat data.txt && cat subdir/nested.txt"
+
+    assert_success
+
+    # Verify run completes properly with checkpoint
+    assert_output --partial "[result]"
+    assert_output --partial "Checkpoint:"
+    assert_output --partial "existing content"
+    assert_output --partial "nested file"
+}
