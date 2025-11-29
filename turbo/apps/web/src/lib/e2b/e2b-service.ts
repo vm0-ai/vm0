@@ -362,6 +362,8 @@ export class E2BService {
     );
 
     // Define scripts to upload
+    // Note: DOWNLOAD_STORAGES_SCRIPT is uploaded separately in uploadDownloadScript()
+    // before storage download, so we don't include it here to avoid duplicate upload
     const scripts: Array<{ content: string; path: string }> = [
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
@@ -374,31 +376,29 @@ export class E2BService {
       },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
-      {
-        content: DOWNLOAD_STORAGES_SCRIPT,
-        path: SCRIPT_PATHS.downloadStorages,
-      },
     ];
 
-    // Upload each script
-    for (const script of scripts) {
-      const tempPath = `/tmp/${script.path.split("/").pop()}`;
+    // Upload all scripts in parallel for better performance
+    await Promise.all(
+      scripts.map(async (script) => {
+        const tempPath = `/tmp/${script.path.split("/").pop()}`;
 
-      // Convert script string to ArrayBuffer for E2B
-      const scriptBuffer = Buffer.from(script.content, "utf-8");
-      const arrayBuffer = scriptBuffer.buffer.slice(
-        scriptBuffer.byteOffset,
-        scriptBuffer.byteOffset + scriptBuffer.byteLength,
-      ) as ArrayBuffer;
+        // Convert script string to ArrayBuffer for E2B
+        const scriptBuffer = Buffer.from(script.content, "utf-8");
+        const arrayBuffer = scriptBuffer.buffer.slice(
+          scriptBuffer.byteOffset,
+          scriptBuffer.byteOffset + scriptBuffer.byteLength,
+        ) as ArrayBuffer;
 
-      // Upload to temp location first
-      await sandbox.files.write(tempPath, arrayBuffer);
+        // Upload to temp location first
+        await sandbox.files.write(tempPath, arrayBuffer);
 
-      // Move to final location and make executable
-      await sandbox.commands.run(
-        `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
-      );
-    }
+        // Move to final location and make executable
+        await sandbox.commands.run(
+          `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
+        );
+      }),
+    );
 
     log.debug(
       `Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
@@ -577,23 +577,39 @@ export class E2BService {
   }
 
   /**
-   * Upload just the download-storages.sh script
+   * Upload download-storages.sh and its dependencies (common.sh, log.sh)
    * Used before all scripts are uploaded by executeCommand
    */
   private async uploadDownloadScript(sandbox: Sandbox): Promise<void> {
     // Create directory structure
-    await sandbox.commands.run(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
-
-    const tempPath = `/tmp/download-storages.sh`;
-    const scriptBuffer = Buffer.from(DOWNLOAD_STORAGES_SCRIPT, "utf-8");
-    const arrayBuffer = scriptBuffer.buffer.slice(
-      scriptBuffer.byteOffset,
-      scriptBuffer.byteOffset + scriptBuffer.byteLength,
-    ) as ArrayBuffer;
-
-    await sandbox.files.write(tempPath, arrayBuffer);
     await sandbox.commands.run(
-      `sudo mv ${tempPath} ${SCRIPT_PATHS.downloadStorages} && sudo chmod +x ${SCRIPT_PATHS.downloadStorages}`,
+      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
+    );
+
+    // Upload download script and its dependencies in parallel
+    const scripts = [
+      { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
+      { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
+      {
+        content: DOWNLOAD_STORAGES_SCRIPT,
+        path: SCRIPT_PATHS.downloadStorages,
+      },
+    ];
+
+    await Promise.all(
+      scripts.map(async (script) => {
+        const tempPath = `/tmp/${script.path.split("/").pop()}`;
+        const scriptBuffer = Buffer.from(script.content, "utf-8");
+        const arrayBuffer = scriptBuffer.buffer.slice(
+          scriptBuffer.byteOffset,
+          scriptBuffer.byteOffset + scriptBuffer.byteLength,
+        ) as ArrayBuffer;
+
+        await sandbox.files.write(tempPath, arrayBuffer);
+        await sandbox.commands.run(
+          `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
+        );
+      }),
     );
   }
 

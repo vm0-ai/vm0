@@ -45,6 +45,20 @@ teardown() {
     assert_output --partial "Invalid volume name"
 }
 
+@test "Push empty volume to cloud succeeds" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    # Push without any files (empty volume)
+    run $CLI_COMMAND volume push
+    assert_success
+    assert_output --partial "No files found (empty volume)"
+    assert_output --partial "Version:"
+    assert_output --partial "Files: 0"
+    assert_output --regexp "[0-9a-f]{8}"
+}
+
 @test "Push volume to cloud and returns versionId" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
