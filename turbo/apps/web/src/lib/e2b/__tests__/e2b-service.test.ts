@@ -82,7 +82,7 @@ describe("E2B Service - mocked unit tests", () => {
   });
 
   describe("execute", () => {
-    it("should create sandbox and execute Claude Code", async () => {
+    it("should create sandbox and start agent execution (fire-and-forget)", async () => {
       // Arrange
       const mockSandbox = createMockSandbox();
       vi.mocked(Sandbox.create).mockResolvedValue(
@@ -109,29 +109,29 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.sandboxId).toBe("mock-sandbox-id-123");
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
 
-      // Verify execution status
-      expect(result.status).toBe("completed");
+      // Verify execution status is "running" (fire-and-forget)
+      expect(result.status).toBe("running");
 
-      // Verify output is from Claude Code (not the old echo command)
-      expect(result.output).not.toContain("Hello World from E2B!");
-      expect(result.output).toBe("Mock Claude Code output");
+      // Output is empty since script runs in background
+      expect(result.output).toBe("");
 
-      // Verify timing information
+      // Verify timing information (prep time only)
       expect(result.executionTimeMs).toBeGreaterThanOrEqual(0);
       expect(result.executionTimeMs).toBeLessThan(10000); // Should complete quickly with mocks
 
-      // Verify timestamps
+      // Verify timestamps - only createdAt, no completedAt (still running)
       expect(result.createdAt).toBeInstanceOf(Date);
-      expect(result.completedAt).toBeInstanceOf(Date);
+      expect(result.completedAt).toBeUndefined();
 
       // Verify no error
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      // commands.run called: 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute) = 10 times
+      // commands.run called: 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute with background:true) = 10 times
       // Note: download-storages.sh is only uploaded when there are files to download
       expect(mockSandbox.commands.run).toHaveBeenCalledTimes(10);
-      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+      // Sandbox is NOT killed - it continues running (fire-and-forget)
+      expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
     it("should send vm0_start event with correct parameters", async () => {
@@ -269,17 +269,18 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result1.sandboxId).toBe("mock-sandbox-id-1");
       expect(result2.sandboxId).toBe("mock-sandbox-id-2");
 
-      // Both should NOT contain old echo output
-      expect(result1.output).not.toContain("Hello World from E2B!");
-      expect(result2.output).not.toContain("Hello World from E2B!");
+      // Both return "running" status (fire-and-forget)
+      expect(result1.status).toBe("running");
+      expect(result2.status).toBe("running");
 
-      // Verify both sandboxes were created and cleaned up
+      // Verify both sandboxes were created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
       // Each sandbox: 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute) = 10 times
       expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(10);
       expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(10);
-      expect(mockSandbox1.kill).toHaveBeenCalledTimes(1);
-      expect(mockSandbox2.kill).toHaveBeenCalledTimes(1);
+      // Sandboxes NOT killed - they continue running
+      expect(mockSandbox1.kill).not.toHaveBeenCalled();
+      expect(mockSandbox2.kill).not.toHaveBeenCalled();
     });
 
     it("should handle execution with minimal options", async () => {
@@ -300,16 +301,15 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert
-      expect(result.status).toBe("completed");
-      expect(result.output).not.toContain("Hello World from E2B!");
-      expect(result.output).toBeTruthy();
+      // Assert - fire-and-forget returns "running"
+      expect(result.status).toBe("running");
+      expect(result.output).toBe(""); // Empty - script runs in background
 
-      // Verify sandbox was created and cleaned up
+      // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
       // 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute) = 10 times
       expect(mockSandbox.commands.run).toHaveBeenCalledTimes(10);
-      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
     it("should include execution time metrics", async () => {
@@ -332,21 +332,21 @@ describe("E2B Service - mocked unit tests", () => {
       const result = await e2bService.execute(context);
       const totalTime = Date.now() - startTime;
 
-      // Assert - Execution time should be reasonable
+      // Assert - Execution time should be reasonable (prep time only)
       expect(result.executionTimeMs).toBeGreaterThanOrEqual(0);
       expect(result.executionTimeMs).toBeLessThanOrEqual(totalTime);
 
-      // With mocks, execution should be fast
+      // With mocks, prep should be fast
       expect(result.executionTimeMs).toBeLessThan(10000); // Under 10 seconds
 
-      // Verify sandbox was created and cleaned up
+      // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
       // 1 (mkdir) + 8 (mv/chmod for each script) + 1 (execute) = 10 times
       expect(mockSandbox.commands.run).toHaveBeenCalledTimes(10);
-      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
-    it("should cleanup sandbox even on success", async () => {
+    it("should NOT cleanup sandbox on success (fire-and-forget)", async () => {
       // Arrange
       const mockSandbox = createMockSandbox();
       vi.mocked(Sandbox.create).mockResolvedValue(
@@ -364,13 +364,12 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert - Sandbox should be created and cleaned up
+      // Assert - Sandbox should be created but NOT cleaned up (fire-and-forget)
       expect(result.sandboxId).toBe("mock-sandbox-id-123");
-      expect(result.status).toBe("completed");
-      expect(result.output).not.toContain("Hello World from E2B!");
+      expect(result.status).toBe("running");
 
-      // Verify sandbox cleanup was called
-      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+      // Verify sandbox cleanup was NOT called (fire-and-forget)
+      expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
     it("should pass working_dir to sandbox when configured", async () => {
@@ -402,8 +401,8 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert
-      expect(result.status).toBe("completed");
+      // Assert - fire-and-forget returns "running"
+      expect(result.status).toBe("running");
 
       // Verify sandbox command was called with environment variables including working_dir
       expect(mockSandbox.commands.run).toHaveBeenCalled();
@@ -445,8 +444,8 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert
-      expect(result.status).toBe("completed");
+      // Assert - fire-and-forget returns "running"
+      expect(result.status).toBe("running");
 
       // Verify sandbox command was called without VM0_WORKING_DIR
       expect(mockSandbox.commands.run).toHaveBeenCalled();
@@ -545,8 +544,8 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert
-      expect(result.status).toBe("completed");
+      // Assert - fire-and-forget returns "running"
+      expect(result.status).toBe("running");
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
 
       // Verify that agent.image was used
