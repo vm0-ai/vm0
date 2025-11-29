@@ -22,6 +22,23 @@ export const config = [
     },
   },
   {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ["*.config.ts", "*.config.mjs", "*.config.js"],
+        },
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        { ignoreVoid: false },
+      ],
+      "@typescript-eslint/no-misused-promises": "error",
+    },
+  },
+  {
     plugins: {
       onlyWarn,
     },

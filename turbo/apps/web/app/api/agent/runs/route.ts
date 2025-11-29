@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentConfigs } from "../../../../src/db/schema/agent-config";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
@@ -190,84 +189,85 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(agentRuns.id, run.id));
 
-    // Execute in E2B asynchronously using waitUntil to ensure completion
-    // waitUntil extends the function lifetime until the promise resolves
+    // Execute in E2B and wait for completion
     // vm0_start event is sent by E2B service after storage preparation
-    waitUntil(
-      runService
-        .buildExecutionContext({
-          checkpointId: body.checkpointId,
-          sessionId: body.sessionId,
-          agentConfigId: body.agentConfigId,
-          conversationId: body.conversationId,
-          artifactName: body.artifactName,
-          artifactVersion: body.artifactVersion,
-          templateVars: body.templateVars,
-          volumeVersions: body.volumeVersions,
-          prompt: body.prompt,
-          runId: run.id,
-          sandboxToken,
-          userId,
-          // Metadata for vm0_start event (sent by E2B service)
-          agentName: agentConfigName,
-          resumedFromCheckpointId: body.checkpointId,
-          continuedFromSessionId: body.sessionId,
+    let finalStatus: "completed" | "failed" = "completed";
+
+    try {
+      const context = await runService.buildExecutionContext({
+        checkpointId: body.checkpointId,
+        sessionId: body.sessionId,
+        agentConfigId: body.agentConfigId,
+        conversationId: body.conversationId,
+        artifactName: body.artifactName,
+        artifactVersion: body.artifactVersion,
+        templateVars: body.templateVars,
+        volumeVersions: body.volumeVersions,
+        prompt: body.prompt,
+        runId: run.id,
+        sandboxToken,
+        userId,
+        // Metadata for vm0_start event (sent by E2B service)
+        agentName: agentConfigName,
+        resumedFromCheckpointId: body.checkpointId,
+        continuedFromSessionId: body.sessionId,
+      });
+
+      const result = await runService.executeRun(context);
+
+      // Update run with results on success
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: result.status,
+          sandboxId: result.sandboxId,
+          result: {
+            output: result.output,
+            executionTimeMs: result.executionTimeMs,
+          },
+          error: result.error || null,
+          completedAt: result.completedAt || new Date(),
         })
-        .then((context) => runService.executeRun(context))
-        .then((result) => {
-          // Update run with results on success
-          return globalThis.services.db
-            .update(agentRuns)
-            .set({
-              status: result.status,
-              sandboxId: result.sandboxId,
-              result: {
-                output: result.output,
-                executionTimeMs: result.executionTimeMs,
-              },
-              error: result.error || null,
-              completedAt: result.completedAt || new Date(),
-            })
-            .where(eq(agentRuns.id, run.id));
+        .where(eq(agentRuns.id, run.id));
+
+      console.log(`[API] Run ${run.id} completed successfully`);
+      finalStatus = result.status === "failed" ? "failed" : "completed";
+    } catch (error) {
+      // Extract error message - E2B CommandExitError includes result with stderr
+      let errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+
+      // Check if error has result property (E2B CommandExitError)
+      const errorWithResult = error as { result?: { stderr?: string } };
+      if (errorWithResult.result?.stderr) {
+        errorMessage = errorWithResult.result.stderr;
+      }
+
+      // Update run with error on failure
+      console.error(`[API] Run ${run.id} failed:`, errorMessage);
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "failed",
+          error: errorMessage,
+          completedAt: new Date(),
         })
-        .then(() => {
-          console.log(`[API] Run ${run.id} completed successfully`);
-        })
-        .catch(async (error) => {
-          // Extract error message - E2B CommandExitError includes result with stderr
-          let errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
+        .where(eq(agentRuns.id, run.id));
 
-          // Check if error has result property (E2B CommandExitError)
-          const errorWithResult = error as { result?: { stderr?: string } };
-          if (errorWithResult.result?.stderr) {
-            errorMessage = errorWithResult.result.stderr;
-          }
+      // Send vm0_error event
+      await sendVm0ErrorEvent({
+        runId: run.id,
+        error: errorMessage,
+        errorType: "sandbox_error",
+      });
 
-          // Update run with error on failure
-          console.error(`[API] Run ${run.id} failed:`, errorMessage);
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({
-              status: "failed",
-              error: errorMessage,
-              completedAt: new Date(),
-            })
-            .where(eq(agentRuns.id, run.id));
+      finalStatus = "failed";
+    }
 
-          // Send vm0_error event
-          await sendVm0ErrorEvent({
-            runId: run.id,
-            error: errorMessage,
-            errorType: "sandbox_error",
-          });
-        }),
-    );
-
-    // Return response immediately with 'running' status
+    // Return response with final status
     const response: CreateAgentRunResponse = {
       runId: run.id,
-      status: "running",
+      status: finalStatus,
       createdAt: run.createdAt.toISOString(),
     };
 

@@ -25,7 +25,6 @@
     "@t3-oss/env-nextjs": "^0.13.8",
     "@ts-rest/core": "^3.52.1",
     "@ts-rest/serverless": "^3.52.1",
-    "@vercel/functions": "^3.3.4",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "adm-zip": "^0.5.16",

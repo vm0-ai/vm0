@@ -31,9 +31,7 @@ export default function CliAuthPage(): React.JSX.Element {
     setError("");
   };
 
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ): Promise<void> => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
 
     if (code.length !== 9) {
@@ -44,14 +42,19 @@ export default function CliAuthPage(): React.JSX.Element {
     setLoading(true);
     setError("");
 
-    const result = await verifyDeviceAction(code);
-
-    if (result.success) {
-      router.push("/cli-auth/success");
-    } else {
-      setError(result.error ?? "Failed to verify device code");
-      setLoading(false);
-    }
+    verifyDeviceAction(code)
+      .then((result) => {
+        if (result.success) {
+          router.push("/cli-auth/success");
+        } else {
+          setError(result.error ?? "Failed to verify device code");
+          setLoading(false);
+        }
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "An error occurred");
+        setLoading(false);
+      });
   };
 
   return (
