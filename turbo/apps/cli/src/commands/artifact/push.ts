@@ -78,11 +78,6 @@ export const pushCommand = new Command()
       console.log(chalk.gray("Collecting files..."));
       const files = await getAllFiles(cwd);
 
-      if (files.length === 0) {
-        console.log(chalk.yellow("No files to upload"));
-        return;
-      }
-
       // Calculate total size
       let totalSize = 0;
       for (const file of files) {
@@ -90,11 +85,15 @@ export const pushCommand = new Command()
         totalSize += stats.size;
       }
 
-      console.log(
-        chalk.gray(`Found ${files.length} files (${formatBytes(totalSize)})`),
-      );
+      if (files.length === 0) {
+        console.log(chalk.gray("No files found (empty artifact)"));
+      } else {
+        console.log(
+          chalk.gray(`Found ${files.length} files (${formatBytes(totalSize)})`),
+        );
+      }
 
-      // Create zip file
+      // Create zip file (empty zip for empty artifact)
       console.log(chalk.gray("Compressing files..."));
       const zip = new AdmZip();
 

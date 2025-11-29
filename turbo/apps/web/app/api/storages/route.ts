@@ -106,6 +106,9 @@ export async function POST(request: NextRequest) {
     const extractPath = path.join(tempDir, "extracted");
     zip.extractAllTo(extractPath, true);
 
+    // Ensure extract directory exists (empty zips don't create it)
+    await fs.promises.mkdir(extractPath, { recursive: true });
+
     log.debug(`Extracted zip to ${extractPath}`);
 
     // Calculate file count, size, and collect file entries for hashing
