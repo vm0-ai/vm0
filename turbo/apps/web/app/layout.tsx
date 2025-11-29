@@ -25,10 +25,10 @@ const firaMono = Fira_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://vm0.ai'),
+  metadataBase: new URL("https://vm0.ai"),
   title: {
     default: "VM0 - The Modern Runtime for Agent-Native Development",
-    template: "%s | VM0"
+    template: "%s | VM0",
   },
   description:
     "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     "VM0",
     "agent sandbox",
     "AI runtime",
-    "agent deployment"
+    "agent deployment",
   ],
   authors: [{ name: "VM0", url: "https://vm0.ai" }],
   creator: "VM0",
@@ -169,8 +169,7 @@ export default function RootLayout({
                 "@type": "WebSite",
                 name: "VM0",
                 url: "https://vm0.ai",
-                description:
-                  "The modern runtime for agent-native development",
+                description: "The modern runtime for agent-native development",
                 potentialAction: {
                   "@type": "SearchAction",
                   target: "https://vm0.ai/search?q={search_term_string}",
