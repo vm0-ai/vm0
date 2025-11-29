@@ -14,7 +14,7 @@ export interface CreateRunOptions {
 export interface RunResult {
   runId: string;
   sandboxId: string;
-  status: "completed" | "failed";
+  status: "running" | "completed" | "failed";
   output: string;
   error?: string;
   executionTimeMs: number;
