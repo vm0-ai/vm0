@@ -5,7 +5,6 @@ import type { RunResult, SandboxExecutionResult } from "./types";
 import { storageService } from "../storage/storage-service";
 import type {
   AgentVolumeConfig,
-  PreparedStorage,
   PreparedArtifact,
   StorageManifest,
 } from "../storage/types";
@@ -55,156 +54,55 @@ export class E2BService {
 
     let sandbox: Sandbox | null = null;
     const agentConfig = context.agentConfig as AgentVolumeConfig | undefined;
+    const agentConfigYaml = context.agentConfig as AgentConfigYaml | undefined;
 
-    // Check if direct S3 download is enabled (skips VM0 server as intermediary)
-    // Only available for new runs (not resume) as resume requires artifact from snapshot
-    const useDirectDownload =
-      process.env.USE_DIRECT_S3_DOWNLOAD === "true" && !context.resumeArtifact;
+    // Get mount path from agent config (used for resume artifact)
+    const artifactMountPath =
+      agentConfigYaml?.agents?.[0]?.working_dir || "/workspace";
 
-    if (useDirectDownload) {
-      log.debug("Using direct S3 download mode (USE_DIRECT_S3_DOWNLOAD=true)");
-    }
-
-    // Prepare storages and artifact
-    // For resume: use artifact from snapshot (always uses traditional flow)
-    // For new run: can use direct download or traditional flow
-    let storageResult: {
-      preparedStorages: PreparedStorage[];
-      preparedArtifact: PreparedArtifact | null;
-      tempDir: string | null;
-      errors: string[];
-    } | null = null;
-
-    // For direct download mode, we prepare a manifest instead
-    let storageManifest: StorageManifest | null = null;
-
-    if (context.resumeArtifact) {
-      // Resume from artifact snapshot - always use traditional flow
-      // Get mount path from agent config
-      const agentConfigYaml = context.agentConfig as
-        | AgentConfigYaml
-        | undefined;
-      const mountPath =
-        agentConfigYaml?.agents?.[0]?.working_dir || "/workspace";
-
-      const artifactResult = await storageService.prepareArtifactFromSnapshot(
-        context.resumeArtifact,
-        mountPath,
-        context.runId,
-        context.userId || "",
-      );
-
-      // Also prepare regular storages (fresh, not from snapshot)
-      // Skip artifact validation since we're using the snapshot
-      // Apply volume version overrides if provided
-      const freshStorages = await storageService.prepareStorages(
-        agentConfig,
-        context.templateVars || {},
-        context.runId,
-        context.userId || "",
-        undefined, // No artifact name for resume
-        undefined, // No artifact version for resume
-        true, // Skip artifact validation - using snapshot instead
-        context.volumeVersions, // Volume version overrides
-      );
-
-      storageResult = {
-        preparedStorages: freshStorages.preparedStorages,
-        preparedArtifact: artifactResult.preparedArtifact,
-        tempDir: artifactResult.tempDir || freshStorages.tempDir,
-        errors: [...freshStorages.errors, ...artifactResult.errors],
-      };
-    } else if (useDirectDownload) {
-      // New run with direct download - prepare manifest with presigned URLs
-      storageManifest = await storageService.prepareStorageManifest(
+    try {
+      // Prepare storage manifest with presigned URLs for direct download to sandbox
+      // This works for both new runs and resume scenarios
+      const storageManifest = await storageService.prepareStorageManifest(
         agentConfig,
         context.templateVars || {},
         context.userId || "",
         context.artifactName,
         context.artifactVersion,
         context.volumeVersions,
+        context.resumeArtifact, // For resume: use artifact from checkpoint snapshot
+        artifactMountPath,
       );
-    } else {
-      // New run - traditional flow with download to server then upload to sandbox
-      // Apply volume version overrides if provided
-      storageResult = await storageService.prepareStorages(
-        agentConfig,
-        context.templateVars || {},
-        context.runId,
-        context.userId || "",
-        context.artifactName,
-        context.artifactVersion,
-        undefined, // Don't skip artifact
-        context.volumeVersions, // Volume version overrides
-      );
-    }
 
-    try {
-      // Fail fast if any storages failed to prepare (traditional flow only)
-      if (storageResult && storageResult.errors.length > 0) {
-        throw new Error(
-          `Storage preparation failed: ${storageResult.errors.join("; ")}`,
-        );
-      }
+      // Build artifact and volumes info from manifest for vm0_start event
+      const startArtifact = storageManifest.artifact
+        ? {
+            [storageManifest.artifact.vasStorageName]:
+              storageManifest.artifact.vasVersionId,
+          }
+        : undefined;
 
-      // Build artifact and volumes info from prepared storages or manifest
-      let startArtifact: Record<string, string> | undefined;
-      let startVolumes: Record<string, string> | undefined;
-
-      // Artifact info for executeCommand (needed for checkpoint)
-      let artifactForCommand: PreparedArtifact | null = null;
-
-      if (storageResult) {
-        // Traditional flow - get info from prepared storages
-        startArtifact = storageResult.preparedArtifact
-          ? {
-              [storageResult.preparedArtifact.vasStorageName]:
-                storageResult.preparedArtifact.vasVersionId,
-            }
+      const startVolumes =
+        storageManifest.storages.length > 0
+          ? storageManifest.storages.reduce(
+              (acc, vol) => {
+                acc[vol.name] = vol.vasVersionId;
+                return acc;
+              },
+              {} as Record<string, string>,
+            )
           : undefined;
 
-        startVolumes =
-          storageResult.preparedStorages.length > 0
-            ? storageResult.preparedStorages.reduce(
-                (acc, vol) => {
-                  acc[vol.name] = vol.vasVersionId;
-                  return acc;
-                },
-                {} as Record<string, string>,
-              )
-            : undefined;
-
-        artifactForCommand = storageResult.preparedArtifact;
-      } else if (storageManifest) {
-        // Direct download flow - get info from manifest
-        startArtifact = storageManifest.artifact
+      // Create artifact info for checkpoint
+      const artifactForCommand: PreparedArtifact | null =
+        storageManifest.artifact
           ? {
-              [storageManifest.artifact.vasStorageName]:
-                storageManifest.artifact.vasVersionId,
+              driver: "vas",
+              mountPath: storageManifest.artifact.mountPath,
+              vasStorageName: storageManifest.artifact.vasStorageName,
+              vasVersionId: storageManifest.artifact.vasVersionId,
             }
-          : undefined;
-
-        startVolumes =
-          storageManifest.storages.length > 0
-            ? storageManifest.storages.reduce(
-                (acc, vol) => {
-                  acc[vol.name] = vol.vasVersionId;
-                  return acc;
-                },
-                {} as Record<string, string>,
-              )
-            : undefined;
-
-        // Create artifact info for checkpoint (without localPath since we're using direct download)
-        if (storageManifest.artifact) {
-          artifactForCommand = {
-            driver: "vas",
-            mountPath: storageManifest.artifact.mountPath,
-            vasStorageName: storageManifest.artifact.vasStorageName,
-            vasVersionId: storageManifest.artifact.vasVersionId,
-          };
-        }
-      }
+          : null;
 
       // Send vm0_start event now that storages are prepared
       await sendVm0StartEvent({
@@ -269,19 +167,8 @@ export class E2BService {
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
-      // Mount storages using appropriate method
-      if (useDirectDownload && storageManifest) {
-        // Direct download flow - upload scripts first, then download from S3
-        await this.uploadRunAgentScript(sandbox);
-        await this.downloadStoragesDirectly(sandbox, storageManifest);
-      } else if (storageResult) {
-        // Traditional flow - mount from local temp
-        await storageService.mountStorages(
-          sandbox,
-          storageResult.preparedStorages,
-          storageResult.preparedArtifact,
-        );
-      }
+      // Download storages directly to sandbox via presigned URLs
+      await this.downloadStoragesDirectly(sandbox, storageManifest);
 
       // Restore session history for resume
       if (context.resumeSession) {
@@ -380,12 +267,7 @@ export class E2BService {
       if (sandbox) {
         await this.cleanupSandbox(sandbox);
       }
-
-      // Cleanup temp directory (only for traditional flow)
-      // storageService.cleanup handles null tempDir gracefully
-      if (storageResult) {
-        await storageService.cleanup(storageResult.tempDir);
-      }
+      // No temp directory cleanup needed - direct download doesn't use local storage
     }
   }
 
@@ -658,6 +540,9 @@ export class E2BService {
       `Downloading ${totalFiles} files directly to sandbox using presigned URLs...`,
     );
 
+    // Upload download script first (needed before executeCommand uploads all scripts)
+    await this.uploadDownloadScript(sandbox);
+
     // Upload manifest to sandbox
     const manifestPath = "/tmp/storage-manifest.json";
     const manifestJson = JSON.stringify(manifest);
@@ -688,6 +573,27 @@ export class E2BService {
 
     log.debug(
       `Downloaded ${totalFiles} files directly to sandbox in ${downloadTimeMs}ms`,
+    );
+  }
+
+  /**
+   * Upload just the download-storages.sh script
+   * Used before all scripts are uploaded by executeCommand
+   */
+  private async uploadDownloadScript(sandbox: Sandbox): Promise<void> {
+    // Create directory structure
+    await sandbox.commands.run(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
+
+    const tempPath = `/tmp/download-storages.sh`;
+    const scriptBuffer = Buffer.from(DOWNLOAD_STORAGES_SCRIPT, "utf-8");
+    const arrayBuffer = scriptBuffer.buffer.slice(
+      scriptBuffer.byteOffset,
+      scriptBuffer.byteOffset + scriptBuffer.byteLength,
+    ) as ArrayBuffer;
+
+    await sandbox.files.write(tempPath, arrayBuffer);
+    await sandbox.commands.run(
+      `sudo mv ${tempPath} ${SCRIPT_PATHS.downloadStorages} && sudo chmod +x ${SCRIPT_PATHS.downloadStorages}`,
     );
   }
 
