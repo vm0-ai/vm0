@@ -390,6 +390,8 @@ export async function GET(request: NextRequest) {
     const downloadPath = path.join(tempDir, "download");
     console.log(`[Storage] Downloading from S3: ${s3Uri}`);
     await downloadS3Directory(s3Uri, downloadPath);
+    // Ensure download directory exists (empty artifacts won't create it)
+    await fs.promises.mkdir(downloadPath, { recursive: true });
 
     // Create zip file
     const zipPath = path.join(tempDir, "storage.zip");
