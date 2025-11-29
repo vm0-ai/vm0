@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
     // Extract zip file
     const zip = new AdmZip(zipPath);
     const extractPath = path.join(tempDir, "extracted");
+    // Ensure extract directory exists before extraction (empty zips don't create it)
+    await fs.promises.mkdir(extractPath, { recursive: true });
     zip.extractAllTo(extractPath, true);
 
     log.debug(`Extracted zip to ${extractPath}`);

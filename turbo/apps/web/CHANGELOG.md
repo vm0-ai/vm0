@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.1](https://github.com/vm0-ai/vm0/compare/web-v2.4.0...web-v2.4.1) (2025-11-29)
+
+
+### Bug Fixes
+
+* display volumes in vm0_start event ([#293](https://github.com/vm0-ai/vm0/issues/293)) ([2249f03](https://github.com/vm0-ai/vm0/commit/2249f0349a7088130ff0bd6fc17664a930ccc53e))
+
 ## [2.4.0](https://github.com/vm0-ai/vm0/compare/web-v2.3.0...web-v2.4.0) (2025-11-28)
 
 

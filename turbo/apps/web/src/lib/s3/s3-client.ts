@@ -5,10 +5,17 @@ import {
   PutObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../../env";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { S3Uri, S3Object, DownloadResult, UploadResult } from "./types";
+import type {
+  S3Uri,
+  S3Object,
+  DownloadResult,
+  UploadResult,
+  PresignedFile,
+} from "./types";
 import { S3DownloadError, S3UploadError } from "./types";
 
 /**
@@ -338,4 +345,69 @@ async function getAllFiles(dirPath: string): Promise<string[]> {
   }
 
   return files;
+}
+
+/**
+ * Generate presigned URL for downloading a single S3 object
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @returns Presigned URL string
+ */
+export async function generatePresignedUrl(
+  bucket: string,
+  key: string,
+  expiresIn: number = 3600,
+): Promise<string> {
+  const client = getS3Client();
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+/**
+ * Generate presigned URLs for all files under an S3 prefix
+ * @param bucket - S3 bucket name
+ * @param prefix - S3 prefix (directory path)
+ * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @returns Array of files with presigned URLs
+ */
+export async function generatePresignedUrlsForPrefix(
+  bucket: string,
+  prefix: string,
+  expiresIn: number = 3600,
+): Promise<PresignedFile[]> {
+  // List all objects under prefix
+  const objects = await listS3Objects(bucket, prefix);
+
+  // Filter out directory markers (keys ending with /)
+  const files = objects.filter((obj) => !obj.key.endsWith("/"));
+
+  if (files.length === 0) {
+    return [];
+  }
+
+  // Generate presigned URLs for all files in parallel
+  const presignedFiles = await Promise.all(
+    files.map(async (file) => {
+      // Calculate relative path (remove prefix)
+      const relativePath = file.key.startsWith(prefix)
+        ? file.key.slice(prefix.length).replace(/^\//, "")
+        : file.key;
+
+      const url = await generatePresignedUrl(bucket, file.key, expiresIn);
+
+      return {
+        path: relativePath,
+        url,
+        size: file.size,
+      };
+    }),
+  );
+
+  return presignedFiles;
 }

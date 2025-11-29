@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "type": "module",
   "private": true,
   "scripts": {
@@ -18,12 +18,14 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.936.0",
+    "@aws-sdk/s3-request-presigner": "^3.940.0",
     "@clerk/nextjs": "^6.35.1",
     "@e2b/code-interpreter": "^2.2.0",
     "@neondatabase/serverless": "^1.0.1",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@ts-rest/core": "^3.52.1",
     "@ts-rest/serverless": "^3.52.1",
+    "@vercel/functions": "^3.3.4",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "adm-zip": "^0.5.16",

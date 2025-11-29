@@ -47,6 +47,20 @@ teardown() {
     assert_output --partial "Invalid artifact name"
 }
 
+@test "Push empty artifact to cloud succeeds" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # Push without any files (empty artifact)
+    run $CLI_COMMAND artifact push
+    assert_success
+    assert_output --partial "No files found (empty artifact)"
+    assert_output --partial "Version:"
+    assert_output --partial "Files: 0"
+    assert_output --regexp "[0-9a-f]{8}"
+}
+
 @test "Push artifact to cloud and returns versionId" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"

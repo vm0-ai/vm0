@@ -32,4 +32,9 @@ export interface ExecutionContext {
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;
+
+  // Metadata for vm0_start event
+  agentName?: string;
+  resumedFromCheckpointId?: string;
+  continuedFromSessionId?: string;
 }
