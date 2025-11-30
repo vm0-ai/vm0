@@ -1,24 +1,14 @@
 import { Pool } from "pg";
-import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { Services } from "../types/global";
-import WebSocket from "ws";
-
-// Configure Neon serverless to use ws for WebSocket connections (required for Node.js runtime)
-neonConfig.webSocketConstructor = WebSocket;
 
 // Private variables for singleton instances
 let _env: Env | undefined;
-let _pool: Pool | NeonPool | undefined;
-let _db:
-  | NodePgDatabase<typeof schema>
-  | NeonDatabase<typeof schema>
-  | undefined;
+let _pool: Pool | undefined;
+let _db: NodePgDatabase<typeof schema> | undefined;
 let _services: Services | undefined;
 
 /**
@@ -52,33 +42,20 @@ export function initServices(): void {
     },
     get pool() {
       if (!_pool) {
-        if (isVercel) {
-          // Use Neon serverless driver with WebSocket on Vercel
-          // Required for transaction support
-          _pool = new NeonPool({
-            connectionString: this.env.DATABASE_URL,
-          });
-        } else {
-          // Use standard pg driver for local development
-          _pool = new Pool({
-            connectionString: this.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-          });
-        }
+        // Use standard pg driver with extended timeout for Neon cold starts
+        // Connection pooler handles the actual pooling, so max=1 is fine for serverless
+        _pool = new Pool({
+          connectionString: this.env.DATABASE_URL,
+          max: isVercel ? 1 : 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: isVercel ? 60000 : 10000, // 60s for Vercel cold starts
+        });
       }
       return _pool;
     },
     get db() {
       if (!_db) {
-        if (isVercel) {
-          // Use Neon serverless adapter on Vercel (supports transactions)
-          _db = drizzleNeon(this.pool as NeonPool, { schema });
-        } else {
-          // Use node-postgres adapter for local development
-          _db = drizzleNodePg(this.pool as Pool, { schema });
-        }
+        _db = drizzleNodePg(this.pool, { schema });
       }
       return _db;
     },
