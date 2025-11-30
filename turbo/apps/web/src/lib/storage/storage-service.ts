@@ -188,6 +188,13 @@ export class StorageService {
           const archiveKey = `${s3Key}/archive.tar.gz`;
           const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
+          // Generate manifest URL for incremental upload support
+          const manifestKey = `${s3Key}/manifest.json`;
+          const manifestUrl = await generatePresignedUrl(
+            bucketName,
+            manifestKey,
+          );
+
           // Get archive size from S3
           const archiveObjects = await listS3Objects(bucketName, archiveKey);
           const archiveSize = archiveObjects[0]?.size ?? 0;
@@ -198,6 +205,7 @@ export class StorageService {
             vasVersionId: versionId,
             archiveUrl,
             archiveSize,
+            manifestUrl,
           };
 
           log.debug(

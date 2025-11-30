@@ -417,13 +417,13 @@ async function getAllFiles(dirPath: string): Promise<string[]> {
  * Generate presigned URL for downloading a single S3 object
  * @param bucket - S3 bucket name
  * @param key - S3 object key
- * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @param expiresIn - URL expiration time in seconds (default: 86400 = 24 hours)
  * @returns Presigned URL string
  */
 export async function generatePresignedUrl(
   bucket: string,
   key: string,
-  expiresIn: number = 3600,
+  expiresIn: number = 86400,
 ): Promise<string> {
   const client = getS3Client();
 
@@ -439,13 +439,13 @@ export async function generatePresignedUrl(
  * Generate presigned URLs for all files under an S3 prefix
  * @param bucket - S3 bucket name
  * @param prefix - S3 prefix (directory path)
- * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @param expiresIn - URL expiration time in seconds (default: 86400 = 24 hours)
  * @returns Array of files with presigned URLs
  */
 export async function generatePresignedUrlsForPrefix(
   bucket: string,
   prefix: string,
-  expiresIn: number = 3600,
+  expiresIn: number = 86400,
 ): Promise<PresignedFile[]> {
   // List all objects under prefix
   const objects = await listS3Objects(bucket, prefix);
@@ -581,4 +581,113 @@ export async function uploadStorageVersionArchive(
     totalBytes: totalSize,
     manifest,
   };
+}
+
+/**
+ * Download and parse manifest.json from S3
+ * @param bucket - S3 bucket name
+ * @param s3Key - S3 key prefix (e.g., "userId/storageName/versionId")
+ * @returns Parsed storage manifest
+ */
+export async function downloadManifest(
+  bucket: string,
+  s3Key: string,
+): Promise<S3StorageManifest> {
+  const client = getS3Client();
+  const manifestKey = `${s3Key}/manifest.json`;
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: manifestKey,
+  });
+
+  const response = await client.send(command);
+
+  if (!response.Body) {
+    throw new S3DownloadError(
+      `Empty response body for manifest`,
+      bucket,
+      manifestKey,
+    );
+  }
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+
+  const buffer = Buffer.concat(chunks);
+  const manifest = JSON.parse(buffer.toString("utf-8")) as S3StorageManifest;
+
+  return manifest;
+}
+
+/**
+ * Download a single blob from S3
+ * @param bucket - S3 bucket name
+ * @param hash - Blob hash (SHA-256)
+ * @returns Blob content as Buffer
+ */
+export async function downloadBlob(
+  bucket: string,
+  hash: string,
+): Promise<Buffer> {
+  const client = getS3Client();
+  const blobKey = `blobs/${hash}.blob`;
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: blobKey,
+  });
+
+  const response = await client.send(command);
+
+  if (!response.Body) {
+    throw new S3DownloadError(`Empty response body for blob`, bucket, blobKey);
+  }
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Create archive.tar.gz from blob hashes by downloading blobs from S3
+ * Used for incremental upload where we need to assemble archive from existing + new blobs
+ *
+ * @param bucket - S3 bucket name
+ * @param archiveKey - S3 key for the output archive
+ * @param files - Array of file info with path and blob hash
+ */
+export async function createArchiveFromBlobs(
+  bucket: string,
+  archiveKey: string,
+  files: Array<{ path: string; blobHash: string; size: number }>,
+): Promise<void> {
+  // Download all blobs first
+  const blobContents = new Map<string, Buffer>();
+  const uniqueHashes = [...new Set(files.map((f) => f.blobHash))];
+
+  // Download blobs in parallel with concurrency limit
+  const limit = (await import("p-limit")).default(10);
+  await Promise.all(
+    uniqueHashes.map((hash) =>
+      limit(async () => {
+        const content = await downloadBlob(bucket, hash);
+        blobContents.set(hash, content);
+      }),
+    ),
+  );
+
+  // Build file entries for archive
+  const fileEntries: FileEntry[] = files.map((f) => ({
+    path: f.path,
+    content: blobContents.get(f.blobHash)!,
+  }));
+
+  // Stream archive to S3
+  await streamTarGzToS3(bucket, archiveKey, fileEntries);
 }

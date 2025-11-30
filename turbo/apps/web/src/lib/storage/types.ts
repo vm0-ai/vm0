@@ -90,6 +90,8 @@ export interface PreparedArtifact {
   mountPath: string;
   vasStorageName: string;
   vasVersionId: string;
+  /** Presigned URL for manifest.json (for incremental upload) */
+  manifestUrl?: string;
 }
 
 /**
@@ -127,6 +129,8 @@ export interface ManifestArtifact {
   archiveUrl: string;
   /** Size of archive.tar.gz in bytes */
   archiveSize: number;
+  /** Presigned URL for downloading manifest.json (for incremental upload) */
+  manifestUrl?: string;
 }
 
 /**

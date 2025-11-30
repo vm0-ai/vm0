@@ -11,6 +11,7 @@ export { CREATE_CHECKPOINT_SCRIPT } from "./create-checkpoint";
 export { RUN_AGENT_SCRIPT } from "./run-agent";
 export { MOCK_CLAUDE_SCRIPT } from "./mock-claude";
 export { DOWNLOAD_STORAGES_SCRIPT } from "./download-storages";
+export { INCREMENTAL_UPLOAD_SCRIPT } from "./incremental-upload";
 
 /**
  * Script paths in the E2B sandbox
@@ -27,4 +28,5 @@ export const SCRIPT_PATHS = {
   createCheckpoint: "/usr/local/bin/vm0-agent/lib/create-checkpoint.sh",
   mockClaude: "/usr/local/bin/vm0-agent/lib/mock-claude.sh",
   downloadStorages: "/usr/local/bin/vm0-agent/lib/download-storages.sh",
+  incrementalUpload: "/usr/local/bin/vm0-agent/lib/incremental-upload.sh",
 } as const;

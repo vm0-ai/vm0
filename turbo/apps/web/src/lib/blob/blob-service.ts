@@ -5,7 +5,11 @@
 
 import { eq, inArray, sql } from "drizzle-orm";
 import { blobs } from "../../db/schema/blob";
-import { uploadS3Buffer, deleteS3Objects } from "../s3/s3-client";
+import {
+  uploadS3Buffer,
+  deleteS3Objects,
+  downloadBlob as downloadBlobFromS3,
+} from "../s3/s3-client";
 import { hashFileContent, type FileEntry } from "../storage/content-hash";
 import { env } from "../../env";
 import { logger } from "../logger";
@@ -213,6 +217,55 @@ export class BlobService {
       .limit(1);
 
     return !!result;
+  }
+
+  /**
+   * Download a single blob by hash
+   *
+   * @param hash SHA-256 hash of the blob
+   * @returns Blob content as Buffer
+   */
+  async downloadBlob(hash: string): Promise<Buffer> {
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+
+    return downloadBlobFromS3(bucketName, hash);
+  }
+
+  /**
+   * Download multiple blobs by hash
+   * Uses concurrency limit to avoid overwhelming S3
+   *
+   * @param hashes Array of SHA-256 hashes
+   * @returns Map of hash to blob content
+   */
+  async downloadBlobs(hashes: string[]): Promise<Map<string, Buffer>> {
+    if (hashes.length === 0) {
+      return new Map();
+    }
+
+    const bucketName = env().S3_USER_STORAGES_NAME;
+    if (!bucketName) {
+      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+    }
+
+    const result = new Map<string, Buffer>();
+    const uniqueHashes = [...new Set(hashes)];
+    const limit = pLimit(MAX_CONCURRENT_UPLOADS);
+
+    await Promise.all(
+      uniqueHashes.map((hash) =>
+        limit(async () => {
+          const content = await downloadBlobFromS3(bucketName, hash);
+          result.set(hash, content);
+        }),
+      ),
+    );
+
+    log.debug(`Downloaded ${result.size} blobs`);
+    return result;
   }
 }
 

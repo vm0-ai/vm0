@@ -19,6 +19,7 @@ import {
   RUN_AGENT_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
   DOWNLOAD_STORAGES_SCRIPT,
+  INCREMENTAL_UPLOAD_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
@@ -101,6 +102,7 @@ export class E2BService {
               mountPath: storageManifest.artifact.mountPath,
               vasStorageName: storageManifest.artifact.vasStorageName,
               vasVersionId: storageManifest.artifact.vasVersionId,
+              manifestUrl: storageManifest.artifact.manifestUrl,
             }
           : null;
 
@@ -362,6 +364,10 @@ export class E2BService {
       },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
+      {
+        content: INCREMENTAL_UPLOAD_SCRIPT,
+        path: SCRIPT_PATHS.incrementalUpload,
+      },
     ];
 
     // Upload all scripts in parallel for better performance
@@ -454,6 +460,13 @@ export class E2BService {
       envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
       envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName;
       envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId;
+
+      // Pass manifest URL for incremental upload
+      if (preparedArtifact.manifestUrl) {
+        envs.VM0_ARTIFACT_MANIFEST_URL = preparedArtifact.manifestUrl;
+        log.debug(`Configured manifest URL for incremental upload`);
+      }
+
       log.debug(`Configured VAS artifact for checkpoint`);
     } else {
       log.debug(`No artifact configured for checkpoint`);
