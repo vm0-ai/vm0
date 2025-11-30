@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     const storageName = formData.get("name") as string;
     const file = formData.get("file") as File;
     const storageType = (formData.get("type") as string) || "volume"; // Default to "volume"
+    const forceUpload = formData.get("force") === "true"; // Skip deduplication if true
 
     if (!storageName || !file) {
       return NextResponse.json(
@@ -168,65 +169,75 @@ export async function POST(request: NextRequest) {
       log.debug(`Computed content hash: ${contentHash}`);
 
       // Check if version with same content hash already exists (deduplication)
-      const [existingVersion] = await tx
-        .select()
-        .from(storageVersions)
-        .where(
-          and(
-            eq(storageVersions.storageId, storage.id),
-            eq(storageVersions.id, contentHash),
-          ),
-        )
-        .limit(1);
+      // Skip deduplication if forceUpload is true (to recreate archive.tar.gz for old versions)
+      if (!forceUpload) {
+        const [existingVersion] = await tx
+          .select()
+          .from(storageVersions)
+          .where(
+            and(
+              eq(storageVersions.storageId, storage.id),
+              eq(storageVersions.id, contentHash),
+            ),
+          )
+          .limit(1);
 
-      if (existingVersion) {
-        // Content already exists, return existing version (deduplication)
-        log.debug(
-          `Version with same content already exists: ${existingVersion.id}`,
-        );
+        if (existingVersion) {
+          // Content already exists, return existing version (deduplication)
+          log.debug(
+            `Version with same content already exists: ${existingVersion.id}`,
+          );
 
-        // Update HEAD pointer to existing version if needed
-        if (storage.headVersionId !== existingVersion.id) {
-          await tx
-            .update(storages)
-            .set({
-              headVersionId: existingVersion.id,
-              updatedAt: new Date(),
-            })
-            .where(eq(storages.id, storage.id));
+          // Update HEAD pointer to existing version if needed
+          if (storage.headVersionId !== existingVersion.id) {
+            await tx
+              .update(storages)
+              .set({
+                headVersionId: existingVersion.id,
+                updatedAt: new Date(),
+              })
+              .where(eq(storages.id, storage.id));
+          }
+
+          return {
+            name: storageName,
+            versionId: existingVersion.id,
+            size: Number(existingVersion.size),
+            fileCount: existingVersion.fileCount,
+            type: storageType,
+            deduplicated: true,
+          };
         }
-
-        return {
-          name: storageName,
-          versionId: existingVersion.id,
-          size: Number(existingVersion.size),
-          fileCount: existingVersion.fileCount,
-          type: storageType,
-          deduplicated: true,
-        };
+      } else {
+        log.debug("Force upload enabled, skipping deduplication check");
       }
 
       // Create new version record with content hash as ID
+      // Use onConflictDoNothing to handle force upload case where version already exists
+      const s3Key = `${userId}/${storageName}/${contentHash}`;
       const createdVersions = await tx
         .insert(storageVersions)
         .values({
           id: contentHash,
           storageId: storage.id,
-          s3Key: `${userId}/${storageName}/${contentHash}`,
+          s3Key,
           size: totalSize,
           fileCount,
           message: null,
           createdBy: "user",
         })
+        .onConflictDoNothing()
         .returning();
 
       const version = createdVersions[0];
+      const versionId = version?.id ?? contentHash;
+      const versionS3Key = version?.s3Key ?? s3Key;
 
-      if (!version) {
-        throw new Error("Failed to create storage version");
+      if (version) {
+        log.debug(`Created version: ${version.id}`);
+      } else {
+        log.debug(`Version ${contentHash} already exists, recreating archive`);
       }
-
-      log.debug(`Created version: ${version.id}`);
 
       // Upload blobs with deduplication
       const blobResult = await blobService.uploadBlobs(fileEntries);
@@ -241,7 +252,7 @@ export async function POST(request: NextRequest) {
           "S3_USER_STORAGES_NAME environment variable is not set",
         );
       }
-      const s3Uri = `s3://${bucketName}/${version.s3Key}`;
+      const s3Uri = `s3://${bucketName}/${versionS3Key}`;
       log.debug(`Uploading manifest and archive to ${s3Uri}...`);
       await uploadStorageVersionArchive(
         s3Uri,
@@ -254,7 +265,7 @@ export async function POST(request: NextRequest) {
       await tx
         .update(storages)
         .set({
-          headVersionId: version.id,
+          headVersionId: versionId,
           size: totalSize,
           fileCount,
           updatedAt: new Date(),
@@ -262,12 +273,12 @@ export async function POST(request: NextRequest) {
         .where(eq(storages.id, storage.id));
 
       log.debug(
-        `Successfully uploaded storage "${storageName}" version ${version.id}`,
+        `Successfully uploaded storage "${storageName}" version ${versionId}`,
       );
 
       return {
         name: storageName,
-        versionId: version.id,
+        versionId,
         size: totalSize,
         fileCount,
         type: storageType,

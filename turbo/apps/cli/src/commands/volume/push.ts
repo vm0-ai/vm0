@@ -50,7 +50,11 @@ function formatBytes(bytes: number): string {
 export const pushCommand = new Command()
   .name("push")
   .description("Push local files to cloud volume")
-  .action(async () => {
+  .option(
+    "-f, --force",
+    "Force upload even if content unchanged (recreate archive)",
+  )
+  .action(async (options: { force?: boolean }) => {
     try {
       const cwd = process.cwd();
 
@@ -103,6 +107,9 @@ export const pushCommand = new Command()
       const formData = new FormData();
       formData.append("name", config.name);
       formData.append("type", "volume");
+      if (options.force) {
+        formData.append("force", "true");
+      }
       formData.append(
         "file",
         new Blob([zipBuffer], { type: "application/zip" }),
