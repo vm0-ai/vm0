@@ -1,4 +1,5 @@
 -- Migration: Add blobs table for content-addressable storage
+-- Generated: 2025-11-30T04:30:00Z
 -- This enables file-level deduplication across storage versions
 
 CREATE TABLE IF NOT EXISTS "blobs" (
