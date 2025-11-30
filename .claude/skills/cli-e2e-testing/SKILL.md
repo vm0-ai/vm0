@@ -1,0 +1,179 @@
+---
+name: CLI E2E Testing
+description: Guidelines for writing robust CLI end-to-end tests using BATS
+---
+
+# CLI E2E Testing
+
+Tests use BATS (Bash Automated Testing System) located in `e2e/`.
+
+## Quick Start
+
+```bash
+# Run all tests
+./e2e/run.sh
+
+# Run specific test file
+./e2e/test/libs/bats/bin/bats e2e/tests/02-commands/t03-volumes.bats
+```
+
+## Test File Template
+
+```bash
+#!/usr/bin/env bats
+
+load '../../helpers/setup'
+
+setup() {
+    # Use unique names with timestamp to avoid conflicts
+    export TEST_DIR="$(mktemp -d)"
+    export RESOURCE_NAME="e2e-test-$(date +%s)"
+}
+
+teardown() {
+    # Always clean up temp directories
+    [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ] && rm -rf "$TEST_DIR"
+}
+
+@test "descriptive test name" {
+    run $CLI_COMMAND subcommand args
+    assert_success
+    assert_output --partial "expected text"
+}
+```
+
+## Assertions
+
+```bash
+# Exit status
+assert_success                    # exit code 0
+assert_failure                    # exit code != 0
+
+# Output matching
+assert_output --partial "text"    # output contains text
+refute_output --partial "text"    # output does NOT contain text
+assert_output --regexp "pattern"  # output matches regex
+
+# Line matching
+assert_line --index 0 "first line"
+```
+
+## Key Patterns
+
+### 1. Unique Resource Names
+
+```bash
+# Always use timestamp to prevent test conflicts
+export VOLUME_NAME="e2e-volume-$(date +%s)"
+export ARTIFACT_NAME="e2e-artifact-$(date +%s)"
+```
+
+### 2. Extended Timeouts for CI
+
+```bash
+# CI environments are slower - use 120s timeout
+run $CLI_COMMAND run agent-name \
+    --artifact-name "$ARTIFACT_NAME" \
+    --timeout 120 \
+    "echo hello"
+```
+
+### 3. Debug Output with Echo Comments
+
+```bash
+@test "multi-step test" {
+    echo "# Step 1: Setup..."
+    # ... setup code ...
+
+    echo "# Step 2: Execute..."
+    run $CLI_COMMAND ...
+
+    echo "# Step 3: Verify..."
+    assert_success
+}
+```
+
+### 4. Extract IDs from Output
+
+```bash
+# Extract UUID patterns
+CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+
+# Verify extraction succeeded
+[ -n "$CHECKPOINT_ID" ] || {
+    echo "# Failed to extract checkpoint ID"
+    echo "$output"
+    return 1
+}
+```
+
+### 5. Test Both Success and Failure
+
+```bash
+@test "valid input succeeds" {
+    run $CLI_COMMAND volume init
+    assert_success
+}
+
+@test "invalid input fails with error" {
+    run $CLI_COMMAND volume pull "nonexistent"
+    assert_failure
+    assert_output --partial "not found"
+}
+```
+
+### 6. Suppress Output for Setup Commands
+
+```bash
+# Use >/dev/null for setup commands that must succeed
+$CLI_COMMAND artifact init >/dev/null
+$CLI_COMMAND artifact push >/dev/null
+
+# Only use `run` when you need to check output/status
+run $CLI_COMMAND artifact push
+assert_success
+```
+
+## File Organization
+
+```
+e2e/
+├── tests/
+│   ├── 01-smoke/          # Basic CLI availability tests
+│   │   └── t01-smoke.bats
+│   └── 02-commands/       # Feature-specific tests
+│       ├── t01-validation.bats
+│       ├── t03-volumes.bats
+│       └── t04-vm0-artifact-checkpoint.bats
+├── fixtures/
+│   └── configs/           # Test agent configurations
+└── helpers/
+    └── setup.bash         # Shared setup (loads bats-assert)
+```
+
+## Naming Convention
+
+- Test files: `tXX-feature-name.bats`
+- Test resources: `e2e-{type}-$(date +%s)`
+
+## CI Integration
+
+Tests run with parallel file execution:
+```bash
+bats -j 4 --no-parallelize-within-files tests/**/*.bats
+```
+
+- `-j 4`: Run up to 4 test files in parallel
+- `--no-parallelize-within-files`: Tests within a file run sequentially
+
+## Checklist
+
+Before submitting:
+
+- [ ] Uses unique resource names with timestamp
+- [ ] Has `setup()` and `teardown()` for cleanup
+- [ ] Uses `--timeout 120` for `vm0 run` commands
+- [ ] Tests both success and failure cases
+- [ ] Includes debug echo comments for multi-step tests
+- [ ] Runs successfully: `./e2e/run.sh tests/02-commands/your-test.bats`
