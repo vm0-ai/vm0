@@ -60,7 +60,22 @@ runs:
           echo "Branch $BRANCH_NAME already exists"
           echo "Resetting branch to sync with parent (main)..."
           neonctl branches reset $BRANCH_NAME --project-id $NEON_PROJECT_ID --parent
-          echo "Branch reset complete"
+
+          # Wait for reset to complete (branch state changes to "ready")
+          echo "Waiting for branch reset to complete..."
+          for i in {1..30}; do
+            CURRENT_STATE=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+            if [ "$CURRENT_STATE" = "ready" ]; then
+              echo "Branch reset complete (state: $CURRENT_STATE)"
+              break
+            fi
+            echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+            sleep 2
+          done
+
+          if [ "$CURRENT_STATE" != "ready" ]; then
+            echo "Warning: Branch may not be ready after 60 seconds (state: $CURRENT_STATE)"
+          fi
         else
           echo "Creating branch $BRANCH_NAME"
           neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
