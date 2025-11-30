@@ -1,15 +1,15 @@
 ---
-description: Automated PR pipeline monitoring and issue fixing (no auto-merge)
+description: Automated PR pipeline monitoring, issue fixing, and merging workflow
 ---
 
-# PR Check Command
+# PR Check and Merge Command
 
-Automated PR pipeline monitoring and issue fixing workflow. This command does NOT merge the PR - it waits for user review after all checks pass.
+Automated PR pipeline monitoring, issue fixing, and merging workflow.
 
 ## Usage
 
 ```
-/pr-check [pr-id]
+/pr-check-and-merge [pr-id]
 ```
 
 ## Parameters
@@ -38,7 +38,7 @@ Wait 60 seconds for the pipeline to complete or stabilize:
 Check the pipeline status using: `gh pr checks {pr-id}`
 
 Possible outcomes:
-- **All passing**: Continue to final report
+- **All passing**: Continue to merge step
 - **Failures detected**: Proceed to fix attempts
 - **Still running**: Wait 30 seconds and retry (up to 3 times)
 
@@ -76,20 +76,17 @@ After any successful fix:
 After fixes (or if no fixes needed):
 1. Run final pipeline check: `gh pr checks {pr-id}`
 2. If still failing after 3 retry attempts, exit with error
-3. If passing, proceed to final report
+3. If passing, proceed to merge
 
-### Step 6: Report and Await User Review
+### Step 6: Merge the PR
 
-**IMPORTANT: Do NOT merge the PR automatically.**
+If all checks pass, execute merge workflow:
 
-If all checks pass:
-1. Display PR URL: `gh pr view {pr-id} --json url --jq '.url'`
-2. Show PR summary: title, description, changed files count
-3. Report success message indicating the PR is ready for review
-4. Remind user they can:
-   - Review the PR manually
-   - Use `/pr-check-and-merge` to auto-merge
-   - Merge manually via `gh pr merge {pr-id} --squash --delete-branch`
+1. Merge using squash strategy: `gh pr merge {pr-id} --squash --delete-branch`
+2. After successful merge:
+   - Switch to main: `git checkout main`
+   - Pull latest: `git pull origin main`
+   - Confirm on latest main
 
 ## Configuration
 
@@ -104,13 +101,14 @@ Exit with error if:
 - No PR exists for current branch
 - Pipeline checks fail after all retry attempts
 - Unable to find turbo directory for fixes
+- Merge operation fails
 
 ## Success Criteria
 
 Command succeeds when:
 - All pipeline checks pass (with or without fixes)
-- PR status is reported to user
-- User is informed about next steps
+- PR is successfully merged
+- Branch switched back to main
 
 ## Example Output
 
@@ -134,24 +132,20 @@ Running pnpm format...
 🔄 Checking pipeline status...
 ✓ All pipeline checks passed!
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ PR #123 is ready for review!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Step 3: All checks passed! Proceeding to merge...
+🔀 Squash merging PR...
+✅ PR #123 successfully merged!
 
-📋 PR Summary:
-   Title: feat: add new feature
-   Files changed: 5
-   URL: https://github.com/org/repo/pull/123
+🔄 Switching to main branch...
+✓ Now on latest main branch
 
-📝 Next steps:
-   • Review the PR at the URL above
-   • Use /pr-check-and-merge to auto-merge
-   • Or merge manually: gh pr merge 123 --squash --delete-branch
+🎉 PR check workflow completed successfully!
 ```
 
 ## Notes
 
-- This command monitors and fixes issues but does NOT merge
-- Use `/pr-check-and-merge` if you want automatic merging
-- Designed for workflows where human review is required before merge
+- This command combines monitoring, fixing, and merging into one workflow
+- Designed for the project's specific CI/CD setup
 - Automatically handles common issues that can be fixed programmatically
+- Uses squash merge to keep main branch history clean
+- Preserves commit messages in squashed commit

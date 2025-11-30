@@ -7,7 +7,7 @@ You will execute the complete feature development workflow using the feature-dev
 ## Usage
 
 ```bash
-/develop <feature-description>
+/develop-and-merge <feature-description>
 ```
 
 ## What This Command Does
@@ -26,16 +26,16 @@ This command launches the **feature-developer** agent which handles the complete
 
 ```bash
 # Add a new feature
-/develop add dark mode toggle to user settings
+/develop-and-merge add dark mode toggle to user settings
 
 # Fix a bug
-/develop fix database connection timeout in production
+/develop-and-merge fix database connection timeout in production
 
 # Refactor code
-/develop refactor authentication logic to use JWT tokens
+/develop-and-merge refactor authentication logic to use JWT tokens
 
 # Add tests
-/develop add e2e tests for project creation flow
+/develop-and-merge add e2e tests for project creation flow
 ```
 
 ## What to Expect
