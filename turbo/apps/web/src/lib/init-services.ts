@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import { Pool as PgPool } from "pg";
+import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
@@ -7,7 +8,7 @@ import type { Services } from "../types/global";
 
 // Private variables for singleton instances
 let _env: Env | undefined;
-let _pool: Pool | undefined;
+let _pool: PgPool | NeonPool | undefined;
 let _db: NodePgDatabase<typeof schema> | undefined;
 let _services: Services | undefined;
 
@@ -39,13 +40,25 @@ export function initServices(): void {
     },
     get pool() {
       if (!_pool) {
-        _pool = new Pool({
-          connectionString: this.env.DATABASE_URL,
-          // Serverless environments should use single connection
-          max: isVercel ? 1 : 10,
-          idleTimeoutMillis: isVercel ? 10000 : 30000,
-          connectionTimeoutMillis: 10000,
-        });
+        if (isVercel) {
+          // Use Neon serverless driver for Vercel
+          // This driver is optimized for Neon's connection pooler and serverless environments
+          neonConfig.fetchConnectionCache = true;
+          _pool = new NeonPool({
+            connectionString: this.env.DATABASE_URL,
+            max: 1,
+            idleTimeoutMillis: 10000,
+            connectionTimeoutMillis: 10000,
+          });
+        } else {
+          // Use regular pg driver for local development
+          _pool = new PgPool({
+            connectionString: this.env.DATABASE_URL,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          });
+        }
       }
       return _pool;
     },
