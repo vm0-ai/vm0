@@ -104,8 +104,10 @@ export async function POST(request: NextRequest) {
       );
       const dbUrl = process.env.DATABASE_URL;
       const dbHost = dbUrl ? new URL(dbUrl).hostname : "unknown";
+      // Handle both pg and postgres.js result formats
+      const rows = "rows" in tableCheck ? tableCheck.rows : tableCheck;
       log.debug(
-        `Blobs table exists check: ${JSON.stringify(tableCheck.rows)}, DB host: ${dbHost}`,
+        `Blobs table exists check: ${JSON.stringify(rows)}, DB host: ${dbHost}`,
       );
     } catch (tableCheckError) {
       log.error("Failed to check blobs table existence", tableCheckError);

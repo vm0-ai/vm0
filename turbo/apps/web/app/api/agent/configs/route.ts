@@ -149,11 +149,7 @@ export async function POST(request: NextRequest) {
           updatedAt: new Date(),
         })
         .where(eq(agentConfigs.id, existing[0].id))
-        .returning({
-          id: agentConfigs.id,
-          name: agentConfigs.name,
-          updatedAt: agentConfigs.updatedAt,
-        });
+        .returning();
 
       if (!updated) {
         throw new Error("Failed to update agent config");
@@ -176,11 +172,7 @@ export async function POST(request: NextRequest) {
           name: agentName,
           config: body.config,
         })
-        .returning({
-          id: agentConfigs.id,
-          name: agentConfigs.name,
-          createdAt: agentConfigs.createdAt,
-        });
+        .returning();
 
       if (!created) {
         throw new Error("Failed to create agent config");

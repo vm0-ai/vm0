@@ -1,14 +1,21 @@
 import { Pool } from "pg";
+import postgres from "postgres";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import { drizzle as drizzlePostgresJs } from "drizzle-orm/postgres-js";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Services } from "../types/global";
 
 // Private variables for singleton instances
 let _env: Env | undefined;
 let _pool: Pool | undefined;
-let _db: NodePgDatabase<typeof schema> | undefined;
+let _sql: ReturnType<typeof postgres> | undefined;
+let _db:
+  | NodePgDatabase<typeof schema>
+  | PostgresJsDatabase<typeof schema>
+  | undefined;
 let _services: Services | undefined;
 
 /**
@@ -41,21 +48,34 @@ export function initServices(): void {
       return _env;
     },
     get pool() {
-      if (!_pool) {
-        // Use standard pg driver with extended timeout for Neon cold starts
-        // Connection pooler handles the actual pooling, so max=1 is fine for serverless
+      if (!_pool && !isVercel) {
+        // Use standard pg driver for local development
         _pool = new Pool({
           connectionString: this.env.DATABASE_URL,
-          max: isVercel ? 1 : 10,
+          max: 10,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: isVercel ? 60000 : 10000, // 60s for Vercel cold starts
+          connectionTimeoutMillis: 10000,
         });
       }
       return _pool;
     },
     get db() {
       if (!_db) {
-        _db = drizzleNodePg(this.pool, { schema });
+        if (isVercel) {
+          // Use postgres.js on Vercel - better for serverless environments
+          // postgres.js handles connection pooling and has faster cold starts
+          if (!_sql) {
+            _sql = postgres(this.env.DATABASE_URL, {
+              prepare: false, // Disable prepared statements for serverless
+              idle_timeout: 20, // Close idle connections quickly
+              connect_timeout: 60, // 60s connection timeout for cold starts
+            });
+          }
+          _db = drizzlePostgresJs(_sql, { schema });
+        } else {
+          // Use node-postgres adapter for local development
+          _db = drizzleNodePg(this.pool as Pool, { schema });
+        }
       }
       return _db;
     },
