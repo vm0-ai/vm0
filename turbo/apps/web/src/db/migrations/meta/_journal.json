@@ -176,6 +176,13 @@
       "when": 1764900000000,
       "tag": "0024_storage_version_sha256",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1765000000000,
+      "tag": "0025_add_blobs_table",
+      "breakpoints": true
     }
   ]
 }
