@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/vm0-ai/vm0/compare/cli-v1.15.0...cli-v1.16.0) (2025-11-30)
+
+
+### Features
+
+* add --force flag to artifact push command ([#323](https://github.com/vm0-ai/vm0/issues/323)) ([aa5eb6a](https://github.com/vm0-ai/vm0/commit/aa5eb6aceeab4113a23d6809a38a7ceb369c58dd))
+
 ## [1.15.0](https://github.com/vm0-ai/vm0/compare/cli-v1.14.0...cli-v1.15.0) (2025-11-30)
 
 
