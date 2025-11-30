@@ -70,17 +70,17 @@ diff_manifests() {
   local old_manifest="${dollar}1"
   local new_manifest="${dollar}2"
 
-  python3 << 'PYTHON_EOF'
+  OLD_MANIFEST="${dollar}old_manifest" NEW_MANIFEST="${dollar}new_manifest" python3 << 'PYTHON_EOF'
 import json
-import sys
+import os
 
 def load_manifest(path):
     with open(path, 'r') as f:
         data = json.load(f)
     return {f['path']: f for f in data.get('files', [])}
 
-old_files = load_manifest('${dollar}old_manifest')
-new_files = load_manifest('${dollar}new_manifest')
+old_files = load_manifest(os.environ['OLD_MANIFEST'])
+new_files = load_manifest(os.environ['NEW_MANIFEST'])
 
 old_paths = set(old_files.keys())
 new_paths = set(new_files.keys())
