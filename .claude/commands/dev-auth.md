@@ -3,7 +3,7 @@ command: dev-auth
 description: Authenticate with local development server and get CLI token
 ---
 
-Automates the CLI authentication flow against the local development server. This command uses Playwright to login via Clerk and authorize the CLI device code, then saves the auth token to `~/.uspark/config.json`.
+Automates the CLI authentication flow against the local development server. This command uses Playwright to login via Clerk and authorize the CLI device code, then saves the auth token to `~/.vm0/config.json`.
 
 Usage: `/dev-auth`
 
@@ -37,7 +37,7 @@ Prerequisites:
 4. **Verify authentication:**
    Check if auth token was saved:
    ```bash
-   cat ~/.uspark/config.json
+   cat ~/.vm0/config.json
    ```
 
 5. **Display results:**
@@ -45,23 +45,23 @@ Prerequisites:
    ```
    ✅ CLI authentication successful!
 
-   Auth token saved to: ~/.uspark/config.json
+   Auth token saved to: ~/.vm0/config.json
 
    You can now use the CLI with local dev server:
-   - uspark auth status
-   - uspark project list
+   - vm0 auth status
+   - vm0 project list
    ```
 
 ## Technical details:
 
 The authentication script (`e2e/cli-auth-automation.ts`):
-- Spawns `uspark auth login` with `VM0_API_URL=http://localhost:3000`
+- Spawns `vm0 auth login` with `VM0_API_URL=http://localhost:3000`
 - Launches Playwright browser in headless mode
 - Logs in via Clerk using `e2e+clerk_test@vm0.ai`
 - Automatically enters the CLI device code
 - Clicks "Authorize Device" button
 - Waits for authentication success
-- Verifies token saved to `~/.uspark/config.json`
+- Verifies token saved to `~/.vm0/config.json`
 
 ## Error handling:
 

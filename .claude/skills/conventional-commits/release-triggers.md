@@ -1,10 +1,10 @@
 # Release Triggering Rules
 
-This document explains how conventional commit types trigger automated releases via release-please in the uspark project.
+This document explains how conventional commit types trigger automated releases via release-please in the vm0 project.
 
 ## Overview
 
-The uspark project uses **release-please** for automated versioning and releases. Not all commit types trigger releases - understanding which commits create new versions is critical for proper release management.
+The vm0 project uses **release-please** for automated versioning and releases. Not all commit types trigger releases - understanding which commits create new versions is critical for proper release management.
 
 ## Semantic Versioning
 

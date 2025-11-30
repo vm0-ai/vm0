@@ -5,7 +5,7 @@ description: Guidelines for writing conventional commit messages that follow pro
 
 # Conventional Commits Skill
 
-This skill provides comprehensive guidance on writing conventional commit messages for the uspark project. All commits must follow the Conventional Commits format to ensure consistent history and enable automated versioning via release-please.
+This skill provides comprehensive guidance on writing conventional commit messages for the vm0 project. All commits must follow the Conventional Commits format to ensure consistent history and enable automated versioning via release-please.
 
 ## Quick Reference
 

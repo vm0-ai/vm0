@@ -1,11 +1,11 @@
 ---
 name: Project Principles
-description: Core architectural and code quality principles that guide all development decisions in the uspark project
+description: Core architectural and code quality principles that guide all development decisions in the vm0 project
 ---
 
 # Project Principles Skill
 
-This skill defines the fundamental design principles and coding standards for the uspark project. These principles are MANDATORY for all code written in this project and should guide every development decision.
+This skill defines the fundamental design principles and coding standards for the vm0 project. These principles are MANDATORY for all code written in this project and should guide every development decision.
 
 ## The Four Core Principles
 

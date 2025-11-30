@@ -26,7 +26,7 @@ SlashCommand({ command: "/dev-start" })
 ```
 
 After starting, obtain the base URL from the server output:
-- Default URL: `https://www.uspark.dev:3000` (or check server logs)
+- Default URL: `https://www.vm7.ai:3000` (or check server logs)
 - Store this URL for use in Playwright tests
 
 ### Step 2: Create Playwright Test File
@@ -202,7 +202,7 @@ When creating tests, customize these elements:
 ```
 
 ### Environment Variables
-- `BASE_URL`: Dev server URL (e.g., `https://www.uspark.dev:3000`)
+- `BASE_URL`: Dev server URL (e.g., `https://www.vm7.ai:3000`)
 - Ensure `.env.local` is configured in e2e test directory
 
 ## Best Practices

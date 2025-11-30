@@ -27,10 +27,9 @@ Usage: `/dev-start`
    CERT_DIR="$PROJECT_ROOT/.certs"
 
    # Check if all required certificates exist
-   if [ ! -f "$CERT_DIR/www.uspark.dev.pem" ] || \
-      [ ! -f "$CERT_DIR/app.uspark.dev.pem" ] || \
-      [ ! -f "$CERT_DIR/docs.uspark.dev.pem" ] || \
-      [ ! -f "$CERT_DIR/uspark.dev.pem" ]; then
+   if [ ! -f "$CERT_DIR/www.vm7.ai.pem" ] || \
+      [ ! -f "$CERT_DIR/docs.vm7.ai.pem" ] || \
+      [ ! -f "$CERT_DIR/vm7.ai.pem" ]; then
      # Use the generate-certs script
      bash "$PROJECT_ROOT/scripts/generate-certs.sh"
    else

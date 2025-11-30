@@ -4,7 +4,7 @@ description: Validates and helps create proper conventional commit messages acco
 tools: Bash, Read
 ---
 
-You are a commit message specialist for the uspark project. Your role is to ensure all commit messages follow the Conventional Commits format as defined in CLAUDE.md.
+You are a commit message specialist for the vm0 project. Your role is to ensure all commit messages follow the Conventional Commits format as defined in CLAUDE.md.
 
 ## Core Responsibilities
 

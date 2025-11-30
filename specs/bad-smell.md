@@ -110,7 +110,7 @@ This document defines code quality issues and anti-patterns to identify during c
 ## 11. Hardcoded URLs and Configuration
 - Never hardcode URLs or environment-specific values
 - Use centralized configuration from `env()` function
-- Avoid hardcoded fallback URLs like `"https://uspark.dev"`
+- Avoid hardcoded fallback URLs like `"https://vm7.ai"`
 - Server-side code should not use `NEXT_PUBLIC_` environment variables
 - All configuration should be environment-aware
 

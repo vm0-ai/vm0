@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simple setup script for dev container (based on uspark setup)
+# Simple setup script for dev container (based on vm0 setup)
 set -e
 
 echo "🚀 Setting up dev container..."
@@ -16,7 +16,7 @@ sudo update-locale LANG=en_US.UTF-8 2>/dev/null || true
 echo "✓ Locale configured"
 
 # Setup directories - fix ownership for all mounted volumes
-# This is the key difference - uspark fixes all directories at once
+# This is the key difference - vm0 fixes all directories at once
 sudo mkdir -p /home/vscode/.local/bin
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local
 

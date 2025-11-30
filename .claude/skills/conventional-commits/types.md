@@ -1,6 +1,6 @@
 # Commit Types - Detailed Reference
 
-This document provides comprehensive details on all valid commit types in the uspark project.
+This document provides comprehensive details on all valid commit types in the vm0 project.
 
 ## Release-Triggering Types
 
