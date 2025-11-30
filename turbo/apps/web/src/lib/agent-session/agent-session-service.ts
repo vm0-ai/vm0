@@ -186,7 +186,7 @@ export class AgentSessionService {
     const result = await globalThis.services.db
       .delete(agentSessions)
       .where(eq(agentSessions.id, id))
-      .returning();
+      .returning({ id: agentSessions.id });
 
     return result.length > 0;
   }

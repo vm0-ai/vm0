@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { storages, storageVersions } from "../../../src/db/schema/storage";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   uploadStorageVersionArchive,
   downloadS3Object,
@@ -94,22 +94,6 @@ export async function POST(request: NextRequest) {
     log.debug(
       `Uploading storage "${storageName}" (type: ${storageType}) for user ${userId}`,
     );
-
-    // Debug: Check if blobs table exists
-    try {
-      const tableCheck = await globalThis.services.db.execute(
-        sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'blobs') as exists`,
-      );
-      const dbUrl = process.env.DATABASE_URL;
-      const dbHost = dbUrl ? new URL(dbUrl).hostname : "unknown";
-      // Handle both pg and postgres.js result formats
-      const rows = "rows" in tableCheck ? tableCheck.rows : tableCheck;
-      log.debug(
-        `Blobs table exists check: ${JSON.stringify(rows)}, DB host: ${dbHost}`,
-      );
-    } catch (tableCheckError) {
-      log.error("Failed to check blobs table existence", tableCheckError);
-    }
 
     // Create temp directory for extraction
     tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
@@ -297,12 +281,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Upload failed";
-    const errorCause = (error as { cause?: unknown }).cause;
-    console.error("[Storage] Upload error:", errorMessage);
-    console.error("[Storage] Error cause:", errorCause);
-    console.error("[Storage] Full error:", error);
+    console.error("[Storage] Upload error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {
@@ -313,11 +292,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: errorMessage,
-        cause:
-          errorCause instanceof Error
-            ? errorCause.message
-            : String(errorCause || ""),
+        error: error instanceof Error ? error.message : "Upload failed",
       },
       { status: 500 },
     );
