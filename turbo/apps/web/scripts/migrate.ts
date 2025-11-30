@@ -28,18 +28,25 @@ async function runMigrations() {
   const db = drizzle(sql);
 
   try {
-    // Debug: Check what's in __drizzle_migrations
-    const dbMigrations = await sql`
-      SELECT hash, created_at
-      FROM drizzle.__drizzle_migrations
-      ORDER BY created_at DESC
-      LIMIT 5
-    `;
-    console.log(
-      "Last 5 DB migrations:",
-      dbMigrations.map((m) => m.hash?.substring(0, 16) + "..."),
-    );
-    console.log("Total DB migrations:", dbMigrations.length);
+    // Debug: Check what's in __drizzle_migrations (if table exists)
+    try {
+      const dbMigrations = await sql`
+        SELECT hash, created_at
+        FROM drizzle.__drizzle_migrations
+        ORDER BY created_at DESC
+        LIMIT 5
+      `;
+      console.log(
+        "Last 5 DB migrations:",
+        dbMigrations.map((m) => m.hash?.substring(0, 16) + "..."),
+      );
+
+      const countResult =
+        await sql`SELECT COUNT(*) as count FROM drizzle.__drizzle_migrations`;
+      console.log("Total DB migrations:", countResult[0]?.count);
+    } catch {
+      console.log("DB migrations table does not exist yet (fresh database)");
+    }
 
     await migrate(db, {
       migrationsFolder: DRIZZLE_MIGRATE_OUT,
