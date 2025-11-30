@@ -44,7 +44,8 @@ export function initServices(): void {
           // Serverless environments should use single connection
           max: isVercel ? 1 : 10,
           idleTimeoutMillis: isVercel ? 10000 : 30000,
-          connectionTimeoutMillis: 10000,
+          // Increase timeout for Neon cold starts (can take up to 5+ seconds)
+          connectionTimeoutMillis: isVercel ? 30000 : 10000,
         });
       }
       return _pool;
