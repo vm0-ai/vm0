@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/vm0-ai/vm0/compare/cli-v1.13.0...cli-v1.14.0) (2025-11-30)
+
+
+### Features
+
+* tar.gz streaming with content-addressable blob storage ([#311](https://github.com/vm0-ai/vm0/issues/311)) ([d271acb](https://github.com/vm0-ai/vm0/commit/d271acb1ce5b641dda20e64199f9c26b3e013bff))
+
 ## [1.13.0](https://github.com/vm0-ai/vm0/compare/cli-v1.12.0...cli-v1.13.0) (2025-11-29)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.0](https://github.com/vm0-ai/vm0/compare/web-v2.6.2...web-v2.7.0) (2025-11-30)
+
+
+### Features
+
+* implement incremental upload for sandbox checkpoint ([#320](https://github.com/vm0-ai/vm0/issues/320)) ([2f4f1ef](https://github.com/vm0-ai/vm0/commit/2f4f1efef12bcbefc3faf4371634320005ba4ab5))
+* tar.gz streaming with content-addressable blob storage ([#311](https://github.com/vm0-ai/vm0/issues/311)) ([d271acb](https://github.com/vm0-ai/vm0/commit/d271acb1ce5b641dda20e64199f9c26b3e013bff))
+
 ## [2.6.2](https://github.com/vm0-ai/vm0/compare/web-v2.6.1...web-v2.6.2) (2025-11-29)
 
 
