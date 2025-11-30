@@ -5,10 +5,12 @@ import {
   PutObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../../env";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { PassThrough } from "node:stream";
 import archiver from "archiver";
 import type {
   S3Uri,
@@ -329,6 +331,35 @@ export async function uploadS3Directory(
 }
 
 /**
+ * Delete specific S3 objects by key
+ * @param bucket - S3 bucket name
+ * @param keys - Array of S3 object keys to delete
+ */
+export async function deleteS3Objects(
+  bucket: string,
+  keys: string[],
+): Promise<void> {
+  if (keys.length === 0) return;
+
+  const client = getS3Client();
+
+  // Delete in batches of 1000 (AWS limit)
+  const batchSize = 1000;
+  for (let i = 0; i < keys.length; i += batchSize) {
+    const batch = keys.slice(i, i + batchSize);
+
+    const command = new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: {
+        Objects: batch.map((key) => ({ Key: key })),
+      },
+    });
+
+    await client.send(command);
+  }
+}
+
+/**
  * Delete all objects under S3 prefix
  * @param s3Uri - S3 URI in format s3://bucket/prefix
  */
@@ -448,28 +479,50 @@ export async function generatePresignedUrlsForPrefix(
 }
 
 /**
- * Create tar.gz archive from file entries using streaming
+ * Stream tar.gz archive directly to S3 using multipart upload
+ * Avoids loading entire archive into memory
  *
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
  * @param fileEntries - Array of file entries with content
- * @returns Buffer containing tar.gz archive
  */
-async function createTarGzBuffer(fileEntries: FileEntry[]): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const archive = archiver("tar", { gzip: true });
+async function streamTarGzToS3(
+  bucket: string,
+  key: string,
+  fileEntries: FileEntry[],
+): Promise<void> {
+  const client = getS3Client();
+  const passThrough = new PassThrough();
 
-    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
-    archive.on("end", () => resolve(Buffer.concat(chunks)));
-    archive.on("error", reject);
+  // Create archiver and pipe to passthrough stream
+  const archive = archiver("tar", { gzip: true });
+  archive.pipe(passThrough);
 
-    // Add each file to the archive
-    for (const file of fileEntries) {
-      archive.append(file.content, { name: file.path });
-    }
-
-    // Finalize the archive
-    archive.finalize().catch(reject);
+  // Start multipart upload with streaming
+  const upload = new Upload({
+    client,
+    params: {
+      Bucket: bucket,
+      Key: key,
+      Body: passThrough,
+      ContentType: "application/gzip",
+    },
+    // Use 5MB parts (minimum for multipart)
+    partSize: 5 * 1024 * 1024,
+    // Upload parts concurrently
+    queueSize: 4,
   });
+
+  // Add files to archive (this starts the streaming)
+  for (const file of fileEntries) {
+    archive.append(file.content, { name: file.path });
+  }
+
+  // Finalize archive (signals end of data)
+  const finalizePromise = archive.finalize();
+
+  // Wait for both archive finalization and upload completion
+  await Promise.all([finalizePromise, upload.done()]);
 }
 
 /**
@@ -519,9 +572,8 @@ export async function uploadStorageVersionArchive(
     Buffer.from(manifestJson),
   );
 
-  // 3. Create and upload archive.tar.gz using streaming
-  const tarGzBuffer = await createTarGzBuffer(fileEntries);
-  await uploadS3Buffer(bucket, `${prefix}/archive.tar.gz`, tarGzBuffer);
+  // 3. Stream archive.tar.gz directly to S3 using multipart upload
+  await streamTarGzToS3(bucket, `${prefix}/archive.tar.gz`, fileEntries);
 
   return {
     s3Prefix: prefix,

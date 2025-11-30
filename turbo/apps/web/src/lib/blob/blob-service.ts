@@ -5,12 +5,16 @@
 
 import { eq, inArray, sql } from "drizzle-orm";
 import { blobs } from "../../db/schema/blob";
-import { uploadS3Buffer } from "../s3/s3-client";
+import { uploadS3Buffer, deleteS3Objects } from "../s3/s3-client";
 import { hashFileContent, type FileEntry } from "../storage/content-hash";
 import { env } from "../../env";
 import { logger } from "../logger";
+import pLimit from "p-limit";
 
 const log = logger("service:blob");
+
+/** Maximum concurrent S3 uploads */
+const MAX_CONCURRENT_UPLOADS = 10;
 
 /**
  * Result of uploading blobs
@@ -89,36 +93,64 @@ export class BlobService {
       `Found ${existingHashSet.size} existing blobs, ${newHashes.length} new blobs`,
     );
 
-    // Step 3: Upload new blobs to S3
+    // Step 3: Upload new blobs to S3 with concurrency limit
+    const limit = pLimit(MAX_CONCURRENT_UPLOADS);
     let bytesUploaded = 0;
-    const uploadPromises = newHashes.map(async (hash) => {
-      const file = hashToFiles.get(hash)![0]!;
-      const s3Key = `blobs/${hash}.blob`;
-      await uploadS3Buffer(bucketName, s3Key, file.content);
-      bytesUploaded += file.content.length;
-    });
+    const uploadedS3Keys: string[] = [];
+
+    const uploadPromises = newHashes.map((hash) =>
+      limit(async () => {
+        const file = hashToFiles.get(hash)![0]!;
+        const s3Key = `blobs/${hash}.blob`;
+        await uploadS3Buffer(bucketName, s3Key, file.content);
+        uploadedS3Keys.push(s3Key);
+        bytesUploaded += file.content.length;
+      }),
+    );
 
     await Promise.all(uploadPromises);
 
-    // Step 4: Database operations - insert new blobs, increment ref_count for existing
-    if (newHashes.length > 0) {
-      const newBlobRecords = newHashes.map((hash) => {
-        const file = hashToFiles.get(hash)![0]!;
-        return {
-          hash,
-          size: file.content.length,
-          refCount: 1,
-        };
-      });
+    // Step 4: Database operations with rollback on failure
+    // Use ON CONFLICT to handle race conditions where another request
+    // may have inserted the same blob concurrently
+    try {
+      if (newHashes.length > 0) {
+        const newBlobRecords = newHashes.map((hash) => {
+          const file = hashToFiles.get(hash)![0]!;
+          return {
+            hash,
+            size: file.content.length,
+            refCount: 1,
+          };
+        });
 
-      await globalThis.services.db.insert(blobs).values(newBlobRecords);
-    }
+        // Use ON CONFLICT DO UPDATE to handle race condition
+        // If blob already exists, increment ref_count instead of failing
+        await globalThis.services.db
+          .insert(blobs)
+          .values(newBlobRecords)
+          .onConflictDoUpdate({
+            target: blobs.hash,
+            set: { refCount: sql`${blobs.refCount} + 1` },
+          });
+      }
 
-    if (existingHashSet.size > 0) {
-      await globalThis.services.db
-        .update(blobs)
-        .set({ refCount: sql`${blobs.refCount} + 1` })
-        .where(inArray(blobs.hash, Array.from(existingHashSet)));
+      if (existingHashSet.size > 0) {
+        await globalThis.services.db
+          .update(blobs)
+          .set({ refCount: sql`${blobs.refCount} + 1` })
+          .where(inArray(blobs.hash, Array.from(existingHashSet)));
+      }
+    } catch (dbError) {
+      // Rollback: delete uploaded S3 objects on database failure
+      log.error("Database operation failed, rolling back S3 uploads", dbError);
+      try {
+        await deleteS3Objects(bucketName, uploadedS3Keys);
+        log.debug(`Rolled back ${uploadedS3Keys.length} S3 objects`);
+      } catch (rollbackError) {
+        log.error("Failed to rollback S3 uploads", rollbackError);
+      }
+      throw dbError;
     }
 
     // Build result hash map

@@ -11,16 +11,19 @@ import { blobService } from "../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { exec as execCallback } from "node:child_process";
+import { promisify } from "node:util";
 import AdmZip from "adm-zip";
-import { execSync } from "node:child_process";
 import { env } from "../../../src/env";
 import {
   computeContentHash,
   type FileEntry,
 } from "../../../src/lib/storage/content-hash";
+
 import { resolveVersionByPrefix } from "../../../src/lib/storage/version-resolver";
 import { logger } from "../../../src/lib/logger";
 
+const exec = promisify(execCallback);
 const log = logger("api:storages");
 
 /**
@@ -406,7 +409,7 @@ export async function GET(request: NextRequest) {
     // Extract tar.gz to download directory
     const downloadPath = path.join(tempDir, "download");
     await fs.promises.mkdir(downloadPath, { recursive: true });
-    execSync(`tar -xzf "${tarGzPath}" -C "${downloadPath}"`, { stdio: "pipe" });
+    await exec(`tar -xzf "${tarGzPath}" -C "${downloadPath}"`);
 
     // Create zip file for response (CLI expects zip format)
     const zipPath = path.join(tempDir, "storage.zip");
