@@ -1,9 +1,11 @@
 /**
  * Checkpoint creation script
  * Creates checkpoints with conversation history and artifact snapshot (VAS only)
+ * Supports incremental upload when manifest URL is available
  */
 export const CREATE_CHECKPOINT_SCRIPT = `# Create checkpoint after successful run
 # Requires: COMMON_SCRIPT, LOG_SCRIPT, REQUEST_SCRIPT, VAS_SNAPSHOT_SCRIPT to be sourced first
+# Optional: INCREMENTAL_UPLOAD_SCRIPT for incremental uploads
 
 create_checkpoint() {
   log_info "Creating checkpoint..."
@@ -53,11 +55,17 @@ create_checkpoint() {
     return 1
   fi
 
-  # VAS artifact: create vas snapshot
+  # VAS artifact: create snapshot (incremental if possible, fallback to full)
   log_info "Creating VAS snapshot for artifact '$ARTIFACT_VOLUME_NAME' at $ARTIFACT_MOUNT_PATH"
 
-  # Create VAS snapshot
-  SNAPSHOT=$(create_vas_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" "$ARTIFACT_VOLUME_NAME")
+  # Try incremental upload if manifest URL and base version are available
+  if [ -n "$ARTIFACT_MANIFEST_URL" ] && [ -n "$ARTIFACT_VERSION_ID" ]; then
+    log_info "Attempting incremental upload (base version: \${ARTIFACT_VERSION_ID:0:8})"
+    SNAPSHOT=$(create_incremental_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" "$ARTIFACT_VOLUME_NAME" "$ARTIFACT_VERSION_ID" "$ARTIFACT_MANIFEST_URL")
+  else
+    log_info "Using full upload (no base version available)"
+    SNAPSHOT=$(create_vas_snapshot "$ARTIFACT_MOUNT_PATH" "artifact" "$ARTIFACT_VOLUME_NAME")
+  fi
 
   if [ $? -ne 0 ] || [ -z "$SNAPSHOT" ]; then
     log_error "Failed to create VAS snapshot for artifact"

@@ -19,11 +19,13 @@ ARTIFACT_DRIVER="\${VM0_ARTIFACT_DRIVER:-}"
 ARTIFACT_MOUNT_PATH="\${VM0_ARTIFACT_MOUNT_PATH:-}"
 ARTIFACT_VOLUME_NAME="\${VM0_ARTIFACT_VOLUME_NAME:-}"
 ARTIFACT_VERSION_ID="\${VM0_ARTIFACT_VERSION_ID:-}"
+ARTIFACT_MANIFEST_URL="\${VM0_ARTIFACT_MANIFEST_URL:-}"
 
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
 STORAGE_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages"
+INCREMENTAL_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages/incremental"
 
 # Variables for checkpoint (use temp files to persist across subshells)
 SESSION_ID_FILE="/tmp/vm0-session-$RUN_ID.txt"

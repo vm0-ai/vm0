@@ -12,6 +12,7 @@ source "\${SCRIPT_DIR}/lib/log.sh"
 source "\${SCRIPT_DIR}/lib/request.sh"
 source "\${SCRIPT_DIR}/lib/send-event.sh"
 source "\${SCRIPT_DIR}/lib/vas-snapshot.sh"
+source "\${SCRIPT_DIR}/lib/incremental-upload.sh"
 source "\${SCRIPT_DIR}/lib/create-checkpoint.sh"
 
 # Change to working directory
