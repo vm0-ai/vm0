@@ -1,17 +1,18 @@
 import type { Pool } from "pg";
+import type { Pool as NeonPool } from "@neondatabase/serverless";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { schema } from "../db/db";
 import type { Env } from "../env";
 
 export type Database =
   | NodePgDatabase<typeof schema>
-  | NeonHttpDatabase<typeof schema>;
+  | NeonDatabase<typeof schema>;
 
 export type Services = {
   env: Env;
   db: Database;
-  pool: Pool | undefined; // undefined on Vercel (uses Neon HTTP driver)
+  pool: Pool | NeonPool;
 };
 
 declare global {
