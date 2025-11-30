@@ -81,10 +81,21 @@ export class BlobService {
     );
 
     // Step 2: Query database for existing blobs
-    const existingBlobs = await globalThis.services.db
-      .select({ hash: blobs.hash })
-      .from(blobs)
-      .where(inArray(blobs.hash, uniqueHashes));
+    let existingBlobs;
+    try {
+      existingBlobs = await globalThis.services.db
+        .select({ hash: blobs.hash })
+        .from(blobs)
+        .where(inArray(blobs.hash, uniqueHashes));
+    } catch (queryError) {
+      log.error("Failed to query blobs table", {
+        error: queryError,
+        cause: (queryError as { cause?: unknown }).cause,
+        message: (queryError as Error).message,
+        uniqueHashes: uniqueHashes.length,
+      });
+      throw queryError;
+    }
 
     const existingHashSet = new Set(existingBlobs.map((b) => b.hash));
     const newHashes = uniqueHashes.filter((h) => !existingHashSet.has(h));
