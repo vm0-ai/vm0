@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/vm0-ai/vm0/compare/web-v2.7.0...web-v2.8.0) (2025-11-30)
+
+
+### Features
+
+* **cli:** add --force flag to volume push command ([#321](https://github.com/vm0-ai/vm0/issues/321)) ([9e42c86](https://github.com/vm0-ai/vm0/commit/9e42c86fd6eec99062911b0e367bf27de89eabcb))
+
 ## [2.7.0](https://github.com/vm0-ai/vm0/compare/web-v2.6.2...web-v2.7.0) (2025-11-30)
 
 

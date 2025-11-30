@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/vm0-ai/vm0/compare/cli-v1.14.0...cli-v1.15.0) (2025-11-30)
+
+
+### Features
+
+* **cli:** add --force flag to volume push command ([#321](https://github.com/vm0-ai/vm0/issues/321)) ([9e42c86](https://github.com/vm0-ai/vm0/commit/9e42c86fd6eec99062911b0e367bf27de89eabcb))
+
 ## [1.14.0](https://github.com/vm0-ai/vm0/compare/cli-v1.13.0...cli-v1.14.0) (2025-11-30)
 
 
