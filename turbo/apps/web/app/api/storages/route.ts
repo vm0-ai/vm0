@@ -11,9 +11,8 @@ import { blobService } from "../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { exec as execCallback } from "node:child_process";
-import { promisify } from "node:util";
 import AdmZip from "adm-zip";
+import * as tar from "tar";
 import { env } from "../../../src/env";
 import {
   computeContentHash,
@@ -23,7 +22,6 @@ import {
 import { resolveVersionByPrefix } from "../../../src/lib/storage/version-resolver";
 import { logger } from "../../../src/lib/logger";
 
-const exec = promisify(execCallback);
 const log = logger("api:storages");
 
 /**
@@ -431,10 +429,15 @@ export async function GET(request: NextRequest) {
     log.debug(`Downloading archive from S3: ${archiveKey}`);
     await downloadS3Object(bucketName, archiveKey, tarGzPath);
 
-    // Extract tar.gz to download directory
+    // Extract tar.gz to download directory using JavaScript tar library
+    // (Vercel serverless doesn't have system tar command)
     const downloadPath = path.join(tempDir, "download");
     await fs.promises.mkdir(downloadPath, { recursive: true });
-    await exec(`tar -xzf "${tarGzPath}" -C "${downloadPath}"`);
+    await tar.extract({
+      file: tarGzPath,
+      cwd: downloadPath,
+      gzip: true,
+    });
 
     // Create zip file for response (CLI expects zip format)
     const zipPath = path.join(tempDir, "storage.zip");
