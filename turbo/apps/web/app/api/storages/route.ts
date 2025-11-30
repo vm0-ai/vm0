@@ -102,7 +102,11 @@ export async function POST(request: NextRequest) {
       const tableCheck = await globalThis.services.db.execute(
         sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'blobs') as exists`,
       );
-      log.debug(`Blobs table exists check: ${JSON.stringify(tableCheck.rows)}`);
+      const dbUrl = process.env.DATABASE_URL;
+      const dbHost = dbUrl ? new URL(dbUrl).hostname : "unknown";
+      log.debug(
+        `Blobs table exists check: ${JSON.stringify(tableCheck.rows)}, DB host: ${dbHost}`,
+      );
     } catch (tableCheckError) {
       log.error("Failed to check blobs table existence", tableCheckError);
     }
