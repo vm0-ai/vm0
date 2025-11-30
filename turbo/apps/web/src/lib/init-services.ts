@@ -7,10 +7,10 @@ import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { Services } from "../types/global";
-import ws from "ws";
+import WebSocket from "ws";
 
 // Configure Neon serverless to use ws for WebSocket connections (required for Node.js runtime)
-neonConfig.webSocketConstructor = ws;
+neonConfig.webSocketConstructor = WebSocket;
 
 // Private variables for singleton instances
 let _env: Env | undefined;

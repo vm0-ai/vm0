@@ -22,26 +22,42 @@ function generateDeviceCode(): string {
 }
 
 export async function POST(): Promise<NextResponse> {
-  initServices();
+  try {
+    initServices();
 
-  const deviceCode = generateDeviceCode();
-  const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes
+    const deviceCode = generateDeviceCode();
+    const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes
 
-  await globalThis.services.db.insert(deviceCodes).values({
-    code: deviceCode,
-    status: "pending",
-    expiresAt,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    await globalThis.services.db.insert(deviceCodes).values({
+      code: deviceCode,
+      status: "pending",
+      expiresAt,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-  return NextResponse.json({
-    device_code: deviceCode,
-    user_code: deviceCode,
-    verification_url: `${baseUrl}/cli-auth`,
-    expires_in: 900, // 15 minutes in seconds
-    interval: 5, // Poll every 5 seconds
-  });
+    return NextResponse.json({
+      device_code: deviceCode,
+      user_code: deviceCode,
+      verification_url: `${baseUrl}/cli-auth`,
+      expires_in: 900, // 15 minutes in seconds
+      interval: 5, // Poll every 5 seconds
+    });
+  } catch (error) {
+    console.error("[Device Auth] Error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const errorCause = (error as { cause?: unknown }).cause;
+    console.error("[Device Auth] Cause:", errorCause);
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        cause: errorCause instanceof Error ? errorCause.message : undefined,
+      },
+      { status: 500 },
+    );
+  }
 }

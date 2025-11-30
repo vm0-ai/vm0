@@ -33,7 +33,13 @@ async function requestDeviceCode(apiUrl: string): Promise<{
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to request device code: ${response.statusText}`);
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      cause?: string;
+    };
+    const message = errorBody.error || response.statusText;
+    const cause = errorBody.cause ? ` (cause: ${errorBody.cause})` : "";
+    throw new Error(`Failed to request device code: ${message}${cause}`);
   }
 
   return response.json() as Promise<{
