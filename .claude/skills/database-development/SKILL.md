@@ -1,11 +1,11 @@
 ---
 name: Database Development
-description: Guidelines for database schema changes, migrations, and Drizzle ORM usage in the uspark project
+description: Guidelines for database schema changes, migrations, and Drizzle ORM usage in the vm0 project
 ---
 
 # Database Development Skill
 
-This skill provides comprehensive guidance on database development for the uspark project. It covers schema design, migration workflows, and common pitfalls to avoid.
+This skill provides comprehensive guidance on database development for the vm0 project. It covers schema design, migration workflows, and common pitfalls to avoid.
 
 ## Tech Stack
 

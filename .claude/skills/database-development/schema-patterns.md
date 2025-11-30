@@ -1,6 +1,6 @@
 # Schema Patterns
 
-This document covers the standard patterns for defining database schemas in the uspark project.
+This document covers the standard patterns for defining database schemas in the vm0 project.
 
 ## Table Definition Pattern
 
