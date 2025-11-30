@@ -1,23 +1,19 @@
 import { Pool } from "pg";
-import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
+import { neon } from "@neondatabase/serverless";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
+import { drizzle as drizzleNeonHttp } from "drizzle-orm/neon-http";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { NeonDatabase } from "drizzle-orm/neon-serverless";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type { Services } from "../types/global";
-import ws from "ws";
-
-// Configure Neon serverless to use ws for WebSocket connections
-neonConfig.webSocketConstructor = ws;
 
 // Private variables for singleton instances
 let _env: Env | undefined;
-let _pool: Pool | NeonPool | undefined;
+let _pool: Pool | undefined;
 let _db:
   | NodePgDatabase<typeof schema>
-  | NeonDatabase<typeof schema>
+  | NeonHttpDatabase<typeof schema>
   | undefined;
 let _services: Services | undefined;
 
@@ -52,13 +48,8 @@ export function initServices(): void {
     },
     get pool() {
       if (!_pool) {
-        if (isVercel) {
-          // Use Neon serverless driver on Vercel for better cold start handling
-          _pool = new NeonPool({
-            connectionString: this.env.DATABASE_URL,
-          });
-        } else {
-          // Use standard pg driver for local development
+        // Pool only used for local development with node-postgres
+        if (!isVercel) {
           _pool = new Pool({
             connectionString: this.env.DATABASE_URL,
             max: 10,
@@ -72,8 +63,10 @@ export function initServices(): void {
     get db() {
       if (!_db) {
         if (isVercel) {
-          // Use Neon serverless adapter on Vercel
-          _db = drizzleNeon(this.pool as NeonPool, { schema });
+          // Use Neon HTTP driver on Vercel for better cold start handling
+          // HTTP is faster than WebSocket for serverless environments
+          const sql = neon(this.env.DATABASE_URL);
+          _db = drizzleNeonHttp(sql, { schema });
         } else {
           // Use node-postgres adapter for local development
           _db = drizzleNodePg(this.pool as Pool, { schema });
