@@ -110,6 +110,17 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Invalid changes JSON");
     }
 
+    // Validate ChangesPayload structure
+    if (
+      !Array.isArray(changes.added) ||
+      !Array.isArray(changes.modified) ||
+      !Array.isArray(changes.deleted)
+    ) {
+      throw new BadRequestError(
+        "Invalid changes structure: added, modified, and deleted must be arrays",
+      );
+    }
+
     log.debug(
       `Received incremental upload for "${storageName}" from run ${runId}, base: ${baseVersion.slice(0, 8)}`,
     );
@@ -198,7 +209,23 @@ export async function POST(request: NextRequest) {
       // Read new/modified files
       const changedPaths = new Set([...changes.added, ...changes.modified]);
       for (const relativePath of changedPaths) {
+        // Security: Validate path to prevent path traversal attacks
+        if (
+          relativePath.includes("..") ||
+          path.isAbsolute(relativePath) ||
+          relativePath.startsWith("/")
+        ) {
+          throw new BadRequestError(`Invalid file path: ${relativePath}`);
+        }
+
         const filePath = path.join(extractPath, relativePath);
+
+        // Additional security check: ensure resolved path is within extractPath
+        const resolvedPath = path.resolve(filePath);
+        if (!resolvedPath.startsWith(path.resolve(extractPath) + path.sep)) {
+          throw new BadRequestError(`Invalid file path: ${relativePath}`);
+        }
+
         try {
           const content = await fs.promises.readFile(filePath);
           newFileEntries.push({ path: relativePath, content });
