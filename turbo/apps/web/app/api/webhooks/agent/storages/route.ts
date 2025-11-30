@@ -16,7 +16,8 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
-import { uploadS3DirectoryWithManifestAndArchive } from "../../../../../src/lib/s3/s3-client";
+import { uploadStorageVersionArchive } from "../../../../../src/lib/s3/s3-client";
+import { blobService } from "../../../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -184,7 +185,13 @@ export async function POST(request: NextRequest) {
 
       log.debug(`Created version: ${version.id}`);
 
-      // Upload files to versioned S3 path with manifest and archive
+      // Upload blobs with deduplication
+      const blobResult = await blobService.uploadBlobs(fileEntries);
+      log.debug(
+        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
+      );
+
+      // Upload manifest and archive.tar.gz
       const bucketName = env().S3_USER_STORAGES_NAME;
       if (!bucketName) {
         throw new Error(
@@ -192,12 +199,12 @@ export async function POST(request: NextRequest) {
         );
       }
       const s3Uri = `s3://${bucketName}/${s3Key}`;
-      log.debug(`Uploading ${fileCount} files to ${s3Uri}...`);
-      await uploadS3DirectoryWithManifestAndArchive(
-        extractPath,
+      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
+      await uploadStorageVersionArchive(
         s3Uri,
         contentHash,
         fileEntries,
+        blobResult.hashes,
       );
 
       versionId = version.id;

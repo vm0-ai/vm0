@@ -9,6 +9,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../../env";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import archiver from "archiver";
 import type {
   S3Uri,
   S3Object,
@@ -20,7 +21,6 @@ import type {
 } from "./types";
 import { S3DownloadError, S3UploadError } from "./types";
 import { hashFileContent, type FileEntry } from "../storage/content-hash";
-import AdmZip from "adm-zip";
 
 /**
  * Parse S3 URI into bucket and prefix
@@ -448,46 +448,70 @@ export async function generatePresignedUrlsForPrefix(
 }
 
 /**
- * Upload directory with manifest.json and archive.zip
+ * Create tar.gz archive from file entries using streaming
+ *
+ * @param fileEntries - Array of file entries with content
+ * @returns Buffer containing tar.gz archive
+ */
+async function createTarGzBuffer(fileEntries: FileEntry[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const archive = archiver("tar", { gzip: true });
+
+    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
+    archive.on("end", () => resolve(Buffer.concat(chunks)));
+    archive.on("error", reject);
+
+    // Add each file to the archive
+    for (const file of fileEntries) {
+      archive.append(file.content, { name: file.path });
+    }
+
+    // Finalize the archive
+    archive.finalize().catch(reject);
+  });
+}
+
+/**
+ * Upload storage version with manifest.json and archive.tar.gz
  *
  * Creates the new S3 structure:
- * - {prefix}/manifest.json - File manifest with hashes for incremental upload
- * - {prefix}/archive.zip - Complete archive for fast download
- * - {prefix}/files/* - Individual files for potential future incremental sync
+ * - {prefix}/manifest.json - File manifest with blob hashes
+ * - {prefix}/archive.tar.gz - Streaming tar.gz archive for fast download
  *
- * @param localPath - Local directory path to upload from
+ * Note: Blobs are uploaded separately by the blob service
+ *
  * @param s3Uri - S3 URI in format s3://bucket/prefix
  * @param versionId - Version ID (content hash) for the manifest
- * @param fileEntries - Array of file entries with content (for hash computation and ZIP creation)
+ * @param fileEntries - Array of file entries with content
+ * @param blobHashes - Map of file path to blob hash (from blob service)
  * @returns Upload result with manifest
  */
-export async function uploadS3DirectoryWithManifestAndArchive(
-  localPath: string,
+export async function uploadStorageVersionArchive(
   s3Uri: string,
   versionId: string,
   fileEntries: FileEntry[],
+  blobHashes: Map<string, string>,
 ): Promise<UploadWithManifestResult> {
   const { bucket, prefix } = parseS3Uri(s3Uri);
 
-  // 1. Upload individual files to files/ subdirectory
-  const filesPrefix = `${prefix}/files`;
-  const filesS3Uri = `s3://${bucket}/${filesPrefix}`;
-  const uploadResult = await uploadS3Directory(localPath, filesS3Uri);
+  // Calculate total size
+  const totalSize = fileEntries.reduce((sum, f) => sum + f.content.length, 0);
 
-  // 2. Create manifest with file hashes
+  // 1. Create manifest with blob hashes
   const manifest: S3StorageManifest = {
     version: versionId,
     createdAt: new Date().toISOString(),
-    totalSize: uploadResult.totalBytes,
-    fileCount: uploadResult.filesUploaded,
+    totalSize,
+    fileCount: fileEntries.length,
     files: fileEntries.map((f) => ({
       path: f.path,
-      hash: hashFileContent(f.content),
+      hash: blobHashes.get(f.path) || hashFileContent(f.content),
       size: f.content.length,
     })),
   };
 
-  // 3. Upload manifest.json
+  // 2. Upload manifest.json
   const manifestJson = JSON.stringify(manifest, null, 2);
   await uploadS3Buffer(
     bucket,
@@ -495,17 +519,14 @@ export async function uploadS3DirectoryWithManifestAndArchive(
     Buffer.from(manifestJson),
   );
 
-  // 4. Create and upload archive.zip
-  const zip = new AdmZip();
-  for (const file of fileEntries) {
-    zip.addFile(file.path, file.content);
-  }
-  await uploadS3Buffer(bucket, `${prefix}/archive.zip`, zip.toBuffer());
+  // 3. Create and upload archive.tar.gz using streaming
+  const tarGzBuffer = await createTarGzBuffer(fileEntries);
+  await uploadS3Buffer(bucket, `${prefix}/archive.tar.gz`, tarGzBuffer);
 
   return {
     s3Prefix: prefix,
-    filesUploaded: uploadResult.filesUploaded,
-    totalBytes: uploadResult.totalBytes,
+    filesUploaded: fileEntries.length,
+    totalBytes: totalSize,
     manifest,
   };
 }

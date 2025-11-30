@@ -1,9 +1,5 @@
 import { resolveVolumes } from "./storage-resolver";
-import {
-  generatePresignedUrlsForPrefix,
-  generatePresignedUrl,
-  listS3Objects,
-} from "../s3/s3-client";
+import { generatePresignedUrl, listS3Objects } from "../s3/s3-client";
 import { logger } from "../logger";
 import type {
   AgentVolumeConfig,
@@ -149,20 +145,13 @@ export class StorageService {
         volume.vasVersion,
       );
 
-      // Generate archive URL
-      const archiveKey = `${s3Key}/archive.zip`;
+      // Generate archive URL for tar.gz
+      const archiveKey = `${s3Key}/archive.tar.gz`;
       const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
       // Get archive size from S3
       const archiveObjects = await listS3Objects(bucketName, archiveKey);
       const archiveSize = archiveObjects[0]?.size ?? 0;
-
-      // Generate presigned URLs for individual files (from files/ subdirectory)
-      const filesPrefix = `${s3Key}/files`;
-      const files = await generatePresignedUrlsForPrefix(
-        bucketName,
-        filesPrefix,
-      );
 
       const manifestStorage: ManifestStorage = {
         name: volume.name,
@@ -171,12 +160,9 @@ export class StorageService {
         vasVersionId: versionId,
         archiveUrl,
         archiveSize,
-        files,
       };
 
-      log.debug(
-        `Generated archive URL and ${files.length} presigned URLs for volume "${volume.name}"`,
-      );
+      log.debug(`Generated archive URL for volume "${volume.name}"`);
 
       return manifestStorage;
     });
@@ -198,20 +184,13 @@ export class StorageService {
             artifactSource.vasVersion,
           );
 
-          // Generate archive URL
-          const archiveKey = `${s3Key}/archive.zip`;
+          // Generate archive URL for tar.gz
+          const archiveKey = `${s3Key}/archive.tar.gz`;
           const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
           // Get archive size from S3
           const archiveObjects = await listS3Objects(bucketName, archiveKey);
           const archiveSize = archiveObjects[0]?.size ?? 0;
-
-          // Generate presigned URLs for individual files (from files/ subdirectory)
-          const filesPrefix = `${s3Key}/files`;
-          const files = await generatePresignedUrlsForPrefix(
-            bucketName,
-            filesPrefix,
-          );
 
           const manifestArtifact: ManifestArtifact = {
             mountPath: artifactSource.mountPath,
@@ -219,11 +198,10 @@ export class StorageService {
             vasVersionId: versionId,
             archiveUrl,
             archiveSize,
-            files,
           };
 
           log.debug(
-            `Generated archive URL and ${files.length} presigned URLs for artifact "${artifactSource.vasStorageName}"`,
+            `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
           );
 
           return manifestArtifact;
@@ -236,12 +214,8 @@ export class StorageService {
       artifactPromise,
     ]);
 
-    const totalFiles =
-      storageResults.reduce((sum, s) => sum + s.files.length, 0) +
-      (artifact?.files.length || 0);
-
     log.debug(
-      `Storage manifest prepared: ${storageResults.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${totalFiles} total files`,
+      `Storage manifest prepared: ${storageResults.length} storages, ${artifact ? "1 artifact" : "no artifact"}`,
     );
 
     return {

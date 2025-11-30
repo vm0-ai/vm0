@@ -497,17 +497,17 @@ export class E2BService {
     sandbox: Sandbox,
     manifest: StorageManifest,
   ): Promise<void> {
-    const totalFiles =
-      manifest.storages.reduce((sum, s) => sum + s.files.length, 0) +
-      (manifest.artifact?.files.length || 0);
+    const totalArchives =
+      manifest.storages.filter((s) => s.archiveUrl).length +
+      (manifest.artifact?.archiveUrl ? 1 : 0);
 
-    if (totalFiles === 0) {
-      log.debug("No files to download directly");
+    if (totalArchives === 0) {
+      log.debug("No archives to download directly");
       return;
     }
 
     log.debug(
-      `Downloading ${totalFiles} files directly to sandbox using presigned URLs...`,
+      `Downloading ${totalArchives} archives directly to sandbox using presigned URLs...`,
     );
 
     // Upload download script first (needed before executeCommand uploads all scripts)
@@ -542,7 +542,7 @@ export class E2BService {
     }
 
     log.debug(
-      `Downloaded ${totalFiles} files directly to sandbox in ${downloadTimeMs}ms`,
+      `Downloaded ${totalArchives} archives directly to sandbox in ${downloadTimeMs}ms`,
     );
   }
 

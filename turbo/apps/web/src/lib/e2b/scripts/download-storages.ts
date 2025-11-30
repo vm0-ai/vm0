@@ -1,6 +1,6 @@
 /**
  * Download storages script for E2B sandbox
- * Downloads ZIP archives directly from S3 using presigned URLs
+ * Downloads tar.gz archives directly from S3 using presigned URLs
  *
  * This script is uploaded to the sandbox and executed to download
  * storage archives directly from S3, bypassing the VM0 server.
@@ -10,9 +10,9 @@
 const dollar = "$";
 
 export const DOWNLOAD_STORAGES_SCRIPT = `#!/bin/bash
-# Download storages from S3 using presigned URLs (ZIP archive mode)
+# Download storages from S3 using presigned URLs (tar.gz archive mode)
 # Usage: download-storages.sh <manifest_path>
-# Requires: curl, jq, unzip
+# Requires: curl, jq, tar
 
 set -e
 
@@ -33,32 +33,32 @@ log_info "Starting storage download from manifest: ${dollar}MANIFEST_PATH"
 download_storage() {
   local mount_path="${dollar}1"
   local archive_url="${dollar}2"
-  local temp_zip="/tmp/storage-${dollar}(date +%s%N).zip"
+  local temp_tar="/tmp/storage-${dollar}(date +%s%N).tar.gz"
 
   log_info "Downloading storage to ${dollar}mount_path"
 
-  # Download ZIP with retry
+  # Download tar.gz with retry
   local attempt=1
   local max_attempts=3
 
   while [ ${dollar}attempt -le ${dollar}max_attempts ]; do
-    if curl -fsSL -o "${dollar}temp_zip" "${dollar}archive_url" 2>/dev/null; then
+    if curl -fsSL -o "${dollar}temp_tar" "${dollar}archive_url" 2>/dev/null; then
       break
     fi
     attempt=${dollar}((attempt + 1))
     [ ${dollar}attempt -le ${dollar}max_attempts ] && sleep 1
   done
 
-  if [ ! -f "${dollar}temp_zip" ]; then
+  if [ ! -f "${dollar}temp_tar" ]; then
     log_error "Failed to download archive for ${dollar}mount_path after ${dollar}max_attempts attempts"
     return 1
   fi
 
-  # Extract to mount path (handle empty zip gracefully)
+  # Extract to mount path (handle empty archive gracefully)
   mkdir -p "${dollar}mount_path"
-  # unzip returns exit code 1 for empty archives with warning, treat as success
-  unzip -q -o "${dollar}temp_zip" -d "${dollar}mount_path" 2>/dev/null || true
-  rm -f "${dollar}temp_zip"
+  # tar handles empty archives gracefully
+  tar -xzf "${dollar}temp_tar" -C "${dollar}mount_path" 2>/dev/null || true
+  rm -f "${dollar}temp_tar"
 
   log_info "Successfully extracted to ${dollar}mount_path"
 }

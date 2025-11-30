@@ -114,22 +114,10 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
-        "https://s3.example.com/archive.zip",
+        "https://s3.example.com/archive.tar.gz",
       );
       vi.mocked(s3Client.listS3Objects).mockResolvedValue([
-        { key: "archive.zip", size: 3072 },
-      ]);
-      vi.mocked(s3Client.generatePresignedUrlsForPrefix).mockResolvedValue([
-        {
-          path: "file1.txt",
-          url: "https://s3.example.com/presigned1",
-          size: 1024,
-        },
-        {
-          path: "file2.txt",
-          url: "https://s3.example.com/presigned2",
-          size: 2048,
-        },
+        { key: "archive.tar.gz", size: 3072, lastModified: new Date() },
       ]);
 
       const result = await storageService.prepareStorageManifest(
@@ -143,10 +131,9 @@ describe("StorageService", () => {
       expect(result.storages[0]?.vasStorageName).toBe("my-dataset");
       expect(result.storages[0]?.vasVersionId).toBe("version-abc");
       expect(result.storages[0]?.archiveUrl).toBe(
-        "https://s3.example.com/archive.zip",
+        "https://s3.example.com/archive.tar.gz",
       );
       expect(result.storages[0]?.archiveSize).toBe(3072);
-      expect(result.storages[0]?.files).toHaveLength(2);
       expect(result.artifact).toBeNull();
     });
 
@@ -199,17 +186,10 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
-        "https://s3.example.com/artifact-archive.zip",
+        "https://s3.example.com/artifact-archive.tar.gz",
       );
       vi.mocked(s3Client.listS3Objects).mockResolvedValue([
-        { key: "archive.zip", size: 512 },
-      ]);
-      vi.mocked(s3Client.generatePresignedUrlsForPrefix).mockResolvedValue([
-        {
-          path: "output.json",
-          url: "https://s3.example.com/presigned",
-          size: 512,
-        },
+        { key: "archive.tar.gz", size: 512, lastModified: new Date() },
       ]);
 
       const result = await storageService.prepareStorageManifest(
@@ -225,10 +205,9 @@ describe("StorageService", () => {
       expect(result.artifact?.vasStorageName).toBe("my-artifact");
       expect(result.artifact?.vasVersionId).toBe("version-123");
       expect(result.artifact?.archiveUrl).toBe(
-        "https://s3.example.com/artifact-archive.zip",
+        "https://s3.example.com/artifact-archive.tar.gz",
       );
       expect(result.artifact?.archiveSize).toBe(512);
-      expect(result.artifact?.files).toHaveLength(1);
     });
 
     it("should handle resumeArtifact for checkpoint resume", async () => {
@@ -311,17 +290,10 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
-        "https://s3.example.com/archive.zip",
+        "https://s3.example.com/archive.tar.gz",
       );
       vi.mocked(s3Client.listS3Objects).mockResolvedValue([
-        { key: "archive.zip", size: 100 },
-      ]);
-      vi.mocked(s3Client.generatePresignedUrlsForPrefix).mockResolvedValue([
-        {
-          path: "file.txt",
-          url: "https://s3.example.com/presigned",
-          size: 100,
-        },
+        { key: "archive.tar.gz", size: 100, lastModified: new Date() },
       ]);
 
       const result = await storageService.prepareStorageManifest(
@@ -381,12 +353,11 @@ describe("StorageService", () => {
       } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
-        "https://s3.example.com/archive.zip",
+        "https://s3.example.com/archive.tar.gz",
       );
       vi.mocked(s3Client.listS3Objects).mockResolvedValue([
-        { key: "archive.zip", size: 0 },
+        { key: "archive.tar.gz", size: 0, lastModified: new Date() },
       ]);
-      vi.mocked(s3Client.generatePresignedUrlsForPrefix).mockResolvedValue([]);
 
       const result = await storageService.prepareStorageManifest(
         undefined,

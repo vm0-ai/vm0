@@ -4,13 +4,15 @@ import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { storages, storageVersions } from "../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import {
-  uploadS3DirectoryWithManifestAndArchive,
-  downloadS3Directory,
+  uploadStorageVersionArchive,
+  downloadS3Object,
 } from "../../../src/lib/s3/s3-client";
+import { blobService } from "../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import AdmZip from "adm-zip";
+import { execSync } from "node:child_process";
 import { env } from "../../../src/env";
 import {
   computeContentHash,
@@ -225,8 +227,13 @@ export async function POST(request: NextRequest) {
 
       log.debug(`Created version: ${version.id}`);
 
-      // Upload files to versioned S3 path with manifest and archive
-      // If this fails, the transaction will be rolled back
+      // Upload blobs with deduplication
+      const blobResult = await blobService.uploadBlobs(fileEntries);
+      log.debug(
+        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
+      );
+
+      // Upload manifest and archive.tar.gz
       const bucketName = env().S3_USER_STORAGES_NAME;
       if (!bucketName) {
         throw new Error(
@@ -234,12 +241,12 @@ export async function POST(request: NextRequest) {
         );
       }
       const s3Uri = `s3://${bucketName}/${version.s3Key}`;
-      log.debug(`Uploading ${fileCount} files to ${s3Uri}...`);
-      await uploadS3DirectoryWithManifestAndArchive(
-        extractPath,
+      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
+      await uploadStorageVersionArchive(
         s3Uri,
         contentHash,
         fileEntries,
+        blobResult.hashes,
       );
 
       // Update storage's HEAD pointer and metadata within transaction
@@ -383,7 +390,7 @@ export async function GET(request: NextRequest) {
     tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Download files from versioned S3 path (files/ subdirectory)
+    // Download archive.tar.gz from S3
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
       return NextResponse.json(
@@ -391,20 +398,23 @@ export async function GET(request: NextRequest) {
         { status: 500 },
       );
     }
-    const s3Uri = `s3://${bucketName}/${version.s3Key}/files`;
-    const downloadPath = path.join(tempDir, "download");
-    console.log(`[Storage] Downloading from S3: ${s3Uri}`);
-    await downloadS3Directory(s3Uri, downloadPath);
-    // Ensure download directory exists (empty artifacts won't create it)
-    await fs.promises.mkdir(downloadPath, { recursive: true });
+    const archiveKey = `${version.s3Key}/archive.tar.gz`;
+    const tarGzPath = path.join(tempDir, "archive.tar.gz");
+    log.debug(`Downloading archive from S3: ${archiveKey}`);
+    await downloadS3Object(bucketName, archiveKey, tarGzPath);
 
-    // Create zip file
+    // Extract tar.gz to download directory
+    const downloadPath = path.join(tempDir, "download");
+    await fs.promises.mkdir(downloadPath, { recursive: true });
+    execSync(`tar -xzf "${tarGzPath}" -C "${downloadPath}"`, { stdio: "pipe" });
+
+    // Create zip file for response (CLI expects zip format)
     const zipPath = path.join(tempDir, "storage.zip");
     const zip = new AdmZip();
     zip.addLocalFolder(downloadPath);
     zip.writeZip(zipPath);
 
-    console.log(`[Storage] Created zip file at ${zipPath}`);
+    log.debug(`Created zip file at ${zipPath}`);
 
     // Read zip file
     const zipBuffer = await fs.promises.readFile(zipPath);
