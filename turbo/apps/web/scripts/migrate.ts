@@ -2,6 +2,7 @@
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -32,10 +33,28 @@ async function runMigrations() {
   if (fs.existsSync(migration0025Path)) {
     const content = fs.readFileSync(migration0025Path, "utf-8");
     const hash = crypto.createHash("sha256").update(content).digest("hex");
-    console.log("Migration 0025 exists, SHA256 hash:", hash);
+    console.log("Migration 0025 exists, manual SHA256 hash:", hash);
     console.log("Migration 0025 content length:", content.length);
   } else {
     console.log("WARNING: Migration 0025 file does NOT exist!");
+  }
+
+  // Use drizzle's own readMigrationFiles to see what hashes it computes
+  try {
+    const migrations = readMigrationFiles({
+      migrationsFolder: DRIZZLE_MIGRATE_OUT,
+    });
+    console.log("Drizzle sees migrations:", migrations.length);
+    const last3 = migrations.slice(-3);
+    console.log(
+      "Last 3 drizzle migrations:",
+      last3.map((m) => ({
+        hash: m.hash?.substring(0, 20),
+        sql: m.sql?.length,
+      })),
+    );
+  } catch (e) {
+    console.log("Error reading migrations via drizzle:", e);
   }
 
   if (fs.existsSync(journalPath)) {
