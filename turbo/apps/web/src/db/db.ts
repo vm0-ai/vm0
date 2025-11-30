@@ -7,6 +7,8 @@ import * as agentRunEventSchema from "./schema/agent-run-event";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
+import * as storageSchema from "./schema/storage";
+import * as blobSchema from "./schema/blob";
 
 export const schema = {
   ...userSchema,
@@ -18,4 +20,6 @@ export const schema = {
   ...conversationSchema,
   ...checkpointSchema,
   ...agentSessionSchema,
+  ...storageSchema,
+  ...blobSchema,
 };
