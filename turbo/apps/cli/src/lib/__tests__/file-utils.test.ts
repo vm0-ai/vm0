@@ -3,7 +3,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as tar from "tar";
-import { excludeVm0Filter, listTarFiles, removeExtraFiles } from "../file-utils";
+import {
+  excludeVm0Filter,
+  listTarFiles,
+  removeExtraFiles,
+} from "../file-utils";
 
 describe("file-utils", () => {
   let tempDir: string;
