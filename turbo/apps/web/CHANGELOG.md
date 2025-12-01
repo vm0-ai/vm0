@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/vm0-ai/vm0/compare/web-v2.8.0...web-v2.8.1) (2025-12-01)
+
+
+### Bug Fixes
+
+* implement conversation restoration for direct --conversation flag ([#326](https://github.com/vm0-ai/vm0/issues/326)) ([faa5c0a](https://github.com/vm0-ai/vm0/commit/faa5c0adcb1f7c7125b35911d31275604cdd1bf8))
+
 ## [2.8.0](https://github.com/vm0-ai/vm0/compare/web-v2.7.0...web-v2.8.0) (2025-11-30)
 
 
