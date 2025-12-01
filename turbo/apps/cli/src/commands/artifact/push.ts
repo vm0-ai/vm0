@@ -106,15 +106,28 @@ export const pushCommand = new Command()
       // Get relative paths for tar
       const relativePaths = files.map((file) => path.relative(cwd, file));
 
-      // Create tar.gz archive (use "." for empty directories)
-      await tar.create(
-        {
-          gzip: true,
-          file: tarPath,
-          cwd: cwd,
-        },
-        relativePaths.length > 0 ? relativePaths : ["."],
-      );
+      // Create tar.gz archive
+      if (relativePaths.length > 0) {
+        await tar.create(
+          {
+            gzip: true,
+            file: tarPath,
+            cwd: cwd,
+          },
+          relativePaths,
+        );
+      } else {
+        // For empty directories, create tar.gz excluding .vm0
+        await tar.create(
+          {
+            gzip: true,
+            file: tarPath,
+            cwd: cwd,
+            filter: (filePath: string) => !filePath.startsWith(".vm0"),
+          },
+          ["."],
+        );
+      }
 
       const tarBuffer = await fs.promises.readFile(tarPath);
       // Clean up temp files
