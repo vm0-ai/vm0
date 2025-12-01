@@ -77,3 +77,37 @@ teardown() {
     assert_output --partial "existing content"
     assert_output --partial "nested file"
 }
+
+@test "VM0 artifact pull succeeds after agent removes all files" {
+    # Create artifact with files
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    echo "file to be deleted" > delete-me.txt
+    mkdir -p subdir
+    echo "nested file to delete" > subdir/nested.txt
+
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Run agent that deletes all files
+    # This creates a checkpoint with empty artifact
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "rm -rf delete-me.txt subdir"
+
+    assert_success
+    assert_output --partial "[result]"
+    assert_output --partial "Checkpoint:"
+
+    # Now pull the empty artifact - this should succeed, not fail with TAR_BAD_ARCHIVE
+    # Bug fix: empty archives created by archiver may not be valid tar format
+    run $CLI_COMMAND artifact pull
+    assert_success
+
+    # Verify local directory is now empty (except .vm0)
+    local file_count=$(find . -type f ! -path './.vm0/*' | wc -l)
+    [ "$file_count" -eq 0 ]
+}
