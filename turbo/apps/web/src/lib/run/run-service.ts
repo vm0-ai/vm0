@@ -159,6 +159,10 @@ export class RunService {
       );
     }
 
+    if (!session.conversationId) {
+      throw new NotFoundError("Agent session has no conversation ID");
+    }
+
     // Load agent config
     const [config] = await globalThis.services.db
       .select()
@@ -171,7 +175,7 @@ export class RunService {
     }
 
     return {
-      conversationId: session.conversationId!,
+      conversationId: session.conversationId,
       agentConfigId: session.agentConfigId,
       agentConfig: config.config,
       workingDir: this.extractWorkingDir(config.config),
@@ -287,115 +291,6 @@ export class RunService {
   }
 
   /**
-   * Create execution context for resuming from a checkpoint
-   *
-   * @param runId New run ID for the resume
-   * @param checkpointId Checkpoint ID to resume from
-   * @param prompt New prompt for resumed execution
-   * @param sandboxToken Temporary bearer token for sandbox
-   * @param userId User ID for authorization check
-   * @returns Execution context for e2b-service
-   * @throws NotFoundError if checkpoint doesn't exist
-   * @throws UnauthorizedError if checkpoint doesn't belong to user
-   */
-  async createResumeContext(
-    runId: string,
-    checkpointId: string,
-    prompt: string,
-    sandboxToken: string,
-    userId: string,
-  ): Promise<ExecutionContext> {
-    log.debug(
-      `Creating resume context for ${runId} from checkpoint ${checkpointId}`,
-    );
-
-    // Load checkpoint from database
-    const [checkpoint] = await globalThis.services.db
-      .select()
-      .from(checkpoints)
-      .where(eq(checkpoints.id, checkpointId))
-      .limit(1);
-
-    if (!checkpoint) {
-      throw new NotFoundError("Checkpoint");
-    }
-
-    // Verify checkpoint belongs to user by checking the associated run
-    const [originalRun] = await globalThis.services.db
-      .select()
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-      )
-      .limit(1);
-
-    if (!originalRun) {
-      throw new UnauthorizedError(
-        "Checkpoint does not belong to authenticated user",
-      );
-    }
-
-    // Load conversation from database
-    const [conversation] = await globalThis.services.db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, checkpoint.conversationId))
-      .limit(1);
-
-    if (!conversation) {
-      throw new NotFoundError("Conversation");
-    }
-
-    // Extract agent config snapshot
-    const agentConfigSnapshot =
-      checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
-
-    log.debug(
-      `Checkpoint verified for user ${userId}, loaded conversation ${conversation.id}`,
-    );
-
-    // Extract working directory from agent config snapshot
-    const agentConfig = agentConfigSnapshot.config as
-      | { agents?: Array<{ working_dir?: string }> }
-      | undefined;
-    const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
-
-    log.debug(`Working directory: ${workingDir}`);
-
-    // Build resume session data from conversation
-    const resumeSession: ResumeSession = {
-      sessionId: conversation.cliAgentSessionId,
-      sessionHistory: conversation.cliAgentSessionHistory,
-      workingDir,
-    };
-
-    // Parse artifact snapshot from JSONB
-    const resumeArtifact =
-      checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
-
-    // Parse volume versions snapshot if present
-    const volumeVersionsSnapshot =
-      checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
-
-    log.debug(
-      `Resume session: ${conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@${resumeArtifact.artifactVersion}`,
-    );
-
-    return {
-      runId,
-      userId,
-      agentConfigId: originalRun.agentConfigId,
-      agentConfig: agentConfigSnapshot.config,
-      prompt,
-      templateVars: agentConfigSnapshot.templateVars || {},
-      sandboxToken,
-      resumeSession,
-      resumeArtifact,
-      volumeVersions: volumeVersionsSnapshot?.versions,
-    };
-  }
-
-  /**
    * Validate a checkpoint for resume operation
    * Returns checkpoint data without creating full execution context
    *
@@ -494,106 +389,6 @@ export class RunService {
     return {
       agentConfigId: session.agentConfigId,
       templateVars: session.templateVars,
-    };
-  }
-
-  /**
-   * Create execution context for continuing from an agent session
-   * Unlike checkpoint resume, this uses the LATEST artifact version
-   *
-   * @param runId New run ID for the continue
-   * @param agentSessionId Agent session ID to continue from
-   * @param prompt New prompt for continued execution
-   * @param sandboxToken Temporary bearer token for sandbox
-   * @param userId User ID for authorization check
-   * @returns Execution context for e2b-service
-   * @throws NotFoundError if session doesn't exist
-   * @throws UnauthorizedError if session doesn't belong to user
-   */
-  async createContinueContext(
-    runId: string,
-    agentSessionId: string,
-    prompt: string,
-    sandboxToken: string,
-    userId: string,
-  ): Promise<ExecutionContext> {
-    log.debug(
-      `Creating continue context for ${runId} from session ${agentSessionId}`,
-    );
-
-    // Load session with conversation data
-    const session =
-      await agentSessionService.getByIdWithConversation(agentSessionId);
-
-    if (!session) {
-      throw new NotFoundError("Agent session");
-    }
-
-    // Verify session belongs to user
-    if (session.userId !== userId) {
-      throw new UnauthorizedError(
-        "Agent session does not belong to authenticated user",
-      );
-    }
-
-    // Session must have a conversation to continue from
-    if (!session.conversation) {
-      throw new NotFoundError(
-        "Agent session has no conversation history to continue from",
-      );
-    }
-
-    log.debug(
-      `Session verified for user ${userId}, loaded conversation ${session.conversationId}`,
-    );
-
-    // Load agent config for working directory
-    const [config] = await globalThis.services.db
-      .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, session.agentConfigId))
-      .limit(1);
-
-    if (!config) {
-      throw new NotFoundError("Agent config");
-    }
-
-    // Extract working directory from agent config
-    const agentConfig = config.config as
-      | { agents?: Array<{ working_dir?: string }> }
-      | undefined;
-    const workingDir = agentConfig?.agents?.[0]?.working_dir || "/workspace";
-
-    log.debug(`Working directory: ${workingDir}`);
-
-    // Build resume session data from conversation
-    const resumeSession: ResumeSession = {
-      sessionId: session.conversation.cliAgentSessionId,
-      sessionHistory: session.conversation.cliAgentSessionHistory,
-      workingDir,
-    };
-
-    // For continue, use LATEST artifact version (not a snapshot)
-    // This is the key difference from checkpoint resume
-    const resumeArtifact: ArtifactSnapshot = {
-      artifactName: session.artifactName,
-      artifactVersion: "latest", // Always use latest for continue
-    };
-
-    log.debug(
-      `Continue session: ${session.conversation.cliAgentSessionId}, artifact: ${resumeArtifact.artifactName}@latest`,
-    );
-
-    return {
-      runId,
-      userId,
-      agentConfigId: session.agentConfigId,
-      agentConfig: config.config,
-      prompt,
-      templateVars: session.templateVars || {},
-      sandboxToken,
-      resumeSession,
-      resumeArtifact,
     };
   }
 
