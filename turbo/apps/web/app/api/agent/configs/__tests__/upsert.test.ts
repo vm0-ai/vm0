@@ -191,6 +191,40 @@ describe("Agent Config Upsert Behavior", () => {
   });
 
   describe("agent name validation", () => {
+    it("should reject config with multiple agents", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "agent-one": {
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+          "agent-two": {
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/home/user/workspace",
+          },
+        },
+      };
+
+      const request = new Request("http://localhost:3000/api/agent/configs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ config }),
+      });
+
+      const response = await POST(request as NextRequest);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toBe(
+        "Multiple agents not supported yet. Only one agent allowed.",
+      );
+    });
+
     it("should reject config with invalid name format", async () => {
       const config = {
         version: "1.0",

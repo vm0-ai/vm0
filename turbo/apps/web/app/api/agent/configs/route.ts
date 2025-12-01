@@ -118,8 +118,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get agent name from key
-    const agentName = agentKeys[0]!;
+    // Get agent name from key (guaranteed to exist due to length check above)
+    const agentName = agentKeys[0];
+    if (!agentName) {
+      throw new BadRequestError("agents must have at least one agent defined");
+    }
 
     // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
     const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;

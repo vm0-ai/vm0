@@ -30,6 +30,17 @@ import { logger } from "../logger";
 const log = logger("service:e2b");
 
 /**
+ * Get the first agent from config (currently only one agent is supported)
+ */
+function getFirstAgent(
+  config?: AgentConfigYaml,
+): AgentConfigYaml["agents"][string] | undefined {
+  if (!config?.agents) return undefined;
+  const values = Object.values(config.agents);
+  return values[0];
+}
+
+/**
  * E2B Service
  * Manages E2B sandbox creation and execution
  * Agnostic to run type (new run or resume)
@@ -58,10 +69,7 @@ export class E2BService {
     const agentConfigYaml = context.agentConfig as AgentConfigYaml | undefined;
 
     // Get mount path from agent config (used for resume artifact)
-    const agentValues = agentConfigYaml?.agents
-      ? Object.values(agentConfigYaml.agents)
-      : [];
-    const firstAgent = agentValues[0];
+    const firstAgent = getFirstAgent(agentConfigYaml);
     const artifactMountPath = firstAgent?.working_dir || "/workspace";
 
     try {
@@ -323,10 +331,7 @@ export class E2BService {
     };
 
     // Priority: agent.image > E2B_TEMPLATE_NAME
-    const agentValues = agentConfig?.agents
-      ? Object.values(agentConfig.agents)
-      : [];
-    const agent = agentValues[0];
+    const agent = getFirstAgent(agentConfig);
     const templateName = agent?.image || e2bConfig.defaultTemplate;
 
     if (!templateName) {
@@ -425,10 +430,7 @@ export class E2BService {
 
     // Extract working_dir from agent config
     const config = agentConfig as AgentConfigYaml | undefined;
-    const configAgentValues = config?.agents
-      ? Object.values(config.agents)
-      : [];
-    const workingDir = configAgentValues[0]?.working_dir;
+    const workingDir = getFirstAgent(config)?.working_dir;
 
     // Set environment variables
     const envs: Record<string, string> = {
