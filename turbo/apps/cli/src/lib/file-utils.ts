@@ -1,20 +1,51 @@
 import * as fs from "fs";
 import * as path from "path";
-import type AdmZip from "adm-zip";
+import * as tar from "tar";
 
 /**
- * Extract file paths from zip entries, normalizing path separators.
+ * Extract file paths from tar.gz buffer.
  */
-export function getRemoteFilesFromZip(
-  zipEntries: AdmZip.IZipEntry[],
-): Set<string> {
+export async function getRemoteFilesFromTar(
+  tarBuffer: Buffer,
+): Promise<Set<string>> {
   const remoteFiles = new Set<string>();
-  for (const entry of zipEntries) {
-    if (!entry.isDirectory) {
-      remoteFiles.add(entry.entryName.replace(/\\/g, "/"));
-    }
-  }
+
+  // Use tar.list to get file entries
+  await tar.list(
+    {
+      sync: false,
+      onReadEntry: (entry) => {
+        // Only add files, not directories
+        if (entry.type === "File") {
+          remoteFiles.add(entry.path.replace(/\\/g, "/"));
+        }
+      },
+    },
+    [tarBuffer] as unknown as string[],
+  );
+
   return remoteFiles;
+}
+
+/**
+ * List files in tar.gz buffer using streaming parser.
+ */
+export function listTarFiles(tarPath: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const files: string[] = [];
+
+    tar
+      .list({
+        file: tarPath,
+        onReadEntry: (entry) => {
+          if (entry.type === "File") {
+            files.push(entry.path);
+          }
+        },
+      })
+      .then(() => resolve(files))
+      .catch(reject);
+  });
 }
 
 /**

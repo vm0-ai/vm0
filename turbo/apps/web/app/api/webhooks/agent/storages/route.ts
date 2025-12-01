@@ -21,7 +21,7 @@ import { blobService } from "../../../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import AdmZip from "adm-zip";
+import * as tar from "tar";
 import { env } from "../../../../../src/env";
 import {
   computeContentHash,
@@ -41,7 +41,7 @@ interface StorageVersionResponse {
 /**
  * POST /api/webhooks/agent/storages
  * Create a new version of a storage from sandbox
- * Accepts multipart form data with storage content as zip
+ * Accepts multipart form data with storage content as tar.gz
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -107,18 +107,21 @@ export async function POST(request: NextRequest) {
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Save uploaded file to temp location
-    const zipPath = path.join(tempDir, "upload.zip");
+    const tarGzPath = path.join(tempDir, "upload.tar.gz");
     const arrayBuffer = await file.arrayBuffer();
-    await fs.promises.writeFile(zipPath, Buffer.from(arrayBuffer));
+    await fs.promises.writeFile(tarGzPath, Buffer.from(arrayBuffer));
 
-    // Extract zip file
-    const zip = new AdmZip(zipPath);
+    // Extract tar.gz file
     const extractPath = path.join(tempDir, "extracted");
-    // Ensure extract directory exists before extraction (empty zips don't create it)
+    // Ensure extract directory exists before extraction (empty archives don't create it)
     await fs.promises.mkdir(extractPath, { recursive: true });
-    zip.extractAllTo(extractPath, true);
+    await tar.extract({
+      file: tarGzPath,
+      cwd: extractPath,
+      gzip: true,
+    });
 
-    log.debug(`Extracted zip to ${extractPath}`);
+    log.debug(`Extracted tar.gz to ${extractPath}`);
 
     // Calculate file count, size, and collect file entries for hashing
     const filePaths = await getAllFiles(extractPath);

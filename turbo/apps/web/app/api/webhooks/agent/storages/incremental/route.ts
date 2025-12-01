@@ -25,7 +25,7 @@ import { blobService } from "../../../../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import AdmZip from "adm-zip";
+import * as tar from "tar";
 import { env } from "../../../../../../src/env";
 import {
   computeContentHash,
@@ -196,15 +196,18 @@ export async function POST(request: NextRequest) {
       await fs.promises.mkdir(tempDir, { recursive: true });
 
       // Save uploaded file to temp location
-      const zipPath = path.join(tempDir, "upload.zip");
+      const tarGzPath = path.join(tempDir, "upload.tar.gz");
       const arrayBuffer = await file.arrayBuffer();
-      await fs.promises.writeFile(zipPath, Buffer.from(arrayBuffer));
+      await fs.promises.writeFile(tarGzPath, Buffer.from(arrayBuffer));
 
-      // Extract zip file
-      const zip = new AdmZip(zipPath);
+      // Extract tar.gz file
       const extractPath = path.join(tempDir, "extracted");
       await fs.promises.mkdir(extractPath, { recursive: true });
-      zip.extractAllTo(extractPath, true);
+      await tar.extract({
+        file: tarGzPath,
+        cwd: extractPath,
+        gzip: true,
+      });
 
       // Read new/modified files
       const changedPaths = new Set([...changes.added, ...changes.modified]);

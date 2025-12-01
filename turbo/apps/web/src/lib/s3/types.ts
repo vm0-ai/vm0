@@ -89,7 +89,7 @@ export interface FileEntryWithHash {
 
 /**
  * Storage manifest for incremental upload support
- * Stored as manifest.json alongside archive.zip in S3
+ * Stored as manifest.json alongside archive.tar.gz in S3
  */
 export interface S3StorageManifest {
   /** Version ID (overall content hash) */

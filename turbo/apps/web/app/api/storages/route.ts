@@ -11,7 +11,6 @@ import { blobService } from "../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import AdmZip from "adm-zip";
 import * as tar from "tar";
 import { env } from "../../../src/env";
 import {
@@ -40,7 +39,7 @@ function isValidStorageName(name: string): boolean {
 
 /**
  * POST /api/storages
- * Upload a storage (zip file) to S3
+ * Upload a storage (tar.gz file) to S3
  *
  * Uses database transaction to ensure atomicity:
  * - If S3 upload fails, storage and version records are rolled back
@@ -101,18 +100,21 @@ export async function POST(request: NextRequest) {
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     // Save uploaded file to temp location
-    const zipPath = path.join(tempDir, "upload.zip");
+    const tarGzPath = path.join(tempDir, "upload.tar.gz");
     const arrayBuffer = await file.arrayBuffer();
-    await fs.promises.writeFile(zipPath, Buffer.from(arrayBuffer));
+    await fs.promises.writeFile(tarGzPath, Buffer.from(arrayBuffer));
 
-    // Extract zip file
-    const zip = new AdmZip(zipPath);
+    // Extract tar.gz file
     const extractPath = path.join(tempDir, "extracted");
-    // Ensure extract directory exists before extraction (empty zips don't create it)
+    // Ensure extract directory exists before extraction (empty archives don't create it)
     await fs.promises.mkdir(extractPath, { recursive: true });
-    zip.extractAllTo(extractPath, true);
+    await tar.extract({
+      file: tarGzPath,
+      cwd: extractPath,
+      gzip: true,
+    });
 
-    log.debug(`Extracted zip to ${extractPath}`);
+    log.debug(`Extracted tar.gz to ${extractPath}`);
 
     // Calculate file count, size, and collect file entries for hashing
     const filePaths = await getAllFiles(extractPath);
@@ -312,7 +314,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/storages?name=storageName&version=versionId
- * Download a storage as a zip file
+ * Download a storage as a tar.gz file
  * If version is specified, download that specific version
  * Otherwise, download the HEAD (latest) version
  */
@@ -398,16 +400,31 @@ export async function GET(request: NextRequest) {
 
     log.debug(`Downloading version ${version.id} (${version.fileCount} files)`);
 
-    // Handle empty artifact case - return empty zip without downloading tar.gz
+    // Handle empty artifact case - return empty tar.gz without downloading from S3
     // Empty archives created by archiver may not be valid tar format
     if (version.fileCount === 0) {
-      log.debug("Empty artifact, returning empty zip");
-      const zip = new AdmZip();
-      const zipBuffer = zip.toBuffer();
-      return new NextResponse(new Uint8Array(zipBuffer), {
+      log.debug("Empty artifact, returning empty tar.gz");
+      // Create an empty tar.gz file
+      tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
+      await fs.promises.mkdir(tempDir, { recursive: true });
+      const emptyDir = path.join(tempDir, "empty");
+      await fs.promises.mkdir(emptyDir, { recursive: true });
+      const emptyTarPath = path.join(tempDir, "empty.tar.gz");
+      await tar.create(
+        {
+          gzip: true,
+          file: emptyTarPath,
+          cwd: emptyDir,
+        },
+        ["."],
+      );
+      const emptyTarBuffer = await fs.promises.readFile(emptyTarPath);
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+      tempDir = null;
+      return new NextResponse(new Uint8Array(emptyTarBuffer), {
         headers: {
-          "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="${storageName}.zip"`,
+          "Content-Type": "application/gzip",
+          "Content-Disposition": `attachment; filename="${storageName}.tar.gz"`,
         },
       });
     }
@@ -429,36 +446,20 @@ export async function GET(request: NextRequest) {
     log.debug(`Downloading archive from S3: ${archiveKey}`);
     await downloadS3Object(bucketName, archiveKey, tarGzPath);
 
-    // Extract tar.gz to download directory using JavaScript tar library
-    // (Vercel serverless doesn't have system tar command)
-    const downloadPath = path.join(tempDir, "download");
-    await fs.promises.mkdir(downloadPath, { recursive: true });
-    await tar.extract({
-      file: tarGzPath,
-      cwd: downloadPath,
-      gzip: true,
-    });
+    // Read tar.gz file directly (no conversion needed)
+    const tarGzBuffer = await fs.promises.readFile(tarGzPath);
 
-    // Create zip file for response (CLI expects zip format)
-    const zipPath = path.join(tempDir, "storage.zip");
-    const zip = new AdmZip();
-    zip.addLocalFolder(downloadPath);
-    zip.writeZip(zipPath);
-
-    log.debug(`Created zip file at ${zipPath}`);
-
-    // Read zip file
-    const zipBuffer = await fs.promises.readFile(zipPath);
+    log.debug(`Returning tar.gz file (${tarGzBuffer.length} bytes)`);
 
     // Clean up temp directory
     await fs.promises.rm(tempDir, { recursive: true, force: true });
     tempDir = null;
 
-    // Return zip file
-    return new NextResponse(new Uint8Array(zipBuffer), {
+    // Return tar.gz file directly
+    return new NextResponse(new Uint8Array(tarGzBuffer), {
       headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${storageName}.zip"`,
+        "Content-Type": "application/gzip",
+        "Content-Disposition": `attachment; filename="${storageName}.tar.gz"`,
       },
     });
   } catch (error) {

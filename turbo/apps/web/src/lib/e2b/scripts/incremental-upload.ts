@@ -103,10 +103,10 @@ print(json.dumps(result))
 PYTHON_EOF
 }
 
-# Create zip of only changed files
-create_incremental_zip() {
+# Create tar.gz of only changed files
+create_incremental_tar() {
   local mount_path="${dollar}1"
-  local zip_path="${dollar}2"
+  local tar_path="${dollar}2"
   local changes_json="${dollar}3"
 
   cd "${dollar}mount_path" || return 1
@@ -115,7 +115,7 @@ create_incremental_zip() {
   local added=$(echo "${dollar}changes_json" | jq -r '.added[]')
   local modified=$(echo "${dollar}changes_json" | jq -r '.modified[]')
 
-  # Create zip with added and modified files
+  # Create file list with added and modified files
   local file_list="/tmp/incremental-files-${dollar}${dollar}.txt"
   echo "${dollar}added" > "${dollar}file_list"
   echo "${dollar}modified" >> "${dollar}file_list"
@@ -124,27 +124,14 @@ create_incremental_zip() {
   sed -i '/^${dollar}/d' "${dollar}file_list" 2>/dev/null || sed -i '' '/^${dollar}/d' "${dollar}file_list"
 
   if [ ! -s "${dollar}file_list" ]; then
-    # No files to add, create empty zip
-    touch "${dollar}zip_path"
+    # No files to add, create empty tar.gz
+    tar -czf "${dollar}tar_path" --files-from=/dev/null 2>/dev/null || touch "${dollar}tar_path"
     rm -f "${dollar}file_list"
     return 0
   fi
 
-  # Create zip
-  if command -v zip >/dev/null 2>&1; then
-    zip -@ "${dollar}zip_path" < "${dollar}file_list" >/dev/null 2>&1
-  else
-    # Fallback to Python
-    python3 << PYEOF
-import zipfile
-with zipfile.ZipFile('${dollar}zip_path', 'w', zipfile.ZIP_DEFLATED) as zf:
-    with open('${dollar}file_list', 'r') as f:
-        for line in f:
-            path = line.strip()
-            if path:
-                zf.write(path)
-PYEOF
-  fi
+  # Create tar.gz from file list
+  tar -czf "${dollar}tar_path" -T "${dollar}file_list" 2>/dev/null
 
   rm -f "${dollar}file_list"
 }
@@ -203,9 +190,9 @@ create_incremental_snapshot() {
     return 0
   fi
 
-  # Create zip of changed files
-  local zip_path="${dollar}temp_dir/changes.zip"
-  create_incremental_zip "${dollar}mount_path" "${dollar}zip_path" "${dollar}changes_json"
+  # Create tar.gz of changed files
+  local tar_path="${dollar}temp_dir/changes.tar.gz"
+  create_incremental_tar "${dollar}mount_path" "${dollar}tar_path" "${dollar}changes_json"
 
   # Upload to incremental endpoint
   log_info "Uploading incremental changes..."
@@ -216,7 +203,7 @@ create_incremental_snapshot() {
     -F "baseVersion=${dollar}base_version_id" \\
     -F "changes=${dollar}changes_json" \\
     -F "message=Incremental checkpoint from run ${dollar}RUN_ID" \\
-    -F "file=@${dollar}zip_path")
+    -F "file=@${dollar}tar_path")
   local http_exit=${dollar}?
 
   # Cleanup

@@ -2,10 +2,11 @@ import { Command } from "commander";
 import chalk from "chalk";
 import path from "path";
 import * as fs from "fs";
-import AdmZip from "adm-zip";
+import * as os from "os";
+import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
-import { getRemoteFilesFromZip, removeExtraFiles } from "../../lib/file-utils";
+import { listTarFiles, removeExtraFiles } from "../../lib/file-utils";
 
 /**
  * Format bytes to human-readable format
@@ -70,45 +71,45 @@ export const pullCommand = new Command()
         process.exit(1);
       }
 
-      // Get zip buffer
+      // Get tar.gz buffer
       const arrayBuffer = await response.arrayBuffer();
-      const zipBuffer = Buffer.from(arrayBuffer);
+      const tarBuffer = Buffer.from(arrayBuffer);
 
-      console.log(chalk.green(`✓ Downloaded ${formatBytes(zipBuffer.length)}`));
+      console.log(chalk.green(`✓ Downloaded ${formatBytes(tarBuffer.length)}`));
 
-      // Extract zip
-      console.log(chalk.gray("Extracting files..."));
-      const zip = new AdmZip(zipBuffer);
-      const zipEntries = zip.getEntries();
+      // Save tar.gz to temp file for processing
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vm0-"));
+      const tarPath = path.join(tmpDir, "volume.tar.gz");
+      await fs.promises.writeFile(tarPath, tarBuffer);
+
+      // Get remote files list for sync
+      console.log(chalk.gray("Syncing local files..."));
+      const remoteFiles = await listTarFiles(tarPath);
+      const remoteFilesSet = new Set(
+        remoteFiles.map((f) => f.replace(/\\/g, "/")),
+      );
 
       // Remove local files not in remote
-      const remoteFiles = getRemoteFilesFromZip(zipEntries);
-      console.log(chalk.gray("Syncing local files..."));
-      const removedCount = await removeExtraFiles(cwd, remoteFiles);
+      const removedCount = await removeExtraFiles(cwd, remoteFilesSet);
       if (removedCount > 0) {
         console.log(
           chalk.green(`✓ Removed ${removedCount} files not in remote`),
         );
       }
 
-      // Extract files from zip
-      let extractedCount = 0;
-      for (const entry of zipEntries) {
-        if (!entry.isDirectory) {
-          const targetPath = path.join(cwd, entry.entryName);
+      // Extract tar.gz
+      console.log(chalk.gray("Extracting files..."));
+      await tar.extract({
+        file: tarPath,
+        cwd: cwd,
+        gzip: true,
+      });
 
-          // Create directory if needed
-          const dir = path.dirname(targetPath);
-          await fs.promises.mkdir(dir, { recursive: true });
+      // Clean up temp files
+      await fs.promises.unlink(tarPath);
+      await fs.promises.rmdir(tmpDir);
 
-          // Extract file
-          const data = entry.getData();
-          await fs.promises.writeFile(targetPath, data);
-          extractedCount++;
-        }
-      }
-
-      console.log(chalk.green(`✓ Extracted ${extractedCount} files`));
+      console.log(chalk.green(`✓ Extracted ${remoteFiles.length} files`));
     } catch (error) {
       console.error(chalk.red("✗ Pull failed"));
       if (error instanceof Error) {

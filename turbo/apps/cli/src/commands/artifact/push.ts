@@ -2,7 +2,8 @@ import { Command } from "commander";
 import chalk from "chalk";
 import path from "path";
 import * as fs from "fs";
-import AdmZip from "adm-zip";
+import * as os from "os";
+import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient } from "../../lib/api-client";
 
@@ -97,18 +98,31 @@ export const pushCommand = new Command()
         );
       }
 
-      // Create zip file (empty zip for empty artifact)
+      // Create tar.gz file
       console.log(chalk.gray("Compressing files..."));
-      const zip = new AdmZip();
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vm0-"));
+      const tarPath = path.join(tmpDir, "artifact.tar.gz");
 
-      for (const file of files) {
-        const relativePath = path.relative(cwd, file);
-        zip.addLocalFile(file, path.dirname(relativePath));
-      }
+      // Get relative paths for tar
+      const relativePaths = files.map((file) => path.relative(cwd, file));
 
-      const zipBuffer = zip.toBuffer();
+      // Create tar.gz archive (use "." for empty directories)
+      await tar.create(
+        {
+          gzip: true,
+          file: tarPath,
+          cwd: cwd,
+        },
+        relativePaths.length > 0 ? relativePaths : ["."],
+      );
+
+      const tarBuffer = await fs.promises.readFile(tarPath);
+      // Clean up temp files
+      await fs.promises.unlink(tarPath);
+      await fs.promises.rmdir(tmpDir);
+
       console.log(
-        chalk.green(`✓ Compressed to ${formatBytes(zipBuffer.length)}`),
+        chalk.green(`✓ Compressed to ${formatBytes(tarBuffer.length)}`),
       );
 
       // Upload to API
@@ -122,8 +136,8 @@ export const pushCommand = new Command()
       }
       formData.append(
         "file",
-        new Blob([zipBuffer], { type: "application/zip" }),
-        "artifact.zip",
+        new Blob([tarBuffer], { type: "application/gzip" }),
+        "artifact.tar.gz",
       );
 
       const response = await apiClient.post("/api/storages", {
