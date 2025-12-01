@@ -12,10 +12,10 @@ export interface VolumeConfig {
 }
 
 /**
- * Agent definition within the agents array
+ * Agent definition within the agents dictionary
+ * The agent name is the key in the dictionary, not a field
  */
 export interface AgentDefinition {
-  name: string; // Unique identifier per user
   description?: string;
   image: string;
   provider: string;
@@ -25,7 +25,7 @@ export interface AgentDefinition {
 
 export interface AgentConfigYaml {
   version: string;
-  agents: AgentDefinition[]; // Array of agent definitions (currently only first is processed)
+  agents: Record<string, AgentDefinition>; // Dictionary of agent definitions (currently only one agent supported)
   volumes?: Record<string, VolumeConfig>; // Volume definitions with name and version
 }
 

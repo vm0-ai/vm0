@@ -37,12 +37,12 @@ describe("StorageService", () => {
 
     it("should return empty manifest when agent config has no volumes or artifact", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agents: [
-          {
+        agents: {
+          "test-agent": {
             volumes: [],
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -63,12 +63,12 @@ describe("StorageService", () => {
 
     it("should generate presigned URLs for volumes", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agents: [
-          {
+        agents: {
+          "test-agent": {
             volumes: ["data:/workspace/data"],
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -139,11 +139,11 @@ describe("StorageService", () => {
 
     it("should generate presigned URLs for artifact", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agents: [
-          {
+        agents: {
+          "test-agent": {
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
@@ -212,12 +212,12 @@ describe("StorageService", () => {
 
     it("should handle resumeArtifact for checkpoint resume", async () => {
       const agentConfig: AgentVolumeConfig = {
-        agents: [
-          {
+        agents: {
+          "test-agent": {
             volumes: ["data:/workspace/data"],
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       // When resumeArtifact is provided, resolveVolumes should skip artifact

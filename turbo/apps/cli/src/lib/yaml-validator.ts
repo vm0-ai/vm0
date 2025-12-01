@@ -53,44 +53,58 @@ export function validateAgentConfig(config: unknown): {
     return { valid: false, error: "Missing config.version" };
   }
 
-  // Check agents section (must be array)
-  if (!cfg.agents || !Array.isArray(cfg.agents)) {
-    return { valid: false, error: "Missing config.agents array" };
+  // Check agents section (must be object, not array)
+  if (!cfg.agents || typeof cfg.agents !== "object") {
+    return { valid: false, error: "Missing agents object in config" };
   }
 
-  if (cfg.agents.length === 0) {
-    return { valid: false, error: "config.agents array must not be empty" };
-  }
-
-  // Validate first agent (currently only process first agent)
-  const agent = cfg.agents[0] as Record<string, unknown> | undefined;
-
-  if (!agent || typeof agent !== "object") {
-    return { valid: false, error: "First agent must be an object" };
-  }
-
-  // Check agent.name
-  if (!agent.name) {
-    return { valid: false, error: "Missing agents[0].name" };
-  }
-
-  if (typeof agent.name !== "string") {
-    return { valid: false, error: "agents[0].name must be a string" };
-  }
-
-  if (!validateAgentName(agent.name)) {
+  if (Array.isArray(cfg.agents)) {
     return {
       valid: false,
       error:
-        "Invalid agents[0].name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+        "agents must be an object, not an array. Use format: agents: { agent-name: { ... } }",
     };
+  }
+
+  const agentKeys = Object.keys(cfg.agents);
+  if (agentKeys.length === 0) {
+    return {
+      valid: false,
+      error: "agents must have at least one agent defined",
+    };
+  }
+
+  if (agentKeys.length > 1) {
+    return {
+      valid: false,
+      error: "Multiple agents not supported yet. Only one agent allowed.",
+    };
+  }
+
+  // Get agent name from key and validate format
+  const agentName = agentKeys[0]!;
+
+  if (!validateAgentName(agentName)) {
+    return {
+      valid: false,
+      error:
+        "Invalid agent name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+    };
+  }
+
+  // Validate agent definition
+  const agentsObj = cfg.agents as Record<string, unknown>;
+  const agent = agentsObj[agentName] as Record<string, unknown> | undefined;
+
+  if (!agent || typeof agent !== "object") {
+    return { valid: false, error: "Agent definition must be an object" };
   }
 
   // Check agent.working_dir
   if (!agent.working_dir || typeof agent.working_dir !== "string") {
     return {
       valid: false,
-      error: "Missing or invalid agents[0].working_dir (must be a string)",
+      error: "Missing or invalid agent.working_dir (must be a string)",
     };
   }
 
@@ -98,7 +112,7 @@ export function validateAgentConfig(config: unknown): {
   if (!agent.image || typeof agent.image !== "string") {
     return {
       valid: false,
-      error: "Missing or invalid agents[0].image (must be a string)",
+      error: "Missing or invalid agent.image (must be a string)",
     };
   }
 
@@ -106,7 +120,7 @@ export function validateAgentConfig(config: unknown): {
   if (!agent.provider || typeof agent.provider !== "string") {
     return {
       valid: false,
-      error: "Missing or invalid agents[0].provider (must be a string)",
+      error: "Missing or invalid agent.provider (must be a string)",
     };
   }
 

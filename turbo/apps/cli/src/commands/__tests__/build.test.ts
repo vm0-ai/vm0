@@ -87,7 +87,10 @@ describe("build command", () => {
     });
 
     it("should parse valid YAML", async () => {
-      const mockConfig = { version: "1.0", agent: { name: "test" } };
+      const mockConfig = {
+        version: "1.0",
+        agents: { test: { working_dir: "/" } },
+      };
       vi.mocked(yaml.parse).mockReturnValue(mockConfig);
       vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
         valid: true,
@@ -152,7 +155,7 @@ describe("build command", () => {
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
       vi.mocked(yaml.parse).mockReturnValue({
         version: "1.0",
-        agent: { name: "test" },
+        agents: { test: { working_dir: "/" } },
       });
       vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
         valid: true,

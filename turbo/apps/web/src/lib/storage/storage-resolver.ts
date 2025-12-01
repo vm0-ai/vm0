@@ -157,7 +157,8 @@ export function resolveVolumes(
   let artifact: ResolvedArtifact | null = null;
 
   // Get first agent (currently only support one agent)
-  const agent = config.agents?.[0];
+  const agentValues = config.agents ? Object.values(config.agents) : [];
+  const agent = agentValues[0];
 
   // Get working_dir from agent config for validation
   const workingDir = agent?.working_dir;

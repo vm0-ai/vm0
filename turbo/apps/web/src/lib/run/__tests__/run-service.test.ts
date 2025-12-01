@@ -73,7 +73,7 @@ describe("RunService", () => {
         "test prompt",
         "sandbox-token",
         { userId: "user-1" },
-        { agents: [{ working_dir: "/workspace" }] },
+        { agents: { "test-agent": { working_dir: "/workspace" } } },
         "user-1",
         "artifact-name",
         "v1",
@@ -126,7 +126,7 @@ describe("RunService", () => {
       test("builds context for new run with agentConfigId", async () => {
         const mockConfig = {
           id: "config-123",
-          config: { agents: [{ working_dir: "/workspace" }] },
+          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         mockDbSelect.mockResolvedValueOnce([mockConfig]);
@@ -186,7 +186,7 @@ describe("RunService", () => {
         runId: "original-run-123",
         conversationId: "conv-123",
         agentConfigSnapshot: {
-          config: { agents: [{ working_dir: "/workspace" }] },
+          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
           templateVars: { existing: "var" },
         },
         artifactSnapshot: {
@@ -329,7 +329,7 @@ describe("RunService", () => {
 
         const mockConfig = {
           id: "config-123",
-          config: { agents: [{ working_dir: "/workspace" }] },
+          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         vi.mocked(
@@ -365,7 +365,7 @@ describe("RunService", () => {
 
         const mockConfig = {
           id: "config-123",
-          config: { agents: [{ working_dir: "/workspace" }] },
+          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         vi.mocked(
@@ -463,7 +463,7 @@ describe("RunService", () => {
 
       const mockConfig = {
         id: "config-123",
-        config: { agents: [{ working_dir: "/workspace" }] },
+        config: { agents: { "test-agent": { working_dir: "/workspace" } } },
       };
 
       test("builds context with resumeSession when conversationId provided directly", async () => {

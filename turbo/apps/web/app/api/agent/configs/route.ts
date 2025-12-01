@@ -96,28 +96,36 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Missing config.version");
     }
 
-    if (!body.config.agents || !Array.isArray(body.config.agents)) {
-      throw new BadRequestError("Missing config.agents array");
+    // Validate agents is an object (not array)
+    if (!body.config.agents || typeof body.config.agents !== "object") {
+      throw new BadRequestError("Missing agents object in config");
     }
 
-    if (body.config.agents.length === 0) {
-      throw new BadRequestError("config.agents array must not be empty");
+    if (Array.isArray(body.config.agents)) {
+      throw new BadRequestError(
+        "agents must be an object, not an array. Use format: agents: { agent-name: { ... } }",
+      );
     }
 
-    // Get first agent (currently only process first agent)
-    const firstAgent = body.config.agents[0];
-
-    // Validate agent.name
-    const agentName = firstAgent?.name;
-    if (!agentName) {
-      throw new BadRequestError("Missing agent.name in config");
+    const agentKeys = Object.keys(body.config.agents);
+    if (agentKeys.length === 0) {
+      throw new BadRequestError("agents must have at least one agent defined");
     }
+
+    if (agentKeys.length > 1) {
+      throw new BadRequestError(
+        "Multiple agents not supported yet. Only one agent allowed.",
+      );
+    }
+
+    // Get agent name from key
+    const agentName = agentKeys[0]!;
 
     // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
     const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
-        "Invalid agents[0].name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
+        "Invalid agent name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
       );
     }
 

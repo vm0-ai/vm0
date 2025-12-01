@@ -43,7 +43,13 @@ describe("AgentSessionService", () => {
       name: "test-agent",
       config: {
         version: "1.0",
-        agents: [{ name: "test", working_dir: "/workspace" }],
+        agents: {
+          test: {
+            working_dir: "/workspace",
+            image: "test-image",
+            provider: "claude-code",
+          },
+        },
       },
       createdAt: new Date(),
       updatedAt: new Date(),

@@ -83,21 +83,20 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .delete(agentConfigs)
       .where(eq(agentConfigs.id, testConfigId));
 
-    // Create test agent config with new agents array format
+    // Create test agent config with new agents dictionary format
     await globalThis.services.db.insert(agentConfigs).values({
       id: testConfigId,
       userId: testUserId,
       name: "test-agent",
       config: {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       },
       createdAt: new Date(),
       updatedAt: new Date(),

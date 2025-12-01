@@ -121,12 +121,12 @@ describe("resolveVolumes", () => {
     volumeDefinitions: Record<string, VolumeConfig> = {},
     workingDir = "/workspace",
   ): AgentVolumeConfig => ({
-    agents: [
-      {
+    agents: {
+      "test-agent": {
         working_dir: workingDir,
         volumes,
       },
-    ],
+    },
     volumes: volumeDefinitions,
   });
 

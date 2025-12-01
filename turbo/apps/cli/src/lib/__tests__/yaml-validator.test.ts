@@ -77,14 +77,13 @@ describe("validateAgentConfig", () => {
     it("should accept minimal valid config", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
@@ -95,16 +94,15 @@ describe("validateAgentConfig", () => {
     it("should accept config with volumes", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             description: "Test description",
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["claude-files:/home/user/.config/claude"],
           },
-        ],
+        },
         volumes: {
           "claude-files": {
             name: "claude-files",
@@ -120,14 +118,13 @@ describe("validateAgentConfig", () => {
     it("should accept config with complex name", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "My-Test-Agent-123",
+        agents: {
+          "My-Test-Agent-123": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
@@ -156,14 +153,13 @@ describe("validateAgentConfig", () => {
 
     it("should reject config without version", () => {
       const config = {
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
@@ -178,183 +174,166 @@ describe("validateAgentConfig", () => {
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("Missing config.agents array");
+      expect(result.error).toBe("Missing agents object in config");
     });
 
-    it("should reject config with non-array agents", () => {
+    it("should reject config with array agents (must be object)", () => {
       const config = {
         version: "1.0",
-        agents: "invalid",
+        agents: [{ name: "test" }],
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("Missing config.agents array");
+      expect(result.error).toContain("agents must be an object, not an array");
     });
 
-    it("should reject config with empty agents array", () => {
+    it("should reject config with empty agents object", () => {
       const config = {
         version: "1.0",
-        agents: [],
+        agents: {},
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("config.agents array must not be empty");
+      expect(result.error).toBe("agents must have at least one agent defined");
     });
 
-    it("should reject config without agents[0].name", () => {
+    it("should reject config with multiple agents", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
+        agents: {
+          "agent-1": {
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/workspace",
+          },
+          "agent-2": {
+            image: "vm0-claude-code-dev",
+            provider: "claude-code",
+            working_dir: "/workspace",
+          },
+        },
+      };
+
+      const result = validateAgentConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe(
+        "Multiple agents not supported yet. Only one agent allowed.",
+      );
+    });
+
+    it("should reject config with invalid agent name format (too short)", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          ab: {
+            // Too short
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("Missing agents[0].name");
+      expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with non-string agents[0].name", () => {
+    it("should reject config with agent name starting with hyphen", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: 123,
+        agents: {
+          "-invalid": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("agents[0].name must be a string");
+      expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with invalid agents[0].name format", () => {
+    it("should reject config with agent name containing special characters", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "ab", // Too short
+        agents: {
+          my_agent: {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid agents[0].name format");
-    });
-
-    it("should reject config with agents[0].name starting with hyphen", () => {
-      const config = {
-        version: "1.0",
-        agents: [
-          {
-            name: "-invalid",
-            image: "vm0-claude-code-dev",
-            provider: "claude-code",
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
-
-      const result = validateAgentConfig(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid agents[0].name format");
-    });
-
-    it("should reject config with agents[0].name containing special characters", () => {
-      const config = {
-        version: "1.0",
-        agents: [
-          {
-            name: "my_agent",
-            image: "vm0-claude-code-dev",
-            provider: "claude-code",
-            working_dir: "/home/user/workspace",
-          },
-        ],
-      };
-
-      const result = validateAgentConfig(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid agents[0].name format");
+      expect(result.error).toContain("Invalid agent name format");
     });
 
     it("should reject config with missing working_dir", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agents[0].working_dir");
+      expect(result.error).toContain("agent.working_dir");
     });
 
     it("should reject config with missing image", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agents[0].image");
+      expect(result.error).toContain("agent.image");
     });
 
     it("should reject config with missing provider", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             working_dir: "/home/user/workspace",
           },
-        ],
+        },
       };
 
       const result = validateAgentConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agents[0].provider");
+      expect(result.error).toContain("agent.provider");
     });
 
     it("should reject config with volume reference missing from volumes section", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["missing-vol:/path"],
           },
-        ],
+        },
         volumes: {
           "other-vol": {
             name: "other-vol",
@@ -371,15 +350,14 @@ describe("validateAgentConfig", () => {
     it("should reject config with volume missing name field", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
-        ],
+        },
         volumes: {
           data: {
             version: "latest",
@@ -395,15 +373,14 @@ describe("validateAgentConfig", () => {
     it("should reject config with volume missing version field", () => {
       const config = {
         version: "1.0",
-        agents: [
-          {
-            name: "test-agent",
+        agents: {
+          "test-agent": {
             image: "vm0-claude-code-dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
-        ],
+        },
         volumes: {
           data: {
             name: "my-data",

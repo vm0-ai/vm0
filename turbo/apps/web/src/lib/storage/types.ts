@@ -59,13 +59,16 @@ export interface VolumeError {
 
 /**
  * Agent configuration sections related to volumes
- * Matches the new agent.yaml structure
+ * Matches the new agent.yaml structure (dictionary format)
  */
 export interface AgentVolumeConfig {
-  agents?: Array<{
-    volumes?: string[];
-    working_dir: string;
-  }>;
+  agents?: Record<
+    string,
+    {
+      volumes?: string[];
+      working_dir: string;
+    }
+  >;
   volumes?: Record<string, VolumeConfig>;
 }
 
