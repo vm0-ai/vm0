@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as tar from "tar";
-import { listTarFiles, removeExtraFiles } from "../file-utils";
+import { excludeVm0Filter, listTarFiles, removeExtraFiles } from "../file-utils";
 
 describe("file-utils", () => {
   let tempDir: string;
@@ -14,6 +14,34 @@ describe("file-utils", () => {
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  describe("excludeVm0Filter", () => {
+    it("should exclude .vm0 directory", () => {
+      expect(excludeVm0Filter(".vm0")).toBe(false);
+    });
+
+    it("should exclude .vm0/ paths", () => {
+      expect(excludeVm0Filter(".vm0/")).toBe(false);
+      expect(excludeVm0Filter(".vm0/config.yaml")).toBe(false);
+    });
+
+    it("should exclude ./.vm0 paths (tar prefix format)", () => {
+      expect(excludeVm0Filter("./.vm0")).toBe(false);
+      expect(excludeVm0Filter("./.vm0/")).toBe(false);
+      expect(excludeVm0Filter("./.vm0/config.yaml")).toBe(false);
+    });
+
+    it("should include regular files", () => {
+      expect(excludeVm0Filter("file.txt")).toBe(true);
+      expect(excludeVm0Filter("src/index.ts")).toBe(true);
+      expect(excludeVm0Filter("./file.txt")).toBe(true);
+    });
+
+    it("should include files with vm0 in name but not .vm0 directory", () => {
+      expect(excludeVm0Filter("vm0-config.txt")).toBe(true);
+      expect(excludeVm0Filter("my.vm0.txt")).toBe(true);
+    });
   });
 
   describe("listTarFiles", () => {

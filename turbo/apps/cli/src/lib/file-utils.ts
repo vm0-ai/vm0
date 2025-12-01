@@ -3,28 +3,15 @@ import * as path from "path";
 import * as tar from "tar";
 
 /**
- * Extract file paths from tar.gz buffer.
+ * Filter function for tar.create to exclude .vm0 directory.
+ * Paths come as "./.vm0" or ".vm0" depending on tar version.
  */
-export async function getRemoteFilesFromTar(
-  tarBuffer: Buffer,
-): Promise<Set<string>> {
-  const remoteFiles = new Set<string>();
-
-  // Use tar.list to get file entries
-  await tar.list(
-    {
-      sync: false,
-      onReadEntry: (entry) => {
-        // Only add files, not directories
-        if (entry.type === "File") {
-          remoteFiles.add(entry.path.replace(/\\/g, "/"));
-        }
-      },
-    },
-    [tarBuffer] as unknown as string[],
-  );
-
-  return remoteFiles;
+export function excludeVm0Filter(filePath: string): boolean {
+  const shouldExclude =
+    filePath === ".vm0" ||
+    filePath.startsWith(".vm0/") ||
+    filePath.startsWith("./.vm0");
+  return !shouldExclude;
 }
 
 /**
