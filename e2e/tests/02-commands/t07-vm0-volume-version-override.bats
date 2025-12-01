@@ -35,7 +35,7 @@ teardown() {
 version: "1.0"
 
 agents:
-  - name: vm0-volume-override
+  vm0-volume-override:
     description: "Test agent with volume for override testing"
     provider: claude-code
     image: vm0-claude-code-dev

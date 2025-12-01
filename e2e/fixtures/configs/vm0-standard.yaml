@@ -1,7 +1,7 @@
 version: "1.0"
 
 agents:
-  - name: vm0-standard
+  vm0-standard:
     description: "Test agent with standard config"
     provider: claude-code
     image: vm0-claude-code-dev

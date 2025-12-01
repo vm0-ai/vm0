@@ -1,7 +1,7 @@
 version: "1.0"
 
 agents:
-  - name: vm0-env-validation
+  vm0-env-validation:
     description: "Test agent for environment variable validation"
     provider: claude-code
     image: vm0-claude-code-dev

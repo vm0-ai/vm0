@@ -1,7 +1,7 @@
 version: "1.0"
 
 agents:
-  - name: vm0-template-validation
+  vm0-template-validation:
     description: "Test agent for template variable validation"
     provider: claude-code
     image: vm0-claude-code-dev
