@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.2](https://github.com/vm0-ai/vm0/compare/web-v2.8.1...web-v2.8.2) (2025-12-01)
+
+
+### Bug Fixes
+
+* handle empty artifact pull without TAR_BAD_ARCHIVE error ([#328](https://github.com/vm0-ai/vm0/issues/328)) ([3f23505](https://github.com/vm0-ai/vm0/commit/3f23505af3cbbb87926fd6baa255429ee52c29b8))
+
 ## [2.8.1](https://github.com/vm0-ai/vm0/compare/web-v2.8.0...web-v2.8.1) (2025-12-01)
 
 
