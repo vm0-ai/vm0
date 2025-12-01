@@ -446,5 +446,127 @@ describe("RunService", () => {
         ).rejects.toThrow(NotFoundError);
       });
     });
+
+    describe("direct conversation mode", () => {
+      const mockConversation = {
+        id: "conv-123",
+        runId: "original-run-123",
+        cliAgentSessionId: "cli-session-456",
+        cliAgentSessionHistory: '{"event":"init"}',
+      };
+
+      const mockOriginalRun = {
+        id: "original-run-123",
+        userId: "user-1",
+        agentConfigId: "config-123",
+      };
+
+      const mockConfig = {
+        id: "config-123",
+        config: { agents: [{ working_dir: "/workspace" }] },
+      };
+
+      test("builds context with resumeSession when conversationId provided directly", async () => {
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockOriginalRun])
+          .mockResolvedValueOnce([mockConfig]);
+
+        const context = await runService.buildExecutionContext({
+          agentConfigId: "config-123",
+          conversationId: "conv-123",
+          prompt: "continue prompt",
+          runId: "run-new",
+          sandboxToken: "token",
+          userId: "user-1",
+          artifactName: "artifact-1",
+          artifactVersion: "v1",
+        });
+
+        expect(context.runId).toBe("run-new");
+        expect(context.agentConfigId).toBe("config-123");
+        expect(context.prompt).toBe("continue prompt");
+        expect(context.artifactName).toBe("artifact-1");
+        expect(context.artifactVersion).toBe("v1");
+        expect(context.resumeSession).toEqual({
+          sessionId: "cli-session-456",
+          sessionHistory: '{"event":"init"}',
+          workingDir: "/workspace",
+        });
+      });
+
+      test("throws NotFoundError when conversation not found", async () => {
+        mockDbSelect.mockResolvedValueOnce([]);
+
+        await expect(
+          runService.buildExecutionContext({
+            agentConfigId: "config-123",
+            conversationId: "non-existent",
+            prompt: "test",
+            runId: "run-123",
+            sandboxToken: "token",
+            userId: "user-1",
+          }),
+        ).rejects.toThrow(NotFoundError);
+      });
+
+      test("throws UnauthorizedError when conversation belongs to different user", async () => {
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([]); // No run found for this user
+
+        await expect(
+          runService.buildExecutionContext({
+            agentConfigId: "config-123",
+            conversationId: "conv-123",
+            prompt: "test",
+            runId: "run-123",
+            sandboxToken: "token",
+            userId: "wrong-user",
+          }),
+        ).rejects.toThrow(UnauthorizedError);
+      });
+
+      test("throws NotFoundError when agentConfig not found with conversationId", async () => {
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockOriginalRun])
+          .mockResolvedValueOnce([]); // No config found
+
+        await expect(
+          runService.buildExecutionContext({
+            agentConfigId: "non-existent-config",
+            conversationId: "conv-123",
+            prompt: "test",
+            runId: "run-123",
+            sandboxToken: "token",
+            userId: "user-1",
+          }),
+        ).rejects.toThrow(NotFoundError);
+      });
+
+      test("uses default workingDir when config has no agents", async () => {
+        const configWithoutAgents = {
+          id: "config-123",
+          config: {},
+        };
+
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockOriginalRun])
+          .mockResolvedValueOnce([configWithoutAgents]);
+
+        const context = await runService.buildExecutionContext({
+          agentConfigId: "config-123",
+          conversationId: "conv-123",
+          prompt: "test",
+          runId: "run-new",
+          sandboxToken: "token",
+          userId: "user-1",
+        });
+
+        expect(context.resumeSession?.workingDir).toBe("/workspace");
+      });
+    });
   });
 });

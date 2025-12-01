@@ -18,6 +18,26 @@ import type { RunResult } from "../e2b/types";
 const log = logger("service:run");
 
 /**
+ * Intermediate resolution result from checkpoint/session/conversation expansion
+ * Contains all data needed to build resumeSession uniformly
+ */
+interface ConversationResolution {
+  conversationId: string;
+  agentConfigId: string;
+  agentConfig: unknown;
+  workingDir: string;
+  conversationData: {
+    cliAgentSessionId: string;
+    cliAgentSessionHistory: string;
+  };
+  artifactName?: string;
+  artifactVersion?: string;
+  templateVars?: Record<string, string>;
+  volumeVersions?: Record<string, string>;
+  buildResumeArtifact: boolean;
+}
+
+/**
  * Calculate session history path based on working directory
  * Matches logic from run-agent-script.ts lines 39-42
  */
@@ -35,6 +55,197 @@ export function calculateSessionHistoryPath(
  * Handles business logic for creating and resuming agent runs
  */
 export class RunService {
+  /**
+   * Extract working directory from agent config
+   */
+  private extractWorkingDir(config: unknown): string {
+    const configWithAgents = config as
+      | { agents?: Array<{ working_dir?: string }> }
+      | undefined;
+    return configWithAgents?.agents?.[0]?.working_dir || "/workspace";
+  }
+
+  /**
+   * Resolve checkpoint to ConversationResolution
+   */
+  private async resolveCheckpoint(
+    checkpointId: string,
+    userId: string,
+  ): Promise<ConversationResolution> {
+    const [checkpoint] = await globalThis.services.db
+      .select()
+      .from(checkpoints)
+      .where(eq(checkpoints.id, checkpointId))
+      .limit(1);
+
+    if (!checkpoint) {
+      throw new NotFoundError("Checkpoint");
+    }
+
+    // Verify checkpoint belongs to user
+    const [originalRun] = await globalThis.services.db
+      .select()
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
+      )
+      .limit(1);
+
+    if (!originalRun) {
+      throw new UnauthorizedError(
+        "Checkpoint does not belong to authenticated user",
+      );
+    }
+
+    // Load conversation
+    const [conversation] = await globalThis.services.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, checkpoint.conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundError("Conversation");
+    }
+
+    // Extract snapshots
+    const agentConfigSnapshot =
+      checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
+    const checkpointArtifact =
+      checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
+    const checkpointVolumeVersions =
+      checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
+
+    return {
+      conversationId: checkpoint.conversationId,
+      agentConfigId: originalRun.agentConfigId,
+      agentConfig: agentConfigSnapshot.config,
+      workingDir: this.extractWorkingDir(agentConfigSnapshot.config),
+      conversationData: {
+        cliAgentSessionId: conversation.cliAgentSessionId,
+        cliAgentSessionHistory: conversation.cliAgentSessionHistory,
+      },
+      artifactName: checkpointArtifact.artifactName,
+      artifactVersion: checkpointArtifact.artifactVersion,
+      templateVars: agentConfigSnapshot.templateVars || {},
+      volumeVersions: checkpointVolumeVersions?.versions,
+      buildResumeArtifact: true,
+    };
+  }
+
+  /**
+   * Resolve session to ConversationResolution
+   */
+  private async resolveSession(
+    sessionId: string,
+    userId: string,
+  ): Promise<ConversationResolution> {
+    const session =
+      await agentSessionService.getByIdWithConversation(sessionId);
+
+    if (!session) {
+      throw new NotFoundError("Agent session");
+    }
+
+    if (session.userId !== userId) {
+      throw new UnauthorizedError(
+        "Agent session does not belong to authenticated user",
+      );
+    }
+
+    if (!session.conversation) {
+      throw new NotFoundError(
+        "Agent session has no conversation history to continue from",
+      );
+    }
+
+    // Load agent config
+    const [config] = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(eq(agentConfigs.id, session.agentConfigId))
+      .limit(1);
+
+    if (!config) {
+      throw new NotFoundError("Agent config");
+    }
+
+    return {
+      conversationId: session.conversationId!,
+      agentConfigId: session.agentConfigId,
+      agentConfig: config.config,
+      workingDir: this.extractWorkingDir(config.config),
+      conversationData: {
+        cliAgentSessionId: session.conversation.cliAgentSessionId,
+        cliAgentSessionHistory: session.conversation.cliAgentSessionHistory,
+      },
+      artifactName: session.artifactName,
+      artifactVersion: "latest",
+      templateVars: session.templateVars || {},
+      volumeVersions: undefined,
+      buildResumeArtifact: true,
+    };
+  }
+
+  /**
+   * Resolve direct conversation to ConversationResolution
+   */
+  private async resolveDirectConversation(
+    conversationId: string,
+    agentConfigId: string,
+    userId: string,
+  ): Promise<ConversationResolution> {
+    // Load conversation
+    const [conversation] = await globalThis.services.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundError("Conversation");
+    }
+
+    // Verify conversation belongs to user
+    const [originalRun] = await globalThis.services.db
+      .select()
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, conversation.runId), eq(agentRuns.userId, userId)),
+      )
+      .limit(1);
+
+    if (!originalRun) {
+      throw new UnauthorizedError(
+        "Conversation does not belong to authenticated user",
+      );
+    }
+
+    // Load agent config
+    const [config] = await globalThis.services.db
+      .select()
+      .from(agentConfigs)
+      .where(eq(agentConfigs.id, agentConfigId))
+      .limit(1);
+
+    if (!config) {
+      throw new NotFoundError("Agent config");
+    }
+
+    return {
+      conversationId,
+      agentConfigId,
+      agentConfig: config.config,
+      workingDir: this.extractWorkingDir(config.config),
+      conversationData: {
+        cliAgentSessionId: conversation.cliAgentSessionId,
+        cliAgentSessionHistory: conversation.cliAgentSessionHistory,
+      },
+      // No defaults for artifact/templateVars/volumeVersions - use params directly
+      buildResumeArtifact: false,
+    };
+  }
+
   /**
    * Create execution context for a new run
    *
@@ -425,8 +636,6 @@ export class RunService {
     // Initialize context variables
     let agentConfigId: string | undefined = params.agentConfigId;
     let agentConfig: unknown;
-    // Note: conversationId is stored with new runs but not used in buildExecutionContext
-    // It is used by the API endpoint when creating run records
     let artifactName: string | undefined = params.artifactName;
     let artifactVersion: string | undefined = params.artifactVersion;
     let templateVars: Record<string, string> | undefined = params.templateVars;
@@ -435,158 +644,57 @@ export class RunService {
     let resumeSession: ResumeSession | undefined;
     let resumeArtifact: ArtifactSnapshot | undefined;
 
-    // Step 1: Expand checkpoint if provided
+    // Step 1: Resolve to conversation (unified path for checkpoint/session/direct)
+    let resolution: ConversationResolution | undefined;
+
     if (params.checkpointId) {
-      log.debug(`Expanding checkpoint ${params.checkpointId}`);
+      log.debug(`Resolving checkpoint ${params.checkpointId}`);
+      resolution = await this.resolveCheckpoint(
+        params.checkpointId,
+        params.userId,
+      );
+    } else if (params.sessionId) {
+      log.debug(`Resolving session ${params.sessionId}`);
+      resolution = await this.resolveSession(params.sessionId, params.userId);
+    } else if (params.conversationId && params.agentConfigId) {
+      log.debug(`Resolving conversation ${params.conversationId}`);
+      resolution = await this.resolveDirectConversation(
+        params.conversationId,
+        params.agentConfigId,
+        params.userId,
+      );
+    }
 
-      const [checkpoint] = await globalThis.services.db
-        .select()
-        .from(checkpoints)
-        .where(eq(checkpoints.id, params.checkpointId))
-        .limit(1);
+    // Step 2: Apply resolution defaults and build resumeSession (unified path)
+    if (resolution) {
+      // Apply defaults (params override resolution values)
+      agentConfigId = agentConfigId || resolution.agentConfigId;
+      agentConfig = resolution.agentConfig;
+      artifactName = artifactName || resolution.artifactName;
+      artifactVersion = artifactVersion || resolution.artifactVersion;
+      templateVars = templateVars || resolution.templateVars;
+      volumeVersions = volumeVersions || resolution.volumeVersions;
 
-      if (!checkpoint) {
-        throw new NotFoundError("Checkpoint");
-      }
-
-      // Verify checkpoint belongs to user
-      const [originalRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.id, checkpoint.runId),
-            eq(agentRuns.userId, params.userId),
-          ),
-        )
-        .limit(1);
-
-      if (!originalRun) {
-        throw new UnauthorizedError(
-          "Checkpoint does not belong to authenticated user",
-        );
-      }
-
-      // Load conversation for session history
-      const [conversation] = await globalThis.services.db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.id, checkpoint.conversationId))
-        .limit(1);
-
-      if (!conversation) {
-        throw new NotFoundError("Conversation");
-      }
-
-      // Extract snapshots
-      const agentConfigSnapshot =
-        checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
-      const checkpointArtifact =
-        checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
-      const checkpointVolumeVersions =
-        checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
-
-      // Set defaults from checkpoint (can be overridden)
-      agentConfigId = agentConfigId || originalRun.agentConfigId;
-      agentConfig = agentConfigSnapshot.config;
-      // Note: checkpoint.conversationId is used internally for resumeSession
-      artifactName = artifactName || checkpointArtifact.artifactName;
-      artifactVersion = artifactVersion || checkpointArtifact.artifactVersion;
-      templateVars = templateVars || agentConfigSnapshot.templateVars || {};
-      volumeVersions = volumeVersions || checkpointVolumeVersions?.versions;
-
-      // Extract working directory for resume session
-      const configWithAgents = agentConfigSnapshot.config as
-        | { agents?: Array<{ working_dir?: string }> }
-        | undefined;
-      const workingDir =
-        configWithAgents?.agents?.[0]?.working_dir || "/workspace";
-
-      // Build resume session from conversation
+      // Build resumeSession from resolution (single place!)
       resumeSession = {
-        sessionId: conversation.cliAgentSessionId,
-        sessionHistory: conversation.cliAgentSessionHistory,
-        workingDir,
+        sessionId: resolution.conversationData.cliAgentSessionId,
+        sessionHistory: resolution.conversationData.cliAgentSessionHistory,
+        workingDir: resolution.workingDir,
       };
 
-      // Build resume artifact
-      resumeArtifact = {
-        artifactName: artifactName,
-        artifactVersion: artifactVersion,
-      };
+      // Build resumeArtifact if applicable
+      if (resolution.buildResumeArtifact && artifactName) {
+        resumeArtifact = {
+          artifactName,
+          artifactVersion: artifactVersion || "latest",
+        };
+      }
 
       log.debug(
-        `Checkpoint expanded: artifact=${artifactName}@${artifactVersion}`,
+        `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
       );
     }
-    // Step 2: Expand session if provided (mutually exclusive with checkpoint)
-    else if (params.sessionId) {
-      log.debug(`Expanding session ${params.sessionId}`);
-
-      const session = await agentSessionService.getByIdWithConversation(
-        params.sessionId,
-      );
-
-      if (!session) {
-        throw new NotFoundError("Agent session");
-      }
-
-      if (session.userId !== params.userId) {
-        throw new UnauthorizedError(
-          "Agent session does not belong to authenticated user",
-        );
-      }
-
-      if (!session.conversation) {
-        throw new NotFoundError(
-          "Agent session has no conversation history to continue from",
-        );
-      }
-
-      // Load agent config
-      const [config] = await globalThis.services.db
-        .select()
-        .from(agentConfigs)
-        .where(eq(agentConfigs.id, session.agentConfigId))
-        .limit(1);
-
-      if (!config) {
-        throw new NotFoundError("Agent config");
-      }
-
-      // Set defaults from session
-      agentConfigId = agentConfigId || session.agentConfigId;
-      agentConfig = config.config;
-      // Note: session.conversationId is used internally for resumeSession
-      artifactName = artifactName || session.artifactName;
-      // Session always uses "latest" unless explicitly overridden
-      artifactVersion = artifactVersion || "latest";
-      templateVars = templateVars || session.templateVars || {};
-      // Session does not have stored volume versions
-
-      // Extract working directory
-      const configWithAgents = config.config as
-        | { agents?: Array<{ working_dir?: string }> }
-        | undefined;
-      const workingDir =
-        configWithAgents?.agents?.[0]?.working_dir || "/workspace";
-
-      // Build resume session from conversation
-      resumeSession = {
-        sessionId: session.conversation.cliAgentSessionId,
-        sessionHistory: session.conversation.cliAgentSessionHistory,
-        workingDir,
-      };
-
-      // Build resume artifact (always latest for session)
-      resumeArtifact = {
-        artifactName: artifactName,
-        artifactVersion: "latest",
-      };
-
-      log.debug(`Session expanded: artifact=${artifactName}@latest`);
-    }
-    // Step 3: New run - load agent config if agentConfigId provided
+    // Step 3: New run - load agent config if agentConfigId provided (no conversation)
     else if (agentConfigId) {
       const [config] = await globalThis.services.db
         .select()
