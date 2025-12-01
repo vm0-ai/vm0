@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/vm0-ai/vm0/compare/cli-v2.0.0...cli-v3.0.0) (2025-12-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* Existing agent.yaml files need to be migrated from: ```yaml agents:   - name: "my-agent"     image: "..." ``` to: ```yaml agents:   my-agent:     image: "..." ```
+
+### Code Refactoring
+
+* change agents from array to dictionary in agent.yaml ([#334](https://github.com/vm0-ai/vm0/issues/334)) ([c21a1d0](https://github.com/vm0-ai/vm0/commit/c21a1d09d36e93fdb3cba36ee16c536a8a69a960))
+
 ## [2.0.0](https://github.com/vm0-ai/vm0/compare/cli-v1.16.0...cli-v2.0.0) (2025-12-01)
 
 
