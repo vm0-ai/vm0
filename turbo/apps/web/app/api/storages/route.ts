@@ -398,6 +398,20 @@ export async function GET(request: NextRequest) {
 
     log.debug(`Downloading version ${version.id} (${version.fileCount} files)`);
 
+    // Handle empty artifact case - return empty zip without downloading tar.gz
+    // Empty archives created by archiver may not be valid tar format
+    if (version.fileCount === 0) {
+      log.debug("Empty artifact, returning empty zip");
+      const zip = new AdmZip();
+      const zipBuffer = zip.toBuffer();
+      return new NextResponse(new Uint8Array(zipBuffer), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${storageName}.zip"`,
+        },
+      });
+    }
+
     // Create temp directory for download
     tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
