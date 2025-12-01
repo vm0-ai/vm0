@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/vm0-ai/vm0/compare/web-v2.8.2...web-v3.0.0) (2025-12-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* CLI and API now use tar.gz format exclusively. Clients must be updated to send/receive tar.gz instead of zip.
+
+### Code Refactoring
+
+* unify compression stack to tar.gz ([#331](https://github.com/vm0-ai/vm0/issues/331)) ([0745967](https://github.com/vm0-ai/vm0/commit/07459676b1385d30223ec63d16b2190857b70a2b))
+
 ## [2.8.2](https://github.com/vm0-ai/vm0/compare/web-v2.8.1...web-v2.8.2) (2025-12-01)
 
 
