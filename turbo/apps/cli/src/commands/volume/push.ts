@@ -108,12 +108,19 @@ export const pushCommand = new Command()
         );
       } else {
         // For empty directories, create tar.gz excluding .vm0
+        // Filter paths come as "./.vm0" or ".vm0" depending on tar version
         await tar.create(
           {
             gzip: true,
             file: tarPath,
             cwd: cwd,
-            filter: (filePath: string) => !filePath.startsWith(".vm0"),
+            filter: (filePath: string) => {
+              const shouldExclude =
+                filePath === ".vm0" ||
+                filePath.startsWith(".vm0/") ||
+                filePath.startsWith("./.vm0");
+              return !shouldExclude;
+            },
           },
           ["."],
         );
