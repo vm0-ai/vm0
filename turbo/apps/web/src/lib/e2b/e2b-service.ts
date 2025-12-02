@@ -182,6 +182,56 @@ export class E2BService {
         log.debug(`Added Vercel protection bypass for preview deployment`);
       }
 
+      // Add prompt and working directory to sandbox env vars
+      // These must be set at sandbox creation time, not via commands.run({ envs })
+      // because E2B's background mode doesn't pass envs to the background process
+      sandboxEnvVars.VM0_PROMPT = context.prompt;
+      sandboxEnvVars.VM0_WORKING_DIR = artifactMountPath;
+
+      // Add resume session ID if provided
+      if (context.resumeSession?.sessionId) {
+        sandboxEnvVars.VM0_RESUME_SESSION_ID = context.resumeSession.sessionId;
+      }
+
+      // Pass USE_MOCK_CLAUDE for testing (executes prompt as bash instead of calling LLM)
+      if (process.env.USE_MOCK_CLAUDE === "true") {
+        sandboxEnvVars.USE_MOCK_CLAUDE = "true";
+      }
+
+      // Add artifact information for checkpoint
+      // Only artifact creates new versions after agent runs
+      if (artifactForCommand) {
+        sandboxEnvVars.VM0_ARTIFACT_DRIVER = "vas";
+        sandboxEnvVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
+        sandboxEnvVars.VM0_ARTIFACT_VOLUME_NAME =
+          artifactForCommand.vasStorageName;
+        sandboxEnvVars.VM0_ARTIFACT_VERSION_ID =
+          artifactForCommand.vasVersionId;
+
+        // Pass manifest URL for incremental upload
+        if (artifactForCommand.manifestUrl) {
+          sandboxEnvVars.VM0_ARTIFACT_MANIFEST_URL =
+            artifactForCommand.manifestUrl;
+        }
+      }
+
+      // Add Minimax API configuration if available
+      const minimaxBaseUrl = env().MINIMAX_ANTHROPIC_BASE_URL;
+      const minimaxApiKey = env().MINIMAX_API_KEY;
+
+      if (minimaxBaseUrl && minimaxApiKey) {
+        sandboxEnvVars.ANTHROPIC_BASE_URL = minimaxBaseUrl;
+        sandboxEnvVars.ANTHROPIC_AUTH_TOKEN = minimaxApiKey;
+        sandboxEnvVars.API_TIMEOUT_MS = "3000000";
+        sandboxEnvVars.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+        sandboxEnvVars.ANTHROPIC_MODEL = "MiniMax-M2";
+        sandboxEnvVars.ANTHROPIC_SMALL_FAST_MODEL = "MiniMax-M2";
+        sandboxEnvVars.ANTHROPIC_DEFAULT_SONNET_MODEL = "MiniMax-M2";
+        sandboxEnvVars.ANTHROPIC_DEFAULT_OPUS_MODEL = "MiniMax-M2";
+        sandboxEnvVars.ANTHROPIC_DEFAULT_HAIKU_MODEL = "MiniMax-M2";
+        log.debug(`Using Minimax API (${minimaxBaseUrl})`);
+      }
+
       sandbox = await this.createSandbox(
         sandboxEnvVars,
         agentCompose as AgentComposeYaml | undefined,
@@ -203,15 +253,8 @@ export class E2BService {
 
       // Start Claude Code via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
-      await this.startAgentExecution(
-        sandbox,
-        context.runId,
-        context.prompt,
-        context.sandboxToken,
-        context.agentCompose,
-        artifactForCommand,
-        context.resumeSession?.sessionId,
-      );
+      // NOTE: All env vars are already set at sandbox creation time
+      await this.startAgentExecution(sandbox, context.runId);
 
       const prepTimeMs = Date.now() - startTime;
       log.debug(
@@ -420,15 +463,13 @@ export class E2BService {
   /**
    * Start agent execution (fire-and-forget)
    * Uploads scripts and starts run-agent.sh in background without waiting
+   *
+   * NOTE: All environment variables must be set at sandbox creation time via createSandbox().
+   * E2B's background mode does not pass envs from sandbox.commands.run({ envs }) to the process.
    */
   private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
-    prompt: string,
-    sandboxToken: string,
-    agentCompose?: unknown,
-    preparedArtifact?: PreparedArtifact | null,
-    resumeSessionId?: string,
   ): Promise<void> {
     // Upload run-agent.sh script to sandbox at runtime
     // This allows script changes without rebuilding the E2B template
@@ -436,110 +477,10 @@ export class E2BService {
 
     log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
-    // Extract working_dir from agent compose
-    // Defensive check - working_dir should have been validated at start of execute()
-    // but we verify again to ensure VM0_WORKING_DIR env var is never undefined
-    const compose = agentCompose as AgentComposeYaml | undefined;
-    const firstAgentForEnv = getFirstAgent(compose);
-
-    // Log the agent compose structure for debugging
-    log.debug(
-      `Agent compose structure: ${JSON.stringify({
-        hasCompose: !!compose,
-        hasAgents: !!compose?.agents,
-        agentKeys: compose?.agents ? Object.keys(compose.agents) : [],
-        firstAgent: firstAgentForEnv
-          ? {
-              hasWorkingDir: "working_dir" in firstAgentForEnv,
-              workingDirType: typeof firstAgentForEnv.working_dir,
-              workingDirValue: firstAgentForEnv.working_dir,
-            }
-          : null,
-      })}`,
-    );
-
-    if (!firstAgentForEnv?.working_dir) {
-      throw new BadRequestError(
-        "Agent must have working_dir configured (no default allowed)",
-      );
-    }
-    const workingDir = firstAgentForEnv.working_dir;
-
-    // Extra validation: ensure workingDir is a non-empty string
-    if (typeof workingDir !== "string" || workingDir.trim() === "") {
-      throw new BadRequestError(
-        `Invalid working_dir: expected non-empty string, got ${typeof workingDir}: ${JSON.stringify(workingDir)}`,
-      );
-    }
-
-    // Set environment variables
-    const envs: Record<string, string> = {
-      VM0_RUN_ID: runId,
-      VM0_API_TOKEN: sandboxToken,
-      VM0_PROMPT: prompt,
-      VM0_WORKING_DIR: workingDir,
-    };
-    log.debug(`Working directory configured: ${workingDir}`);
-
-    // Add resume session ID if provided
-    if (resumeSessionId) {
-      envs.VM0_RESUME_SESSION_ID = resumeSessionId;
-      log.debug(`Resume session ID configured: ${resumeSessionId}`);
-    }
-
-    // Pass USE_MOCK_CLAUDE for testing (executes prompt as bash instead of calling LLM)
-    if (process.env.USE_MOCK_CLAUDE === "true") {
-      envs.USE_MOCK_CLAUDE = "true";
-      log.debug(`Using mock-claude for testing`);
-    }
-
-    // Add artifact information for checkpoint
-    // Only artifact creates new versions after agent runs
-    if (preparedArtifact) {
-      log.debug(`Prepared artifact for checkpoint:`, {
-        driver: preparedArtifact.driver,
-        mountPath: preparedArtifact.mountPath,
-        vasStorageName: preparedArtifact.vasStorageName,
-      });
-
-      // VAS artifact - pass info for vas snapshot
-      envs.VM0_ARTIFACT_DRIVER = "vas";
-      envs.VM0_ARTIFACT_MOUNT_PATH = preparedArtifact.mountPath;
-      envs.VM0_ARTIFACT_VOLUME_NAME = preparedArtifact.vasStorageName;
-      envs.VM0_ARTIFACT_VERSION_ID = preparedArtifact.vasVersionId;
-
-      // Pass manifest URL for incremental upload
-      if (preparedArtifact.manifestUrl) {
-        envs.VM0_ARTIFACT_MANIFEST_URL = preparedArtifact.manifestUrl;
-        log.debug(`Configured manifest URL for incremental upload`);
-      }
-
-      log.debug(`Configured VAS artifact for checkpoint`);
-    } else {
-      log.debug(`No artifact configured for checkpoint`);
-    }
-
-    // Add Minimax API configuration if available
-    const minimaxBaseUrl = env().MINIMAX_ANTHROPIC_BASE_URL;
-    const minimaxApiKey = env().MINIMAX_API_KEY;
-
-    if (minimaxBaseUrl && minimaxApiKey) {
-      envs.ANTHROPIC_BASE_URL = minimaxBaseUrl;
-      envs.ANTHROPIC_AUTH_TOKEN = minimaxApiKey;
-      envs.API_TIMEOUT_MS = "3000000";
-      envs.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
-      envs.ANTHROPIC_MODEL = "MiniMax-M2";
-      envs.ANTHROPIC_SMALL_FAST_MODEL = "MiniMax-M2";
-      envs.ANTHROPIC_DEFAULT_SONNET_MODEL = "MiniMax-M2";
-      envs.ANTHROPIC_DEFAULT_OPUS_MODEL = "MiniMax-M2";
-      envs.ANTHROPIC_DEFAULT_HAIKU_MODEL = "MiniMax-M2";
-      log.debug(`Using Minimax API (${minimaxBaseUrl})`);
-    }
-
     // Start script in background using E2B's native background mode
     // This returns immediately while the command continues executing in the sandbox
+    // NOTE: Do not pass envs here - they must be set at sandbox creation time
     await sandbox.commands.run(scriptPath, {
-      envs,
       background: true,
     });
 

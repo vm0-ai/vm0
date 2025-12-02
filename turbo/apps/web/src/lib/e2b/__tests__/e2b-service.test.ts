@@ -418,14 +418,13 @@ describe("E2B Service - mocked unit tests", () => {
       // Assert - fire-and-forget returns "running"
       expect(result.status).toBe("running");
 
-      // Verify sandbox command was called with environment variables including working_dir
-      expect(mockSandbox.commands.run).toHaveBeenCalled();
-      const commandCall = mockSandbox.commands.run.mock.calls.find(
-        (call) => call[0] === "/usr/local/bin/vm0-agent/run-agent.sh",
-      );
-      expect(commandCall).toBeDefined();
-      expect(commandCall?.[1]?.envs).toBeDefined();
-      expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
+      // Verify sandbox was created with environment variables including working_dir
+      // NOTE: VM0_WORKING_DIR is passed at sandbox creation time, not via commands.run({ envs })
+      // because E2B's background mode doesn't pass envs to the background process
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      expect(createCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
         "/home/user/workspace",
       );
     });
