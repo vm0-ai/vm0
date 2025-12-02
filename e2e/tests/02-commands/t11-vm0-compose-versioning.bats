@@ -219,6 +219,13 @@ EOF
     VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 2: $VERSION2"
 
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
     echo "# Running with specific version (version 1)..."
     run $CLI_COMMAND run "$AGENT_NAME:$VERSION1" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -244,6 +251,13 @@ EOF
 
     echo "# Building agent..."
     run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
     assert_success
 
     echo "# Running with :latest tag..."
@@ -273,7 +287,7 @@ EOF
     run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Running with nonexistent version..."
+    echo "# Running with nonexistent version (should fail before artifact check)..."
     run $CLI_COMMAND run "$AGENT_NAME:deadbeef" \
         --artifact-name "$ARTIFACT_NAME" \
         --timeout 120 \
@@ -299,6 +313,13 @@ EOF
 
     echo "# Building agent..."
     run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
     assert_success
 
     echo "# Running without version specifier (should use HEAD)..."
