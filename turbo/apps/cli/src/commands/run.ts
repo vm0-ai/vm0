@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient } from "../lib/api-client";
 import { ClaudeEventParser } from "../lib/event-parser";
-import { EventRenderer, type RenderOptions } from "../lib/event-renderer";
+import { EventRenderer } from "../lib/event-renderer";
 
 function collectVars(
   value: string,
@@ -60,6 +60,7 @@ async function pollEvents(
   const startTime = Date.now();
   const startTimestamp = new Date();
   let previousTimestamp = startTimestamp;
+  const verbose = options?.verbose;
 
   while (!complete) {
     // Check timeout
@@ -83,13 +84,11 @@ async function pollEvents(
       );
 
       if (parsed) {
-        const renderOptions: RenderOptions = {
-          verbose: options?.verbose,
-          previousTimestamp: options?.verbose ? previousTimestamp : undefined,
+        EventRenderer.render(parsed, {
+          verbose,
+          previousTimestamp,
           startTimestamp,
-        };
-
-        EventRenderer.render(parsed, renderOptions);
+        });
 
         // Update previous timestamp for next event
         previousTimestamp = parsed.timestamp;
@@ -108,6 +107,24 @@ async function pollEvents(
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   }
+}
+
+/**
+ * Log verbose pre-flight messages
+ */
+function logVerbosePreFlight(
+  action: string,
+  details: Array<{ label: string; value: string | undefined }>,
+): void {
+  console.log(chalk.blue(`\n${action}...`));
+  for (const { label, value } of details) {
+    if (value !== undefined) {
+      console.log(chalk.gray(`  ${label}: ${value}`));
+    }
+  }
+  console.log();
+  console.log(chalk.blue("Executing in sandbox..."));
+  console.log();
 }
 
 const runCmd = new Command()
@@ -216,37 +233,26 @@ const runCmd = new Command()
 
         // 2. Display starting message (verbose only)
         if (verbose) {
-          console.log(chalk.blue("\nCreating agent run..."));
-          console.log(chalk.gray(`  Prompt: ${prompt}`));
-
-          if (Object.keys(options.vars).length > 0) {
-            console.log(
-              chalk.gray(`  Variables: ${JSON.stringify(options.vars)}`),
-            );
-          }
-
-          console.log(chalk.gray(`  Artifact: ${options.artifactName}`));
-          if (options.artifactVersion) {
-            console.log(
-              chalk.gray(`  Artifact version: ${options.artifactVersion}`),
-            );
-          }
-
-          if (Object.keys(options.volumeVersion).length > 0) {
-            console.log(
-              chalk.gray(
-                `  Volume versions: ${JSON.stringify(options.volumeVersion)}`,
-              ),
-            );
-          }
-
-          if (options.conversation) {
-            console.log(chalk.gray(`  Conversation: ${options.conversation}`));
-          }
-
-          console.log();
-          console.log(chalk.blue("Executing in sandbox..."));
-          console.log();
+          logVerbosePreFlight("Creating agent run", [
+            { label: "Prompt", value: prompt },
+            {
+              label: "Variables",
+              value:
+                Object.keys(options.vars).length > 0
+                  ? JSON.stringify(options.vars)
+                  : undefined,
+            },
+            { label: "Artifact", value: options.artifactName },
+            { label: "Artifact version", value: options.artifactVersion },
+            {
+              label: "Volume versions",
+              value:
+                Object.keys(options.volumeVersion).length > 0
+                  ? JSON.stringify(options.volumeVersion)
+                  : undefined,
+            },
+            { label: "Conversation", value: options.conversation },
+          ]);
         }
 
         // 3. Call unified API
@@ -343,21 +349,17 @@ runCmd
 
         // 2. Display starting message (verbose only)
         if (verbose) {
-          console.log(chalk.blue("\nResuming agent run from checkpoint..."));
-          console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
-          console.log(chalk.gray(`  Prompt: ${prompt}`));
-
-          if (Object.keys(allOpts.volumeVersion).length > 0) {
-            console.log(
-              chalk.gray(
-                `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
-              ),
-            );
-          }
-
-          console.log();
-          console.log(chalk.blue("Executing in sandbox..."));
-          console.log();
+          logVerbosePreFlight("Resuming agent run from checkpoint", [
+            { label: "Checkpoint ID", value: checkpointId },
+            { label: "Prompt", value: prompt },
+            {
+              label: "Volume overrides",
+              value:
+                Object.keys(allOpts.volumeVersion).length > 0
+                  ? JSON.stringify(allOpts.volumeVersion)
+                  : undefined,
+            },
+          ]);
         }
 
         // 3. Call unified API with checkpointId
@@ -448,22 +450,18 @@ runCmd
 
         // 2. Display starting message (verbose only)
         if (verbose) {
-          console.log(chalk.blue("\nContinuing agent run from session..."));
-          console.log(chalk.gray(`  Session ID: ${agentSessionId}`));
-          console.log(chalk.gray(`  Prompt: ${prompt}`));
-          console.log(chalk.gray(`  Note: Using latest artifact version`));
-
-          if (Object.keys(allOpts.volumeVersion).length > 0) {
-            console.log(
-              chalk.gray(
-                `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
-              ),
-            );
-          }
-
-          console.log();
-          console.log(chalk.blue("Executing in sandbox..."));
-          console.log();
+          logVerbosePreFlight("Continuing agent run from session", [
+            { label: "Session ID", value: agentSessionId },
+            { label: "Prompt", value: prompt },
+            { label: "Note", value: "Using latest artifact version" },
+            {
+              label: "Volume overrides",
+              value:
+                Object.keys(allOpts.volumeVersion).length > 0
+                  ? JSON.stringify(allOpts.volumeVersion)
+                  : undefined,
+            },
+          ]);
         }
 
         // 3. Call unified API with sessionId

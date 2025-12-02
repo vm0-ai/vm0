@@ -602,7 +602,7 @@ describe("EventRenderer", () => {
   // ============================================
 
   describe("Total Time Display", () => {
-    it("should render total time in vm0_result when startTimestamp is provided", () => {
+    it("should render total time in vm0_result in verbose mode", () => {
       const event: ParsedEvent = {
         type: "vm0_result",
         timestamp: new Date("2024-01-01T00:00:06.700Z"),
@@ -614,6 +614,7 @@ describe("EventRenderer", () => {
       };
 
       const options: RenderOptions = {
+        verbose: true,
         startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
       };
 
@@ -626,7 +627,7 @@ describe("EventRenderer", () => {
       expect(lastCall).toContain("6.7s");
     });
 
-    it("should not render total time without startTimestamp", () => {
+    it("should not render total time without verbose flag", () => {
       const event: ParsedEvent = {
         type: "vm0_result",
         timestamp: new Date("2024-01-01T00:00:06.700Z"),
@@ -637,7 +638,12 @@ describe("EventRenderer", () => {
         },
       };
 
-      EventRenderer.render(event);
+      const options: RenderOptions = {
+        verbose: false,
+        startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
+      };
+
+      EventRenderer.render(event, options);
 
       // Check no call contains "Total time"
       const allCalls = consoleLogSpy.mock.calls.map(

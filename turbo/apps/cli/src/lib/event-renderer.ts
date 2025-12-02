@@ -70,7 +70,11 @@ export class EventRenderer {
         this.renderVm0Start(event, elapsedPrefix);
         break;
       case "vm0_result":
-        this.renderVm0Result(event, elapsedPrefix, options?.startTimestamp);
+        this.renderVm0Result(
+          event,
+          elapsedPrefix,
+          options?.verbose ? options?.startTimestamp : undefined,
+        );
         break;
       case "vm0_error":
         this.renderVm0Error(event, elapsedPrefix);
@@ -211,7 +215,7 @@ export class EventRenderer {
 
     this.renderArtifactAndVolumes(event.data);
 
-    // Always show total time if startTimestamp is provided
+    // Show total time in verbose mode
     if (startTimestamp) {
       const totalTime = this.formatTotalTime(startTimestamp, event.timestamp);
       console.log(`  Total time: ${chalk.gray(totalTime)}`);
