@@ -11,5 +11,5 @@ agents:
 
 volumes:
   user-data:
-    name: "{{userName}}-data"
+    name: "${{ vars.userName }}-data"
     version: "latest"
