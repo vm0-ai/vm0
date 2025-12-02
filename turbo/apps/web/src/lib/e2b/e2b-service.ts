@@ -437,9 +437,16 @@ export class E2BService {
     log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
     // Extract working_dir from agent compose
-    // Note: working_dir is already validated at the start of execute()
+    // Defensive check - working_dir should have been validated at start of execute()
+    // but we verify again to ensure VM0_WORKING_DIR env var is never undefined
     const compose = agentCompose as AgentComposeYaml | undefined;
-    const workingDir = getFirstAgent(compose)!.working_dir;
+    const firstAgentForEnv = getFirstAgent(compose);
+    if (!firstAgentForEnv?.working_dir) {
+      throw new BadRequestError(
+        "Agent must have working_dir configured (no default allowed)",
+      );
+    }
+    const workingDir = firstAgentForEnv.working_dir;
 
     // Set environment variables
     const envs: Record<string, string> = {
