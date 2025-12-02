@@ -10,9 +10,16 @@ RUN_ID="\${VM0_RUN_ID}"
 API_URL="\${VM0_API_URL}"
 API_TOKEN="\${VM0_API_TOKEN}"
 PROMPT="\${VM0_PROMPT}"
-WORKING_DIR="\${VM0_WORKING_DIR:-/home/user/workspace}"
 VERCEL_BYPASS="\${VERCEL_PROTECTION_BYPASS:-}"
 RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
+
+# Working directory is required - no fallback allowed
+WORKING_DIR="\${VM0_WORKING_DIR}"
+
+if [ -z "$WORKING_DIR" ]; then
+  echo "[ERROR] VM0_WORKING_DIR is required but not set" >&2
+  exit 1
+fi
 
 # Artifact configuration (replaces GIT_VOLUMES and VM0_VOLUMES)
 ARTIFACT_DRIVER="\${VM0_ARTIFACT_DRIVER:-}"

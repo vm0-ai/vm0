@@ -3,7 +3,7 @@ import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentComposes } from "../../db/schema/agent-compose";
-import { NotFoundError, UnauthorizedError } from "../errors";
+import { NotFoundError, UnauthorizedError, BadRequestError } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type {
@@ -14,6 +14,7 @@ import type {
 import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 
 const log = logger("service:run");
 
@@ -57,12 +58,23 @@ export function calculateSessionHistoryPath(
 export class RunService {
   /**
    * Extract working directory from agent config
+   * Throws BadRequestError if working_dir is not configured
    */
   private extractWorkingDir(config: unknown): string {
-    const configWithAgents = config as
-      | { agents?: Array<{ working_dir?: string }> }
-      | undefined;
-    return configWithAgents?.agents?.[0]?.working_dir || "/workspace";
+    const compose = config as AgentComposeYaml | undefined;
+    if (!compose?.agents) {
+      throw new BadRequestError(
+        "Agent compose must have agents configured with working_dir",
+      );
+    }
+    const agents = Object.values(compose.agents);
+    const firstAgent = agents[0];
+    if (!firstAgent?.working_dir) {
+      throw new BadRequestError(
+        "Agent must have working_dir configured (no default allowed)",
+      );
+    }
+    return firstAgent.working_dir;
   }
 
   /**

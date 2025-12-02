@@ -63,6 +63,21 @@ describe("E2B Service - mocked unit tests", () => {
   });
 
   /**
+   * Helper function to create a valid agent compose with working_dir
+   */
+  const createValidAgentCompose = (overrides = {}) => ({
+    version: "1.0",
+    agents: {
+      "test-agent": {
+        image: "test-image",
+        provider: "claude-code",
+        working_dir: "/workspace",
+        ...overrides,
+      },
+    },
+  });
+
+  /**
    * Helper function to create a mock sandbox instance
    */
   const createMockSandbox = (overrides = {}) => ({
@@ -92,7 +107,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-001",
         agentComposeId: "test-agent-001",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
         templateVars: { testVar: "testValue" },
@@ -144,7 +159,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-event",
         agentComposeId: "test-agent-event",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Test prompt",
         templateVars: { key: "value" },
@@ -207,7 +222,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-storages",
         agentComposeId: "test-agent-storages",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Test with storages",
       };
@@ -245,7 +260,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context1: ExecutionContext = {
         runId: "run-test-002a",
         agentComposeId: "test-agent-002",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
@@ -253,7 +268,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context2: ExecutionContext = {
         runId: "run-test-002b",
         agentComposeId: "test-agent-002",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
@@ -293,7 +308,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-003",
         agentComposeId: "test-agent-003",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
       };
@@ -322,7 +337,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-004",
         agentComposeId: "test-agent-004",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
       };
@@ -356,7 +371,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-005",
         agentComposeId: "test-agent-005",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
       };
@@ -403,19 +418,18 @@ describe("E2B Service - mocked unit tests", () => {
       // Assert - fire-and-forget returns "running"
       expect(result.status).toBe("running");
 
-      // Verify sandbox command was called with environment variables including working_dir
-      expect(mockSandbox.commands.run).toHaveBeenCalled();
-      const commandCall = mockSandbox.commands.run.mock.calls.find(
-        (call) => call[0] === "/usr/local/bin/vm0-agent/run-agent.sh",
-      );
-      expect(commandCall).toBeDefined();
-      expect(commandCall?.[1]?.envs).toBeDefined();
-      expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
+      // Verify sandbox was created with environment variables including working_dir
+      // NOTE: VM0_WORKING_DIR is passed at sandbox creation time, not via commands.run({ envs })
+      // because E2B's background mode doesn't pass envs to the background process
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      expect(createCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
         "/home/user/workspace",
       );
     });
 
-    it("should not set VM0_WORKING_DIR when not configured", async () => {
+    it("should fail when working_dir is not configured", async () => {
       // Arrange
       const mockSandbox = createMockSandbox();
       vi.mocked(Sandbox.create).mockResolvedValue(
@@ -443,17 +457,9 @@ describe("E2B Service - mocked unit tests", () => {
       // Act
       const result = await e2bService.execute(context);
 
-      // Assert - fire-and-forget returns "running"
-      expect(result.status).toBe("running");
-
-      // Verify sandbox command was called without VM0_WORKING_DIR
-      expect(mockSandbox.commands.run).toHaveBeenCalled();
-      const commandCall = mockSandbox.commands.run.mock.calls.find(
-        (call) => call[0] === "/usr/local/bin/vm0-agent/run-agent.sh",
-      );
-      expect(commandCall).toBeDefined();
-      expect(commandCall?.[1]?.envs).toBeDefined();
-      expect(commandCall?.[1]?.envs?.VM0_WORKING_DIR).toBeUndefined();
+      // Assert - should fail because working_dir is required
+      expect(result.status).toBe("failed");
+      expect(result.error).toContain("working_dir");
     });
   });
 
@@ -467,7 +473,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-error",
         agentComposeId: "test-agent-error",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
       };
@@ -494,7 +500,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-storage-error",
         agentComposeId: "test-agent-storage-error",
-        agentCompose: {},
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to storage errors",
       };
