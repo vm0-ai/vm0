@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1](https://github.com/vm0-ai/vm0/compare/cli-v3.2.0...cli-v3.2.1) (2025-12-02)
+
+
+### Bug Fixes
+
+* use client receive time for event elapsed calculation ([#350](https://github.com/vm0-ai/vm0/issues/350)) ([6549a9c](https://github.com/vm0-ai/vm0/commit/6549a9cd8d474c1f898b112397f31dcd9713734a))
+
 ## [3.2.0](https://github.com/vm0-ai/vm0/compare/cli-v3.1.0...cli-v3.2.0) (2025-12-02)
 
 
