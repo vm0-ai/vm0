@@ -317,64 +317,29 @@ describe("StorageService", () => {
       expect(result.artifact?.mountPath).toBe("/workspace");
     });
 
-    it("should use default mount path when resumeArtifactMountPath is not provided", async () => {
+    it("should throw error when resumeArtifactMountPath is not provided with resumeArtifact", async () => {
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
         volumes: [],
         artifact: null,
         errors: [],
       });
 
-      // Mock database queries
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi
-          .fn()
-          .mockResolvedValueOnce([
-            {
-              id: "storage-id",
-              name: "my-artifact",
-              userId: "user-123",
-              headVersionId: "version-id",
-            },
-          ])
-          .mockResolvedValueOnce([
-            {
-              id: "version-id",
-              storageId: "storage-id",
-              s3Key: "user-123/my-artifact/version-id",
-            },
-          ]),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
-      vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
-        "https://s3.example.com/archive.tar.gz",
-      );
-      vi.mocked(s3Client.listS3Objects).mockResolvedValue([
-        { key: "archive.tar.gz", size: 0, lastModified: new Date() },
-      ]);
-
-      const result = await storageService.prepareStorageManifest(
-        undefined,
-        {},
-        "user-123",
-        undefined,
-        undefined,
-        undefined,
-        {
-          artifactName: "my-artifact",
-          artifactVersion: "version-id",
-        },
-        // No mount path provided - should default to /workspace
-      );
-
-      expect(result.artifact).not.toBeNull();
-      expect(result.artifact?.mountPath).toBe("/workspace");
+      // No mount path provided - should throw BadRequestError
+      await expect(
+        storageService.prepareStorageManifest(
+          undefined,
+          {},
+          "user-123",
+          undefined,
+          undefined,
+          undefined,
+          {
+            artifactName: "my-artifact",
+            artifactVersion: "version-id",
+          },
+          // Missing resumeArtifactMountPath - should throw error
+        ),
+      ).rejects.toThrow("resumeArtifactMountPath is required");
     });
   });
 });
