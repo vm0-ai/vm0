@@ -153,7 +153,7 @@ set +e
     fi
   fi
 done
-CLAUDE_EXIT_CODE=\${PIPESTATUS[0]}
+CLAUDE_EXIT_CODE=\${PIPESTATUS[0]:-1}
 set -e
 
 echo ""
@@ -162,7 +162,7 @@ echo ""
 # Handle completion
 # =============================================================================
 
-FINAL_EXIT_CODE=$CLAUDE_EXIT_CODE
+FINAL_EXIT_CODE=\${CLAUDE_EXIT_CODE:-1}
 ERROR_MESSAGE=""
 
 # Check for event send failures
@@ -172,7 +172,7 @@ if [ -f "$EVENT_ERROR_FLAG" ]; then
   ERROR_MESSAGE="Some events failed to send"
 fi
 
-if [ $CLAUDE_EXIT_CODE -eq 0 ] && [ $FINAL_EXIT_CODE -eq 0 ]; then
+if [ "$CLAUDE_EXIT_CODE" -eq 0 ] && [ "$FINAL_EXIT_CODE" -eq 0 ]; then
   log_info "Claude completed successfully"
 
   # Create checkpoint (mandatory for success)
