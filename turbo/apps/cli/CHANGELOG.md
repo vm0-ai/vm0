@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.2](https://github.com/vm0-ai/vm0/compare/cli-v3.2.1...cli-v3.2.2) (2025-12-02)
+
+
+### Bug Fixes
+
+* start elapsed time calculation from command invocation ([#353](https://github.com/vm0-ai/vm0/issues/353)) ([6dd48a1](https://github.com/vm0-ai/vm0/commit/6dd48a1c65f00d46e3eaf6a5a751b52b91f5103c))
+
 ## [3.2.1](https://github.com/vm0-ai/vm0/compare/cli-v3.2.0...cli-v3.2.1) (2025-12-02)
 
 
