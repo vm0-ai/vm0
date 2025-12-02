@@ -2,7 +2,10 @@ import { eq, and } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
-import { agentComposes } from "../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../db/schema/agent-compose";
 import { NotFoundError, UnauthorizedError, BadRequestError } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
@@ -24,7 +27,7 @@ const log = logger("service:run");
  */
 interface ConversationResolution {
   conversationId: string;
-  agentComposeId: string;
+  agentComposeVersionId: string;
   agentCompose: unknown;
   workingDir: string;
   conversationData: {
@@ -128,11 +131,31 @@ export class RunService {
     const checkpointVolumeVersions =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
+    // Get version ID from snapshot
+    const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
+    if (!agentComposeVersionId) {
+      throw new BadRequestError(
+        "Invalid checkpoint: missing agentComposeVersionId",
+      );
+    }
+
+    // Lookup content from version table
+    const [version] = await globalThis.services.db
+      .select()
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, agentComposeVersionId))
+      .limit(1);
+
+    if (!version) {
+      throw new NotFoundError(`Agent compose version ${agentComposeVersionId}`);
+    }
+    const agentCompose = version.content as AgentComposeYaml;
+
     return {
       conversationId: checkpoint.conversationId,
-      agentComposeId: originalRun.agentComposeId,
-      agentCompose: agentComposeSnapshot.config,
-      workingDir: this.extractWorkingDir(agentComposeSnapshot.config),
+      agentComposeVersionId,
+      agentCompose,
+      workingDir: this.extractWorkingDir(agentCompose),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
@@ -186,11 +209,28 @@ export class RunService {
       throw new NotFoundError("Agent compose");
     }
 
+    if (!compose.headVersionId) {
+      throw new BadRequestError(
+        "Agent compose has no versions. Run 'vm0 build' first.",
+      );
+    }
+
+    // Get HEAD version content
+    const [version] = await globalThis.services.db
+      .select()
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, compose.headVersionId))
+      .limit(1);
+
+    if (!version) {
+      throw new NotFoundError("Agent compose version");
+    }
+
     return {
       conversationId: session.conversationId,
-      agentComposeId: session.agentComposeId,
-      agentCompose: compose.config,
-      workingDir: this.extractWorkingDir(compose.config),
+      agentComposeVersionId: compose.headVersionId,
+      agentCompose: version.content,
+      workingDir: this.extractWorkingDir(version.content),
       conversationData: {
         cliAgentSessionId: session.conversation.cliAgentSessionId,
         cliAgentSessionHistory: session.conversation.cliAgentSessionHistory,
@@ -208,7 +248,7 @@ export class RunService {
    */
   private async resolveDirectConversation(
     conversationId: string,
-    agentComposeId: string,
+    agentComposeVersionId: string,
     userId: string,
   ): Promise<ConversationResolution> {
     // Load conversation
@@ -237,22 +277,22 @@ export class RunService {
       );
     }
 
-    // Load agent compose
-    const [compose] = await globalThis.services.db
+    // Load agent compose version
+    const [version] = await globalThis.services.db
       .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, agentComposeId))
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, agentComposeVersionId))
       .limit(1);
 
-    if (!compose) {
-      throw new NotFoundError("Agent compose");
+    if (!version) {
+      throw new NotFoundError("Agent compose version");
     }
 
     return {
       conversationId,
-      agentComposeId,
-      agentCompose: compose.config,
-      workingDir: this.extractWorkingDir(compose.config),
+      agentComposeVersionId,
+      agentCompose: version.content,
+      workingDir: this.extractWorkingDir(version.content),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
@@ -266,7 +306,7 @@ export class RunService {
    * Create execution context for a new run
    *
    * @param runId Run ID
-   * @param agentComposeId Agent compose ID
+   * @param agentComposeVersionId Agent compose version ID (SHA-256 hash)
    * @param prompt User prompt
    * @param sandboxToken Temporary bearer token for sandbox
    * @param templateVars Template variable replacements
@@ -278,7 +318,7 @@ export class RunService {
    */
   async createRunContext(
     runId: string,
-    agentComposeId: string,
+    agentComposeVersionId: string,
     prompt: string,
     sandboxToken: string,
     templateVars: Record<string, string> | undefined,
@@ -291,7 +331,7 @@ export class RunService {
 
     return {
       runId,
-      agentComposeId,
+      agentComposeVersionId,
       agentCompose,
       prompt,
       templateVars,
@@ -308,7 +348,7 @@ export class RunService {
    *
    * @param checkpointId Checkpoint ID to validate
    * @param userId User ID for authorization check
-   * @returns Checkpoint data with agentComposeId
+   * @returns Checkpoint data with agentComposeVersionId
    * @throws NotFoundError if checkpoint doesn't exist
    * @throws UnauthorizedError if checkpoint doesn't belong to user
    */
@@ -316,7 +356,7 @@ export class RunService {
     checkpointId: string,
     userId: string,
   ): Promise<{
-    agentComposeId: string;
+    agentComposeVersionId: string;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
@@ -346,12 +386,23 @@ export class RunService {
       );
     }
 
+    // Get version ID from snapshot
+    const agentComposeSnapshot =
+      checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
+
+    const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
+    if (!agentComposeVersionId) {
+      throw new BadRequestError(
+        "Invalid checkpoint: missing agentComposeVersionId",
+      );
+    }
+
     log.debug(
-      `Checkpoint validated: agentComposeId=${originalRun.agentComposeId}`,
+      `Checkpoint validated: agentComposeVersionId=${agentComposeVersionId}`,
     );
 
     return {
-      agentComposeId: originalRun.agentComposeId,
+      agentComposeVersionId,
     };
   }
 
@@ -421,7 +472,7 @@ export class RunService {
     checkpointId?: string;
     sessionId?: string;
     // Base parameters
-    agentComposeId?: string;
+    agentComposeVersionId?: string;
     conversationId?: string;
     artifactName?: string;
     artifactVersion?: string;
@@ -441,7 +492,8 @@ export class RunService {
     log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
     // Initialize context variables
-    let agentComposeId: string | undefined = params.agentComposeId;
+    let agentComposeVersionId: string | undefined =
+      params.agentComposeVersionId;
     let agentCompose: unknown;
     let artifactName: string | undefined = params.artifactName;
     let artifactVersion: string | undefined = params.artifactVersion;
@@ -463,11 +515,11 @@ export class RunService {
     } else if (params.sessionId) {
       log.debug(`Resolving session ${params.sessionId}`);
       resolution = await this.resolveSession(params.sessionId, params.userId);
-    } else if (params.conversationId && params.agentComposeId) {
+    } else if (params.conversationId && params.agentComposeVersionId) {
       log.debug(`Resolving conversation ${params.conversationId}`);
       resolution = await this.resolveDirectConversation(
         params.conversationId,
-        params.agentComposeId,
+        params.agentComposeVersionId,
         params.userId,
       );
     }
@@ -475,7 +527,8 @@ export class RunService {
     // Step 2: Apply resolution defaults and build resumeSession (unified path)
     if (resolution) {
       // Apply defaults (params override resolution values)
-      agentComposeId = agentComposeId || resolution.agentComposeId;
+      agentComposeVersionId =
+        agentComposeVersionId || resolution.agentComposeVersionId;
       agentCompose = resolution.agentCompose;
       artifactName = artifactName || resolution.artifactName;
       artifactVersion = artifactVersion || resolution.artifactVersion;
@@ -501,25 +554,25 @@ export class RunService {
         `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
       );
     }
-    // Step 3: New run - load agent compose if agentComposeId provided (no conversation)
-    else if (agentComposeId) {
-      const [compose] = await globalThis.services.db
+    // Step 3: New run - load agent compose version if agentComposeVersionId provided (no conversation)
+    else if (agentComposeVersionId) {
+      const [version] = await globalThis.services.db
         .select()
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentComposeId))
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, agentComposeVersionId))
         .limit(1);
 
-      if (!compose) {
-        throw new NotFoundError("Agent compose");
+      if (!version) {
+        throw new NotFoundError("Agent compose version");
       }
 
-      agentCompose = compose.config;
+      agentCompose = version.content;
     }
 
     // Validate required fields
-    if (!agentComposeId) {
+    if (!agentComposeVersionId) {
       throw new NotFoundError(
-        "Agent compose ID is required (provide agentComposeId, checkpointId, or sessionId)",
+        "Agent compose version ID is required (provide agentComposeVersionId, checkpointId, or sessionId)",
       );
     }
 
@@ -531,7 +584,7 @@ export class RunService {
     return {
       runId: params.runId,
       userId: params.userId,
-      agentComposeId,
+      agentComposeVersionId,
       agentCompose,
       prompt: params.prompt,
       templateVars,

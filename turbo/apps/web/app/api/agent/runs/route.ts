@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
@@ -19,6 +22,7 @@ import type {
   UnifiedRunRequest,
   CreateAgentRunResponse,
 } from "../../../../src/types/agent-run";
+import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { sendVm0ErrorEvent } from "../../../../src/lib/events";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 
@@ -28,7 +32,7 @@ import { extractTemplateVars } from "../../../../src/lib/config-validator";
  * Unified API for creating and executing agent runs.
  * Supports three modes via optional parameters:
  *
- * 1. New run: Provide agentComposeId, artifactName, prompt
+ * 1. New run: Provide agentComposeId or agentComposeVersionId, artifactName, prompt
  * 2. Checkpoint resume: Provide checkpointId, prompt (expands to snapshot parameters)
  * 3. Session continue: Provide sessionId, prompt (uses latest artifact version)
  *
@@ -68,11 +72,11 @@ export async function POST(request: NextRequest) {
     const isSessionContinue = !!body.sessionId;
     const isNewRun = !isCheckpointResume && !isSessionContinue;
 
-    // For new runs, require agentComposeId and artifactName
+    // For new runs, require either agentComposeId or agentComposeVersionId, and artifactName
     if (isNewRun) {
-      if (!body.agentComposeId) {
+      if (!body.agentComposeId && !body.agentComposeVersionId) {
         throw new BadRequestError(
-          "Missing agentComposeId. For new runs, agentComposeId is required.",
+          "Missing agentComposeId or agentComposeVersionId. For new runs, one is required.",
         );
       }
       if (!body.artifactName) {
@@ -89,80 +93,149 @@ export async function POST(request: NextRequest) {
       `[API] Request body.volumeVersions=${JSON.stringify(body.volumeVersions)}`,
     );
 
-    // Determine agentComposeId for run record creation
-    // For new runs: from request
-    // For checkpoint/session: will be resolved by buildExecutionContext, but we need it early
-    let agentComposeId: string;
+    // Resolve compose version ID and content for the run
+    let agentComposeVersionId: string;
     let agentComposeName: string | undefined;
+    let composeContent: AgentComposeYaml | undefined;
 
     if (isNewRun) {
-      agentComposeId = body.agentComposeId!;
+      if (body.agentComposeVersionId) {
+        // Explicit version ID provided - use directly
+        agentComposeVersionId = body.agentComposeVersionId;
 
-      // Fetch compose for validation and metadata
-      const [compose] = await globalThis.services.db
-        .select()
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentComposeId))
-        .limit(1);
+        // Fetch version for validation
+        const [version] = await globalThis.services.db
+          .select()
+          .from(agentComposeVersions)
+          .where(eq(agentComposeVersions.id, agentComposeVersionId))
+          .limit(1);
 
-      if (!compose) {
-        throw new NotFoundError("Agent compose");
+        if (!version) {
+          throw new NotFoundError("Agent compose version");
+        }
+
+        composeContent = version.content as AgentComposeYaml;
+
+        // Get compose name
+        const [compose] = await globalThis.services.db
+          .select()
+          .from(agentComposes)
+          .where(eq(agentComposes.id, version.composeId))
+          .limit(1);
+
+        agentComposeName = compose?.name || undefined;
+      } else {
+        // Resolve compose ID to HEAD version
+        const composeId = body.agentComposeId!;
+
+        const [compose] = await globalThis.services.db
+          .select()
+          .from(agentComposes)
+          .where(eq(agentComposes.id, composeId))
+          .limit(1);
+
+        if (!compose) {
+          throw new NotFoundError("Agent compose");
+        }
+
+        if (!compose.headVersionId) {
+          throw new BadRequestError(
+            "Agent compose has no versions. Run 'vm0 build' first.",
+          );
+        }
+
+        agentComposeVersionId = compose.headVersionId;
+        agentComposeName = compose.name || undefined;
+
+        // Fetch version content
+        const [version] = await globalThis.services.db
+          .select()
+          .from(agentComposeVersions)
+          .where(eq(agentComposeVersions.id, agentComposeVersionId))
+          .limit(1);
+
+        if (!version) {
+          throw new NotFoundError("Agent compose version");
+        }
+
+        composeContent = version.content as AgentComposeYaml;
       }
-
-      agentComposeName = compose.name || undefined;
 
       // Validate template variables for new runs
-      const requiredVars = extractTemplateVars(compose.config);
-      const providedVars = body.templateVars || {};
-      const missingVars = requiredVars.filter(
-        (varName) => providedVars[varName] === undefined,
-      );
-
-      if (missingVars.length > 0) {
-        throw new BadRequestError(
-          `Missing required template variables: ${missingVars.join(", ")}`,
+      if (composeContent) {
+        const requiredVars = extractTemplateVars(composeContent);
+        const providedVars = body.templateVars || {};
+        const missingVars = requiredVars.filter(
+          (varName) => providedVars[varName] === undefined,
         );
+
+        if (missingVars.length > 0) {
+          throw new BadRequestError(
+            `Missing required template variables: ${missingVars.join(", ")}`,
+          );
+        }
       }
     } else if (isCheckpointResume) {
-      // Validate checkpoint first to get agentComposeId
+      // Validate checkpoint first to get agentComposeVersionId
       const sessionData = await runService.validateCheckpoint(
         body.checkpointId!,
         userId,
       );
-      agentComposeId = sessionData.agentComposeId;
+      agentComposeVersionId = sessionData.agentComposeVersionId;
 
       // Get compose name for metadata
-      const [compose] = await globalThis.services.db
+      const [version] = await globalThis.services.db
         .select()
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentComposeId))
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, agentComposeVersionId))
         .limit(1);
-      agentComposeName = compose?.name || undefined;
+
+      if (version) {
+        const [compose] = await globalThis.services.db
+          .select()
+          .from(agentComposes)
+          .where(eq(agentComposes.id, version.composeId))
+          .limit(1);
+        agentComposeName = compose?.name || undefined;
+      }
     } else {
-      // Session continue
+      // Session continue - resolve to HEAD version of session's compose
       const sessionData = await runService.validateAgentSession(
         body.sessionId!,
         userId,
       );
-      agentComposeId = sessionData.agentComposeId;
 
-      // Get compose name for metadata
+      // Get compose and resolve to HEAD version
       const [compose] = await globalThis.services.db
         .select()
         .from(agentComposes)
-        .where(eq(agentComposes.id, agentComposeId))
+        .where(eq(agentComposes.id, sessionData.agentComposeId))
         .limit(1);
-      agentComposeName = compose?.name || undefined;
+
+      if (!compose) {
+        throw new NotFoundError("Agent compose for session");
+      }
+
+      if (!compose.headVersionId) {
+        throw new BadRequestError(
+          "Agent compose has no versions. Run 'vm0 build' first.",
+        );
+      }
+
+      agentComposeVersionId = compose.headVersionId;
+      agentComposeName = compose.name || undefined;
     }
 
-    console.log(`[API] Resolved agentComposeId: ${agentComposeId}`);
+    console.log(
+      `[API] Resolved agentComposeVersionId: ${agentComposeVersionId}`,
+    );
 
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId,
-        agentComposeId,
+        agentComposeVersionId,
         status: "pending",
         prompt: body.prompt,
         templateVars: body.templateVars || null,
@@ -196,7 +269,8 @@ export async function POST(request: NextRequest) {
       const context = await runService.buildExecutionContext({
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
-        agentComposeId: body.agentComposeId,
+        agentComposeVersionId:
+          body.agentComposeVersionId || agentComposeVersionId,
         conversationId: body.conversationId,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,

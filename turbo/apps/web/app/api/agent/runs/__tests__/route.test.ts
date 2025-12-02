@@ -14,7 +14,10 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -56,6 +59,8 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testComposeId = randomUUID();
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
 
   beforeEach(async () => {
     // Clear all mocks
@@ -80,6 +85,10 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
@@ -88,7 +97,16 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       id: testComposeId,
       userId: testUserId,
       name: "test-agent",
-      config: {
+      headVersionId: testVersionId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
         version: "1.0",
         agents: {
           "test-agent": {
@@ -98,8 +116,8 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           },
         },
       },
+      createdBy: testUserId,
       createdAt: new Date(),
-      updatedAt: new Date(),
     });
   });
 
@@ -108,6 +126,10 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
 
     await globalThis.services.db
       .delete(agentComposes)

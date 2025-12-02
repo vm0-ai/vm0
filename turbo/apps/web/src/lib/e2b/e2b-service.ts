@@ -62,7 +62,7 @@ export class E2BService {
     const isResume = !!context.resumeSession;
 
     log.debug(
-      `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentComposeId}...`,
+      `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent version ${context.agentComposeVersionId}...`,
     );
     log.debug(
       `context.volumeVersions=${JSON.stringify(context.volumeVersions)}`,
@@ -131,7 +131,7 @@ export class E2BService {
       // Send vm0_start event now that storages are prepared
       await sendVm0StartEvent({
         runId: context.runId,
-        agentComposeId: context.agentComposeId,
+        agentComposeVersionId: context.agentComposeVersionId,
         agentName: context.agentName,
         prompt: context.prompt,
         templateVars: context.templateVars,

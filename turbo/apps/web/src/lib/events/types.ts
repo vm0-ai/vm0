@@ -10,7 +10,7 @@
 export interface Vm0StartEvent {
   type: "vm0_start";
   runId: string;
-  agentComposeId: string;
+  agentComposeVersionId: string;
   agentName?: string;
   prompt: string;
   templateVars?: Record<string, unknown>;

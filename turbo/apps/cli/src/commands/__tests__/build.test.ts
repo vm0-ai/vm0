@@ -56,6 +56,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
@@ -98,6 +100,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
@@ -140,6 +144,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
@@ -166,6 +172,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
@@ -180,6 +188,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test-agent",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
@@ -193,17 +203,19 @@ describe("build command", () => {
       );
     });
 
-    it("should display updated message", async () => {
+    it("should display 'version exists' message", async () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test-agent",
-        action: "updated",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+        action: "existing",
       });
 
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose updated: test-agent"),
+        expect.stringContaining("Compose version exists: test-agent"),
       );
     });
 
@@ -211,6 +223,8 @@ describe("build command", () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
 
