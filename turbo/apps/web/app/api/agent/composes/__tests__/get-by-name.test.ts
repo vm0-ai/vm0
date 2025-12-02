@@ -49,7 +49,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       },
     );
 
@@ -134,7 +134,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       },
     );
 
@@ -190,7 +190,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       },
     );
 

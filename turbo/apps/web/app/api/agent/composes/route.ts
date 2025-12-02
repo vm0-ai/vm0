@@ -109,9 +109,8 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body: CreateAgentComposeRequest = await request.json();
 
-    // Basic validation - support both 'content' and legacy 'config' field names
-    const content =
-      body.content || (body as { config?: AgentComposeYaml }).config;
+    // Basic validation
+    const { content } = body;
     if (!content) {
       throw new BadRequestError("Missing content");
     }

@@ -70,16 +70,20 @@ export const buildCommand = new Command()
       // 6. Call API
       console.log(chalk.blue("Uploading compose..."));
 
-      const response = await apiClient.createOrUpdateCompose({ config });
+      const response = await apiClient.createOrUpdateCompose({
+        content: config,
+      });
 
       // 7. Display result
+      const shortVersionId = response.versionId.slice(0, 8);
       if (response.action === "created") {
         console.log(chalk.green(`✓ Compose created: ${response.name}`));
       } else {
-        console.log(chalk.green(`✓ Compose updated: ${response.name}`));
+        console.log(chalk.green(`✓ Compose version exists: ${response.name}`));
       }
 
       console.log(chalk.gray(`  Compose ID: ${response.composeId}`));
+      console.log(chalk.gray(`  Version:    ${shortVersionId}`));
       console.log();
       console.log("  Run your agent:");
       console.log(

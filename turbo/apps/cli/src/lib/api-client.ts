@@ -3,7 +3,8 @@ import { getApiUrl, getToken } from "./config";
 export interface CreateComposeResponse {
   composeId: string;
   name: string;
-  action: "created" | "updated";
+  versionId: string;
+  action: "created" | "existing";
   createdAt?: string;
   updatedAt?: string;
 }
@@ -39,7 +40,8 @@ export interface AgentSessionResponse {
 export interface GetComposeResponse {
   id: string;
   name: string;
-  config: unknown;
+  headVersionId: string | null;
+  content: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -112,7 +114,7 @@ class ApiClient {
   }
 
   async createOrUpdateCompose(body: {
-    config: unknown;
+    content: unknown;
   }): Promise<CreateComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();

@@ -47,7 +47,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response = await POST(request as NextRequest);
@@ -80,7 +80,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response1 = await POST(request1 as NextRequest);
@@ -105,7 +105,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config: updatedConfig }),
+        body: JSON.stringify({ content: updatedConfig }),
       });
 
       const response2 = await POST(request2 as NextRequest);
@@ -155,7 +155,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response1 = await POST(request1 as NextRequest);
@@ -169,7 +169,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response2 = await POST(request2 as NextRequest);
@@ -215,7 +215,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response = await POST(request as NextRequest);
@@ -245,7 +245,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response = await POST(request as NextRequest);
@@ -272,7 +272,7 @@ describe("Agent Compose Upsert Behavior", () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ content: config }),
       });
 
       const response = await POST(request as NextRequest);
@@ -309,7 +309,7 @@ describe("Agent Compose Upsert Behavior", () => {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ config }),
+          body: JSON.stringify({ content: config }),
         },
       );
 
