@@ -142,9 +142,9 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      // commands.run called: 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute with background:true) = 11 times
+      // commands.run called: 1 (mkdir) + 12 (mv/chmod for each script) + 1 (execute with background:true) = 14 times
       // Note: download-storages.sh is only uploaded when there are files to download
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(14);
       // Sandbox is NOT killed - it continues running (fire-and-forget)
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
@@ -290,9 +290,9 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify both sandboxes were created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
-      // Each sandbox: 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(11);
-      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(11);
+      // Each sandbox: 1 (mkdir) + 12 (mv/chmod for each script) + 1 (execute) = 14 times
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(14);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(14);
       // Sandboxes NOT killed - they continue running
       expect(mockSandbox1.kill).not.toHaveBeenCalled();
       expect(mockSandbox2.kill).not.toHaveBeenCalled();
@@ -322,8 +322,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      // 1 (mkdir) + 12 (mv/chmod for each script) + 1 (execute) = 14 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(14);
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
@@ -356,8 +356,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      // 1 (mkdir) + 12 (mv/chmod for each script) + 1 (execute) = 14 times
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(14);
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
