@@ -27,7 +27,7 @@ describe("ApiClient", () => {
     it("should call correct endpoint with auth headers", async () => {
       const mockConfig = { version: "1.0", agent: { name: "test" } };
       const mockResponse = {
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created" as const,
       };
@@ -58,7 +58,7 @@ describe("ApiClient", () => {
 
     it("should return created response", async () => {
       const mockResponse = {
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test-agent",
         action: "created" as const,
         createdAt: "2025-01-01T00:00:00Z",
@@ -74,13 +74,13 @@ describe("ApiClient", () => {
       });
 
       expect(result.action).toBe("created");
-      expect(result.composeId).toBe("cfg-123");
+      expect(result.composeId).toBe("cmp-123");
       expect(result.name).toBe("test-agent");
     });
 
     it("should return updated response", async () => {
       const mockResponse = {
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test-agent",
         action: "updated" as const,
         updatedAt: "2025-01-01T00:00:00Z",
@@ -144,7 +144,7 @@ describe("ApiClient", () => {
   describe("createRun", () => {
     it("should call correct endpoint with auth headers", async () => {
       const mockRequest = {
-        agentComposeId: "cfg-123",
+        agentComposeId: "cmp-123",
         prompt: "test prompt",
         artifactName: "my-artifact",
       };
@@ -181,7 +181,7 @@ describe("ApiClient", () => {
 
     it("should support template variables", async () => {
       const mockRequest = {
-        agentComposeId: "cfg-123",
+        agentComposeId: "cmp-123",
         prompt: "test prompt",
         templateVars: { key1: "value1", key2: "value2" },
         artifactName: "my-artifact",
@@ -225,7 +225,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createRun({
-        agentComposeId: "cfg-123",
+        agentComposeId: "cmp-123",
         prompt: "test",
         artifactName: "my-artifact",
       });
@@ -252,7 +252,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createRun({
-        agentComposeId: "cfg-123",
+        agentComposeId: "cmp-123",
         prompt: "test",
         artifactName: "my-artifact",
       });
@@ -266,7 +266,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentComposeId: "cfg-123",
+          agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
@@ -278,7 +278,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentComposeId: "cfg-123",
+          agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
@@ -295,7 +295,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentComposeId: "cfg-123",
+          agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
@@ -312,7 +312,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentComposeId: "cfg-123",
+          agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),

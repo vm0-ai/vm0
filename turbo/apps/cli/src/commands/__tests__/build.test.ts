@@ -54,7 +54,7 @@ describe("build command", () => {
         valid: true,
       });
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created",
       });
@@ -96,7 +96,7 @@ describe("build command", () => {
         valid: true,
       });
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created",
       });
@@ -138,7 +138,7 @@ describe("build command", () => {
         valid: true,
       });
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created",
       });
@@ -164,7 +164,7 @@ describe("build command", () => {
 
     it("should display loading message", async () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created",
       });
@@ -178,7 +178,7 @@ describe("build command", () => {
 
     it("should display created message", async () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test-agent",
         action: "created",
       });
@@ -189,13 +189,13 @@ describe("build command", () => {
         expect.stringContaining("Compose created: test-agent"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose ID: cfg-123"),
+        expect.stringContaining("Compose ID: cmp-123"),
       );
     });
 
     it("should display updated message", async () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test-agent",
         action: "updated",
       });
@@ -209,7 +209,7 @@ describe("build command", () => {
 
     it("should display usage instructions", async () => {
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cfg-123",
+        composeId: "cmp-123",
         name: "test",
         action: "created",
       });
