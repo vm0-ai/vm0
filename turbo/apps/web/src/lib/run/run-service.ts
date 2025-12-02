@@ -54,7 +54,9 @@ function expandEnvironmentFromCompose(
       v.includes("${{ vars."),
     );
     if (hasVars) {
-      log.warn("Environment contains ${{ vars.xxx }} but no templateVars provided");
+      log.warn(
+        "Environment contains ${{ vars.xxx }} but no templateVars provided",
+      );
     }
     return environment;
   }
@@ -635,7 +637,10 @@ export class RunService {
     }
 
     // Step 4: Expand environment variables from compose config using templateVars
-    const environment = expandEnvironmentFromCompose(agentCompose, templateVars);
+    const environment = expandEnvironmentFromCompose(
+      agentCompose,
+      templateVars,
+    );
 
     // Build final execution context
     return {
