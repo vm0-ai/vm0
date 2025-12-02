@@ -232,7 +232,7 @@ export class E2BService {
         log.debug(`Using Minimax API (${minimaxBaseUrl})`);
       }
 
-      // Add user-defined environment variables (from CLI expansion of ${{ env.X }}, ${{ vars.X }})
+      // Add user-defined environment variables (expanded from ${{ vars.X }} by server)
       if (context.environment) {
         for (const [key, value] of Object.entries(context.environment)) {
           sandboxEnvVars[key] = value;

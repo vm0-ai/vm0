@@ -1,6 +1,7 @@
 /**
  * Unified variable expansion for agent compose configurations
- * Supports ${{ env.XXX }}, ${{ vars.xxx }}, and ${{ secrets.xxx }} syntax
+ * Supports ${{ vars.xxx }} and ${{ secrets.xxx }} syntax
+ * Note: ${{ env.xxx }} is parsed but not currently used (reserved for future)
  */
 
 /**
