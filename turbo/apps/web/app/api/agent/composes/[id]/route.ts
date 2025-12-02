@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentConfigs } from "../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
@@ -12,13 +12,13 @@ import {
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
 import type {
-  GetAgentConfigResponse,
-  AgentConfigYaml,
-} from "../../../../../src/types/agent-config";
+  GetAgentComposeResponse,
+  AgentComposeYaml,
+} from "../../../../../src/types/agent-compose";
 
 /**
- * GET /api/agent-configs/:id
- * Get agent config by ID
+ * GET /api/agent/composes/:id
+ * Get agent compose by ID
  */
 export async function GET(
   request: NextRequest,
@@ -38,23 +38,23 @@ export async function GET(
     const { id } = await params;
 
     // Query database
-    const [config] = await globalThis.services.db
+    const [compose] = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, id))
+      .from(agentComposes)
+      .where(eq(agentComposes.id, id))
       .limit(1);
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    if (!compose) {
+      throw new NotFoundError("Agent compose");
     }
 
     // Return response
-    const response: GetAgentConfigResponse = {
-      id: config.id,
-      name: config.name,
-      config: config.config as AgentConfigYaml,
-      createdAt: config.createdAt.toISOString(),
-      updatedAt: config.updatedAt.toISOString(),
+    const response: GetAgentComposeResponse = {
+      id: compose.id,
+      name: compose.name,
+      config: compose.config as AgentComposeYaml,
+      createdAt: compose.createdAt.toISOString(),
+      updatedAt: compose.updatedAt.toISOString(),
     };
 
     return successResponse(response);

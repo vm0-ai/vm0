@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentConfigs } from "../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
@@ -8,15 +8,15 @@ import {
 } from "../../../../src/lib/api-response";
 import { BadRequestError, UnauthorizedError } from "../../../../src/lib/errors";
 import type {
-  CreateAgentConfigRequest,
-  CreateAgentConfigResponse,
-} from "../../../../src/types/agent-config";
+  CreateAgentComposeRequest,
+  CreateAgentComposeResponse,
+} from "../../../../src/types/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { extractUnexpandedVars } from "../../../../src/lib/config-validator";
 
 /**
- * GET /api/agent/configs?name={agentName}
- * Get agent config by name
+ * GET /api/agent/composes?name={agentName}
+ * Get agent compose by name
  */
 export async function GET(request: NextRequest) {
   try {
@@ -37,32 +37,34 @@ export async function GET(request: NextRequest) {
       throw new BadRequestError("Missing name query parameter");
     }
 
-    // Query config by userId + name
-    const configs = await globalThis.services.db
+    // Query compose by userId + name
+    const composes = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(and(eq(agentConfigs.userId, userId), eq(agentConfigs.name, name)))
+      .from(agentComposes)
+      .where(
+        and(eq(agentComposes.userId, userId), eq(agentComposes.name, name)),
+      )
       .limit(1);
 
-    if (configs.length === 0) {
+    if (composes.length === 0) {
       return errorResponse(
-        new BadRequestError(`Agent config not found: ${name}`),
+        new BadRequestError(`Agent compose not found: ${name}`),
       );
     }
 
-    const config = configs[0];
-    if (!config) {
+    const compose = composes[0];
+    if (!compose) {
       return errorResponse(
-        new BadRequestError(`Agent config not found: ${name}`),
+        new BadRequestError(`Agent compose not found: ${name}`),
       );
     }
 
     return successResponse({
-      id: config.id,
-      name: config.name,
-      config: config.config,
-      createdAt: config.createdAt.toISOString(),
-      updatedAt: config.updatedAt.toISOString(),
+      id: compose.id,
+      name: compose.name,
+      config: compose.config,
+      createdAt: compose.createdAt.toISOString(),
+      updatedAt: compose.updatedAt.toISOString(),
     });
   } catch (error) {
     return errorResponse(error);
@@ -70,8 +72,8 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/agent-configs
- * Create a new agent config
+ * POST /api/agent/composes
+ * Create a new agent compose
  */
 export async function POST(request: NextRequest) {
   try {
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body: CreateAgentConfigRequest = await request.json();
+    const body: CreateAgentComposeRequest = await request.json();
 
     // Basic validation
     if (!body.config) {
@@ -140,38 +142,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if config exists for this user + name
+    // Check if compose exists for this user + name
     const existing = await globalThis.services.db
       .select()
-      .from(agentConfigs)
+      .from(agentComposes)
       .where(
-        and(eq(agentConfigs.userId, userId), eq(agentConfigs.name, agentName)),
+        and(
+          eq(agentComposes.userId, userId),
+          eq(agentComposes.name, agentName),
+        ),
       )
       .limit(1);
 
-    let response: CreateAgentConfigResponse;
+    let response: CreateAgentComposeResponse;
 
     if (existing.length > 0 && existing[0]) {
-      // UPDATE existing config
+      // UPDATE existing compose
       const [updated] = await globalThis.services.db
-        .update(agentConfigs)
+        .update(agentComposes)
         .set({
           config: body.config,
           updatedAt: new Date(),
         })
-        .where(eq(agentConfigs.id, existing[0].id))
+        .where(eq(agentComposes.id, existing[0].id))
         .returning({
-          id: agentConfigs.id,
-          name: agentConfigs.name,
-          updatedAt: agentConfigs.updatedAt,
+          id: agentComposes.id,
+          name: agentComposes.name,
+          updatedAt: agentComposes.updatedAt,
         });
 
       if (!updated) {
-        throw new Error("Failed to update agent config");
+        throw new Error("Failed to update agent compose");
       }
 
       response = {
-        configId: updated.id,
+        composeId: updated.id,
         name: updated.name,
         action: "updated",
         updatedAt: updated.updatedAt.toISOString(),
@@ -179,26 +184,26 @@ export async function POST(request: NextRequest) {
 
       return successResponse(response, 200);
     } else {
-      // INSERT new config
+      // INSERT new compose
       const [created] = await globalThis.services.db
-        .insert(agentConfigs)
+        .insert(agentComposes)
         .values({
           userId,
           name: agentName,
           config: body.config,
         })
         .returning({
-          id: agentConfigs.id,
-          name: agentConfigs.name,
-          createdAt: agentConfigs.createdAt,
+          id: agentComposes.id,
+          name: agentComposes.name,
+          createdAt: agentComposes.createdAt,
         });
 
       if (!created) {
-        throw new Error("Failed to create agent config");
+        throw new Error("Failed to create agent compose");
       }
 
       response = {
-        configId: created.id,
+        composeId: created.id,
         name: created.name,
         action: "created",
         createdAt: created.createdAt.toISOString(),

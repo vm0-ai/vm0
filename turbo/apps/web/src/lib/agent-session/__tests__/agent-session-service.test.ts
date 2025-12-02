@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initServices } from "../../init-services";
 import { agentSessions } from "../../../db/schema/agent-session";
-import { agentConfigs } from "../../../db/schema/agent-config";
+import { agentComposes } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
 import { AgentSessionService } from "../agent-session-service";
@@ -14,7 +14,7 @@ import { randomUUID } from "crypto";
 describe("AgentSessionService", () => {
   let service: AgentSessionService;
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testConfigId = randomUUID();
+  const testComposeId = randomUUID();
   const testRunId = randomUUID();
   const testConversationId = randomUUID();
 
@@ -33,12 +33,12 @@ describe("AgentSessionService", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
     // Create test agent config
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -59,7 +59,7 @@ describe("AgentSessionService", () => {
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
-      agentConfigId: testConfigId,
+      agentComposeId: testComposeId,
       status: "completed",
       prompt: "test prompt",
       createdAt: new Date(),
@@ -87,15 +87,15 @@ describe("AgentSessionService", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   describe("create", () => {
     it("should create a new agent session", async () => {
       const session = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
         conversationId: testConversationId,
       });
@@ -103,7 +103,7 @@ describe("AgentSessionService", () => {
       expect(session).toBeDefined();
       expect(session.id).toBeDefined();
       expect(session.userId).toBe(testUserId);
-      expect(session.agentConfigId).toBe(testConfigId);
+      expect(session.agentComposeId).toBe(testComposeId);
       expect(session.artifactName).toBe("test-artifact");
       expect(session.conversationId).toBe(testConversationId);
     });
@@ -111,7 +111,7 @@ describe("AgentSessionService", () => {
     it("should create session without conversationId", async () => {
       const session = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
       });
 
@@ -125,7 +125,7 @@ describe("AgentSessionService", () => {
       // Create session first
       const session = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
       });
 
@@ -154,7 +154,7 @@ describe("AgentSessionService", () => {
     it("should return session by id", async () => {
       const created = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
       });
 
@@ -175,7 +175,7 @@ describe("AgentSessionService", () => {
     it("should return session with conversation data", async () => {
       const created = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
         conversationId: testConversationId,
       });
@@ -192,7 +192,7 @@ describe("AgentSessionService", () => {
     it("should return session with null conversation when not set", async () => {
       const created = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "test-artifact",
       });
 
@@ -208,13 +208,13 @@ describe("AgentSessionService", () => {
       // Create multiple sessions
       await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "artifact-1",
       });
 
       await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "artifact-2",
       });
 
@@ -233,7 +233,7 @@ describe("AgentSessionService", () => {
     it("should create new session when none exists", async () => {
       const result = await service.findOrCreate(
         testUserId,
-        testConfigId,
+        testComposeId,
         "new-artifact",
         testConversationId,
       );
@@ -247,7 +247,7 @@ describe("AgentSessionService", () => {
       // Create initial session
       const initial = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "existing-artifact",
       });
 
@@ -256,7 +256,7 @@ describe("AgentSessionService", () => {
       // Find or create should return existing and update conversationId
       const result = await service.findOrCreate(
         testUserId,
-        testConfigId,
+        testComposeId,
         "existing-artifact",
         testConversationId,
       );
@@ -270,7 +270,7 @@ describe("AgentSessionService", () => {
       // Create initial session with conversationId
       const initial = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "existing-artifact",
         conversationId: testConversationId,
       });
@@ -278,7 +278,7 @@ describe("AgentSessionService", () => {
       // Find or create without conversationId should keep existing
       const result = await service.findOrCreate(
         testUserId,
-        testConfigId,
+        testComposeId,
         "existing-artifact",
       );
 
@@ -292,7 +292,7 @@ describe("AgentSessionService", () => {
     it("should delete existing session", async () => {
       const created = await service.create({
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         artifactName: "to-delete",
       });
 

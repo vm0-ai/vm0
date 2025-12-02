@@ -16,8 +16,8 @@ export interface ResumeSession {
 export interface ExecutionContext {
   runId: string;
   userId?: string;
-  agentConfigId: string;
-  agentConfig: unknown;
+  agentComposeId: string;
+  agentCompose: unknown;
   prompt: string;
   templateVars?: Record<string, string>;
   sandboxToken: string;

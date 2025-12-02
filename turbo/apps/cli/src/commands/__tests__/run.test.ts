@@ -44,7 +44,7 @@ describe("run command", () => {
     mockConsoleError.mockClear();
   });
 
-  describe("configId validation", () => {
+  describe("composeId validation", () => {
     it("should accept valid UUID format", async () => {
       const validUuid = "550e8400-e29b-41d4-a716-446655440000";
       vi.mocked(apiClient.createRun).mockResolvedValue({
@@ -83,7 +83,7 @@ describe("run command", () => {
     });
 
     it("should accept and resolve agent names", async () => {
-      vi.mocked(apiClient.getConfigByName).mockResolvedValue({
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         config: {},
@@ -122,9 +122,9 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getConfigByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -133,8 +133,8 @@ describe("run command", () => {
     });
 
     it("should handle agent not found errors", async () => {
-      vi.mocked(apiClient.getConfigByName).mockRejectedValue(
-        new Error("Config not found: nonexistent-agent"),
+      vi.mocked(apiClient.getComposeByName).mockRejectedValue(
+        new Error("Compose not found: nonexistent-agent"),
       );
 
       await expect(async () => {
@@ -197,7 +197,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -220,7 +220,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -241,7 +241,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -305,7 +305,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentConfigId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -439,9 +439,9 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should handle config not found errors", async () => {
+    it("should handle compose not found errors", async () => {
       vi.mocked(apiClient.createRun).mockRejectedValue(
-        new Error("Config not found"),
+        new Error("Compose not found"),
       );
 
       await expect(async () => {

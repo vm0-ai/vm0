@@ -6,7 +6,7 @@ import {
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
-import { agentConfigs } from "./agent-config";
+import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
 
 /**
@@ -17,8 +17,8 @@ import { conversations } from "./conversation";
 export const agentSessions = pgTable("agent_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
-  agentConfigId: uuid("agent_config_id")
-    .references(() => agentConfigs.id, { onDelete: "cascade" })
+  agentComposeId: uuid("agent_compose_id")
+    .references(() => agentComposes.id, { onDelete: "cascade" })
     .notNull(),
   conversationId: uuid("conversation_id").references(() => conversations.id, {
     onDelete: "set null",

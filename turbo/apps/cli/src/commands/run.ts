@@ -198,25 +198,25 @@ const runCmd = new Command()
       const verbose = options.verbose;
 
       try {
-        // 1. Resolve identifier to configId
-        let configId: string;
+        // 1. Resolve identifier to composeId
+        let composeId: string;
 
         if (isUUID(identifier)) {
-          // It's a UUID config ID - use directly
-          configId = identifier;
+          // It's a UUID compose ID - use directly
+          composeId = identifier;
           if (verbose) {
-            console.log(chalk.gray(`  Using config ID: ${configId}`));
+            console.log(chalk.gray(`  Using compose ID: ${composeId}`));
           }
         } else {
-          // It's an agent name - resolve to config ID
+          // It's an agent name - resolve to compose ID
           if (verbose) {
             console.log(chalk.gray(`  Resolving agent name: ${identifier}`));
           }
           try {
-            const config = await apiClient.getConfigByName(identifier);
-            configId = config.id;
+            const compose = await apiClient.getComposeByName(identifier);
+            composeId = compose.id;
             if (verbose) {
-              console.log(chalk.gray(`  Resolved to config ID: ${configId}`));
+              console.log(chalk.gray(`  Resolved to compose ID: ${composeId}`));
             }
           } catch (error) {
             if (error instanceof Error) {
@@ -257,7 +257,7 @@ const runCmd = new Command()
 
         // 3. Call unified API
         const response = await apiClient.createRun({
-          agentConfigId: configId,
+          agentComposeId: composeId,
           prompt,
           templateVars:
             Object.keys(options.vars).length > 0 ? options.vars : undefined,

@@ -19,7 +19,7 @@ import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import { agentConfigs } from "../../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -51,7 +51,7 @@ describe("POST /api/webhooks/agent/complete", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID();
-  const testConfigId = randomUUID();
+  const testComposeId = randomUUID();
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
   const testSandboxId = `sandbox-${Date.now()}`;
 
@@ -86,12 +86,12 @@ describe("POST /api/webhooks/agent/complete", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
     // Create test agent config
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -118,7 +118,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     await globalThis.services.db
       .delete(agentSessions)
-      .where(eq(agentSessions.agentConfigId, testConfigId));
+      .where(eq(agentSessions.agentComposeId, testComposeId));
 
     await globalThis.services.db
       .delete(agentRuns)
@@ -129,8 +129,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   afterAll(async () => {});
@@ -285,7 +285,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: otherUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -340,7 +340,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         sandboxId: testSandboxId,
         status: "running",
         prompt: "Test prompt",
@@ -364,7 +364,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         id: checkpointId,
         runId: testRunId,
         conversationId: conversationId,
-        agentConfigSnapshot: { config: {}, templateVars: {} },
+        agentComposeSnapshot: { config: {}, templateVars: {} },
         artifactSnapshot: {
           artifactName: "test-artifact",
           artifactVersion: "v1",
@@ -423,7 +423,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         sandboxId: testSandboxId,
         status: "running",
         prompt: "Test prompt",
@@ -485,7 +485,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -552,7 +552,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -607,7 +607,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "completed",
         prompt: "Test prompt",
         completedAt: new Date(),
@@ -653,7 +653,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "failed",
         prompt: "Test prompt",
         completedAt: new Date(),

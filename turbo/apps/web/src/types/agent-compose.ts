@@ -1,5 +1,5 @@
 /**
- * Agent config types matching vm0.config.yaml format
+ * Agent compose types matching agent.yaml format
  */
 
 /**
@@ -23,7 +23,7 @@ export interface AgentDefinition {
   working_dir: string; // Working directory for artifact mount
 }
 
-export interface AgentConfigYaml {
+export interface AgentComposeYaml {
   version: string;
   agents: Record<string, AgentDefinition>; // Dictionary of agent definitions (currently only one agent supported)
   volumes?: Record<string, VolumeConfig>; // Volume definitions with name and version
@@ -32,10 +32,10 @@ export interface AgentConfigYaml {
 /**
  * Database record type
  */
-export interface AgentConfigRecord {
+export interface AgentComposeRecord {
   id: string;
   apiKeyId: string;
-  config: AgentConfigYaml;
+  config: AgentComposeYaml;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,22 +43,22 @@ export interface AgentConfigRecord {
 /**
  * API request/response types
  */
-export interface CreateAgentConfigRequest {
-  config: AgentConfigYaml;
+export interface CreateAgentComposeRequest {
+  config: AgentComposeYaml;
 }
 
-export interface CreateAgentConfigResponse {
-  configId: string;
+export interface CreateAgentComposeResponse {
+  composeId: string;
   name: string;
   action: "created" | "updated";
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface GetAgentConfigResponse {
+export interface GetAgentComposeResponse {
   id: string;
   name: string;
-  config: AgentConfigYaml;
+  config: AgentComposeYaml;
   createdAt: string;
   updatedAt: string;
 }

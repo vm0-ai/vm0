@@ -18,7 +18,7 @@ import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import { agentConfigs } from "../../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -42,7 +42,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID();
-  const testConfigId = randomUUID();
+  const testComposeId = randomUUID();
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -73,12 +73,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
     // Create test agent config
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -102,7 +102,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     // Delete agent_sessions first (references conversations)
     await globalThis.services.db
       .delete(agentSessions)
-      .where(eq(agentSessions.agentConfigId, testConfigId));
+      .where(eq(agentSessions.agentComposeId, testComposeId));
 
     // Delete agent_runs - CASCADE will delete related checkpoints and conversations
     await globalThis.services.db
@@ -114,8 +114,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   afterAll(async () => {});
@@ -349,7 +349,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: otherUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -407,7 +407,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         templateVars: { user: "testuser" },
@@ -464,7 +464,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(savedCheckpoints).toHaveLength(1);
       const checkpoint = savedCheckpoints[0];
       expect(checkpoint?.conversationId).toBeDefined();
-      expect(checkpoint?.agentConfigSnapshot).toBeDefined();
+      expect(checkpoint?.agentComposeSnapshot).toBeDefined();
       expect(checkpoint?.artifactSnapshot).toEqual(artifactSnapshot);
 
       // Verify conversation in database
@@ -479,8 +479,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(conversation?.cliAgentSessionId).toBe("test-session-456");
       expect(conversation?.cliAgentSessionHistory).toBe(sessionHistory);
 
-      // Verify agentConfigSnapshot contains templateVars
-      const configSnapshot = checkpoint?.agentConfigSnapshot as {
+      // Verify agentComposeSnapshot contains templateVars
+      const configSnapshot = checkpoint?.agentComposeSnapshot as {
         config: unknown;
         templateVars?: Record<string, string>;
       };
@@ -495,7 +495,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(savedSessions).toHaveLength(1);
       const session = savedSessions[0];
       expect(session?.userId).toBe(testUserId);
-      expect(session?.agentConfigId).toBe(testConfigId);
+      expect(session?.agentComposeId).toBe(testComposeId);
       expect(session?.artifactName).toBe("test-artifact");
       expect(session?.conversationId).toBe(checkpoint!.conversationId);
     });
@@ -524,7 +524,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),

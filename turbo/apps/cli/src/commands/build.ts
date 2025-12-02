@@ -4,7 +4,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
-import { validateAgentConfig } from "../lib/yaml-validator";
+import { validateAgentCompose } from "../lib/yaml-validator";
 import {
   expandEnvVarsInObject,
   extractEnvVarReferences,
@@ -13,7 +13,7 @@ import {
 
 export const buildCommand = new Command()
   .name("build")
-  .description("Create or update agent configuration")
+  .description("Create or update agent compose")
   .argument("<config-file>", "Path to config YAML file")
   .action(async (configFile: string) => {
     try {
@@ -60,26 +60,26 @@ export const buildCommand = new Command()
       // 4. Expand environment variables
       config = expandEnvVarsInObject(config);
 
-      // 5. Validate config
-      const validation = validateAgentConfig(config);
+      // 5. Validate compose
+      const validation = validateAgentCompose(config);
       if (!validation.valid) {
         console.error(chalk.red(`✗ ${validation.error}`));
         process.exit(1);
       }
 
       // 6. Call API
-      console.log(chalk.blue("Uploading configuration..."));
+      console.log(chalk.blue("Uploading compose..."));
 
-      const response = await apiClient.createOrUpdateConfig({ config });
+      const response = await apiClient.createOrUpdateCompose({ config });
 
       // 7. Display result
       if (response.action === "created") {
-        console.log(chalk.green(`✓ Config created: ${response.name}`));
+        console.log(chalk.green(`✓ Compose created: ${response.name}`));
       } else {
-        console.log(chalk.green(`✓ Config updated: ${response.name}`));
+        console.log(chalk.green(`✓ Compose updated: ${response.name}`));
       }
 
-      console.log(chalk.gray(`  Config ID: ${response.configId}`));
+      console.log(chalk.gray(`  Compose ID: ${response.composeId}`));
       console.log();
       console.log("  Run your agent:");
       console.log(
@@ -91,11 +91,11 @@ export const buildCommand = new Command()
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else if (error.message.includes("Failed to create config")) {
-          console.error(chalk.red("✗ Failed to create config"));
+        } else if (error.message.includes("Failed to create compose")) {
+          console.error(chalk.red("✗ Failed to create compose"));
           console.error(chalk.gray(`  ${error.message}`));
         } else {
-          console.error(chalk.red("✗ Failed to create config"));
+          console.error(chalk.red("✗ Failed to create compose"));
           console.error(chalk.gray(`  ${error.message}`));
         }
       } else {

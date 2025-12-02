@@ -50,11 +50,11 @@ describe("build command", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("version: 1.0");
       vi.mocked(yaml.parse).mockReturnValue({ version: "1.0" });
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test",
         action: "created",
       });
@@ -92,11 +92,11 @@ describe("build command", () => {
         agents: { test: { working_dir: "/" } },
       };
       vi.mocked(yaml.parse).mockReturnValue(mockConfig);
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test",
         action: "created",
       });
@@ -104,21 +104,21 @@ describe("build command", () => {
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(yaml.parse).toHaveBeenCalled();
-      expect(yamlValidator.validateAgentConfig).toHaveBeenCalledWith(
+      expect(yamlValidator.validateAgentCompose).toHaveBeenCalledWith(
         mockConfig,
       );
     });
   });
 
-  describe("config validation", () => {
+  describe("compose validation", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
       vi.mocked(yaml.parse).mockReturnValue({});
     });
 
-    it("should exit with error on invalid config", async () => {
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+    it("should exit with error on invalid compose", async () => {
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: false,
         error: "Missing agent.name",
       });
@@ -133,19 +133,19 @@ describe("build command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should proceed with valid config", async () => {
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+    it("should proceed with valid compose", async () => {
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test",
         action: "created",
       });
 
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(apiClient.createOrUpdateConfig).toHaveBeenCalled();
+      expect(apiClient.createOrUpdateCompose).toHaveBeenCalled();
     });
   });
 
@@ -157,14 +157,14 @@ describe("build command", () => {
         version: "1.0",
         agents: { test: { working_dir: "/" } },
       });
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
     });
 
     it("should display loading message", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test",
         action: "created",
       });
@@ -172,13 +172,13 @@ describe("build command", () => {
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Uploading configuration"),
+        expect.stringContaining("Uploading compose"),
       );
     });
 
     it("should display created message", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test-agent",
         action: "created",
       });
@@ -186,16 +186,16 @@ describe("build command", () => {
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Config created: test-agent"),
+        expect.stringContaining("Compose created: test-agent"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Config ID: cfg-123"),
+        expect.stringContaining("Compose ID: cfg-123"),
       );
     });
 
     it("should display updated message", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test-agent",
         action: "updated",
       });
@@ -203,13 +203,13 @@ describe("build command", () => {
       await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Config updated: test-agent"),
+        expect.stringContaining("Compose updated: test-agent"),
       );
     });
 
     it("should display usage instructions", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockResolvedValue({
-        configId: "cfg-123",
+      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+        composeId: "cfg-123",
         name: "test",
         action: "created",
       });
@@ -227,13 +227,13 @@ describe("build command", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
       vi.mocked(yaml.parse).mockReturnValue({});
-      vi.mocked(yamlValidator.validateAgentConfig).mockReturnValue({
+      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
     });
 
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockRejectedValue(
+      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
         new Error("Not authenticated"),
       );
 
@@ -251,8 +251,8 @@ describe("build command", () => {
     });
 
     it("should handle API errors with message", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockRejectedValue(
-        new Error("Failed to create config: Invalid name"),
+      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
+        new Error("Failed to create compose: Invalid name"),
       );
 
       await expect(async () => {
@@ -260,13 +260,13 @@ describe("build command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to create config"),
+        expect.stringContaining("Failed to create compose"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.createOrUpdateConfig).mockRejectedValue(
+      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
         "Non-error object",
       );
 

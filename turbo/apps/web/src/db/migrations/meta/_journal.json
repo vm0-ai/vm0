@@ -183,6 +183,13 @@
       "when": 1765000000000,
       "tag": "0025_add_blobs_table",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1765100000000,
+      "tag": "0026_rename_agent_configs_to_agent_composes",
+      "breakpoints": true
     }
   ]
 }

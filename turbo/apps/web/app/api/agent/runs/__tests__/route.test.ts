@@ -14,7 +14,7 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentConfigs } from "../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -55,7 +55,7 @@ const mockRunService = vi.mocked(runService);
 describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testConfigId = randomUUID();
+  const testComposeId = randomUUID();
 
   beforeEach(async () => {
     // Clear all mocks
@@ -80,12 +80,12 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
-    // Create test agent config with new agents dictionary format
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    // Create test agent compose with new agents dictionary format
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -110,8 +110,8 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   afterAll(async () => {});
@@ -139,7 +139,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Test prompt",
           artifactName: "test-artifact",
         }),
@@ -188,7 +188,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Test sandbox ID",
           artifactName: "test-artifact",
         }),
@@ -224,7 +224,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Test preparation failure",
           artifactName: "test-artifact",
         }),
@@ -267,7 +267,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Quick response test",
           artifactName: "test-artifact",
         }),
@@ -291,7 +291,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // ============================================
 
   describe("Validation", () => {
-    it("should reject request without agentConfigId", async () => {
+    it("should reject request without agentComposeId", async () => {
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
         headers: {
@@ -307,7 +307,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("agentConfigId");
+      expect(data.error.message).toContain("agentComposeId");
     });
 
     it("should reject request without prompt", async () => {
@@ -317,7 +317,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           artifactName: "test-artifact",
         }),
       });
@@ -336,7 +336,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Test prompt",
         }),
       });
@@ -348,8 +348,8 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(data.error.message).toContain("artifactName");
     });
 
-    it("should reject request for non-existent agent config", async () => {
-      const nonExistentConfigId = randomUUID();
+    it("should reject request for non-existent agent compose", async () => {
+      const nonExistentComposeId = randomUUID();
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -357,7 +357,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: nonExistentConfigId,
+          agentComposeId: nonExistentComposeId,
           prompt: "Test prompt",
           artifactName: "test-artifact",
         }),
@@ -367,7 +367,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
       expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.error.message).toContain("Agent config");
+      expect(data.error.message).toContain("Agent compose");
     });
   });
 
@@ -387,7 +387,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentConfigId: testConfigId,
+          agentComposeId: testComposeId,
           prompt: "Test prompt",
           artifactName: "test-artifact",
         }),

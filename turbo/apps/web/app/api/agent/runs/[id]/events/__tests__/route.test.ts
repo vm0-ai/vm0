@@ -15,7 +15,7 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
-import { agentConfigs } from "../../../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../../../src/db/schema/agent-compose";
 import { cliTokens } from "../../../../../../../src/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -40,7 +40,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID(); // UUID for agent run
-  const testConfigId = randomUUID(); // UUID for agent config
+  const testComposeId = randomUUID(); // UUID for agent config
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -71,12 +71,12 @@ describe("GET /api/agent/runs/:id/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
     // Create test agent config
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -93,7 +93,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
-      agentConfigId: testConfigId,
+      agentComposeId: testComposeId,
       status: "running",
       prompt: "Test prompt",
       createdAt: new Date(),
@@ -112,8 +112,8 @@ describe("GET /api/agent/runs/:id/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   afterAll(async () => {
@@ -176,11 +176,11 @@ describe("GET /api/agent/runs/:id/events", () => {
     it("should reject request for run owned by different user", async () => {
       const otherUserId = `other-user-${Date.now()}-${process.pid}`;
       const otherRunId = randomUUID();
-      const otherConfigId = randomUUID();
+      const otherComposeId = randomUUID();
 
       // Create config for other user
-      await globalThis.services.db.insert(agentConfigs).values({
-        id: otherConfigId,
+      await globalThis.services.db.insert(agentComposes).values({
+        id: otherComposeId,
         userId: otherUserId,
         name: "other-agent",
         config: {
@@ -197,7 +197,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: otherRunId,
         userId: otherUserId,
-        agentConfigId: otherConfigId,
+        agentComposeId: otherComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -223,8 +223,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         .delete(agentRuns)
         .where(eq(agentRuns.id, otherRunId));
       await globalThis.services.db
-        .delete(agentConfigs)
-        .where(eq(agentConfigs.id, otherConfigId));
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, otherComposeId));
     });
   });
 

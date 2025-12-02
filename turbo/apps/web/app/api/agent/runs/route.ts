@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentConfigs } from "../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
@@ -28,7 +28,7 @@ import { extractTemplateVars } from "../../../../src/lib/config-validator";
  * Unified API for creating and executing agent runs.
  * Supports three modes via optional parameters:
  *
- * 1. New run: Provide agentConfigId, artifactName, prompt
+ * 1. New run: Provide agentComposeId, artifactName, prompt
  * 2. Checkpoint resume: Provide checkpointId, prompt (expands to snapshot parameters)
  * 3. Session continue: Provide sessionId, prompt (uses latest artifact version)
  *
@@ -68,11 +68,11 @@ export async function POST(request: NextRequest) {
     const isSessionContinue = !!body.sessionId;
     const isNewRun = !isCheckpointResume && !isSessionContinue;
 
-    // For new runs, require agentConfigId and artifactName
+    // For new runs, require agentComposeId and artifactName
     if (isNewRun) {
-      if (!body.agentConfigId) {
+      if (!body.agentComposeId) {
         throw new BadRequestError(
-          "Missing agentConfigId. For new runs, agentConfigId is required.",
+          "Missing agentComposeId. For new runs, agentComposeId is required.",
         );
       }
       if (!body.artifactName) {
@@ -89,30 +89,30 @@ export async function POST(request: NextRequest) {
       `[API] Request body.volumeVersions=${JSON.stringify(body.volumeVersions)}`,
     );
 
-    // Determine agentConfigId for run record creation
+    // Determine agentComposeId for run record creation
     // For new runs: from request
     // For checkpoint/session: will be resolved by buildExecutionContext, but we need it early
-    let agentConfigId: string;
-    let agentConfigName: string | undefined;
+    let agentComposeId: string;
+    let agentComposeName: string | undefined;
 
     if (isNewRun) {
-      agentConfigId = body.agentConfigId!;
+      agentComposeId = body.agentComposeId!;
 
-      // Fetch config for validation and metadata
-      const [config] = await globalThis.services.db
+      // Fetch compose for validation and metadata
+      const [compose] = await globalThis.services.db
         .select()
-        .from(agentConfigs)
-        .where(eq(agentConfigs.id, agentConfigId))
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentComposeId))
         .limit(1);
 
-      if (!config) {
-        throw new NotFoundError("Agent config");
+      if (!compose) {
+        throw new NotFoundError("Agent compose");
       }
 
-      agentConfigName = config.name || undefined;
+      agentComposeName = compose.name || undefined;
 
       // Validate template variables for new runs
-      const requiredVars = extractTemplateVars(config.config);
+      const requiredVars = extractTemplateVars(compose.config);
       const providedVars = body.templateVars || {};
       const missingVars = requiredVars.filter(
         (varName) => providedVars[varName] === undefined,
@@ -124,45 +124,45 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (isCheckpointResume) {
-      // Validate checkpoint first to get agentConfigId
+      // Validate checkpoint first to get agentComposeId
       const sessionData = await runService.validateCheckpoint(
         body.checkpointId!,
         userId,
       );
-      agentConfigId = sessionData.agentConfigId;
+      agentComposeId = sessionData.agentComposeId;
 
-      // Get config name for metadata
-      const [config] = await globalThis.services.db
+      // Get compose name for metadata
+      const [compose] = await globalThis.services.db
         .select()
-        .from(agentConfigs)
-        .where(eq(agentConfigs.id, agentConfigId))
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentComposeId))
         .limit(1);
-      agentConfigName = config?.name || undefined;
+      agentComposeName = compose?.name || undefined;
     } else {
       // Session continue
       const sessionData = await runService.validateAgentSession(
         body.sessionId!,
         userId,
       );
-      agentConfigId = sessionData.agentConfigId;
+      agentComposeId = sessionData.agentComposeId;
 
-      // Get config name for metadata
-      const [config] = await globalThis.services.db
+      // Get compose name for metadata
+      const [compose] = await globalThis.services.db
         .select()
-        .from(agentConfigs)
-        .where(eq(agentConfigs.id, agentConfigId))
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentComposeId))
         .limit(1);
-      agentConfigName = config?.name || undefined;
+      agentComposeName = compose?.name || undefined;
     }
 
-    console.log(`[API] Resolved agentConfigId: ${agentConfigId}`);
+    console.log(`[API] Resolved agentComposeId: ${agentComposeId}`);
 
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId,
-        agentConfigId,
+        agentComposeId,
         status: "pending",
         prompt: body.prompt,
         templateVars: body.templateVars || null,
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       const context = await runService.buildExecutionContext({
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
-        agentConfigId: body.agentConfigId,
+        agentComposeId: body.agentComposeId,
         conversationId: body.conversationId,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
         sandboxToken,
         userId,
         // Metadata for vm0_start event (sent by E2B service)
-        agentName: agentConfigName,
+        agentName: agentComposeName,
         resumedFromCheckpointId: body.checkpointId,
         continuedFromSessionId: body.sessionId,
       });

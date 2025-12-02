@@ -1,7 +1,7 @@
 import { getApiUrl, getToken } from "./config";
 
-export interface CreateConfigResponse {
-  configId: string;
+export interface CreateComposeResponse {
+  composeId: string;
   name: string;
   action: "created" | "updated";
   createdAt?: string;
@@ -22,7 +22,7 @@ export interface AgentSessionResponse {
   session: {
     id: string;
     userId: string;
-    agentConfigId: string;
+    agentComposeId: string;
     conversationId: string | null;
     artifactName: string;
     createdAt: string;
@@ -36,7 +36,7 @@ export interface AgentSessionResponse {
   };
 }
 
-export interface GetConfigResponse {
+export interface GetComposeResponse {
   id: string;
   name: string;
   config: unknown;
@@ -91,12 +91,12 @@ class ApiClient {
     return apiUrl;
   }
 
-  async getConfigByName(name: string): Promise<GetConfigResponse> {
+  async getComposeByName(name: string): Promise<GetComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
     const response = await fetch(
-      `${baseUrl}/api/agent/configs?name=${encodeURIComponent(name)}`,
+      `${baseUrl}/api/agent/composes?name=${encodeURIComponent(name)}`,
       {
         method: "GET",
         headers,
@@ -105,19 +105,19 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || `Config not found: ${name}`);
+      throw new Error(error.error?.message || `Compose not found: ${name}`);
     }
 
-    return (await response.json()) as GetConfigResponse;
+    return (await response.json()) as GetComposeResponse;
   }
 
-  async createOrUpdateConfig(body: {
+  async createOrUpdateCompose(body: {
     config: unknown;
-  }): Promise<CreateConfigResponse> {
+  }): Promise<CreateComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/configs`, {
+    const response = await fetch(`${baseUrl}/api/agent/composes`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -125,10 +125,10 @@ class ApiClient {
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to create config");
+      throw new Error(error.error?.message || "Failed to create compose");
     }
 
-    return (await response.json()) as CreateConfigResponse;
+    return (await response.json()) as CreateComposeResponse;
   }
 
   /**
@@ -140,7 +140,7 @@ class ApiClient {
     checkpointId?: string;
     sessionId?: string;
     // Base parameters
-    agentConfigId?: string;
+    agentComposeId?: string;
     conversationId?: string;
     artifactName?: string;
     artifactVersion?: string;

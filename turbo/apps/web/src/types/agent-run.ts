@@ -3,7 +3,7 @@
  */
 
 export interface CreateAgentRunRequest {
-  agentConfigId: string;
+  agentComposeId: string;
   prompt: string;
   templateVars?: Record<string, string>;
   artifactName: string; // Required: artifact storage name
@@ -21,7 +21,7 @@ export interface UnifiedRunRequest {
   sessionId?: string; // Expand session parameters (artifact version forced to "latest")
 
   // Base parameters (can be used directly or overridden after shortcut expansion)
-  agentConfigId?: string; // Agent config ID
+  agentComposeId?: string; // Agent compose ID
   conversationId?: string; // Conversation to resume from
   artifactName?: string; // Artifact storage name
   artifactVersion?: string; // Artifact version (default: "latest")
@@ -44,7 +44,7 @@ export interface CreateAgentRunResponse {
 
 export interface GetAgentRunResponse {
   runId: string;
-  agentConfigId: string;
+  agentComposeId: string;
   status: "pending" | "running" | "completed" | "failed";
   prompt: string;
   templateVars?: Record<string, string>;

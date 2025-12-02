@@ -36,9 +36,9 @@ function validateVolumeConfig(
 }
 
 /**
- * Validates agent config structure
+ * Validates agent compose structure
  */
-export function validateAgentConfig(config: unknown): {
+export function validateAgentCompose(config: unknown): {
   valid: boolean;
   error?: string;
 } {

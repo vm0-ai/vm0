@@ -6,7 +6,7 @@ import {
   jsonb,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { agentConfigs } from "./agent-config";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Agent Runs table
@@ -15,8 +15,8 @@ import { agentConfigs } from "./agent-config";
 export const agentRuns = pgTable("agent_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-  agentConfigId: uuid("agent_config_id")
-    .references(() => agentConfigs.id)
+  agentComposeId: uuid("agent_compose_id")
+    .references(() => agentComposes.id)
     .notNull(),
   resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
   status: varchar("status", { length: 20 }).notNull(),

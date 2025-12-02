@@ -1,4 +1,4 @@
-import type { VolumeConfig } from "../../types/agent-config";
+import type { VolumeConfig } from "../../types/agent-compose";
 
 /**
  * Supported storage drivers:

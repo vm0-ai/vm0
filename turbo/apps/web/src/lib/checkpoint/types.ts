@@ -2,14 +2,14 @@
  * Checkpoint system types for preserving agent run state
  */
 
-import type { AgentConfigYaml } from "../../types/agent-config";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 
 /**
- * Agent configuration snapshot stored in checkpoint
- * Contains full config for reproducibility (configs have no versioning)
+ * Agent compose snapshot stored in checkpoint
+ * Contains full compose for reproducibility (composes have no versioning)
  */
-export interface AgentConfigSnapshot {
-  config: AgentConfigYaml;
+export interface AgentComposeSnapshot {
+  config: AgentComposeYaml;
   templateVars?: Record<string, string>;
 }
 
@@ -47,7 +47,7 @@ export interface ConversationData {
 export interface CheckpointData {
   runId: string;
   conversationId: string;
-  agentConfigSnapshot: AgentConfigSnapshot;
+  agentComposeSnapshot: AgentComposeSnapshot;
   artifactSnapshot: ArtifactSnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }

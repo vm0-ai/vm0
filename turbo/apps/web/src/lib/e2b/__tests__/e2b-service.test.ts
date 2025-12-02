@@ -91,8 +91,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-001",
-        agentConfigId: "test-agent-001",
-        agentConfig: {},
+        agentComposeId: "test-agent-001",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
         templateVars: { testVar: "testValue" },
@@ -143,8 +143,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-event",
-        agentConfigId: "test-agent-event",
-        agentConfig: {},
+        agentComposeId: "test-agent-event",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Test prompt",
         templateVars: { key: "value" },
@@ -160,7 +160,7 @@ describe("E2B Service - mocked unit tests", () => {
       expect(sendVm0StartEvent).toHaveBeenCalledTimes(1);
       expect(sendVm0StartEvent).toHaveBeenCalledWith({
         runId: "run-test-event",
-        agentConfigId: "test-agent-event",
+        agentComposeId: "test-agent-event",
         agentName: "My Agent",
         prompt: "Test prompt",
         templateVars: { key: "value" },
@@ -206,8 +206,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-storages",
-        agentConfigId: "test-agent-storages",
-        agentConfig: {},
+        agentComposeId: "test-agent-storages",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Test with storages",
       };
@@ -244,16 +244,16 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context1: ExecutionContext = {
         runId: "run-test-002a",
-        agentConfigId: "test-agent-002",
-        agentConfig: {},
+        agentComposeId: "test-agent-002",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
 
       const context2: ExecutionContext = {
         runId: "run-test-002b",
-        agentConfigId: "test-agent-002",
-        agentConfig: {},
+        agentComposeId: "test-agent-002",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
@@ -292,8 +292,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-003",
-        agentConfigId: "test-agent-003",
-        agentConfig: {},
+        agentComposeId: "test-agent-003",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
       };
@@ -321,8 +321,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-004",
-        agentConfigId: "test-agent-004",
-        agentConfig: {},
+        agentComposeId: "test-agent-004",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
       };
@@ -355,8 +355,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-005",
-        agentConfigId: "test-agent-005",
-        agentConfig: {},
+        agentComposeId: "test-agent-005",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
       };
@@ -381,8 +381,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-006",
-        agentConfigId: "test-agent-006",
-        agentConfig: {
+        agentComposeId: "test-agent-006",
+        agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {
@@ -424,8 +424,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-007",
-        agentConfigId: "test-agent-007",
-        agentConfig: {
+        agentComposeId: "test-agent-007",
+        agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {
@@ -466,8 +466,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-error",
-        agentConfigId: "test-agent-error",
-        agentConfig: {},
+        agentComposeId: "test-agent-error",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
       };
@@ -493,8 +493,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-storage-error",
-        agentConfigId: "test-agent-storage-error",
-        agentConfig: {},
+        agentComposeId: "test-agent-storage-error",
+        agentCompose: {},
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to storage errors",
       };
@@ -523,8 +523,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-template-001",
-        agentConfigId: "test-agent-template-001",
-        agentConfig: {
+        agentComposeId: "test-agent-template-001",
+        agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {

@@ -2,13 +2,13 @@ import { eq, and } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { agentRuns } from "../../db/schema/agent-run";
-import { agentConfigs } from "../../db/schema/agent-config";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { NotFoundError, UnauthorizedError } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type {
   ArtifactSnapshot,
-  AgentConfigSnapshot,
+  AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "../checkpoint/types";
 import { agentSessionService } from "../agent-session";
@@ -23,8 +23,8 @@ const log = logger("service:run");
  */
 interface ConversationResolution {
   conversationId: string;
-  agentConfigId: string;
-  agentConfig: unknown;
+  agentComposeId: string;
+  agentCompose: unknown;
   workingDir: string;
   conversationData: {
     cliAgentSessionId: string;
@@ -109,8 +109,8 @@ export class RunService {
     }
 
     // Extract snapshots
-    const agentConfigSnapshot =
-      checkpoint.agentConfigSnapshot as unknown as AgentConfigSnapshot;
+    const agentComposeSnapshot =
+      checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
     const checkpointArtifact =
       checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
     const checkpointVolumeVersions =
@@ -118,16 +118,16 @@ export class RunService {
 
     return {
       conversationId: checkpoint.conversationId,
-      agentConfigId: originalRun.agentConfigId,
-      agentConfig: agentConfigSnapshot.config,
-      workingDir: this.extractWorkingDir(agentConfigSnapshot.config),
+      agentComposeId: originalRun.agentComposeId,
+      agentCompose: agentComposeSnapshot.config,
+      workingDir: this.extractWorkingDir(agentComposeSnapshot.config),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
       },
       artifactName: checkpointArtifact.artifactName,
       artifactVersion: checkpointArtifact.artifactVersion,
-      templateVars: agentConfigSnapshot.templateVars || {},
+      templateVars: agentComposeSnapshot.templateVars || {},
       volumeVersions: checkpointVolumeVersions?.versions,
       buildResumeArtifact: true,
     };
@@ -163,22 +163,22 @@ export class RunService {
       throw new NotFoundError("Agent session has no conversation ID");
     }
 
-    // Load agent config
-    const [config] = await globalThis.services.db
+    // Load agent compose
+    const [compose] = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, session.agentConfigId))
+      .from(agentComposes)
+      .where(eq(agentComposes.id, session.agentComposeId))
       .limit(1);
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    if (!compose) {
+      throw new NotFoundError("Agent compose");
     }
 
     return {
       conversationId: session.conversationId,
-      agentConfigId: session.agentConfigId,
-      agentConfig: config.config,
-      workingDir: this.extractWorkingDir(config.config),
+      agentComposeId: session.agentComposeId,
+      agentCompose: compose.config,
+      workingDir: this.extractWorkingDir(compose.config),
       conversationData: {
         cliAgentSessionId: session.conversation.cliAgentSessionId,
         cliAgentSessionHistory: session.conversation.cliAgentSessionHistory,
@@ -196,7 +196,7 @@ export class RunService {
    */
   private async resolveDirectConversation(
     conversationId: string,
-    agentConfigId: string,
+    agentComposeId: string,
     userId: string,
   ): Promise<ConversationResolution> {
     // Load conversation
@@ -225,22 +225,22 @@ export class RunService {
       );
     }
 
-    // Load agent config
-    const [config] = await globalThis.services.db
+    // Load agent compose
+    const [compose] = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, agentConfigId))
+      .from(agentComposes)
+      .where(eq(agentComposes.id, agentComposeId))
       .limit(1);
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    if (!compose) {
+      throw new NotFoundError("Agent compose");
     }
 
     return {
       conversationId,
-      agentConfigId,
-      agentConfig: config.config,
-      workingDir: this.extractWorkingDir(config.config),
+      agentComposeId,
+      agentCompose: compose.config,
+      workingDir: this.extractWorkingDir(compose.config),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
@@ -254,11 +254,11 @@ export class RunService {
    * Create execution context for a new run
    *
    * @param runId Run ID
-   * @param agentConfigId Agent configuration ID
+   * @param agentComposeId Agent compose ID
    * @param prompt User prompt
    * @param sandboxToken Temporary bearer token for sandbox
    * @param templateVars Template variable replacements
-   * @param agentConfig Full agent configuration
+   * @param agentCompose Full agent compose
    * @param userId User ID for volume access
    * @param artifactName Artifact storage name (required)
    * @param artifactVersion Artifact version (optional, defaults to "latest")
@@ -266,11 +266,11 @@ export class RunService {
    */
   async createRunContext(
     runId: string,
-    agentConfigId: string,
+    agentComposeId: string,
     prompt: string,
     sandboxToken: string,
     templateVars: Record<string, string> | undefined,
-    agentConfig: unknown,
+    agentCompose: unknown,
     userId?: string,
     artifactName?: string,
     artifactVersion?: string,
@@ -279,8 +279,8 @@ export class RunService {
 
     return {
       runId,
-      agentConfigId,
-      agentConfig,
+      agentComposeId,
+      agentCompose,
       prompt,
       templateVars,
       sandboxToken,
@@ -296,7 +296,7 @@ export class RunService {
    *
    * @param checkpointId Checkpoint ID to validate
    * @param userId User ID for authorization check
-   * @returns Checkpoint data with agentConfigId
+   * @returns Checkpoint data with agentComposeId
    * @throws NotFoundError if checkpoint doesn't exist
    * @throws UnauthorizedError if checkpoint doesn't belong to user
    */
@@ -304,7 +304,7 @@ export class RunService {
     checkpointId: string,
     userId: string,
   ): Promise<{
-    agentConfigId: string;
+    agentComposeId: string;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
@@ -335,11 +335,11 @@ export class RunService {
     }
 
     log.debug(
-      `Checkpoint validated: agentConfigId=${originalRun.agentConfigId}`,
+      `Checkpoint validated: agentComposeId=${originalRun.agentComposeId}`,
     );
 
     return {
-      agentConfigId: originalRun.agentConfigId,
+      agentComposeId: originalRun.agentComposeId,
     };
   }
 
@@ -349,7 +349,7 @@ export class RunService {
    *
    * @param agentSessionId Agent session ID to validate
    * @param userId User ID for authorization check
-   * @returns Session data with agentConfigId and templateVars
+   * @returns Session data with agentComposeId and templateVars
    * @throws NotFoundError if session doesn't exist
    * @throws UnauthorizedError if session doesn't belong to user
    */
@@ -357,7 +357,7 @@ export class RunService {
     agentSessionId: string,
     userId: string,
   ): Promise<{
-    agentConfigId: string;
+    agentComposeId: string;
     templateVars: Record<string, string> | null;
   }> {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
@@ -384,10 +384,10 @@ export class RunService {
       );
     }
 
-    log.debug(`Session validated: agentConfigId=${session.agentConfigId}`);
+    log.debug(`Session validated: agentComposeId=${session.agentComposeId}`);
 
     return {
-      agentConfigId: session.agentConfigId,
+      agentComposeId: session.agentComposeId,
       templateVars: session.templateVars,
     };
   }
@@ -409,7 +409,7 @@ export class RunService {
     checkpointId?: string;
     sessionId?: string;
     // Base parameters
-    agentConfigId?: string;
+    agentComposeId?: string;
     conversationId?: string;
     artifactName?: string;
     artifactVersion?: string;
@@ -429,8 +429,8 @@ export class RunService {
     log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
     // Initialize context variables
-    let agentConfigId: string | undefined = params.agentConfigId;
-    let agentConfig: unknown;
+    let agentComposeId: string | undefined = params.agentComposeId;
+    let agentCompose: unknown;
     let artifactName: string | undefined = params.artifactName;
     let artifactVersion: string | undefined = params.artifactVersion;
     let templateVars: Record<string, string> | undefined = params.templateVars;
@@ -451,11 +451,11 @@ export class RunService {
     } else if (params.sessionId) {
       log.debug(`Resolving session ${params.sessionId}`);
       resolution = await this.resolveSession(params.sessionId, params.userId);
-    } else if (params.conversationId && params.agentConfigId) {
+    } else if (params.conversationId && params.agentComposeId) {
       log.debug(`Resolving conversation ${params.conversationId}`);
       resolution = await this.resolveDirectConversation(
         params.conversationId,
-        params.agentConfigId,
+        params.agentComposeId,
         params.userId,
       );
     }
@@ -463,8 +463,8 @@ export class RunService {
     // Step 2: Apply resolution defaults and build resumeSession (unified path)
     if (resolution) {
       // Apply defaults (params override resolution values)
-      agentConfigId = agentConfigId || resolution.agentConfigId;
-      agentConfig = resolution.agentConfig;
+      agentComposeId = agentComposeId || resolution.agentComposeId;
+      agentCompose = resolution.agentCompose;
       artifactName = artifactName || resolution.artifactName;
       artifactVersion = artifactVersion || resolution.artifactVersion;
       templateVars = templateVars || resolution.templateVars;
@@ -489,38 +489,38 @@ export class RunService {
         `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
       );
     }
-    // Step 3: New run - load agent config if agentConfigId provided (no conversation)
-    else if (agentConfigId) {
-      const [config] = await globalThis.services.db
+    // Step 3: New run - load agent compose if agentComposeId provided (no conversation)
+    else if (agentComposeId) {
+      const [compose] = await globalThis.services.db
         .select()
-        .from(agentConfigs)
-        .where(eq(agentConfigs.id, agentConfigId))
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentComposeId))
         .limit(1);
 
-      if (!config) {
-        throw new NotFoundError("Agent config");
+      if (!compose) {
+        throw new NotFoundError("Agent compose");
       }
 
-      agentConfig = config.config;
+      agentCompose = compose.config;
     }
 
     // Validate required fields
-    if (!agentConfigId) {
+    if (!agentComposeId) {
       throw new NotFoundError(
-        "Agent config ID is required (provide agentConfigId, checkpointId, or sessionId)",
+        "Agent compose ID is required (provide agentComposeId, checkpointId, or sessionId)",
       );
     }
 
-    if (!agentConfig) {
-      throw new NotFoundError("Agent config could not be loaded");
+    if (!agentCompose) {
+      throw new NotFoundError("Agent compose could not be loaded");
     }
 
     // Build final execution context
     return {
       runId: params.runId,
       userId: params.userId,
-      agentConfigId,
-      agentConfig,
+      agentComposeId,
+      agentCompose,
       prompt: params.prompt,
       templateVars,
       sandboxToken: params.sandboxToken,

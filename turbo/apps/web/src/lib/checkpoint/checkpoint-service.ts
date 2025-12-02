@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
-import { agentConfigs } from "../../db/schema/agent-config";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
@@ -9,11 +9,11 @@ import { logger } from "../logger";
 import type {
   CheckpointRequest,
   CheckpointResponse,
-  AgentConfigSnapshot,
+  AgentComposeSnapshot,
   ArtifactSnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
-import type { AgentConfigYaml } from "../../types/agent-config";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 
 const log = logger("service:checkpoint");
 
@@ -45,15 +45,15 @@ export class CheckpointService {
       throw new NotFoundError("Agent run");
     }
 
-    // Fetch agent config to create snapshot
-    const [config] = await globalThis.services.db
+    // Fetch agent compose to create snapshot
+    const [compose] = await globalThis.services.db
       .select()
-      .from(agentConfigs)
-      .where(eq(agentConfigs.id, run.agentConfigId))
+      .from(agentComposes)
+      .where(eq(agentComposes.id, run.agentComposeId))
       .limit(1);
 
-    if (!config) {
-      throw new NotFoundError("Agent config");
+    if (!compose) {
+      throw new NotFoundError("Agent compose");
     }
 
     log.debug(
@@ -79,9 +79,9 @@ export class CheckpointService {
       `Conversation created: ${conversation.id}, storing checkpoint...`,
     );
 
-    // Build agent config snapshot
-    const agentConfigSnapshot: AgentConfigSnapshot = {
-      config: config.config as AgentConfigYaml,
+    // Build agent compose snapshot
+    const agentComposeSnapshot: AgentComposeSnapshot = {
+      config: compose.config as AgentComposeYaml,
       templateVars: (run.templateVars as Record<string, string>) || undefined,
     };
 
@@ -91,7 +91,7 @@ export class CheckpointService {
       .values({
         runId: request.runId,
         conversationId: conversation.id,
-        agentConfigSnapshot: agentConfigSnapshot as unknown as Record<
+        agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
           string,
           unknown
         >,
@@ -120,7 +120,7 @@ export class CheckpointService {
       (run.templateVars as Record<string, string>) || undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
-      run.agentConfigId,
+      run.agentComposeId,
       artifactSnapshot.artifactName,
       conversation.id,
       templateVars,

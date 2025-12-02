@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAgentName, validateAgentConfig } from "../yaml-validator";
+import { validateAgentName, validateAgentCompose } from "../yaml-validator";
 
 describe("validateAgentName", () => {
   describe("valid names", () => {
@@ -72,7 +72,7 @@ describe("validateAgentName", () => {
   });
 });
 
-describe("validateAgentConfig", () => {
+describe("validateAgentCompose", () => {
   describe("valid configs", () => {
     it("should accept minimal valid config", () => {
       const config = {
@@ -86,7 +86,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(true);
       expect(result.error).toBeUndefined();
     });
@@ -111,7 +111,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(true);
     });
 
@@ -127,26 +127,26 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(true);
     });
   });
 
   describe("invalid configs", () => {
     it("should reject null config", () => {
-      const result = validateAgentConfig(null);
+      const result = validateAgentCompose(null);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Config must be an object");
     });
 
     it("should reject undefined config", () => {
-      const result = validateAgentConfig(undefined);
+      const result = validateAgentCompose(undefined);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Config must be an object");
     });
 
     it("should reject non-object config", () => {
-      const result = validateAgentConfig("invalid");
+      const result = validateAgentCompose("invalid");
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Config must be an object");
     });
@@ -162,7 +162,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Missing config.version");
     });
@@ -172,7 +172,7 @@ describe("validateAgentConfig", () => {
         version: "1.0",
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Missing agents object in config");
     });
@@ -183,7 +183,7 @@ describe("validateAgentConfig", () => {
         agents: [{ name: "test" }],
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("agents must be an object, not an array");
     });
@@ -194,7 +194,7 @@ describe("validateAgentConfig", () => {
         agents: {},
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("agents must have at least one agent defined");
     });
@@ -216,7 +216,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toBe(
         "Multiple agents not supported yet. Only one agent allowed.",
@@ -236,7 +236,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Invalid agent name format");
     });
@@ -253,7 +253,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Invalid agent name format");
     });
@@ -270,7 +270,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Invalid agent name format");
     });
@@ -286,7 +286,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("agent.working_dir");
     });
@@ -302,7 +302,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("agent.image");
     });
@@ -318,7 +318,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("agent.provider");
     });
@@ -342,7 +342,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("missing-vol");
     });
@@ -365,7 +365,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("'name' field");
     });
@@ -388,7 +388,7 @@ describe("validateAgentConfig", () => {
         },
       };
 
-      const result = validateAgentConfig(config);
+      const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("'version' field");
     });

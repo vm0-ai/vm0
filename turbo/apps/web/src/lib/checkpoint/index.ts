@@ -9,6 +9,6 @@ export type {
   CheckpointRequest,
   CheckpointResponse,
   ArtifactSnapshot,
-  AgentConfigSnapshot,
+  AgentComposeSnapshot,
   ConversationData,
 } from "./types";

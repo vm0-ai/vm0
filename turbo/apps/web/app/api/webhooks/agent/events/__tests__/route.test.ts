@@ -16,7 +16,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import { agentConfigs } from "../../../../../../src/db/schema/agent-config";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -40,7 +40,7 @@ describe("POST /api/webhooks/agent/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID(); // UUID for agent run
-  const testConfigId = randomUUID(); // UUID for agent config
+  const testComposeId = randomUUID(); // UUID for agent config
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -75,12 +75,12 @@ describe("POST /api/webhooks/agent/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
 
     // Create test agent config
-    await globalThis.services.db.insert(agentConfigs).values({
-      id: testConfigId,
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
       userId: testUserId,
       name: "test-agent",
       config: {
@@ -109,8 +109,8 @@ describe("POST /api/webhooks/agent/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentConfigs)
-      .where(eq(agentConfigs.id, testConfigId));
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
   });
 
   afterAll(async () => {
@@ -334,7 +334,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: otherUserId, // different user
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -387,7 +387,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -467,7 +467,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -565,7 +565,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -659,7 +659,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentConfigId: testConfigId,
+        agentComposeId: testComposeId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),

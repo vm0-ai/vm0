@@ -71,7 +71,7 @@ interface ResultEvent {
 interface Vm0StartEvent {
   type: "vm0_start";
   runId: string;
-  agentConfigId: string;
+  agentComposeId: string;
   agentName?: string;
   prompt: string;
   templateVars?: Record<string, unknown>;
@@ -251,7 +251,7 @@ export class ClaudeEventParser {
       timestamp: new Date(event.timestamp),
       data: {
         runId: event.runId,
-        agentConfigId: event.agentConfigId,
+        agentComposeId: event.agentComposeId,
         agentName: event.agentName,
         prompt: event.prompt,
         templateVars: event.templateVars,

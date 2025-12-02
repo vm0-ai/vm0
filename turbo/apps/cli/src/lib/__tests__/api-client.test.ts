@@ -23,11 +23,11 @@ describe("ApiClient", () => {
     vi.clearAllMocks();
   });
 
-  describe("createOrUpdateConfig", () => {
+  describe("createOrUpdateCompose", () => {
     it("should call correct endpoint with auth headers", async () => {
       const mockConfig = { version: "1.0", agent: { name: "test" } };
       const mockResponse = {
-        configId: "cfg-123",
+        composeId: "cfg-123",
         name: "test",
         action: "created" as const,
       };
@@ -37,12 +37,12 @@ describe("ApiClient", () => {
         json: async () => mockResponse,
       });
 
-      const result = await apiClient.createOrUpdateConfig({
+      const result = await apiClient.createOrUpdateCompose({
         config: mockConfig,
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/agent/configs",
+        "http://localhost:3000/api/agent/composes",
         {
           method: "POST",
           headers: {
@@ -58,7 +58,7 @@ describe("ApiClient", () => {
 
     it("should return created response", async () => {
       const mockResponse = {
-        configId: "cfg-123",
+        composeId: "cfg-123",
         name: "test-agent",
         action: "created" as const,
         createdAt: "2025-01-01T00:00:00Z",
@@ -69,18 +69,18 @@ describe("ApiClient", () => {
         json: async () => mockResponse,
       });
 
-      const result = await apiClient.createOrUpdateConfig({
+      const result = await apiClient.createOrUpdateCompose({
         config: {},
       });
 
       expect(result.action).toBe("created");
-      expect(result.configId).toBe("cfg-123");
+      expect(result.composeId).toBe("cfg-123");
       expect(result.name).toBe("test-agent");
     });
 
     it("should return updated response", async () => {
       const mockResponse = {
-        configId: "cfg-123",
+        composeId: "cfg-123",
         name: "test-agent",
         action: "updated" as const,
         updatedAt: "2025-01-01T00:00:00Z",
@@ -91,7 +91,7 @@ describe("ApiClient", () => {
         json: async () => mockResponse,
       });
 
-      const result = await apiClient.createOrUpdateConfig({
+      const result = await apiClient.createOrUpdateCompose({
         config: {},
       });
 
@@ -102,7 +102,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.createOrUpdateConfig({ config: {} }),
+        apiClient.createOrUpdateCompose({ config: {} }),
       ).rejects.toThrow("Not authenticated");
     });
 
@@ -110,7 +110,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
-        apiClient.createOrUpdateConfig({ config: {} }),
+        apiClient.createOrUpdateCompose({ config: {} }),
       ).rejects.toThrow("API URL not configured");
     });
 
@@ -118,13 +118,13 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValue({
         ok: false,
         json: async () => ({
-          error: { message: "Invalid config", code: "INVALID_CONFIG" },
+          error: { message: "Invalid compose", code: "INVALID_COMPOSE" },
         }),
       });
 
       await expect(
-        apiClient.createOrUpdateConfig({ config: {} }),
-      ).rejects.toThrow("Invalid config");
+        apiClient.createOrUpdateCompose({ config: {} }),
+      ).rejects.toThrow("Invalid compose");
     });
 
     it("should throw default error message when API error has no message", async () => {
@@ -136,15 +136,15 @@ describe("ApiClient", () => {
       });
 
       await expect(
-        apiClient.createOrUpdateConfig({ config: {} }),
-      ).rejects.toThrow("Failed to create config");
+        apiClient.createOrUpdateCompose({ config: {} }),
+      ).rejects.toThrow("Failed to create compose");
     });
   });
 
   describe("createRun", () => {
     it("should call correct endpoint with auth headers", async () => {
       const mockRequest = {
-        agentConfigId: "cfg-123",
+        agentComposeId: "cfg-123",
         prompt: "test prompt",
         artifactName: "my-artifact",
       };
@@ -181,7 +181,7 @@ describe("ApiClient", () => {
 
     it("should support template variables", async () => {
       const mockRequest = {
-        agentConfigId: "cfg-123",
+        agentComposeId: "cfg-123",
         prompt: "test prompt",
         templateVars: { key1: "value1", key2: "value2" },
         artifactName: "my-artifact",
@@ -225,7 +225,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createRun({
-        agentConfigId: "cfg-123",
+        agentComposeId: "cfg-123",
         prompt: "test",
         artifactName: "my-artifact",
       });
@@ -252,7 +252,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createRun({
-        agentConfigId: "cfg-123",
+        agentComposeId: "cfg-123",
         prompt: "test",
         artifactName: "my-artifact",
       });
@@ -266,7 +266,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentConfigId: "cfg-123",
+          agentComposeId: "cfg-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
@@ -278,7 +278,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentConfigId: "cfg-123",
+          agentComposeId: "cfg-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
@@ -289,17 +289,17 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValue({
         ok: false,
         json: async () => ({
-          error: { message: "Config not found", code: "NOT_FOUND" },
+          error: { message: "Compose not found", code: "NOT_FOUND" },
         }),
       });
 
       await expect(
         apiClient.createRun({
-          agentConfigId: "cfg-123",
+          agentComposeId: "cfg-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),
-      ).rejects.toThrow("Config not found");
+      ).rejects.toThrow("Compose not found");
     });
 
     it("should throw default error message when API error has no message", async () => {
@@ -312,7 +312,7 @@ describe("ApiClient", () => {
 
       await expect(
         apiClient.createRun({
-          agentConfigId: "cfg-123",
+          agentComposeId: "cfg-123",
           prompt: "test",
           artifactName: "my-artifact",
         }),

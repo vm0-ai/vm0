@@ -9,7 +9,7 @@
 export interface AgentSessionData {
   id: string;
   userId: string;
-  agentConfigId: string;
+  agentComposeId: string;
   conversationId: string | null;
   artifactName: string;
   templateVars: Record<string, string> | null;
@@ -22,7 +22,7 @@ export interface AgentSessionData {
  */
 export interface CreateAgentSessionInput {
   userId: string;
-  agentConfigId: string;
+  agentComposeId: string;
   artifactName: string;
   conversationId?: string;
   templateVars?: Record<string, string>;

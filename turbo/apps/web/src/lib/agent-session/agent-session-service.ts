@@ -22,7 +22,7 @@ export class AgentSessionService {
       .insert(agentSessions)
       .values({
         userId: input.userId,
-        agentConfigId: input.agentConfigId,
+        agentComposeId: input.agentComposeId,
         artifactName: input.artifactName,
         conversationId: input.conversationId,
         templateVars: input.templateVars,
@@ -137,19 +137,19 @@ export class AgentSessionService {
    */
   async findOrCreate(
     userId: string,
-    agentConfigId: string,
+    agentComposeId: string,
     artifactName: string,
     conversationId?: string,
     templateVars?: Record<string, string>,
   ): Promise<{ session: AgentSessionData; created: boolean }> {
-    // First try to find existing session with same config and artifact
+    // First try to find existing session with same compose and artifact
     const [existing] = await globalThis.services.db
       .select()
       .from(agentSessions)
       .where(
         and(
           eq(agentSessions.userId, userId),
-          eq(agentSessions.agentConfigId, agentConfigId),
+          eq(agentSessions.agentComposeId, agentComposeId),
           eq(agentSessions.artifactName, artifactName),
         ),
       )
@@ -170,7 +170,7 @@ export class AgentSessionService {
     // Create new session
     const session = await this.create({
       userId,
-      agentConfigId,
+      agentComposeId,
       artifactName,
       conversationId,
       templateVars,
@@ -197,7 +197,7 @@ export class AgentSessionService {
     return {
       id: session.id,
       userId: session.userId,
-      agentConfigId: session.agentConfigId,
+      agentComposeId: session.agentComposeId,
       conversationId: session.conversationId,
       artifactName: session.artifactName,
       templateVars: session.templateVars,

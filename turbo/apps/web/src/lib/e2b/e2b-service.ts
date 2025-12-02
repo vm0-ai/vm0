@@ -8,7 +8,7 @@ import type {
   PreparedArtifact,
   StorageManifest,
 } from "../storage/types";
-import type { AgentConfigYaml } from "../../types/agent-config";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
   COMMON_SCRIPT,
   LOG_SCRIPT,
@@ -30,13 +30,13 @@ import { logger } from "../logger";
 const log = logger("service:e2b");
 
 /**
- * Get the first agent from config (currently only one agent is supported)
+ * Get the first agent from compose (currently only one agent is supported)
  */
 function getFirstAgent(
-  config?: AgentConfigYaml,
-): AgentConfigYaml["agents"][string] | undefined {
-  if (!config?.agents) return undefined;
-  const values = Object.values(config.agents);
+  compose?: AgentComposeYaml,
+): AgentComposeYaml["agents"][string] | undefined {
+  if (!compose?.agents) return undefined;
+  const values = Object.values(compose.agents);
   return values[0];
 }
 
@@ -58,25 +58,27 @@ export class E2BService {
     const isResume = !!context.resumeSession;
 
     log.debug(
-      `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentConfigId}...`,
+      `${isResume ? "Resuming" : "Creating"} run ${context.runId} for agent ${context.agentComposeId}...`,
     );
     log.debug(
       `context.volumeVersions=${JSON.stringify(context.volumeVersions)}`,
     );
 
     let sandbox: Sandbox | null = null;
-    const agentConfig = context.agentConfig as AgentVolumeConfig | undefined;
-    const agentConfigYaml = context.agentConfig as AgentConfigYaml | undefined;
+    const agentCompose = context.agentCompose as AgentVolumeConfig | undefined;
+    const agentComposeYaml = context.agentCompose as
+      | AgentComposeYaml
+      | undefined;
 
-    // Get mount path from agent config (used for resume artifact)
-    const firstAgent = getFirstAgent(agentConfigYaml);
+    // Get mount path from agent compose (used for resume artifact)
+    const firstAgent = getFirstAgent(agentComposeYaml);
     const artifactMountPath = firstAgent?.working_dir || "/workspace";
 
     try {
       // Prepare storage manifest with presigned URLs for direct download to sandbox
       // This works for both new runs and resume scenarios
       const storageManifest = await storageService.prepareStorageManifest(
-        agentConfig,
+        agentCompose,
         context.templateVars || {},
         context.userId || "",
         context.artifactName,
@@ -120,7 +122,7 @@ export class E2BService {
       // Send vm0_start event now that storages are prepared
       await sendVm0StartEvent({
         runId: context.runId,
-        agentConfigId: context.agentConfigId,
+        agentComposeId: context.agentComposeId,
         agentName: context.agentName,
         prompt: context.prompt,
         templateVars: context.templateVars,
@@ -176,7 +178,7 @@ export class E2BService {
 
       sandbox = await this.createSandbox(
         sandboxEnvVars,
-        agentConfig as AgentConfigYaml | undefined,
+        agentCompose as AgentComposeYaml | undefined,
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
@@ -200,7 +202,7 @@ export class E2BService {
         context.runId,
         context.prompt,
         context.sandboxToken,
-        context.agentConfig,
+        context.agentCompose,
         artifactForCommand,
         context.resumeSession?.sessionId,
       );
@@ -319,11 +321,11 @@ export class E2BService {
   /**
    * Create E2B sandbox with Claude Code and environment variables
    * @param envVars Environment variables to pass to sandbox
-   * @param agentConfig Agent configuration containing image specification
+   * @param agentCompose Agent compose containing image specification
    */
   private async createSandbox(
     envVars: Record<string, string>,
-    agentConfig?: AgentConfigYaml,
+    agentCompose?: AgentComposeYaml,
   ): Promise<Sandbox> {
     const sandboxOptions = {
       timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
@@ -331,7 +333,7 @@ export class E2BService {
     };
 
     // Priority: agent.image > E2B_TEMPLATE_NAME
-    const agent = getFirstAgent(agentConfig);
+    const agent = getFirstAgent(agentCompose);
     const templateName = agent?.image || e2bConfig.defaultTemplate;
 
     if (!templateName) {
@@ -418,7 +420,7 @@ export class E2BService {
     runId: string,
     prompt: string,
     sandboxToken: string,
-    agentConfig?: unknown,
+    agentCompose?: unknown,
     preparedArtifact?: PreparedArtifact | null,
     resumeSessionId?: string,
   ): Promise<void> {
@@ -428,9 +430,9 @@ export class E2BService {
 
     log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
-    // Extract working_dir from agent config
-    const config = agentConfig as AgentConfigYaml | undefined;
-    const workingDir = getFirstAgent(config)?.working_dir;
+    // Extract working_dir from agent compose
+    const compose = agentCompose as AgentComposeYaml | undefined;
+    const workingDir = getFirstAgent(compose)?.working_dir;
 
     // Set environment variables
     const envs: Record<string, string> = {
