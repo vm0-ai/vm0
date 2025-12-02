@@ -427,6 +427,7 @@ export class RunService {
     artifactVersion?: string;
     templateVars?: Record<string, string>;
     volumeVersions?: Record<string, string>;
+    environment?: Record<string, string>;
     // Required
     prompt: string;
     runId: string;
@@ -539,6 +540,7 @@ export class RunService {
       artifactName,
       artifactVersion,
       volumeVersions,
+      environment: params.environment,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

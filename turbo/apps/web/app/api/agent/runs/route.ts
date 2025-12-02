@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
         artifactVersion: body.artifactVersion,
         templateVars: body.templateVars,
         volumeVersions: body.volumeVersions,
+        environment: body.environment,
         prompt: body.prompt,
         runId: run.id,
         sandboxToken,

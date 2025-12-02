@@ -32,15 +32,16 @@ export function parseMountPath(declaration: string): {
 
 /**
  * Replace template variables in a string
- * @param str - String with template variables like {{userId}}
- * @param vars - Variable values
+ * @param str - String with template variables like ${{ vars.userId }}
+ * @param vars - Variable values (from --vars CLI option)
  * @returns String with variables replaced and list of missing vars
  */
 export function replaceTemplateVars(
   str: string,
   vars: Record<string, string>,
 ): { result: string; missingVars: string[] } {
-  const templatePattern = /\{\{(\w+)\}\}/g;
+  // New unified syntax: ${{ vars.varName }}
+  const templatePattern = /\$\{\{\s*vars\.(\w+)\s*\}\}/g;
   const missingVars: string[] = [];
   let result = str;
 

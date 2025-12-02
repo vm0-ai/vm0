@@ -29,6 +29,9 @@ export interface ExecutionContext {
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;
 
+  // Environment variables resolved by CLI (from ${{ env.X }}, ${{ vars.X }} expansion)
+  environment?: Record<string, string>;
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;

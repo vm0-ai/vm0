@@ -124,6 +124,31 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
+  // Validate environment field if present
+  if (agent.environment !== undefined) {
+    if (
+      agent.environment === null ||
+      typeof agent.environment !== "object" ||
+      Array.isArray(agent.environment)
+    ) {
+      return {
+        valid: false,
+        error:
+          "agent.environment must be an object with string keys and values",
+      };
+    }
+
+    const env = agent.environment as Record<string, unknown>;
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value !== "string") {
+        return {
+          valid: false,
+          error: `agent.environment.${key} must be a string`,
+        };
+      }
+    }
+  }
+
   // Validate volumes section if agent uses volumes
   const agentVolumes = agent.volumes as string[] | undefined;
   if (agentVolumes && Array.isArray(agentVolumes) && agentVolumes.length > 0) {

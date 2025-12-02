@@ -5,11 +5,6 @@ import { existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
-import {
-  expandEnvVarsInObject,
-  extractEnvVarReferences,
-  validateEnvVars,
-} from "../lib/env-expander";
 
 export const buildCommand = new Command()
   .name("build")
@@ -37,42 +32,19 @@ export const buildCommand = new Command()
         process.exit(1);
       }
 
-      // 3. Validate environment variables before expansion
-      const referencedVars = extractEnvVarReferences(config);
-      const missingVars = validateEnvVars(referencedVars);
-
-      if (missingVars.length > 0) {
-        console.error(chalk.red("✗ Missing required environment variables:"));
-        for (const varName of missingVars) {
-          console.error(chalk.red(`  - ${varName}`));
-        }
-        console.error();
-        console.error(
-          chalk.gray("Please set these variables before running 'vm0 build'."),
-        );
-        console.error(chalk.gray("Example:"));
-        for (const varName of missingVars) {
-          console.error(chalk.gray(`  export ${varName}=your-value`));
-        }
-        process.exit(1);
-      }
-
-      // 4. Expand environment variables
-      config = expandEnvVarsInObject(config);
-
-      // 5. Validate compose
+      // 3. Validate compose (no variable expansion - variables are expanded at run time)
       const validation = validateAgentCompose(config);
       if (!validation.valid) {
         console.error(chalk.red(`✗ ${validation.error}`));
         process.exit(1);
       }
 
-      // 6. Call API
+      // 4. Call API
       console.log(chalk.blue("Uploading compose..."));
 
       const response = await apiClient.createOrUpdateCompose({ config });
 
-      // 7. Display result
+      // 5. Display result
       if (response.action === "created") {
         console.log(chalk.green(`✓ Compose created: ${response.name}`));
       } else {

@@ -12,7 +12,6 @@ import type {
   CreateAgentComposeResponse,
 } from "../../../../src/types/agent-compose";
 import { eq, and } from "drizzle-orm";
-import { extractUnexpandedVars } from "../../../../src/lib/config-validator";
 
 /**
  * GET /api/agent/composes?name={agentName}
@@ -134,13 +133,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate that all environment variables are expanded
-    const unexpandedVars = extractUnexpandedVars(body.config);
-    if (unexpandedVars.length > 0) {
-      throw new BadRequestError(
-        `Configuration contains unexpanded environment variables: ${unexpandedVars.join(", ")}`,
-      );
-    }
+    // Note: Variables like ${{ env.X }}, ${{ vars.X }}, ${{ secrets.X }} are stored unexpanded
+    // and will be resolved at run time by the CLI (env, vars) or server (secrets)
 
     // Check if compose exists for this user + name
     const existing = await globalThis.services.db

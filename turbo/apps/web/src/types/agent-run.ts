@@ -25,8 +25,9 @@ export interface UnifiedRunRequest {
   conversationId?: string; // Conversation to resume from
   artifactName?: string; // Artifact storage name
   artifactVersion?: string; // Artifact version (default: "latest")
-  templateVars?: Record<string, string>; // Template variables
+  templateVars?: Record<string, string>; // Template variables for volume resolution
   volumeVersions?: Record<string, string>; // Volume name -> version overrides
+  environment?: Record<string, string>; // Resolved environment variables (from CLI expansion of ${{ env.X }}, ${{ vars.X }})
 
   // Required
   prompt: string;

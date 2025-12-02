@@ -21,6 +21,7 @@ export interface AgentDefinition {
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   working_dir: string; // Working directory for artifact mount
+  environment?: Record<string, string>; // Environment variables using ${{ env.X }}, ${{ vars.X }}, ${{ secrets.X }} syntax
 }
 
 export interface AgentComposeYaml {

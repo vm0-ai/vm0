@@ -111,6 +111,23 @@ class ApiClient {
     return (await response.json()) as GetComposeResponse;
   }
 
+  async getComposeById(id: string): Promise<GetComposeResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/agent/composes/${id}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || `Compose not found: ${id}`);
+    }
+
+    return (await response.json()) as GetComposeResponse;
+  }
+
   async createOrUpdateCompose(body: {
     config: unknown;
   }): Promise<CreateComposeResponse> {
@@ -146,6 +163,7 @@ class ApiClient {
     artifactVersion?: string;
     templateVars?: Record<string, string>;
     volumeVersions?: Record<string, string>;
+    environment?: Record<string, string>;
     // Required
     prompt: string;
   }): Promise<CreateRunResponse> {

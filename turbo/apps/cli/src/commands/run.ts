@@ -3,6 +3,13 @@ import chalk from "chalk";
 import { apiClient } from "../lib/api-client";
 import { ClaudeEventParser } from "../lib/event-parser";
 import { EventRenderer } from "../lib/event-renderer";
+import {
+  extractVariableReferences,
+  expandVariables,
+  formatMissingVariables,
+  groupVariablesBySource,
+  type VariableSources,
+} from "@vm0/core";
 
 function collectVars(
   value: string,
@@ -40,6 +47,103 @@ function collectVolumeVersions(
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
+}
+
+/**
+ * Interface for agent config structure
+ */
+interface AgentConfig {
+  agents?: Record<
+    string,
+    {
+      environment?: Record<string, string>;
+    }
+  >;
+}
+
+/**
+ * Expand environment variables in agent config
+ * Expands ${{ env.XXX }} from process.env and ${{ vars.xxx }} from --vars options
+ * Returns the resolved environment or undefined if no environment is defined
+ */
+function expandEnvironmentVariables(
+  config: unknown,
+  cliVars: Record<string, string>,
+  verbose?: boolean,
+): Record<string, string> | undefined {
+  const agentConfig = config as AgentConfig;
+  if (!agentConfig?.agents) {
+    return undefined;
+  }
+
+  // Get first agent's environment (currently only one agent supported)
+  const agents = Object.values(agentConfig.agents);
+  const firstAgent = agents[0];
+  if (!firstAgent?.environment) {
+    return undefined;
+  }
+
+  const environment = firstAgent.environment;
+
+  // Extract all variable references
+  const refs = extractVariableReferences(environment);
+  if (refs.length === 0) {
+    // No variables to expand, return as-is
+    return environment;
+  }
+
+  // Build sources for expansion
+  const sources: VariableSources = {
+    env: process.env as Record<string, string | undefined>,
+    vars: cliVars,
+  };
+
+  // Check for secrets references (not supported in CLI expansion)
+  const grouped = groupVariablesBySource(refs);
+  if (grouped.secrets.length > 0) {
+    console.error(chalk.red("✗ Secrets are not yet supported"));
+    console.error(
+      chalk.gray(
+        "  The following secrets are referenced but cannot be expanded:",
+      ),
+    );
+    for (const ref of grouped.secrets) {
+      console.error(chalk.gray(`    - ${ref.name}`));
+    }
+    process.exit(1);
+  }
+
+  // Expand variables
+  const { result, missingVars } = expandVariables(environment, sources);
+
+  // Check for missing variables
+  if (missingVars.length > 0) {
+    console.error(chalk.red("✗ Missing required variables:"));
+    console.error(chalk.gray(formatMissingVariables(missingVars)));
+    console.error();
+
+    // Provide helpful hints
+    const missingGrouped = groupVariablesBySource(missingVars);
+    if (missingGrouped.env.length > 0) {
+      console.error(chalk.gray("Set environment variables:"));
+      for (const ref of missingGrouped.env) {
+        console.error(chalk.gray(`  export ${ref.name}=your-value`));
+      }
+    }
+    if (missingGrouped.vars.length > 0) {
+      console.error(chalk.gray("Pass CLI variables:"));
+      for (const ref of missingGrouped.vars) {
+        console.error(chalk.gray(`  --vars ${ref.name}=your-value`));
+      }
+    }
+    process.exit(1);
+  }
+
+  if (verbose) {
+    console.log(chalk.gray(`  Environment variables expanded: ${refs.length}`));
+  }
+
+  return result;
 }
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
@@ -212,14 +316,26 @@ const runCmd = new Command()
       const verbose = options.verbose;
 
       try {
-        // 1. Resolve identifier to composeId
+        // 1. Resolve identifier to composeId and fetch config
         let composeId: string;
+        let composeConfig: unknown;
 
         if (isUUID(identifier)) {
-          // It's a UUID compose ID - use directly
-          composeId = identifier;
+          // It's a UUID compose ID - fetch compose by ID
           if (verbose) {
-            console.log(chalk.gray(`  Using compose ID: ${composeId}`));
+            console.log(chalk.gray(`  Using compose ID: ${identifier}`));
+          }
+          try {
+            const compose = await apiClient.getComposeById(identifier);
+            composeId = compose.id;
+            composeConfig = compose.config;
+          } catch (error) {
+            if (error instanceof Error) {
+              console.error(
+                chalk.red(`✗ Agent compose not found: ${identifier}`),
+              );
+            }
+            process.exit(1);
           }
         } else {
           // It's an agent name - resolve to compose ID
@@ -229,6 +345,7 @@ const runCmd = new Command()
           try {
             const compose = await apiClient.getComposeByName(identifier);
             composeId = compose.id;
+            composeConfig = compose.config;
             if (verbose) {
               console.log(chalk.gray(`  Resolved to compose ID: ${composeId}`));
             }
@@ -245,7 +362,14 @@ const runCmd = new Command()
           }
         }
 
-        // 2. Display starting message (verbose only)
+        // 2. Expand environment variables from compose config
+        const resolvedEnvironment = expandEnvironmentVariables(
+          composeConfig,
+          options.vars,
+          verbose,
+        );
+
+        // 3. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Creating agent run", [
             { label: "Prompt", value: prompt },
@@ -265,11 +389,17 @@ const runCmd = new Command()
                   ? JSON.stringify(options.volumeVersion)
                   : undefined,
             },
+            {
+              label: "Environment",
+              value: resolvedEnvironment
+                ? `${Object.keys(resolvedEnvironment).length} variables`
+                : undefined,
+            },
             { label: "Conversation", value: options.conversation },
           ]);
         }
 
-        // 3. Call unified API
+        // 4. Call unified API
         const response = await apiClient.createRun({
           agentComposeId: composeId,
           prompt,
@@ -281,10 +411,11 @@ const runCmd = new Command()
             Object.keys(options.volumeVersion).length > 0
               ? options.volumeVersion
               : undefined,
+          environment: resolvedEnvironment,
           conversationId: options.conversation,
         });
 
-        // 4. Poll for events and exit with appropriate code
+        // 5. Poll for events and exit with appropriate code
         const succeeded = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
           startTimestamp,

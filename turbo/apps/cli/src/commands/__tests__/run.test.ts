@@ -19,8 +19,19 @@ describe("run command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
+  const testUuid = "550e8400-e29b-41d4-a716-446655440000";
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Default mock for getComposeById (needed when using UUID)
+    vi.mocked(apiClient.getComposeById).mockResolvedValue({
+      id: testUuid,
+      name: "test-agent",
+      config: { agents: { "test-agent": {} } },
+      createdAt: "2025-01-01T00:00:00Z",
+      updatedAt: "2025-01-01T00:00:00Z",
+    });
 
     // Default mock for ClaudeEventParser
     vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
@@ -46,7 +57,14 @@ describe("run command", () => {
 
   describe("composeId validation", () => {
     it("should accept valid UUID format", async () => {
-      const validUuid = "550e8400-e29b-41d4-a716-446655440000";
+      const validUuid = testUuid;
+      vi.mocked(apiClient.getComposeById).mockResolvedValue({
+        id: validUuid,
+        name: "test-agent",
+        config: { agents: { "test-agent": {} } },
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -79,14 +97,15 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
+      expect(apiClient.getComposeById).toHaveBeenCalledWith(validUuid);
       expect(apiClient.createRun).toHaveBeenCalled();
     });
 
     it("should accept and resolve agent names", async () => {
       vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
+        id: testUuid,
         name: "my-agent",
-        config: {},
+        config: { agents: { "my-agent": {} } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -124,11 +143,14 @@ describe("run command", () => {
 
       expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         templateVars: undefined,
+        volumeVersions: undefined,
+        environment: undefined,
+        conversationId: undefined,
       });
     });
 
@@ -188,7 +210,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -197,11 +219,14 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         templateVars: { KEY1: "value1" },
+        volumeVersions: undefined,
+        environment: undefined,
+        conversationId: undefined,
       });
     });
 
@@ -209,7 +234,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -220,11 +245,14 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         templateVars: { KEY1: "value1", KEY2: "value2" },
+        volumeVersions: undefined,
+        environment: undefined,
+        conversationId: undefined,
       });
     });
 
@@ -232,7 +260,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -241,11 +269,14 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         templateVars: { URL: "https://example.com?foo=bar" },
+        volumeVersions: undefined,
+        environment: undefined,
+        conversationId: undefined,
       });
     });
 
@@ -254,7 +285,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -269,7 +300,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -284,7 +315,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -298,18 +329,21 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
       ]);
 
       expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         templateVars: undefined,
+        volumeVersions: undefined,
+        environment: undefined,
+        conversationId: undefined,
       });
     });
   });
@@ -344,7 +378,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -372,7 +406,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -396,7 +430,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -423,7 +457,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -448,7 +482,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -473,7 +507,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -493,7 +527,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -536,7 +570,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -551,7 +585,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -567,7 +601,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -587,7 +621,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -607,7 +641,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -626,7 +660,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -715,7 +749,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -761,7 +795,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -805,7 +839,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -865,7 +899,7 @@ describe("run command", () => {
       await runCommand.parseAsync([
         "node",
         "cli",
-        "550e8400-e29b-41d4-a716-446655440000",
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -905,7 +939,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "550e8400-e29b-41d4-a716-446655440000",
+          testUuid,
           "test prompt",
           "--artifact-name",
           "test-artifact",
