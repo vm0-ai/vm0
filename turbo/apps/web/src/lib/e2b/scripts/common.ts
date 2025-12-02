@@ -15,6 +15,13 @@ RESUME_SESSION_ID="\${VM0_RESUME_SESSION_ID:-}"
 
 # Working directory is required - no fallback allowed
 WORKING_DIR="\${VM0_WORKING_DIR}"
+
+# Debug: Print all VM0_ environment variables
+echo "[DEBUG] VM0 environment variables:" >&2
+env | grep VM0_ >&2 || echo "[DEBUG] No VM0_ environment variables found" >&2
+echo "[DEBUG] VM0_WORKING_DIR raw value: '\${VM0_WORKING_DIR}'" >&2
+echo "[DEBUG] WORKING_DIR after assignment: '$WORKING_DIR'" >&2
+
 if [ -z "$WORKING_DIR" ]; then
   echo "[ERROR] VM0_WORKING_DIR is required but not set" >&2
   exit 1
