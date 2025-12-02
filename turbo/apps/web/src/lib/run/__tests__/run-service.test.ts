@@ -80,7 +80,7 @@ describe("RunService", () => {
       );
 
       expect(context.runId).toBe("run-123");
-      expect(context.agentComposeId).toBe("compose-456");
+      expect(context.agentComposeVersionId).toBe("compose-456");
       expect(context.prompt).toBe("test prompt");
       expect(context.sandboxToken).toBe("sandbox-token");
       expect(context.templateVars).toEqual({ userId: "user-1" });
@@ -123,16 +123,16 @@ describe("RunService", () => {
     });
 
     describe("new run mode", () => {
-      test("builds context for new run with agentComposeId", async () => {
+      test("builds context for new run with agentComposeVersionId", async () => {
         const mockCompose = {
           id: "compose-123",
-          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
+          content: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         mockDbSelect.mockResolvedValueOnce([mockCompose]);
 
         const context = await runService.buildExecutionContext({
-          agentComposeId: "compose-123",
+          agentComposeVersionId: "compose-123",
           prompt: "test prompt",
           runId: "run-123",
           sandboxToken: "token",
@@ -144,7 +144,7 @@ describe("RunService", () => {
         });
 
         expect(context.runId).toBe("run-123");
-        expect(context.agentComposeId).toBe("compose-123");
+        expect(context.agentComposeVersionId).toBe("compose-123");
         expect(context.prompt).toBe("test prompt");
         expect(context.artifactName).toBe("artifact-1");
         expect(context.artifactVersion).toBe("v1");
@@ -159,7 +159,7 @@ describe("RunService", () => {
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "non-existent",
+            agentComposeVersionId: "non-existent",
             prompt: "test",
             runId: "run-123",
             sandboxToken: "token",
@@ -168,7 +168,7 @@ describe("RunService", () => {
         ).rejects.toThrow(NotFoundError);
       });
 
-      test("throws NotFoundError when no agentComposeId provided for new run", async () => {
+      test("throws NotFoundError when no agentComposeVersionId provided for new run", async () => {
         await expect(
           runService.buildExecutionContext({
             prompt: "test",
@@ -186,7 +186,7 @@ describe("RunService", () => {
         runId: "original-run-123",
         conversationId: "conv-123",
         agentComposeSnapshot: {
-          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
+          agentComposeVersionId: "version-123",
           templateVars: { existing: "var" },
         },
         artifactSnapshot: {
@@ -201,7 +201,12 @@ describe("RunService", () => {
       const mockOriginalRun = {
         id: "original-run-123",
         userId: "user-1",
-        agentComposeId: "compose-123",
+        agentComposeVersionId: "version-123",
+      };
+
+      const mockVersion = {
+        id: "version-123",
+        content: { agents: { "test-agent": { working_dir: "/workspace" } } },
       };
 
       const mockConversation = {
@@ -214,7 +219,8 @@ describe("RunService", () => {
         mockDbSelect
           .mockResolvedValueOnce([mockCheckpoint])
           .mockResolvedValueOnce([mockOriginalRun])
-          .mockResolvedValueOnce([mockConversation]);
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockVersion]); // version lookup after conversation
 
         const context = await runService.buildExecutionContext({
           checkpointId: "checkpoint-123",
@@ -225,7 +231,7 @@ describe("RunService", () => {
         });
 
         expect(context.runId).toBe("run-new");
-        expect(context.agentComposeId).toBe("compose-123");
+        expect(context.agentComposeVersionId).toBe("version-123");
         expect(context.prompt).toBe("new prompt");
         expect(context.artifactName).toBe("snapshot-artifact");
         expect(context.artifactVersion).toBe("snapshot-v1");
@@ -248,7 +254,8 @@ describe("RunService", () => {
         mockDbSelect
           .mockResolvedValueOnce([mockCheckpoint])
           .mockResolvedValueOnce([mockOriginalRun])
-          .mockResolvedValueOnce([mockConversation]);
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockVersion]); // version lookup after conversation
 
         const context = await runService.buildExecutionContext({
           checkpointId: "checkpoint-123",
@@ -317,7 +324,7 @@ describe("RunService", () => {
         const mockSession = {
           id: "session-123",
           userId: "user-1",
-          agentComposeId: "compose-123",
+          agentComposeId: "compose-123", // Session has compose ID, not version ID
           artifactName: "session-artifact",
           templateVars: { session: "var" },
           conversationId: "conv-123",
@@ -329,13 +336,19 @@ describe("RunService", () => {
 
         const mockCompose = {
           id: "compose-123",
-          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
+          headVersionId: "version-123", // Compose has headVersionId
+        };
+
+        const mockVersion = {
+          id: "version-123",
+          content: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         vi.mocked(
           agentSessionService.getByIdWithConversation,
         ).mockResolvedValueOnce(mockSession as never);
-        mockDbSelect.mockResolvedValueOnce([mockCompose]);
+        mockDbSelect.mockResolvedValueOnce([mockCompose]); // First: compose lookup
+        mockDbSelect.mockResolvedValueOnce([mockVersion]); // Second: version lookup
 
         const context = await runService.buildExecutionContext({
           sessionId: "session-123",
@@ -353,7 +366,7 @@ describe("RunService", () => {
         const mockSession = {
           id: "session-123",
           userId: "user-1",
-          agentComposeId: "compose-123",
+          agentComposeId: "compose-123", // Session has compose ID, not version ID
           artifactName: "session-artifact",
           templateVars: null,
           conversationId: "conv-123",
@@ -365,13 +378,19 @@ describe("RunService", () => {
 
         const mockCompose = {
           id: "compose-123",
-          config: { agents: { "test-agent": { working_dir: "/workspace" } } },
+          headVersionId: "version-123", // Compose has headVersionId
+        };
+
+        const mockVersion = {
+          id: "version-123",
+          content: { agents: { "test-agent": { working_dir: "/workspace" } } },
         };
 
         vi.mocked(
           agentSessionService.getByIdWithConversation,
         ).mockResolvedValueOnce(mockSession as never);
-        mockDbSelect.mockResolvedValueOnce([mockCompose]);
+        mockDbSelect.mockResolvedValueOnce([mockCompose]); // First: compose lookup
+        mockDbSelect.mockResolvedValueOnce([mockVersion]); // Second: version lookup
 
         const context = await runService.buildExecutionContext({
           sessionId: "session-123",
@@ -405,7 +424,7 @@ describe("RunService", () => {
         const mockSession = {
           id: "session-123",
           userId: "different-user",
-          agentComposeId: "compose-123",
+          agentComposeVersionId: "compose-123",
         };
 
         vi.mocked(
@@ -427,7 +446,7 @@ describe("RunService", () => {
         const mockSession = {
           id: "session-123",
           userId: "user-1",
-          agentComposeId: "compose-123",
+          agentComposeVersionId: "compose-123",
           conversation: null,
         };
 
@@ -458,12 +477,12 @@ describe("RunService", () => {
       const mockOriginalRun = {
         id: "original-run-123",
         userId: "user-1",
-        agentComposeId: "compose-123",
+        agentComposeVersionId: "compose-123",
       };
 
       const mockCompose = {
         id: "compose-123",
-        config: { agents: { "test-agent": { working_dir: "/workspace" } } },
+        content: { agents: { "test-agent": { working_dir: "/workspace" } } },
       };
 
       test("builds context with resumeSession when conversationId provided directly", async () => {
@@ -473,7 +492,7 @@ describe("RunService", () => {
           .mockResolvedValueOnce([mockCompose]);
 
         const context = await runService.buildExecutionContext({
-          agentComposeId: "compose-123",
+          agentComposeVersionId: "compose-123",
           conversationId: "conv-123",
           prompt: "continue prompt",
           runId: "run-new",
@@ -484,7 +503,7 @@ describe("RunService", () => {
         });
 
         expect(context.runId).toBe("run-new");
-        expect(context.agentComposeId).toBe("compose-123");
+        expect(context.agentComposeVersionId).toBe("compose-123");
         expect(context.prompt).toBe("continue prompt");
         expect(context.artifactName).toBe("artifact-1");
         expect(context.artifactVersion).toBe("v1");
@@ -500,7 +519,7 @@ describe("RunService", () => {
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "compose-123",
+            agentComposeVersionId: "compose-123",
             conversationId: "non-existent",
             prompt: "test",
             runId: "run-123",
@@ -517,7 +536,7 @@ describe("RunService", () => {
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "compose-123",
+            agentComposeVersionId: "compose-123",
             conversationId: "conv-123",
             prompt: "test",
             runId: "run-123",
@@ -535,7 +554,7 @@ describe("RunService", () => {
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "non-existent-compose",
+            agentComposeVersionId: "non-existent-compose",
             conversationId: "conv-123",
             prompt: "test",
             runId: "run-123",
@@ -548,7 +567,7 @@ describe("RunService", () => {
       test("throws error when compose has no agents configured", async () => {
         const composeWithoutAgents = {
           id: "compose-123",
-          config: {},
+          content: {},
         };
 
         mockDbSelect
@@ -558,7 +577,7 @@ describe("RunService", () => {
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "compose-123",
+            agentComposeVersionId: "compose-123",
             conversationId: "conv-123",
             prompt: "test",
             runId: "run-new",
@@ -569,9 +588,9 @@ describe("RunService", () => {
       });
 
       test("throws error when agent has no working_dir", async () => {
-        const composeWithoutWorkingDir = {
+        const versionWithoutWorkingDir = {
           id: "compose-123",
-          config: {
+          content: {
             agents: {
               "test-agent": {
                 image: "test-image",
@@ -584,11 +603,11 @@ describe("RunService", () => {
         mockDbSelect
           .mockResolvedValueOnce([mockConversation])
           .mockResolvedValueOnce([mockOriginalRun])
-          .mockResolvedValueOnce([composeWithoutWorkingDir]);
+          .mockResolvedValueOnce([versionWithoutWorkingDir]);
 
         await expect(
           runService.buildExecutionContext({
-            agentComposeId: "compose-123",
+            agentComposeVersionId: "compose-123",
             conversationId: "conv-123",
             prompt: "test",
             runId: "run-new",
@@ -599,9 +618,9 @@ describe("RunService", () => {
       });
 
       test("uses configured working_dir from agent", async () => {
-        const composeWithCustomWorkingDir = {
+        const versionWithCustomWorkingDir = {
           id: "compose-123",
-          config: {
+          content: {
             agents: {
               "test-agent": {
                 image: "test-image",
@@ -615,10 +634,10 @@ describe("RunService", () => {
         mockDbSelect
           .mockResolvedValueOnce([mockConversation])
           .mockResolvedValueOnce([mockOriginalRun])
-          .mockResolvedValueOnce([composeWithCustomWorkingDir]);
+          .mockResolvedValueOnce([versionWithCustomWorkingDir]);
 
         const context = await runService.buildExecutionContext({
-          agentComposeId: "compose-123",
+          agentComposeVersionId: "compose-123",
           conversationId: "conv-123",
           prompt: "test",
           runId: "run-new",

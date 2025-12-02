@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
-import { agentComposes } from "../../db/schema/agent-compose";
+import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
@@ -13,7 +13,6 @@ import type {
   ArtifactSnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
-import type { AgentComposeYaml } from "../../types/agent-compose";
 
 const log = logger("service:checkpoint");
 
@@ -45,15 +44,15 @@ export class CheckpointService {
       throw new NotFoundError("Agent run");
     }
 
-    // Fetch agent compose to create snapshot
-    const [compose] = await globalThis.services.db
+    // Fetch agent compose version to get composeId for session
+    const [version] = await globalThis.services.db
       .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, run.agentComposeId))
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
       .limit(1);
 
-    if (!compose) {
-      throw new NotFoundError("Agent compose");
+    if (!version) {
+      throw new NotFoundError("Agent compose version");
     }
 
     log.debug(
@@ -79,9 +78,9 @@ export class CheckpointService {
       `Conversation created: ${conversation.id}, storing checkpoint...`,
     );
 
-    // Build agent compose snapshot
+    // Build agent compose snapshot using version ID for reproducibility
     const agentComposeSnapshot: AgentComposeSnapshot = {
-      config: compose.config as AgentComposeYaml,
+      agentComposeVersionId: run.agentComposeVersionId,
       templateVars: (run.templateVars as Record<string, string>) || undefined,
     };
 
@@ -114,13 +113,14 @@ export class CheckpointService {
 
     log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
-    // Find or create agent session
+    // Find or create agent session using compose ID (not version ID)
+    // Sessions track the mutable compose, not a specific version
     const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
     const templateVars =
       (run.templateVars as Record<string, string>) || undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
-      run.agentComposeId,
+      version.composeId,
       artifactSnapshot.artifactName,
       conversation.id,
       templateVars,

@@ -71,8 +71,8 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getResponse.status).toBe(200);
     expect(getData.id).toBe(createData.composeId);
     expect(getData.name).toBe("test-get-by-name-success");
-    expect(getData.config.agents["test-get-by-name-success"]).toBeDefined();
-    expect(getData.config.agents["test-get-by-name-success"].description).toBe(
+    expect(getData.content.agents["test-get-by-name-success"]).toBeDefined();
+    expect(getData.content.agents["test-get-by-name-success"].description).toBe(
       "Test description",
     );
     expect(getData.createdAt).toBeDefined();

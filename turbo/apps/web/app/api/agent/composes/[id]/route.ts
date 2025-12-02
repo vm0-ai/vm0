@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
@@ -18,7 +21,7 @@ import type {
 
 /**
  * GET /api/agent/composes/:id
- * Get agent compose by ID
+ * Get agent compose by ID with HEAD version content
  */
 export async function GET(
   request: NextRequest,
@@ -48,11 +51,26 @@ export async function GET(
       throw new NotFoundError("Agent compose");
     }
 
+    // Get HEAD version content if available
+    let content: AgentComposeYaml | null = null;
+    if (compose.headVersionId) {
+      const versions = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (versions.length > 0 && versions[0]) {
+        content = versions[0].content as AgentComposeYaml;
+      }
+    }
+
     // Return response
     const response: GetAgentComposeResponse = {
       id: compose.id,
       name: compose.name,
-      config: compose.config as AgentComposeYaml,
+      headVersionId: compose.headVersionId,
+      content,
       createdAt: compose.createdAt.toISOString(),
       updatedAt: compose.updatedAt.toISOString(),
     };

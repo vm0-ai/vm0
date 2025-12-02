@@ -15,7 +15,10 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
-import { agentComposes } from "../../../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../../../src/db/schema/agent-compose";
 import { cliTokens } from "../../../../../../../src/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -41,6 +44,8 @@ describe("GET /api/agent/runs/:id/events", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID(); // UUID for agent run
   const testComposeId = randomUUID(); // UUID for agent config
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -71,6 +76,10 @@ describe("GET /api/agent/runs/:id/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
@@ -79,21 +88,33 @@ describe("GET /api/agent/runs/:id/events", () => {
       id: testComposeId,
       userId: testUserId,
       name: "test-agent",
-      config: {
-        agent: {
-          name: "test-agent",
-          model: "claude-3-5-sonnet-20241022",
-        },
-      },
+      headVersionId: testVersionId,
       createdAt: new Date(),
       updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
+        agents: {
+          "test-agent": {
+            name: "test-agent",
+            model: "claude-3-5-sonnet-20241022",
+            working_dir: "/workspace",
+          },
+        },
+      },
+      createdBy: testUserId,
+      createdAt: new Date(),
     });
 
     // Create test agent run
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
-      agentComposeId: testComposeId,
+      agentComposeVersionId: testVersionId,
       status: "running",
       prompt: "Test prompt",
       createdAt: new Date(),
@@ -110,6 +131,10 @@ describe("GET /api/agent/runs/:id/events", () => {
     await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -177,27 +202,41 @@ describe("GET /api/agent/runs/:id/events", () => {
       const otherUserId = `other-user-${Date.now()}-${process.pid}`;
       const otherRunId = randomUUID();
       const otherComposeId = randomUUID();
+      const otherVersionId =
+        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
 
       // Create config for other user
       await globalThis.services.db.insert(agentComposes).values({
         id: otherComposeId,
         userId: otherUserId,
         name: "other-agent",
-        config: {
-          agent: {
-            name: "other-agent",
-            model: "claude-3-5-sonnet-20241022",
-          },
-        },
+        headVersionId: otherVersionId,
         createdAt: new Date(),
         updatedAt: new Date(),
+      });
+
+      // Create version for other user
+      await globalThis.services.db.insert(agentComposeVersions).values({
+        id: otherVersionId,
+        composeId: otherComposeId,
+        content: {
+          agents: {
+            "other-agent": {
+              name: "other-agent",
+              model: "claude-3-5-sonnet-20241022",
+              working_dir: "/workspace",
+            },
+          },
+        },
+        createdBy: otherUserId,
+        createdAt: new Date(),
       });
 
       // Create run owned by different user
       await globalThis.services.db.insert(agentRuns).values({
         id: otherRunId,
         userId: otherUserId,
-        agentComposeId: otherComposeId,
+        agentComposeVersionId: otherVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -222,6 +261,9 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db
         .delete(agentRuns)
         .where(eq(agentRuns.id, otherRunId));
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, otherVersionId));
       await globalThis.services.db
         .delete(agentComposes)
         .where(eq(agentComposes.id, otherComposeId));

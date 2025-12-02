@@ -3,7 +3,7 @@
  */
 
 export interface CreateAgentRunRequest {
-  agentComposeId: string;
+  agentComposeVersionId: string; // Immutable compose version ID (SHA-256 hash)
   prompt: string;
   templateVars?: Record<string, string>;
   artifactName: string; // Required: artifact storage name
@@ -21,7 +21,8 @@ export interface UnifiedRunRequest {
   sessionId?: string; // Expand session parameters (artifact version forced to "latest")
 
   // Base parameters (can be used directly or overridden after shortcut expansion)
-  agentComposeId?: string; // Agent compose ID
+  agentComposeId?: string; // Agent compose ID (resolves to HEAD version)
+  agentComposeVersionId?: string; // Explicit compose version ID (SHA-256 hash)
   conversationId?: string; // Conversation to resume from
   artifactName?: string; // Artifact storage name
   artifactVersion?: string; // Artifact version (default: "latest")
@@ -44,7 +45,7 @@ export interface CreateAgentRunResponse {
 
 export interface GetAgentRunResponse {
   runId: string;
-  agentComposeId: string;
+  agentComposeVersionId: string; // Immutable compose version ID
   status: "pending" | "running" | "completed" | "failed";
   prompt: string;
   templateVars?: Record<string, string>;

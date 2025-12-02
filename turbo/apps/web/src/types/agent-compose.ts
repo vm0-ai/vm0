@@ -30,27 +30,40 @@ export interface AgentComposeYaml {
 }
 
 /**
- * Database record type
+ * Database record type for compose metadata
  */
 export interface AgentComposeRecord {
   id: string;
-  apiKeyId: string;
-  config: AgentComposeYaml;
+  userId: string;
+  name: string;
+  headVersionId: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Database record type for compose version (immutable)
+ */
+export interface AgentComposeVersionRecord {
+  id: string; // SHA-256 hash
+  composeId: string;
+  content: AgentComposeYaml;
+  createdBy: string;
+  createdAt: Date;
 }
 
 /**
  * API request/response types
  */
 export interface CreateAgentComposeRequest {
-  config: AgentComposeYaml;
+  content: AgentComposeYaml;
 }
 
 export interface CreateAgentComposeResponse {
   composeId: string;
   name: string;
-  action: "created" | "updated";
+  versionId: string;
+  action: "created" | "existing";
   createdAt?: string;
   updatedAt?: string;
 }
@@ -58,7 +71,20 @@ export interface CreateAgentComposeResponse {
 export interface GetAgentComposeResponse {
   id: string;
   name: string;
-  config: AgentComposeYaml;
+  headVersionId: string | null;
+  content: AgentComposeYaml | null; // null if no versions exist
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Response type for getting a specific version
+ */
+export interface GetAgentComposeVersionResponse {
+  versionId: string;
+  composeId: string;
+  composeName: string;
+  content: AgentComposeYaml;
+  createdBy: string;
+  createdAt: string;
 }

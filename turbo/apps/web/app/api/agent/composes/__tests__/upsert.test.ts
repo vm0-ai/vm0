@@ -57,7 +57,8 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(data.action).toBe("created");
       expect(data.name).toBe("test-agent-create");
       expect(data.composeId).toBeDefined();
-      expect(data.createdAt).toBeDefined();
+      expect(data.versionId).toBeDefined();
+      expect(data.updatedAt).toBeDefined();
     });
 
     it("should update existing compose when name matches", async () => {
@@ -111,8 +112,9 @@ describe("Agent Compose Upsert Behavior", () => {
       const data2 = await response2.json();
 
       expect(response2.status).toBe(200);
-      expect(data2.action).toBe("updated");
-      expect(data2.composeId).toBe(composeId); // Same ID
+      expect(data2.action).toBe("created"); // New version created (different content hash)
+      expect(data2.composeId).toBe(composeId); // Same compose ID
+      expect(data2.versionId).not.toBe(data1.versionId); // Different version (different content)
       expect(data2.name).toBe("test-agent-update");
       expect(data2.updatedAt).toBeDefined();
 
@@ -129,7 +131,7 @@ describe("Agent Compose Upsert Behavior", () => {
       });
       const composeData = await getResponse.json();
 
-      expect(composeData.config.agents["test-agent-update"].description).toBe(
+      expect(composeData.content.agents["test-agent-update"].description).toBe(
         "Updated description",
       );
     });
@@ -330,7 +332,7 @@ describe("Agent Compose Upsert Behavior", () => {
       const getData = await getResponse.json();
 
       expect(getData.name).toBe("test-get-compose");
-      expect(getData.config.agents["test-get-compose"]).toBeDefined();
+      expect(getData.content.agents["test-get-compose"]).toBeDefined();
 
       // Cleanup
       await globalThis.services.db
