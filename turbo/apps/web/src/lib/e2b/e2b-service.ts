@@ -592,14 +592,6 @@ export class E2BService {
   }
 
   /**
-   * Upload all agent scripts to sandbox (legacy method for backward compatibility)
-   * @deprecated Use uploadAllScripts instead
-   */
-  private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
-    return this.uploadAllScripts(sandbox);
-  }
-
-  /**
    * Start agent execution (fire-and-forget)
    * Starts run-agent.sh in background without waiting
    * NOTE: Scripts must already be uploaded via uploadAllScripts() before calling this method
