@@ -248,7 +248,7 @@ export class ClaudeEventParser {
   private static parseVm0StartEvent(event: Vm0StartEvent): ParsedEvent | null {
     return {
       type: "vm0_start",
-      timestamp: new Date(event.timestamp),
+      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
       data: {
         runId: event.runId,
         agentComposeId: event.agentComposeId,
@@ -268,7 +268,7 @@ export class ClaudeEventParser {
   ): ParsedEvent | null {
     return {
       type: "vm0_result",
-      timestamp: new Date(event.timestamp),
+      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
       data: {
         runId: event.runId,
         checkpointId: event.checkpointId,
@@ -283,7 +283,7 @@ export class ClaudeEventParser {
   private static parseVm0ErrorEvent(event: Vm0ErrorEvent): ParsedEvent | null {
     return {
       type: "vm0_error",
-      timestamp: new Date(event.timestamp),
+      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
       data: {
         runId: event.runId,
         error: event.error,
