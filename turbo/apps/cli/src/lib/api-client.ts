@@ -64,6 +64,11 @@ export interface GetEventsResponse {
   nextSequence: number;
 }
 
+export interface GetComposeVersionResponse {
+  versionId: string;
+  tag?: string;
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -113,6 +118,33 @@ class ApiClient {
     return (await response.json()) as GetComposeResponse;
   }
 
+  /**
+   * Resolve a version specifier to a full version ID
+   * Supports: "latest", full hash (64 chars), or hash prefix (8+ chars)
+   */
+  async getComposeVersion(
+    composeId: string,
+    version: string,
+  ): Promise<GetComposeVersionResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(
+      `${baseUrl}/api/agent/composes/versions?composeId=${encodeURIComponent(composeId)}&version=${encodeURIComponent(version)}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || `Version not found: ${version}`);
+    }
+
+    return (await response.json()) as GetComposeVersionResponse;
+  }
+
   async createOrUpdateCompose(body: {
     content: unknown;
   }): Promise<CreateComposeResponse> {
@@ -143,6 +175,7 @@ class ApiClient {
     sessionId?: string;
     // Base parameters
     agentComposeId?: string;
+    agentComposeVersionId?: string;
     conversationId?: string;
     artifactName?: string;
     artifactVersion?: string;
