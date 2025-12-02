@@ -18,7 +18,6 @@ import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import { computeComposeVersionId } from "../agent-compose/content-hash";
 
 const log = logger("service:run");
 
@@ -132,42 +131,25 @@ export class RunService {
     const checkpointVolumeVersions =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
-    // Handle backward compatibility: old snapshots have 'config', new ones have 'agentComposeVersionId'
-    // Cast to handle both old and new format
-    const legacySnapshot = agentComposeSnapshot as unknown as {
-      config?: AgentComposeYaml;
-      agentComposeVersionId?: string;
-    };
-
-    let agentComposeVersionId: string;
-    let agentCompose: AgentComposeYaml;
-
-    if (legacySnapshot.agentComposeVersionId) {
-      // New format: lookup content from version table
-      agentComposeVersionId = legacySnapshot.agentComposeVersionId;
-      const [version] = await globalThis.services.db
-        .select()
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, agentComposeVersionId))
-        .limit(1);
-
-      if (!version) {
-        throw new NotFoundError(
-          `Agent compose version ${agentComposeVersionId}`,
-        );
-      }
-      agentCompose = version.content as AgentComposeYaml;
-    } else if (legacySnapshot.config) {
-      // Legacy format: compute version ID from embedded config
-      agentCompose = legacySnapshot.config;
-      agentComposeVersionId =
-        originalRun.agentComposeVersionId ||
-        computeComposeVersionId(agentCompose);
-    } else {
+    // Get version ID from snapshot
+    const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
+    if (!agentComposeVersionId) {
       throw new BadRequestError(
-        "Invalid checkpoint: missing both agentComposeVersionId and config",
+        "Invalid checkpoint: missing agentComposeVersionId",
       );
     }
+
+    // Lookup content from version table
+    const [version] = await globalThis.services.db
+      .select()
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, agentComposeVersionId))
+      .limit(1);
+
+    if (!version) {
+      throw new NotFoundError(`Agent compose version ${agentComposeVersionId}`);
+    }
+    const agentCompose = version.content as AgentComposeYaml;
 
     return {
       conversationId: checkpoint.conversationId,
@@ -404,29 +386,14 @@ export class RunService {
       );
     }
 
-    // Get version ID - handle backward compatibility
+    // Get version ID from snapshot
     const agentComposeSnapshot =
       checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
 
-    // Cast to handle both old and new format
-    const legacySnapshot = agentComposeSnapshot as unknown as {
-      config?: AgentComposeYaml;
-      agentComposeVersionId?: string;
-    };
-
-    let agentComposeVersionId: string;
-
-    if (legacySnapshot.agentComposeVersionId) {
-      // New format: use version ID directly
-      agentComposeVersionId = legacySnapshot.agentComposeVersionId;
-    } else if (legacySnapshot.config) {
-      // Legacy format: compute version ID from embedded config
-      agentComposeVersionId =
-        originalRun.agentComposeVersionId ||
-        computeComposeVersionId(legacySnapshot.config);
-    } else {
+    const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
+    if (!agentComposeVersionId) {
       throw new BadRequestError(
-        "Invalid checkpoint: missing both agentComposeVersionId and config",
+        "Invalid checkpoint: missing agentComposeVersionId",
       );
     }
 

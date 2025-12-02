@@ -25,9 +25,8 @@ ALTER TABLE "agent_composes" ADD COLUMN "head_version_id" VARCHAR(64);
 ALTER TABLE "agent_runs" ADD COLUMN "agent_compose_version_id" VARCHAR(64);
 
 -- Step 5: Add foreign key constraint to agent_runs
--- Note: We'll add the foreign key after data migration to avoid constraint violations
--- ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_agent_compose_version_id_fkey"
---   FOREIGN KEY ("agent_compose_version_id") REFERENCES "agent_compose_versions"("id");
+ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_agent_compose_version_id_fkey"
+  FOREIGN KEY ("agent_compose_version_id") REFERENCES "agent_compose_versions"("id");
 
 -- Step 6: Drop old config column from agent_composes
 ALTER TABLE "agent_composes" DROP COLUMN IF EXISTS "config";
