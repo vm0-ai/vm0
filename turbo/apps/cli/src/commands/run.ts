@@ -48,13 +48,18 @@ interface PollOptions {
   verbose?: boolean;
 }
 
+/**
+ * Poll for events until vm0_result or vm0_error is received
+ * @returns true if run succeeded (vm0_result), false if run failed (vm0_error)
+ */
 async function pollEvents(
   runId: string,
   timeoutSeconds: number,
   options?: PollOptions,
-): Promise<void> {
+): Promise<boolean> {
   let nextSequence = -1;
   let complete = false;
+  let runSucceeded = true;
   const pollIntervalMs = 500;
   const timeoutMs = timeoutSeconds * 1000;
   const startTime = Date.now();
@@ -94,8 +99,12 @@ async function pollEvents(
         previousTimestamp = parsed.timestamp;
 
         // Complete when we receive vm0_result or vm0_error
-        if (parsed.type === "vm0_result" || parsed.type === "vm0_error") {
+        if (parsed.type === "vm0_result") {
           complete = true;
+          runSucceeded = true;
+        } else if (parsed.type === "vm0_error") {
+          complete = true;
+          runSucceeded = false;
         }
       }
     }
@@ -107,6 +116,8 @@ async function pollEvents(
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   }
+
+  return runSucceeded;
 }
 
 /**
@@ -270,8 +281,13 @@ const runCmd = new Command()
           conversationId: options.conversation,
         });
 
-        // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds, { verbose });
+        // 4. Poll for events and exit with appropriate code
+        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+          verbose,
+        });
+        if (!succeeded) {
+          process.exit(1);
+        }
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -372,8 +388,13 @@ runCmd
               : undefined,
         });
 
-        // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds, { verbose });
+        // 4. Poll for events and exit with appropriate code
+        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+          verbose,
+        });
+        if (!succeeded) {
+          process.exit(1);
+        }
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -474,8 +495,13 @@ runCmd
               : undefined,
         });
 
-        // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds, { verbose });
+        // 4. Poll for events and exit with appropriate code
+        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+          verbose,
+        });
+        if (!succeeded) {
+          process.exit(1);
+        }
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {

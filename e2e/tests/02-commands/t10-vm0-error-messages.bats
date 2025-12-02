@@ -51,9 +51,8 @@ teardown() {
         --timeout 120 \
         "@fail:Error: Could not resume session 'test-session': Session history file not found"
 
-    # Note: CLI currently returns success when it successfully receives events
-    # (including vm0_error). The important thing is the error MESSAGE content.
-    assert_success
+    # CLI should exit with non-zero code when agent fails (vm0_error received)
+    assert_failure
 
     # Step 3: Verify error message contains the detailed stderr content
     echo "# Step 3: Verifying error message..."
