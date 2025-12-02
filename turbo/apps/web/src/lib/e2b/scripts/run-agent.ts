@@ -117,17 +117,24 @@ else
   CLAUDE_BIN="claude"
 fi
 
-# Execute Claude and write output to file (for watch-agent to stream)
-# Use stdbuf to disable buffering so lines are written immediately
-# Also process output for session ID extraction and result display
-"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$ERRORS_LOG_FILE" | stdbuf -oL tee "$AGENT_LOG_FILE" | while IFS= read -r line; do
-  # Skip empty lines
+# Execute Claude and process output
+# - Send events to webhook in real-time
+# - Write to log file for metrics watcher
+# - Extract session ID for checkpoint
+"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$ERRORS_LOG_FILE" | while IFS= read -r line; do
+  # Write to log file (for watch-log.sh to read errors if any)
+  echo "$line" >> "$AGENT_LOG_FILE"
+
+  # Skip empty lines for processing
   if [ -z "$line" ]; then
     continue
   fi
 
   # Check if line is valid JSON (stdout should only contain JSONL)
   if echo "$line" | jq empty 2>/dev/null; then
+    # Send event to webhook immediately
+    send_event "$line"
+
     # Extract session ID from init event (needed for checkpoint)
     event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
     event_subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
