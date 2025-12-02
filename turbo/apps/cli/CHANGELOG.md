@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/vm0-ai/vm0/compare/cli-v3.1.0...cli-v3.2.0) (2025-12-02)
+
+
+### Features
+
+* capture stderr for detailed error messages in vm0_error ([#348](https://github.com/vm0-ai/vm0/issues/348)) ([e961a6f](https://github.com/vm0-ai/vm0/commit/e961a6f1d0edbaab2fcfd065ca7cf1158e3f34c6))
+
 ## [3.1.0](https://github.com/vm0-ai/vm0/compare/cli-v3.0.0...cli-v3.1.0) (2025-12-02)
 
 

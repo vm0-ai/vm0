@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.1.0](https://github.com/vm0-ai/vm0/compare/web-v4.0.1...web-v4.1.0) (2025-12-02)
+
+
+### Features
+
+* capture stderr for detailed error messages in vm0_error ([#348](https://github.com/vm0-ai/vm0/issues/348)) ([e961a6f](https://github.com/vm0-ai/vm0/commit/e961a6f1d0edbaab2fcfd065ca7cf1158e3f34c6))
+
+
+### Bug Fixes
+
+* session resume fails due to agents dict being treated as array ([#347](https://github.com/vm0-ai/vm0/issues/347)) ([8bad8d9](https://github.com/vm0-ai/vm0/commit/8bad8d942621a881ffec1f8bf3452e4b004d7711))
+
 ## [4.0.1](https://github.com/vm0-ai/vm0/compare/web-v4.0.0...web-v4.0.1) (2025-12-02)
 
 
