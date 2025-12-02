@@ -22,7 +22,6 @@ import {
   DOWNLOAD_STORAGES_SCRIPT,
   INCREMENTAL_UPLOAD_SCRIPT,
   COLLECT_METRIC_SCRIPT,
-  WATCH_AGENT_SCRIPT,
   WATCH_LOG_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
@@ -435,7 +434,6 @@ export class E2BService {
       },
       // Metrics collection scripts
       { content: COLLECT_METRIC_SCRIPT, path: SCRIPT_PATHS.collectMetric },
-      { content: WATCH_AGENT_SCRIPT, path: SCRIPT_PATHS.watchAgent },
       { content: WATCH_LOG_SCRIPT, path: SCRIPT_PATHS.watchLog },
     ];
 
