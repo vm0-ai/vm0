@@ -22,6 +22,7 @@ describe("content-hash", () => {
         agents: {
           "test-agent": {
             image: "test-image",
+            provider: "e2b",
             working_dir: "/workspace",
           },
         },
@@ -39,6 +40,7 @@ describe("content-hash", () => {
         agents: {
           "my-agent": {
             image: "ubuntu",
+            provider: "e2b",
             working_dir: "/home",
           },
         },
@@ -49,6 +51,7 @@ describe("content-hash", () => {
         agents: {
           "my-agent": {
             image: "ubuntu",
+            provider: "e2b",
             working_dir: "/home",
           },
         },
@@ -60,26 +63,28 @@ describe("content-hash", () => {
     });
 
     it("should produce the same hash regardless of key order", () => {
-      // Object with keys in different order
+      // Object with keys in different order - use unknown cast for incomplete types
       const content1 = {
         version: "1.0",
         agents: {
           agent1: {
             working_dir: "/workspace",
+            provider: "e2b",
             image: "test",
           },
         },
-      } as AgentComposeYaml;
+      } as unknown as AgentComposeYaml;
 
       const content2 = {
         agents: {
           agent1: {
             image: "test",
+            provider: "e2b",
             working_dir: "/workspace",
           },
         },
         version: "1.0",
-      } as AgentComposeYaml;
+      } as unknown as AgentComposeYaml;
 
       expect(computeComposeVersionId(content1)).toBe(
         computeComposeVersionId(content2),
@@ -87,25 +92,27 @@ describe("content-hash", () => {
     });
 
     it("should produce different hashes for different content", () => {
-      const content1: AgentComposeYaml = {
+      const content1 = {
         version: "1.0",
         agents: {
           agent1: {
             image: "image-a",
+            provider: "e2b",
             working_dir: "/workspace",
           },
         },
-      };
+      } as AgentComposeYaml;
 
-      const content2: AgentComposeYaml = {
+      const content2 = {
         version: "1.0",
         agents: {
           agent1: {
             image: "image-b",
+            provider: "e2b",
             working_dir: "/workspace",
           },
         },
-      };
+      } as AgentComposeYaml;
 
       expect(computeComposeVersionId(content1)).not.toBe(
         computeComposeVersionId(content2),
@@ -113,11 +120,13 @@ describe("content-hash", () => {
     });
 
     it("should handle nested objects and arrays", () => {
-      const content: AgentComposeYaml = {
+      // Use type assertion since we're testing hash behavior with extra fields
+      const content = {
         version: "1.0",
         agents: {
           agent1: {
             image: "test",
+            provider: "e2b",
             working_dir: "/workspace",
             env: {
               FOO: "bar",
@@ -125,17 +134,18 @@ describe("content-hash", () => {
             },
           },
         },
-      };
+      } as AgentComposeYaml;
 
       const versionId = computeComposeVersionId(content);
       expect(versionId).toHaveLength(FULL_VERSION_LENGTH);
 
       // Same content with different key order should produce same hash
-      const content2: AgentComposeYaml = {
+      const content2 = {
         version: "1.0",
         agents: {
           agent1: {
             working_dir: "/workspace",
+            provider: "e2b",
             image: "test",
             env: {
               BAZ: "qux",
@@ -143,7 +153,7 @@ describe("content-hash", () => {
             },
           },
         },
-      };
+      } as AgentComposeYaml;
 
       expect(computeComposeVersionId(content)).toBe(
         computeComposeVersionId(content2),
