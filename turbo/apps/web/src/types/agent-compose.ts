@@ -17,8 +17,8 @@ export interface VolumeConfig {
  */
 export interface AgentDefinition {
   description?: string;
-  image?: string;
-  provider?: string;
+  image: string;
+  provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   working_dir: string; // Working directory for artifact mount
 }
