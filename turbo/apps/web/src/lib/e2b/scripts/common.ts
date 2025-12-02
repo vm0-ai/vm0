@@ -40,4 +40,7 @@ HTTP_MAX_RETRIES=3
 
 # Event error flag file - used to track if any events failed to send
 EVENT_ERROR_FLAG="/tmp/vm0-event-error-$RUN_ID"
+
+# Stderr capture file - used to capture Claude's stderr for error messages
+STDERR_FILE="/tmp/vm0-stderr-$RUN_ID"
 `;
