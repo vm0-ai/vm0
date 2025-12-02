@@ -90,6 +90,17 @@ export async function POST(request: NextRequest) {
 
     sandboxId = run.sandboxId ?? undefined;
 
+    // Idempotency check: if run is already completed/failed, return early
+    if (run.status === "completed" || run.status === "failed") {
+      console.log(
+        `[Complete API] Run ${runId} already ${run.status}, skipping duplicate completion`,
+      );
+      return successResponse(
+        { success: true, status: run.status as "completed" | "failed" },
+        200,
+      );
+    }
+
     let finalStatus: "completed" | "failed";
 
     if (body.exitCode === 0) {

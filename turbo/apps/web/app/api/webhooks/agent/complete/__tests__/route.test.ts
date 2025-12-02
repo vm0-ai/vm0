@@ -580,4 +580,119 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.error.message).toContain("Checkpoint");
     });
   });
+
+  // ============================================
+  // Idempotency Tests
+  // ============================================
+
+  describe("Idempotency", () => {
+    beforeEach(async () => {
+      // Mock headers() to return the test token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      } as unknown as Headers);
+
+      // Create valid token
+      await globalThis.services.db.insert(cliTokens).values({
+        token: testToken,
+        userId: testUserId,
+        name: "Test Token",
+        expiresAt: new Date(Date.now() + 3600000),
+        createdAt: new Date(),
+      });
+    });
+
+    it("should return success without processing for already completed run", async () => {
+      // Create already completed run
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId,
+        userId: testUserId,
+        agentConfigId: testConfigId,
+        status: "completed",
+        prompt: "Test prompt",
+        completedAt: new Date(),
+        createdAt: new Date(),
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.status).toBe("completed");
+
+      // Verify no events were sent (idempotent)
+      const events = await globalThis.services.db
+        .select()
+        .from(agentRunEvents)
+        .where(eq(agentRunEvents.runId, testRunId));
+
+      expect(events).toHaveLength(0);
+
+      // Verify sandbox kill was NOT called
+      expect(e2bService.killSandbox).not.toHaveBeenCalled();
+    });
+
+    it("should return success without processing for already failed run", async () => {
+      // Create already failed run
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId,
+        userId: testUserId,
+        agentConfigId: testConfigId,
+        status: "failed",
+        prompt: "Test prompt",
+        completedAt: new Date(),
+        createdAt: new Date(),
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Some error",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.status).toBe("failed");
+
+      // Verify no events were sent (idempotent)
+      const events = await globalThis.services.db
+        .select()
+        .from(agentRunEvents)
+        .where(eq(agentRunEvents.runId, testRunId));
+
+      expect(events).toHaveLength(0);
+
+      // Verify sandbox kill was NOT called
+      expect(e2bService.killSandbox).not.toHaveBeenCalled();
+    });
+  });
 });
