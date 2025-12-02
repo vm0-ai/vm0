@@ -3,6 +3,7 @@ import { env } from "../../env";
 import { e2bConfig } from "./config";
 import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
+import { BadRequestError } from "../errors";
 import type {
   AgentVolumeConfig,
   PreparedArtifact,
@@ -75,7 +76,7 @@ export class E2BService {
       // working_dir is required - no fallback allowed
       const firstAgent = getFirstAgent(agentComposeYaml);
       if (!firstAgent?.working_dir) {
-        throw new Error(
+        throw new BadRequestError(
           "Agent must have working_dir configured (no default allowed)",
         );
       }
@@ -436,15 +437,9 @@ export class E2BService {
     log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
     // Extract working_dir from agent compose
+    // Note: working_dir is already validated at the start of execute()
     const compose = agentCompose as AgentComposeYaml | undefined;
-    const firstAgentForEnv = getFirstAgent(compose);
-    // working_dir is required and already validated at the start of execute()
-    if (!firstAgentForEnv?.working_dir) {
-      throw new Error(
-        "Agent must have working_dir configured (no default allowed)",
-      );
-    }
-    const workingDir = firstAgentForEnv.working_dir;
+    const workingDir = getFirstAgent(compose)!.working_dir;
 
     // Set environment variables
     const envs: Record<string, string> = {

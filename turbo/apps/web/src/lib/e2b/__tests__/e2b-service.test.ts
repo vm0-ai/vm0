@@ -474,16 +474,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-error",
         agentComposeId: "test-agent-error",
-        agentCompose: {
-          version: "1.0",
-          agents: {
-            "test-agent": {
-              image: "test-image",
-              provider: "claude-code",
-              working_dir: "/workspace",
-            },
-          },
-        },
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
       };
@@ -510,16 +501,7 @@ describe("E2B Service - mocked unit tests", () => {
       const context: ExecutionContext = {
         runId: "run-test-storage-error",
         agentComposeId: "test-agent-storage-error",
-        agentCompose: {
-          version: "1.0",
-          agents: {
-            "test-agent": {
-              image: "test-image",
-              provider: "claude-code",
-              working_dir: "/workspace",
-            },
-          },
-        },
+        agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to storage errors",
       };

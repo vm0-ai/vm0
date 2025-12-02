@@ -1,6 +1,7 @@
 import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, listS3Objects } from "../s3/s3-client";
 import { logger } from "../logger";
+import { BadRequestError } from "../errors";
 import type {
   AgentVolumeConfig,
   StorageManifest,
@@ -169,18 +170,19 @@ export class StorageService {
 
     // Handle artifact: either from resumeArtifact or from volumeResult
     // Note: resumeArtifactMountPath is required when resumeArtifact is provided (no fallback)
-    if (resumeArtifact && !resumeArtifactMountPath) {
-      throw new Error(
-        "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
-      );
+    let artifactSource = volumeResult.artifact;
+    if (resumeArtifact) {
+      if (!resumeArtifactMountPath) {
+        throw new BadRequestError(
+          "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
+        );
+      }
+      artifactSource = {
+        vasStorageName: resumeArtifact.artifactName,
+        vasVersion: resumeArtifact.artifactVersion,
+        mountPath: resumeArtifactMountPath,
+      };
     }
-    const artifactSource = resumeArtifact
-      ? {
-          vasStorageName: resumeArtifact.artifactName,
-          vasVersion: resumeArtifact.artifactVersion,
-          mountPath: resumeArtifactMountPath!,
-        }
-      : volumeResult.artifact;
 
     const artifactPromise = artifactSource
       ? (async () => {
