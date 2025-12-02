@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { EventRenderer } from "../event-renderer";
+import { EventRenderer, type RenderOptions } from "../event-renderer";
 import type { ParsedEvent } from "../event-parser";
 
 describe("EventRenderer", () => {
@@ -390,6 +390,291 @@ describe("EventRenderer", () => {
       EventRenderer.render(event);
 
       expect(consoleLogSpy).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================
+  // Elapsed Time Formatting Tests
+  // ============================================
+
+  describe("formatElapsed", () => {
+    it("should format milliseconds for values under 1000ms", () => {
+      const start = new Date("2024-01-01T00:00:00.000Z");
+      const end = new Date("2024-01-01T00:00:00.500Z");
+
+      const result = EventRenderer.formatElapsed(start, end);
+
+      expect(result).toBe("[+500ms]");
+    });
+
+    it("should format seconds for values 1000ms and above", () => {
+      const start = new Date("2024-01-01T00:00:00.000Z");
+      const end = new Date("2024-01-01T00:00:02.300Z");
+
+      const result = EventRenderer.formatElapsed(start, end);
+
+      expect(result).toBe("[+2.3s]");
+    });
+
+    it("should handle exact 1000ms boundary", () => {
+      const start = new Date("2024-01-01T00:00:00.000Z");
+      const end = new Date("2024-01-01T00:00:01.000Z");
+
+      const result = EventRenderer.formatElapsed(start, end);
+
+      expect(result).toBe("[+1.0s]");
+    });
+
+    it("should handle zero elapsed time", () => {
+      const time = new Date("2024-01-01T00:00:00.000Z");
+
+      const result = EventRenderer.formatElapsed(time, time);
+
+      expect(result).toBe("[+0ms]");
+    });
+  });
+
+  describe("formatTotalTime", () => {
+    it("should format total time in seconds", () => {
+      const start = new Date("2024-01-01T00:00:00.000Z");
+      const end = new Date("2024-01-01T00:00:06.700Z");
+
+      const result = EventRenderer.formatTotalTime(start, end);
+
+      expect(result).toBe("6.7s");
+    });
+
+    it("should handle short durations", () => {
+      const start = new Date("2024-01-01T00:00:00.000Z");
+      const end = new Date("2024-01-01T00:00:00.500Z");
+
+      const result = EventRenderer.formatTotalTime(start, end);
+
+      expect(result).toBe("0.5s");
+    });
+  });
+
+  // ============================================
+  // Verbose Mode Tests
+  // ============================================
+
+  describe("Verbose Mode", () => {
+    it("should render elapsed time prefix in verbose mode", () => {
+      const event: ParsedEvent = {
+        type: "text",
+        timestamp: new Date("2024-01-01T00:00:01.500Z"),
+        data: {
+          text: "Hello world",
+        },
+      };
+
+      const options: RenderOptions = {
+        verbose: true,
+        previousTimestamp: new Date("2024-01-01T00:00:00.000Z"),
+      };
+
+      EventRenderer.render(event, options);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[text]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+1.5s]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("Hello world");
+    });
+
+    it("should not render elapsed time without verbose flag", () => {
+      const event: ParsedEvent = {
+        type: "text",
+        timestamp: new Date("2024-01-01T00:00:01.500Z"),
+        data: {
+          text: "Hello world",
+        },
+      };
+
+      const options: RenderOptions = {
+        verbose: false,
+        previousTimestamp: new Date("2024-01-01T00:00:00.000Z"),
+      };
+
+      EventRenderer.render(event, options);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[text]");
+      expect(consoleLogSpy.mock.calls[0]![0]).not.toContain("[+");
+    });
+
+    it("should not render elapsed time without previousTimestamp", () => {
+      const event: ParsedEvent = {
+        type: "text",
+        timestamp: new Date("2024-01-01T00:00:01.500Z"),
+        data: {
+          text: "Hello world",
+        },
+      };
+
+      const options: RenderOptions = {
+        verbose: true,
+      };
+
+      EventRenderer.render(event, options);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[text]");
+      expect(consoleLogSpy.mock.calls[0]![0]).not.toContain("[+");
+    });
+
+    it("should render elapsed time for all event types in verbose mode", () => {
+      const baseTimestamp = new Date("2024-01-01T00:00:00.000Z");
+      const eventTimestamp = new Date("2024-01-01T00:00:00.100Z");
+
+      const options: RenderOptions = {
+        verbose: true,
+        previousTimestamp: baseTimestamp,
+      };
+
+      // Test init event
+      const initEvent: ParsedEvent = {
+        type: "init",
+        timestamp: eventTimestamp,
+        data: { sessionId: "test", model: "test", tools: [] },
+      };
+      EventRenderer.render(initEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+
+      consoleLogSpy.mockClear();
+
+      // Test tool_use event
+      const toolUseEvent: ParsedEvent = {
+        type: "tool_use",
+        timestamp: eventTimestamp,
+        data: { tool: "Bash", input: {} },
+      };
+      EventRenderer.render(toolUseEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+
+      consoleLogSpy.mockClear();
+
+      // Test tool_result event
+      const toolResultEvent: ParsedEvent = {
+        type: "tool_result",
+        timestamp: eventTimestamp,
+        data: { result: "done", isError: false },
+      };
+      EventRenderer.render(toolResultEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+
+      consoleLogSpy.mockClear();
+
+      // Test result event
+      const resultEvent: ParsedEvent = {
+        type: "result",
+        timestamp: eventTimestamp,
+        data: { success: true, durationMs: 0, numTurns: 0, cost: 0, usage: {} },
+      };
+      EventRenderer.render(resultEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+
+      consoleLogSpy.mockClear();
+
+      // Test vm0_start event
+      const vm0StartEvent: ParsedEvent = {
+        type: "vm0_start",
+        timestamp: eventTimestamp,
+        data: { runId: "test", prompt: "test" },
+      };
+      EventRenderer.render(vm0StartEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+
+      consoleLogSpy.mockClear();
+
+      // Test vm0_error event
+      const vm0ErrorEvent: ParsedEvent = {
+        type: "vm0_error",
+        timestamp: eventTimestamp,
+        data: { error: "test error" },
+      };
+      EventRenderer.render(vm0ErrorEvent, options);
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
+    });
+  });
+
+  // ============================================
+  // Total Time Display Tests
+  // ============================================
+
+  describe("Total Time Display", () => {
+    it("should render total time in vm0_result when startTimestamp is provided", () => {
+      const event: ParsedEvent = {
+        type: "vm0_result",
+        timestamp: new Date("2024-01-01T00:00:06.700Z"),
+        data: {
+          checkpointId: "checkpoint-123",
+          agentSessionId: "session-456",
+          conversationId: "conv-789",
+        },
+      };
+
+      const options: RenderOptions = {
+        startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
+      };
+
+      EventRenderer.render(event, options);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const lastCall =
+        consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1]![0];
+      expect(lastCall).toContain("Total time:");
+      expect(lastCall).toContain("6.7s");
+    });
+
+    it("should not render total time without startTimestamp", () => {
+      const event: ParsedEvent = {
+        type: "vm0_result",
+        timestamp: new Date("2024-01-01T00:00:06.700Z"),
+        data: {
+          checkpointId: "checkpoint-123",
+          agentSessionId: "session-456",
+          conversationId: "conv-789",
+        },
+      };
+
+      EventRenderer.render(event);
+
+      // Check no call contains "Total time"
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      const hasTotalTime = allCalls.some((call) => call.includes("Total time"));
+      expect(hasTotalTime).toBe(false);
+    });
+
+    it("should render both elapsed time and total time in verbose mode", () => {
+      const event: ParsedEvent = {
+        type: "vm0_result",
+        timestamp: new Date("2024-01-01T00:00:06.700Z"),
+        data: {
+          checkpointId: "checkpoint-123",
+          agentSessionId: "session-456",
+          conversationId: "conv-789",
+        },
+      };
+
+      const options: RenderOptions = {
+        verbose: true,
+        previousTimestamp: new Date("2024-01-01T00:00:06.500Z"),
+        startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
+      };
+
+      EventRenderer.render(event, options);
+
+      // Check first line has elapsed time
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[vm0_result]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+200ms]");
+
+      // Check last line has total time
+      const lastCall =
+        consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1]![0];
+      expect(lastCall).toContain("Total time:");
+      expect(lastCall).toContain("6.7s");
     });
   });
 });

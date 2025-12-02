@@ -331,7 +331,35 @@ describe("run command", () => {
       });
     });
 
-    it("should display starting messages", async () => {
+    it("should display starting messages in verbose mode", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "completed",
+        sandboxId: "sbx-456",
+        output: "Success",
+        executionTimeMs: 1000,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "550e8400-e29b-41d4-a716-446655440000",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+        "--verbose",
+      ]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Creating agent run"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Prompt: test prompt"),
+      );
+    });
+
+    it("should not display starting messages without verbose flag", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -350,15 +378,12 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleLog).not.toHaveBeenCalledWith(
         expect.stringContaining("Creating agent run"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Prompt: test prompt"),
       );
     });
 
-    it("should display vars when provided", async () => {
+    it("should display vars when provided in verbose mode", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -377,6 +402,7 @@ describe("run command", () => {
         "test-artifact",
         "--vars",
         "KEY=value",
+        "--verbose",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(

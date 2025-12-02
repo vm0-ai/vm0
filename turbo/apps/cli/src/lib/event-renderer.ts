@@ -6,41 +6,82 @@
 import chalk from "chalk";
 import type { ParsedEvent } from "./event-parser";
 
+/**
+ * Options for rendering events
+ */
+export interface RenderOptions {
+  /** Whether to show verbose output including elapsed time */
+  verbose?: boolean;
+  /** Timestamp of previous event for elapsed time calculation */
+  previousTimestamp?: Date;
+  /** Start timestamp for total time calculation */
+  startTimestamp?: Date;
+}
+
 export class EventRenderer {
+  /**
+   * Format elapsed time between two timestamps
+   * Returns [+Nms] for < 1000ms, [+N.Ns] for >= 1000ms
+   */
+  static formatElapsed(previous: Date, current: Date): string {
+    const elapsedMs = current.getTime() - previous.getTime();
+    if (elapsedMs < 1000) {
+      return `[+${elapsedMs}ms]`;
+    }
+    return `[+${(elapsedMs / 1000).toFixed(1)}s]`;
+  }
+
+  /**
+   * Format total elapsed time
+   * Returns N.Ns format
+   */
+  static formatTotalTime(start: Date, end: Date): string {
+    const elapsedMs = end.getTime() - start.getTime();
+    return `${(elapsedMs / 1000).toFixed(1)}s`;
+  }
+
   /**
    * Render a parsed event to console
    */
-  static render(event: ParsedEvent): void {
+  static render(event: ParsedEvent, options?: RenderOptions): void {
+    const elapsedPrefix =
+      options?.verbose && options?.previousTimestamp
+        ? chalk.gray(
+            this.formatElapsed(options.previousTimestamp, event.timestamp),
+          )
+        : "";
     switch (event.type) {
       case "init":
-        this.renderInit(event);
+        this.renderInit(event, elapsedPrefix);
         break;
       case "text":
-        this.renderText(event);
+        this.renderText(event, elapsedPrefix);
         break;
       case "tool_use":
-        this.renderToolUse(event);
+        this.renderToolUse(event, elapsedPrefix);
         break;
       case "tool_result":
-        this.renderToolResult(event);
+        this.renderToolResult(event, elapsedPrefix);
         break;
       case "result":
-        this.renderResult(event);
+        this.renderResult(event, elapsedPrefix);
         break;
       case "vm0_start":
-        this.renderVm0Start(event);
+        this.renderVm0Start(event, elapsedPrefix);
         break;
       case "vm0_result":
-        this.renderVm0Result(event);
+        this.renderVm0Result(event, elapsedPrefix, options?.startTimestamp);
         break;
       case "vm0_error":
-        this.renderVm0Error(event);
+        this.renderVm0Error(event, elapsedPrefix);
         break;
     }
   }
 
-  private static renderInit(event: ParsedEvent): void {
-    console.log(chalk.cyan("[init]") + " Starting Claude Code agent");
+  private static renderInit(event: ParsedEvent, elapsedPrefix: string): void {
+    console.log(
+      chalk.cyan("[init]") + elapsedPrefix + " Starting Claude Code agent",
+    );
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
     console.log(`  Model: ${chalk.gray(String(event.data.model || ""))}`);
     console.log(
@@ -52,14 +93,17 @@ export class EventRenderer {
     );
   }
 
-  private static renderText(event: ParsedEvent): void {
+  private static renderText(event: ParsedEvent, elapsedPrefix: string): void {
     const text = String(event.data.text || "");
-    console.log(chalk.blue("[text]") + " " + text);
+    console.log(chalk.blue("[text]") + elapsedPrefix + " " + text);
   }
 
-  private static renderToolUse(event: ParsedEvent): void {
+  private static renderToolUse(
+    event: ParsedEvent,
+    elapsedPrefix: string,
+  ): void {
     const tool = String(event.data.tool || "");
-    console.log(chalk.yellow("[tool_use]") + " " + tool);
+    console.log(chalk.yellow("[tool_use]") + elapsedPrefix + " " + tool);
 
     // Show full input without truncation
     const input = event.data.input as Record<string, unknown>;
@@ -72,24 +116,27 @@ export class EventRenderer {
     }
   }
 
-  private static renderToolResult(event: ParsedEvent): void {
+  private static renderToolResult(
+    event: ParsedEvent,
+    elapsedPrefix: string,
+  ): void {
     const isError = Boolean(event.data.isError);
     const status = isError ? "Error" : "Completed";
     const color = isError ? chalk.red : chalk.green;
 
-    console.log(color("[tool_result]") + " " + status);
+    console.log(color("[tool_result]") + elapsedPrefix + " " + status);
 
     // Show full result without truncation
     const result = String(event.data.result || "");
     console.log(`  ${chalk.gray(result)}`);
   }
 
-  private static renderResult(event: ParsedEvent): void {
+  private static renderResult(event: ParsedEvent, elapsedPrefix: string): void {
     const success = Boolean(event.data.success);
     const status = success ? "✓ completed successfully" : "✗ failed";
     const color = success ? chalk.green : chalk.red;
 
-    console.log(color("[result]") + " " + status);
+    console.log(color("[result]") + elapsedPrefix + " " + status);
 
     const durationMs = Number(event.data.durationMs || 0);
     const durationSec = (durationMs / 1000).toFixed(1);
@@ -121,8 +168,11 @@ export class EventRenderer {
     }
   }
 
-  private static renderVm0Start(event: ParsedEvent): void {
-    console.log(chalk.cyan("[vm0_start]") + " Run starting");
+  private static renderVm0Start(
+    event: ParsedEvent,
+    elapsedPrefix: string,
+  ): void {
+    console.log(chalk.cyan("[vm0_start]") + elapsedPrefix + " Run starting");
 
     if (event.data.runId) {
       console.log(`  Run ID: ${chalk.gray(String(event.data.runId))}`);
@@ -139,8 +189,16 @@ export class EventRenderer {
     this.renderArtifactAndVolumes(event.data);
   }
 
-  private static renderVm0Result(event: ParsedEvent): void {
-    console.log(chalk.green("[vm0_result]") + " ✓ Run completed successfully");
+  private static renderVm0Result(
+    event: ParsedEvent,
+    elapsedPrefix: string,
+    startTimestamp?: Date,
+  ): void {
+    console.log(
+      chalk.green("[vm0_result]") +
+        elapsedPrefix +
+        " ✓ Run completed successfully",
+    );
     console.log(
       `  Checkpoint: ${chalk.gray(String(event.data.checkpointId || ""))}`,
     );
@@ -152,6 +210,12 @@ export class EventRenderer {
     );
 
     this.renderArtifactAndVolumes(event.data);
+
+    // Always show total time if startTimestamp is provided
+    if (startTimestamp) {
+      const totalTime = this.formatTotalTime(startTimestamp, event.timestamp);
+      console.log(`  Total time: ${chalk.gray(totalTime)}`);
+    }
   }
 
   /**
@@ -188,8 +252,11 @@ export class EventRenderer {
     }
   }
 
-  private static renderVm0Error(event: ParsedEvent): void {
-    console.log(chalk.red("[vm0_error]") + " ✗ Run failed");
+  private static renderVm0Error(
+    event: ParsedEvent,
+    elapsedPrefix: string,
+  ): void {
+    console.log(chalk.red("[vm0_error]") + elapsedPrefix + " ✗ Run failed");
 
     // Handle error as string or object
     let errorMessage = "";

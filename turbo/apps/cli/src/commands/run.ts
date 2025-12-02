@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient } from "../lib/api-client";
 import { ClaudeEventParser } from "../lib/event-parser";
-import { EventRenderer } from "../lib/event-renderer";
+import { EventRenderer, type RenderOptions } from "../lib/event-renderer";
 
 function collectVars(
   value: string,
@@ -44,15 +44,22 @@ function isUUID(str: string): boolean {
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
 
+interface PollOptions {
+  verbose?: boolean;
+}
+
 async function pollEvents(
   runId: string,
   timeoutSeconds: number,
+  options?: PollOptions,
 ): Promise<void> {
   let nextSequence = -1;
   let complete = false;
   const pollIntervalMs = 500;
   const timeoutMs = timeoutSeconds * 1000;
   const startTime = Date.now();
+  const startTimestamp = new Date();
+  let previousTimestamp = startTimestamp;
 
   while (!complete) {
     // Check timeout
@@ -76,7 +83,16 @@ async function pollEvents(
       );
 
       if (parsed) {
-        EventRenderer.render(parsed);
+        const renderOptions: RenderOptions = {
+          verbose: options?.verbose,
+          previousTimestamp: options?.verbose ? previousTimestamp : undefined,
+          startTimestamp,
+        };
+
+        EventRenderer.render(parsed, renderOptions);
+
+        // Update previous timestamp for next event
+        previousTimestamp = parsed.timestamp;
 
         // Complete when we receive vm0_result or vm0_error
         if (parsed.type === "vm0_result" || parsed.type === "vm0_error") {
@@ -128,6 +144,7 @@ const runCmd = new Command()
     "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
+  .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
       identifier: string,
@@ -139,6 +156,7 @@ const runCmd = new Command()
         volumeVersion: Record<string, string>;
         conversation?: string;
         timeout: string;
+        verbose?: boolean;
       },
     ) => {
       const timeoutSeconds = parseInt(options.timeout, 10);
@@ -160,6 +178,8 @@ const runCmd = new Command()
         process.exit(1);
       }
 
+      const verbose = options.verbose;
+
       try {
         // 1. Resolve identifier to configId
         let configId: string;
@@ -167,14 +187,20 @@ const runCmd = new Command()
         if (isUUID(identifier)) {
           // It's a UUID config ID - use directly
           configId = identifier;
-          console.log(chalk.gray(`  Using config ID: ${configId}`));
+          if (verbose) {
+            console.log(chalk.gray(`  Using config ID: ${configId}`));
+          }
         } else {
           // It's an agent name - resolve to config ID
-          console.log(chalk.gray(`  Resolving agent name: ${identifier}`));
+          if (verbose) {
+            console.log(chalk.gray(`  Resolving agent name: ${identifier}`));
+          }
           try {
             const config = await apiClient.getConfigByName(identifier);
             configId = config.id;
-            console.log(chalk.gray(`  Resolved to config ID: ${configId}`));
+            if (verbose) {
+              console.log(chalk.gray(`  Resolved to config ID: ${configId}`));
+            }
           } catch (error) {
             if (error instanceof Error) {
               console.error(chalk.red(`✗ Agent not found: ${identifier}`));
@@ -188,38 +214,40 @@ const runCmd = new Command()
           }
         }
 
-        // 2. Display starting message
-        console.log(chalk.blue("\nCreating agent run..."));
-        console.log(chalk.gray(`  Prompt: ${prompt}`));
+        // 2. Display starting message (verbose only)
+        if (verbose) {
+          console.log(chalk.blue("\nCreating agent run..."));
+          console.log(chalk.gray(`  Prompt: ${prompt}`));
 
-        if (Object.keys(options.vars).length > 0) {
-          console.log(
-            chalk.gray(`  Variables: ${JSON.stringify(options.vars)}`),
-          );
+          if (Object.keys(options.vars).length > 0) {
+            console.log(
+              chalk.gray(`  Variables: ${JSON.stringify(options.vars)}`),
+            );
+          }
+
+          console.log(chalk.gray(`  Artifact: ${options.artifactName}`));
+          if (options.artifactVersion) {
+            console.log(
+              chalk.gray(`  Artifact version: ${options.artifactVersion}`),
+            );
+          }
+
+          if (Object.keys(options.volumeVersion).length > 0) {
+            console.log(
+              chalk.gray(
+                `  Volume versions: ${JSON.stringify(options.volumeVersion)}`,
+              ),
+            );
+          }
+
+          if (options.conversation) {
+            console.log(chalk.gray(`  Conversation: ${options.conversation}`));
+          }
+
+          console.log();
+          console.log(chalk.blue("Executing in sandbox..."));
+          console.log();
         }
-
-        console.log(chalk.gray(`  Artifact: ${options.artifactName}`));
-        if (options.artifactVersion) {
-          console.log(
-            chalk.gray(`  Artifact version: ${options.artifactVersion}`),
-          );
-        }
-
-        if (Object.keys(options.volumeVersion).length > 0) {
-          console.log(
-            chalk.gray(
-              `  Volume versions: ${JSON.stringify(options.volumeVersion)}`,
-            ),
-          );
-        }
-
-        if (options.conversation) {
-          console.log(chalk.gray(`  Conversation: ${options.conversation}`));
-        }
-
-        console.log();
-        console.log(chalk.blue("Executing in sandbox..."));
-        console.log();
 
         // 3. Call unified API
         const response = await apiClient.createRun({
@@ -237,7 +265,7 @@ const runCmd = new Command()
         });
 
         // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds);
+        await pollEvents(response.runId, timeoutSeconds, { verbose });
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -278,11 +306,12 @@ runCmd
     "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
+  .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
       checkpointId: string,
       prompt: string,
-      options: { timeout: string },
+      options: { timeout: string; verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       // Commander.js quirk: when parent command has same option name,
@@ -290,6 +319,7 @@ runCmd
       const allOpts = command.optsWithGlobals() as {
         volumeVersion: Record<string, string>;
         timeout: string;
+        verbose?: boolean;
       };
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
@@ -298,6 +328,9 @@ runCmd
         );
         process.exit(1);
       }
+
+      const verbose = options.verbose || allOpts.verbose;
+
       try {
         // 1. Validate checkpoint ID format
         if (!isUUID(checkpointId)) {
@@ -308,22 +341,24 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Display starting message
-        console.log(chalk.blue("\nResuming agent run from checkpoint..."));
-        console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
-        console.log(chalk.gray(`  Prompt: ${prompt}`));
+        // 2. Display starting message (verbose only)
+        if (verbose) {
+          console.log(chalk.blue("\nResuming agent run from checkpoint..."));
+          console.log(chalk.gray(`  Checkpoint ID: ${checkpointId}`));
+          console.log(chalk.gray(`  Prompt: ${prompt}`));
 
-        if (Object.keys(allOpts.volumeVersion).length > 0) {
-          console.log(
-            chalk.gray(
-              `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
-            ),
-          );
+          if (Object.keys(allOpts.volumeVersion).length > 0) {
+            console.log(
+              chalk.gray(
+                `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
+              ),
+            );
+          }
+
+          console.log();
+          console.log(chalk.blue("Executing in sandbox..."));
+          console.log();
         }
-
-        console.log();
-        console.log(chalk.blue("Executing in sandbox..."));
-        console.log();
 
         // 3. Call unified API with checkpointId
         const response = await apiClient.createRun({
@@ -336,7 +371,7 @@ runCmd
         });
 
         // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds);
+        await pollEvents(response.runId, timeoutSeconds, { verbose });
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -376,11 +411,12 @@ runCmd
     "Polling timeout in seconds (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
+  .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
       agentSessionId: string,
       prompt: string,
-      options: { timeout: string },
+      options: { timeout: string; verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       // Commander.js quirk: when parent command has same option name,
@@ -388,6 +424,7 @@ runCmd
       const allOpts = command.optsWithGlobals() as {
         volumeVersion: Record<string, string>;
         timeout: string;
+        verbose?: boolean;
       };
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
@@ -396,6 +433,9 @@ runCmd
         );
         process.exit(1);
       }
+
+      const verbose = options.verbose || allOpts.verbose;
+
       try {
         // 1. Validate session ID format
         if (!isUUID(agentSessionId)) {
@@ -406,23 +446,25 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Display starting message
-        console.log(chalk.blue("\nContinuing agent run from session..."));
-        console.log(chalk.gray(`  Session ID: ${agentSessionId}`));
-        console.log(chalk.gray(`  Prompt: ${prompt}`));
-        console.log(chalk.gray(`  Note: Using latest artifact version`));
+        // 2. Display starting message (verbose only)
+        if (verbose) {
+          console.log(chalk.blue("\nContinuing agent run from session..."));
+          console.log(chalk.gray(`  Session ID: ${agentSessionId}`));
+          console.log(chalk.gray(`  Prompt: ${prompt}`));
+          console.log(chalk.gray(`  Note: Using latest artifact version`));
 
-        if (Object.keys(allOpts.volumeVersion).length > 0) {
-          console.log(
-            chalk.gray(
-              `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
-            ),
-          );
+          if (Object.keys(allOpts.volumeVersion).length > 0) {
+            console.log(
+              chalk.gray(
+                `  Volume overrides: ${JSON.stringify(allOpts.volumeVersion)}`,
+              ),
+            );
+          }
+
+          console.log();
+          console.log(chalk.blue("Executing in sandbox..."));
+          console.log();
         }
-
-        console.log();
-        console.log(chalk.blue("Executing in sandbox..."));
-        console.log();
 
         // 3. Call unified API with sessionId
         const response = await apiClient.createRun({
@@ -435,7 +477,7 @@ runCmd
         });
 
         // 4. Poll for events
-        await pollEvents(response.runId, timeoutSeconds);
+        await pollEvents(response.runId, timeoutSeconds, { verbose });
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
