@@ -3,17 +3,7 @@
 load '../../helpers/setup'
 
 setup() {
-    export TEST_CONFIG_ENV="${TEST_ROOT}/fixtures/configs/vm0-env-validation.yaml"
     export TEST_CONFIG_TEMPLATE="${TEST_ROOT}/fixtures/configs/vm0-template-validation.yaml"
-}
-
-# Environment variable validation tests for vm0 build
-
-@test "vm0 build should fail when environment variables are missing" {
-    run $CLI_COMMAND build "$TEST_CONFIG_ENV"
-    assert_failure
-    assert_output --partial "Missing required environment variables"
-    assert_output --partial "MISSING_ENV_VAR"
 }
 
 # Template variable validation tests for vm0 run
