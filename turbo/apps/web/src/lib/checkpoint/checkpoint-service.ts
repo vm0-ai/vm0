@@ -79,11 +79,10 @@ export class CheckpointService {
       `Conversation created: ${conversation.id}, storing checkpoint...`,
     );
 
-    // Build agent compose snapshot
+    // Build agent compose snapshot (environment is re-expanded from templateVars on resume)
     const agentComposeSnapshot: AgentComposeSnapshot = {
       config: compose.config as AgentComposeYaml,
       templateVars: (run.templateVars as Record<string, string>) || undefined,
-      environment: (run.environment as Record<string, string>) || undefined,
     };
 
     // Store checkpoint in database

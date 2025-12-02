@@ -15,12 +15,66 @@ import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
+import { expandVariables } from "@vm0/core";
 
 const log = logger("service:run");
 
 /**
+ * Extract and expand environment variables from agent compose config
+ * Expands ${{ vars.xxx }} references using provided templateVars
+ * @param agentCompose Agent compose configuration
+ * @param templateVars Template variables for expansion
+ * @returns Expanded environment variables or undefined
+ */
+function expandEnvironmentFromCompose(
+  agentCompose: unknown,
+  templateVars: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) {
+    return undefined;
+  }
+
+  // Get first agent's environment (currently only one agent supported)
+  const agents = Object.values(compose.agents);
+  const firstAgent = agents[0];
+  if (!firstAgent?.environment) {
+    return undefined;
+  }
+
+  const environment = firstAgent.environment;
+
+  // If no templateVars provided, return as-is (no expansion needed)
+  if (!templateVars || Object.keys(templateVars).length === 0) {
+    // Check if there are any unexpanded variables
+    const hasVars = Object.values(environment).some((v) =>
+      v.includes("${{ vars."),
+    );
+    if (hasVars) {
+      log.warn("Environment contains ${{ vars.xxx }} but no templateVars provided");
+    }
+    return environment;
+  }
+
+  // Expand ${{ vars.xxx }} references
+  const { result, missingVars } = expandVariables(environment, {
+    vars: templateVars,
+  });
+
+  if (missingVars.length > 0) {
+    const missing = missingVars.map((v) => v.name).join(", ");
+    throw new BadRequestError(
+      `Missing required template variables for environment: ${missing}`,
+    );
+  }
+
+  return result;
+}
+
+/**
  * Intermediate resolution result from checkpoint/session/conversation expansion
  * Contains all data needed to build resumeSession uniformly
+ * Note: Environment is re-expanded server-side from compose + templateVars, not stored in checkpoint
  */
 interface ConversationResolution {
   conversationId: string;
@@ -35,7 +89,6 @@ interface ConversationResolution {
   artifactVersion?: string;
   templateVars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
-  environment?: Record<string, string>; // Resolved environment variables from checkpoint
   buildResumeArtifact: boolean;
 }
 
@@ -142,7 +195,6 @@ export class RunService {
       artifactVersion: checkpointArtifact.artifactVersion,
       templateVars: agentComposeSnapshot.templateVars || {},
       volumeVersions: checkpointVolumeVersions?.versions,
-      environment: agentComposeSnapshot.environment,
       buildResumeArtifact: true,
     };
   }
@@ -429,7 +481,6 @@ export class RunService {
     artifactVersion?: string;
     templateVars?: Record<string, string>;
     volumeVersions?: Record<string, string>;
-    environment?: Record<string, string>;
     // Required
     prompt: string;
     runId: string;
@@ -451,7 +502,6 @@ export class RunService {
     let templateVars: Record<string, string> | undefined = params.templateVars;
     let volumeVersions: Record<string, string> | undefined =
       params.volumeVersions;
-    let environment: Record<string, string> | undefined = params.environment;
     let resumeSession: ResumeSession | undefined;
     let resumeArtifact: ArtifactSnapshot | undefined;
 
@@ -485,7 +535,6 @@ export class RunService {
       artifactVersion = artifactVersion || resolution.artifactVersion;
       templateVars = templateVars || resolution.templateVars;
       volumeVersions = volumeVersions || resolution.volumeVersions;
-      environment = environment || resolution.environment;
 
       // Build resumeSession from resolution (single place!)
       resumeSession = {
@@ -531,6 +580,9 @@ export class RunService {
     if (!agentCompose) {
       throw new NotFoundError("Agent compose could not be loaded");
     }
+
+    // Step 4: Expand environment variables from compose config using templateVars
+    const environment = expandEnvironmentFromCompose(agentCompose, templateVars);
 
     // Build final execution context
     return {

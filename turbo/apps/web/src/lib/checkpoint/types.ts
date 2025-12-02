@@ -7,11 +7,11 @@ import type { AgentComposeYaml } from "../../types/agent-compose";
 /**
  * Agent compose snapshot stored in checkpoint
  * Contains full compose for reproducibility (composes have no versioning)
+ * Note: Environment is re-expanded from templateVars on resume, not stored
  */
 export interface AgentComposeSnapshot {
   config: AgentComposeYaml;
   templateVars?: Record<string, string>;
-  environment?: Record<string, string>; // Resolved environment variables (expanded from ${{ env.X }}, ${{ vars.X }})
 }
 
 /**

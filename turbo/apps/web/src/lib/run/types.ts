@@ -29,7 +29,8 @@ export interface ExecutionContext {
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;
 
-  // Environment variables resolved by CLI (from ${{ env.X }}, ${{ vars.X }} expansion)
+  // Environment variables expanded server-side from compose's environment field
+  // Uses templateVars to resolve ${{ vars.xxx }} references
   environment?: Record<string, string>;
 
   // Resume-specific (optional)

@@ -166,7 +166,6 @@ export async function POST(request: NextRequest) {
         status: "pending",
         prompt: body.prompt,
         templateVars: body.templateVars || null,
-        environment: body.environment || null,
         resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();
@@ -203,7 +202,6 @@ export async function POST(request: NextRequest) {
         artifactVersion: body.artifactVersion,
         templateVars: body.templateVars,
         volumeVersions: body.volumeVersions,
-        environment: body.environment,
         prompt: body.prompt,
         runId: run.id,
         sandboxToken,

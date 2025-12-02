@@ -22,7 +22,6 @@ export const agentRuns = pgTable("agent_runs", {
   status: varchar("status", { length: 20 }).notNull(),
   prompt: text("prompt").notNull(),
   templateVars: jsonb("template_vars"),
-  environment: jsonb("environment").$type<Record<string, string>>(), // Resolved environment variables for checkpoint restoration
   sandboxId: varchar("sandbox_id", { length: 255 }),
   result: jsonb("result"),
   error: text("error"),

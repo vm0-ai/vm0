@@ -151,6 +151,7 @@ class ApiClient {
   /**
    * Create a run with unified request format
    * Supports new runs, checkpoint resume, and session continue
+   * Note: Environment variables are expanded server-side from templateVars
    */
   async createRun(body: {
     // Shortcuts (mutually exclusive)
@@ -163,7 +164,6 @@ class ApiClient {
     artifactVersion?: string;
     templateVars?: Record<string, string>;
     volumeVersions?: Record<string, string>;
-    environment?: Record<string, string>;
     // Required
     prompt: string;
   }): Promise<CreateRunResponse> {

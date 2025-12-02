@@ -58,13 +58,6 @@ describe("run command", () => {
   describe("composeId validation", () => {
     it("should accept valid UUID format", async () => {
       const validUuid = testUuid;
-      vi.mocked(apiClient.getComposeById).mockResolvedValue({
-        id: validUuid,
-        name: "test-agent",
-        config: { agents: { "test-agent": {} } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "completed",
@@ -97,8 +90,17 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeById).toHaveBeenCalledWith(validUuid);
-      expect(apiClient.createRun).toHaveBeenCalled();
+      // UUID is used directly without fetching compose
+      expect(apiClient.getComposeById).not.toHaveBeenCalled();
+      expect(apiClient.createRun).toHaveBeenCalledWith({
+        agentComposeId: validUuid,
+        prompt: "test prompt",
+        artifactName: "test-artifact",
+        artifactVersion: undefined,
+        templateVars: undefined,
+        volumeVersions: undefined,
+        conversationId: undefined,
+      });
     });
 
     it("should accept and resolve agent names", async () => {
@@ -149,7 +151,6 @@ describe("run command", () => {
         artifactVersion: undefined,
         templateVars: undefined,
         volumeVersions: undefined,
-        environment: undefined,
         conversationId: undefined,
       });
     });
@@ -225,7 +226,6 @@ describe("run command", () => {
         artifactVersion: undefined,
         templateVars: { KEY1: "value1" },
         volumeVersions: undefined,
-        environment: undefined,
         conversationId: undefined,
       });
     });
@@ -251,7 +251,6 @@ describe("run command", () => {
         artifactVersion: undefined,
         templateVars: { KEY1: "value1", KEY2: "value2" },
         volumeVersions: undefined,
-        environment: undefined,
         conversationId: undefined,
       });
     });
@@ -275,7 +274,6 @@ describe("run command", () => {
         artifactVersion: undefined,
         templateVars: { URL: "https://example.com?foo=bar" },
         volumeVersions: undefined,
-        environment: undefined,
         conversationId: undefined,
       });
     });
@@ -342,7 +340,6 @@ describe("run command", () => {
         artifactVersion: undefined,
         templateVars: undefined,
         volumeVersions: undefined,
-        environment: undefined,
         conversationId: undefined,
       });
     });
