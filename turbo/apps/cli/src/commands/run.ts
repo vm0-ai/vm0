@@ -46,6 +46,7 @@ const DEFAULT_TIMEOUT_SECONDS = 120;
 
 interface PollOptions {
   verbose?: boolean;
+  startTimestamp: Date;
 }
 
 /**
@@ -55,7 +56,7 @@ interface PollOptions {
 async function pollEvents(
   runId: string,
   timeoutSeconds: number,
-  options?: PollOptions,
+  options: PollOptions,
 ): Promise<boolean> {
   let nextSequence = -1;
   let complete = false;
@@ -63,9 +64,9 @@ async function pollEvents(
   const pollIntervalMs = 500;
   const timeoutMs = timeoutSeconds * 1000;
   const startTime = Date.now();
-  const startTimestamp = new Date();
+  const startTimestamp = options.startTimestamp;
   let previousTimestamp = startTimestamp;
-  const verbose = options?.verbose;
+  const verbose = options.verbose;
 
   while (!complete) {
     // Check timeout
@@ -187,6 +188,8 @@ const runCmd = new Command()
         verbose?: boolean;
       },
     ) => {
+      const startTimestamp = new Date(); // Capture command start time for elapsed calculation
+
       const timeoutSeconds = parseInt(options.timeout, 10);
       if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
         console.error(
@@ -284,6 +287,7 @@ const runCmd = new Command()
         // 4. Poll for events and exit with appropriate code
         const succeeded = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
+          startTimestamp,
         });
         if (!succeeded) {
           process.exit(1);
@@ -336,6 +340,8 @@ runCmd
       options: { timeout: string; verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
+      const startTimestamp = new Date(); // Capture command start time for elapsed calculation
+
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
@@ -391,6 +397,7 @@ runCmd
         // 4. Poll for events and exit with appropriate code
         const succeeded = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
+          startTimestamp,
         });
         if (!succeeded) {
           process.exit(1);
@@ -442,6 +449,8 @@ runCmd
       options: { timeout: string; verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
+      const startTimestamp = new Date(); // Capture command start time for elapsed calculation
+
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
@@ -498,6 +507,7 @@ runCmd
         // 4. Poll for events and exit with appropriate code
         const succeeded = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
+          startTimestamp,
         });
         if (!succeeded) {
           process.exit(1);
