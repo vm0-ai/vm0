@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/vm0-ai/vm0/compare/cli-v3.2.2...cli-v3.3.0) (2025-12-02)
+
+
+### Features
+
+* add immutable versioning for agent composes ([#355](https://github.com/vm0-ai/vm0/issues/355)) ([10f3000](https://github.com/vm0-ai/vm0/commit/10f300049e74e902a93444b469350a4f3d13c72d))
+
 ## [3.2.2](https://github.com/vm0-ai/vm0/compare/cli-v3.2.1...cli-v3.2.2) (2025-12-02)
 
 
