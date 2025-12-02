@@ -70,11 +70,16 @@ export class E2BService {
       | AgentComposeYaml
       | undefined;
 
-    // Get mount path from agent compose (used for resume artifact)
-    const firstAgent = getFirstAgent(agentComposeYaml);
-    const artifactMountPath = firstAgent?.working_dir || "/workspace";
-
     try {
+      // Get mount path from agent compose (used for resume artifact)
+      // working_dir is required - no fallback allowed
+      const firstAgent = getFirstAgent(agentComposeYaml);
+      if (!firstAgent?.working_dir) {
+        throw new Error(
+          "Agent must have working_dir configured (no default allowed)",
+        );
+      }
+      const artifactMountPath = firstAgent.working_dir;
       // Prepare storage manifest with presigned URLs for direct download to sandbox
       // This works for both new runs and resume scenarios
       const storageManifest = await storageService.prepareStorageManifest(
@@ -432,20 +437,23 @@ export class E2BService {
 
     // Extract working_dir from agent compose
     const compose = agentCompose as AgentComposeYaml | undefined;
-    const workingDir = getFirstAgent(compose)?.working_dir;
+    const firstAgentForEnv = getFirstAgent(compose);
+    // working_dir is required and already validated at the start of execute()
+    if (!firstAgentForEnv?.working_dir) {
+      throw new Error(
+        "Agent must have working_dir configured (no default allowed)",
+      );
+    }
+    const workingDir = firstAgentForEnv.working_dir;
 
     // Set environment variables
     const envs: Record<string, string> = {
       VM0_RUN_ID: runId,
       VM0_API_TOKEN: sandboxToken,
       VM0_PROMPT: prompt,
+      VM0_WORKING_DIR: workingDir,
     };
-
-    // Add working directory if configured
-    if (workingDir) {
-      envs.VM0_WORKING_DIR = workingDir;
-      log.debug(`Working directory configured: ${workingDir}`);
-    }
+    log.debug(`Working directory configured: ${workingDir}`);
 
     // Add resume session ID if provided
     if (resumeSessionId) {

@@ -545,7 +545,7 @@ describe("RunService", () => {
         ).rejects.toThrow(NotFoundError);
       });
 
-      test("uses default workingDir when compose has no agents", async () => {
+      test("throws error when compose has no agents configured", async () => {
         const composeWithoutAgents = {
           id: "compose-123",
           config: {},
@@ -556,6 +556,67 @@ describe("RunService", () => {
           .mockResolvedValueOnce([mockOriginalRun])
           .mockResolvedValueOnce([composeWithoutAgents]);
 
+        await expect(
+          runService.buildExecutionContext({
+            agentComposeId: "compose-123",
+            conversationId: "conv-123",
+            prompt: "test",
+            runId: "run-new",
+            sandboxToken: "token",
+            userId: "user-1",
+          }),
+        ).rejects.toThrow("working_dir");
+      });
+
+      test("throws error when agent has no working_dir", async () => {
+        const composeWithoutWorkingDir = {
+          id: "compose-123",
+          config: {
+            agents: {
+              "test-agent": {
+                image: "test-image",
+                provider: "claude-code",
+              },
+            },
+          },
+        };
+
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockOriginalRun])
+          .mockResolvedValueOnce([composeWithoutWorkingDir]);
+
+        await expect(
+          runService.buildExecutionContext({
+            agentComposeId: "compose-123",
+            conversationId: "conv-123",
+            prompt: "test",
+            runId: "run-new",
+            sandboxToken: "token",
+            userId: "user-1",
+          }),
+        ).rejects.toThrow("working_dir");
+      });
+
+      test("uses configured working_dir from agent", async () => {
+        const composeWithCustomWorkingDir = {
+          id: "compose-123",
+          config: {
+            agents: {
+              "test-agent": {
+                image: "test-image",
+                provider: "claude-code",
+                working_dir: "/custom/workspace",
+              },
+            },
+          },
+        };
+
+        mockDbSelect
+          .mockResolvedValueOnce([mockConversation])
+          .mockResolvedValueOnce([mockOriginalRun])
+          .mockResolvedValueOnce([composeWithCustomWorkingDir]);
+
         const context = await runService.buildExecutionContext({
           agentComposeId: "compose-123",
           conversationId: "conv-123",
@@ -565,7 +626,7 @@ describe("RunService", () => {
           userId: "user-1",
         });
 
-        expect(context.resumeSession?.workingDir).toBe("/workspace");
+        expect(context.resumeSession?.workingDir).toBe("/custom/workspace");
       });
     });
   });

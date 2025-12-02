@@ -168,11 +168,17 @@ export class StorageService {
     });
 
     // Handle artifact: either from resumeArtifact or from volumeResult
+    // Note: resumeArtifactMountPath is required when resumeArtifact is provided (no fallback)
+    if (resumeArtifact && !resumeArtifactMountPath) {
+      throw new Error(
+        "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
+      );
+    }
     const artifactSource = resumeArtifact
       ? {
           vasStorageName: resumeArtifact.artifactName,
           vasVersion: resumeArtifact.artifactVersion,
-          mountPath: resumeArtifactMountPath || "/workspace",
+          mountPath: resumeArtifactMountPath!,
         }
       : volumeResult.artifact;
 
