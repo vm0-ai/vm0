@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/vm0-ai/vm0/compare/web-v4.0.0...web-v4.0.1) (2025-12-02)
+
+
+### Bug Fixes
+
+* add sandbox cleanup via unified complete API ([#339](https://github.com/vm0-ai/vm0/issues/339)) ([7c282b2](https://github.com/vm0-ai/vm0/commit/7c282b20651675878f854dd9e64985acb33feaef))
+
 ## [4.0.0](https://github.com/vm0-ai/vm0/compare/web-v3.0.0...web-v4.0.0) (2025-12-01)
 
 

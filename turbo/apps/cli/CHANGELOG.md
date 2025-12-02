@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/vm0-ai/vm0/compare/cli-v3.0.0...cli-v3.1.0) (2025-12-02)
+
+
+### Features
+
+* **cli:** add --verbose flag and elapsed time display for run command ([#341](https://github.com/vm0-ai/vm0/issues/341)) ([3122e1d](https://github.com/vm0-ai/vm0/commit/3122e1d47c500c529e40652ce5059d1a9be6f8c0))
+
 ## [3.0.0](https://github.com/vm0-ai/vm0/compare/cli-v2.0.0...cli-v3.0.0) (2025-12-01)
 
 
