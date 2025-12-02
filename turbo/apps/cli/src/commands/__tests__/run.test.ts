@@ -28,7 +28,8 @@ describe("run command", () => {
     vi.mocked(apiClient.getComposeById).mockResolvedValue({
       id: testUuid,
       name: "test-agent",
-      config: { agents: { "test-agent": {} } },
+      headVersionId: "version-123",
+      content: { agents: { "test-agent": {} } },
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     });
@@ -107,7 +108,8 @@ describe("run command", () => {
       vi.mocked(apiClient.getComposeByName).mockResolvedValue({
         id: testUuid,
         name: "my-agent",
-        config: { agents: { "my-agent": {} } },
+        headVersionId: "version-123",
+        content: { agents: { "my-agent": {} } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });

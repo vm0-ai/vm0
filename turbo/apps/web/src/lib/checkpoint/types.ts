@@ -2,15 +2,13 @@
  * Checkpoint system types for preserving agent run state
  */
 
-import type { AgentComposeYaml } from "../../types/agent-compose";
-
 /**
  * Agent compose snapshot stored in checkpoint
- * Contains full compose for reproducibility (composes have no versioning)
+ * Uses version ID for reproducibility (content-addressed versioning)
  * Note: Environment is re-expanded from templateVars on resume, not stored
  */
 export interface AgentComposeSnapshot {
-  config: AgentComposeYaml;
+  agentComposeVersionId: string; // SHA-256 hash of compose content
   templateVars?: Record<string, string>;
 }
 

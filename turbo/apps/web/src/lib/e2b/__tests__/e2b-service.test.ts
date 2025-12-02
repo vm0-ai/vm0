@@ -106,7 +106,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-001",
-        agentComposeId: "test-agent-001",
+        agentComposeVersionId: "test-version-001",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
@@ -142,9 +142,11 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.error).toBeUndefined();
 
       // Verify sandbox methods were called
-      // commands.run called: 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute with background:true) = 11 times
-      // Note: download-storages.sh is only uploaded when there are files to download
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      // Optimized: commands.run called only 2 times:
+      // 1. tar extract (mkdir + tar xf + chmod in single command)
+      // 2. execute with background:true
+      // Note: All 10 scripts uploaded via single tar archive
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       // Sandbox is NOT killed - it continues running (fire-and-forget)
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
@@ -158,7 +160,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-event",
-        agentComposeId: "test-agent-event",
+        agentComposeVersionId: "test-version-event",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Test prompt",
@@ -175,7 +177,7 @@ describe("E2B Service - mocked unit tests", () => {
       expect(sendVm0StartEvent).toHaveBeenCalledTimes(1);
       expect(sendVm0StartEvent).toHaveBeenCalledWith({
         runId: "run-test-event",
-        agentComposeId: "test-agent-event",
+        agentComposeVersionId: "test-version-event",
         agentName: "My Agent",
         prompt: "Test prompt",
         templateVars: { key: "value" },
@@ -221,7 +223,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-storages",
-        agentComposeId: "test-agent-storages",
+        agentComposeVersionId: "test-version-storages",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Test with storages",
@@ -259,7 +261,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context1: ExecutionContext = {
         runId: "run-test-002a",
-        agentComposeId: "test-agent-002",
+        agentComposeVersionId: "test-version-002",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
@@ -267,7 +269,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context2: ExecutionContext = {
         runId: "run-test-002b",
-        agentComposeId: "test-agent-002",
+        agentComposeVersionId: "test-version-002",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
@@ -290,9 +292,9 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify both sandboxes were created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(2);
-      // Each sandbox: 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(11);
-      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(11);
+      // Optimized: Each sandbox only 2 commands.run calls (tar extract + execute)
+      expect(mockSandbox1.commands.run).toHaveBeenCalledTimes(2);
+      expect(mockSandbox2.commands.run).toHaveBeenCalledTimes(2);
       // Sandboxes NOT killed - they continue running
       expect(mockSandbox1.kill).not.toHaveBeenCalled();
       expect(mockSandbox2.kill).not.toHaveBeenCalled();
@@ -307,7 +309,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-003",
-        agentComposeId: "test-agent-003",
+        agentComposeVersionId: "test-version-003",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
@@ -322,8 +324,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      // Optimized: 2 commands.run calls (tar extract + execute)
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
@@ -336,7 +338,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-004",
-        agentComposeId: "test-agent-004",
+        agentComposeVersionId: "test-version-004",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
@@ -356,8 +358,8 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify sandbox was created (but NOT cleaned up - fire-and-forget)
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-      // 1 (mkdir) + 9 (mv/chmod for each script) + 1 (execute) = 11 times
-      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(11);
+      // Optimized: 2 commands.run calls (tar extract + execute)
+      expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
@@ -370,7 +372,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-005",
-        agentComposeId: "test-agent-005",
+        agentComposeVersionId: "test-version-005",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
@@ -396,7 +398,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-006",
-        agentComposeId: "test-agent-006",
+        agentComposeVersionId: "test-version-006",
         agentCompose: {
           version: "1.0",
           agents: {
@@ -438,7 +440,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-007",
-        agentComposeId: "test-agent-007",
+        agentComposeVersionId: "test-version-007",
         agentCompose: {
           version: "1.0",
           agents: {
@@ -472,7 +474,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-error",
-        agentComposeId: "test-agent-error",
+        agentComposeVersionId: "test-version-error",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
@@ -499,7 +501,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-storage-error",
-        agentComposeId: "test-agent-storage-error",
+        agentComposeVersionId: "test-version-storage-error",
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to storage errors",
@@ -529,7 +531,7 @@ describe("E2B Service - mocked unit tests", () => {
 
       const context: ExecutionContext = {
         runId: "run-test-template-001",
-        agentComposeId: "test-agent-template-001",
+        agentComposeVersionId: "test-version-template-001",
         agentCompose: {
           version: "1.0",
           agents: {

@@ -38,7 +38,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createOrUpdateCompose({
-        config: mockConfig,
+        content: mockConfig,
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -49,7 +49,7 @@ describe("ApiClient", () => {
             Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ config: mockConfig }),
+          body: JSON.stringify({ content: mockConfig }),
         },
       );
 
@@ -70,7 +70,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createOrUpdateCompose({
-        config: {},
+        content: {},
       });
 
       expect(result.action).toBe("created");
@@ -92,7 +92,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createOrUpdateCompose({
-        config: {},
+        content: {},
       });
 
       expect(result.action).toBe("updated");
@@ -102,7 +102,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.createOrUpdateCompose({ config: {} }),
+        apiClient.createOrUpdateCompose({ content: {} }),
       ).rejects.toThrow("Not authenticated");
     });
 
@@ -110,7 +110,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
-        apiClient.createOrUpdateCompose({ config: {} }),
+        apiClient.createOrUpdateCompose({ content: {} }),
       ).rejects.toThrow("API URL not configured");
     });
 
@@ -123,7 +123,7 @@ describe("ApiClient", () => {
       });
 
       await expect(
-        apiClient.createOrUpdateCompose({ config: {} }),
+        apiClient.createOrUpdateCompose({ content: {} }),
       ).rejects.toThrow("Invalid compose");
     });
 
@@ -136,7 +136,7 @@ describe("ApiClient", () => {
       });
 
       await expect(
-        apiClient.createOrUpdateCompose({ config: {} }),
+        apiClient.createOrUpdateCompose({ content: {} }),
       ).rejects.toThrow("Failed to create compose");
     });
   });

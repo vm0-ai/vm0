@@ -4,7 +4,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initServices } from "../../init-services";
 import { agentSessions } from "../../../db/schema/agent-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
 import { AgentSessionService } from "../agent-session-service";
@@ -15,6 +18,8 @@ describe("AgentSessionService", () => {
   let service: AgentSessionService;
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testComposeId = randomUUID();
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   const testRunId = randomUUID();
   const testConversationId = randomUUID();
 
@@ -33,6 +38,10 @@ describe("AgentSessionService", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
@@ -41,7 +50,16 @@ describe("AgentSessionService", () => {
       id: testComposeId,
       userId: testUserId,
       name: "test-agent",
-      config: {
+      headVersionId: testVersionId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
         version: "1.0",
         agents: {
           test: {
@@ -51,15 +69,15 @@ describe("AgentSessionService", () => {
           },
         },
       },
+      createdBy: testUserId,
       createdAt: new Date(),
-      updatedAt: new Date(),
     });
 
     // Create test run
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
-      agentComposeId: testComposeId,
+      agentComposeVersionId: testVersionId,
       status: "completed",
       prompt: "test prompt",
       createdAt: new Date(),
@@ -85,6 +103,10 @@ describe("AgentSessionService", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
 
     await globalThis.services.db
       .delete(agentComposes)

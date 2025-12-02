@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.2.0](https://github.com/vm0-ai/vm0/compare/web-v4.1.0...web-v4.2.0) (2025-12-02)
+
+
+### Features
+
+* add immutable versioning for agent composes ([#355](https://github.com/vm0-ai/vm0/issues/355)) ([10f3000](https://github.com/vm0-ai/vm0/commit/10f300049e74e902a93444b469350a4f3d13c72d))
+
+
+### Performance Improvements
+
+* reduce e2b api calls with tar bundling for scripts ([#361](https://github.com/vm0-ai/vm0/issues/361)) ([252e4d5](https://github.com/vm0-ai/vm0/commit/252e4d550985c7d60c5a7938b075df1b64b9af7d))
+
 ## [4.1.0](https://github.com/vm0-ai/vm0/compare/web-v4.0.1...web-v4.1.0) (2025-12-02)
 
 

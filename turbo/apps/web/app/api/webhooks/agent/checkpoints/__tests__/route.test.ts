@@ -18,7 +18,10 @@ import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -43,6 +46,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID();
   const testComposeId = randomUUID();
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -73,6 +78,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
@@ -81,19 +90,28 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       id: testComposeId,
       userId: testUserId,
       name: "test-agent",
-      config: {
+      headVersionId: testVersionId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
         version: "1.0",
-        agent: {
-          name: "test-agent",
-          image: "test-image",
-          provider: "claude-code",
-          artifact: {
+        agents: {
+          "test-agent": {
+            name: "test-agent",
+            image: "test-image",
+            provider: "claude-code",
             working_dir: "/workspace",
           },
         },
       },
+      createdBy: testUserId,
       createdAt: new Date(),
-      updatedAt: new Date(),
     });
   });
 
@@ -112,6 +130,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -349,7 +371,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: otherUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -407,7 +429,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         templateVars: { user: "testuser" },
@@ -524,7 +546,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),

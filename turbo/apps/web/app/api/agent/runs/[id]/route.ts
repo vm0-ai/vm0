@@ -48,7 +48,7 @@ export async function GET(
     // Return response
     const response: GetAgentRunResponse = {
       runId: run.id,
-      agentComposeId: run.agentComposeId,
+      agentComposeVersionId: run.agentComposeVersionId,
       status: run.status as "pending" | "running" | "completed" | "failed",
       prompt: run.prompt,
       templateVars: run.templateVars as Record<string, string> | undefined,

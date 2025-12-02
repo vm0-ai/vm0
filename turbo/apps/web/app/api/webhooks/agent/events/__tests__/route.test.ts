@@ -16,7 +16,10 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -41,6 +44,8 @@ describe("POST /api/webhooks/agent/events", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID(); // UUID for agent run
   const testComposeId = randomUUID(); // UUID for agent config
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -75,6 +80,10 @@ describe("POST /api/webhooks/agent/events", () => {
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
@@ -83,14 +92,26 @@ describe("POST /api/webhooks/agent/events", () => {
       id: testComposeId,
       userId: testUserId,
       name: "test-agent",
-      config: {
-        agent: {
-          name: "test-agent",
-          model: "claude-3-5-sonnet-20241022",
-        },
-      },
+      headVersionId: testVersionId,
       createdAt: new Date(),
       updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
+        agents: {
+          "test-agent": {
+            name: "test-agent",
+            model: "claude-3-5-sonnet-20241022",
+            working_dir: "/workspace",
+          },
+        },
+      },
+      createdBy: testUserId,
+      createdAt: new Date(),
     });
   });
 
@@ -107,6 +128,10 @@ describe("POST /api/webhooks/agent/events", () => {
     await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -334,7 +359,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: otherUserId, // different user
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -387,7 +412,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -467,7 +492,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -565,7 +590,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
@@ -659,7 +684,7 @@ describe("POST /api/webhooks/agent/events", () => {
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
-        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
         createdAt: new Date(),
