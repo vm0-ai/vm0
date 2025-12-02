@@ -35,6 +35,9 @@ METRIC_PID=""
 WATCH_AGENT_PID=""
 WATCH_LOG_PID=""
 
+# Track if cleanup has been called (to prevent double cleanup)
+CLEANUP_CALLED=""
+
 # Cleanup function to stop background processes
 cleanup_background_processes() {
   log_info "Stopping background processes..."
@@ -63,6 +66,48 @@ cleanup_background_processes() {
 
   log_info "Background processes stopped"
 }
+
+# Emergency cleanup function - called on any exit to ensure sandbox cleanup
+# This is critical to prevent sandbox leaks
+emergency_cleanup() {
+  local exit_code=$?
+
+  # Prevent double cleanup
+  if [ -n "$CLEANUP_CALLED" ]; then
+    return
+  fi
+  CLEANUP_CALLED="true"
+
+  log_info "Emergency cleanup triggered (exit_code=$exit_code)"
+
+  # Stop background processes
+  cleanup_background_processes 2>/dev/null || true
+
+  # Always call complete API to ensure sandbox is killed
+  # Use a default error message if we're exiting abnormally
+  local error_msg=""
+  if [ $exit_code -ne 0 ]; then
+    error_msg="Script exited unexpectedly with code $exit_code"
+  fi
+
+  local payload
+  if [ -n "$error_msg" ]; then
+    payload=$(jq -n --arg runId "$RUN_ID" --argjson exitCode "$exit_code" --arg error "$error_msg" '{runId: $runId, exitCode: $exitCode, error: $error}' 2>/dev/null || echo "{}")
+  else
+    payload=$(jq -n --arg runId "$RUN_ID" --argjson exitCode "$exit_code" '{runId: $runId, exitCode: $exitCode}' 2>/dev/null || echo "{}")
+  fi
+
+  if [ -n "$payload" ] && [ "$payload" != "{}" ]; then
+    log_info "Calling complete API from emergency cleanup..."
+    http_post_json "$COMPLETE_URL" "$payload" >/dev/null 2>&1 || log_error "Failed to call complete API in emergency cleanup"
+  fi
+
+  # Cleanup temp files
+  rm -f "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" "$EVENT_ERROR_FLAG" "$STDERR_FILE" 2>/dev/null || true
+}
+
+# Set up EXIT trap to ensure cleanup always runs
+trap emergency_cleanup EXIT
 
 # Change to working directory
 log_info "Working directory: $WORKING_DIR"
@@ -204,6 +249,9 @@ fi
 
 # Stop background processes and perform final flush
 cleanup_background_processes
+
+# Mark cleanup as called to prevent emergency_cleanup from running
+CLEANUP_CALLED="true"
 
 # Always call complete API at the end
 # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
