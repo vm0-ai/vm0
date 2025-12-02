@@ -178,6 +178,7 @@ export class StorageService {
         );
       }
       artifactSource = {
+        driver: "vas" as const,
         vasStorageName: resumeArtifact.artifactName,
         vasVersion: resumeArtifact.artifactVersion,
         mountPath: resumeArtifactMountPath,
