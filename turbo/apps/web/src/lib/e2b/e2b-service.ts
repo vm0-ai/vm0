@@ -21,6 +21,9 @@ import {
   MOCK_CLAUDE_SCRIPT,
   DOWNLOAD_STORAGES_SCRIPT,
   INCREMENTAL_UPLOAD_SCRIPT,
+  COLLECT_METRIC_SCRIPT,
+  WATCH_AGENT_SCRIPT,
+  WATCH_LOG_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
@@ -430,6 +433,10 @@ export class E2BService {
         content: INCREMENTAL_UPLOAD_SCRIPT,
         path: SCRIPT_PATHS.incrementalUpload,
       },
+      // Metrics collection scripts
+      { content: COLLECT_METRIC_SCRIPT, path: SCRIPT_PATHS.collectMetric },
+      { content: WATCH_AGENT_SCRIPT, path: SCRIPT_PATHS.watchAgent },
+      { content: WATCH_LOG_SCRIPT, path: SCRIPT_PATHS.watchLog },
     ];
 
     // Upload all scripts in parallel for better performance

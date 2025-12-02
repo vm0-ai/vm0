@@ -1,6 +1,11 @@
 /**
  * Main agent execution orchestrator script
  * This script sources the library scripts and coordinates execution
+ *
+ * Architecture (Phase 1 - File-based with dual watchers):
+ * - Claude output -> /var/log/vm0/agent.jsonl -> watch-agent.sh (real-time upload)
+ * - Metrics -> /var/log/vm0/metrics.jsonl -> watch-log.sh (batch upload)
+ * - Errors -> /var/log/vm0/errors.log -> watch-log.sh (batch upload)
  */
 export const RUN_AGENT_SCRIPT = `#!/bin/bash
 set -e
@@ -15,6 +20,48 @@ source "\${SCRIPT_DIR}/lib/vas-snapshot.sh"
 source "\${SCRIPT_DIR}/lib/incremental-upload.sh"
 source "\${SCRIPT_DIR}/lib/create-checkpoint.sh"
 
+# Log directory for file-based architecture
+LOG_DIR="/var/log/vm0"
+AGENT_LOG_FILE="\${LOG_DIR}/agent.jsonl"
+ERRORS_LOG_FILE="\${LOG_DIR}/errors.log"
+
+# Create log directory
+mkdir -p "$LOG_DIR"
+
+# PIDs for background processes
+METRIC_PID=""
+WATCH_AGENT_PID=""
+WATCH_LOG_PID=""
+
+# Cleanup function to stop background processes
+cleanup_background_processes() {
+  log_info "Stopping background processes..."
+
+  # Kill metrics collector
+  if [ -n "$METRIC_PID" ] && kill -0 "$METRIC_PID" 2>/dev/null; then
+    kill "$METRIC_PID" 2>/dev/null || true
+    wait "$METRIC_PID" 2>/dev/null || true
+  fi
+
+  # Kill watch-agent (give it time to flush)
+  if [ -n "$WATCH_AGENT_PID" ] && kill -0 "$WATCH_AGENT_PID" 2>/dev/null; then
+    kill "$WATCH_AGENT_PID" 2>/dev/null || true
+    wait "$WATCH_AGENT_PID" 2>/dev/null || true
+  fi
+
+  # Kill watch-log (give it time to flush final data)
+  if [ -n "$WATCH_LOG_PID" ] && kill -0 "$WATCH_LOG_PID" 2>/dev/null; then
+    # Send SIGTERM to trigger final flush via trap
+    kill -TERM "$WATCH_LOG_PID" 2>/dev/null || true
+    # Wait a bit for final flush
+    sleep 2
+    kill -9 "$WATCH_LOG_PID" 2>/dev/null || true
+    wait "$WATCH_LOG_PID" 2>/dev/null || true
+  fi
+
+  log_info "Background processes stopped"
+}
+
 # Change to working directory
 log_info "Working directory: $WORKING_DIR"
 cd "$WORKING_DIR" || {
@@ -25,6 +72,24 @@ cd "$WORKING_DIR" || {
 # Set Claude config directory to ensure consistent session history location
 export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
 log_info "Claude config directory: $CLAUDE_CONFIG_DIR"
+
+# Start background processes for metrics collection and log watching
+log_info "Starting background processes..."
+
+# Start metrics collector (writes to metrics.jsonl)
+"\${SCRIPT_DIR}/lib/collect-metric.sh" &
+METRIC_PID=$!
+log_info "Started collect-metric.sh (PID: $METRIC_PID)"
+
+# Start watch-agent (streams agent events in real-time)
+"\${SCRIPT_DIR}/lib/watch-agent.sh" &
+WATCH_AGENT_PID=$!
+log_info "Started watch-agent.sh (PID: $WATCH_AGENT_PID)"
+
+# Start watch-log (batch uploads metrics and errors)
+"\${SCRIPT_DIR}/lib/watch-log.sh" &
+WATCH_LOG_PID=$!
+log_info "Started watch-log.sh (PID: $WATCH_LOG_PID)"
 
 # Execute Claude Code with JSONL output
 log_info "Starting Claude Code execution..."
@@ -50,9 +115,9 @@ else
   CLAUDE_BIN="claude"
 fi
 
-# Execute Claude and process output stream
-# Redirect stderr to file for error capture, process stdout (JSONL) in pipe
-"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$STDERR_FILE" | while IFS= read -r line; do
+# Execute Claude and write output to file (for watch-agent to stream)
+# Also process output for session ID extraction and result display
+"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$ERRORS_LOG_FILE" | tee "$AGENT_LOG_FILE" | while IFS= read -r line; do
   # Skip empty lines
   if [ -z "$line" ]; then
     continue
@@ -60,11 +125,23 @@ fi
 
   # Check if line is valid JSON (stdout should only contain JSONL)
   if echo "$line" | jq empty 2>/dev/null; then
-    # Valid JSONL - send immediately
-    send_event "$line"
-
-    # Extract result from "result" event for stdout
+    # Extract session ID from init event (needed for checkpoint)
     event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+    event_subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
+    if [ "$event_type" = "system" ] && [ "$event_subtype" = "init" ] && [ ! -f "$SESSION_ID_FILE" ]; then
+      session_id=$(echo "$line" | jq -r '.session_id // empty' 2>/dev/null)
+      if [ -n "$session_id" ]; then
+        log_info "Captured session ID: $session_id"
+        echo "$session_id" > "$SESSION_ID_FILE"
+        # Calculate session history path
+        project_name=$(echo "$WORKING_DIR" | sed 's|^/||' | sed 's|/|-|g')
+        session_history_path="$HOME/.config/claude/projects/-\${project_name}/\${session_id}.jsonl"
+        echo "$session_history_path" > "$SESSION_HISTORY_PATH_FILE"
+        log_info "Session history will be at: $session_history_path"
+      fi
+    fi
+
+    # Extract result from "result" event for stdout display
     if [ "$event_type" = "result" ]; then
       result_content=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
       if [ -n "$result_content" ]; then
@@ -105,15 +182,18 @@ else
   if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
     log_info "Claude Code failed with exit code $CLAUDE_EXIT_CODE"
     # Try to get detailed error from stderr file
-    if [ -f "$STDERR_FILE" ] && [ -s "$STDERR_FILE" ]; then
+    if [ -f "$ERRORS_LOG_FILE" ] && [ -s "$ERRORS_LOG_FILE" ]; then
       # Get last few lines of stderr, clean up formatting
-      ERROR_MESSAGE=$(tail -5 "$STDERR_FILE" | tr '\\n' ' ' | sed 's/  */ /g' | xargs)
+      ERROR_MESSAGE=$(tail -5 "$ERRORS_LOG_FILE" | tr '\\n' ' ' | sed 's/  */ /g' | xargs)
       log_info "Captured stderr: $ERROR_MESSAGE"
     else
       ERROR_MESSAGE="Agent exited with code $CLAUDE_EXIT_CODE"
     fi
   fi
 fi
+
+# Stop background processes and perform final flush
+cleanup_background_processes
 
 # Always call complete API at the end
 # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
