@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
         status: "pending",
         prompt: body.prompt,
         templateVars: body.templateVars || null,
+        environment: body.environment || null,
         resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();

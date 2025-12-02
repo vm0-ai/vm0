@@ -35,6 +35,7 @@ interface ConversationResolution {
   artifactVersion?: string;
   templateVars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  environment?: Record<string, string>; // Resolved environment variables from checkpoint
   buildResumeArtifact: boolean;
 }
 
@@ -141,6 +142,7 @@ export class RunService {
       artifactVersion: checkpointArtifact.artifactVersion,
       templateVars: agentComposeSnapshot.templateVars || {},
       volumeVersions: checkpointVolumeVersions?.versions,
+      environment: agentComposeSnapshot.environment,
       buildResumeArtifact: true,
     };
   }
@@ -449,6 +451,7 @@ export class RunService {
     let templateVars: Record<string, string> | undefined = params.templateVars;
     let volumeVersions: Record<string, string> | undefined =
       params.volumeVersions;
+    let environment: Record<string, string> | undefined = params.environment;
     let resumeSession: ResumeSession | undefined;
     let resumeArtifact: ArtifactSnapshot | undefined;
 
@@ -482,6 +485,7 @@ export class RunService {
       artifactVersion = artifactVersion || resolution.artifactVersion;
       templateVars = templateVars || resolution.templateVars;
       volumeVersions = volumeVersions || resolution.volumeVersions;
+      environment = environment || resolution.environment;
 
       // Build resumeSession from resolution (single place!)
       resumeSession = {
@@ -540,7 +544,7 @@ export class RunService {
       artifactName,
       artifactVersion,
       volumeVersions,
-      environment: params.environment,
+      environment,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

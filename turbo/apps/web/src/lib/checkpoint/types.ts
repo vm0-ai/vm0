@@ -11,6 +11,7 @@ import type { AgentComposeYaml } from "../../types/agent-compose";
 export interface AgentComposeSnapshot {
   config: AgentComposeYaml;
   templateVars?: Record<string, string>;
+  environment?: Record<string, string>; // Resolved environment variables (expanded from ${{ env.X }}, ${{ vars.X }})
 }
 
 /**

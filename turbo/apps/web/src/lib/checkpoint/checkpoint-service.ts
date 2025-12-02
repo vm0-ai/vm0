@@ -83,6 +83,7 @@ export class CheckpointService {
     const agentComposeSnapshot: AgentComposeSnapshot = {
       config: compose.config as AgentComposeYaml,
       templateVars: (run.templateVars as Record<string, string>) || undefined,
+      environment: (run.environment as Record<string, string>) || undefined,
     };
 
     // Store checkpoint in database
