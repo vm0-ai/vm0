@@ -441,12 +441,36 @@ export class E2BService {
     // but we verify again to ensure VM0_WORKING_DIR env var is never undefined
     const compose = agentCompose as AgentComposeYaml | undefined;
     const firstAgentForEnv = getFirstAgent(compose);
+
+    // Log the agent compose structure for debugging
+    log.debug(
+      `Agent compose structure: ${JSON.stringify({
+        hasCompose: !!compose,
+        hasAgents: !!compose?.agents,
+        agentKeys: compose?.agents ? Object.keys(compose.agents) : [],
+        firstAgent: firstAgentForEnv
+          ? {
+              hasWorkingDir: "working_dir" in firstAgentForEnv,
+              workingDirType: typeof firstAgentForEnv.working_dir,
+              workingDirValue: firstAgentForEnv.working_dir,
+            }
+          : null,
+      })}`,
+    );
+
     if (!firstAgentForEnv?.working_dir) {
       throw new BadRequestError(
         "Agent must have working_dir configured (no default allowed)",
       );
     }
     const workingDir = firstAgentForEnv.working_dir;
+
+    // Extra validation: ensure workingDir is a non-empty string
+    if (typeof workingDir !== "string" || workingDir.trim() === "") {
+      throw new BadRequestError(
+        `Invalid working_dir: expected non-empty string, got ${typeof workingDir}: ${JSON.stringify(workingDir)}`,
+      );
+    }
 
     // Set environment variables
     const envs: Record<string, string> = {
