@@ -608,7 +608,7 @@ export class E2BService {
   }
 
   /**
-   * Cleanup sandbox
+   * Cleanup sandbox (used internally during preparation failures)
    */
   private async cleanupSandbox(sandbox: Sandbox): Promise<void> {
     try {
@@ -617,6 +617,24 @@ export class E2BService {
       log.debug(`Sandbox ${sandbox.sandboxId} cleaned up`);
     } catch (error) {
       log.error(`Failed to cleanup sandbox ${sandbox.sandboxId}:`, error);
+    }
+  }
+
+  /**
+   * Kill a sandbox by its ID
+   * Used by the complete API to cleanup sandboxes after run completion
+   *
+   * @param sandboxId The sandbox ID to kill
+   */
+  async killSandbox(sandboxId: string): Promise<void> {
+    try {
+      log.debug(`Killing sandbox ${sandboxId}...`);
+      const sandbox = await Sandbox.connect(sandboxId);
+      await sandbox.kill();
+      log.debug(`Sandbox ${sandboxId} killed successfully`);
+    } catch (error) {
+      // Log but don't throw - sandbox may already be terminated
+      log.error(`Failed to kill sandbox ${sandboxId}:`, error);
     }
   }
 }

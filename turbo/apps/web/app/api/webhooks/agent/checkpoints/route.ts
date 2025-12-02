@@ -17,19 +17,13 @@ import type {
   CheckpointRequest,
   CheckpointResponse,
 } from "../../../../../src/lib/checkpoint";
-import {
-  sendVm0ResultEvent,
-  sendVm0ErrorEvent,
-} from "../../../../../src/lib/events";
+// Note: vm0_result and vm0_error events are now sent by the complete API
 
 /**
  * POST /api/webhooks/agent/checkpoints
  * Create checkpoint for completed agent run
  */
 export async function POST(request: NextRequest) {
-  // Track runId at top level for error handling
-  let runId: string | undefined;
-
   try {
     // Initialize services
     initServices();
@@ -42,9 +36,6 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body: CheckpointRequest = await request.json();
-
-    // Store runId for error handling
-    runId = body.runId;
 
     // Validate required fields
     if (!body.runId) {
@@ -94,18 +85,8 @@ export async function POST(request: NextRequest) {
       `[Checkpoint API] Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
     );
 
-    // Send vm0_result event with full context
-    // artifact format: { artifactName: version }
-    await sendVm0ResultEvent({
-      runId: body.runId,
-      checkpointId: result.checkpointId,
-      agentSessionId: result.agentSessionId,
-      conversationId: result.conversationId,
-      artifact: {
-        [result.artifact.artifactName]: result.artifact.artifactVersion,
-      },
-      volumes: result.volumes,
-    });
+    // Note: vm0_result event is now sent by the complete API
+    // This endpoint only handles checkpoint data persistence
 
     // Return response
     const response: CheckpointResponse = result;
@@ -114,20 +95,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Checkpoint API] Error:", error);
 
-    // Try to send vm0_error event so CLI doesn't timeout
-    if (runId) {
-      try {
-        await sendVm0ErrorEvent({
-          runId,
-          error: error instanceof Error ? error.message : "Checkpoint failed",
-        });
-      } catch {
-        // Ignore errors when sending error event
-        console.error(
-          "[Checkpoint API] Failed to send vm0_error event after checkpoint failure",
-        );
-      }
-    }
+    // Note: vm0_error event is now sent by the complete API
+    // If checkpoint fails, run-agent.sh will call complete API with exitCode != 0
 
     return errorResponse(error);
   }

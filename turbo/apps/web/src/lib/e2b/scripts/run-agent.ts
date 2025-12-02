@@ -82,30 +82,52 @@ set -e
 # Print newline after output
 echo ""
 
+# Track final exit code for complete API
+FINAL_EXIT_CODE=$CLAUDE_EXIT_CODE
+ERROR_MESSAGE=""
+
 # Check if any events failed to send
 if [ -f "$EVENT_ERROR_FLAG" ]; then
   log_error "Some events failed to send, marking run as failed"
-  rm -f "$EVENT_ERROR_FLAG" "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" 2>/dev/null || true
-  exit 1
+  FINAL_EXIT_CODE=1
+  ERROR_MESSAGE="Some events failed to send"
 fi
 
 # Handle completion
-if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
+if [ $CLAUDE_EXIT_CODE -eq 0 ] && [ $FINAL_EXIT_CODE -eq 0 ]; then
   log_info "Claude Code completed successfully"
 
   # Create checkpoint - this is mandatory for successful runs
   if ! create_checkpoint; then
     log_error "Checkpoint creation failed, marking run as failed"
-    # Cleanup temp files
-    rm -f "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" 2>/dev/null || true
-    exit 1
+    FINAL_EXIT_CODE=1
+    ERROR_MESSAGE="Checkpoint creation failed"
   fi
 else
-  log_info "Claude Code failed with exit code $CLAUDE_EXIT_CODE"
+  if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
+    log_info "Claude Code failed with exit code $CLAUDE_EXIT_CODE"
+    ERROR_MESSAGE="Agent exited with code $CLAUDE_EXIT_CODE"
+  fi
+fi
+
+# Always call complete API at the end
+# This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
+log_info "Calling complete API with exitCode=$FINAL_EXIT_CODE"
+
+complete_payload=$(jq -n \\
+  --arg runId "$RUN_ID" \\
+  --argjson exitCode "$FINAL_EXIT_CODE" \\
+  --arg error "$ERROR_MESSAGE" \\
+  'if $error == "" then {runId: $runId, exitCode: $exitCode} else {runId: $runId, exitCode: $exitCode, error: $error} end')
+
+if http_post_json "$COMPLETE_URL" "$complete_payload" >/dev/null; then
+  log_info "Complete API called successfully"
+else
+  log_error "Failed to call complete API (sandbox may not be cleaned up)"
 fi
 
 # Cleanup temp files
 rm -f "$SESSION_ID_FILE" "$SESSION_HISTORY_PATH_FILE" "$EVENT_ERROR_FLAG" 2>/dev/null || true
 
-exit $CLAUDE_EXIT_CODE
+exit $FINAL_EXIT_CODE
 `;

@@ -24,6 +24,7 @@ ARTIFACT_MANIFEST_URL="\${VM0_ARTIFACT_MANIFEST_URL:-}"
 # Construct webhook endpoint URLs
 WEBHOOK_URL="\${API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL="\${API_URL}/api/webhooks/agent/checkpoints"
+COMPLETE_URL="\${API_URL}/api/webhooks/agent/complete"
 STORAGE_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages"
 INCREMENTAL_WEBHOOK_URL="\${API_URL}/api/webhooks/agent/storages/incremental"
 
