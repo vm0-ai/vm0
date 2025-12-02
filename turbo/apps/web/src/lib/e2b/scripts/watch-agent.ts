@@ -47,8 +47,9 @@ watch_agent_events() {
 
   log_info "Watching agent events from $AGENT_FILE"
 
-  # Use tail -F to follow the file (handles file rotation)
-  tail -F "$AGENT_FILE" 2>/dev/null | while IFS= read -r line; do
+  # Use tail -f -n +1 to read from beginning and follow new content
+  # This ensures we don't miss events written before tail starts
+  tail -f -n +1 "$AGENT_FILE" 2>/dev/null | while IFS= read -r line; do
     # Skip empty lines
     if [ -z "$line" ]; then
       continue

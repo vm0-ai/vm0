@@ -25,8 +25,10 @@ LOG_DIR="/var/log/vm0"
 AGENT_LOG_FILE="\${LOG_DIR}/agent.jsonl"
 ERRORS_LOG_FILE="\${LOG_DIR}/errors.log"
 
-# Create log directory
+# Create log directory and initialize files
 mkdir -p "$LOG_DIR"
+touch "$AGENT_LOG_FILE"
+touch "$ERRORS_LOG_FILE"
 
 # PIDs for background processes
 METRIC_PID=""
@@ -116,8 +118,9 @@ else
 fi
 
 # Execute Claude and write output to file (for watch-agent to stream)
+# Use stdbuf to disable buffering so lines are written immediately
 # Also process output for session ID extraction and result display
-"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$ERRORS_LOG_FILE" | tee "$AGENT_LOG_FILE" | while IFS= read -r line; do
+"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$ERRORS_LOG_FILE" | stdbuf -oL tee "$AGENT_LOG_FILE" | while IFS= read -r line; do
   # Skip empty lines
   if [ -z "$line" ]; then
     continue
