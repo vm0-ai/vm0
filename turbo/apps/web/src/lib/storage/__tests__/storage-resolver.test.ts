@@ -64,28 +64,36 @@ describe("parseMountPath", () => {
 
 describe("replaceTemplateVars", () => {
   test("replaces single variable", () => {
-    const result = replaceTemplateVars("Hello {{name}}", { name: "World" });
+    const result = replaceTemplateVars("Hello ${{ vars.name }}", {
+      name: "World",
+    });
     expect(result.result).toBe("Hello World");
     expect(result.missingVars).toEqual([]);
   });
 
   test("replaces multiple variables", () => {
-    const result = replaceTemplateVars("{{greeting}} {{name}}!", {
-      greeting: "Hello",
-      name: "World",
-    });
+    const result = replaceTemplateVars(
+      "${{ vars.greeting }} ${{ vars.name }}!",
+      {
+        greeting: "Hello",
+        name: "World",
+      },
+    );
     expect(result.result).toBe("Hello World!");
     expect(result.missingVars).toEqual([]);
   });
 
   test("reports missing variables", () => {
-    const result = replaceTemplateVars("Hello {{name}}", {});
-    expect(result.result).toBe("Hello {{name}}");
+    const result = replaceTemplateVars("Hello ${{ vars.name }}", {});
+    expect(result.result).toBe("Hello ${{ vars.name }}");
     expect(result.missingVars).toEqual(["name"]);
   });
 
   test("reports multiple missing variables", () => {
-    const result = replaceTemplateVars("{{greeting}} {{name}}!", {});
+    const result = replaceTemplateVars(
+      "${{ vars.greeting }} ${{ vars.name }}!",
+      {},
+    );
     expect(result.missingVars).toContain("greeting");
     expect(result.missingVars).toContain("name");
   });
@@ -103,14 +111,17 @@ describe("replaceTemplateVars", () => {
   });
 
   test("handles variable in the middle of text", () => {
-    const result = replaceTemplateVars("user-{{userId}}-data", {
+    const result = replaceTemplateVars("user-${{ vars.userId }}-data", {
       userId: "123",
     });
     expect(result.result).toBe("user-123-data");
   });
 
   test("replaces same variable multiple times", () => {
-    const result = replaceTemplateVars("{{x}} + {{x}} = 2{{x}}", { x: "1" });
+    const result = replaceTemplateVars(
+      "${{ vars.x }} + ${{ vars.x }} = 2${{ vars.x }}",
+      { x: "1" },
+    );
     expect(result.result).toBe("1 + 1 = 21");
   });
 });
@@ -154,7 +165,7 @@ describe("resolveVolumes", () => {
   test("resolves volume with template variables in name", () => {
     const config = createConfig(["user-data:/mnt/data"], {
       "user-data": {
-        name: "user-{{userId}}-storage",
+        name: "user-${{ vars.userId }}-storage",
         version: "latest",
       },
     });
@@ -175,7 +186,7 @@ describe("resolveVolumes", () => {
     const config = createConfig(["data:/mnt/data"], {
       data: {
         name: "storage",
-        version: "{{version}}",
+        version: "${{ vars.version }}",
       },
     });
 
@@ -205,7 +216,7 @@ describe("resolveVolumes", () => {
   test("reports error for missing template variable in name", () => {
     const config = createConfig(["data:/mnt/data"], {
       data: {
-        name: "user-{{userId}}-storage",
+        name: "user-${{ vars.userId }}-storage",
         version: "v1",
       },
     });
@@ -222,7 +233,7 @@ describe("resolveVolumes", () => {
     const config = createConfig(["data:/mnt/data"], {
       data: {
         name: "storage",
-        version: "{{version}}",
+        version: "${{ vars.version }}",
       },
     });
 
