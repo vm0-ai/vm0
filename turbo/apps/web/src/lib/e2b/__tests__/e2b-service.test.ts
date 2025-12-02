@@ -552,4 +552,56 @@ describe("E2B Service - mocked unit tests", () => {
       expect(createCall?.[0]).toBe("custom-template-name");
     });
   });
+
+  describe("killSandbox", () => {
+    it("should connect to sandbox and kill it", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.connect).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      // Act
+      await e2bService.killSandbox("test-sandbox-id-123");
+
+      // Assert
+      expect(Sandbox.connect).toHaveBeenCalledTimes(1);
+      expect(Sandbox.connect).toHaveBeenCalledWith("test-sandbox-id-123");
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle errors gracefully when sandbox connect fails", async () => {
+      // Arrange
+      vi.mocked(Sandbox.connect).mockRejectedValue(
+        new Error("Sandbox not found"),
+      );
+
+      // Act - should not throw
+      await expect(
+        e2bService.killSandbox("non-existent-sandbox"),
+      ).resolves.not.toThrow();
+
+      // Assert
+      expect(Sandbox.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle errors gracefully when sandbox kill fails", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox({
+        kill: vi.fn().mockRejectedValue(new Error("Kill failed")),
+      });
+      vi.mocked(Sandbox.connect).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      // Act - should not throw
+      await expect(
+        e2bService.killSandbox("test-sandbox-id"),
+      ).resolves.not.toThrow();
+
+      // Assert
+      expect(Sandbox.connect).toHaveBeenCalledTimes(1);
+      expect(mockSandbox.kill).toHaveBeenCalledTimes(1);
+    });
+  });
 });
