@@ -50,19 +50,42 @@ function isUUID(str: string): boolean {
 }
 
 /**
- * Interface for agent config structure
+ * Extract environment from agent compose config
+ * Returns the first agent's environment field or undefined
  */
-interface AgentConfig {
-  agents?: Record<
-    string,
-    {
-      environment?: Record<string, string>;
-    }
-  >;
+function getEnvironmentFromCompose(
+  config: unknown,
+): Record<string, string> | undefined {
+  if (!config || typeof config !== "object") {
+    return undefined;
+  }
+
+  const compose = config as Record<string, unknown>;
+  if (!compose.agents || typeof compose.agents !== "object") {
+    return undefined;
+  }
+
+  // Get first agent's environment (currently only one agent supported)
+  const agents = Object.values(compose.agents as Record<string, unknown>);
+  const firstAgent = agents[0];
+  if (!firstAgent || typeof firstAgent !== "object") {
+    return undefined;
+  }
+
+  const agent = firstAgent as Record<string, unknown>;
+  if (
+    !agent.environment ||
+    typeof agent.environment !== "object" ||
+    Array.isArray(agent.environment)
+  ) {
+    return undefined;
+  }
+
+  return agent.environment as Record<string, string>;
 }
 
 /**
- * Expand environment variables in agent config
+ * Expand environment variables in agent compose config
  * Expands ${{ env.XXX }} from process.env and ${{ vars.xxx }} from --vars options
  * Returns the resolved environment or undefined if no environment is defined
  */
@@ -71,19 +94,10 @@ function expandEnvironmentVariables(
   cliVars: Record<string, string>,
   verbose?: boolean,
 ): Record<string, string> | undefined {
-  const agentConfig = config as AgentConfig;
-  if (!agentConfig?.agents) {
+  const environment = getEnvironmentFromCompose(config);
+  if (!environment) {
     return undefined;
   }
-
-  // Get first agent's environment (currently only one agent supported)
-  const agents = Object.values(agentConfig.agents);
-  const firstAgent = agents[0];
-  if (!firstAgent?.environment) {
-    return undefined;
-  }
-
-  const environment = firstAgent.environment;
 
   // Extract all variable references
   const refs = extractVariableReferences(environment);

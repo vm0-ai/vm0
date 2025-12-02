@@ -7,6 +7,7 @@ import type {
   VolumeError,
   StorageDriver,
 } from "./types";
+import { expandVariablesInString } from "@vm0/core";
 
 /**
  * Parse mount path declaration
@@ -32,6 +33,7 @@ export function parseMountPath(declaration: string): {
 
 /**
  * Replace template variables in a string
+ * Uses core library's unified ${{ vars.xxx }} syntax
  * @param str - String with template variables like ${{ vars.userId }}
  * @param vars - Variable values (from --vars CLI option)
  * @returns String with variables replaced and list of missing vars
@@ -40,24 +42,11 @@ export function replaceTemplateVars(
   str: string,
   vars: Record<string, string>,
 ): { result: string; missingVars: string[] } {
-  // New unified syntax: ${{ vars.varName }}
-  const templatePattern = /\$\{\{\s*vars\.(\w+)\s*\}\}/g;
-  const missingVars: string[] = [];
-  let result = str;
-
-  const matches = str.matchAll(templatePattern);
-  for (const match of matches) {
-    const varName = match[1]!;
-    const value = vars[varName];
-
-    if (value === undefined) {
-      missingVars.push(varName);
-    } else {
-      result = result.replace(match[0]!, value);
-    }
-  }
-
-  return { result, missingVars };
+  const { result, missingVars } = expandVariablesInString(str, { vars });
+  return {
+    result,
+    missingVars: missingVars.map((ref) => ref.name),
+  };
 }
 
 /**
