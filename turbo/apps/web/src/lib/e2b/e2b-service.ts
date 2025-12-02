@@ -238,7 +238,12 @@ export class E2BService {
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
+      // Upload all scripts to sandbox via single tar archive
+      // This is done ONCE before any other operations to minimize E2B API calls
+      await this.uploadAllScripts(sandbox);
+
       // Download storages directly to sandbox via presigned URLs
+      // Scripts are already available from uploadAllScripts()
       await this.downloadStoragesDirectly(sandbox, storageManifest);
 
       // Restore session history for resume
@@ -253,7 +258,7 @@ export class E2BService {
 
       // Start Claude Code via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
-      // NOTE: All env vars are already set at sandbox creation time
+      // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
       await this.startAgentExecution(sandbox, context.runId);
 
       const prepTimeMs = Date.now() - startTime;
@@ -402,19 +407,11 @@ export class E2BService {
   }
 
   /**
-   * Upload all agent scripts to sandbox
+   * Define all scripts that need to be uploaded to the sandbox
    * Scripts are split into single-responsibility modules for better maintainability
    */
-  private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
-    // Create directory structure
-    await sandbox.commands.run(
-      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
-    );
-
-    // Define scripts to upload
-    // Note: DOWNLOAD_STORAGES_SCRIPT is uploaded separately in uploadDownloadScript()
-    // before storage download, so we don't include it here to avoid duplicate upload
-    const scripts: Array<{ content: string; path: string }> = [
+  private getAllScripts(): Array<{ content: string; path: string }> {
+    return [
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
       { content: REQUEST_SCRIPT, path: SCRIPT_PATHS.request },
@@ -430,39 +427,159 @@ export class E2BService {
         content: INCREMENTAL_UPLOAD_SCRIPT,
         path: SCRIPT_PATHS.incrementalUpload,
       },
+      {
+        content: DOWNLOAD_STORAGES_SCRIPT,
+        path: SCRIPT_PATHS.downloadStorages,
+      },
     ];
+  }
 
-    // Upload all scripts in parallel for better performance
-    await Promise.all(
-      scripts.map(async (script) => {
-        const tempPath = `/tmp/${script.path.split("/").pop()}`;
+  /**
+   * Create a tar archive containing all scripts with correct paths
+   * This reduces E2B API calls from O(n) to O(1) for script uploads
+   *
+   * TAR format (POSIX ustar):
+   * - Each file: 512-byte header + content padded to 512-byte boundary
+   * - End: Two 512-byte zero blocks
+   */
+  private createScriptsTarBuffer(
+    scripts: Array<{ content: string; path: string }>,
+  ): Buffer {
+    const BLOCK_SIZE = 512;
+    const blocks: Buffer[] = [];
 
-        // Convert script string to ArrayBuffer for E2B
-        const scriptBuffer = Buffer.from(script.content, "utf-8");
-        const arrayBuffer = scriptBuffer.buffer.slice(
-          scriptBuffer.byteOffset,
-          scriptBuffer.byteOffset + scriptBuffer.byteLength,
-        ) as ArrayBuffer;
+    for (const script of scripts) {
+      const content = Buffer.from(script.content, "utf-8");
+      // Remove leading slash for tar path
+      const path = script.path.startsWith("/")
+        ? script.path.slice(1)
+        : script.path;
 
-        // Upload to temp location first
-        await sandbox.files.write(tempPath, arrayBuffer);
+      // Create 512-byte tar header
+      const header = Buffer.alloc(BLOCK_SIZE, 0);
 
-        // Move to final location and make executable
-        await sandbox.commands.run(
-          `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
-        );
-      }),
+      // File name (100 bytes, position 0)
+      header.write(path, 0, 100, "utf-8");
+
+      // File mode (8 bytes, position 100) - 0755 for executable
+      header.write("0000755\0", 100, 8, "utf-8");
+
+      // Owner UID (8 bytes, position 108) - 0
+      header.write("0000000\0", 108, 8, "utf-8");
+
+      // Owner GID (8 bytes, position 116) - 0
+      header.write("0000000\0", 116, 8, "utf-8");
+
+      // File size in octal (12 bytes, position 124)
+      const sizeOctal = content.length.toString(8).padStart(11, "0");
+      header.write(sizeOctal + "\0", 124, 12, "utf-8");
+
+      // Modification time (12 bytes, position 136) - current time
+      const mtime = Math.floor(Date.now() / 1000)
+        .toString(8)
+        .padStart(11, "0");
+      header.write(mtime + "\0", 136, 12, "utf-8");
+
+      // Checksum placeholder (8 bytes, position 148) - spaces for calculation
+      header.write("        ", 148, 8, "utf-8");
+
+      // Type flag (1 byte, position 156) - '0' for regular file
+      header.write("0", 156, 1, "utf-8");
+
+      // Link name (100 bytes, position 157) - empty
+      // Already zero-filled
+
+      // USTAR magic (6 bytes, position 257)
+      header.write("ustar\0", 257, 6, "utf-8");
+
+      // USTAR version (2 bytes, position 263)
+      header.write("00", 263, 2, "utf-8");
+
+      // Owner name (32 bytes, position 265)
+      header.write("root", 265, 32, "utf-8");
+
+      // Group name (32 bytes, position 297)
+      header.write("root", 297, 32, "utf-8");
+
+      // Calculate checksum (sum of all bytes in header, treating checksum field as spaces)
+      let checksum = 0;
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        checksum += header.readUInt8(i);
+      }
+      // Write checksum in octal (6 digits + null + space)
+      const checksumStr = checksum.toString(8).padStart(6, "0");
+      header.write(checksumStr + "\0 ", 148, 8, "utf-8");
+
+      blocks.push(header);
+
+      // Add content
+      blocks.push(content);
+
+      // Pad content to 512-byte boundary
+      const padding = BLOCK_SIZE - (content.length % BLOCK_SIZE);
+      if (padding < BLOCK_SIZE) {
+        blocks.push(Buffer.alloc(padding, 0));
+      }
+    }
+
+    // Add two empty blocks to mark end of archive
+    blocks.push(Buffer.alloc(BLOCK_SIZE * 2, 0));
+
+    return Buffer.concat(blocks);
+  }
+
+  /**
+   * Upload all scripts to sandbox using a single tar archive
+   * This significantly reduces E2B API calls:
+   * - Before: 2 mkdir + 12 files.write + 12 commands.run = 26 E2B calls
+   * - After: 1 files.write + 1 commands.run = 2 E2B calls
+   *
+   * @param sandbox E2B sandbox instance
+   * @returns Path to the main run-agent.sh script
+   */
+  private async uploadAllScripts(sandbox: Sandbox): Promise<string> {
+    const scripts = this.getAllScripts();
+
+    // Create tar archive containing all scripts (synchronous, no I/O)
+    const tarBuffer = this.createScriptsTarBuffer(scripts);
+    const tarPath = "/tmp/vm0-scripts.tar";
+
+    // Convert Buffer to ArrayBuffer for E2B
+    const arrayBuffer = tarBuffer.buffer.slice(
+      tarBuffer.byteOffset,
+      tarBuffer.byteOffset + tarBuffer.byteLength,
+    ) as ArrayBuffer;
+
+    // Upload tar archive (single files.write call)
+    await sandbox.files.write(tarPath, arrayBuffer);
+
+    // Extract tar archive and set permissions (single commands.run call)
+    // This creates directories, extracts files, and sets executable permissions
+    await sandbox.commands.run(
+      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
+        `cd / && sudo tar xf ${tarPath} && ` +
+        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.sh ${SCRIPT_PATHS.libDir}/*.sh 2>/dev/null || true && ` +
+        `rm -f ${tarPath}`,
     );
 
     log.debug(
-      `Uploaded ${scripts.length} agent scripts to sandbox: ${SCRIPT_PATHS.baseDir}`,
+      `Uploaded ${scripts.length} scripts via tar bundle to sandbox: ${SCRIPT_PATHS.baseDir}`,
     );
     return SCRIPT_PATHS.runAgent;
   }
 
   /**
+   * Upload all agent scripts to sandbox (legacy method for backward compatibility)
+   * @deprecated Use uploadAllScripts instead
+   */
+  private async uploadRunAgentScript(sandbox: Sandbox): Promise<string> {
+    return this.uploadAllScripts(sandbox);
+  }
+
+  /**
    * Start agent execution (fire-and-forget)
-   * Uploads scripts and starts run-agent.sh in background without waiting
+   * Starts run-agent.sh in background without waiting
+   * NOTE: Scripts must already be uploaded via uploadAllScripts() before calling this method
    *
    * NOTE: All environment variables must be set at sandbox creation time via createSandbox().
    * E2B's background mode does not pass envs from sandbox.commands.run({ envs }) to the process.
@@ -471,16 +588,12 @@ export class E2BService {
     sandbox: Sandbox,
     runId: string,
   ): Promise<void> {
-    // Upload run-agent.sh script to sandbox at runtime
-    // This allows script changes without rebuilding the E2B template
-    const scriptPath = await this.uploadRunAgentScript(sandbox);
-
     log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
 
     // Start script in background using E2B's native background mode
     // This returns immediately while the command continues executing in the sandbox
-    // NOTE: Do not pass envs here - they must be set at sandbox creation time
-    await sandbox.commands.run(scriptPath, {
+    // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
+    await sandbox.commands.run(SCRIPT_PATHS.runAgent, {
       background: true,
     });
 
@@ -490,6 +603,7 @@ export class E2BService {
   /**
    * Download storages directly to sandbox using presigned URLs
    * This method uploads a manifest file and runs a download script inside the sandbox
+   * NOTE: Scripts must be uploaded first via uploadAllScripts()
    *
    * @param sandbox - E2B sandbox instance
    * @param manifest - Storage manifest with presigned URLs
@@ -511,9 +625,6 @@ export class E2BService {
       `Downloading ${totalArchives} archives directly to sandbox using presigned URLs...`,
     );
 
-    // Upload download script first (needed before executeCommand uploads all scripts)
-    await this.uploadDownloadScript(sandbox);
-
     // Upload manifest to sandbox
     const manifestPath = "/tmp/storage-manifest.json";
     const manifestJson = JSON.stringify(manifest);
@@ -526,7 +637,7 @@ export class E2BService {
     await sandbox.files.write(manifestPath, arrayBuffer);
     log.debug(`Uploaded storage manifest to ${manifestPath}`);
 
-    // Execute download script
+    // Execute download script (scripts already uploaded via uploadAllScripts)
     const downloadStart = Date.now();
     const result = await sandbox.commands.run(
       `${SCRIPT_PATHS.downloadStorages} ${manifestPath}`,
@@ -544,43 +655,6 @@ export class E2BService {
 
     log.debug(
       `Downloaded ${totalArchives} archives directly to sandbox in ${downloadTimeMs}ms`,
-    );
-  }
-
-  /**
-   * Upload download-storages.sh and its dependencies (common.sh, log.sh)
-   * Used before all scripts are uploaded by executeCommand
-   */
-  private async uploadDownloadScript(sandbox: Sandbox): Promise<void> {
-    // Create directory structure
-    await sandbox.commands.run(
-      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
-    );
-
-    // Upload download script and its dependencies in parallel
-    const scripts = [
-      { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
-      { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
-      {
-        content: DOWNLOAD_STORAGES_SCRIPT,
-        path: SCRIPT_PATHS.downloadStorages,
-      },
-    ];
-
-    await Promise.all(
-      scripts.map(async (script) => {
-        const tempPath = `/tmp/${script.path.split("/").pop()}`;
-        const scriptBuffer = Buffer.from(script.content, "utf-8");
-        const arrayBuffer = scriptBuffer.buffer.slice(
-          scriptBuffer.byteOffset,
-          scriptBuffer.byteOffset + scriptBuffer.byteLength,
-        ) as ArrayBuffer;
-
-        await sandbox.files.write(tempPath, arrayBuffer);
-        await sandbox.commands.run(
-          `sudo mv ${tempPath} ${script.path} && sudo chmod +x ${script.path}`,
-        );
-      }),
     );
   }
 
