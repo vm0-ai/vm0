@@ -2,11 +2,17 @@
  * Mock Claude CLI script for testing
  * Executes the prompt as a bash command and outputs Claude-compatible JSONL
  * This allows e2e tests to run without calling the real Claude LLM API
+ *
+ * Special test prefixes:
+ * - @fail:<message> - Simulate Claude failure, outputs message to stderr and exits with code 1
  */
 export const MOCK_CLAUDE_SCRIPT = `#!/bin/bash
 # mock-claude - Executes prompt as bash and outputs Claude-compatible JSONL
 # Usage: mock-claude [options] <prompt>
 # The prompt is executed as a bash command
+#
+# Special test prefixes:
+#   @fail:<message> - Output message to stderr and exit with code 1
 
 set -o pipefail
 
@@ -40,6 +46,15 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Special test prefix: @fail:<message> - simulate Claude failure with stderr output
+# Usage: mock-claude "@fail:Session not found"
+# This outputs the message to stderr and exits with code 1
+if [[ "$PROMPT" == @fail:* ]]; then
+  ERROR_MSG="\${PROMPT#@fail:}"
+  echo "$ERROR_MSG" >&2
+  exit 1
+fi
 
 # Function to escape string for JSON
 json_escape() {
