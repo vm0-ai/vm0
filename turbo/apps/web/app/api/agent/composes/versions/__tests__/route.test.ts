@@ -207,4 +207,39 @@ describe("GET /api/agent/composes/versions", () => {
     // Reset mockUserId
     mockUserId = testUserId;
   });
+
+  it("should return 400 for ambiguous version prefix", async () => {
+    // Create a second version with the same 8-char prefix as testVersionId
+    const prefix = testVersionId.slice(0, 8);
+    // Generate a different version ID with the same prefix
+    const ambiguousVersionId =
+      prefix + "0000000000000000000000000000000000000000000000000000000a";
+
+    // Insert a second version with the same prefix
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: ambiguousVersionId,
+      composeId: testComposeId,
+      content: { version: "1.0", agents: {} },
+      createdBy: testUserId,
+    });
+
+    try {
+      const request = new Request(
+        `http://localhost:3000/api/agent/composes/versions?composeId=${testComposeId}&version=${prefix}`,
+        { method: "GET" },
+      );
+
+      const response = await GET(request as NextRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("Ambiguous version prefix");
+      expect(data.error.message).toContain(prefix);
+    } finally {
+      // Cleanup: remove the ambiguous version
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, ambiguousVersionId));
+    }
+  });
 });
