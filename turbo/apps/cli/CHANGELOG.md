@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/vm0-ai/vm0/compare/cli-v3.3.0...cli-v3.4.0) (2025-12-03)
+
+
+### Features
+
+* **cli:** support compose version specifier in vm0 run command ([#365](https://github.com/vm0-ai/vm0/issues/365)) ([7df7623](https://github.com/vm0-ai/vm0/commit/7df7623f9a2f32e5aa264bb17e348a97124e332e))
+
 ## [3.3.0](https://github.com/vm0-ai/vm0/compare/cli-v3.2.2...cli-v3.3.0) (2025-12-02)
 
 

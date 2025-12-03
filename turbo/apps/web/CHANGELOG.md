@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.3.0](https://github.com/vm0-ai/vm0/compare/web-v4.2.0...web-v4.3.0) (2025-12-03)
+
+
+### Features
+
+* **cli:** support compose version specifier in vm0 run command ([#365](https://github.com/vm0-ai/vm0/issues/365)) ([7df7623](https://github.com/vm0-ai/vm0/commit/7df7623f9a2f32e5aa264bb17e348a97124e332e))
+
 ## [4.2.0](https://github.com/vm0-ai/vm0/compare/web-v4.1.0...web-v4.2.0) (2025-12-02)
 
 
