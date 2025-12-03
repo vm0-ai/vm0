@@ -7,6 +7,15 @@ setup() {
     export UNIQUE_ID="$(date +%s)"
     export SECRET_VALUE="secret-value-${UNIQUE_ID}"
     export VAR_VALUE="var-value-${UNIQUE_ID}"
+    export ARTIFACT_NAME="e2e-env-test-${UNIQUE_ID}"
+    export TEST_ARTIFACT_DIR="$(mktemp -d)"
+}
+
+teardown() {
+    # Clean up temporary directory
+    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
+        rm -rf "$TEST_ARTIFACT_DIR"
+    fi
 }
 
 # Environment variable expansion tests
@@ -30,18 +39,25 @@ setup() {
     # 1. Set up the secret
     $CLI_COMMAND secret set TEST_SECRET "$SECRET_VALUE" >/dev/null 2>&1
 
-    # 2. Build the compose
+    # 2. Create and push artifact
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null 2>&1
+    echo "test content" > test.txt
+    $CLI_COMMAND artifact push >/dev/null 2>&1
+
+    # 3. Build the compose
     run $CLI_COMMAND build "$TEST_CONFIG"
     assert_success
 
-    # 3. Run with vars and echo the environment variables
+    # 4. Run with vars and echo the environment variables
     run $CLI_COMMAND run vm0-env-expansion \
         --vars "testVar=${VAR_VALUE}" \
-        --artifact-name "e2e-env-test-${UNIQUE_ID}" \
+        --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
     assert_success
 
-    # 4. Verify the output contains the expanded values
+    # 5. Verify the output contains the expanded values
     assert_output --partial "VAR=${VAR_VALUE}"
     assert_output --partial "SECRET=${SECRET_VALUE}"
 }
