@@ -1,5 +1,24 @@
 # Changelog
 
+## [4.4.0](https://github.com/vm0-ai/vm0/compare/web-v4.3.0...web-v4.4.0) (2025-12-03)
+
+
+### Features
+
+* add unified environment variable syntax ([#362](https://github.com/vm0-ai/vm0/issues/362)) ([e218dd7](https://github.com/vm0-ai/vm0/commit/e218dd76ddd4b7e6508725570b0cd7ee7d769f56))
+
+
+### Bug Fixes
+
+* update sandboxId in database immediately after sandbox creation ([#368](https://github.com/vm0-ai/vm0/issues/368)) ([bdaeccf](https://github.com/vm0-ai/vm0/commit/bdaeccf1b6c6ebbe7267859caabafd0356b879f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.2.0
+
 ## [4.3.0](https://github.com/vm0-ai/vm0/compare/web-v4.2.0...web-v4.3.0) (2025-12-03)
 
 

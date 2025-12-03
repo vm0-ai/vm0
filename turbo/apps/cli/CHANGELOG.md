@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.5.0](https://github.com/vm0-ai/vm0/compare/cli-v3.4.0...cli-v3.5.0) (2025-12-03)
+
+
+### Features
+
+* add unified environment variable syntax ([#362](https://github.com/vm0-ai/vm0/issues/362)) ([e218dd7](https://github.com/vm0-ai/vm0/commit/e218dd76ddd4b7e6508725570b0cd7ee7d769f56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.2.0
+
 ## [3.4.0](https://github.com/vm0-ai/vm0/compare/cli-v3.3.0...cli-v3.4.0) (2025-12-03)
 
 
