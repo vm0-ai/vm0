@@ -158,7 +158,10 @@ describe("secrets-service", () => {
 
       globalThis.services = { db: mockDb as never } as never;
 
-      const result = await getSecretValues("user-1", ["API_KEY", "DB_PASSWORD"]);
+      const result = await getSecretValues("user-1", [
+        "API_KEY",
+        "DB_PASSWORD",
+      ]);
 
       expect(result).toEqual({
         API_KEY: "secret-123",
