@@ -21,9 +21,11 @@ teardown() {
 # Environment variable expansion tests
 
 @test "vm0 secret set creates a new secret" {
-    run $CLI_COMMAND secret set TEST_SECRET "$SECRET_VALUE"
+    # Use unique secret name to ensure it's new
+    local SECRET_NAME="NEW_SECRET_${UNIQUE_ID}"
+    run $CLI_COMMAND secret set "$SECRET_NAME" "$SECRET_VALUE"
     assert_success
-    assert_output --partial "Secret created: TEST_SECRET"
+    assert_output --partial "Secret created: ${SECRET_NAME}"
 }
 
 @test "vm0 secret list shows the created secret" {
@@ -36,23 +38,26 @@ teardown() {
 }
 
 @test "vm0 secret delete removes an existing secret" {
+    # Use unique secret name
+    local SECRET_NAME="DELETE_SECRET_${UNIQUE_ID}"
+
     # Create a secret to delete
-    $CLI_COMMAND secret set DELETE_ME_SECRET "to-be-deleted" >/dev/null 2>&1
+    $CLI_COMMAND secret set "$SECRET_NAME" "to-be-deleted" >/dev/null 2>&1
 
     # Verify it exists
     run $CLI_COMMAND secret list
     assert_success
-    assert_output --partial "DELETE_ME_SECRET"
+    assert_output --partial "$SECRET_NAME"
 
     # Delete it
-    run $CLI_COMMAND secret delete DELETE_ME_SECRET
+    run $CLI_COMMAND secret delete "$SECRET_NAME"
     assert_success
-    assert_output --partial "Secret deleted: DELETE_ME_SECRET"
+    assert_output --partial "Secret deleted: ${SECRET_NAME}"
 
     # Verify it's gone
     run $CLI_COMMAND secret list
     assert_success
-    refute_output --partial "DELETE_ME_SECRET"
+    refute_output --partial "$SECRET_NAME"
 }
 
 @test "vm0 secret delete fails for non-existent secret" {
@@ -62,15 +67,18 @@ teardown() {
 }
 
 @test "vm0 secret set updates existing secret" {
+    # Use unique secret name
+    local SECRET_NAME="UPDATE_SECRET_${UNIQUE_ID}"
+
     # Create initial secret
-    run $CLI_COMMAND secret set UPDATE_TEST "initial-value"
+    run $CLI_COMMAND secret set "$SECRET_NAME" "initial-value"
     assert_success
-    assert_output --partial "Secret created: UPDATE_TEST"
+    assert_output --partial "Secret created: ${SECRET_NAME}"
 
     # Update it
-    run $CLI_COMMAND secret set UPDATE_TEST "updated-value"
+    run $CLI_COMMAND secret set "$SECRET_NAME" "updated-value"
     assert_success
-    assert_output --partial "Secret updated: UPDATE_TEST"
+    assert_output --partial "Secret updated: ${SECRET_NAME}"
 }
 
 @test "vm0 run expands vars and secrets in environment" {
