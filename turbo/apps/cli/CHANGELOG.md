@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/vm0-ai/vm0/compare/cli-v3.5.0...cli-v3.6.0) (2025-12-03)
+
+
+### Features
+
+* **cli:** add cook command for one-click agent preparation ([#371](https://github.com/vm0-ai/vm0/issues/371)) ([8ef6415](https://github.com/vm0-ai/vm0/commit/8ef6415d9b5368db381eecbec27089e1c315a9a9))
+
 ## [3.5.0](https://github.com/vm0-ai/vm0/compare/cli-v3.4.0...cli-v3.5.0) (2025-12-03)
 
 
