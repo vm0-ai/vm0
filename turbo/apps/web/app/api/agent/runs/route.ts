@@ -288,15 +288,8 @@ export async function POST(request: NextRequest) {
 
       // Start execution - returns immediately after sandbox is prepared
       // Agent execution continues in background (fire-and-forget)
+      // Note: sandboxId is persisted to database inside executeRun() immediately after sandbox creation
       const result = await runService.executeRun(context);
-
-      // Update run with sandboxId
-      await globalThis.services.db
-        .update(agentRuns)
-        .set({
-          sandboxId: result.sandboxId,
-        })
-        .where(eq(agentRuns.id, run.id));
 
       console.log(
         `[API] Run ${run.id} started successfully (sandbox: ${result.sandboxId})`,

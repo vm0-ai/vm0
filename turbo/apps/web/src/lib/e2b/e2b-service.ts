@@ -27,6 +27,8 @@ import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
 import { sendVm0ErrorEvent, sendVm0StartEvent } from "../events";
 import { logger } from "../logger";
+import { agentRuns } from "../../db/schema/agent-run";
+import { eq } from "drizzle-orm";
 
 const log = logger("service:e2b");
 
@@ -237,6 +239,17 @@ export class E2BService {
         agentCompose as AgentComposeYaml | undefined,
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
+
+      // Update sandboxId in database immediately after creation
+      // This MUST happen BEFORE startAgentExecution() to avoid race condition
+      // where complete webhook arrives before sandboxId is persisted
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({ sandboxId: sandbox.sandboxId })
+        .where(eq(agentRuns.id, context.runId));
+      log.debug(
+        `SandboxId ${sandbox.sandboxId} persisted to database for run ${context.runId}`,
+      );
 
       // Upload all scripts to sandbox via single tar archive
       // This is done ONCE before any other operations to minimize E2B API calls

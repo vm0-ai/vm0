@@ -50,6 +50,13 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
+// Mock database update function
+const mockDbUpdate = vi.fn().mockReturnValue({
+  set: vi.fn().mockReturnValue({
+    where: vi.fn().mockResolvedValue(undefined),
+  }),
+});
+
 describe("E2B Service - mocked unit tests", () => {
   beforeEach(() => {
     // Clear all mocks before each test
@@ -60,6 +67,13 @@ describe("E2B Service - mocked unit tests", () => {
       storages: [],
       artifact: null,
     });
+
+    // Mock globalThis.services.db for sandboxId persistence
+    globalThis.services = {
+      db: {
+        update: mockDbUpdate,
+      },
+    } as unknown as typeof globalThis.services;
   });
 
   /**
@@ -149,6 +163,51 @@ describe("E2B Service - mocked unit tests", () => {
       expect(mockSandbox.commands.run).toHaveBeenCalledTimes(2);
       // Sandbox is NOT killed - it continues running (fire-and-forget)
       expect(mockSandbox.kill).not.toHaveBeenCalled();
+
+      // Verify sandboxId was persisted to database immediately after creation
+      expect(mockDbUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("should persist sandboxId to database before starting agent execution", async () => {
+      // Arrange
+      const mockSandbox = createMockSandbox();
+      vi.mocked(Sandbox.create).mockResolvedValue(
+        mockSandbox as unknown as Sandbox,
+      );
+
+      // Track call order to verify sandboxId is persisted BEFORE agent execution starts
+      const callOrder: string[] = [];
+      mockDbUpdate.mockImplementation(() => {
+        callOrder.push("db.update");
+        return {
+          set: vi.fn().mockImplementation(() => {
+            return {
+              where: vi.fn().mockResolvedValue(undefined),
+            };
+          }),
+        };
+      });
+      mockSandbox.commands.run.mockImplementation(() => {
+        callOrder.push("commands.run");
+        return Promise.resolve({ stdout: "", stderr: "", exitCode: 0 });
+      });
+
+      const context: ExecutionContext = {
+        runId: "run-test-order",
+        agentComposeVersionId: "test-version-order",
+        agentCompose: createValidAgentCompose(),
+        sandboxToken: "vm0_live_test_token",
+        prompt: "Test call order",
+      };
+
+      // Act
+      await e2bService.execute(context);
+
+      // Assert - db.update should happen BEFORE the second commands.run (agent execution)
+      // Call order should be: commands.run (tar extract), db.update, commands.run (agent execution)
+      const dbUpdateIndex = callOrder.indexOf("db.update");
+      const agentExecutionIndex = callOrder.lastIndexOf("commands.run");
+      expect(dbUpdateIndex).toBeLessThan(agentExecutionIndex);
     });
 
     it("should send vm0_start event with correct parameters", async () => {
