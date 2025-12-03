@@ -175,8 +175,10 @@ describe("GET /api/agent/composes/versions", () => {
   });
 
   it("should return 404 for nonexistent compose", async () => {
+    // Use a valid UUID format that doesn't exist
+    const nonexistentUuid = "00000000-0000-0000-0000-000000000000";
     const request = new Request(
-      "http://localhost:3000/api/agent/composes/versions?composeId=nonexistent-id&version=latest",
+      `http://localhost:3000/api/agent/composes/versions?composeId=${nonexistentUuid}&version=latest`,
       { method: "GET" },
     );
 
