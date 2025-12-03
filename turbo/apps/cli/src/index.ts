@@ -8,6 +8,7 @@ import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
 import { artifactCommand } from "./commands/artifact";
 import { secretCommand } from "./commands/secret";
+import { cookCommand } from "./commands/cook";
 
 const program = new Command();
 
@@ -63,12 +64,13 @@ authCommand
     await checkAuthStatus();
   });
 
-// Register build, run, volume, artifact, and secret commands
+// Register build, run, volume, artifact, secret, and cook commands
 program.addCommand(buildCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
 program.addCommand(artifactCommand);
 program.addCommand(secretCommand);
+program.addCommand(cookCommand);
 
 export { program };
 
