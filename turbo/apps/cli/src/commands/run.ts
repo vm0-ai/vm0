@@ -42,6 +42,32 @@ function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
 }
 
+/**
+ * Parse identifier with optional version specifier
+ * Format: name:version or just name
+ * Examples: "demo:d084948d", "demo:latest", "demo"
+ */
+function parseIdentifier(identifier: string): {
+  name: string;
+  version?: string;
+} {
+  // UUIDs don't contain colons, so check first
+  if (isUUID(identifier)) {
+    return { name: identifier };
+  }
+
+  // Parse name:version format using lastIndexOf to handle edge cases
+  const colonIndex = identifier.lastIndexOf(":");
+  if (colonIndex > 0 && colonIndex < identifier.length - 1) {
+    return {
+      name: identifier.slice(0, colonIndex),
+      version: identifier.slice(colonIndex + 1),
+    };
+  }
+
+  return { name: identifier };
+}
+
 const DEFAULT_TIMEOUT_SECONDS = 120;
 
 interface PollOptions {
@@ -144,7 +170,7 @@ const runCmd = new Command()
   .description("Execute an agent")
   .argument(
     "<identifier>",
-    "Agent name or config ID (e.g., 'my-agent' or 'cfg-abc-123')",
+    "Agent name, config ID, or name:version (e.g., 'my-agent', 'my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
@@ -212,29 +238,32 @@ const runCmd = new Command()
       const verbose = options.verbose;
 
       try {
-        // 1. Resolve identifier to composeId
+        // 1. Parse identifier for optional version specifier
+        const { name, version } = parseIdentifier(identifier);
+
+        // 2. Resolve name to composeId
         let composeId: string;
 
-        if (isUUID(identifier)) {
+        if (isUUID(name)) {
           // It's a UUID compose ID - use directly
-          composeId = identifier;
+          composeId = name;
           if (verbose) {
             console.log(chalk.gray(`  Using compose ID: ${identifier}`));
           }
         } else {
           // It's an agent name - resolve to compose ID
           if (verbose) {
-            console.log(chalk.gray(`  Resolving agent name: ${identifier}`));
+            console.log(chalk.gray(`  Resolving agent name: ${name}`));
           }
           try {
-            const compose = await apiClient.getComposeByName(identifier);
+            const compose = await apiClient.getComposeByName(name);
             composeId = compose.id;
             if (verbose) {
               console.log(chalk.gray(`  Resolved to compose ID: ${composeId}`));
             }
           } catch (error) {
             if (error instanceof Error) {
-              console.error(chalk.red(`✗ Agent not found: ${identifier}`));
+              console.error(chalk.red(`✗ Agent not found: ${name}`));
               console.error(
                 chalk.gray(
                   "  Make sure you've built the agent with: vm0 build",
@@ -245,10 +274,46 @@ const runCmd = new Command()
           }
         }
 
-        // 2. Display starting message (verbose only)
+        // 3. Resolve version if specified
+        let agentComposeVersionId: string | undefined;
+
+        if (version && version !== "latest") {
+          // Resolve version hash to full version ID
+          if (verbose) {
+            console.log(chalk.gray(`  Resolving version: ${version}`));
+          }
+          try {
+            const versionInfo = await apiClient.getComposeVersion(
+              composeId,
+              version,
+            );
+            agentComposeVersionId = versionInfo.versionId;
+            if (verbose) {
+              console.log(
+                chalk.gray(
+                  `  Resolved to version ID: ${agentComposeVersionId.slice(0, 8)}...`,
+                ),
+              );
+            }
+          } catch (error) {
+            if (error instanceof Error) {
+              console.error(chalk.red(`✗ Version not found: ${version}`));
+              console.error(
+                chalk.gray(
+                  "  Make sure the version hash exists. Use 'vm0 build' to see available versions.",
+                ),
+              );
+            }
+            process.exit(1);
+          }
+        }
+        // Note: "latest" version uses agentComposeId which resolves to HEAD
+
+        // 4. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Creating agent run", [
             { label: "Prompt", value: prompt },
+            { label: "Version", value: version || "latest (HEAD)" },
             {
               label: "Variables",
               value:
@@ -271,7 +336,10 @@ const runCmd = new Command()
 
         // 3. Call unified API (server handles all variable expansion)
         const response = await apiClient.createRun({
-          agentComposeId: composeId,
+          // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
+          ...(agentComposeVersionId
+            ? { agentComposeVersionId }
+            : { agentComposeId: composeId }),
           prompt,
           templateVars:
             Object.keys(options.vars).length > 0 ? options.vars : undefined,
@@ -284,7 +352,7 @@ const runCmd = new Command()
           conversationId: options.conversation,
         });
 
-        // 5. Poll for events and exit with appropriate code
+        // 4. Poll for events and exit with appropriate code
         const succeeded = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
           startTimestamp,

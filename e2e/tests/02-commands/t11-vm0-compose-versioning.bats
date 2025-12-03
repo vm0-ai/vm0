@@ -175,3 +175,157 @@ EOF
         return 1
     }
 }
+
+# ============================================
+# vm0 run with version specifier tests
+# ============================================
+
+@test "vm0 run with version specifier runs specific version" {
+    export ARTIFACT_NAME="e2e-versioning-artifact-$(date +%s)"
+
+    echo "# Creating initial config..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Version 1"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Building version 1..."
+    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+    VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
+    echo "# Version 1: $VERSION1"
+
+    echo "# Creating updated config..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Version 2"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Building version 2..."
+    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+    VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
+    echo "# Version 2: $VERSION2"
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running with specific version (version 1)..."
+    run $CLI_COMMAND run "$AGENT_NAME:$VERSION1" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "echo hello"
+    assert_success
+}
+
+@test "vm0 run with :latest tag runs HEAD version" {
+    export ARTIFACT_NAME="e2e-versioning-latest-$(date +%s)"
+
+    echo "# Creating config..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Latest version test"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Building agent..."
+    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running with :latest tag..."
+    run $CLI_COMMAND run "$AGENT_NAME:latest" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "echo hello"
+    assert_success
+}
+
+@test "vm0 run with nonexistent version shows error" {
+    export ARTIFACT_NAME="e2e-versioning-error-$(date +%s)"
+
+    echo "# Creating config..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Error test"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Building agent..."
+    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Running with nonexistent version (should fail before artifact check)..."
+    run $CLI_COMMAND run "$AGENT_NAME:deadbeef" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "echo hello"
+    assert_failure
+    assert_output --partial "Version not found"
+}
+
+@test "vm0 run without version specifier runs HEAD (backward compatible)" {
+    export ARTIFACT_NAME="e2e-versioning-compat-$(date +%s)"
+
+    echo "# Creating config..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Backward compatibility test"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Building agent..."
+    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running without version specifier (should use HEAD)..."
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --timeout 120 \
+        "echo hello"
+    assert_success
+}
