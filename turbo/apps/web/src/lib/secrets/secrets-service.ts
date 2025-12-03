@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { userSecrets } from "../../db/schema/user-secrets";
 import { encryptSecret, decryptSecret } from "./crypto";
 
@@ -102,13 +102,13 @@ export async function getSecretValues(
       encryptedValue: userSecrets.encryptedValue,
     })
     .from(userSecrets)
-    .where(eq(userSecrets.userId, userId));
+    .where(
+      and(eq(userSecrets.userId, userId), inArray(userSecrets.name, names)),
+    );
 
   const result: Record<string, string> = {};
   for (const secret of secrets) {
-    if (names.includes(secret.name)) {
-      result[secret.name] = decryptSecret(secret.encryptedValue);
-    }
+    result[secret.name] = decryptSecret(secret.encryptedValue);
   }
 
   return result;

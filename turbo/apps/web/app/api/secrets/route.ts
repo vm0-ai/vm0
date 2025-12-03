@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError("Secret name must be 255 characters or less");
     }
 
+    // 48 KB limit (same as GitHub Actions secrets)
+    const MAX_SECRET_VALUE_BYTES = 48 * 1024;
+    if (Buffer.byteLength(body.value, "utf8") > MAX_SECRET_VALUE_BYTES) {
+      throw new BadRequestError("Secret value must be 48 KB or less");
+    }
+
     const result = await upsertSecret(userId, body.name, body.value);
 
     return successResponse(
