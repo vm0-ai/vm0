@@ -149,6 +149,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           S3_USER_STORAGES_NAME: ${{ secrets.CI_S3_USER_STORAGES_NAME }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
         run: pnpm test
 
   # Deploy web application with database
@@ -205,6 +206,7 @@ jobs:
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             S3_USER_STORAGES_NAME=${{ secrets.CI_S3_USER_STORAGES_NAME }}
+            SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
             USE_MOCK_CLAUDE=true
             DEBUG=*
           meta-branch: ${{ github.head_ref }}
