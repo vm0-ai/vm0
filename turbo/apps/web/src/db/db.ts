@@ -9,6 +9,7 @@ import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
+import * as userSecretsSchema from "./schema/user-secrets";
 
 export const schema = {
   ...userSchema,
@@ -22,4 +23,5 @@ export const schema = {
   ...agentSessionSchema,
   ...storageSchema,
   ...blobSchema,
+  ...userSecretsSchema,
 };

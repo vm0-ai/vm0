@@ -23,6 +23,7 @@ function initEnv() {
       AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
       AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
       S3_USER_STORAGES_NAME: z.string().min(1).optional(),
+      SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -42,6 +43,7 @@ function initEnv() {
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       S3_USER_STORAGES_NAME: process.env.S3_USER_STORAGES_NAME,
+      SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },

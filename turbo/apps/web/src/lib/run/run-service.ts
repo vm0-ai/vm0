@@ -18,21 +18,28 @@ import { agentSessionService } from "../agent-session";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import { expandVariables } from "@vm0/core";
+import {
+  expandVariables,
+  extractVariableReferences,
+  groupVariablesBySource,
+} from "@vm0/core";
+import { getSecretValues } from "../secrets/secrets-service";
 
 const log = logger("service:run");
 
 /**
  * Extract and expand environment variables from agent compose config
- * Expands ${{ vars.xxx }} references using provided templateVars
+ * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  * @param agentCompose Agent compose configuration
  * @param templateVars Template variables for expansion
+ * @param userId User ID for fetching secrets
  * @returns Expanded environment variables or undefined
  */
-function expandEnvironmentFromCompose(
+async function expandEnvironmentFromCompose(
   agentCompose: unknown,
   templateVars: Record<string, string> | undefined,
-): Record<string, string> | undefined {
+  userId: string,
+): Promise<Record<string, string> | undefined> {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
     return undefined;
@@ -47,29 +54,65 @@ function expandEnvironmentFromCompose(
 
   const environment = firstAgent.environment;
 
-  // If no templateVars provided, return as-is (no expansion needed)
-  if (!templateVars || Object.keys(templateVars).length === 0) {
-    // Check if there are any unexpanded variables
-    const hasVars = Object.values(environment).some((v) =>
-      v.includes("${{ vars."),
+  // Extract all variable references to determine what we need
+  const refs = extractVariableReferences(environment);
+  const grouped = groupVariablesBySource(refs);
+
+  // Check for unsupported env references
+  if (grouped.env.length > 0) {
+    log.warn(
+      "Environment contains $" +
+        "{{ env.xxx }} references which are not supported: " +
+        grouped.env.map((r) => r.name).join(", "),
     );
-    if (hasVars) {
-      log.warn(
-        "Environment contains ${{ vars.xxx }} but no templateVars provided",
-      );
-    }
-    return environment;
   }
 
-  // Expand ${{ vars.xxx }} references
-  const { result, missingVars } = expandVariables(environment, {
-    vars: templateVars,
-  });
+  // Fetch secrets if needed
+  let secrets: Record<string, string> | undefined;
+  if (grouped.secrets.length > 0) {
+    const secretNames = grouped.secrets.map((r) => r.name);
+    secrets = await getSecretValues(userId, secretNames);
 
-  if (missingVars.length > 0) {
-    const missing = missingVars.map((v) => v.name).join(", ");
+    // Check for missing secrets
+    const missingSecrets = secretNames.filter((name) => !secrets![name]);
+    if (missingSecrets.length > 0) {
+      throw new BadRequestError(
+        `Missing required secrets: ${missingSecrets.join(", ")}. Use 'vm0 secret set <name> <value>' to configure them.`,
+      );
+    }
+  }
+
+  // Build sources for expansion
+  const sources: {
+    vars?: Record<string, string>;
+    secrets?: Record<string, string>;
+  } = {};
+  if (templateVars && Object.keys(templateVars).length > 0) {
+    sources.vars = templateVars;
+  }
+  if (secrets && Object.keys(secrets).length > 0) {
+    sources.secrets = secrets;
+  }
+
+  // If no sources provided and there are vars references, warn
+  if (!sources.vars && grouped.vars.length > 0) {
+    log.warn(
+      "Environment contains $" +
+        "{{ vars.xxx }} but no templateVars provided: " +
+        grouped.vars.map((r) => r.name).join(", "),
+    );
+  }
+
+  // Expand all variables
+  const { result, missingVars } = expandVariables(environment, sources);
+
+  // Check for missing vars (secrets already checked above)
+  const missingVarNames = missingVars
+    .filter((v) => v.source === "vars")
+    .map((v) => v.name);
+  if (missingVarNames.length > 0) {
     throw new BadRequestError(
-      `Missing required template variables for environment: ${missing}`,
+      `Missing required template variables for environment: ${missingVarNames.join(", ")}`,
     );
   }
 
@@ -636,10 +679,11 @@ export class RunService {
       throw new NotFoundError("Agent compose could not be loaded");
     }
 
-    // Step 4: Expand environment variables from compose config using templateVars
-    const environment = expandEnvironmentFromCompose(
+    // Step 4: Expand environment variables from compose config using templateVars and secrets
+    const environment = await expandEnvironmentFromCompose(
       agentCompose,
       templateVars,
+      params.userId,
     );
 
     // Build final execution context
