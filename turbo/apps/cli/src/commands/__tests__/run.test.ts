@@ -86,7 +86,8 @@ describe("run command", () => {
       vi.mocked(apiClient.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
-        config: {},
+        headVersionId: null,
+        content: {},
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -153,6 +154,147 @@ describe("run command", () => {
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 build"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should parse name:version format and call getComposeVersion", async () => {
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        headVersionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        content: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
+        versionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+      });
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "completed",
+        sandboxId: "sbx-456",
+        output: "Success",
+        executionTimeMs: 1000,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [
+          {
+            sequenceNumber: 1,
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+        hasMore: false,
+        nextSequence: 1,
+      });
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent:abc12345",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
+        "550e8400-e29b-41d4-a716-446655440000",
+        "abc12345",
+      );
+      expect(apiClient.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentComposeVersionId:
+            "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        }),
+      );
+    });
+
+    it("should use agentComposeId for :latest version", async () => {
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        headVersionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        content: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "completed",
+        sandboxId: "sbx-456",
+        output: "Success",
+        executionTimeMs: 1000,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [
+          {
+            sequenceNumber: 1,
+            eventType: "vm0_result",
+            eventData: { type: "vm0_result", success: true, result: "Done" },
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+        hasMore: false,
+        nextSequence: 1,
+      });
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent:latest",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
+      // Should NOT call getComposeVersion for :latest
+      expect(apiClient.getComposeVersion).not.toHaveBeenCalled();
+      // Should use agentComposeId (not agentComposeVersionId)
+      expect(apiClient.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        }),
+      );
+    });
+
+    it("should handle version not found error", async () => {
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        headVersionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        content: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      vi.mocked(apiClient.getComposeVersion).mockRejectedValue(
+        new Error("Version 'deadbeef' not found"),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent:deadbeef",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Version not found: deadbeef"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

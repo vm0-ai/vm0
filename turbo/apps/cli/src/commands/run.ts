@@ -170,7 +170,7 @@ const runCmd = new Command()
   .description("Execute an agent")
   .argument(
     "<identifier>",
-    "Agent name or config ID (e.g., 'my-agent' or 'cfg-abc-123')",
+    "Agent name, config ID, or name:version (e.g., 'my-agent', 'my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(

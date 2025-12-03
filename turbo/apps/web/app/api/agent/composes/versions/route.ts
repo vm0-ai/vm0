@@ -127,13 +127,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const match = prefixMatches[0];
-    if (!match) {
-      throw new NotFoundError(`Version '${version}'`);
-    }
-
+    // Safe to access [0] since we checked length === 0 and length > 1 above
     return successResponse({
-      versionId: match.id,
+      versionId: prefixMatches[0]!.id,
     });
   } catch (error) {
     return errorResponse(error);
