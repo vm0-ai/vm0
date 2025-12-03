@@ -35,6 +35,44 @@ teardown() {
     assert_output --partial "TEST_SECRET"
 }
 
+@test "vm0 secret delete removes an existing secret" {
+    # Create a secret to delete
+    $CLI_COMMAND secret set DELETE_ME_SECRET "to-be-deleted" >/dev/null 2>&1
+
+    # Verify it exists
+    run $CLI_COMMAND secret list
+    assert_success
+    assert_output --partial "DELETE_ME_SECRET"
+
+    # Delete it
+    run $CLI_COMMAND secret delete DELETE_ME_SECRET
+    assert_success
+    assert_output --partial "Secret deleted: DELETE_ME_SECRET"
+
+    # Verify it's gone
+    run $CLI_COMMAND secret list
+    assert_success
+    refute_output --partial "DELETE_ME_SECRET"
+}
+
+@test "vm0 secret delete fails for non-existent secret" {
+    run $CLI_COMMAND secret delete NONEXISTENT_SECRET_12345
+    assert_failure
+    assert_output --partial "Secret not found"
+}
+
+@test "vm0 secret set updates existing secret" {
+    # Create initial secret
+    run $CLI_COMMAND secret set UPDATE_TEST "initial-value"
+    assert_success
+    assert_output --partial "Secret created: UPDATE_TEST"
+
+    # Update it
+    run $CLI_COMMAND secret set UPDATE_TEST "updated-value"
+    assert_success
+    assert_output --partial "Secret updated: UPDATE_TEST"
+}
+
 @test "vm0 run expands vars and secrets in environment" {
     # 1. Set up the secret
     $CLI_COMMAND secret set TEST_SECRET "$SECRET_VALUE" >/dev/null 2>&1
