@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/vm0-ai/vm0/compare/web-v4.4.2...web-v4.5.0) (2025-12-04)
+
+
+### Features
+
+* **e2b:** migrate sandbox scripts from bash to python ([#393](https://github.com/vm0-ai/vm0/issues/393)) ([a678a06](https://github.com/vm0-ai/vm0/commit/a678a06a0c72dc85143d0c4cfa212ee58ed3cc00))
+
 ## [4.4.2](https://github.com/vm0-ai/vm0/compare/web-v4.4.1...web-v4.4.2) (2025-12-04)
 
 
