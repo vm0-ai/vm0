@@ -18,6 +18,7 @@ import {
   VAS_SNAPSHOT_SCRIPT,
   CREATE_CHECKPOINT_SCRIPT,
   RUN_AGENT_SCRIPT,
+  RUN_AGENT_PYTHON_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
   DOWNLOAD_STORAGES_SCRIPT,
   INCREMENTAL_UPLOAD_SCRIPT,
@@ -445,6 +446,7 @@ export class E2BService {
         path: SCRIPT_PATHS.createCheckpoint,
       },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+      { content: RUN_AGENT_PYTHON_SCRIPT, path: SCRIPT_PATHS.runAgentPython },
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
       {
         content: INCREMENTAL_UPLOAD_SCRIPT,
@@ -581,19 +583,19 @@ export class E2BService {
     await sandbox.commands.run(
       `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
         `cd / && sudo tar xf ${tarPath} && ` +
-        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.sh ${SCRIPT_PATHS.libDir}/*.sh 2>/dev/null || true && ` +
+        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.sh ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.sh 2>/dev/null || true && ` +
         `rm -f ${tarPath}`,
     );
 
     log.debug(
       `Uploaded ${scripts.length} scripts via tar bundle to sandbox: ${SCRIPT_PATHS.baseDir}`,
     );
-    return SCRIPT_PATHS.runAgent;
+    return SCRIPT_PATHS.runAgentPython;
   }
 
   /**
    * Start agent execution (fire-and-forget)
-   * Starts run-agent.sh in background without waiting
+   * Starts run-agent.py in background without waiting
    * NOTE: Scripts must already be uploaded via uploadAllScripts() before calling this method
    *
    * NOTE: All environment variables must be set at sandbox creation time via createSandbox().
@@ -603,12 +605,12 @@ export class E2BService {
     sandbox: Sandbox,
     runId: string,
   ): Promise<void> {
-    log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
+    log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
 
-    // Start script in background using E2B's native background mode
+    // Start Python script in background using E2B's native background mode
     // This returns immediately while the command continues executing in the sandbox
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
-    await sandbox.commands.run(SCRIPT_PATHS.runAgent, {
+    await sandbox.commands.run(`python3 ${SCRIPT_PATHS.runAgentPython}`, {
       background: true,
     });
 

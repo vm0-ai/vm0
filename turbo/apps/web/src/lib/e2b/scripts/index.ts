@@ -9,6 +9,7 @@ export { SEND_EVENT_SCRIPT } from "./send-event";
 export { VAS_SNAPSHOT_SCRIPT } from "./vas-snapshot";
 export { CREATE_CHECKPOINT_SCRIPT } from "./create-checkpoint";
 export { RUN_AGENT_SCRIPT } from "./run-agent";
+export { RUN_AGENT_PYTHON_SCRIPT } from "./run-agent.py";
 export { MOCK_CLAUDE_SCRIPT } from "./mock-claude";
 export { DOWNLOAD_STORAGES_SCRIPT } from "./download-storages";
 export { INCREMENTAL_UPLOAD_SCRIPT } from "./incremental-upload";
@@ -20,6 +21,7 @@ export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
   libDir: "/usr/local/bin/vm0-agent/lib",
   runAgent: "/usr/local/bin/vm0-agent/run-agent.sh",
+  runAgentPython: "/usr/local/bin/vm0-agent/run-agent.py",
   common: "/usr/local/bin/vm0-agent/lib/common.sh",
   log: "/usr/local/bin/vm0-agent/lib/log.sh",
   request: "/usr/local/bin/vm0-agent/lib/request.sh",
