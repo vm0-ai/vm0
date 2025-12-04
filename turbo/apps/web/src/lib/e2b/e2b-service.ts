@@ -598,12 +598,12 @@ export class E2BService {
   ): Promise<void> {
     log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
 
-    // Start Python script in background using E2B's native background mode
-    // This returns immediately while the command continues executing in the sandbox
+    // Start Python script in background using nohup to ignore SIGHUP signal
+    // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
-    await sandbox.commands.run(`python3 ${SCRIPT_PATHS.runAgent}`, {
-      background: true,
-    });
+    await sandbox.commands.run(
+      `nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-nohup.out 2>&1 &`,
+    );
 
     log.debug(`Agent execution started in background for run ${runId}`);
   }
