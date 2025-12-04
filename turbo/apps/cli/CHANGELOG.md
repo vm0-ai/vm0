@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.1](https://github.com/vm0-ai/vm0/compare/cli-v3.8.0...cli-v3.8.1) (2025-12-04)
+
+
+### Bug Fixes
+
+* **cli:** change timeout to interval-based instead of total runtime ([#380](https://github.com/vm0-ai/vm0/issues/380)) ([c47d3b4](https://github.com/vm0-ai/vm0/commit/c47d3b4667029673ca66c8c35dfe6c238efb91b9))
+
 ## [3.8.0](https://github.com/vm0-ai/vm0/compare/cli-v3.7.0...cli-v3.8.0) (2025-12-04)
 
 
