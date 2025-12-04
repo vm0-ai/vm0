@@ -1,32 +1,32 @@
 /**
- * Agent execution scripts
+ * Agent execution scripts (Python)
  * Re-exports all script constants for use by e2b-service
  */
-export { COMMON_SCRIPT } from "./common";
-export { LOG_SCRIPT } from "./log";
-export { REQUEST_SCRIPT } from "./request";
-export { SEND_EVENT_SCRIPT } from "./send-event";
-export { VAS_SNAPSHOT_SCRIPT } from "./vas-snapshot";
-export { CREATE_CHECKPOINT_SCRIPT } from "./create-checkpoint";
-export { RUN_AGENT_SCRIPT } from "./run-agent";
-export { MOCK_CLAUDE_SCRIPT } from "./mock-claude";
-export { DOWNLOAD_STORAGES_SCRIPT } from "./download-storages";
-export { INCREMENTAL_UPLOAD_SCRIPT } from "./incremental-upload";
+export { COMMON_SCRIPT } from "./lib/common.py";
+export { LOG_SCRIPT } from "./lib/log.py";
+export { HTTP_SCRIPT } from "./lib/http.py";
+export { EVENTS_SCRIPT } from "./lib/events.py";
+export { VAS_SNAPSHOT_SCRIPT } from "./lib/vas_snapshot.py";
+export { INCREMENTAL_SCRIPT } from "./lib/incremental.py";
+export { DOWNLOAD_SCRIPT } from "./lib/download.py";
+export { CHECKPOINT_SCRIPT } from "./lib/checkpoint.py";
+export { MOCK_CLAUDE_SCRIPT } from "./lib/mock_claude.py";
+export { RUN_AGENT_SCRIPT } from "./run-agent.py";
 
 /**
- * Script paths in the E2B sandbox
+ * Script paths in the E2B sandbox (Python)
  */
 export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
   libDir: "/usr/local/bin/vm0-agent/lib",
-  runAgent: "/usr/local/bin/vm0-agent/run-agent.sh",
-  common: "/usr/local/bin/vm0-agent/lib/common.sh",
-  log: "/usr/local/bin/vm0-agent/lib/log.sh",
-  request: "/usr/local/bin/vm0-agent/lib/request.sh",
-  sendEvent: "/usr/local/bin/vm0-agent/lib/send-event.sh",
-  vasSnapshot: "/usr/local/bin/vm0-agent/lib/vas-snapshot.sh",
-  createCheckpoint: "/usr/local/bin/vm0-agent/lib/create-checkpoint.sh",
-  mockClaude: "/usr/local/bin/vm0-agent/lib/mock-claude.sh",
-  downloadStorages: "/usr/local/bin/vm0-agent/lib/download-storages.sh",
-  incrementalUpload: "/usr/local/bin/vm0-agent/lib/incremental-upload.sh",
+  runAgent: "/usr/local/bin/vm0-agent/run-agent.py",
+  common: "/usr/local/bin/vm0-agent/lib/common.py",
+  log: "/usr/local/bin/vm0-agent/lib/log.py",
+  http: "/usr/local/bin/vm0-agent/lib/http.py",
+  events: "/usr/local/bin/vm0-agent/lib/events.py",
+  vasSnapshot: "/usr/local/bin/vm0-agent/lib/vas_snapshot.py",
+  incremental: "/usr/local/bin/vm0-agent/lib/incremental.py",
+  download: "/usr/local/bin/vm0-agent/lib/download.py",
+  checkpoint: "/usr/local/bin/vm0-agent/lib/checkpoint.py",
+  mockClaude: "/usr/local/bin/vm0-agent/lib/mock_claude.py",
 } as const;

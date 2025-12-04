@@ -13,14 +13,14 @@ import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
   COMMON_SCRIPT,
   LOG_SCRIPT,
-  REQUEST_SCRIPT,
-  SEND_EVENT_SCRIPT,
+  HTTP_SCRIPT,
+  EVENTS_SCRIPT,
   VAS_SNAPSHOT_SCRIPT,
-  CREATE_CHECKPOINT_SCRIPT,
-  RUN_AGENT_SCRIPT,
+  INCREMENTAL_SCRIPT,
+  DOWNLOAD_SCRIPT,
+  CHECKPOINT_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
-  DOWNLOAD_STORAGES_SCRIPT,
-  INCREMENTAL_UPLOAD_SCRIPT,
+  RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
@@ -431,29 +431,20 @@ export class E2BService {
 
   /**
    * Define all scripts that need to be uploaded to the sandbox
-   * Scripts are split into single-responsibility modules for better maintainability
+   * Scripts are split into single-responsibility Python modules for better maintainability
    */
   private getAllScripts(): Array<{ content: string; path: string }> {
     return [
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
-      { content: REQUEST_SCRIPT, path: SCRIPT_PATHS.request },
-      { content: SEND_EVENT_SCRIPT, path: SCRIPT_PATHS.sendEvent },
+      { content: HTTP_SCRIPT, path: SCRIPT_PATHS.http },
+      { content: EVENTS_SCRIPT, path: SCRIPT_PATHS.events },
       { content: VAS_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vasSnapshot },
-      {
-        content: CREATE_CHECKPOINT_SCRIPT,
-        path: SCRIPT_PATHS.createCheckpoint,
-      },
-      { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+      { content: INCREMENTAL_SCRIPT, path: SCRIPT_PATHS.incremental },
+      { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
+      { content: CHECKPOINT_SCRIPT, path: SCRIPT_PATHS.checkpoint },
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
-      {
-        content: INCREMENTAL_UPLOAD_SCRIPT,
-        path: SCRIPT_PATHS.incrementalUpload,
-      },
-      {
-        content: DOWNLOAD_STORAGES_SCRIPT,
-        path: SCRIPT_PATHS.downloadStorages,
-      },
+      { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
   }
 
@@ -577,11 +568,11 @@ export class E2BService {
     await sandbox.files.write(tarPath, arrayBuffer);
 
     // Extract tar archive and set permissions (single commands.run call)
-    // This creates directories, extracts files, and sets executable permissions
+    // This creates directories, extracts files, and sets executable permissions for Python scripts
     await sandbox.commands.run(
       `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
         `cd / && sudo tar xf ${tarPath} && ` +
-        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.sh ${SCRIPT_PATHS.libDir}/*.sh 2>/dev/null || true && ` +
+        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true && ` +
         `rm -f ${tarPath}`,
     );
 
@@ -603,12 +594,12 @@ export class E2BService {
     sandbox: Sandbox,
     runId: string,
   ): Promise<void> {
-    log.debug(`Starting run-agent.sh for run ${runId} (fire-and-forget)...`);
+    log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
 
-    // Start script in background using E2B's native background mode
+    // Start Python script in background using E2B's native background mode
     // This returns immediately while the command continues executing in the sandbox
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
-    await sandbox.commands.run(SCRIPT_PATHS.runAgent, {
+    await sandbox.commands.run(`python3 ${SCRIPT_PATHS.runAgent}`, {
       background: true,
     });
 
@@ -655,7 +646,7 @@ export class E2BService {
     // Execute download script (scripts already uploaded via uploadAllScripts)
     const downloadStart = Date.now();
     const result = await sandbox.commands.run(
-      `${SCRIPT_PATHS.downloadStorages} ${manifestPath}`,
+      `python3 ${SCRIPT_PATHS.download} ${manifestPath}`,
       {
         timeoutMs: 300000, // 5 minute timeout for downloads
       },
