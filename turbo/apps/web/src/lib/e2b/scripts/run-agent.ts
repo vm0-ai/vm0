@@ -51,8 +51,9 @@ else
 fi
 
 # Execute Claude and process output stream
-# Redirect stderr to file for error capture, process stdout (JSONL) in pipe
-"$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$STDERR_FILE" | while IFS= read -r line; do
+# Use process substitution to avoid pipeline process group issues
+# This ensures the script continues after Claude exits
+while IFS= read -r line; do
   # Skip empty lines
   if [ -z "$line" ]; then
     continue
@@ -72,9 +73,8 @@ fi
       fi
     fi
   fi
-done
-
-CLAUDE_EXIT_CODE=\${PIPESTATUS[0]}
+done < <("$CLAUDE_BIN" $CLAUDE_ARGS "$PROMPT" 2>"$STDERR_FILE")
+CLAUDE_EXIT_CODE=$?
 set -e
 
 # Print newline after output
