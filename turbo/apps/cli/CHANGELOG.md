@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.0](https://github.com/vm0-ai/vm0/compare/cli-v3.6.0...cli-v3.7.0) (2025-12-04)
+
+
+### Features
+
+* **cli:** auto-pull artifact after cook command when version changes ([#377](https://github.com/vm0-ai/vm0/issues/377)) ([1bb3b7d](https://github.com/vm0-ai/vm0/commit/1bb3b7d690c77c20827e1ec49d845e2cf3cd3e26))
+
 ## [3.6.0](https://github.com/vm0-ai/vm0/compare/cli-v3.5.0...cli-v3.6.0) (2025-12-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.1](https://github.com/vm0-ai/vm0/compare/web-v4.4.0...web-v4.4.1) (2025-12-04)
+
+
+### Bug Fixes
+
+* preserve file permissions during tar extraction in sandbox ([#375](https://github.com/vm0-ai/vm0/issues/375)) ([f352cb0](https://github.com/vm0-ai/vm0/commit/f352cb0c08958fd00dffa9965e3db72354b9e104))
+
 ## [4.4.0](https://github.com/vm0-ai/vm0/compare/web-v4.3.0...web-v4.4.0) (2025-12-03)
 
 
