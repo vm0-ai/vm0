@@ -72,11 +72,105 @@ function execVm0Command(
   });
 }
 
+/**
+ * Execute vm0 run command while capturing output for artifact version parsing
+ * Streams output to console while also capturing it
+ * Returns the captured stdout
+ */
+function execVm0RunWithCapture(
+  args: string[],
+  options: { cwd?: string } = {},
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("vm0", args, {
+      cwd: options.cwd,
+      stdio: ["inherit", "pipe", "pipe"],
+      shell: process.platform === "win32",
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (data: Buffer) => {
+      const chunk = data.toString();
+      stdout += chunk;
+      process.stdout.write(chunk);
+    });
+
+    proc.stderr?.on("data", (data: Buffer) => {
+      const chunk = data.toString();
+      stderr += chunk;
+      process.stderr.write(chunk);
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(stderr || `Command failed with exit code ${code}`));
+      }
+    });
+
+    proc.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Parse artifact version from vm0 run output
+ * Looks for pattern like:
+ *   Artifact:
+ *     artifactName: abc12345
+ * Returns the version string (8 char truncated hash)
+ */
+function parseArtifactVersion(
+  output: string,
+  artifactName: string,
+  eventType: "vm0_start" | "vm0_result",
+): string | null {
+  // Find the section after the event marker
+  const eventMarker =
+    eventType === "vm0_start" ? "[vm0_start]" : "[vm0_result]";
+  const eventIndex = output.indexOf(eventMarker);
+  if (eventIndex === -1) return null;
+
+  // Get the section after this event (until next event or end)
+  const nextEventIndex = output.indexOf(
+    eventType === "vm0_start" ? "[vm0_result]" : "[vm0_error]",
+    eventIndex,
+  );
+  const section =
+    nextEventIndex === -1
+      ? output.slice(eventIndex)
+      : output.slice(eventIndex, nextEventIndex);
+
+  // Look for Artifact section and extract version
+  // Pattern: "    artifactName: version" (with ANSI codes possibly)
+  const artifactPattern = new RegExp(
+    `^\\s*${escapeRegExp(artifactName)}:\\s*(?:\\x1b\\[[0-9;]*m)?([a-f0-9]+)`,
+    "m",
+  );
+  const match = section.match(artifactPattern);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export const cookCommand = new Command()
   .name("cook")
   .description("One-click agent preparation and execution from vm0.yaml")
   .argument("[prompt]", "Prompt for the agent")
-  .action(async (prompt: string | undefined) => {
+  .option(
+    "-t, --timeout <seconds>",
+    "Polling timeout in seconds for agent run (default: 120)",
+  )
+  .action(async (prompt: string | undefined, options: { timeout?: string }) => {
     const cwd = process.cwd();
 
     // Step 1: Read and parse config
@@ -220,14 +314,51 @@ export const cookCommand = new Command()
       console.log(chalk.blue(`Running agent: ${agentName}`));
       console.log();
 
+      let runOutput: string;
       try {
-        await execVm0Command(
-          ["run", agentName, "--artifact-name", ARTIFACT_DIR, prompt],
-          { cwd, silent: false },
-        );
+        const runArgs = [
+          "run",
+          agentName,
+          "--artifact-name",
+          ARTIFACT_DIR,
+          ...(options.timeout ? ["--timeout", options.timeout] : []),
+          prompt,
+        ];
+        runOutput = await execVm0RunWithCapture(runArgs, { cwd });
       } catch {
         // Error already displayed by vm0 run
         process.exit(1);
+      }
+
+      // Step 6: Auto-pull artifact if version changed
+      const startVersion = parseArtifactVersion(
+        runOutput,
+        ARTIFACT_DIR,
+        "vm0_start",
+      );
+      const endVersion = parseArtifactVersion(
+        runOutput,
+        ARTIFACT_DIR,
+        "vm0_result",
+      );
+
+      if (startVersion && endVersion && startVersion !== endVersion) {
+        console.log();
+        console.log(chalk.blue("Pulling updated artifact..."));
+
+        try {
+          await execVm0Command(["artifact", "pull"], {
+            cwd: artifactDir,
+            silent: true,
+          });
+          console.log(chalk.green(`✓ Artifact pulled (${endVersion})`));
+        } catch (error) {
+          console.error(chalk.red(`✗ Artifact pull failed`));
+          if (error instanceof Error) {
+            console.error(chalk.gray(`  ${error.message}`));
+          }
+          // Don't exit - the run succeeded, pull is optional
+        }
       }
     } else {
       console.log();
