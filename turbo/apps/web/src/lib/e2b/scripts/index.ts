@@ -2,9 +2,10 @@
  * Agent execution scripts (Python)
  * Re-exports all script constants for use by e2b-service
  */
+export { INIT_SCRIPT } from "./lib/__init__.py";
 export { COMMON_SCRIPT } from "./lib/common.py";
 export { LOG_SCRIPT } from "./lib/log.py";
-export { HTTP_SCRIPT } from "./lib/http.py";
+export { HTTP_SCRIPT } from "./lib/http_client.py";
 export { EVENTS_SCRIPT } from "./lib/events.py";
 export { VAS_SNAPSHOT_SCRIPT } from "./lib/vas_snapshot.py";
 export { INCREMENTAL_SCRIPT } from "./lib/incremental.py";
@@ -19,10 +20,11 @@ export { RUN_AGENT_SCRIPT } from "./run-agent.py";
 export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
   libDir: "/usr/local/bin/vm0-agent/lib",
+  libInit: "/usr/local/bin/vm0-agent/lib/__init__.py",
   runAgent: "/usr/local/bin/vm0-agent/run-agent.py",
   common: "/usr/local/bin/vm0-agent/lib/common.py",
   log: "/usr/local/bin/vm0-agent/lib/log.py",
-  http: "/usr/local/bin/vm0-agent/lib/http.py",
+  httpClient: "/usr/local/bin/vm0-agent/lib/http_client.py",
   events: "/usr/local/bin/vm0-agent/lib/events.py",
   vasSnapshot: "/usr/local/bin/vm0-agent/lib/vas_snapshot.py",
   incremental: "/usr/local/bin/vm0-agent/lib/incremental.py",

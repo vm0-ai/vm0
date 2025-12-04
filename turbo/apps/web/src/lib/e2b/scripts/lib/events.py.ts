@@ -15,7 +15,7 @@ from common import (
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG
 )
 from log import log_info, log_error
-from http import http_post_json
+from http_client import http_post_json
 
 
 def send_event(event: Dict[str, Any]) -> bool:

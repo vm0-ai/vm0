@@ -19,7 +19,7 @@ from common import (
     ARTIFACT_VERSION_ID, ARTIFACT_MANIFEST_URL
 )
 from log import log_info, log_error
-from http import http_post_json
+from http_client import http_post_json
 from vas_snapshot import create_vas_snapshot
 from incremental import create_incremental_snapshot
 

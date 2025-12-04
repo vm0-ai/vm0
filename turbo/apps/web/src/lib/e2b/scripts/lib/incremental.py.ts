@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any, List, Set
 
 from common import RUN_ID, INCREMENTAL_WEBHOOK_URL
 from log import log_info, log_warn, log_error, log_debug
-from http import http_post_form, http_download
+from http_client import http_post_form, http_download
 from vas_snapshot import create_vas_snapshot
 
 

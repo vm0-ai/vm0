@@ -14,14 +14,13 @@ import sys
 import json
 import tarfile
 import tempfile
-import time
 
 # Add lib to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import validate_config
 from log import log_info, log_error
-from http import http_download
+from http_client import http_download
 
 
 def download_storage(mount_path: str, archive_url: str) -> bool:

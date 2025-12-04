@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 
 from common import RUN_ID, STORAGE_WEBHOOK_URL
 from log import log_info, log_error, log_debug
-from http import http_post_form
+from http_client import http_post_form
 
 
 def create_vas_snapshot(

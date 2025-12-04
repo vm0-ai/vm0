@@ -11,6 +11,7 @@ import type {
 } from "../storage/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
+  INIT_SCRIPT,
   COMMON_SCRIPT,
   LOG_SCRIPT,
   HTTP_SCRIPT,
@@ -435,9 +436,10 @@ export class E2BService {
    */
   private getAllScripts(): Array<{ content: string; path: string }> {
     return [
+      { content: INIT_SCRIPT, path: SCRIPT_PATHS.libInit },
       { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
       { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
-      { content: HTTP_SCRIPT, path: SCRIPT_PATHS.http },
+      { content: HTTP_SCRIPT, path: SCRIPT_PATHS.httpClient },
       { content: EVENTS_SCRIPT, path: SCRIPT_PATHS.events },
       { content: VAS_SNAPSHOT_SCRIPT, path: SCRIPT_PATHS.vasSnapshot },
       { content: INCREMENTAL_SCRIPT, path: SCRIPT_PATHS.incremental },
