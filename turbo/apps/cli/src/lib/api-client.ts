@@ -70,7 +70,11 @@ export interface GetComposeVersionResponse {
 }
 
 class ApiClient {
-  private async getHeaders(): Promise<Record<string, string>> {
+  /**
+   * Get base headers for all requests (auth, bypass, debug).
+   * Does not include Content-Type - use getHeaders() for JSON requests.
+   */
+  private async getBaseHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
@@ -78,7 +82,6 @@ class ApiClient {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
     };
 
     // Add Vercel bypass secret if available (for CI/preview deployments)
@@ -92,6 +95,16 @@ class ApiClient {
       headers["x-vm0-debug"] = "true";
     }
 
+    return headers;
+  }
+
+  /**
+   * Get headers for JSON API requests.
+   * Includes Content-Type: application/json.
+   */
+  private async getHeaders(): Promise<Record<string, string>> {
+    const headers = await this.getBaseHeaders();
+    headers["Content-Type"] = "application/json";
     return headers;
   }
 
@@ -273,25 +286,7 @@ class ApiClient {
    */
   async get(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
-    if (!token) {
-      throw new Error("Not authenticated. Run: vm0 auth login");
-    }
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    };
-
-    // Add Vercel bypass secret if available
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      headers["x-vercel-protection-bypass"] = bypassSecret;
-    }
-
-    // Add debug header if VM0_DEBUG is enabled
-    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
-      headers["x-vm0-debug"] = "true";
-    }
+    const headers = await this.getBaseHeaders();
 
     return fetch(`${baseUrl}${path}`, {
       method: "GET",
@@ -307,25 +302,7 @@ class ApiClient {
     options?: { body?: FormData | string },
   ): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
-    if (!token) {
-      throw new Error("Not authenticated. Run: vm0 auth login");
-    }
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    };
-
-    // Add Vercel bypass secret if available
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      headers["x-vercel-protection-bypass"] = bypassSecret;
-    }
-
-    // Add debug header if VM0_DEBUG is enabled
-    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
-      headers["x-vm0-debug"] = "true";
-    }
+    const headers = await this.getBaseHeaders();
 
     return fetch(`${baseUrl}${path}`, {
       method: "POST",
@@ -339,25 +316,7 @@ class ApiClient {
    */
   async delete(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
-    if (!token) {
-      throw new Error("Not authenticated. Run: vm0 auth login");
-    }
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    };
-
-    // Add Vercel bypass secret if available
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      headers["x-vercel-protection-bypass"] = bypassSecret;
-    }
-
-    // Add debug header if VM0_DEBUG is enabled
-    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
-      headers["x-vm0-debug"] = "true";
-    }
+    const headers = await this.getBaseHeaders();
 
     return fetch(`${baseUrl}${path}`, {
       method: "DELETE",

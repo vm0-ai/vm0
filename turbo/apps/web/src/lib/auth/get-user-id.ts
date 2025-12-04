@@ -5,13 +5,13 @@ import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { logger } from "../logger";
 import { canEnableDebug } from "./check-debug-access";
-import { debugContext } from "../debug-context";
+import { enableRequestDebug } from "../debug-context";
 
 const log = logger("auth:user");
 
 /**
  * Check and enable debug mode for the current request if conditions are met.
- * Sets the debug context for the request lifecycle.
+ * Sets the debug flag for the request lifecycle using WeakMap keyed by headers.
  *
  * @param userId - The authenticated user's ID
  * @param headersList - The request headers
@@ -25,12 +25,9 @@ async function checkAndEnableDebug(
   if (debugHeader === "true") {
     const canDebug = await canEnableDebug(userId);
     if (canDebug) {
-      // Enter debug context for this request
-      // Note: This sets up the context but the actual wrapping happens at the route level
-      const store = debugContext.getStore();
-      if (store) {
-        store.enabled = true;
-      }
+      // Enable debug mode for this request
+      // Uses WeakMap keyed by headers object (same object for entire request)
+      enableRequestDebug(headersList);
     }
   }
 }
