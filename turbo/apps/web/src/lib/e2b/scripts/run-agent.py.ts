@@ -28,7 +28,7 @@ from common import (
 from log import log_info, log_error
 from events import send_event
 from checkpoint import create_checkpoint
-from http import http_post_json
+from http_client import http_post_json
 
 
 def main():
