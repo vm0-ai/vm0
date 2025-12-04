@@ -168,7 +168,7 @@ export const cookCommand = new Command()
   .argument("[prompt]", "Prompt for the agent")
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds for agent run (default: 120)",
+    "Timeout in seconds without new events for agent run (default: 120)",
   )
   .action(async (prompt: string | undefined, options: { timeout?: string }) => {
     const cwd = process.cwd();

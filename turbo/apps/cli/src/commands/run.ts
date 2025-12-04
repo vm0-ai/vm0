@@ -95,18 +95,18 @@ async function pollEvents(
   let result: PollResult = { succeeded: true };
   const pollIntervalMs = 500;
   const timeoutMs = timeoutSeconds * 1000;
-  const startTime = Date.now();
+  let lastEventTime = Date.now();
   const startTimestamp = options.startTimestamp;
   let previousTimestamp = startTimestamp;
   const verbose = options.verbose;
 
   while (!complete) {
-    // Check timeout
-    const elapsed = Date.now() - startTime;
-    if (elapsed > timeoutMs) {
+    // Check timeout since last event
+    const timeSinceLastEvent = Date.now() - lastEventTime;
+    if (timeSinceLastEvent > timeoutMs) {
       console.error(
         chalk.red(
-          `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving events`,
+          `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving new events`,
         ),
       );
       throw new Error("Agent execution timed out");
@@ -147,6 +147,11 @@ async function pollEvents(
     }
 
     nextSequence = response.nextSequence;
+
+    // Reset timeout timer when we receive events
+    if (response.events.length > 0) {
+      lastEventTime = Date.now();
+    }
 
     // If no new events and not complete, wait before next poll
     if (response.events.length === 0 && !complete) {
@@ -230,7 +235,7 @@ const runCmd = new Command()
   )
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 120)",
+    "Timeout in seconds without new events (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
@@ -432,7 +437,7 @@ runCmd
   )
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 120)",
+    "Timeout in seconds without new events (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
@@ -542,7 +547,7 @@ runCmd
   )
   .option(
     "-t, --timeout <seconds>",
-    "Polling timeout in seconds (default: 120)",
+    "Timeout in seconds without new events (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
