@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.1](https://github.com/vm0-ai/vm0/compare/web-v4.5.0...web-v4.5.1) (2025-12-04)
+
+
+### Bug Fixes
+
+* **e2b:** use nohup to prevent agent process from being killed by SIGHUP ([#395](https://github.com/vm0-ai/vm0/issues/395)) ([0bcc76d](https://github.com/vm0-ai/vm0/commit/0bcc76de0ab8a8f0d6d3fe02fe153f6c0f70e5d1))
+
 ## [4.5.0](https://github.com/vm0-ai/vm0/compare/web-v4.4.2...web-v4.5.0) (2025-12-04)
 
 
