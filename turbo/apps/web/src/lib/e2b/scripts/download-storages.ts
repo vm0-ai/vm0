@@ -57,7 +57,7 @@ download_storage() {
   # Extract to mount path (handle empty archive gracefully)
   mkdir -p "${dollar}mount_path"
   # tar handles empty archives gracefully
-  tar -xzf "${dollar}temp_tar" -C "${dollar}mount_path" 2>/dev/null || true
+  tar -xpzf "${dollar}temp_tar" -C "${dollar}mount_path" 2>/dev/null || true
   rm -f "${dollar}temp_tar"
 
   log_info "Successfully extracted to ${dollar}mount_path"
