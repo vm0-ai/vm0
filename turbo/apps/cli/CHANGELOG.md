@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.0](https://github.com/vm0-ai/vm0/compare/cli-v3.7.0...cli-v3.8.0) (2025-12-04)
+
+
+### Features
+
+* **cli:** add next steps hints after vm0 run completes ([#378](https://github.com/vm0-ai/vm0/issues/378)) ([90a0a2b](https://github.com/vm0-ai/vm0/commit/90a0a2b447dfb945ffbdd1938792e0d2981aa214))
+
 ## [3.7.0](https://github.com/vm0-ai/vm0/compare/cli-v3.6.0...cli-v3.7.0) (2025-12-04)
 
 
