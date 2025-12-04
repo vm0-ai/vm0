@@ -691,5 +691,4 @@ describe("EventRenderer", () => {
       expect(hasTotalTime).toBe(true);
     });
   });
-
 });
