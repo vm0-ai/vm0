@@ -169,6 +169,47 @@ describe("EventRenderer", () => {
       expect(consoleLogSpy).toHaveBeenCalledTimes(1);
       expect(consoleLogSpy.mock.calls[0]![0]).toContain("Read");
     });
+
+    it("should render object values as formatted JSON", () => {
+      const todos = [
+        {
+          content: "Task 1",
+          status: "pending",
+          activeForm: "Working on task 1",
+        },
+        {
+          content: "Task 2",
+          status: "completed",
+          activeForm: "Working on task 2",
+        },
+      ];
+      const event: ParsedEvent = {
+        type: "tool_use",
+        timestamp: new Date(),
+        data: {
+          tool: "TodoWrite",
+          toolUseId: "toolu_todo",
+          input: {
+            todos,
+          },
+        },
+      };
+
+      EventRenderer.render(event);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[tool_use]");
+      expect(consoleLogSpy.mock.calls[0]![0]).toContain("TodoWrite");
+
+      // Verify the todos are rendered as JSON, not [object Object]
+      const todosOutput = consoleLogSpy.mock.calls[1]![0] as string;
+      expect(todosOutput).toContain("todos:");
+      expect(todosOutput).not.toContain("[object Object]");
+      expect(todosOutput).toContain("Task 1");
+      expect(todosOutput).toContain("pending");
+      expect(todosOutput).toContain("Task 2");
+      expect(todosOutput).toContain("completed");
+    });
   });
 
   // ============================================

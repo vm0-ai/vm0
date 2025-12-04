@@ -114,7 +114,11 @@ export class EventRenderer {
     if (input && typeof input === "object") {
       for (const [key, value] of Object.entries(input)) {
         if (value !== undefined && value !== null) {
-          console.log(`  ${key}: ${chalk.gray(String(value))}`);
+          const displayValue =
+            typeof value === "object"
+              ? JSON.stringify(value, null, 2)
+              : String(value);
+          console.log(`  ${key}: ${chalk.gray(displayValue)}`);
         }
       }
     }
