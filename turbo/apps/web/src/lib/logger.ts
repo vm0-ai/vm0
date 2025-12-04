@@ -19,7 +19,13 @@
  * Production/Preview:
  *   - DEBUG must be explicitly set via environment variables
  *   - Preview deployments: DEBUG=* is set via GitHub Actions workflow
+ *
+ * Request-scoped debug (VM0_DEBUG):
+ *   - When a @vm0.ai user sets VM0_DEBUG=true in CLI, debug is enabled for their request
+ *   - This is controlled via AsyncLocalStorage debug context
  */
+
+import { isRequestDebugEnabled } from "./debug-context";
 
 type LogMethod = (...args: unknown[]) => void;
 
@@ -54,6 +60,11 @@ function getDebugPatterns(): string[] {
 }
 
 function matchesDebug(name: string): boolean {
+  // Check request-scoped debug flag first (VM0_DEBUG for @vm0.ai users)
+  if (isRequestDebugEnabled()) {
+    return true;
+  }
+
   const patterns = getDebugPatterns();
   if (patterns.length === 0) return false;
 

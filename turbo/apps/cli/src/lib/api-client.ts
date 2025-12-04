@@ -87,6 +87,11 @@ class ApiClient {
       headers["x-vercel-protection-bypass"] = bypassSecret;
     }
 
+    // Add debug header if VM0_DEBUG is enabled
+    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
+      headers["x-vm0-debug"] = "true";
+    }
+
     return headers;
   }
 
@@ -283,6 +288,11 @@ class ApiClient {
       headers["x-vercel-protection-bypass"] = bypassSecret;
     }
 
+    // Add debug header if VM0_DEBUG is enabled
+    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
+      headers["x-vm0-debug"] = "true";
+    }
+
     return fetch(`${baseUrl}${path}`, {
       method: "GET",
       headers,
@@ -312,6 +322,11 @@ class ApiClient {
       headers["x-vercel-protection-bypass"] = bypassSecret;
     }
 
+    // Add debug header if VM0_DEBUG is enabled
+    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
+      headers["x-vm0-debug"] = "true";
+    }
+
     return fetch(`${baseUrl}${path}`, {
       method: "POST",
       headers,
@@ -337,6 +352,11 @@ class ApiClient {
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) {
       headers["x-vercel-protection-bypass"] = bypassSecret;
+    }
+
+    // Add debug header if VM0_DEBUG is enabled
+    if (process.env.VM0_DEBUG === "true" || process.env.VM0_DEBUG === "1") {
+      headers["x-vm0-debug"] = "true";
     }
 
     return fetch(`${baseUrl}${path}`, {
