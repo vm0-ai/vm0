@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.2](https://github.com/vm0-ai/vm0/compare/cli-v3.8.1...cli-v3.8.2) (2025-12-04)
+
+
+### Bug Fixes
+
+* **cli:** render object values as json instead of string coercion ([#383](https://github.com/vm0-ai/vm0/issues/383)) ([30aaaae](https://github.com/vm0-ai/vm0/commit/30aaaaeb1a3e4ddc5d98cc497d819c66b05d8d31))
+
 ## [3.8.1](https://github.com/vm0-ai/vm0/compare/cli-v3.8.0...cli-v3.8.1) (2025-12-04)
 
 
