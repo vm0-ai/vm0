@@ -75,18 +75,24 @@ interface PollOptions {
   startTimestamp: Date;
 }
 
+interface PollResult {
+  succeeded: boolean;
+  sessionId?: string;
+  checkpointId?: string;
+}
+
 /**
  * Poll for events until vm0_result or vm0_error is received
- * @returns true if run succeeded (vm0_result), false if run failed (vm0_error)
+ * @returns Poll result with success status and optional session/checkpoint IDs
  */
 async function pollEvents(
   runId: string,
   timeoutSeconds: number,
   options: PollOptions,
-): Promise<boolean> {
+): Promise<PollResult> {
   let nextSequence = -1;
   let complete = false;
-  let runSucceeded = true;
+  let result: PollResult = { succeeded: true };
   const pollIntervalMs = 500;
   const timeoutMs = timeoutSeconds * 1000;
   const startTime = Date.now();
@@ -128,10 +134,14 @@ async function pollEvents(
         // Complete when we receive vm0_result or vm0_error
         if (parsed.type === "vm0_result") {
           complete = true;
-          runSucceeded = true;
+          result = {
+            succeeded: true,
+            sessionId: parsed.data.agentSessionId as string | undefined,
+            checkpointId: parsed.data.checkpointId as string | undefined,
+          };
         } else if (parsed.type === "vm0_error") {
           complete = true;
-          runSucceeded = false;
+          result = { succeeded: false };
         }
       }
     }
@@ -144,7 +154,7 @@ async function pollEvents(
     }
   }
 
-  return runSucceeded;
+  return result;
 }
 
 /**
@@ -163,6 +173,30 @@ function logVerbosePreFlight(
   console.log();
   console.log(chalk.blue("Executing in sandbox..."));
   console.log();
+}
+
+/**
+ * Display next steps after successful run
+ */
+function showNextSteps(result: PollResult): void {
+  const { sessionId, checkpointId } = result;
+
+  if (sessionId || checkpointId) {
+    console.log();
+    console.log("Next steps:");
+    if (sessionId) {
+      console.log("  Continue with session (latest state):");
+      console.log(
+        chalk.cyan(`    vm0 run continue ${sessionId} "your next prompt"`),
+      );
+    }
+    if (checkpointId) {
+      console.log("  Resume from checkpoint (exact snapshot state):");
+      console.log(
+        chalk.cyan(`    vm0 run resume ${checkpointId} "your next prompt"`),
+      );
+    }
+  }
 }
 
 const runCmd = new Command()
@@ -353,13 +387,14 @@ const runCmd = new Command()
         });
 
         // 4. Poll for events and exit with appropriate code
-        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
           startTimestamp,
         });
-        if (!succeeded) {
+        if (!result.succeeded) {
           process.exit(1);
         }
+        showNextSteps(result);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -463,13 +498,14 @@ runCmd
         });
 
         // 4. Poll for events and exit with appropriate code
-        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
           startTimestamp,
         });
-        if (!succeeded) {
+        if (!result.succeeded) {
           process.exit(1);
         }
+        showNextSteps(result);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -573,13 +609,14 @@ runCmd
         });
 
         // 4. Poll for events and exit with appropriate code
-        const succeeded = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, timeoutSeconds, {
           verbose,
           startTimestamp,
         });
-        if (!succeeded) {
+        if (!result.succeeded) {
           process.exit(1);
         }
+        showNextSteps(result);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {

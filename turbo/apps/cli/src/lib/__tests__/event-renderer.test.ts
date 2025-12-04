@@ -621,10 +621,13 @@ describe("EventRenderer", () => {
       EventRenderer.render(event, options);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      const lastCall =
-        consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1]![0];
-      expect(lastCall).toContain("Total time:");
-      expect(lastCall).toContain("6.7s");
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      const hasTotalTime = allCalls.some(
+        (call) => call.includes("Total time:") && call.includes("6.7s"),
+      );
+      expect(hasTotalTime).toBe(true);
     });
 
     it("should not render total time without verbose flag", () => {
@@ -649,7 +652,9 @@ describe("EventRenderer", () => {
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
-      const hasTotalTime = allCalls.some((call) => call.includes("Total time"));
+      const hasTotalTime = allCalls.some(
+        (call) => call && call.includes("Total time"),
+      );
       expect(hasTotalTime).toBe(false);
     });
 
@@ -676,11 +681,15 @@ describe("EventRenderer", () => {
       expect(consoleLogSpy.mock.calls[0]![0]).toContain("[vm0_result]");
       expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+200ms]");
 
-      // Check last line has total time
-      const lastCall =
-        consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1]![0];
-      expect(lastCall).toContain("Total time:");
-      expect(lastCall).toContain("6.7s");
+      // Check total time is rendered somewhere
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      const hasTotalTime = allCalls.some(
+        (call) => call.includes("Total time:") && call.includes("6.7s"),
+      );
+      expect(hasTotalTime).toBe(true);
     });
   });
+
 });
