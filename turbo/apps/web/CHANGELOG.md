@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.2](https://github.com/vm0-ai/vm0/compare/web-v4.4.1...web-v4.4.2) (2025-12-04)
+
+
+### Bug Fixes
+
+* prevent script termination after claude exits in run-agent ([#386](https://github.com/vm0-ai/vm0/issues/386)) ([bac56b8](https://github.com/vm0-ai/vm0/commit/bac56b886a2ee25c8d8d630cfb1c81d8482a8d51))
+
 ## [4.4.1](https://github.com/vm0-ai/vm0/compare/web-v4.4.0...web-v4.4.1) (2025-12-04)
 
 
