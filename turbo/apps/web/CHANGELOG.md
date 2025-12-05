@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.2](https://github.com/vm0-ai/vm0/compare/web-v4.5.1...web-v4.5.2) (2025-12-05)
+
+
+### Bug Fixes
+
+* patch critical react server components security vulnerability ([#397](https://github.com/vm0-ai/vm0/issues/397)) ([c5d6bb5](https://github.com/vm0-ai/vm0/commit/c5d6bb51e4bb74ed235b687e9fb369e31ca47d8e))
+
 ## [4.5.1](https://github.com/vm0-ai/vm0/compare/web-v4.5.0...web-v4.5.1) (2025-12-04)
 
 
