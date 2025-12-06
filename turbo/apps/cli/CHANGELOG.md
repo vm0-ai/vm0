@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.0](https://github.com/vm0-ai/vm0/compare/cli-v3.8.2...cli-v3.9.0) (2025-12-06)
+
+
+### Features
+
+* **cli:** support timeout=0 for no timeout in run and cook commands ([#399](https://github.com/vm0-ai/vm0/issues/399)) ([bb94811](https://github.com/vm0-ai/vm0/commit/bb948111c8e6f9cccd339586fe311f4336d07c37))
+
 ## [3.8.2](https://github.com/vm0-ai/vm0/compare/cli-v3.8.1...cli-v3.8.2) (2025-12-04)
 
 
