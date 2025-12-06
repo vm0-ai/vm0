@@ -295,7 +295,7 @@ export const cookCommand = new Command()
     console.log(chalk.blue("Building compose..."));
 
     try {
-      await execVm0Command(["build", CONFIG_FILE], {
+      await execVm0Command(["compose", CONFIG_FILE], {
         cwd,
         silent: true,
       });
