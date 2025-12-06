@@ -12,6 +12,9 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("webhooks:heartbeat");
 
 interface HeartbeatRequest {
   runId: string;
@@ -50,12 +53,12 @@ export async function POST(request: NextRequest) {
       throw new NotFoundError("Agent run");
     }
 
-    console.log(`[Heartbeat] Updated heartbeat for run ${body.runId}`);
+    log.debug(`Updated heartbeat for run ${body.runId}`);
 
     const response: HeartbeatResponse = { ok: true };
     return successResponse(response, 200);
   } catch (error) {
-    console.error("[Heartbeat] Error:", error);
+    log.error("Heartbeat error:", error);
     return errorResponse(error);
   }
 }
