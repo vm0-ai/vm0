@@ -1,5 +1,5 @@
 import { Pool as PgPool } from "pg";
-import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
+import { Pool as NeonPool } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
@@ -43,7 +43,6 @@ export function initServices(): void {
         if (isVercel) {
           // Use Neon serverless driver for Vercel
           // This driver is optimized for Neon's connection pooler and serverless environments
-          neonConfig.fetchConnectionCache = true;
           _pool = new NeonPool({
             connectionString: this.env.DATABASE_URL,
             max: 1,
