@@ -309,7 +309,7 @@ const runCmd = new Command()
               console.error(chalk.red(`✗ Agent not found: ${name}`));
               console.error(
                 chalk.gray(
-                  "  Make sure you've built the agent with: vm0 compose",
+                  "  Make sure you've composed the agent with: vm0 compose",
                 ),
               );
             }
@@ -414,7 +414,7 @@ const runCmd = new Command()
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));
             console.error(
               chalk.gray(
-                "  Make sure you've built the agent with: vm0 compose",
+                "  Make sure you've composed the agent with: vm0 compose",
               ),
             );
           } else {
