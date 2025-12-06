@@ -279,6 +279,28 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
+      - name: Warmup Vercel deployment
+        run: |
+          echo "Warming up Vercel deployment at ${{ needs.deploy-web.outputs.preview-url }}"
+          # Retry up to 5 times with 10 second delays to handle cold starts
+          for i in 1 2 3 4 5; do
+            echo "Warmup attempt $i..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+              "${{ needs.deploy-web.outputs.preview-url }}/api/cli/auth/device" \
+              -X POST \
+              -H "Content-Type: application/json" \
+              -d '{}' \
+              --max-time 30) || HTTP_STATUS="timeout"
+            echo "HTTP Status: $HTTP_STATUS"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Warmup successful!"
+              break
+            fi
+            echo "Waiting 10 seconds before retry..."
+            sleep 10
+          done
+
       - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"

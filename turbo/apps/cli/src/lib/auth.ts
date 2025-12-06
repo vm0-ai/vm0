@@ -26,23 +26,40 @@ async function requestDeviceCode(apiUrl: string): Promise<{
   expires_in: number;
   interval: number;
 }> {
-  const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
-    method: "POST",
-    headers: buildHeaders(),
-    body: JSON.stringify({}),
-  });
+  // Add timeout to handle Vercel cold starts (30s should be enough)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  if (!response.ok) {
-    throw new Error(`Failed to request device code: ${response.statusText}`);
+  try {
+    const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
+      method: "POST",
+      headers: buildHeaders(),
+      body: JSON.stringify({}),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Failed to request device code: ${response.statusText}`);
+    }
+
+    return response.json() as Promise<{
+      device_code: string;
+      user_code: string;
+      verification_url: string;
+      expires_in: number;
+      interval: number;
+    }>;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        "Request timed out - server may be starting up, please try again",
+      );
+    }
+    throw error;
   }
-
-  return response.json() as Promise<{
-    device_code: string;
-    user_code: string;
-    verification_url: string;
-    expires_in: number;
-    interval: number;
-  }>;
 }
 
 async function exchangeToken(
