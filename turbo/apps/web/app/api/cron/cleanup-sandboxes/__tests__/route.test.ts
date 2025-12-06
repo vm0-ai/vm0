@@ -4,23 +4,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "../route";
 import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { initServices } from "../../../../../src/lib/init-services";
+import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
+} from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Mock e2bService
-vi.mock("../../../../../../src/lib/e2b/e2b-service", () => ({
+vi.mock("../../../../../src/lib/e2b/e2b-service", () => ({
   e2bService: {
     killSandbox: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
-import { e2bService } from "../../../../../../src/lib/e2b/e2b-service";
+import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
 
 const mockKillSandbox = vi.mocked(e2bService.killSandbox);
 
