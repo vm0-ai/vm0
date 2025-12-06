@@ -347,7 +347,7 @@ export class E2BService {
       };
     }
     // Note: No finally cleanup - sandbox continues running for fire-and-forget execution
-    // Sandbox will auto-terminate after timeout (1 hour) or when run-agent.sh completes
+    // Sandbox will auto-terminate after timeout (24h production, 1h other) or when run-agent.sh completes
   }
 
   /**
@@ -405,8 +405,12 @@ export class E2BService {
     envVars: Record<string, string>,
     agentCompose?: AgentComposeYaml,
   ): Promise<Sandbox> {
+    // Use 24 hour timeout for Vercel production, 1 hour for other environments
+    const isVercelProduction = process.env.VERCEL_ENV === "production";
+    const timeoutMs = isVercelProduction ? 86_400_000 : 3_600_000;
+
     const sandboxOptions = {
-      timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
+      timeoutMs,
       envs: envVars, // Pass environment variables to sandbox
     };
 
@@ -423,6 +427,9 @@ export class E2BService {
     log.debug(`Using template: ${templateName}`);
     log.debug(
       `Template source: ${agent?.image ? "agent.image" : "E2B_TEMPLATE_NAME"}`,
+    );
+    log.debug(
+      `Sandbox timeout: ${timeoutMs / 3_600_000}h (VERCEL_ENV=${process.env.VERCEL_ENV || "undefined"})`,
     );
     log.debug(`Sandbox env vars:`, Object.keys(envVars));
 
