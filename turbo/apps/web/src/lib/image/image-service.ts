@@ -1,5 +1,5 @@
 import { Template } from "e2b";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 
 import { images } from "../../db/schema/image";
 import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
@@ -251,4 +251,62 @@ export async function assertImageAccess(
       throw new BadRequestError(error.error);
     }
   }
+}
+
+/**
+ * List all images for a user
+ */
+export async function listImages(userId: string) {
+  const result = await globalThis.services.db
+    .select({
+      id: images.id,
+      alias: images.alias,
+      status: images.status,
+      errorMessage: images.errorMessage,
+      createdAt: images.createdAt,
+      updatedAt: images.updatedAt,
+    })
+    .from(images)
+    .where(eq(images.userId, userId))
+    .orderBy(desc(images.createdAt));
+
+  return result;
+}
+
+/**
+ * Get an image by ID
+ */
+export async function getImageById(imageId: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(images)
+    .where(eq(images.id, imageId))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+/**
+ * Delete an image by ID
+ * Note: This only deletes from our database. E2B templates remain and will
+ * be garbage collected by E2B based on their retention policy.
+ */
+export async function deleteImage(
+  userId: string,
+  imageId: string,
+): Promise<void> {
+  // Get image to verify ownership
+  const image = await getImageById(imageId);
+
+  if (!image) {
+    throw new NotFoundError(`Image not found: ${imageId}`);
+  }
+
+  if (image.userId !== userId) {
+    throw new ForbiddenError("You don't have access to this image");
+  }
+
+  // Delete from database
+  // Note: E2B template cleanup is handled by E2B's retention policy
+  await globalThis.services.db.delete(images).where(eq(images.id, imageId));
 }

@@ -3,7 +3,7 @@ import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { successResponse, errorResponse } from "../../../src/lib/api-response";
 import { BadRequestError, UnauthorizedError } from "../../../src/lib/errors";
-import { buildImage } from "../../../src/lib/image/image-service";
+import { buildImage, listImages } from "../../../src/lib/image/image-service";
 
 interface CreateImageRequest {
   dockerfile: string;
@@ -14,6 +14,30 @@ interface CreateImageResponse {
   buildId: string;
   imageId: string;
   alias: string;
+}
+
+/**
+ * GET /api/images
+ * List all images for the authenticated user
+ */
+export async function GET() {
+  try {
+    // Initialize services at serverless function entry
+    initServices();
+
+    // Authenticate
+    const userId = await getUserId();
+    if (!userId) {
+      throw new UnauthorizedError("Not authenticated");
+    }
+
+    // List user's images
+    const imageList = await listImages(userId);
+
+    return successResponse({ images: imageList });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 /**
