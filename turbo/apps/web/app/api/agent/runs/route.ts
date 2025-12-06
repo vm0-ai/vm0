@@ -254,11 +254,13 @@ export async function POST(request: NextRequest) {
     console.log(`[API] Generated sandbox token for run: ${run.id}`);
 
     // Update run status to 'running' before starting E2B execution
+    // Initialize lastHeartbeatAt for sandbox cleanup monitoring
     await globalThis.services.db
       .update(agentRuns)
       .set({
         status: "running",
         startedAt: new Date(),
+        lastHeartbeatAt: new Date(),
       })
       .where(eq(agentRuns.id, run.id));
 

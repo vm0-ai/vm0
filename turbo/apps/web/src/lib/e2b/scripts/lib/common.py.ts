@@ -34,6 +34,10 @@ CHECKPOINT_URL = f"{API_URL}/api/webhooks/agent/checkpoints"
 COMPLETE_URL = f"{API_URL}/api/webhooks/agent/complete"
 STORAGE_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages"
 INCREMENTAL_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages/incremental"
+HEARTBEAT_URL = f"{API_URL}/api/webhooks/agent/heartbeat"
+
+# Heartbeat configuration
+HEARTBEAT_INTERVAL = 60  # seconds
 
 # HTTP request configuration
 HTTP_CONNECT_TIMEOUT = 10

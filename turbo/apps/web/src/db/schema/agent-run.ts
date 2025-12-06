@@ -29,4 +29,5 @@ export const agentRuns = pgTable("agent_runs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+  lastHeartbeatAt: timestamp("last_heartbeat_at"),
 });
