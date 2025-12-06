@@ -309,7 +309,7 @@ const runCmd = new Command()
               console.error(chalk.red(`✗ Agent not found: ${name}`));
               console.error(
                 chalk.gray(
-                  "  Make sure you've built the agent with: vm0 build",
+                  "  Make sure you've built the agent with: vm0 compose",
                 ),
               );
             }
@@ -343,7 +343,7 @@ const runCmd = new Command()
               console.error(chalk.red(`✗ Version not found: ${version}`));
               console.error(
                 chalk.gray(
-                  "  Make sure the version hash exists. Use 'vm0 build' to see available versions.",
+                  "  Make sure the version hash exists. Use 'vm0 compose' to see available versions.",
                 ),
               );
             }
@@ -413,7 +413,9 @@ const runCmd = new Command()
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));
             console.error(
-              chalk.gray("  Make sure you've built the agent with: vm0 build"),
+              chalk.gray(
+                "  Make sure you've built the agent with: vm0 compose",
+              ),
             );
           } else {
             console.error(chalk.red("✗ Run failed"));

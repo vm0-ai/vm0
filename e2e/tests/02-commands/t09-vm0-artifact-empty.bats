@@ -20,7 +20,7 @@ teardown() {
 }
 
 @test "Build VM0 empty artifact test agent configuration" {
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "vm0-standard"
 }

@@ -177,7 +177,7 @@ describe("run command", () => {
         expect.stringContaining("Agent not found: nonexistent-agent"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 build"),
+        expect.stringContaining("vm0 compose"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -633,7 +633,7 @@ describe("run command", () => {
         expect.stringContaining("Agent not found"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 build"),
+        expect.stringContaining("vm0 compose"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

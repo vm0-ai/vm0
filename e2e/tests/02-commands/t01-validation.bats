@@ -10,7 +10,7 @@ setup() {
 
 @test "vm0 run should fail when template variables are missing" {
     # First build the config
-    run $CLI_COMMAND build "$TEST_CONFIG_TEMPLATE"
+    run $CLI_COMMAND compose "$TEST_CONFIG_TEMPLATE"
     assert_success
 
     # Then try to run without providing template vars
