@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // Verify cron secret (Vercel adds this header for cron jobs)
     const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = process.env.VERCEL_CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       throw new UnauthorizedError("Invalid cron secret");
