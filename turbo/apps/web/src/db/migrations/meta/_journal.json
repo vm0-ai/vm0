@@ -204,6 +204,13 @@
       "when": 1765300000000,
       "tag": "0028_add_user_secrets",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1765400000000,
+      "tag": "0029_add_last_heartbeat_at",
+      "breakpoints": true
     }
   ]
 }
