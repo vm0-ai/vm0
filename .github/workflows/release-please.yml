@@ -105,6 +105,7 @@ jobs:
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             S3_USER_STORAGES_NAME=${{ secrets.S3_USER_STORAGES_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
+            VERCEL_CRON_SECRET=${{ secrets.VERCEL_CRON_SECRET }}
 
   # Deploy docs app to production
   deploy-docs-production:

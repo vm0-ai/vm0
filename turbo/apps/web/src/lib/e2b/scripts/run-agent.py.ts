@@ -16,6 +16,7 @@ import os
 import sys
 import subprocess
 import json
+import threading
 
 # Add lib to path for imports
 sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
@@ -23,12 +24,30 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG, STDERR_FILE,
+    HEARTBEAT_URL, HEARTBEAT_INTERVAL,
     validate_config
 )
-from log import log_info, log_error
+from log import log_info, log_error, log_warn
 from events import send_event
 from checkpoint import create_checkpoint
 from http_client import http_post_json
+
+# Global shutdown event for heartbeat thread
+shutdown_event = threading.Event()
+
+
+def heartbeat_loop():
+    """Send periodic heartbeat signals to indicate agent is still alive."""
+    while not shutdown_event.is_set():
+        try:
+            if http_post_json(HEARTBEAT_URL, {"runId": RUN_ID}):
+                log_info("Heartbeat sent")
+            else:
+                log_warn("Heartbeat failed")
+        except Exception as e:
+            log_warn(f"Heartbeat error: {e}")
+        # Wait for interval or until shutdown
+        shutdown_event.wait(HEARTBEAT_INTERVAL)
 
 
 def main():
@@ -37,6 +56,11 @@ def main():
     validate_config()
 
     log_info(f"Working directory: {WORKING_DIR}")
+
+    # Start heartbeat thread
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
+    log_info("Heartbeat thread started")
 
     # Change to working directory
     try:
@@ -180,6 +204,10 @@ def main():
         log_info("Complete API called successfully")
     else:
         log_error("Failed to call complete API (sandbox may not be cleaned up)")
+
+    # Stop heartbeat thread
+    shutdown_event.set()
+    log_info("Heartbeat thread stopped")
 
     # Cleanup temp files
     for temp_file in [SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG, STDERR_FILE]:

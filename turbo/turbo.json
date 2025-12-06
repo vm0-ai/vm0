@@ -23,7 +23,8 @@
     "AWS_SECRET_ACCESS_KEY",
     "S3_USER_STORAGES_NAME",
     "SECRETS_ENCRYPTION_KEY",
-    "USE_MOCK_CLAUDE"
+    "USE_MOCK_CLAUDE",
+    "VERCEL_CRON_SECRET"
   ],
   "tasks": {
     "build": {

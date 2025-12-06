@@ -209,7 +209,14 @@
       "idx": 29,
       "version": "7",
       "when": 1765400000000,
-      "tag": "0029_add_images_table",
+      "tag": "0029_add_last_heartbeat_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1765500000000,
+      "tag": "0030_add_images_table",
       "breakpoints": true
     }
   ]

@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.6.0](https://github.com/vm0-ai/vm0/compare/web-v4.5.2...web-v4.6.0) (2025-12-06)
+
+
+### Features
+
+* **e2b:** add heartbeat-based sandbox cleanup mechanism ([#405](https://github.com/vm0-ai/vm0/issues/405)) ([6648962](https://github.com/vm0-ai/vm0/commit/6648962238f1ac2954ebe1c09f0583010abe0e5a))
+* **web:** increase e2b sandbox timeout to 24 hours for production ([#411](https://github.com/vm0-ai/vm0/issues/411)) ([57c0258](https://github.com/vm0-ai/vm0/commit/57c02584275c677fb0a69a5fd320e3bf77a68014))
+
 ## [4.5.2](https://github.com/vm0-ai/vm0/compare/web-v4.5.1...web-v4.5.2) (2025-12-05)
 
 
