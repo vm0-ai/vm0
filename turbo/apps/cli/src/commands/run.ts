@@ -134,7 +134,7 @@ async function pollEvents(
 
     // If no new events and not complete, check sandbox status and wait
     if (response.events.length === 0 && !complete) {
-      // Check if sandbox was terminated
+      // Check if sandbox was terminated unexpectedly
       if (response.status === "failed" || response.status === "timeout") {
         console.error(
           chalk.red(
@@ -142,6 +142,16 @@ async function pollEvents(
           ),
         );
         throw new Error(`Sandbox terminated: ${response.status}`);
+      }
+
+      // Edge case: run completed but no result event received
+      if (response.status === "completed") {
+        console.error(
+          chalk.yellow(
+            "\n⚠ Run completed but no result event received. This may indicate an issue.",
+          ),
+        );
+        return { succeeded: false };
       }
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));

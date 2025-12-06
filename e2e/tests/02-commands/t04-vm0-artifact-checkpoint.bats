@@ -55,7 +55,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
@@ -94,7 +93,6 @@ teardown() {
     # Use 120s timeout as resume involves S3 download + sandbox startup + session restore
     echo "# Step 4: Resuming from checkpoint..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        \
         "ls && cat counter.txt"
 
     assert_success

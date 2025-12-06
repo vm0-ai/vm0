@@ -52,7 +52,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
@@ -125,7 +124,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo 'first run'"
 
     assert_success
@@ -140,7 +138,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo 'second run'"
 
     assert_success
@@ -187,7 +184,6 @@ teardown() {
     run $CLI_COMMAND run vm0-standard \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo 'initial run' && cat testfile.txt"
 
     assert_success

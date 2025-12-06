@@ -974,5 +974,109 @@ describe("run command", () => {
         chalk.gray("  Network error"),
       );
     });
+
+    it("should exit with error when sandbox is terminated (status: failed)", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events with "failed" status - sandbox was terminated
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "failed",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.red("\n✗ Sandbox terminated unexpectedly (status: failed)"),
+      );
+    });
+
+    it("should exit with error when sandbox times out (status: timeout)", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events with "timeout" status - sandbox heartbeat expired
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "timeout",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.red("\n✗ Sandbox terminated unexpectedly (status: timeout)"),
+      );
+    });
+
+    it("should handle completed status without result event", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events but status is "completed" - edge case
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "completed",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.yellow(
+          "\n⚠ Run completed but no result event received. This may indicate an issue.",
+        ),
+      );
+    });
   });
 });

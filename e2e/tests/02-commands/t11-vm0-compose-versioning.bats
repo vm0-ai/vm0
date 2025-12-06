@@ -229,7 +229,6 @@ EOF
     echo "# Running with specific version (version 1)..."
     run $CLI_COMMAND run "$AGENT_NAME:$VERSION1" \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo hello"
     assert_success
 }
@@ -263,7 +262,6 @@ EOF
     echo "# Running with :latest tag..."
     run $CLI_COMMAND run "$AGENT_NAME:latest" \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo hello"
     assert_success
 }
@@ -290,7 +288,6 @@ EOF
     echo "# Running with nonexistent version (should fail before artifact check)..."
     run $CLI_COMMAND run "$AGENT_NAME:deadbeef" \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo hello"
     assert_failure
     assert_output --partial "Version not found"
@@ -325,7 +322,6 @@ EOF
     echo "# Running without version specifier (should use HEAD)..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        \
         "echo hello"
     assert_success
 }
