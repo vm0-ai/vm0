@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.7.0](https://github.com/vm0-ai/vm0/compare/web-v4.6.0...web-v4.7.0) (2025-12-06)
+
+
+### Features
+
+* **cli:** remove timeout option and detect sandbox termination via events API ([#417](https://github.com/vm0-ai/vm0/issues/417)) ([72fd836](https://github.com/vm0-ai/vm0/commit/72fd836f018e14719f1c9c47ceb11096c66228b2))
+
+
+### Bug Fixes
+
+* remove deprecated neonConfig.fetchConnectionCache option ([#412](https://github.com/vm0-ai/vm0/issues/412)) ([df9be35](https://github.com/vm0-ai/vm0/commit/df9be35eefacd9294bd2669f63cbfe61ebc27ffc))
+
 ## [4.6.0](https://github.com/vm0-ai/vm0/compare/web-v4.5.2...web-v4.6.0) (2025-12-06)
 
 

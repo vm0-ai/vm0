@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.0.0](https://github.com/vm0-ai/vm0/compare/cli-v3.9.0...cli-v4.0.0) (2025-12-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** Users must now use `vm0 compose` instead of `vm0 build`
+
+### Features
+
+* **cli:** remove timeout option and detect sandbox termination via events API ([#417](https://github.com/vm0-ai/vm0/issues/417)) ([72fd836](https://github.com/vm0-ai/vm0/commit/72fd836f018e14719f1c9c47ceb11096c66228b2))
+* **cli:** rename build command to compose ([#410](https://github.com/vm0-ai/vm0/issues/410)) ([0df242d](https://github.com/vm0-ai/vm0/commit/0df242d35352100af10dcc96fd61895b9ca9e318))
+
 ## [3.9.0](https://github.com/vm0-ai/vm0/compare/cli-v3.8.2...cli-v3.9.0) (2025-12-06)
 
 
