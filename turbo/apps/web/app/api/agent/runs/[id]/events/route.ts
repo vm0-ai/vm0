@@ -22,6 +22,7 @@ export interface EventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
+  status: string;
 }
 
 /**
@@ -89,6 +90,7 @@ export async function GET(
       })),
       hasMore,
       nextSequence,
+      status: run.status,
     };
 
     return successResponse(response);

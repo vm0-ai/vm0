@@ -62,6 +62,7 @@ export interface GetEventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
+  status: string;
 }
 
 export interface GetComposeVersionResponse {

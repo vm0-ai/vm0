@@ -80,6 +80,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -134,6 +135,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -216,6 +218,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -270,6 +273,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -347,6 +351,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
     });
 
@@ -502,6 +507,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
     });
 
@@ -681,131 +687,6 @@ describe("run command", () => {
     });
   });
 
-  describe("timeout option", () => {
-    beforeEach(() => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "completed",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-      });
-    });
-
-    it("should accept custom timeout value", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "-t",
-        "30",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should accept timeout with long form --timeout", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "--timeout",
-        "120",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should reject invalid timeout value (non-numeric)", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-          "-t",
-          "invalid",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid timeout value"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should accept zero timeout value (no timeout)", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "-t",
-        "0",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should reject negative timeout value", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-          "-t",
-          "-10",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid timeout value"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should use default timeout (120 seconds) when not specified", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-      ]);
-
-      // Command should complete successfully with default timeout
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-  });
-
   describe("event polling", () => {
     beforeEach(() => {
       // Mock EventRenderer to track render calls
@@ -861,6 +742,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
+          status: "running",
         })
         .mockResolvedValueOnce({
           events: [
@@ -879,6 +761,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 3,
+          status: "running",
         });
 
       await runCommand.parseAsync([
@@ -925,6 +808,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 2,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -969,6 +853,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -1029,6 +914,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 2,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -1067,6 +953,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
+          status: "running",
         })
         .mockRejectedValueOnce(new Error("Network error"));
 

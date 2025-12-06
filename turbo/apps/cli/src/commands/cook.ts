@@ -166,11 +166,7 @@ export const cookCommand = new Command()
   .name("cook")
   .description("One-click agent preparation and execution from vm0.yaml")
   .argument("[prompt]", "Prompt for the agent")
-  .option(
-    "-t, --timeout <seconds>",
-    "Timeout in seconds without new events for agent run, 0 = no timeout (default: 120)",
-  )
-  .action(async (prompt: string | undefined, options: { timeout?: string }) => {
+  .action(async (prompt: string | undefined) => {
     const cwd = process.cwd();
 
     // Step 1: Read and parse config
@@ -321,7 +317,6 @@ export const cookCommand = new Command()
           agentName,
           "--artifact-name",
           ARTIFACT_DIR,
-          ...(options.timeout ? ["--timeout", options.timeout] : []),
           prompt,
         ];
         runOutput = await execVm0RunWithCapture(runArgs, { cwd });
