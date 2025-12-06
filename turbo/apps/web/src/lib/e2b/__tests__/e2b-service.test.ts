@@ -36,6 +36,19 @@ vi.mock("../../events", () => ({
   sendVm0ErrorEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock image-service for resolveImageAlias
+// Return the alias as-is (simulating system template behavior)
+vi.mock("../../image/image-service", () => ({
+  resolveImageAlias: vi
+    .fn()
+    .mockImplementation((_userId: string, alias: string) => {
+      return Promise.resolve({
+        templateName: alias,
+        isUserImage: false,
+      });
+    }),
+}));
+
 // Mock fs module
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
