@@ -38,9 +38,6 @@ shutdown_event = threading.Event()
 
 def heartbeat_loop():
     """Send periodic heartbeat signals to indicate agent is still alive."""
-    # Wait before first heartbeat since lastHeartbeatAt is initialized on run start
-    shutdown_event.wait(HEARTBEAT_INTERVAL)
-
     while not shutdown_event.is_set():
         try:
             if http_post_json(HEARTBEAT_URL, {"runId": RUN_ID}):
