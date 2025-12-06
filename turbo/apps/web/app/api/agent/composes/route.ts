@@ -9,7 +9,12 @@ import {
   successResponse,
   errorResponse,
 } from "../../../../src/lib/api-response";
-import { BadRequestError, UnauthorizedError } from "../../../../src/lib/errors";
+import {
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../../../src/lib/errors";
 import type {
   CreateAgentComposeRequest,
   CreateAgentComposeResponse,
@@ -17,6 +22,7 @@ import type {
 } from "../../../../src/types/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
+import { validateImageAccess } from "../../../../src/lib/image/image-service";
 
 /**
  * GET /api/agent/composes?name={agentName}
@@ -156,6 +162,21 @@ export async function POST(request: NextRequest) {
 
     // Note: Variables like ${{ vars.X }}, ${{ secrets.X }} are stored unexpanded
     // and will be resolved at run time by the server
+
+    // Validate image access
+    const agent = content.agents[agentName];
+    if (agent?.image) {
+      const imageAccessError = await validateImageAccess(userId, agent.image);
+      if (imageAccessError) {
+        if (imageAccessError.status === 404) {
+          throw new NotFoundError(imageAccessError.error);
+        } else if (imageAccessError.status === 403) {
+          throw new ForbiddenError(imageAccessError.error);
+        } else {
+          throw new BadRequestError(imageAccessError.error);
+        }
+      }
+    }
 
     // Compute content-addressable version ID
     const versionId = computeComposeVersionId(content);
