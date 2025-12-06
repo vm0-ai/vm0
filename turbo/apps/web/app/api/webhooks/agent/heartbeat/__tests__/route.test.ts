@@ -1,14 +1,7 @@
 /**
  * @vitest-environment node
  */
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
