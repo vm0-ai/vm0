@@ -101,15 +101,17 @@ async function pollEvents(
   const verbose = options.verbose;
 
   while (!complete) {
-    // Check timeout since last event
-    const timeSinceLastEvent = Date.now() - lastEventTime;
-    if (timeSinceLastEvent > timeoutMs) {
-      console.error(
-        chalk.red(
-          `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving new events`,
-        ),
-      );
-      throw new Error("Agent execution timed out");
+    // Check timeout since last event (skip if timeout is 0 = no timeout)
+    if (timeoutSeconds > 0) {
+      const timeSinceLastEvent = Date.now() - lastEventTime;
+      if (timeSinceLastEvent > timeoutMs) {
+        console.error(
+          chalk.red(
+            `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving new events`,
+          ),
+        );
+        throw new Error("Agent execution timed out");
+      }
     }
 
     const response = await apiClient.getEvents(runId, {
@@ -235,7 +237,7 @@ const runCmd = new Command()
   )
   .option(
     "-t, --timeout <seconds>",
-    "Timeout in seconds without new events (default: 120)",
+    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
@@ -256,9 +258,11 @@ const runCmd = new Command()
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
 
       const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
         console.error(
-          chalk.red("✗ Invalid timeout value. Must be a positive number."),
+          chalk.red(
+            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
+          ),
         );
         process.exit(1);
       }
@@ -437,7 +441,7 @@ runCmd
   )
   .option(
     "-t, --timeout <seconds>",
-    "Timeout in seconds without new events (default: 120)",
+    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
@@ -458,9 +462,11 @@ runCmd
         verbose?: boolean;
       };
       const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
         console.error(
-          chalk.red("✗ Invalid timeout value. Must be a positive number."),
+          chalk.red(
+            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
+          ),
         );
         process.exit(1);
       }
@@ -547,7 +553,7 @@ runCmd
   )
   .option(
     "-t, --timeout <seconds>",
-    "Timeout in seconds without new events (default: 120)",
+    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
     String(DEFAULT_TIMEOUT_SECONDS),
   )
   .option("-v, --verbose", "Show verbose output with timing information")
@@ -568,9 +574,11 @@ runCmd
         verbose?: boolean;
       };
       const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
         console.error(
-          chalk.red("✗ Invalid timeout value. Must be a positive number."),
+          chalk.red(
+            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
+          ),
         );
         process.exit(1);
       }

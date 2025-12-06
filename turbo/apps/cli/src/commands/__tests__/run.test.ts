@@ -756,24 +756,19 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject zero timeout value", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-          "-t",
-          "0",
-        ]);
-      }).rejects.toThrow("process.exit called");
+    it("should accept zero timeout value (no timeout)", async () => {
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+        "-t",
+        "0",
+      ]);
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid timeout value"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(apiClient.createRun).toHaveBeenCalled();
     });
 
     it("should reject negative timeout value", async () => {
