@@ -58,8 +58,8 @@ EOF
     assert_output --partial "test-volume"
     assert_output --partial "Pushed"
     assert_output --partial "Processing artifact"
-    assert_output --partial "Building compose"
-    assert_output --partial "Compose built"
+    assert_output --partial "Uploading compose"
+    assert_output --partial "Compose uploaded"
 
     echo "# Step 5: Verify volume was initialized..."
     [ -f "test-volume/.vm0/storage.yaml" ]
