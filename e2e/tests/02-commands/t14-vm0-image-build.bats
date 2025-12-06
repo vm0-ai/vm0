@@ -68,12 +68,6 @@ teardown() {
 # ============================================
 
 @test "vm0 image build submits build request successfully" {
-    # Skip if not authenticated (auth status prints "Not authenticated" when not logged in)
-    run $CLI_COMMAND auth status
-    if [[ "$output" == *"Not authenticated"* ]]; then
-        skip "CLI not authenticated"
-    fi
-
     # Submit build request
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
 
