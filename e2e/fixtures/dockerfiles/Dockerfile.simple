@@ -1,0 +1,6 @@
+# Simple test Dockerfile for E2E testing
+# This extends the E2B Python base image with minimal changes
+FROM e2bdev/code-interpreter:latest
+
+# Add a marker file to verify the custom image is being used
+RUN echo "custom-image-marker" > /tmp/custom-image.txt

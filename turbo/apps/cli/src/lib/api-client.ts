@@ -312,6 +312,12 @@ class ApiClient {
       headers["x-vercel-protection-bypass"] = bypassSecret;
     }
 
+    // Set Content-Type for string bodies (JSON)
+    // FormData bodies should not have Content-Type set (browser handles it)
+    if (typeof options?.body === "string") {
+      headers["Content-Type"] = "application/json";
+    }
+
     return fetch(`${baseUrl}${path}`, {
       method: "POST",
       headers,

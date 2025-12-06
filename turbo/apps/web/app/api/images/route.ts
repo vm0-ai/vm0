@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate alias format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
-    const aliasRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
+    const aliasRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
     if (!aliasRegex.test(alias)) {
       throw new BadRequestError(
         "Invalid alias format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",

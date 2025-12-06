@@ -4,6 +4,7 @@ import { e2bConfig } from "./config";
 import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
 import { BadRequestError } from "../errors";
+import { resolveImageAlias } from "../image/image-service";
 import type {
   AgentVolumeConfig,
   PreparedArtifact,
@@ -248,6 +249,7 @@ export class E2BService {
       sandbox = await this.createSandbox(
         sandboxEnvVars,
         agentCompose as AgentComposeYaml | undefined,
+        context.userId || "",
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
@@ -400,10 +402,12 @@ export class E2BService {
    * Create E2B sandbox with Claude Code and environment variables
    * @param envVars Environment variables to pass to sandbox
    * @param agentCompose Agent compose containing image specification
+   * @param userId User ID for resolving user-owned images
    */
   private async createSandbox(
     envVars: Record<string, string>,
-    agentCompose?: AgentComposeYaml,
+    agentCompose: AgentComposeYaml | undefined,
+    userId: string,
   ): Promise<Sandbox> {
     const sandboxOptions = {
       timeoutMs: 3_600_000, // 1 hour timeout to allow for long-running operations
@@ -412,17 +416,29 @@ export class E2BService {
 
     // Priority: agent.image > E2B_TEMPLATE_NAME
     const agent = getFirstAgent(agentCompose);
-    const templateName = agent?.image || e2bConfig.defaultTemplate;
+    const imageAlias = agent?.image || e2bConfig.defaultTemplate;
 
-    if (!templateName) {
+    if (!imageAlias) {
       throw new Error(
         "[E2B] No template specified. Either set agent.image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
       );
     }
 
+    // Resolve user image aliases to E2B template names
+    // System templates (vm0-*) pass through unchanged
+    // User images (my-agent) resolve to user-{userId}-my-agent
+    const resolved = await resolveImageAlias(userId, imageAlias);
+    if (!resolved) {
+      throw new BadRequestError(
+        `Image "${imageAlias}" not found or not ready. Check the image status with 'vm0 image status'.`,
+      );
+    }
+
+    const templateName = resolved.templateName;
+
     log.debug(`Using template: ${templateName}`);
     log.debug(
-      `Template source: ${agent?.image ? "agent.image" : "E2B_TEMPLATE_NAME"}`,
+      `Template source: ${agent?.image ? "agent.image" : "E2B_TEMPLATE_NAME"}, isUserImage: ${resolved.isUserImage}`,
     );
     log.debug(`Sandbox env vars:`, Object.keys(envVars));
 

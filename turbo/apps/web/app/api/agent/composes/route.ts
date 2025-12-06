@@ -9,12 +9,7 @@ import {
   successResponse,
   errorResponse,
 } from "../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  UnauthorizedError,
-  ForbiddenError,
-  NotFoundError,
-} from "../../../../src/lib/errors";
+import { BadRequestError, UnauthorizedError } from "../../../../src/lib/errors";
 import type {
   CreateAgentComposeRequest,
   CreateAgentComposeResponse,
@@ -22,7 +17,7 @@ import type {
 } from "../../../../src/types/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { validateImageAccess } from "../../../../src/lib/image/image-service";
+import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
 /**
  * GET /api/agent/composes?name={agentName}
@@ -153,7 +148,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
-    const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
+    const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
         "Invalid agent name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
@@ -166,16 +161,7 @@ export async function POST(request: NextRequest) {
     // Validate image access
     const agent = content.agents[agentName];
     if (agent?.image) {
-      const imageAccessError = await validateImageAccess(userId, agent.image);
-      if (imageAccessError) {
-        if (imageAccessError.status === 404) {
-          throw new NotFoundError(imageAccessError.error);
-        } else if (imageAccessError.status === 403) {
-          throw new ForbiddenError(imageAccessError.error);
-        } else {
-          throw new BadRequestError(imageAccessError.error);
-        }
-      }
+      await assertImageAccess(userId, agent.image);
     }
 
     // Compute content-addressable version ID

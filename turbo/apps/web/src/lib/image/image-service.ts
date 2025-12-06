@@ -2,6 +2,7 @@ import { Template } from "e2b";
 import { eq, and } from "drizzle-orm";
 
 import { images } from "../../db/schema/image";
+import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import type { ImageStatusEnum } from "../../db/schema/image";
 
 /**
@@ -103,13 +104,30 @@ export async function getBuildStatus(
   const logs = e2bStatus.logEntries.map((entry) => entry.toString());
   const newLogsOffset = logsOffset + logs.length;
 
+  // Extract error message from logs if build failed
+  // Usually the last few log entries contain the actual error
+  let errorMessage: string | undefined;
+  if (status === "error") {
+    // Try to extract meaningful error from recent logs
+    const errorLogs = logs.filter(
+      (log) =>
+        log.toLowerCase().includes("error") ||
+        log.toLowerCase().includes("failed") ||
+        log.toLowerCase().includes("fatal"),
+    );
+    errorMessage =
+      errorLogs.length > 0
+        ? errorLogs[errorLogs.length - 1]
+        : logs[logs.length - 1] || "Build failed";
+  }
+
   // Update database if build is complete (ready or error)
   if (status === "ready" || status === "error") {
     await globalThis.services.db
       .update(images)
       .set({
         status,
-        errorMessage: status === "error" ? "Build failed" : null,
+        errorMessage: errorMessage || null,
         updatedAt: new Date(),
       })
       .where(eq(images.e2bBuildId, buildId));
@@ -119,7 +137,7 @@ export async function getBuildStatus(
     status,
     logs,
     logsOffset: newLogsOffset,
-    error: status === "error" ? "Build failed" : undefined,
+    error: errorMessage,
   };
 }
 
@@ -190,11 +208,12 @@ export async function validateImageAccess(
     return null;
   }
 
-  // Check if image exists
+  // Check if image exists for this user
+  // Each user has their own namespace of images, so we query by userId + alias
   const existingImage = await globalThis.services.db
     .select()
     .from(images)
-    .where(eq(images.alias, imageAlias))
+    .where(and(eq(images.userId, userId), eq(images.alias, imageAlias)))
     .limit(1);
 
   if (existingImage.length === 0) {
@@ -202,14 +221,6 @@ export async function validateImageAccess(
   }
 
   const image = existingImage[0]!;
-
-  // Check ownership
-  if (image.userId !== userId) {
-    return {
-      error: `You don't have access to image "${imageAlias}"`,
-      status: 403,
-    };
-  }
 
   // Check if image is ready
   if (image.status !== "ready") {
@@ -220,4 +231,24 @@ export async function validateImageAccess(
   }
 
   return null;
+}
+
+/**
+ * Validate image access and throw appropriate error if denied
+ * Helper function to reduce duplicate error handling code
+ */
+export async function assertImageAccess(
+  userId: string,
+  imageAlias: string,
+): Promise<void> {
+  const error = await validateImageAccess(userId, imageAlias);
+  if (error) {
+    if (error.status === 404) {
+      throw new NotFoundError(error.error);
+    } else if (error.status === 403) {
+      throw new ForbiddenError(error.error);
+    } else {
+      throw new BadRequestError(error.error);
+    }
+  }
 }

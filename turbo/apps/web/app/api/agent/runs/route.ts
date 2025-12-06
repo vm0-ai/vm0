@@ -17,7 +17,6 @@ import {
   BadRequestError,
   NotFoundError,
   UnauthorizedError,
-  ForbiddenError,
 } from "../../../../src/lib/errors";
 import type {
   UnifiedRunRequest,
@@ -26,7 +25,7 @@ import type {
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { sendVm0ErrorEvent } from "../../../../src/lib/events";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
-import { validateImageAccess } from "../../../../src/lib/image/image-service";
+import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
 /**
  * POST /api/agent/runs
@@ -183,19 +182,7 @@ export async function POST(request: NextRequest) {
         if (firstAgentKey) {
           const agent = composeContent.agents[firstAgentKey];
           if (agent?.image) {
-            const imageAccessError = await validateImageAccess(
-              userId,
-              agent.image,
-            );
-            if (imageAccessError) {
-              if (imageAccessError.status === 404) {
-                throw new NotFoundError(imageAccessError.error);
-              } else if (imageAccessError.status === 403) {
-                throw new ForbiddenError(imageAccessError.error);
-              } else {
-                throw new BadRequestError(imageAccessError.error);
-              }
-            }
+            await assertImageAccess(userId, agent.image);
           }
         }
       }
