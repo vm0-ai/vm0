@@ -6,8 +6,8 @@ import { parse as parseYaml } from "yaml";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
 
-export const buildCommand = new Command()
-  .name("build")
+export const composeCommand = new Command()
+  .name("compose")
   .description("Create or update agent compose")
   .argument("<config-file>", "Path to config YAML file")
   .action(async (configFile: string) => {

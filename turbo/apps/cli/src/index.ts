@@ -3,7 +3,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { authenticate, logout, checkAuthStatus } from "./lib/auth";
 import { getApiUrl } from "./lib/config";
-import { buildCommand } from "./commands/build";
+import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
 import { artifactCommand } from "./commands/artifact";
@@ -64,8 +64,8 @@ authCommand
     await checkAuthStatus();
   });
 
-// Register build, run, volume, artifact, secret, and cook commands
-program.addCommand(buildCommand);
+// Register compose, run, volume, artifact, secret, and cook commands
+program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
 program.addCommand(artifactCommand);
