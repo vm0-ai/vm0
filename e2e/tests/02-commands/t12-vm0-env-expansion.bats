@@ -93,7 +93,7 @@ teardown() {
     $CLI_COMMAND artifact push >/dev/null 2>&1
 
     # 3. Build the compose
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
 
     # 4. Run with vars and echo the environment variables
@@ -110,7 +110,7 @@ teardown() {
 
 @test "vm0 run fails when required secret is missing" {
     # Build compose that requires a secret that doesn't exist
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
 
     # Delete the secret if it exists
@@ -131,7 +131,7 @@ teardown() {
     $CLI_COMMAND secret set TEST_SECRET "$SECRET_VALUE" >/dev/null 2>&1
 
     # Build compose
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
 
     # Try to run without --vars - should fail

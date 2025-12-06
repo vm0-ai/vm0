@@ -13,6 +13,13 @@ import {
   UnauthorizedError,
 } from "../../../../../../src/lib/errors";
 
+export type RunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout";
+
 export interface EventsResponse {
   events: Array<{
     sequenceNumber: number;
@@ -22,6 +29,7 @@ export interface EventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
+  status: RunStatus;
 }
 
 /**
@@ -89,6 +97,7 @@ export async function GET(
       })),
       hasMore,
       nextSequence,
+      status: run.status as RunStatus,
     };
 
     return successResponse(response);

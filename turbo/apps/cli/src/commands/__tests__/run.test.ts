@@ -80,6 +80,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -134,6 +135,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -177,7 +179,7 @@ describe("run command", () => {
         expect.stringContaining("Agent not found: nonexistent-agent"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 build"),
+        expect.stringContaining("vm0 compose"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -216,6 +218,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -270,6 +273,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -347,6 +351,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
     });
 
@@ -502,6 +507,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
     });
 
@@ -633,7 +639,7 @@ describe("run command", () => {
         expect.stringContaining("Agent not found"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 build"),
+        expect.stringContaining("vm0 compose"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -678,131 +684,6 @@ describe("run command", () => {
         expect.stringContaining("unexpected error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("timeout option", () => {
-    beforeEach(() => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "completed",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-      });
-    });
-
-    it("should accept custom timeout value", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "-t",
-        "30",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should accept timeout with long form --timeout", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "--timeout",
-        "120",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should reject invalid timeout value (non-numeric)", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-          "-t",
-          "invalid",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid timeout value"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should accept zero timeout value (no timeout)", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-        "-t",
-        "0",
-      ]);
-
-      expect(apiClient.createRun).toHaveBeenCalled();
-    });
-
-    it("should reject negative timeout value", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-          "-t",
-          "-10",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid timeout value"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should use default timeout (120 seconds) when not specified", async () => {
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-      ]);
-
-      // Command should complete successfully with default timeout
-      expect(apiClient.createRun).toHaveBeenCalled();
     });
   });
 
@@ -861,6 +742,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
+          status: "running",
         })
         .mockResolvedValueOnce({
           events: [
@@ -879,6 +761,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 3,
+          status: "running",
         });
 
       await runCommand.parseAsync([
@@ -925,6 +808,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 2,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -969,6 +853,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 1,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -1029,6 +914,7 @@ describe("run command", () => {
         ],
         hasMore: false,
         nextSequence: 2,
+        status: "running",
       });
 
       await runCommand.parseAsync([
@@ -1067,6 +953,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
+          status: "running",
         })
         .mockRejectedValueOnce(new Error("Network error"));
 
@@ -1085,6 +972,110 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(chalk.red("✗ Run failed"));
       expect(mockConsoleError).toHaveBeenCalledWith(
         chalk.gray("  Network error"),
+      );
+    });
+
+    it("should exit with error when sandbox is terminated (status: failed)", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events with "failed" status - sandbox was terminated
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "failed",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.red("\n✗ Sandbox terminated unexpectedly (status: failed)"),
+      );
+    });
+
+    it("should exit with error when sandbox times out (status: timeout)", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events with "timeout" status - sandbox heartbeat expired
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "timeout",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.red("\n✗ Sandbox terminated unexpectedly (status: timeout)"),
+      );
+    });
+
+    it("should handle completed status without result event", async () => {
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "",
+        executionTimeMs: 0,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      // Return no events but status is "completed" - edge case
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        status: "completed",
+      });
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        chalk.yellow(
+          "\n⚠ Run completed but no result event received. This may indicate an issue.",
+        ),
       );
     });
   });

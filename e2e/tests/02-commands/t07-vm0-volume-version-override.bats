@@ -54,7 +54,7 @@ volumes:
 EOF
     fi
 
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "vm0-volume-override"
 }
@@ -170,7 +170,6 @@ EOF
     # Should use the override version, not the checkpoint's stored version
     echo "# Step 4: Resuming with --volume-version override..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        --timeout 120 \
         --volume-version "$VOLUME_NAME=$OVERRIDE_VERSION" \
         "cat /home/user/data/data.txt"
 
@@ -237,7 +236,6 @@ EOF
     # Should use the overridden version (initial), not latest
     echo "# Step 4: Continuing session with --volume-version override..."
     run $CLI_COMMAND run continue "$SESSION_ID" \
-        --timeout 120 \
         --volume-version "$VOLUME_NAME=$INITIAL_VERSION" \
         "cat /home/user/data/data.txt"
 

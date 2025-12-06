@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test "Build VM0 artifact mount test agent configuration" {
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "vm0-standard"
 }
@@ -44,7 +44,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     assert_success
@@ -74,7 +73,6 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo done"
 
     assert_success

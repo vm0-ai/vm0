@@ -2,12 +2,6 @@
 
 load '../../helpers/setup'
 
-@test "CLI hello command shows welcome message" {
-    run $CLI_COMMAND hello
-    assert_success
-    assert_output --partial "Welcome to the VM0 CLI!"
-}
-
 @test "CLI shows help with --help flag" {
     run $CLI_COMMAND --help
     assert_success

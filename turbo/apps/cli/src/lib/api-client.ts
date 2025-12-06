@@ -53,6 +53,13 @@ export interface ApiError {
   };
 }
 
+export type RunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout";
+
 export interface GetEventsResponse {
   events: Array<{
     sequenceNumber: number;
@@ -62,6 +69,7 @@ export interface GetEventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
+  status: RunStatus;
 }
 
 export interface GetComposeVersionResponse {

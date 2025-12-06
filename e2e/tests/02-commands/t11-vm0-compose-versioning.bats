@@ -15,10 +15,10 @@ teardown() {
 }
 
 # ============================================
-# vm0 build versioning tests
+# vm0 compose versioning tests
 # ============================================
 
-@test "vm0 build should display version ID" {
+@test "vm0 compose should display version ID" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -31,8 +31,8 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Running vm0 build..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    echo "# Running vm0 compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying output contains Version..."
@@ -41,7 +41,7 @@ EOF
     assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
 }
 
-@test "vm0 build with same content should return 'version exists'" {
+@test "vm0 compose with same content should return 'version exists'" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -54,21 +54,21 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# First build..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    echo "# First compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
-    # Extract version from first build
+    # Extract version from first compose
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
 
     echo "# Version 1: $VERSION1"
 
-    echo "# Second build with identical content..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    echo "# Second compose with identical content..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
     # Should indicate version already exists (content deduplication)
     assert_output --partial "version exists"
 
-    # Extract version from second build
+    # Extract version from second compose
     VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 2: $VERSION2"
 
@@ -81,7 +81,7 @@ EOF
     }
 }
 
-@test "vm0 build with different content should create new version" {
+@test "vm0 compose with different content should create new version" {
     echo "# Creating initial config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -94,8 +94,8 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# First build..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    echo "# First compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 1: $VERSION1"
@@ -112,8 +112,8 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Second build with different content..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    echo "# Second compose with different content..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
     # Should indicate new version created
     assert_output --partial "Compose created"
@@ -130,7 +130,7 @@ EOF
     }
 }
 
-@test "vm0 build version ID is deterministic (key order independent)" {
+@test "vm0 compose version ID is deterministic (key order independent)" {
     echo "# Creating config with keys in one order..."
     cat > "$TEST_DIR/vm0-a.yaml" <<EOF
 version: "1.0"
@@ -143,8 +143,8 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# First build..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0-a.yaml"
+    echo "# First compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0-a.yaml"
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 1: $VERSION1"
@@ -161,8 +161,8 @@ agents:
     description: "Deterministic test"
 EOF
 
-    echo "# Second build with same content, different key order..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0-b.yaml"
+    echo "# Second compose with same content, different key order..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0-b.yaml"
     assert_success
     VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 2: $VERSION2"
@@ -196,7 +196,7 @@ agents:
 EOF
 
     echo "# Building version 1..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 1: $VERSION1"
@@ -214,7 +214,7 @@ agents:
 EOF
 
     echo "# Building version 2..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 2: $VERSION2"
@@ -229,7 +229,6 @@ EOF
     echo "# Running with specific version (version 1)..."
     run $CLI_COMMAND run "$AGENT_NAME:$VERSION1" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_success
 }
@@ -250,7 +249,7 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
@@ -263,7 +262,6 @@ EOF
     echo "# Running with :latest tag..."
     run $CLI_COMMAND run "$AGENT_NAME:latest" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_success
 }
@@ -284,13 +282,12 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Running with nonexistent version (should fail before artifact check)..."
     run $CLI_COMMAND run "$AGENT_NAME:deadbeef" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_failure
     assert_output --partial "Version not found"
@@ -312,7 +309,7 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $CLI_COMMAND build "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
@@ -325,7 +322,6 @@ EOF
     echo "# Running without version specifier (should use HEAD)..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_success
 }

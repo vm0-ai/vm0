@@ -58,8 +58,8 @@ EOF
     assert_output --partial "test-volume"
     assert_output --partial "Pushed"
     assert_output --partial "Processing artifact"
-    assert_output --partial "Building compose"
-    assert_output --partial "Compose built"
+    assert_output --partial "Uploading compose"
+    assert_output --partial "Compose uploaded"
 
     echo "# Step 5: Verify volume was initialized..."
     [ -f "test-volume/.vm0/storage.yaml" ]
@@ -70,7 +70,7 @@ EOF
 
     echo "# Step 7: Run cook with prompt to test auto-pull..."
     # Use bash command for mock agent compatibility
-    run $CLI_COMMAND cook --timeout 120 "echo 'hello' > /home/user/workspace/result.txt"
+    run $CLI_COMMAND cook "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
     assert_output --partial "vm0_start"

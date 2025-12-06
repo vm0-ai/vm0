@@ -68,8 +68,6 @@ function parseIdentifier(identifier: string): {
   return { name: identifier };
 }
 
-const DEFAULT_TIMEOUT_SECONDS = 120;
-
 interface PollOptions {
   verbose?: boolean;
   startTimestamp: Date;
@@ -87,33 +85,17 @@ interface PollResult {
  */
 async function pollEvents(
   runId: string,
-  timeoutSeconds: number,
   options: PollOptions,
 ): Promise<PollResult> {
   let nextSequence = -1;
   let complete = false;
   let result: PollResult = { succeeded: true };
   const pollIntervalMs = 500;
-  const timeoutMs = timeoutSeconds * 1000;
-  let lastEventTime = Date.now();
   const startTimestamp = options.startTimestamp;
   let previousTimestamp = startTimestamp;
   const verbose = options.verbose;
 
   while (!complete) {
-    // Check timeout since last event (skip if timeout is 0 = no timeout)
-    if (timeoutSeconds > 0) {
-      const timeSinceLastEvent = Date.now() - lastEventTime;
-      if (timeSinceLastEvent > timeoutMs) {
-        console.error(
-          chalk.red(
-            `\n✗ Agent execution timed out after ${timeoutSeconds} seconds without receiving new events`,
-          ),
-        );
-        throw new Error("Agent execution timed out");
-      }
-    }
-
     const response = await apiClient.getEvents(runId, {
       since: nextSequence,
     });
@@ -150,13 +132,28 @@ async function pollEvents(
 
     nextSequence = response.nextSequence;
 
-    // Reset timeout timer when we receive events
-    if (response.events.length > 0) {
-      lastEventTime = Date.now();
-    }
-
-    // If no new events and not complete, wait before next poll
+    // If no new events and not complete, check sandbox status and wait
     if (response.events.length === 0 && !complete) {
+      // Check if sandbox was terminated unexpectedly
+      if (response.status === "failed" || response.status === "timeout") {
+        console.error(
+          chalk.red(
+            `\n✗ Sandbox terminated unexpectedly (status: ${response.status})`,
+          ),
+        );
+        throw new Error(`Sandbox terminated: ${response.status}`);
+      }
+
+      // Edge case: run completed but no result event received
+      if (response.status === "completed") {
+        console.error(
+          chalk.yellow(
+            "\n⚠ Run completed but no result event received. This may indicate an issue.",
+          ),
+        );
+        return { succeeded: false };
+      }
+
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   }
@@ -235,11 +232,6 @@ const runCmd = new Command()
     "--conversation <id>",
     "Resume from conversation ID (for fine-grained control)",
   )
-  .option(
-    "-t, --timeout <seconds>",
-    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
-    String(DEFAULT_TIMEOUT_SECONDS),
-  )
   .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
@@ -251,21 +243,10 @@ const runCmd = new Command()
         artifactVersion?: string;
         volumeVersion: Record<string, string>;
         conversation?: string;
-        timeout: string;
         verbose?: boolean;
       },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
-
-      const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
-        console.error(
-          chalk.red(
-            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
-          ),
-        );
-        process.exit(1);
-      }
 
       // Validate artifact-name is provided for non-resume runs
       if (!options.artifactName) {
@@ -309,7 +290,7 @@ const runCmd = new Command()
               console.error(chalk.red(`✗ Agent not found: ${name}`));
               console.error(
                 chalk.gray(
-                  "  Make sure you've built the agent with: vm0 build",
+                  "  Make sure you've composed the agent with: vm0 compose",
                 ),
               );
             }
@@ -342,9 +323,7 @@ const runCmd = new Command()
             if (error instanceof Error) {
               console.error(chalk.red(`✗ Version not found: ${version}`));
               console.error(
-                chalk.gray(
-                  "  Make sure the version hash exists. Use 'vm0 build' to see available versions.",
-                ),
+                chalk.gray("  Make sure the version hash is correct."),
               );
             }
             process.exit(1);
@@ -396,7 +375,7 @@ const runCmd = new Command()
         });
 
         // 4. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
         });
@@ -413,7 +392,9 @@ const runCmd = new Command()
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));
             console.error(
-              chalk.gray("  Make sure you've built the agent with: vm0 build"),
+              chalk.gray(
+                "  Make sure you've composed the agent with: vm0 compose",
+              ),
             );
           } else {
             console.error(chalk.red("✗ Run failed"));
@@ -439,17 +420,12 @@ runCmd
     collectVolumeVersions,
     {},
   )
-  .option(
-    "-t, --timeout <seconds>",
-    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
-    String(DEFAULT_TIMEOUT_SECONDS),
-  )
   .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
       checkpointId: string,
       prompt: string,
-      options: { timeout: string; verbose?: boolean },
+      options: { verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
@@ -458,18 +434,8 @@ runCmd
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
         volumeVersion: Record<string, string>;
-        timeout: string;
         verbose?: boolean;
       };
-      const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
-        console.error(
-          chalk.red(
-            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
-          ),
-        );
-        process.exit(1);
-      }
 
       const verbose = options.verbose || allOpts.verbose;
 
@@ -509,7 +475,7 @@ runCmd
         });
 
         // 4. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
         });
@@ -551,17 +517,12 @@ runCmd
     collectVolumeVersions,
     {},
   )
-  .option(
-    "-t, --timeout <seconds>",
-    "Timeout in seconds without new events, 0 = no timeout (default: 120)",
-    String(DEFAULT_TIMEOUT_SECONDS),
-  )
   .option("-v, --verbose", "Show verbose output with timing information")
   .action(
     async (
       agentSessionId: string,
       prompt: string,
-      options: { timeout: string; verbose?: boolean },
+      options: { verbose?: boolean },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
@@ -570,18 +531,8 @@ runCmd
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
         volumeVersion: Record<string, string>;
-        timeout: string;
         verbose?: boolean;
       };
-      const timeoutSeconds = parseInt(options.timeout, 10);
-      if (isNaN(timeoutSeconds) || timeoutSeconds < 0) {
-        console.error(
-          chalk.red(
-            "✗ Invalid timeout value. Must be a non-negative number (0 = no timeout).",
-          ),
-        );
-        process.exit(1);
-      }
 
       const verbose = options.verbose || allOpts.verbose;
 
@@ -622,7 +573,7 @@ runCmd
         });
 
         // 4. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, timeoutSeconds, {
+        const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
         });

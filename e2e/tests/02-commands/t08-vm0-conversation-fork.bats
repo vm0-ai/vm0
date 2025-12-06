@@ -42,7 +42,6 @@ teardown() {
     echo "# Step 2: Running agent..."
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo 'hello world'"
 
     assert_success
@@ -86,7 +85,6 @@ teardown() {
     echo "# Step 2: Running agent to create conversation..."
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo 'original run' && cat version.txt && echo 200 > counter.txt"
 
     assert_success
@@ -118,7 +116,6 @@ teardown() {
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
         --conversation "$CONVERSATION_ID" \
-        --timeout 120 \
         "cat version.txt && cat counter.txt && ls"
 
     assert_success

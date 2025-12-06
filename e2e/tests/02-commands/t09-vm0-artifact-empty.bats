@@ -20,7 +20,7 @@ teardown() {
 }
 
 @test "Build VM0 empty artifact test agent configuration" {
-    run $CLI_COMMAND build "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "vm0-standard"
 }
@@ -39,7 +39,6 @@ teardown() {
     # This tests the storage webhook handling of empty zip uploads
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo 'hello world'"
 
     assert_success
@@ -66,7 +65,6 @@ teardown() {
     # The storage webhook should handle unchanged artifact content correctly
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "cat data.txt && cat subdir/nested.txt"
 
     assert_success
@@ -95,7 +93,6 @@ teardown() {
     # This creates a checkpoint with empty artifact
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "rm -rf delete-me.txt subdir"
 
     assert_success

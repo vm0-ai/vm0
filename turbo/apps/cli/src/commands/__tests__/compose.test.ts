@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildCommand } from "../build";
+import { composeCommand } from "../compose";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import * as yaml from "yaml";
@@ -13,7 +13,7 @@ vi.mock("yaml");
 vi.mock("../../lib/api-client");
 vi.mock("../../lib/yaml-validator");
 
-describe("build command", () => {
+describe("compose command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -37,7 +37,7 @@ describe("build command", () => {
       vi.mocked(existsSync).mockReturnValue(false);
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "nonexistent.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "nonexistent.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -61,7 +61,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(fs.readFile).toHaveBeenCalledWith("config.yaml", "utf8");
     });
@@ -79,7 +79,7 @@ describe("build command", () => {
       });
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -105,7 +105,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(yaml.parse).toHaveBeenCalled();
       expect(yamlValidator.validateAgentCompose).toHaveBeenCalledWith(
@@ -128,7 +128,7 @@ describe("build command", () => {
       });
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -149,7 +149,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(apiClient.createOrUpdateCompose).toHaveBeenCalled();
     });
@@ -177,7 +177,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Uploading compose"),
@@ -193,7 +193,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose created: test-agent"),
@@ -212,7 +212,7 @@ describe("build command", () => {
         action: "existing",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose version exists: test-agent"),
@@ -228,7 +228,7 @@ describe("build command", () => {
         action: "created",
       });
 
-      await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("vm0 run test"),
@@ -252,7 +252,7 @@ describe("build command", () => {
       );
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -270,7 +270,7 @@ describe("build command", () => {
       );
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -285,7 +285,7 @@ describe("build command", () => {
       );
 
       await expect(async () => {
-        await buildCommand.parseAsync(["node", "cli", "config.yaml"]);
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
