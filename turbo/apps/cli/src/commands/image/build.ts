@@ -11,12 +11,6 @@ interface BuildStatusResponse {
   error?: string;
 }
 
-interface CreateImageResponse {
-  buildId: string;
-  imageId: string;
-  alias: string;
-}
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const buildCommand = new Command()
@@ -63,19 +57,10 @@ export const buildCommand = new Command()
       console.log();
 
       // Start build
-      const response = await apiClient.post("/api/images", {
-        body: JSON.stringify({ dockerfile, alias: name }),
+      const buildInfo = await apiClient.createImage({
+        dockerfile,
+        alias: name,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(
-          (error as { error?: { message?: string } }).error?.message ||
-            "Failed to start build",
-        );
-      }
-
-      const buildInfo = (await response.json()) as CreateImageResponse;
       const { buildId } = buildInfo;
 
       console.log(chalk.gray(`  Build ID: ${buildId}`));

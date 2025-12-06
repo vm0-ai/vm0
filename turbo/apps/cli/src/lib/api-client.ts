@@ -77,6 +77,12 @@ export interface GetComposeVersionResponse {
   tag?: string;
 }
 
+export interface CreateImageResponse {
+  buildId: string;
+  imageId: string;
+  alias: string;
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -271,6 +277,27 @@ class ApiClient {
     return (await response.json()) as AgentSessionResponse;
   }
 
+  async createImage(body: {
+    dockerfile: string;
+    alias: string;
+  }): Promise<CreateImageResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/images`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to create image");
+    }
+
+    return (await response.json()) as CreateImageResponse;
+  }
+
   /**
    * Generic GET request
    */
@@ -318,12 +345,6 @@ class ApiClient {
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) {
       headers["x-vercel-protection-bypass"] = bypassSecret;
-    }
-
-    // Set Content-Type for string bodies (JSON)
-    // FormData bodies should not have Content-Type set (browser handles it)
-    if (typeof options?.body === "string") {
-      headers["Content-Type"] = "application/json";
     }
 
     return fetch(`${baseUrl}${path}`, {
