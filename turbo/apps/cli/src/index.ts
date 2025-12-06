@@ -1,4 +1,3 @@
-import { FOO } from "@vm0/core";
 import { Command } from "commander";
 import chalk from "chalk";
 import { authenticate, logout, checkAuthStatus } from "./lib/auth";
@@ -18,14 +17,6 @@ program
   .name("vm0")
   .description("VM0 CLI - A modern build tool")
   .version(__CLI_VERSION__);
-
-program
-  .command("hello")
-  .description("Say hello from the App")
-  .action(() => {
-    console.log(chalk.blue("Welcome to the VM0 CLI!"));
-    console.log(chalk.green(`Core says: ${FOO}`));
-  });
 
 program
   .command("info")
