@@ -52,7 +52,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
@@ -85,7 +85,7 @@ teardown() {
     # Step 4: Continue from session - should get LATEST artifact (HEAD), not checkpoint
     # This is the KEY DIFFERENCE from checkpoint resume
     echo "# Step 4: Continuing from session (should use latest artifact)..."
-    run $CLI_COMMAND run continue --timeout 120 "$SESSION_ID" "ls && cat counter.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
 
     assert_success
     assert_output --partial "[tool_use] Bash"
@@ -125,7 +125,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "echo 'first run'"
 
     assert_success
@@ -140,7 +140,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "echo 'second run'"
 
     assert_success
@@ -187,7 +187,7 @@ teardown() {
     run $CLI_COMMAND run vm0-standard \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "echo 'initial run' && cat testfile.txt"
 
     assert_success
@@ -216,7 +216,7 @@ teardown() {
     # 1. The continue API correctly retrieves templateVars from the session
     # 2. The continue works even when original run had templateVars
     echo "# Step 4: Continuing from session..."
-    run $CLI_COMMAND run continue --timeout 120 "$SESSION_ID" "cat testfile.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
 
     assert_success
     assert_output --partial "[tool_use] Bash"

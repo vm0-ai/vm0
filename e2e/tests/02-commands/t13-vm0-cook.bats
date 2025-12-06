@@ -70,7 +70,7 @@ EOF
 
     echo "# Step 7: Run cook with prompt to test auto-pull..."
     # Use bash command for mock agent compatibility
-    run $CLI_COMMAND cook --timeout 120 "echo 'hello' > /home/user/workspace/result.txt"
+    run $CLI_COMMAND cook "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
     assert_output --partial "vm0_start"

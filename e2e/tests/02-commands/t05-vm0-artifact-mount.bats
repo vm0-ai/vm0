@@ -44,7 +44,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     assert_success
@@ -74,7 +74,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "echo done"
 
     assert_success

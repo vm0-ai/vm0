@@ -48,7 +48,7 @@ teardown() {
     echo "# Step 2: Running agent with simulated failure..."
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
+        \
         "@fail:Error: Could not resume session 'test-session': Session history file not found"
 
     # CLI should exit with non-zero code when agent fails (vm0_error received)
