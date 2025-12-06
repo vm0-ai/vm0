@@ -342,9 +342,7 @@ const runCmd = new Command()
             if (error instanceof Error) {
               console.error(chalk.red(`✗ Version not found: ${version}`));
               console.error(
-                chalk.gray(
-                  "  Make sure the version hash exists. Use 'vm0 compose' to see available versions.",
-                ),
+                chalk.gray("  Make sure the version hash is correct."),
               );
             }
             process.exit(1);

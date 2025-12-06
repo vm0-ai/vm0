@@ -290,18 +290,18 @@ export const cookCommand = new Command()
       process.exit(1);
     }
 
-    // Step 4: Build compose
+    // Step 4: Upload compose
     console.log();
-    console.log(chalk.blue("Building compose..."));
+    console.log(chalk.blue("Uploading compose..."));
 
     try {
       await execVm0Command(["compose", CONFIG_FILE], {
         cwd,
         silent: true,
       });
-      console.log(chalk.green(`✓ Compose built: ${agentName}`));
+      console.log(chalk.green(`✓ Compose uploaded: ${agentName}`));
     } catch (error) {
-      console.error(chalk.red(`✗ Build failed`));
+      console.error(chalk.red(`✗ Compose failed`));
       if (error instanceof Error) {
         console.error(chalk.gray(`  ${error.message}`));
       }
