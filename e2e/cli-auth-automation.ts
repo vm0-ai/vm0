@@ -96,10 +96,11 @@ export async function automateCliAuth(apiHost?: string) {
     });
 
     // Wait for device code
+    // Increased timeout to 30s to handle Vercel cold starts
     const { deviceCode, authUrl } = await new Promise<{ deviceCode: string; authUrl: string }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Timeout: Unable to get device code"));
-      }, 10000);
+      }, 30000);
 
       // Poll for device code in accumulated output
       const checkInterval = setInterval(() => {
