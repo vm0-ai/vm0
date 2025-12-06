@@ -282,10 +282,17 @@ jobs:
       - name: Warmup Vercel deployment
         run: |
           echo "Warming up Vercel deployment at ${{ needs.deploy-web.outputs.preview-url }}"
+          # First, set the bypass cookie by visiting the URL with query parameters
+          # See: https://vercel.com/docs/security/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation
+          BYPASS_URL="${{ needs.deploy-web.outputs.preview-url }}/?x-vercel-protection-bypass=${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}&x-vercel-set-bypass-cookie=samesitenone"
+          echo "Setting bypass cookie..."
+          curl -s -c /tmp/vercel-cookies.txt "$BYPASS_URL" -o /dev/null --max-time 30 || true
+
           # Retry up to 5 times with 10 second delays to handle cold starts
           for i in 1 2 3 4 5; do
             echo "Warmup attempt $i..."
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -b /tmp/vercel-cookies.txt \
               -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
               "${{ needs.deploy-web.outputs.preview-url }}/api/cli/auth/device" \
               -X POST \
