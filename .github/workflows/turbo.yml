@@ -284,20 +284,13 @@ jobs:
           DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
           echo "=== Network Diagnostics ==="
           echo ""
-          echo "1. DNS resolution:"
-          HOST=$(echo "$DEPLOYMENT_URL" | sed 's|https://||' | sed 's|/.*||')
-          nslookup "$HOST" || true
+          echo "1. Curl test (without bypass):"
+          curl -s -o /dev/null -w "HTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -d '{}' --max-time 10 || true
           echo ""
-          echo "2. Ping test:"
-          ping -c 3 "$HOST" || true
+          echo "2. Curl test (WITH bypass header):"
+          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -d '{}' --max-time 10 || true
           echo ""
-          echo "3. Curl test (should work):"
-          curl -s -o /dev/null -w "HTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL" --max-time 10 || true
-          echo ""
-          echo "4. Node.js DNS test:"
-          node -e "const dns = require('dns'); dns.lookup('$HOST', (err, addr) => console.log('Node DNS:', err || addr));"
-          echo ""
-          echo "5. Node.js fetch test:"
+          echo "3. Node.js fetch (without bypass):"
           timeout 15 node -e "
             fetch('$DEPLOYMENT_URL/api/cli/auth/device', {
               method: 'POST',
@@ -308,7 +301,27 @@ jobs:
             .catch(e => console.log('Fetch Error:', e.code || e.message));
           " || echo "Node fetch timed out after 15s"
           echo ""
+          echo "4. Node.js fetch (WITH bypass header):"
+          timeout 15 node -e "
+            fetch('$DEPLOYMENT_URL/api/cli/auth/device', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-vercel-protection-bypass': '$VERCEL_AUTOMATION_BYPASS_SECRET'
+              },
+              body: '{}'
+            })
+            .then(async r => {
+              const text = await r.text();
+              console.log('Fetch Status:', r.status);
+              console.log('Response:', text.substring(0, 200));
+            })
+            .catch(e => console.log('Fetch Error:', e.code || e.message));
+          " || echo "Node fetch with bypass timed out after 15s"
+          echo ""
           echo "=== End Diagnostics ==="
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Authenticate CLI
         run: |
