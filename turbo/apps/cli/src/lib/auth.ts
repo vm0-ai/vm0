@@ -26,40 +26,57 @@ async function requestDeviceCode(apiUrl: string): Promise<{
   expires_in: number;
   interval: number;
 }> {
-  // Add timeout to handle Vercel cold starts (30s should be enough)
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  try {
-    const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
-      method: "POST",
-      headers: buildHeaders(),
-      body: JSON.stringify({}),
-      signal: controller.signal,
-    });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Add timeout to handle Vercel cold starts (30s per attempt)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    clearTimeout(timeoutId);
+    try {
+      const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw new Error(`Failed to request device code: ${response.statusText}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to request device code: ${response.statusText}`);
+      }
+
+      return response.json() as Promise<{
+        device_code: string;
+        user_code: string;
+        verification_url: string;
+        expires_in: number;
+        interval: number;
+      }>;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === "AbortError") {
+        lastError = new Error(
+          `Request timed out (attempt ${attempt}/${maxRetries}) - server may be starting up`,
+        );
+      } else {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+
+      // Log retry attempts
+      if (attempt < maxRetries) {
+        console.log(
+          chalk.yellow(`\nConnection attempt ${attempt} failed, retrying in 5 seconds...`),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
     }
-
-    return response.json() as Promise<{
-      device_code: string;
-      user_code: string;
-      verification_url: string;
-      expires_in: number;
-      interval: number;
-    }>;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        "Request timed out - server may be starting up, please try again",
-      );
-    }
-    throw error;
   }
+
+  throw lastError || new Error("Failed to request device code after multiple attempts");
 }
 
 async function exchangeToken(

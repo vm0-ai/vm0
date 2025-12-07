@@ -96,11 +96,12 @@ export async function automateCliAuth(apiHost?: string) {
     });
 
     // Wait for device code
-    // Increased timeout to 30s to handle Vercel cold starts
+    // CLI now has 3 retries with 30s timeout each, plus 5s delays between retries
+    // Total max wait: 3*30s + 2*5s = 100s, add buffer for CLI startup
     const { deviceCode, authUrl } = await new Promise<{ deviceCode: string; authUrl: string }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Timeout: Unable to get device code"));
-      }, 30000);
+      }, 120000); // 2 minutes to accommodate CLI retry logic
 
       // Poll for device code in accumulated output
       const checkInterval = setInterval(() => {
