@@ -23,7 +23,7 @@ interface BuildStatusResponse {
 }
 
 /**
- * GET /api/images/:buildId/status
+ * GET /api/builds/:buildId/status
  * Query build status with incremental logs
  */
 export async function GET(

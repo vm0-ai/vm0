@@ -279,30 +279,6 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
-      - name: Network diagnostics
-        run: |
-          DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
-          echo "=== Network Diagnostics ==="
-          echo ""
-          echo "1. Homepage (no API):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 | head -5 || true
-          echo ""
-          echo "2. Ping endpoint (minimal API, no DB imports):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/ping" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 || true
-          echo ""
-          echo "3. Health endpoint (skip DB - tests if DB imports block):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/health?skip_db=true" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 || true
-          echo ""
-          echo "4. Health endpoint (with DB connection):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/health" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 30 || true
-          echo ""
-          echo "5. Auth/device endpoint (with DB):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -d '{}' --max-time 30 || true
-          echo ""
-          echo "=== End Diagnostics ==="
-        env:
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
       - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"

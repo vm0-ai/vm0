@@ -4,13 +4,13 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
-import { POST } from "../../../route";
+import { POST } from "../../../../images/route";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { images } from "../../../../../../src/db/schema/image";
 import { eq } from "drizzle-orm";
 
 // Mock the auth module
-let mockUserId: string | null = "test-user-status-images";
+let mockUserId: string | null = "test-user-status-builds";
 vi.mock("../../../../../../src/lib/auth/get-user-id", () => ({
   getUserId: async () => mockUserId,
 }));
@@ -35,9 +35,9 @@ vi.mock("e2b", () => ({
   ),
 }));
 
-describe("GET /api/images/:buildId/status", () => {
-  const testUserId = "test-user-status-images";
-  const testUserId2 = "test-user-status-images-2";
+describe("GET /api/builds/:buildId/status", () => {
+  const testUserId = "test-user-status-builds";
+  const testUserId2 = "test-user-status-builds-2";
   let testBuildId: string;
 
   beforeAll(async () => {
@@ -49,7 +49,7 @@ describe("GET /api/images/:buildId/status", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         dockerfile: "FROM alpine",
-        alias: "status-test-image",
+        alias: "status-test-build",
       }),
     });
     const createResponse = await POST(createRequest as NextRequest);
@@ -69,7 +69,7 @@ describe("GET /api/images/:buildId/status", () => {
 
   it("should return build status with logs", async () => {
     const request = new Request(
-      `http://localhost:3000/api/images/${testBuildId}/status?logsOffset=0`,
+      `http://localhost:3000/api/builds/${testBuildId}/status?logsOffset=0`,
       { method: "GET" },
     );
 
@@ -87,7 +87,7 @@ describe("GET /api/images/:buildId/status", () => {
 
   it("should return 404 for non-existent build", async () => {
     const request = new Request(
-      "http://localhost:3000/api/images/nonexistent-build-id/status",
+      "http://localhost:3000/api/builds/nonexistent-build-id/status",
       { method: "GET" },
     );
 
@@ -105,7 +105,7 @@ describe("GET /api/images/:buildId/status", () => {
     // Try to get status as user 2
     mockUserId = testUserId2;
     const request = new Request(
-      `http://localhost:3000/api/images/${testBuildId}/status`,
+      `http://localhost:3000/api/builds/${testBuildId}/status`,
       { method: "GET" },
     );
 
@@ -123,7 +123,7 @@ describe("GET /api/images/:buildId/status", () => {
 
   it("should reject invalid logsOffset", async () => {
     const request = new Request(
-      `http://localhost:3000/api/images/${testBuildId}/status?logsOffset=-1`,
+      `http://localhost:3000/api/builds/${testBuildId}/status?logsOffset=-1`,
       { method: "GET" },
     );
 
@@ -140,7 +140,7 @@ describe("GET /api/images/:buildId/status", () => {
     mockUserId = null;
 
     const request = new Request(
-      `http://localhost:3000/api/images/${testBuildId}/status`,
+      `http://localhost:3000/api/builds/${testBuildId}/status`,
       { method: "GET" },
     );
 
