@@ -8,7 +8,7 @@ import {
 import { UnauthorizedError } from "../../../../../src/lib/errors";
 
 /**
- * GET /api/images/[buildId]/status
+ * GET /api/builds/[buildId]/status
  * Get build status with logs - MOCK
  */
 export async function GET(
