@@ -72,7 +72,7 @@ export const buildCommand = new Command()
 
       while (status === "building") {
         const statusResponse = await apiClient.get(
-          `/api/images/${buildId}/status?logsOffset=${logsOffset}`,
+          `/api/builds/${buildId}/status?logsOffset=${logsOffset}`,
         );
 
         if (!statusResponse.ok) {
