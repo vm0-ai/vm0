@@ -284,40 +284,14 @@ jobs:
           DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
           echo "=== Network Diagnostics ==="
           echo ""
-          echo "1. Curl test (without bypass):"
-          curl -s -o /dev/null -w "HTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -d '{}' --max-time 10 || true
+          echo "1. Curl simple GET (with bypass):"
+          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 | head -50 || true
           echo ""
-          echo "2. Curl test (WITH bypass header):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -d '{}' --max-time 10 || true
+          echo "2. Curl health endpoint (with bypass):"
+          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/health" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 || true
           echo ""
-          echo "3. Node.js fetch (without bypass):"
-          timeout 15 node -e "
-            fetch('$DEPLOYMENT_URL/api/cli/auth/device', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: '{}'
-            })
-            .then(r => console.log('Fetch Status:', r.status))
-            .catch(e => console.log('Fetch Error:', e.code || e.message));
-          " || echo "Node fetch timed out after 15s"
-          echo ""
-          echo "4. Node.js fetch (WITH bypass header):"
-          timeout 15 node -e "
-            fetch('$DEPLOYMENT_URL/api/cli/auth/device', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-vercel-protection-bypass': '$VERCEL_AUTOMATION_BYPASS_SECRET'
-              },
-              body: '{}'
-            })
-            .then(async r => {
-              const text = await r.text();
-              console.log('Fetch Status:', r.status);
-              console.log('Response:', text.substring(0, 200));
-            })
-            .catch(e => console.log('Fetch Error:', e.code || e.message));
-          " || echo "Node fetch with bypass timed out after 15s"
+          echo "3. Curl auth/device POST (with bypass + verbose):"
+          curl -v -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -d '{}' --max-time 20 2>&1 || true
           echo ""
           echo "=== End Diagnostics ==="
         env:
