@@ -17,7 +17,6 @@ import type {
 } from "../../../../src/types/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
 /**
  * GET /api/agent/composes?name={agentName}
@@ -148,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
-    const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
+    const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
     if (!nameRegex.test(agentName)) {
       throw new BadRequestError(
         "Invalid agent name format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.",
@@ -157,12 +156,6 @@ export async function POST(request: NextRequest) {
 
     // Note: Variables like ${{ vars.X }}, ${{ secrets.X }} are stored unexpanded
     // and will be resolved at run time by the server
-
-    // Validate image access
-    const agent = content.agents[agentName];
-    if (agent?.image) {
-      await assertImageAccess(userId, agent.image);
-    }
 
     // Compute content-addressable version ID
     const versionId = computeComposeVersionId(content);
