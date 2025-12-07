@@ -10,7 +10,7 @@ import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
 import * as userSecretsSchema from "./schema/user-secrets";
-import * as imageSchema from "./schema/image";
+// REMOVED for CI debugging: import * as imageSchema from "./schema/image";
 
 export const schema = {
   ...userSchema,
@@ -25,5 +25,5 @@ export const schema = {
   ...storageSchema,
   ...blobSchema,
   ...userSecretsSchema,
-  ...imageSchema,
+  // REMOVED for CI debugging: ...imageSchema,
 };
