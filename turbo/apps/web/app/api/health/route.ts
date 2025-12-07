@@ -14,7 +14,7 @@ export async function GET(): Promise<NextResponse> {
 
     // Test database connection with a simple query
     const dbStart = Date.now();
-    const result = await globalThis.services.db.execute(sql`SELECT 1 as test`);
+    await globalThis.services.db.execute(sql`SELECT 1 as test`);
     const dbTime = Date.now() - dbStart;
 
     const totalTime = Date.now() - startTime;
