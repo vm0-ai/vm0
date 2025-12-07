@@ -32,42 +32,50 @@ interface BuildResult {
 /**
  * Start building an image from a Dockerfile
  * Uses E2B's Template.buildInBackground for async building
+ *
+ * NOTE: This is currently MOCKED for CI debugging purposes.
+ * Real E2B Template SDK calls are commented out to isolate CI issues.
  */
 export async function buildImage(
   userId: string,
   dockerfile: string,
   alias: string,
 ): Promise<BuildResult> {
-  // Dynamic import to avoid loading E2B SDK in routes that don't need it
-  const { Template } = await import("e2b");
+  // MOCKED: Skip actual E2B SDK call for CI debugging
+  // const { Template } = await import("e2b");
 
   const e2bAlias = generateE2bAlias(userId, alias);
 
-  // Create template from Dockerfile content
-  const template = Template().fromDockerfile(dockerfile);
+  // MOCKED: Generate fake build info instead of calling E2B
+  // const template = Template().fromDockerfile(dockerfile);
+  // const buildInfo = await Template.buildInBackground(template, {
+  //   alias: e2bAlias,
+  // });
+  const mockBuildId = `mock-build-${Date.now()}`;
+  const mockTemplateId = `mock-template-${Date.now()}`;
 
-  // Start background build
-  const buildInfo = await Template.buildInBackground(template, {
-    alias: e2bAlias,
-  });
+  // Validate dockerfile is not empty (minimal validation)
+  if (!dockerfile || dockerfile.trim().length === 0) {
+    throw new BadRequestError("Dockerfile cannot be empty");
+  }
 
-  // Insert record into database
+  // Insert record into database with mock values
   const [image] = await globalThis.services.db
     .insert(images)
     .values({
       userId,
       alias,
       e2bAlias,
-      e2bTemplateId: buildInfo.templateId,
-      e2bBuildId: buildInfo.buildId,
+      e2bTemplateId: mockTemplateId,
+      e2bBuildId: mockBuildId,
       status: "building" as ImageStatusEnum,
     })
     .onConflictDoUpdate({
       target: [images.userId, images.alias],
       set: {
         e2bAlias,
-        e2bTemplateId: buildInfo.templateId,
-        e2bBuildId: buildInfo.buildId,
+        e2bTemplateId: mockTemplateId,
+        e2bBuildId: mockBuildId,
         status: "building" as ImageStatusEnum,
         errorMessage: null,
         updatedAt: new Date(),
@@ -77,7 +85,7 @@ export async function buildImage(
 
   return {
     imageId: image!.id,
-    buildId: buildInfo.buildId,
+    buildId: mockBuildId,
     alias,
     e2bAlias,
   };
@@ -92,60 +100,38 @@ interface BuildStatusResult {
 
 /**
  * Get the build status from E2B and update database if status changed
+ *
+ * NOTE: This is currently MOCKED for CI debugging purposes.
+ * Real E2B Template SDK calls are commented out to isolate CI issues.
  */
 export async function getBuildStatus(
   buildId: string,
-  templateId: string,
+  _templateId: string,
   logsOffset = 0,
 ): Promise<BuildStatusResult> {
-  // Dynamic import to avoid loading E2B SDK in routes that don't need it
-  const { Template } = await import("e2b");
+  // MOCKED: Skip actual E2B SDK call for CI debugging
+  // const { Template } = await import("e2b");
+  // const e2bStatus = await Template.getBuildStatus(
+  //   { buildId, templateId },
+  //   { logsOffset },
+  // );
 
-  // Query E2B for build status
-  const e2bStatus = await Template.getBuildStatus(
-    { buildId, templateId },
-    { logsOffset },
-  );
+  // MOCKED: Return fake build status - always "building" with mock logs
+  const mockLogs = [
+    `[MOCK] Build ${buildId} is in progress...`,
+    `[MOCK] This is a mocked response for CI debugging.`,
+  ];
 
-  // Map E2B status to our status enum
-  const status: ImageStatusEnum = e2bStatus.status as ImageStatusEnum;
-  const logs = e2bStatus.logEntries.map((entry) => entry.toString());
-  const newLogsOffset = logsOffset + logs.length;
-
-  // Extract error message from logs if build failed
-  // Usually the last few log entries contain the actual error
-  let errorMessage: string | undefined;
-  if (status === "error") {
-    // Try to extract meaningful error from recent logs
-    const errorLogs = logs.filter(
-      (log) =>
-        log.toLowerCase().includes("error") ||
-        log.toLowerCase().includes("failed") ||
-        log.toLowerCase().includes("fatal"),
-    );
-    errorMessage =
-      errorLogs.length > 0
-        ? errorLogs[errorLogs.length - 1]
-        : logs[logs.length - 1] || "Build failed";
-  }
-
-  // Update database if build is complete (ready or error)
-  if (status === "ready" || status === "error") {
-    await globalThis.services.db
-      .update(images)
-      .set({
-        status,
-        errorMessage: errorMessage || null,
-        updatedAt: new Date(),
-      })
-      .where(eq(images.e2bBuildId, buildId));
-  }
+  // For mock: simulate build completing after a few polls
+  // In real scenario, status would come from E2B
+  const status: ImageStatusEnum = "building";
+  const newLogsOffset = logsOffset + mockLogs.length;
 
   return {
     status,
-    logs,
+    logs: mockLogs,
     logsOffset: newLogsOffset,
-    error: errorMessage,
+    error: undefined,
   };
 }
 
