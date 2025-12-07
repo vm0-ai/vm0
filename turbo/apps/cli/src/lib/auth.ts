@@ -45,7 +45,9 @@ async function requestDeviceCode(apiUrl: string): Promise<{
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Failed to request device code: ${response.statusText}`);
+        throw new Error(
+          `Failed to request device code: ${response.statusText}`,
+        );
       }
 
       return response.json() as Promise<{
@@ -69,14 +71,19 @@ async function requestDeviceCode(apiUrl: string): Promise<{
       // Log retry attempts
       if (attempt < maxRetries) {
         console.log(
-          chalk.yellow(`\nConnection attempt ${attempt} failed, retrying in 5 seconds...`),
+          chalk.yellow(
+            `\nConnection attempt ${attempt} failed, retrying in 5 seconds...`,
+          ),
         );
         await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   }
 
-  throw lastError || new Error("Failed to request device code after multiple attempts");
+  throw (
+    lastError ||
+    new Error("Failed to request device code after multiple attempts")
+  );
 }
 
 async function exchangeToken(
