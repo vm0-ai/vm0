@@ -284,16 +284,19 @@ jobs:
           DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
           echo "=== Network Diagnostics ==="
           echo ""
-          echo "1. Curl simple GET (with bypass):"
-          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 | head -20 || true
+          echo "1. Homepage (no API):"
+          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 | head -5 || true
           echo ""
-          echo "2a. Health check endpoint (skip DB - tests API route without DB):"
+          echo "2. Ping endpoint (minimal API, no DB imports):"
+          curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/ping" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 || true
+          echo ""
+          echo "3. Health endpoint (skip DB - tests if DB imports block):"
           curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/health?skip_db=true" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 10 || true
           echo ""
-          echo "2b. Health check endpoint (with DB connection):"
+          echo "4. Health endpoint (with DB connection):"
           curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/health" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" --max-time 30 || true
           echo ""
-          echo "3. Curl auth/device POST (with bypass):"
+          echo "5. Auth/device endpoint (with DB):"
           curl -s -w "\nHTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL/api/cli/auth/device" -X POST -H "Content-Type: application/json" -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" -d '{}' --max-time 30 || true
           echo ""
           echo "=== End Diagnostics ==="
