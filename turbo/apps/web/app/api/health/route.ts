@@ -25,9 +25,20 @@ function withTimeout<T>(
 /**
  * GET /api/health
  * Health check endpoint that tests database connectivity
+ * Accepts ?skip_db=true to return without database check
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const startTime = Date.now();
+
+  // Early return for basic health check without DB
+  const url = new URL(request.url);
+  if (url.searchParams.get("skip_db") === "true") {
+    return NextResponse.json({
+      status: "ok",
+      skipDb: true,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   try {
     const initStart = Date.now();
