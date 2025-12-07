@@ -179,11 +179,13 @@ export async function getImageByBuildId(buildId: string) {
  * Resolve an image alias to E2B template name
  * - System templates (vm0-*): return as-is
  * - User templates: lookup in DB and return e2bAlias
+ * @throws NotFoundError if user image not found
+ * @throws BadRequestError if user image is not ready
  */
 export async function resolveImageAlias(
   userId: string,
   alias: string,
-): Promise<{ templateName: string; isUserImage: boolean } | null> {
+): Promise<{ templateName: string; isUserImage: boolean }> {
   // System templates bypass DB lookup
   if (isSystemTemplate(alias)) {
     return { templateName: alias, isUserImage: false };
@@ -193,11 +195,15 @@ export async function resolveImageAlias(
   const image = await getImageByAlias(userId, alias);
 
   if (!image) {
-    return null;
+    throw new NotFoundError(
+      `Image "${alias}" not found. Build it first with: vm0 image build`,
+    );
   }
 
   if (image.status !== "ready") {
-    return null;
+    throw new BadRequestError(
+      `Image "${alias}" is not ready (status: ${image.status}). Check build status with: vm0 image list`,
+    );
   }
 
   return { templateName: image.e2bAlias, isUserImage: true };

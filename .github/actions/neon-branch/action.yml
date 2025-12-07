@@ -56,31 +56,29 @@ runs:
       run: |
         BRANCH_NAME="preview/${{ inputs.branch-name }}"
 
-        # Always delete existing branch and create fresh to avoid state issues
         if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
-          echo "Branch $BRANCH_NAME already exists, deleting it..."
-          neonctl branches delete $BRANCH_NAME --project-id $NEON_PROJECT_ID
-          echo "Waiting for deletion to complete..."
-          sleep 5
-        fi
+          echo "Branch $BRANCH_NAME already exists"
+          echo "Resetting branch to sync with parent (main)..."
+          neonctl branches reset $BRANCH_NAME --project-id $NEON_PROJECT_ID --parent
 
-        echo "Creating fresh branch $BRANCH_NAME"
-        neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
+          # Wait for reset to complete (branch state changes to "ready")
+          echo "Waiting for branch reset to complete..."
+          for i in {1..30}; do
+            CURRENT_STATE=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+            if [ "$CURRENT_STATE" = "ready" ]; then
+              echo "Branch reset complete (state: $CURRENT_STATE)"
+              break
+            fi
+            echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+            sleep 2
+          done
 
-        # Wait for branch to be ready
-        echo "Waiting for branch to be ready..."
-        for i in {1..30}; do
-          CURRENT_STATE=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
-          if [ "$CURRENT_STATE" = "ready" ]; then
-            echo "Branch ready (state: $CURRENT_STATE)"
-            break
+          if [ "$CURRENT_STATE" != "ready" ]; then
+            echo "Warning: Branch may not be ready after 60 seconds (state: $CURRENT_STATE)"
           fi
-          echo "Branch state: $CURRENT_STATE (attempt $i/30)"
-          sleep 2
-        done
-
-        if [ "$CURRENT_STATE" != "ready" ]; then
-          echo "Warning: Branch may not be ready after 60 seconds (state: $CURRENT_STATE)"
+        else
+          echo "Creating branch $BRANCH_NAME"
+          neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
         fi
 
         DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} --pooled)

@@ -431,13 +431,8 @@ export class E2BService {
     // Resolve user image aliases to E2B template names
     // System templates (vm0-*) pass through unchanged
     // User images (my-agent) resolve to user-{userId}-my-agent
+    // Throws NotFoundError or BadRequestError if image is invalid
     const resolved = await resolveImageAlias(userId, imageAlias);
-    if (!resolved) {
-      throw new BadRequestError(
-        `Image "${imageAlias}" not found or not ready. Check the image status with 'vm0 image status'.`,
-      );
-    }
-
     const templateName = resolved.templateName;
 
     log.debug(`Using template: ${templateName}`);
