@@ -1,9 +1,11 @@
-import { Template } from "e2b";
 import { eq, and, desc } from "drizzle-orm";
 
 import { images } from "../../db/schema/image";
 import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import type { ImageStatusEnum } from "../../db/schema/image";
+
+// Note: E2B SDK is imported dynamically in functions that need it
+// to avoid loading the heavy SDK in routes that only use validation functions
 
 /**
  * Generate E2B alias from userId and user-specified alias
@@ -36,6 +38,9 @@ export async function buildImage(
   dockerfile: string,
   alias: string,
 ): Promise<BuildResult> {
+  // Dynamic import to avoid loading E2B SDK in routes that don't need it
+  const { Template } = await import("e2b");
+
   const e2bAlias = generateE2bAlias(userId, alias);
 
   // Create template from Dockerfile content
@@ -93,6 +98,9 @@ export async function getBuildStatus(
   templateId: string,
   logsOffset = 0,
 ): Promise<BuildStatusResult> {
+  // Dynamic import to avoid loading E2B SDK in routes that don't need it
+  const { Template } = await import("e2b");
+
   // Query E2B for build status
   const e2bStatus = await Template.getBuildStatus(
     { buildId, templateId },
