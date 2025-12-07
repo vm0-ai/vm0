@@ -279,6 +279,37 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
+      - name: Network diagnostics
+        run: |
+          DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
+          echo "=== Network Diagnostics ==="
+          echo ""
+          echo "1. DNS resolution:"
+          HOST=$(echo "$DEPLOYMENT_URL" | sed 's|https://||' | sed 's|/.*||')
+          nslookup "$HOST" || true
+          echo ""
+          echo "2. Ping test:"
+          ping -c 3 "$HOST" || true
+          echo ""
+          echo "3. Curl test (should work):"
+          curl -s -o /dev/null -w "HTTP: %{http_code}, Time: %{time_total}s\n" "$DEPLOYMENT_URL" --max-time 10 || true
+          echo ""
+          echo "4. Node.js DNS test:"
+          node -e "const dns = require('dns'); dns.lookup('$HOST', (err, addr) => console.log('Node DNS:', err || addr));"
+          echo ""
+          echo "5. Node.js fetch test:"
+          timeout 15 node -e "
+            fetch('$DEPLOYMENT_URL/api/cli/auth/device', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: '{}'
+            })
+            .then(r => console.log('Fetch Status:', r.status))
+            .catch(e => console.log('Fetch Error:', e.code || e.message));
+          " || echo "Node fetch timed out after 15s"
+          echo ""
+          echo "=== End Diagnostics ==="
+
       - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
