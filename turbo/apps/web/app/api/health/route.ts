@@ -3,6 +3,26 @@ import { initServices } from "../../../src/lib/init-services";
 import { sql } from "drizzle-orm";
 
 /**
+ * Helper to add timeout to a promise
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string,
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
+/**
  * GET /api/health
  * Health check endpoint that tests database connectivity
  */
@@ -18,9 +38,13 @@ export async function GET(): Promise<NextResponse> {
     const dbUrl = globalThis.services.env.DATABASE_URL;
     const dbHost = dbUrl.split("@")[1]?.split("/")[0] || "unknown";
 
-    // Test database connection with a simple query
+    // Test database connection with a simple query (15s timeout)
     const dbStart = Date.now();
-    await globalThis.services.db.execute(sql`SELECT 1 as test`);
+    await withTimeout(
+      globalThis.services.db.execute(sql`SELECT 1 as test`),
+      15000,
+      `Database query timeout after 15s (host: ${dbHost})`,
+    );
     const dbTime = Date.now() - dbStart;
 
     const totalTime = Date.now() - startTime;
