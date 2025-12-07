@@ -279,6 +279,31 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
+      - name: Wait for Vercel deployment to be ready
+        run: |
+          echo "Waiting for Vercel deployment to be ready..."
+          DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
+
+          # Simple health check - just verify we can connect to Vercel
+          # The 401 response is expected (deployment protection), but it means Vercel is responding
+          for i in {1..12}; do
+            echo "Health check attempt $i/12..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOYMENT_URL" --max-time 30) || HTTP_STATUS="failed"
+            echo "HTTP Status: $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "200" ]; then
+              echo "Vercel deployment is responding!"
+              break
+            fi
+
+            if [ "$i" -eq 12 ]; then
+              echo "Warning: Deployment health check did not succeed after 12 attempts"
+            fi
+
+            echo "Waiting 10 seconds before retry..."
+            sleep 10
+          done
+
       - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
