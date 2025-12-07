@@ -284,25 +284,43 @@ jobs:
           echo "Waiting for Vercel deployment to be ready..."
           DEPLOYMENT_URL="${{ needs.deploy-web.outputs.preview-url }}"
 
-          # Simple health check - just verify we can connect to Vercel
-          # The 401 response is expected (deployment protection), but it means Vercel is responding
-          for i in {1..12}; do
-            echo "Health check attempt $i/12..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOYMENT_URL" --max-time 30) || HTTP_STATUS="failed"
-            echo "HTTP Status: $HTTP_STATUS"
+          # Test with curl first (this works)
+          echo "Testing with curl..."
+          curl -v -X POST "$DEPLOYMENT_URL/api/cli/auth/device" \
+            -H "Content-Type: application/json" \
+            -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+            -d '{}' \
+            --max-time 30 2>&1 | head -60
 
-            if [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "200" ]; then
-              echo "Vercel deployment is responding!"
-              break
-            fi
+          # Test with Node.js fetch (this might fail)
+          echo ""
+          echo "Testing with Node.js fetch..."
+          node -e "
+            const url = '${DEPLOYMENT_URL}/api/cli/auth/device';
+            const headers = {
+              'Content-Type': 'application/json',
+              'x-vercel-protection-bypass': '${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}'
+            };
+            console.log('Fetching:', url);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            fetch(url, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({}),
+              signal: controller.signal
+            })
+            .then(r => {
+              clearTimeout(timeout);
+              console.log('Status:', r.status);
+              return r.text();
+            })
+            .then(t => console.log('Response:', t.substring(0, 200)))
+            .catch(e => console.error('Error:', e.message));
+          "
 
-            if [ "$i" -eq 12 ]; then
-              echo "Warning: Deployment health check did not succeed after 12 attempts"
-            fi
-
-            echo "Waiting 10 seconds before retry..."
-            sleep 10
-          done
+          echo ""
+          echo "Deployment check complete."
 
       - name: Authenticate CLI
         run: |
