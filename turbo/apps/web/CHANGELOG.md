@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.1](https://github.com/vm0-ai/vm0/compare/web-v4.8.0...web-v4.8.1) (2025-12-08)
+
+
+### Bug Fixes
+
+* **web:** use entry.message instead of toString() for E2B build logs ([#423](https://github.com/vm0-ai/vm0/issues/423)) ([f81de6f](https://github.com/vm0-ai/vm0/commit/f81de6f9aba612c472ffd65741027fc6b49bd0c9))
+
 ## [4.8.0](https://github.com/vm0-ai/vm0/compare/web-v4.7.0...web-v4.8.0) (2025-12-08)
 
 
