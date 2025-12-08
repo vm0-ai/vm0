@@ -280,6 +280,7 @@ class ApiClient {
   async createImage(body: {
     dockerfile: string;
     alias: string;
+    deleteExisting?: boolean;
   }): Promise<CreateImageResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();

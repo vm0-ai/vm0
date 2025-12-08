@@ -55,7 +55,14 @@ export async function buildImage(
   } catch (error) {
     // Convert E2B BuildError to BadRequestError so it's returned to user
     if (error instanceof BuildError) {
-      throw new BadRequestError(error.message);
+      const message = error.message;
+      // Provide helpful message for alias conflict (E2B buildInBackground bug)
+      if (message.includes("403") && message.includes("already used")) {
+        throw new BadRequestError(
+          `Image "${alias}" already exists. Delete it first with: vm0 image delete ${alias}`,
+        );
+      }
+      throw new BadRequestError(message);
     }
     throw error;
   }
@@ -311,8 +318,7 @@ export async function getImageById(imageId: string) {
 
 /**
  * Delete an image by ID
- * Note: This only deletes from our database. E2B templates remain and will
- * be garbage collected by E2B based on their retention policy.
+ * Deletes from both our database and E2B
  */
 export async function deleteImage(
   userId: string,
@@ -329,7 +335,38 @@ export async function deleteImage(
     throw new ForbiddenError("You don't have access to this image");
   }
 
+  // Delete from E2B
+  if (image.e2bTemplateId) {
+    const { ApiClient, ConnectionConfig } = await import("e2b");
+    const config = new ConnectionConfig({});
+    const client = new ApiClient(config);
+
+    try {
+      await client.api.DELETE("/templates/{templateID}", {
+        params: { path: { templateID: image.e2bTemplateId } },
+      });
+    } catch {
+      // Ignore E2B deletion errors - template may already be deleted
+    }
+  }
+
   // Delete from database
-  // Note: E2B template cleanup is handled by E2B's retention policy
   await globalThis.services.db.delete(images).where(eq(images.id, imageId));
+}
+
+/**
+ * Delete an image by alias
+ * Deletes from both our database and E2B
+ */
+export async function deleteImageByAlias(
+  userId: string,
+  alias: string,
+): Promise<void> {
+  const image = await getImageByAlias(userId, alias);
+
+  if (!image) {
+    throw new NotFoundError(`Image "${alias}" not found`);
+  }
+
+  await deleteImage(userId, image.id);
 }

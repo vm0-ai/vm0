@@ -18,8 +18,9 @@ export const buildCommand = new Command()
   .description("Build a custom image from a Dockerfile")
   .requiredOption("-f, --file <path>", "Path to Dockerfile")
   .requiredOption("-n, --name <name>", "Name for the image")
-  .action(async (options: { file: string; name: string }) => {
-    const { file, name } = options;
+  .option("--delete-existing", "Delete existing image before building")
+  .action(async (options: { file: string; name: string; deleteExisting?: boolean }) => {
+    const { file, name, deleteExisting } = options;
 
     // Validate file exists
     if (!existsSync(file)) {
@@ -60,6 +61,7 @@ export const buildCommand = new Command()
       const buildInfo = await apiClient.createImage({
         dockerfile,
         alias: name,
+        deleteExisting,
       });
       const { imageId, buildId } = buildInfo;
 

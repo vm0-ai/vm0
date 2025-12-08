@@ -3,11 +3,17 @@ import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { successResponse, errorResponse } from "../../../src/lib/api-response";
 import { BadRequestError, UnauthorizedError } from "../../../src/lib/errors";
-import { buildImage, listImages } from "../../../src/lib/image/image-service";
+import {
+  buildImage,
+  listImages,
+  deleteImageByAlias,
+  getImageByAlias,
+} from "../../../src/lib/image/image-service";
 
 interface CreateImageRequest {
   dockerfile: string;
   alias: string;
+  deleteExisting?: boolean;
 }
 
 interface CreateImageResponse {
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
     const body: CreateImageRequest = await request.json();
 
     // Validate request
-    const { dockerfile, alias } = body;
+    const { dockerfile, alias, deleteExisting } = body;
 
     if (!dockerfile) {
       throw new BadRequestError("Missing dockerfile");
@@ -82,6 +88,14 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError(
         'Invalid alias. User images cannot start with "vm0-" prefix (reserved for system templates).',
       );
+    }
+
+    // Delete existing image if requested
+    if (deleteExisting) {
+      const existingImage = await getImageByAlias(userId, alias);
+      if (existingImage) {
+        await deleteImageByAlias(userId, alias);
+      }
     }
 
     // Start image build
