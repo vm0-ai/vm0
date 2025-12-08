@@ -28,7 +28,13 @@ vi.mock("e2b", () => ({
       }),
       getBuildStatus: vi.fn().mockResolvedValue({
         status: "building",
-        logEntries: [{ message: "Building layer 1...", level: "info", timestamp: new Date().toISOString() }],
+        logEntries: [
+          {
+            message: "Building layer 1...",
+            level: "info",
+            timestamp: new Date().toISOString(),
+          },
+        ],
       }),
       delete: vi.fn().mockResolvedValue(undefined),
     },
