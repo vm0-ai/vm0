@@ -109,7 +109,7 @@ export async function getBuildStatus(
 
   // Map E2B status to our status enum
   const status: ImageStatusEnum = e2bStatus.status as ImageStatusEnum;
-  const logs = e2bStatus.logEntries.map((entry) => entry.toString());
+  const logs = e2bStatus.logEntries.map((entry) => entry.message);
   const newLogsOffset = logsOffset + logs.length;
 
   // Extract error message from logs if build failed
