@@ -41,6 +41,7 @@ vi.mock("e2b", () => ({
   },
   ApiClient: vi.fn().mockImplementation(() => ({
     api: {
+      GET: vi.fn().mockResolvedValue({ data: [] }),
       DELETE: vi.fn().mockResolvedValue(undefined),
     },
   })),

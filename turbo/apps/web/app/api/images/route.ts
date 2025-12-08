@@ -8,6 +8,8 @@ import {
   listImages,
   deleteImageByAlias,
   getImageByAlias,
+  generateE2bAlias,
+  tryDeleteE2bTemplateByAlias,
 } from "../../../src/lib/image/image-service";
 
 interface CreateImageRequest {
@@ -92,10 +94,16 @@ export async function POST(request: NextRequest) {
 
     // Delete existing image if requested
     if (deleteExisting) {
+      // First try to delete from our database
       const existingImage = await getImageByAlias(userId, alias);
       if (existingImage) {
         await deleteImageByAlias(userId, alias);
       }
+
+      // Also try to delete from E2B directly in case database record is stale
+      // This handles the case where DB was cleaned up but E2B template still exists
+      const e2bAlias = generateE2bAlias(userId, alias);
+      await tryDeleteE2bTemplateByAlias(e2bAlias);
     }
 
     // Start image build

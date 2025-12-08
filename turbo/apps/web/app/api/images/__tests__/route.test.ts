@@ -38,7 +38,12 @@ vi.mock("e2b", () => ({
       this.name = "BuildError";
     }
   },
-  ApiClient: vi.fn(),
+  ApiClient: vi.fn().mockImplementation(() => ({
+    api: {
+      GET: vi.fn().mockResolvedValue({ data: [] }),
+      DELETE: vi.fn().mockResolvedValue(undefined),
+    },
+  })),
   ConnectionConfig: vi.fn(),
 }));
 
