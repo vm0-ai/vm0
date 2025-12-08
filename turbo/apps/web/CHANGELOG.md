@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/vm0-ai/vm0/compare/web-v4.7.0...web-v4.8.0) (2025-12-08)
+
+
+### Features
+
+* add vm0 image build command for custom Dockerfile support ([#408](https://github.com/vm0-ai/vm0/issues/408)) ([66953a2](https://github.com/vm0-ai/vm0/commit/66953a22c4fce93d60ef8a176b58df555ce504a0))
+
 ## [4.7.0](https://github.com/vm0-ai/vm0/compare/web-v4.6.0...web-v4.7.0) (2025-12-06)
 
 
