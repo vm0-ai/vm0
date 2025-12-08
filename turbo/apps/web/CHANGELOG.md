@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.2](https://github.com/vm0-ai/vm0/compare/web-v4.8.1...web-v4.8.2) (2025-12-08)
+
+
+### Bug Fixes
+
+* rename VERCEL_CRON_SECRET to CRON_SECRET for Vercel cron authentication ([#425](https://github.com/vm0-ai/vm0/issues/425)) ([5a15fb3](https://github.com/vm0-ai/vm0/commit/5a15fb3ab53c96a8a8c40edb68016f2c2c3d977b))
+
 ## [4.8.1](https://github.com/vm0-ai/vm0/compare/web-v4.8.0...web-v4.8.1) (2025-12-08)
 
 
