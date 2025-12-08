@@ -61,7 +61,7 @@ export const buildCommand = new Command()
         dockerfile,
         alias: name,
       });
-      const { buildId } = buildInfo;
+      const { imageId, buildId } = buildInfo;
 
       console.log(chalk.gray(`  Build ID: ${buildId}`));
       console.log();
@@ -72,7 +72,7 @@ export const buildCommand = new Command()
 
       while (status === "building") {
         const statusResponse = await apiClient.get(
-          `/api/builds/${buildId}/status?logsOffset=${logsOffset}`,
+          `/api/images/${imageId}/builds/${buildId}?logsOffset=${logsOffset}`,
         );
 
         if (!statusResponse.ok) {

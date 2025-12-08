@@ -1,19 +1,19 @@
 import { NextRequest } from "next/server";
-import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { initServices } from "../../../../../../src/lib/init-services";
+import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import {
   successResponse,
   errorResponse,
-} from "../../../../../src/lib/api-response";
+} from "../../../../../../src/lib/api-response";
 import {
   BadRequestError,
   UnauthorizedError,
   NotFoundError,
-} from "../../../../../src/lib/errors";
+} from "../../../../../../src/lib/errors";
 import {
   getBuildStatus,
-  getImageByBuildId,
-} from "../../../../../src/lib/image/image-service";
+  getImageById,
+} from "../../../../../../src/lib/image/image-service";
 
 interface BuildStatusResponse {
   status: "building" | "ready" | "error";
@@ -23,12 +23,12 @@ interface BuildStatusResponse {
 }
 
 /**
- * GET /api/builds/:buildId/status
+ * GET /api/images/:imageId/builds/:buildId
  * Query build status with incremental logs
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ buildId: string }> },
+  { params }: { params: Promise<{ imageId: string; buildId: string }> },
 ) {
   try {
     // Initialize services at serverless function entry
@@ -40,7 +40,11 @@ export async function GET(
       throw new UnauthorizedError("Not authenticated");
     }
 
-    const { buildId } = await params;
+    const { imageId, buildId } = await params;
+
+    if (!imageId) {
+      throw new BadRequestError("Missing imageId");
+    }
 
     if (!buildId) {
       throw new BadRequestError("Missing buildId");
@@ -55,16 +59,21 @@ export async function GET(
       throw new BadRequestError("Invalid logsOffset parameter");
     }
 
-    // Get image from database to verify ownership and get templateId
-    const image = await getImageByBuildId(buildId);
+    // Get image from database by imageId
+    const image = await getImageById(imageId);
 
     if (!image) {
-      throw new NotFoundError(`Build not found: ${buildId}`);
+      throw new NotFoundError(`Image not found: ${imageId}`);
     }
 
     // Verify ownership
     if (image.userId !== userId) {
-      throw new UnauthorizedError("You don't have access to this build");
+      throw new UnauthorizedError("You don't have access to this image");
+    }
+
+    // Verify buildId matches
+    if (image.e2bBuildId !== buildId) {
+      throw new NotFoundError(`Build not found: ${buildId}`);
     }
 
     // Get build status from E2B
