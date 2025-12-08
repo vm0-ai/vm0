@@ -33,6 +33,18 @@ vi.mock("e2b", () => ({
       delete: vi.fn().mockResolvedValue(undefined),
     },
   ),
+  BuildError: class BuildError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "BuildError";
+    }
+  },
+  ApiClient: vi.fn().mockImplementation(() => ({
+    api: {
+      DELETE: vi.fn().mockResolvedValue(undefined),
+    },
+  })),
+  ConnectionConfig: vi.fn(),
 }));
 
 describe("DELETE /api/images/:imageId", () => {
