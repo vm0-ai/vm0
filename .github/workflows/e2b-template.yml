@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - "turbo/scripts/e2b/template.ts"
+      - "turbo/scripts/e2b/vm0-claude-code/**"
       - ".github/workflows/e2b-template.yml"
   pull_request:
     paths:
-      - "turbo/scripts/e2b/template.ts"
+      - "turbo/scripts/e2b/vm0-claude-code/**"
       - ".github/workflows/e2b-template.yml"
 
 jobs:

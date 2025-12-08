@@ -16,8 +16,8 @@
     "knip:production": "knip --production --strict",
     "generate-certs": "bash ../scripts/generate-certs.sh",
     "check-certs": "node packages/proxy/scripts/check-certs.js",
-    "e2b:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/build.prod.ts",
-    "e2b:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/build.dev.ts"
+    "e2b:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.prod.ts",
+    "e2b:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.dev.ts"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.4",
