@@ -10,8 +10,8 @@ load '../../helpers/setup'
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
     export TEST_TMP_DIR="$(mktemp -d)"
-    # Use unique name per test run to avoid E2B template conflicts
-    export TEST_IMAGE_NAME="e2e-test-$(date +%s)"
+    # Use fixed name - E2B will reuse existing template with same alias
+    export TEST_IMAGE_NAME="e2e-image-test"
 }
 
 teardown() {
