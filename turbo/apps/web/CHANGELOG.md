@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.9.0](https://github.com/vm0-ai/vm0/compare/web-v4.8.2...web-v4.9.0) (2025-12-08)
+
+
+### Features
+
+* **image:** add E2B template deletion and improve error handling ([#427](https://github.com/vm0-ai/vm0/issues/427)) ([5630899](https://github.com/vm0-ai/vm0/commit/5630899d74a223f2e6e1185b5ae620971927b61e))
+
 ## [4.8.2](https://github.com/vm0-ai/vm0/compare/web-v4.8.1...web-v4.8.2) (2025-12-08)
 
 
