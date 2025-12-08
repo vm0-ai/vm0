@@ -39,11 +39,16 @@ export async function tryDeleteE2bTemplateByAlias(
     const response = await client.api.GET("/templates");
     if (!response.data) return;
 
+    // E2B API returns templates with either 'alias' (singular) or 'aliases' (array)
     const templates = response.data as Array<{
       templateID: string;
+      alias?: string;
       aliases?: string[];
     }>;
-    const template = templates.find((t) => t.aliases?.includes(e2bAlias));
+
+    const template = templates.find(
+      (t) => t.alias === e2bAlias || t.aliases?.includes(e2bAlias),
+    );
 
     if (template) {
       await client.api.DELETE("/templates/{templateID}", {
