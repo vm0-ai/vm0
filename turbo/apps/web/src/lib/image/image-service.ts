@@ -39,7 +39,7 @@ export async function buildImage(
   alias: string,
 ): Promise<BuildResult> {
   // Dynamic import to avoid loading E2B SDK in routes that don't need it
-  const { Template } = await import("e2b");
+  const { Template, BuildError } = await import("e2b");
 
   const e2bAlias = generateE2bAlias(userId, alias);
 
@@ -47,9 +47,18 @@ export async function buildImage(
   const template = Template().fromDockerfile(dockerfile);
 
   // Start background build
-  const buildInfo = await Template.buildInBackground(template, {
-    alias: e2bAlias,
-  });
+  let buildInfo;
+  try {
+    buildInfo = await Template.buildInBackground(template, {
+      alias: e2bAlias,
+    });
+  } catch (error) {
+    // Convert E2B BuildError to BadRequestError so it's returned to user
+    if (error instanceof BuildError) {
+      throw new BadRequestError(error.message);
+    }
+    throw error;
+  }
 
   // Insert record into database
   const [image] = await globalThis.services.db
