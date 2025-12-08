@@ -34,12 +34,10 @@ echo -e "${YELLOW}Linking CLI globally...${NC}"
 # Run tests
 echo -e "${GREEN}Running BATS tests...${NC}"
 
-# Default: run all tests
-# -j 4: run up to 4 files in parallel
-# --no-parallelize-within-files: run tests sequentially within each file
+# Default: run all tests sequentially
 if [[ $# -eq 0 ]]; then
-    "$BATS_BIN" --abort -j 4 --no-parallelize-within-files "$SCRIPT_DIR"/tests/**/*.bats
+    "$BATS_BIN" --abort "$SCRIPT_DIR"/tests/**/*.bats
 else
     # Run specific tests passed as arguments
-    "$BATS_BIN" --abort -j 4 --no-parallelize-within-files "$@"
+    "$BATS_BIN" --abort "$@"
 fi
