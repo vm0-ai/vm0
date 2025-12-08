@@ -232,23 +232,6 @@ Add environment variables in Vercel dashboard:
 
 The template will be used automatically in production.
 
-## Alternative: Dockerfile Approach (Deprecated)
-
-The old Dockerfile approach (`e2b.Dockerfile`) is still available but deprecated:
-
-```bash
-# Old approach - not recommended
-e2b template build -n vm0-claude-code -c e2b.Dockerfile
-```
-
-**Why deprecated:**
-
-- Less maintainable
-- Not consistent with E2B ecosystem
-- Harder to version control changes
-
-Use the TypeScript SDK approach instead (`pnpm e2b:build`).
-
 ## Next Steps
 
 1. Build the template: `pnpm e2b:build`
