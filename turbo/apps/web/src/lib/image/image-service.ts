@@ -25,7 +25,7 @@ export function isSystemTemplate(alias: string): boolean {
 /**
  * Try to delete an E2B template by its alias
  * This is needed when database record doesn't exist but E2B template might
- * Uses E2B API to list templates and find the one with matching alias
+ * E2B API accepts alias as templateID parameter (same as buildInBackground)
  */
 export async function tryDeleteE2bTemplateByAlias(
   e2bAlias: string,
@@ -35,26 +35,10 @@ export async function tryDeleteE2bTemplateByAlias(
   const client = new ApiClient(config);
 
   try {
-    // List templates to find the one with this alias
-    const response = await client.api.GET("/templates");
-    if (!response.data) return;
-
-    // E2B API returns templates with either 'alias' (singular) or 'aliases' (array)
-    const templates = response.data as Array<{
-      templateID: string;
-      alias?: string;
-      aliases?: string[];
-    }>;
-
-    const template = templates.find(
-      (t) => t.alias === e2bAlias || t.aliases?.includes(e2bAlias),
-    );
-
-    if (template) {
-      await client.api.DELETE("/templates/{templateID}", {
-        params: { path: { templateID: template.templateID } },
-      });
-    }
+    // E2B API accepts alias as templateID - same as how buildInBackground uses alias
+    await client.api.DELETE("/templates/{templateID}", {
+      params: { path: { templateID: e2bAlias } },
+    });
   } catch {
     // Ignore errors - template may not exist or deletion may fail
   }

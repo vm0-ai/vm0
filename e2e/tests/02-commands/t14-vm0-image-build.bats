@@ -10,10 +10,9 @@ load '../../helpers/setup'
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
     export TEST_TMP_DIR="$(mktemp -d)"
-    # Use unique name with timestamp to avoid E2B buildInBackground alias conflict bug
-    # E2B buildInBackground returns 403 for existing aliases, even with --delete-existing
+    # Use fixed name with --delete-existing to test the delete functionality
     # See: https://github.com/vm0-ai/vm0/issues/428
-    export TEST_IMAGE_NAME="e2e-img-$(date +%s)"
+    export TEST_IMAGE_NAME="e2e-image-test"
 }
 
 teardown() {
@@ -70,8 +69,8 @@ teardown() {
 # ============================================
 
 @test "vm0 image build submits build request successfully" {
-    # Submit build request with unique name to avoid E2B alias conflict
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    # Submit build request with --delete-existing to test delete functionality
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
 
     # Build should start successfully
     assert_success
