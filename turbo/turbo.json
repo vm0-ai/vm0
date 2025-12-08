@@ -24,7 +24,7 @@
     "S3_USER_STORAGES_NAME",
     "SECRETS_ENCRYPTION_KEY",
     "USE_MOCK_CLAUDE",
-    "VERCEL_CRON_SECRET"
+    "CRON_SECRET"
   ],
   "tasks": {
     "build": {

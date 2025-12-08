@@ -38,7 +38,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     initServices();
 
     // Set CRON_SECRET for tests
-    process.env.VERCEL_CRON_SECRET = cronSecret;
+    process.env.CRON_SECRET = cronSecret;
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -102,7 +102,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
-    delete process.env.VERCEL_CRON_SECRET;
+    delete process.env.CRON_SECRET;
   });
 
   describe("Authentication", () => {
