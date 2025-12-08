@@ -10,7 +10,8 @@ load '../../helpers/setup'
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
     export TEST_TMP_DIR="$(mktemp -d)"
-    # Use fixed name - E2B supports rebuilding with same alias
+    # Use fixed name with --delete-existing flag to handle E2B buildInBackground bug
+    # See: https://github.com/vm0-ai/vm0/issues/428
     export TEST_IMAGE_NAME="e2e-image-test"
 }
 
@@ -68,8 +69,8 @@ teardown() {
 # ============================================
 
 @test "vm0 image build submits build request successfully" {
-    # Submit build request
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    # Submit build request with --delete-existing to handle E2B buildInBackground bug
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
 
     # Build should start successfully
     assert_success
