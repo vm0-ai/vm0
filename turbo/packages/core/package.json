@@ -23,7 +23,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@ts-rest/core": "^3.52.1",
+    "@ts-rest/core": "3.53.0-rc.1",
+    "@ts-rest/serverless": "3.53.0-rc.1",
     "zod": "^4.1.5"
   }
 }

@@ -8,6 +8,25 @@ import { initServices } from "../../../../src/lib/init-services";
 import { userSecrets } from "../../../../src/db/schema/user-secrets";
 import { eq } from "drizzle-orm";
 
+/**
+ * Helper to create a NextRequest for testing.
+ * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
+ */
+function createTestRequest(
+  url: string,
+  options?: {
+    method?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  },
+): NextRequest {
+  return new NextRequest(url, {
+    method: options?.method ?? "GET",
+    headers: options?.headers ?? {},
+    body: options?.body,
+  });
+}
+
 // Mock the auth module
 let mockUserId: string | null = "test-user-secrets";
 vi.mock("../../../../src/lib/auth/get-user-id", () => ({
@@ -33,7 +52,7 @@ describe("/api/secrets", () => {
 
   describe("POST /api/secrets", () => {
     it("should create a new secret", async () => {
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -42,7 +61,7 @@ describe("/api/secrets", () => {
         }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(201);
@@ -52,27 +71,33 @@ describe("/api/secrets", () => {
 
     it("should update an existing secret", async () => {
       // Create first
-      const createRequest = new Request("http://localhost:3000/api/secrets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "TEST_SECRET_UPDATE",
-          value: "initial-value",
-        }),
-      });
-      await POST(createRequest as NextRequest);
+      const createRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "TEST_SECRET_UPDATE",
+            value: "initial-value",
+          }),
+        },
+      );
+      await POST(createRequest);
 
       // Update
-      const updateRequest = new Request("http://localhost:3000/api/secrets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "TEST_SECRET_UPDATE",
-          value: "updated-value",
-        }),
-      });
+      const updateRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "TEST_SECRET_UPDATE",
+            value: "updated-value",
+          }),
+        },
+      );
 
-      const response = await POST(updateRequest as NextRequest);
+      const response = await POST(updateRequest);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -90,13 +115,13 @@ describe("/api/secrets", () => {
       ];
 
       for (const name of invalidNames) {
-        const request = new Request("http://localhost:3000/api/secrets", {
+        const request = createTestRequest("http://localhost:3000/api/secrets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, value: "test-value" }),
         });
 
-        const response = await POST(request as NextRequest);
+        const response = await POST(request);
         const data = await response.json();
 
         expect(response.status).toBe(400);
@@ -114,26 +139,26 @@ describe("/api/secrets", () => {
       ];
 
       for (const name of validNames) {
-        const request = new Request("http://localhost:3000/api/secrets", {
+        const request = createTestRequest("http://localhost:3000/api/secrets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, value: "test-value" }),
         });
 
-        const response = await POST(request as NextRequest);
+        const response = await POST(request);
         expect(response.status).toBeLessThanOrEqual(201);
       }
     });
 
     it("should reject secret names longer than 255 characters", async () => {
       const longName = "A".repeat(256);
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: longName, value: "test-value" }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -142,13 +167,13 @@ describe("/api/secrets", () => {
 
     it("should reject secret values larger than 48KB", async () => {
       const largeValue = "x".repeat(49 * 1024); // 49KB
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "LARGE_SECRET", value: largeValue }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -156,13 +181,13 @@ describe("/api/secrets", () => {
     });
 
     it("should reject missing name", async () => {
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: "test-value" }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -170,13 +195,13 @@ describe("/api/secrets", () => {
     });
 
     it("should reject missing value", async () => {
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "TEST_NO_VALUE" }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -186,13 +211,13 @@ describe("/api/secrets", () => {
     it("should require authentication", async () => {
       mockUserId = null;
 
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "TEST_AUTH", value: "test" }),
       });
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(401);
@@ -207,15 +232,21 @@ describe("/api/secrets", () => {
       // Create some secrets first
       const secrets = ["LIST_SECRET_1", "LIST_SECRET_2", "LIST_SECRET_3"];
       for (const name of secrets) {
-        const request = new Request("http://localhost:3000/api/secrets", {
+        const request = createTestRequest("http://localhost:3000/api/secrets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, value: "test-value" }),
         });
-        await POST(request as NextRequest);
+        await POST(request);
       }
 
-      const response = await GET();
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "GET",
+        },
+      );
+      const response = await GET(getRequest);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -229,7 +260,13 @@ describe("/api/secrets", () => {
     });
 
     it("should not return secret values", async () => {
-      const response = await GET();
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "GET",
+        },
+      );
+      const response = await GET(getRequest);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -242,24 +279,30 @@ describe("/api/secrets", () => {
     it("should only return secrets for the authenticated user", async () => {
       // Create secret as user 1
       mockUserId = testUserId;
-      const request1 = new Request("http://localhost:3000/api/secrets", {
+      const request1 = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "USER1_SECRET", value: "user1-value" }),
       });
-      await POST(request1 as NextRequest);
+      await POST(request1);
 
       // Create secret as user 2
       mockUserId = "test-user-secrets-2";
-      const request2 = new Request("http://localhost:3000/api/secrets", {
+      const request2 = createTestRequest("http://localhost:3000/api/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "USER2_SECRET", value: "user2-value" }),
       });
-      await POST(request2 as NextRequest);
+      await POST(request2);
 
       // List as user 2 - should not see user 1's secrets
-      const response = await GET();
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "GET",
+        },
+      );
+      const response = await GET(getRequest);
       const data = await response.json();
 
       const secretNames = data.secrets.map((s: { name: string }) => s.name);
@@ -272,7 +315,13 @@ describe("/api/secrets", () => {
     it("should require authentication", async () => {
       mockUserId = null;
 
-      const response = await GET();
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "GET",
+        },
+      );
+      const response = await GET(getRequest);
       const data = await response.json();
 
       expect(response.status).toBe(401);
@@ -285,20 +334,23 @@ describe("/api/secrets", () => {
   describe("DELETE /api/secrets", () => {
     it("should delete an existing secret", async () => {
       // Create first
-      const createRequest = new Request("http://localhost:3000/api/secrets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "DELETE_ME", value: "to-be-deleted" }),
-      });
-      await POST(createRequest as NextRequest);
+      const createRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "DELETE_ME", value: "to-be-deleted" }),
+        },
+      );
+      await POST(createRequest);
 
       // Delete
-      const deleteRequest = new Request(
+      const deleteRequest = createTestRequest(
         "http://localhost:3000/api/secrets?name=DELETE_ME",
         { method: "DELETE" },
       );
 
-      const response = await DELETE(deleteRequest as NextRequest);
+      const response = await DELETE(deleteRequest);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -306,19 +358,25 @@ describe("/api/secrets", () => {
       expect(data.deleted).toBe(true);
 
       // Verify it's gone
-      const listResponse = await GET();
+      const listRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "GET",
+        },
+      );
+      const listResponse = await GET(listRequest);
       const listData = await listResponse.json();
       const secretNames = listData.secrets.map((s: { name: string }) => s.name);
       expect(secretNames).not.toContain("DELETE_ME");
     });
 
     it("should return 404 for non-existent secret", async () => {
-      const request = new Request(
+      const request = createTestRequest(
         "http://localhost:3000/api/secrets?name=NONEXISTENT_SECRET",
         { method: "DELETE" },
       );
 
-      const response = await DELETE(request as NextRequest);
+      const response = await DELETE(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -326,11 +384,11 @@ describe("/api/secrets", () => {
     });
 
     it("should require name parameter", async () => {
-      const request = new Request("http://localhost:3000/api/secrets", {
+      const request = createTestRequest("http://localhost:3000/api/secrets", {
         method: "DELETE",
       });
 
-      const response = await DELETE(request as NextRequest);
+      const response = await DELETE(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -340,21 +398,24 @@ describe("/api/secrets", () => {
     it("should not delete another user's secret", async () => {
       // Create as user 1
       mockUserId = testUserId;
-      const createRequest = new Request("http://localhost:3000/api/secrets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "USER1_ONLY", value: "private" }),
-      });
-      await POST(createRequest as NextRequest);
+      const createRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "USER1_ONLY", value: "private" }),
+        },
+      );
+      await POST(createRequest);
 
       // Try to delete as user 2
       mockUserId = "test-user-secrets-2";
-      const deleteRequest = new Request(
+      const deleteRequest = createTestRequest(
         "http://localhost:3000/api/secrets?name=USER1_ONLY",
         { method: "DELETE" },
       );
 
-      const response = await DELETE(deleteRequest as NextRequest);
+      const response = await DELETE(deleteRequest);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -366,12 +427,12 @@ describe("/api/secrets", () => {
     it("should require authentication", async () => {
       mockUserId = null;
 
-      const request = new Request(
+      const request = createTestRequest(
         "http://localhost:3000/api/secrets?name=ANY_SECRET",
         { method: "DELETE" },
       );
 
-      const response = await DELETE(request as NextRequest);
+      const response = await DELETE(request);
       const data = await response.json();
 
       expect(response.status).toBe(401);

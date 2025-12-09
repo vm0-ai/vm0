@@ -1,127 +1,170 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { secretsContract } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { successResponse, errorResponse } from "../../../src/lib/api-response";
-import {
-  BadRequestError,
-  UnauthorizedError,
-  NotFoundError,
-} from "../../../src/lib/errors";
 import {
   upsertSecret,
   listSecrets,
   deleteSecret,
 } from "../../../src/lib/secrets/secrets-service";
 
-interface SetSecretRequest {
-  name: string;
-  value: string;
-}
-
-/**
- * GET /api/secrets
- * List all secrets for the authenticated user (names only)
- */
-export async function GET() {
-  try {
+const router = tsr.router(secretsContract, {
+  list: async () => {
     initServices();
 
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     const secrets = await listSecrets(userId);
+    return { status: 200 as const, body: { secrets } };
+  },
 
-    return successResponse({ secrets });
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
-
-/**
- * POST /api/secrets
- * Create or update a secret
- */
-export async function POST(request: NextRequest) {
-  try {
+  create: async ({ body }) => {
     initServices();
 
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    const body: SetSecretRequest = await request.json();
-
-    if (!body.name || typeof body.name !== "string") {
-      throw new BadRequestError("Missing or invalid name");
-    }
-
-    if (!body.value || typeof body.value !== "string") {
-      throw new BadRequestError("Missing or invalid value");
-    }
-
-    // Validate secret name format: alphanumeric and underscores, start with letter
-    const nameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-    if (!nameRegex.test(body.name)) {
-      throw new BadRequestError(
-        "Invalid secret name. Must start with a letter and contain only letters, numbers, and underscores.",
-      );
-    }
-
-    if (body.name.length > 255) {
-      throw new BadRequestError("Secret name must be 255 characters or less");
-    }
-
-    // 48 KB limit (same as GitHub Actions secrets)
-    const MAX_SECRET_VALUE_BYTES = 48 * 1024;
-    if (Buffer.byteLength(body.value, "utf8") > MAX_SECRET_VALUE_BYTES) {
-      throw new BadRequestError("Secret value must be 48 KB or less");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     const result = await upsertSecret(userId, body.name, body.value);
 
-    return successResponse(
-      {
-        name: body.name,
-        action: result.action,
-      },
-      result.action === "created" ? 201 : 200,
-    );
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+    if (result.action === "created") {
+      return {
+        status: 201 as const,
+        body: { name: body.name, action: "created" as const },
+      };
+    }
 
-/**
- * DELETE /api/secrets?name={name}
- * Delete a secret by name
- */
-export async function DELETE(request: NextRequest) {
-  try {
+    return {
+      status: 200 as const,
+      body: { name: body.name, action: "updated" as const },
+    };
+  },
+
+  delete: async ({ query }) => {
     initServices();
 
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    const { searchParams } = new URL(request.url);
-    const name = searchParams.get("name");
-
-    if (!name) {
-      throw new BadRequestError("Missing name query parameter");
-    }
-
-    const deleted = await deleteSecret(userId, name);
+    const deleted = await deleteSecret(userId, query.name);
 
     if (!deleted) {
-      throw new NotFoundError(`Secret not found: ${name}`);
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Secret not found: ${query.name}`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
     }
 
-    return successResponse({ name, deleted: true });
-  } catch (error) {
-    return errorResponse(error);
+    return {
+      status: 200 as const,
+      body: { name: query.name, deleted: true as const },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  // Handle ts-rest RequestValidationError
+  if (
+    err &&
+    typeof err === "object" &&
+    "bodyError" in err &&
+    "queryError" in err
+  ) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    // Handle body validation errors
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const field = issue.path[0];
+        let message = issue.message;
+
+        // Map error messages to match existing API format
+        if (field === "name") {
+          if (message.includes("start with a letter")) {
+            message =
+              "Invalid secret name. Must start with a letter and contain only letters, numbers, and underscores.";
+          } else if (message.includes("255 characters")) {
+            message = "Secret name must be 255 characters or less";
+          } else {
+            message = "Missing or invalid name";
+          }
+        } else if (field === "value") {
+          if (message.includes("48 KB")) {
+            message = "Secret value must be 48 KB or less";
+          } else {
+            message = "Missing or invalid value";
+          }
+        }
+
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Handle query validation errors
+    if (validationError.queryError) {
+      const issue = validationError.queryError.issues[0];
+      if (issue) {
+        const field = issue.path[0];
+        let message = issue.message;
+
+        // Map error messages to match existing API format
+        if (field === "name") {
+          message = "Missing name query parameter";
+        }
+
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  // Let other errors propagate
+  return undefined;
 }
+
+const handler = createNextHandler(secretsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET, handler as POST, handler as DELETE };

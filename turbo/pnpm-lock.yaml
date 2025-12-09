@@ -164,11 +164,11 @@ importers:
         specifier: ^0.13.8
         version: 0.13.8(typescript@5.9.2)(zod@4.1.5)
       '@ts-rest/core':
-        specifier: ^3.52.1
-        version: 3.52.1(@types/node@24.3.0)(zod@4.1.5)
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@types/node@24.3.0)
       '@ts-rest/serverless':
-        specifier: ^3.52.1
-        version: 3.52.1(@ts-rest/core@3.52.1(@types/node@24.3.0)(zod@4.1.5))(next@15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(zod@4.1.5)
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@ts-rest/core@3.53.0-rc.1(@types/node@24.3.0))(next@15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -267,8 +267,11 @@ importers:
   packages/core:
     dependencies:
       '@ts-rest/core':
-        specifier: ^3.52.1
-        version: 3.52.1(@types/node@24.3.0)(zod@4.1.5)
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@types/node@24.3.0)
+      '@ts-rest/serverless':
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@ts-rest/core@3.53.0-rc.1(@types/node@24.3.0))(next@15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))
       zod:
         specifier: ^4.1.5
         version: 4.1.5
@@ -2317,33 +2320,27 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@ts-rest/core@3.52.1':
-    resolution: {integrity: sha512-tAjz7Kxq/grJodcTA1Anop4AVRDlD40fkksEV5Mmal88VoZeRKAG8oMHsDwdwPZz+B/zgnz0q2sF+cm5M7Bc7g==}
+  '@ts-rest/core@3.53.0-rc.1':
+    resolution: {integrity: sha512-hDMXqKHSys6w+kXFW1Q6EvN8QgRvtXKXJ2TpYByKI4TquaPjiTOv99aLD26X4LNRzdna8Ci1PVyzr0jYZv0oNQ==}
     peerDependencies:
       '@types/node': ^18.18.7 || >=20.8.4
-      zod: ^3.22.3
     peerDependenciesMeta:
       '@types/node':
         optional: true
-      zod:
-        optional: true
 
-  '@ts-rest/serverless@3.52.1':
-    resolution: {integrity: sha512-9lz6SVC/zOjR7Q70Uige1i4fgSLS5cPpei/ocBgdwhc/TJhKWTMQog2IQX3pT2nIA4B4QvZ54YyrBkSiwbrGPw==}
+  '@ts-rest/serverless@3.53.0-rc.1':
+    resolution: {integrity: sha512-MtwjH3GqGXx4r4Tyqb381JNN5W7tKZt491Yp0OSAxU2cdduJ3s9lNZV4+AFbDTdY+ZyInlQntCIr94+VBSr+TA==}
     peerDependencies:
       '@azure/functions': ^4.0.0
-      '@ts-rest/core': ~3.52.0
+      '@ts-rest/core': 3.53.0-rc.1
       '@types/aws-lambda': ^8.10.115
       next: ^12.0.0 || ^13.0.0 || ^14.0.0
-      zod: ^3.22.3
     peerDependenciesMeta:
       '@azure/functions':
         optional: true
       '@types/aws-lambda':
         optional: true
       next:
-        optional: true
-      zod:
         optional: true
 
   '@tybys/wasm-util@0.10.1':
@@ -7606,18 +7603,16 @@ snapshots:
       '@types/react': 19.1.12
       '@types/react-dom': 19.1.9(@types/react@19.1.12)
 
-  '@ts-rest/core@3.52.1(@types/node@24.3.0)(zod@4.1.5)':
+  '@ts-rest/core@3.53.0-rc.1(@types/node@24.3.0)':
     optionalDependencies:
       '@types/node': 24.3.0
-      zod: 4.1.5
 
-  '@ts-rest/serverless@3.52.1(@ts-rest/core@3.52.1(@types/node@24.3.0)(zod@4.1.5))(next@15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(zod@4.1.5)':
+  '@ts-rest/serverless@3.53.0-rc.1(@ts-rest/core@3.53.0-rc.1(@types/node@24.3.0))(next@15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))':
     dependencies:
-      '@ts-rest/core': 3.52.1(@types/node@24.3.0)(zod@4.1.5)
+      '@ts-rest/core': 3.53.0-rc.1(@types/node@24.3.0)
       itty-router: 5.0.22
     optionalDependencies:
       next: 15.5.7(@babel/core@7.28.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      zod: 4.1.5
 
   '@tybys/wasm-util@0.10.1':
     dependencies:
@@ -7895,7 +7890,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.1)(tsx@4.20.5)(yaml@2.8.1)
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.1)(tsx@4.20.6)(yaml@2.8.1)
 
   '@vitest/utils@3.2.4':
     dependencies:
