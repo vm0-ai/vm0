@@ -1,4 +1,6 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { composesByIdContract } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -6,49 +8,35 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
-import type {
-  GetAgentComposeResponse,
-  AgentComposeYaml,
-} from "../../../../../src/types/agent-compose";
+import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 
-/**
- * GET /api/agent/composes/:id
- * Get agent compose by ID with HEAD version content
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    // Initialize services at serverless function entry
+const router = tsr.router(composesByIdContract, {
+  getById: async ({ params }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    // Await params (Next.js 15 requirement)
-    const { id } = await params;
-
-    // Query database
     const [compose] = await globalThis.services.db
       .select()
       .from(agentComposes)
-      .where(eq(agentComposes.id, id))
+      .where(eq(agentComposes.id, params.id))
       .limit(1);
 
     if (!compose) {
-      throw new NotFoundError("Agent compose");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent compose not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Get HEAD version content if available
@@ -65,18 +53,49 @@ export async function GET(
       }
     }
 
-    // Return response
-    const response: GetAgentComposeResponse = {
-      id: compose.id,
-      name: compose.name,
-      headVersionId: compose.headVersionId,
-      content,
-      createdAt: compose.createdAt.toISOString(),
-      updatedAt: compose.updatedAt.toISOString(),
+    return {
+      status: 200 as const,
+      body: {
+        id: compose.id,
+        name: compose.name,
+        headVersionId: compose.headVersionId,
+        content,
+        createdAt: compose.createdAt.toISOString(),
+        updatedAt: compose.updatedAt.toISOString(),
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "pathParamsError" in err) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
     };
 
-    return successResponse(response);
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        return TsRestResponse.fromJson(
+          { error: { message: issue.message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(composesByIdContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET };

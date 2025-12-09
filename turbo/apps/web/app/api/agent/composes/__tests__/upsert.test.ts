@@ -9,6 +9,25 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
+/**
+ * Helper to create a NextRequest for testing.
+ * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
+ */
+function createTestRequest(
+  url: string,
+  options?: {
+    method?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  },
+): NextRequest {
+  return new NextRequest(url, {
+    method: options?.method ?? "GET",
+    headers: options?.headers ?? {},
+    body: options?.body,
+  });
+}
+
 // Mock the auth module
 let mockUserId = "test-user-123";
 vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
@@ -42,15 +61,16 @@ describe("Agent Compose Upsert Behavior", () => {
         },
       };
 
-      const request = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(201);
@@ -75,15 +95,16 @@ describe("Agent Compose Upsert Behavior", () => {
       };
 
       // First create
-      const request1 = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response1 = await POST(request1 as NextRequest);
+      const response1 = await POST(request1);
       const data1 = await response1.json();
 
       expect(data1.action).toBe("created");
@@ -100,15 +121,16 @@ describe("Agent Compose Upsert Behavior", () => {
         },
       };
 
-      const request2 = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: updatedConfig }),
         },
-        body: JSON.stringify({ content: updatedConfig }),
-      });
+      );
 
-      const response2 = await POST(request2 as NextRequest);
+      const response2 = await POST(request2);
       const data2 = await response2.json();
 
       expect(response2.status).toBe(200);
@@ -119,16 +141,12 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(data2.updatedAt).toBeDefined();
 
       // Verify the compose was actually updated
-      const getRequest = new Request(
+      const getRequest = createTestRequest(
         `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          method: "GET",
-        },
+        { method: "GET" },
       );
 
-      const getResponse = await GET(getRequest as NextRequest, {
-        params: Promise.resolve({ id: composeId }),
-      });
+      const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
       expect(composeData.content.agents["test-agent-update"].description).toBe(
@@ -150,29 +168,31 @@ describe("Agent Compose Upsert Behavior", () => {
 
       // Create compose for user 1
       mockUserId = "user-1";
-      const request1 = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response1 = await POST(request1 as NextRequest);
+      const response1 = await POST(request1);
       const data1 = await response1.json();
       expect(response1.status).toBe(201);
 
       // Create compose with same name for user 2 (should succeed)
       mockUserId = "user-2";
-      const request2 = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response2 = await POST(request2 as NextRequest);
+      const response2 = await POST(request2);
       const data2 = await response2.json();
       expect(response2.status).toBe(201);
 
@@ -210,15 +230,16 @@ describe("Agent Compose Upsert Behavior", () => {
         },
       };
 
-      const request = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -240,15 +261,16 @@ describe("Agent Compose Upsert Behavior", () => {
         },
       };
 
-      const request = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -267,15 +289,16 @@ describe("Agent Compose Upsert Behavior", () => {
         },
       };
 
-      const request = new Request("http://localhost:3000/api/agent/composes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
         },
-        body: JSON.stringify({ content: config }),
-      });
+      );
 
-      const response = await POST(request as NextRequest);
+      const response = await POST(request);
 
       expect(response.status).toBe(201);
 
@@ -302,31 +325,25 @@ describe("Agent Compose Upsert Behavior", () => {
       };
 
       // Create compose
-      const createRequest = new Request(
+      const createRequest = createTestRequest(
         "http://localhost:3000/api/agent/composes",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: config }),
         },
       );
 
-      const createResponse = await POST(createRequest as NextRequest);
+      const createResponse = await POST(createRequest);
       const createData = await createResponse.json();
 
       // Get compose
-      const getRequest = new Request(
+      const getRequest = createTestRequest(
         `http://localhost:3000/api/agent/composes/${createData.composeId}`,
-        {
-          method: "GET",
-        },
+        { method: "GET" },
       );
 
-      const getResponse = await GET(getRequest as NextRequest, {
-        params: Promise.resolve({ id: createData.composeId }),
-      });
+      const getResponse = await GET(getRequest);
 
       expect(getResponse.status).toBe(200);
       const getData = await getResponse.json();
