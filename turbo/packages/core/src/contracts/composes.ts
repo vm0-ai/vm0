@@ -61,6 +61,17 @@ const composeResponseSchema = z.object({
 });
 
 /**
+ * Create/update compose response schema (used in POST responses)
+ */
+const createComposeResponseSchema = z.object({
+  composeId: z.string(),
+  name: z.string(),
+  versionId: z.string(),
+  action: z.enum(["created", "existing"]),
+  updatedAt: z.string(),
+});
+
+/**
  * Composes main route contract (/api/agent/composes)
  * Handles GET by name and POST create/update
  */
@@ -97,20 +108,8 @@ export const composesMainContract = c.router({
       content: agentComposeContentSchema,
     }),
     responses: {
-      200: z.object({
-        composeId: z.string(),
-        name: z.string(),
-        versionId: z.string(),
-        action: z.enum(["created", "existing"]),
-        updatedAt: z.string(),
-      }),
-      201: z.object({
-        composeId: z.string(),
-        name: z.string(),
-        versionId: z.string(),
-        action: z.enum(["created", "existing"]),
-        updatedAt: z.string(),
-      }),
+      200: createComposeResponseSchema,
+      201: createComposeResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
     },
@@ -180,4 +179,5 @@ export {
   agentDefinitionSchema,
   agentComposeContentSchema,
   composeResponseSchema,
+  createComposeResponseSchema,
 };
