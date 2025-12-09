@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setCommand } from "../secret/set";
 import { listCommand } from "../secret/list";
 import { deleteCommand } from "../secret/delete";
-import { apiClient } from "../../lib/api-client";
+import * as secretsClient from "../../lib/secrets-client";
 
-// Mock dependencies
-vi.mock("../../lib/api-client");
+// Mock the secrets client
+vi.mock("../../lib/secrets-client");
 
 describe("secret commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -28,26 +28,29 @@ describe("secret commands", () => {
 
   describe("secret set", () => {
     it("should create a new secret successfully", async () => {
-      vi.mocked(apiClient.post).mockResolvedValue({
-        ok: true,
-        json: async () => ({ name: "MY_SECRET", action: "created" }),
-      } as Response);
+      vi.mocked(secretsClient.createSecret).mockResolvedValue({
+        status: 201,
+        body: { name: "MY_SECRET", action: "created" as const },
+        headers: new Headers(),
+      });
 
       await setCommand.parseAsync(["node", "cli", "MY_SECRET", "my-value"]);
 
-      expect(apiClient.post).toHaveBeenCalledWith("/api/secrets", {
-        body: JSON.stringify({ name: "MY_SECRET", value: "my-value" }),
-      });
+      expect(secretsClient.createSecret).toHaveBeenCalledWith(
+        "MY_SECRET",
+        "my-value",
+      );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Secret created: MY_SECRET"),
       );
     });
 
     it("should update an existing secret", async () => {
-      vi.mocked(apiClient.post).mockResolvedValue({
-        ok: true,
-        json: async () => ({ name: "MY_SECRET", action: "updated" }),
-      } as Response);
+      vi.mocked(secretsClient.createSecret).mockResolvedValue({
+        status: 200,
+        body: { name: "MY_SECRET", action: "updated" as const },
+        headers: new Headers(),
+      });
 
       await setCommand.parseAsync(["node", "cli", "MY_SECRET", "new-value"]);
 
@@ -90,12 +93,16 @@ describe("secret commands", () => {
     });
 
     it("should handle API errors gracefully", async () => {
-      vi.mocked(apiClient.post).mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Secret value must be 48 KB or less" },
-        }),
-      } as Response);
+      vi.mocked(secretsClient.createSecret).mockResolvedValue({
+        status: 400,
+        body: {
+          error: {
+            message: "Secret value must be 48 KB or less",
+            code: "BAD_REQUEST",
+          },
+        },
+        headers: new Headers(),
+      });
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "MY_SECRET", "value"]);
@@ -107,7 +114,9 @@ describe("secret commands", () => {
     });
 
     it("should handle network errors", async () => {
-      vi.mocked(apiClient.post).mockRejectedValue(new Error("Network error"));
+      vi.mocked(secretsClient.createSecret).mockRejectedValue(
+        new Error("Network error"),
+      );
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "MY_SECRET", "value"]);
@@ -121,9 +130,9 @@ describe("secret commands", () => {
 
   describe("secret list", () => {
     it("should list all secrets", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: true,
-        json: async () => ({
+      vi.mocked(secretsClient.listSecrets).mockResolvedValue({
+        status: 200,
+        body: {
           secrets: [
             {
               name: "SECRET_1",
@@ -136,12 +145,13 @@ describe("secret commands", () => {
               updatedAt: "2025-01-03T00:00:00Z",
             },
           ],
-        }),
-      } as Response);
+        },
+        headers: new Headers(),
+      });
 
       await listCommand.parseAsync(["node", "cli"]);
 
-      expect(apiClient.get).toHaveBeenCalledWith("/api/secrets");
+      expect(secretsClient.listSecrets).toHaveBeenCalled();
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Secrets:"),
       );
@@ -157,10 +167,11 @@ describe("secret commands", () => {
     });
 
     it("should show message when no secrets exist", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: true,
-        json: async () => ({ secrets: [] }),
-      } as Response);
+      vi.mocked(secretsClient.listSecrets).mockResolvedValue({
+        status: 200,
+        body: { secrets: [] },
+        headers: new Headers(),
+      });
 
       await listCommand.parseAsync(["node", "cli"]);
 
@@ -170,10 +181,11 @@ describe("secret commands", () => {
     });
 
     it("should handle API errors gracefully", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: false,
-        json: async () => ({ error: { message: "Not authenticated" } }),
-      } as Response);
+      vi.mocked(secretsClient.listSecrets).mockResolvedValue({
+        status: 401,
+        body: { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+        headers: new Headers(),
+      });
 
       await expect(async () => {
         await listCommand.parseAsync(["node", "cli"]);
@@ -187,41 +199,45 @@ describe("secret commands", () => {
 
   describe("secret delete", () => {
     it("should delete an existing secret", async () => {
-      vi.mocked(apiClient.delete).mockResolvedValue({
-        ok: true,
-        json: async () => ({ name: "MY_SECRET", deleted: true }),
-      } as Response);
+      vi.mocked(secretsClient.deleteSecret).mockResolvedValue({
+        status: 200,
+        body: { name: "MY_SECRET", deleted: true as const },
+        headers: new Headers(),
+      });
 
       await deleteCommand.parseAsync(["node", "cli", "MY_SECRET"]);
 
-      expect(apiClient.delete).toHaveBeenCalledWith(
-        "/api/secrets?name=MY_SECRET",
-      );
+      expect(secretsClient.deleteSecret).toHaveBeenCalledWith("MY_SECRET");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Secret deleted: MY_SECRET"),
       );
     });
 
     it("should URL-encode secret names with special characters", async () => {
-      vi.mocked(apiClient.delete).mockResolvedValue({
-        ok: true,
-        json: async () => ({ name: "MY_SECRET", deleted: true }),
-      } as Response);
+      vi.mocked(secretsClient.deleteSecret).mockResolvedValue({
+        status: 200,
+        body: { name: "SECRET_WITH_UNDERSCORE", deleted: true as const },
+        headers: new Headers(),
+      });
 
       await deleteCommand.parseAsync(["node", "cli", "SECRET_WITH_UNDERSCORE"]);
 
-      expect(apiClient.delete).toHaveBeenCalledWith(
-        "/api/secrets?name=SECRET_WITH_UNDERSCORE",
+      expect(secretsClient.deleteSecret).toHaveBeenCalledWith(
+        "SECRET_WITH_UNDERSCORE",
       );
     });
 
     it("should handle not found error", async () => {
-      vi.mocked(apiClient.delete).mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Secret not found: NONEXISTENT" },
-        }),
-      } as Response);
+      vi.mocked(secretsClient.deleteSecret).mockResolvedValue({
+        status: 404,
+        body: {
+          error: {
+            message: "Secret not found: NONEXISTENT",
+            code: "NOT_FOUND",
+          },
+        },
+        headers: new Headers(),
+      });
 
       await expect(async () => {
         await deleteCommand.parseAsync(["node", "cli", "NONEXISTENT"]);
@@ -233,10 +249,11 @@ describe("secret commands", () => {
     });
 
     it("should handle API errors gracefully", async () => {
-      vi.mocked(apiClient.delete).mockResolvedValue({
-        ok: false,
-        json: async () => ({ error: { message: "Not authenticated" } }),
-      } as Response);
+      vi.mocked(secretsClient.deleteSecret).mockResolvedValue({
+        status: 401,
+        body: { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+        headers: new Headers(),
+      });
 
       await expect(async () => {
         await deleteCommand.parseAsync(["node", "cli", "MY_SECRET"]);
@@ -248,7 +265,9 @@ describe("secret commands", () => {
     });
 
     it("should handle network errors", async () => {
-      vi.mocked(apiClient.delete).mockRejectedValue(new Error("Network error"));
+      vi.mocked(secretsClient.deleteSecret).mockRejectedValue(
+        new Error("Network error"),
+      );
 
       await expect(async () => {
         await deleteCommand.parseAsync(["node", "cli", "MY_SECRET"]);
