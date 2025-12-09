@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.1](https://github.com/vm0-ai/vm0/compare/web-v5.0.0...web-v5.0.1) (2025-12-09)
+
+
+### Bug Fixes
+
+* **e2b:** validate checkpoint api response before returning success ([#446](https://github.com/vm0-ai/vm0/issues/446)) ([4cd32ec](https://github.com/vm0-ai/vm0/commit/4cd32ecac41cc76f03e48edc5ef80f740fb80dd7))
+
 ## [5.0.0](https://github.com/vm0-ai/vm0/compare/web-v4.9.0...web-v5.0.0) (2025-12-09)
 
 
