@@ -6,13 +6,15 @@ const c = initContract();
 
 /**
  * Agent event schema for webhook events
+ * Note: Claude Code JSONL events have varying structures with different fields
+ * depending on the event type (system, assistant, user, result, etc.)
+ * We only require `type` and allow any other fields to pass through
  */
-const agentEventSchema = z.object({
-  type: z.string(),
-  timestamp: z.number(),
-  sessionId: z.string().optional(),
-  data: z.record(z.string(), z.unknown()),
-});
+const agentEventSchema = z
+  .object({
+    type: z.string(),
+  })
+  .passthrough();
 
 /**
  * Artifact snapshot schema
