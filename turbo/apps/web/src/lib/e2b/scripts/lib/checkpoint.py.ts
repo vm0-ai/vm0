@@ -132,10 +132,13 @@ def create_checkpoint() -> bool:
     # Call checkpoint API
     result = http_post_json(CHECKPOINT_URL, checkpoint_payload)
 
-    if result is not None:
-        log_info("Checkpoint created successfully")
+    # Validate response contains checkpointId to confirm checkpoint was actually created
+    # Note: result can be {} (empty dict) on network issues, which is not None but invalid
+    if result and result.get("checkpointId"):
+        checkpoint_id = result.get("checkpointId")
+        log_info(f"Checkpoint created successfully: {checkpoint_id}")
         return True
     else:
-        log_error("Failed to create checkpoint")
+        log_error(f"Checkpoint API returned invalid response: {result}")
         return False
 `;
