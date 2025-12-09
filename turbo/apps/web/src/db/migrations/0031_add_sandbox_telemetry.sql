@@ -1,4 +1,3 @@
--- Create sandbox_telemetry table for storing telemetry data from sandbox execution
 CREATE TABLE "sandbox_telemetry" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"run_id" uuid NOT NULL,

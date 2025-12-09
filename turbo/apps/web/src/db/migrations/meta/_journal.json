@@ -218,6 +218,13 @@
       "when": 1765500000000,
       "tag": "0030_add_images_table",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1765600000000,
+      "tag": "0031_add_sandbox_telemetry",
+      "breakpoints": true
     }
   ]
 }
