@@ -1,18 +1,13 @@
 /**
  * Event parser for Claude Code JSONL events
  * Converts raw JSONL events into simplified, user-friendly format
+ *
+ * Note: VM0 lifecycle events (vm0_start, vm0_result, vm0_error) are no longer
+ * sent as events. Instead, run state is returned in the events API response.
  */
 
 export interface ParsedEvent {
-  type:
-    | "init"
-    | "text"
-    | "tool_use"
-    | "tool_result"
-    | "result"
-    | "vm0_start"
-    | "vm0_result"
-    | "vm0_error";
+  type: "init" | "text" | "tool_use" | "tool_result" | "result";
   timestamp: Date;
   data: Record<string, unknown>;
 }
@@ -68,50 +63,11 @@ interface ResultEvent {
   usage: Record<string, unknown>;
 }
 
-interface Vm0StartEvent {
-  type: "vm0_start";
-  runId: string;
-  agentComposeVersionId: string;
-  agentName?: string;
-  prompt: string;
-  templateVars?: Record<string, unknown>;
-  resumedFromCheckpointId?: string;
-  continuedFromSessionId?: string;
-  artifact?: Record<string, string>; // { artifactName: version }
-  volumes?: Record<string, string>; // { volumeName: version }
-  timestamp: string;
-}
-
-interface Vm0ResultEvent {
-  type: "vm0_result";
-  runId: string;
-  status: "completed";
-  checkpointId: string;
-  agentSessionId: string;
-  conversationId: string;
-  artifact: Record<string, string>; // { artifactName: version }
-  volumes?: Record<string, string>; // { volumeName: version }
-  timestamp: string;
-}
-
-interface Vm0ErrorEvent {
-  type: "vm0_error";
-  runId: string;
-  status: "failed";
-  error: string;
-  errorType?: "sandbox_error" | "checkpoint_failed" | "timeout" | "unknown";
-  sandboxId?: string;
-  timestamp: string;
-}
-
 type RawEvent =
   | SystemEvent
   | AssistantEvent
   | UserEvent
   | ResultEvent
-  | Vm0StartEvent
-  | Vm0ResultEvent
-  | Vm0ErrorEvent
   | Record<string, unknown>;
 
 export class ClaudeEventParser {
@@ -136,15 +92,6 @@ export class ClaudeEventParser {
 
       case "result":
         return this.parseResultEvent(rawEvent as ResultEvent);
-
-      case "vm0_start":
-        return this.parseVm0StartEvent(rawEvent as Vm0StartEvent);
-
-      case "vm0_result":
-        return this.parseVm0ResultEvent(rawEvent as Vm0ResultEvent);
-
-      case "vm0_error":
-        return this.parseVm0ErrorEvent(rawEvent as Vm0ErrorEvent);
 
       default:
         return null;
@@ -241,54 +188,6 @@ export class ClaudeEventParser {
         numTurns: event.num_turns,
         cost: event.total_cost_usd,
         usage: event.usage,
-      },
-    };
-  }
-
-  private static parseVm0StartEvent(event: Vm0StartEvent): ParsedEvent | null {
-    return {
-      type: "vm0_start",
-      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
-      data: {
-        runId: event.runId,
-        agentComposeVersionId: event.agentComposeVersionId,
-        agentName: event.agentName,
-        prompt: event.prompt,
-        templateVars: event.templateVars,
-        resumedFromCheckpointId: event.resumedFromCheckpointId,
-        continuedFromSessionId: event.continuedFromSessionId,
-        artifact: event.artifact,
-        volumes: event.volumes,
-      },
-    };
-  }
-
-  private static parseVm0ResultEvent(
-    event: Vm0ResultEvent,
-  ): ParsedEvent | null {
-    return {
-      type: "vm0_result",
-      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
-      data: {
-        runId: event.runId,
-        checkpointId: event.checkpointId,
-        agentSessionId: event.agentSessionId,
-        conversationId: event.conversationId,
-        artifact: event.artifact,
-        volumes: event.volumes,
-      },
-    };
-  }
-
-  private static parseVm0ErrorEvent(event: Vm0ErrorEvent): ParsedEvent | null {
-    return {
-      type: "vm0_error",
-      timestamp: new Date(), // Use client receive time for consistent elapsed calculation
-      data: {
-        runId: event.runId,
-        error: event.error,
-        errorType: event.errorType,
-        sandboxId: event.sandboxId,
       },
     };
   }

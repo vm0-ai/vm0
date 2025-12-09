@@ -23,7 +23,6 @@ import type {
   CreateAgentRunResponse,
 } from "../../../../src/types/agent-run";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import { sendVm0ErrorEvent } from "../../../../src/lib/events";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
@@ -328,13 +327,6 @@ export async function POST(request: NextRequest) {
           completedAt: new Date(),
         })
         .where(eq(agentRuns.id, run.id));
-
-      // Send vm0_error event
-      await sendVm0ErrorEvent({
-        runId: run.id,
-        error: errorMessage,
-        errorType: "sandbox_error",
-      });
 
       // Return error response for preparation failures
       const response: CreateAgentRunResponse = {

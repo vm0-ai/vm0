@@ -14,12 +14,9 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../../src/lib/errors";
-import {
-  sendVm0ResultEvent,
-  sendVm0ErrorEvent,
-} from "../../../../../src/lib/events";
 import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
+import type { RunResult } from "../../../../../src/lib/run/types";
 
 /**
  * Request body for complete webhook endpoint
@@ -41,8 +38,7 @@ interface CompleteResponse {
 /**
  * POST /api/webhooks/agent/complete
  * Handle agent run completion (success or failure)
- * - Sends vm0_result or vm0_error event
- * - Updates run status
+ * - Updates run status and result/error fields
  * - Kills sandbox
  */
 export async function POST(request: NextRequest) {
@@ -104,7 +100,7 @@ export async function POST(request: NextRequest) {
     let finalStatus: "completed" | "failed";
 
     if (body.exitCode === 0) {
-      // Success: query checkpoint and send vm0_result
+      // Success: query checkpoint and store result in run table
       const [checkpoint] = await globalThis.services.db
         .select()
         .from(checkpoints)
@@ -128,9 +124,8 @@ export async function POST(request: NextRequest) {
         | { versions: Record<string, string> }
         | undefined;
 
-      // Send vm0_result event
-      await sendVm0ResultEvent({
-        runId,
+      // Build result object to store in run table
+      const result: RunResult = {
         checkpointId: checkpoint.id,
         agentSessionId: session?.id ?? checkpoint.conversationId,
         conversationId: checkpoint.conversationId,
@@ -138,31 +133,33 @@ export async function POST(request: NextRequest) {
           [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
         },
         volumes: volumeVersions?.versions,
-      });
+      };
 
-      // Update run status to completed
+      // Update run status and result
       await globalThis.services.db
         .update(agentRuns)
-        .set({ status: "completed", completedAt: new Date() })
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          result,
+        })
         .where(eq(agentRuns.id, runId));
 
       finalStatus = "completed";
       console.log(`[Complete API] Run ${runId} completed successfully`);
     } else {
-      // Failure: send vm0_error event
+      // Failure: store error in run table
       const errorMessage =
         body.error || `Agent exited with code ${body.exitCode}`;
 
-      await sendVm0ErrorEvent({
-        runId,
-        error: errorMessage,
-        sandboxId,
-      });
-
-      // Update run status to failed
+      // Update run status and error
       await globalThis.services.db
         .update(agentRuns)
-        .set({ status: "failed", completedAt: new Date() })
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          error: errorMessage,
+        })
         .where(eq(agentRuns.id, runId));
 
       finalStatus = "failed";
@@ -183,18 +180,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Complete API] Error:", error);
 
-    // Try to send vm0_error event if we have runId
+    // Try to update run status to failed if we have runId
     if (runId) {
       try {
-        await sendVm0ErrorEvent({
-          runId,
-          error: error instanceof Error ? error.message : "Complete API failed",
-          sandboxId,
-        });
+        await globalThis.services.db
+          .update(agentRuns)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            error:
+              error instanceof Error ? error.message : "Complete API failed",
+          })
+          .where(eq(agentRuns.id, runId));
       } catch {
-        console.error(
-          "[Complete API] Failed to send vm0_error event after error",
-        );
+        console.error("[Complete API] Failed to update run status after error");
       }
     }
 

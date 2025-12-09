@@ -34,20 +34,14 @@ describe("run command", () => {
       updatedAt: "2025-01-01T00:00:00Z",
     });
 
-    // Default mock for ClaudeEventParser
-    vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
-      if (raw.type === "vm0_result") {
-        return {
-          type: "vm0_result",
-          timestamp: new Date(),
-          data: { success: true, result: "Done" },
-        };
-      }
-      return null;
-    });
+    // Default mock for ClaudeEventParser - returns null since completion
+    // is now detected via run.status, not events
+    vi.mocked(ClaudeEventParser.parse).mockImplementation(() => null);
 
     // Default mock for EventRenderer
     vi.mocked(EventRenderer.render).mockImplementation(() => {});
+    vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
+    vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -61,7 +55,7 @@ describe("run command", () => {
       const validUuid = testUuid;
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
@@ -73,14 +67,24 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "completed" },
       });
 
       await runCommand.parseAsync([
@@ -116,7 +120,7 @@ describe("run command", () => {
       });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
@@ -128,14 +132,24 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "completed" },
       });
 
       await runCommand.parseAsync([
@@ -200,7 +214,7 @@ describe("run command", () => {
       });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
@@ -211,14 +225,24 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "completed" },
       });
 
       await runCommand.parseAsync([
@@ -255,7 +279,7 @@ describe("run command", () => {
       });
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
@@ -266,14 +290,24 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "completed" },
       });
 
       await runCommand.parseAsync([
@@ -332,7 +366,7 @@ describe("run command", () => {
     beforeEach(() => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
@@ -344,14 +378,24 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "completed" },
       });
     });
 
@@ -500,25 +544,50 @@ describe("run command", () => {
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: { status: "running" },
       });
     });
 
     it("should display starting messages in verbose mode", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
         createdAt: "2025-01-01T00:00:00Z",
+      });
+      // Mock getEvents to return completed status immediately
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -542,11 +611,26 @@ describe("run command", () => {
     it("should not display starting messages without verbose flag", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
         createdAt: "2025-01-01T00:00:00Z",
+      });
+      // Mock getEvents to return completed status immediately
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -566,11 +650,26 @@ describe("run command", () => {
     it("should display vars when provided in verbose mode", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
-        status: "completed",
+        status: "running",
         sandboxId: "sbx-456",
         output: "Success",
         executionTimeMs: 1000,
         createdAt: "2025-01-01T00:00:00Z",
+      });
+      // Mock getEvents to return completed status immediately
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -691,8 +790,11 @@ describe("run command", () => {
     beforeEach(() => {
       // Mock EventRenderer to track render calls
       vi.mocked(EventRenderer.render).mockImplementation(() => {});
+      vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
+      vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
 
       // Mock ClaudeEventParser to return parsed events
+      // Note: Completion is now detected via run.status, not events
       vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
         if (raw.type === "init") {
           return {
@@ -708,9 +810,9 @@ describe("run command", () => {
             data: { text: raw.text },
           };
         }
-        if (raw.type === "vm0_result") {
+        if (raw.type === "result") {
           return {
-            type: "vm0_result",
+            type: "result",
             timestamp: new Date(),
             data: { success: true, result: "Done" },
           };
@@ -742,7 +844,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
-          status: "running",
+          run: { status: "running" },
         })
         .mockResolvedValueOnce({
           events: [
@@ -754,14 +856,32 @@ describe("run command", () => {
             },
             {
               sequenceNumber: 3,
-              eventType: "vm0_result",
-              eventData: { type: "vm0_result", success: true, result: "Done" },
+              eventType: "result",
+              eventData: {
+                type: "result",
+                subtype: "success",
+                is_error: false,
+                duration_ms: 1000,
+                num_turns: 1,
+                result: "Done",
+                session_id: "test",
+                total_cost_usd: 0,
+                usage: {},
+              },
               createdAt: "2025-01-01T00:00:02Z",
             },
           ],
           hasMore: false,
           nextSequence: 3,
-          status: "running",
+          run: {
+            status: "completed",
+            result: {
+              checkpointId: "cp-123",
+              agentSessionId: "session-123",
+              conversationId: "conv-123",
+              artifact: {},
+            },
+          },
         });
 
       await runCommand.parseAsync([
@@ -774,7 +894,7 @@ describe("run command", () => {
       ]);
 
       expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
-        since: -1,
+        since: 0,
       });
       expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
         since: 1,
@@ -801,14 +921,32 @@ describe("run command", () => {
           },
           {
             sequenceNumber: 2,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:01Z",
           },
         ],
         hasMore: false,
         nextSequence: 2,
-        status: "running",
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -824,15 +962,17 @@ describe("run command", () => {
         type: "init",
         sessionId: "session-123",
       });
-      expect(ClaudeEventParser.parse).toHaveBeenCalledWith({
-        type: "vm0_result",
-        success: true,
-        result: "Done",
-      });
+      // ClaudeEventParser.parse receives the raw eventData from the API
+      expect(ClaudeEventParser.parse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "result",
+          subtype: "success",
+        }),
+      );
       expect(EventRenderer.render).toHaveBeenCalledTimes(2);
     });
 
-    it("should stop polling when result event is received", async () => {
+    it("should stop polling when run status is completed", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
@@ -842,18 +982,37 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
+      // With new architecture, polling stops when run.status is completed
       vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
         events: [
           {
             sequenceNumber: 1,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
         nextSequence: 1,
-        status: "running",
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -865,7 +1024,7 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      // Should only call getEvents once since result was received
+      // Should only call getEvents once since status is completed
       expect(apiClient.getEvents).toHaveBeenCalledTimes(1);
     });
 
@@ -887,9 +1046,9 @@ describe("run command", () => {
         if (raw.type === "unknown") {
           return null;
         }
-        if (raw.type === "vm0_result") {
+        if (raw.type === "result") {
           return {
-            type: "vm0_result",
+            type: "result",
             timestamp: new Date(),
             data: { success: true, result: "Done" },
           };
@@ -907,14 +1066,32 @@ describe("run command", () => {
           },
           {
             sequenceNumber: 2,
-            eventType: "vm0_result",
-            eventData: { type: "vm0_result", success: true, result: "Done" },
+            eventType: "result",
+            eventData: {
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              duration_ms: 1000,
+              num_turns: 1,
+              result: "Done",
+              session_id: "test",
+              total_cost_usd: 0,
+              usage: {},
+            },
             createdAt: "2025-01-01T00:00:01Z",
           },
         ],
         hasMore: false,
         nextSequence: 2,
-        status: "running",
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
       });
 
       await runCommand.parseAsync([
@@ -953,7 +1130,7 @@ describe("run command", () => {
           ],
           hasMore: false,
           nextSequence: 1,
-          status: "running",
+          run: { status: "running" },
         })
         .mockRejectedValueOnce(new Error("Network error"));
 
@@ -975,7 +1152,7 @@ describe("run command", () => {
       );
     });
 
-    it("should exit with error when sandbox is terminated (status: failed)", async () => {
+    it("should exit with error when run fails (status: failed)", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
@@ -985,12 +1162,12 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      // Return no events with "failed" status - sandbox was terminated
+      // Return no events with "failed" status and error message
       vi.mocked(apiClient.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
-        status: "failed",
+        run: { status: "failed", error: "Agent crashed" },
       });
 
       await expect(async () => {
@@ -1004,12 +1181,13 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.red("\n✗ Sandbox terminated unexpectedly (status: failed)"),
+      // Note: EventRenderer.renderRunFailed is mocked, so we check it was called
+      expect(EventRenderer.renderRunFailed).toHaveBeenCalledWith(
+        "Agent crashed",
       );
     });
 
-    it("should exit with error when sandbox times out (status: timeout)", async () => {
+    it("should exit with error when run times out (status: timeout)", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
@@ -1024,7 +1202,7 @@ describe("run command", () => {
         events: [],
         hasMore: false,
         nextSequence: 0,
-        status: "timeout",
+        run: { status: "timeout" },
       });
 
       await expect(async () => {
@@ -1039,11 +1217,11 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.red("\n✗ Sandbox terminated unexpectedly (status: timeout)"),
+        chalk.red("\n✗ Run timed out"),
       );
     });
 
-    it("should handle completed status without result event", async () => {
+    it("should handle completed status with result", async () => {
       vi.mocked(apiClient.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
@@ -1053,29 +1231,39 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      // Return no events but status is "completed" - edge case
+      // Return completed status with result (new architecture)
       vi.mocked(apiClient.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
-        status: "completed",
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-123",
+            agentSessionId: "session-123",
+            conversationId: "conv-123",
+            artifact: {},
+          },
+        },
       });
 
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-        ]);
-      }).rejects.toThrow("process.exit called");
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.yellow(
-          "\n⚠ Run completed but no result event received. This may indicate an issue.",
-        ),
+      // Should complete successfully and render completion info
+      // Note: EventRenderer.renderRunCompleted is mocked, so we check it was called
+      expect(EventRenderer.renderRunCompleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          checkpointId: "cp-123",
+          agentSessionId: "session-123",
+        }),
+        expect.anything(),
       );
     });
   });

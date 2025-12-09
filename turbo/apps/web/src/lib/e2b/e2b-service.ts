@@ -27,7 +27,6 @@ import {
 } from "./scripts";
 import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
-import { sendVm0ErrorEvent, sendVm0StartEvent } from "../events";
 import { logger } from "../logger";
 import { agentRuns } from "../../db/schema/agent-run";
 import { eq } from "drizzle-orm";
@@ -98,25 +97,6 @@ export class E2BService {
         artifactMountPath,
       );
 
-      // Build artifact and volumes info from manifest for vm0_start event
-      const startArtifact = storageManifest.artifact
-        ? {
-            [storageManifest.artifact.vasStorageName]:
-              storageManifest.artifact.vasVersionId,
-          }
-        : undefined;
-
-      const startVolumes =
-        storageManifest.storages.length > 0
-          ? storageManifest.storages.reduce(
-              (acc, vol) => {
-                acc[vol.name] = vol.vasVersionId;
-                return acc;
-              },
-              {} as Record<string, string>,
-            )
-          : undefined;
-
       // Create artifact info for checkpoint
       const artifactForCommand: PreparedArtifact | null =
         storageManifest.artifact
@@ -128,19 +108,6 @@ export class E2BService {
               manifestUrl: storageManifest.artifact.manifestUrl,
             }
           : null;
-
-      // Send vm0_start event now that storages are prepared
-      await sendVm0StartEvent({
-        runId: context.runId,
-        agentComposeVersionId: context.agentComposeVersionId,
-        agentName: context.agentName,
-        prompt: context.prompt,
-        templateVars: context.templateVars,
-        resumedFromCheckpointId: context.resumedFromCheckpointId,
-        continuedFromSessionId: context.continuedFromSessionId,
-        artifact: startArtifact,
-        volumes: startVolumes,
-      });
 
       // Get API configuration with dynamic fallback logic
       // Priority: explicit VM0_API_URL > VERCEL_URL (for preview) > production URL > localhost
@@ -302,17 +269,18 @@ export class E2BService {
         log.error(`Run ${context.runId} failed:`, error);
       }
 
-      // Send vm0_error event so CLI doesn't timeout
+      // Update run status to failed in database
       try {
-        await sendVm0ErrorEvent({
-          runId: context.runId,
-          error: errorMessage,
-        });
+        await globalThis.services.db
+          .update(agentRuns)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            error: errorMessage,
+          })
+          .where(eq(agentRuns.id, context.runId));
       } catch (e) {
-        log.error(
-          `Failed to send vm0_error event for run ${context.runId}:`,
-          e,
-        );
+        log.error(`Failed to update run status for ${context.runId}:`, e);
       }
 
       // Cleanup sandbox on preparation failure

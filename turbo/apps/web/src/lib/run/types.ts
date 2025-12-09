@@ -1,6 +1,38 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
 
 /**
+ * Run status values
+ */
+export type RunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout";
+
+/**
+ * Run result stored in agent_runs.result when status = 'completed'
+ * Contains checkpoint and artifact information for session continuation
+ */
+export interface RunResult {
+  checkpointId: string;
+  agentSessionId: string;
+  conversationId: string;
+  artifact: Record<string, string>; // { artifactName: version }
+  volumes?: Record<string, string>; // { volumeName: version }
+}
+
+/**
+ * Run state information returned by events API
+ * Replaces the previous vm0_start/vm0_result/vm0_error events
+ */
+export interface RunState {
+  status: RunStatus;
+  result?: RunResult; // Present when status = 'completed'
+  error?: string; // Present when status = 'failed'
+}
+
+/**
  * Session history restoration data
  */
 export interface ResumeSession {

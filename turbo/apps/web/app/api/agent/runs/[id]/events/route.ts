@@ -12,13 +12,11 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../../../src/lib/errors";
-
-export type RunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "timeout";
+import type {
+  RunStatus,
+  RunResult,
+  RunState,
+} from "../../../../../../src/lib/run/types";
 
 export interface EventsResponse {
   events: Array<{
@@ -29,12 +27,14 @@ export interface EventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
-  status: RunStatus;
+  /** Run state information (replaces previous vm0_* events) */
+  run: RunState;
 }
 
 /**
  * GET /api/agent/runs/:id/events
  * Poll for agent run events with pagination
+ * Returns run state in the response (replaces vm0_start/vm0_result/vm0_error events)
  */
 export async function GET(
   request: NextRequest,
@@ -69,7 +69,7 @@ export async function GET(
       throw new NotFoundError("Agent run");
     }
 
-    // Query events from database
+    // Query events from database (only agent events, no vm0_* events)
     const events = await globalThis.services.db
       .select()
       .from(agentRunEvents)
@@ -87,6 +87,21 @@ export async function GET(
     const nextSequence =
       events.length > 0 ? events[events.length - 1]!.sequenceNumber : since;
 
+    // Build run state from run record
+    const runState: RunState = {
+      status: run.status as RunStatus,
+    };
+
+    // Include result if completed
+    if (run.status === "completed" && run.result) {
+      runState.result = run.result as RunResult;
+    }
+
+    // Include error if failed
+    if (run.status === "failed" && run.error) {
+      runState.error = run.error;
+    }
+
     // Format response
     const response: EventsResponse = {
       events: events.map((e) => ({
@@ -97,7 +112,7 @@ export async function GET(
       })),
       hasMore,
       nextSequence,
-      status: run.status as RunStatus,
+      run: runState,
     };
 
     return successResponse(response);

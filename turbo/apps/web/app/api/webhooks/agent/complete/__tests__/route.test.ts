@@ -424,23 +424,14 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       expect(updatedRun?.status).toBe("completed");
       expect(updatedRun?.completedAt).toBeDefined();
-
-      // Verify vm0_result event was created
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId));
-
-      const resultEvent = events.find(
-        (e) => (e.eventData as { type: string }).type === "vm0_result",
-      );
-      expect(resultEvent).toBeDefined();
+      // Run result is now stored directly in the run table (not as vm0_result event)
+      expect(updatedRun?.result).toBeDefined();
 
       // Verify sandbox was killed
       expect(e2bService.killSandbox).toHaveBeenCalledWith(testSandboxId);
     });
 
-    it("should handle failed completion (exitCode≠0) and send vm0_error", async () => {
+    it("should handle failed completion (exitCode≠0) and store error in run table", async () => {
       // Create run with sandboxId
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
@@ -483,20 +474,8 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       expect(updatedRun?.status).toBe("failed");
       expect(updatedRun?.completedAt).toBeDefined();
-
-      // Verify vm0_error event was created
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId));
-
-      const errorEvent = events.find(
-        (e) => (e.eventData as { type: string }).type === "vm0_error",
-      );
-      expect(errorEvent).toBeDefined();
-      expect((errorEvent?.eventData as { error: string }).error).toBe(
-        "Agent crashed",
-      );
+      // Error is now stored directly in the run table (not as vm0_error event)
+      expect(updatedRun?.error).toBe("Agent crashed");
 
       // Verify sandbox was killed
       expect(e2bService.killSandbox).toHaveBeenCalledWith(testSandboxId);
@@ -533,18 +512,13 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify vm0_error event has default message
-      const events = await globalThis.services.db
+      // Verify error has default message in run table
+      const [updatedRun] = await globalThis.services.db
         .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId));
+        .from(agentRuns)
+        .where(eq(agentRuns.id, testRunId));
 
-      const errorEvent = events.find(
-        (e) => (e.eventData as { type: string }).type === "vm0_error",
-      );
-      expect((errorEvent?.eventData as { error: string }).error).toBe(
-        "Agent exited with code 127",
-      );
+      expect(updatedRun?.error).toBe("Agent exited with code 127");
     });
   });
 
