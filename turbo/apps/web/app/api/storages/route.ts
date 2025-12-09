@@ -24,6 +24,18 @@ import { logger } from "../../../src/lib/logger";
 const log = logger("api:storages");
 
 /**
+ * Helper to create standardized error response
+ * Matches apiErrorSchema: { error: { message, code } }
+ */
+function errorResponse(
+  message: string,
+  code: string,
+  status: number,
+): NextResponse {
+  return NextResponse.json({ error: { message, code } }, { status });
+}
+
+/**
  * Validate storage name format
  * Length: 3-64 characters
  * Characters: lowercase letters, numbers, hyphens
@@ -41,6 +53,13 @@ function isValidStorageName(name: string): boolean {
  * POST /api/storages
  * Upload a storage (tar.gz file) to S3
  *
+ * Content-Type: multipart/form-data
+ * Form fields:
+ * - name: string (storage name, 3-64 chars, lowercase alphanumeric with hyphens)
+ * - file: File (tar.gz archive)
+ * - type: "volume" | "artifact" (optional, defaults to "volume")
+ * - force: "true" | "false" (optional, skip deduplication)
+ *
  * Uses database transaction to ensure atomicity:
  * - If S3 upload fails, storage and version records are rolled back
  * - Prevents orphaned storages without HEAD version pointer
@@ -55,7 +74,7 @@ export async function POST(request: NextRequest) {
     // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
     }
 
     // Parse multipart form data
@@ -66,28 +85,24 @@ export async function POST(request: NextRequest) {
     const forceUpload = formData.get("force") === "true"; // Skip deduplication if true
 
     if (!storageName || !file) {
-      return NextResponse.json(
-        { error: "Missing name or file" },
-        { status: 400 },
-      );
+      return errorResponse("Missing name or file", "BAD_REQUEST", 400);
     }
 
     // Validate storage type
     if (storageType !== "volume" && storageType !== "artifact") {
-      return NextResponse.json(
-        { error: "Invalid type. Must be 'volume' or 'artifact'" },
-        { status: 400 },
+      return errorResponse(
+        "Invalid type. Must be 'volume' or 'artifact'",
+        "BAD_REQUEST",
+        400,
       );
     }
 
     // Validate storage name
     if (!isValidStorageName(storageName)) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid storage name. Must be 3-64 characters, lowercase alphanumeric with hyphens, no consecutive hyphens",
-        },
-        { status: 400 },
+      return errorResponse(
+        "Invalid storage name. Must be 3-64 characters, lowercase alphanumeric with hyphens, no consecutive hyphens",
+        "BAD_REQUEST",
+        400,
       );
     }
 
@@ -303,11 +318,10 @@ export async function POST(request: NextRequest) {
         .catch(console.error);
     }
 
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Upload failed",
-      },
-      { status: 500 },
+    return errorResponse(
+      error instanceof Error ? error.message : "Upload failed",
+      "INTERNAL_ERROR",
+      500,
     );
   }
 }
@@ -315,6 +329,13 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/storages?name=storageName&version=versionId
  * Download a storage as a tar.gz file
+ *
+ * Query params:
+ * - name: string (required, storage name)
+ * - version: string (optional, version ID or prefix)
+ *
+ * Returns: Binary tar.gz file (application/gzip)
+ *
  * If version is specified, download that specific version
  * Otherwise, download the HEAD (latest) version
  */
@@ -328,7 +349,7 @@ export async function GET(request: NextRequest) {
     // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
     }
 
     // Get query parameters
@@ -337,10 +358,7 @@ export async function GET(request: NextRequest) {
     const versionId = searchParams.get("version");
 
     if (!storageName) {
-      return NextResponse.json(
-        { error: "Missing name parameter" },
-        { status: 400 },
-      );
+      return errorResponse("Missing name parameter", "BAD_REQUEST", 400);
     }
 
     log.debug(
@@ -355,9 +373,10 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!storage) {
-      return NextResponse.json(
-        { error: `Storage "${storageName}" not found` },
-        { status: 404 },
+      return errorResponse(
+        `Storage "${storageName}" not found`,
+        "NOT_FOUND",
+        404,
       );
     }
 
@@ -367,18 +386,20 @@ export async function GET(request: NextRequest) {
       // Resolve version (supports short prefix)
       const resolveResult = await resolveVersionByPrefix(storage.id, versionId);
       if ("error" in resolveResult) {
-        return NextResponse.json(
-          { error: resolveResult.error },
-          { status: resolveResult.status },
+        return errorResponse(
+          resolveResult.error,
+          resolveResult.status === 404 ? "NOT_FOUND" : "BAD_REQUEST",
+          resolveResult.status,
         );
       }
       version = resolveResult.version;
     } else {
       // Use HEAD version
       if (!storage.headVersionId) {
-        return NextResponse.json(
-          { error: `Storage "${storageName}" has no versions` },
-          { status: 404 },
+        return errorResponse(
+          `Storage "${storageName}" has no versions`,
+          "NOT_FOUND",
+          404,
         );
       }
 
@@ -390,9 +411,10 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (!headVersion) {
-        return NextResponse.json(
-          { error: `Storage "${storageName}" HEAD version not found` },
-          { status: 404 },
+        return errorResponse(
+          `Storage "${storageName}" HEAD version not found`,
+          "NOT_FOUND",
+          404,
         );
       }
       version = headVersion;
@@ -436,9 +458,10 @@ export async function GET(request: NextRequest) {
     // Download archive.tar.gz from S3
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
-      return NextResponse.json(
-        { error: "S3_USER_STORAGES_NAME environment variable is not set" },
-        { status: 500 },
+      return errorResponse(
+        "S3_USER_STORAGES_NAME environment variable is not set",
+        "INTERNAL_ERROR",
+        500,
       );
     }
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
@@ -472,11 +495,10 @@ export async function GET(request: NextRequest) {
         .catch(console.error);
     }
 
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Download failed",
-      },
-      { status: 500 },
+    return errorResponse(
+      error instanceof Error ? error.message : "Download failed",
+      "INTERNAL_ERROR",
+      500,
     );
   }
 }

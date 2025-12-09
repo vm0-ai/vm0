@@ -50,3 +50,9 @@ export {
   type SessionsMainContract,
   type SessionsByIdContract,
 } from "./sessions";
+export {
+  storagesContract,
+  storageTypeSchema,
+  uploadStorageResponseSchema,
+  type StoragesContract,
+} from "./storages";
