@@ -106,72 +106,79 @@ def main():
     # Capture both stdout and stderr, write to log file, keep stderr in memory for error extraction
     claude_exit_code = 0
     stderr_lines = []  # Keep stderr in memory for error message extraction
-
-    def stderr_reader(proc_stderr, log_file, stderr_buffer):
-        """Background thread to read stderr and write to log file."""
-        for line in proc_stderr:
-            stderr_buffer.append(line)
-            log_file.write(f"[STDERR] {line}")
-            log_file.flush()
+    log_file = None
 
     try:
         # Ensure log directory exists
         os.makedirs(LOG_DIR, exist_ok=True)
+        log_file = open(AGENT_LOG_FILE, "w")
 
-        with open(AGENT_LOG_FILE, "w") as log_file:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1  # Line buffered for real-time processing
-            )
+        # Python subprocess.PIPE can deadlock if buffer fills up
+        # Use a background thread to drain stderr while we read stdout
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1  # Line buffered for real-time processing
+        )
 
-            # Start background thread to read stderr
-            stderr_thread = threading.Thread(
-                target=stderr_reader,
-                args=(proc.stderr, log_file, stderr_lines),
-                daemon=True
-            )
-            stderr_thread.start()
+        # Read stderr in background to prevent buffer deadlock
+        def read_stderr():
+            try:
+                for line in proc.stderr:
+                    stderr_lines.append(line)
+                    if log_file and not log_file.closed:
+                        log_file.write(f"[STDERR] {line}")
+                        log_file.flush()
+            except Exception:
+                pass  # Ignore errors if file closed
 
-            # Process JSONL output line by line from stdout
-            for line in proc.stdout:
-                # Write raw line to log file
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stderr_thread.start()
+
+        # Process JSONL output line by line from stdout
+        for line in proc.stdout:
+            # Write raw line to log file
+            if log_file and not log_file.closed:
                 log_file.write(line)
                 log_file.flush()
 
-                line = line.strip()
+            stripped = line.strip()
 
-                # Skip empty lines
-                if not line:
-                    continue
+            # Skip empty lines
+            if not stripped:
+                continue
 
-                # Check if line is valid JSON (stdout should only contain JSONL)
-                try:
-                    event = json.loads(line)
+            # Check if line is valid JSON (stdout should only contain JSONL)
+            try:
+                event = json.loads(stripped)
 
-                    # Valid JSONL - send immediately
-                    send_event(event)
+                # Valid JSONL - send immediately
+                send_event(event)
 
-                    # Extract result from "result" event for stdout
-                    if event.get("type") == "result":
-                        result_content = event.get("result", "")
-                        if result_content:
-                            print(result_content)
+                # Extract result from "result" event for stdout
+                if event.get("type") == "result":
+                    result_content = event.get("result", "")
+                    if result_content:
+                        print(result_content)
 
-                except json.JSONDecodeError:
-                    # Not valid JSON, skip
-                    pass
+            except json.JSONDecodeError:
+                # Not valid JSON, skip
+                pass
 
-            # Wait for process and stderr thread to complete
-            proc.wait()
-            stderr_thread.join(timeout=5)
-            claude_exit_code = proc.returncode
+        # Wait for process to complete
+        proc.wait()
+        # Wait for stderr thread to finish (with timeout to avoid hanging)
+        stderr_thread.join(timeout=10)
+        claude_exit_code = proc.returncode
 
     except Exception as e:
         log_error(f"Failed to execute Claude: {e}")
         claude_exit_code = 1
+    finally:
+        if log_file and not log_file.closed:
+            log_file.close()
 
     # Print newline after output
     print()
