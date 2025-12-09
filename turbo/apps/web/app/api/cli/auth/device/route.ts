@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { cliAuthDeviceContract } from "@vm0/core";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
@@ -21,27 +22,39 @@ function generateDeviceCode(): string {
   return code;
 }
 
-export async function POST(): Promise<NextResponse> {
-  initServices();
+const router = tsr.router(cliAuthDeviceContract, {
+  create: async () => {
+    initServices();
 
-  const deviceCode = generateDeviceCode();
-  const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes
+    const deviceCode = generateDeviceCode();
+    const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes
 
-  await globalThis.services.db.insert(deviceCodes).values({
-    code: deviceCode,
-    status: "pending",
-    expiresAt,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    await globalThis.services.db.insert(deviceCodes).values({
+      code: deviceCode,
+      status: "pending",
+      expiresAt,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-  return NextResponse.json({
-    device_code: deviceCode,
-    user_code: deviceCode,
-    verification_url: `${baseUrl}/cli-auth`,
-    expires_in: 900, // 15 minutes in seconds
-    interval: 5, // Poll every 5 seconds
-  });
-}
+    return {
+      status: 200 as const,
+      body: {
+        device_code: deviceCode,
+        user_code: deviceCode,
+        verification_url: `${baseUrl}/cli-auth`,
+        expires_in: 900, // 15 minutes in seconds
+        interval: 5, // Poll every 5 seconds
+      },
+    };
+  },
+});
+
+const handler = createNextHandler(cliAuthDeviceContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+});
+
+export { handler as POST };
