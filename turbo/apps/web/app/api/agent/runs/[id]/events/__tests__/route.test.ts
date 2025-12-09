@@ -39,6 +39,14 @@ import { auth } from "@clerk/nextjs/server";
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
+/**
+ * Helper to create a NextRequest for testing.
+ * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
+ */
+function createTestRequest(url: string): NextRequest {
+  return new NextRequest(url, { method: "GET" });
+}
+
 describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -156,16 +164,11 @@ describe("GET /api/agent/runs/:id/events", () => {
         userId: null,
       } as unknown as Awaited<ReturnType<typeof auth>>);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -182,16 +185,11 @@ describe("GET /api/agent/runs/:id/events", () => {
     it("should reject request for non-existent run", async () => {
       const nonExistentRunId = randomUUID();
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${nonExistentRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: nonExistentRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -242,16 +240,11 @@ describe("GET /api/agent/runs/:id/events", () => {
         createdAt: new Date(),
       });
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${otherRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: otherRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(404); // 404 for security (not 403)
       const data = await response.json();
@@ -276,16 +269,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty events list when no events exist", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -339,16 +327,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -380,16 +363,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
       // Request events since sequence 2
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -415,16 +393,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
       // Request with limit=3
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=3`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -450,16 +423,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
       // Request events since=3 with limit=2
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=3&limit=2`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -484,16 +452,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
       // Request with limit=10 (more than available)
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=10`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -539,16 +502,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -593,16 +551,11 @@ describe("GET /api/agent/runs/:id/events", () => {
         createdAt: new Date(),
       });
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -622,16 +575,11 @@ describe("GET /api/agent/runs/:id/events", () => {
         createdAt: now,
       });
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -662,16 +610,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=0`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -691,16 +634,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=100`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -722,16 +660,11 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       await globalThis.services.db.insert(agentRunEvents).values(testEvents);
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-        {
-          method: "GET",
-        },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ id: testRunId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();

@@ -1,4 +1,6 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { runsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -9,63 +11,37 @@ import { eq } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../src/lib/errors";
-import type {
-  UnifiedRunRequest,
-  CreateAgentRunResponse,
-} from "../../../../src/types/agent-run";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { sendVm0ErrorEvent } from "../../../../src/lib/events";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
-/**
- * POST /api/agent/runs
- *
- * Unified API for creating and executing agent runs.
- * Supports three modes via optional parameters:
- *
- * 1. New run: Provide agentComposeId or agentComposeVersionId, artifactName, prompt
- * 2. Checkpoint resume: Provide checkpointId, prompt (expands to snapshot parameters)
- * 3. Session continue: Provide sessionId, prompt (uses latest artifact version)
- *
- * Parameters can be combined for fine-grained control:
- * - volumeVersions: Override volume versions (volume name -> version)
- * - artifactVersion: Override artifact version
- * - templateVars: Template variables
- */
-export async function POST(request: NextRequest) {
-  try {
-    // Initialize services
+const router = tsr.router(runsMainContract, {
+  create: async ({ body }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    // Parse request body
-    const body: UnifiedRunRequest = await request.json();
-
-    // Validate prompt is provided
-    if (!body.prompt) {
-      throw new BadRequestError("Missing prompt");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     // Validate mutually exclusive shortcuts
     if (body.checkpointId && body.sessionId) {
-      throw new BadRequestError(
-        "Cannot specify both checkpointId and sessionId. Use one or the other.",
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message:
+              "Cannot specify both checkpointId and sessionId. Use one or the other.",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
     // Determine run mode and validate required parameters
@@ -76,14 +52,28 @@ export async function POST(request: NextRequest) {
     // For new runs, require either agentComposeId or agentComposeVersionId, and artifactName
     if (isNewRun) {
       if (!body.agentComposeId && !body.agentComposeVersionId) {
-        throw new BadRequestError(
-          "Missing agentComposeId or agentComposeVersionId. For new runs, one is required.",
-        );
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message:
+                "Missing agentComposeId or agentComposeVersionId. For new runs, one is required.",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
       }
       if (!body.artifactName) {
-        throw new BadRequestError(
-          "Missing artifactName. Use --artifact-name flag to specify artifact.",
-        );
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message:
+                "Missing artifactName. Use --artifact-name flag to specify artifact.",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
       }
     }
 
@@ -112,7 +102,15 @@ export async function POST(request: NextRequest) {
           .limit(1);
 
         if (!version) {
-          throw new NotFoundError("Agent compose version");
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message: "Agent compose version not found",
+                code: "NOT_FOUND",
+              },
+            },
+          };
         }
 
         composeContent = version.content as AgentComposeYaml;
@@ -136,13 +134,25 @@ export async function POST(request: NextRequest) {
           .limit(1);
 
         if (!compose) {
-          throw new NotFoundError("Agent compose");
+          return {
+            status: 404 as const,
+            body: {
+              error: { message: "Agent compose not found", code: "NOT_FOUND" },
+            },
+          };
         }
 
         if (!compose.headVersionId) {
-          throw new BadRequestError(
-            "Agent compose has no versions. Run 'vm0 build' first.",
-          );
+          return {
+            status: 400 as const,
+            body: {
+              error: {
+                message:
+                  "Agent compose has no versions. Run 'vm0 build' first.",
+                code: "BAD_REQUEST",
+              },
+            },
+          };
         }
 
         agentComposeVersionId = compose.headVersionId;
@@ -156,7 +166,15 @@ export async function POST(request: NextRequest) {
           .limit(1);
 
         if (!version) {
-          throw new NotFoundError("Agent compose version");
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message: "Agent compose version not found",
+                code: "NOT_FOUND",
+              },
+            },
+          };
         }
 
         composeContent = version.content as AgentComposeYaml;
@@ -171,9 +189,15 @@ export async function POST(request: NextRequest) {
         );
 
         if (missingVars.length > 0) {
-          throw new BadRequestError(
-            `Missing required template variables: ${missingVars.join(", ")}`,
-          );
+          return {
+            status: 400 as const,
+            body: {
+              error: {
+                message: `Missing required template variables: ${missingVars.join(", ")}`,
+                code: "BAD_REQUEST",
+              },
+            },
+          };
         }
 
         // Validate image access for new runs
@@ -182,17 +206,45 @@ export async function POST(request: NextRequest) {
         if (firstAgentKey) {
           const agent = composeContent.agents[firstAgentKey];
           if (agent?.image) {
-            await assertImageAccess(userId, agent.image);
+            try {
+              await assertImageAccess(userId, agent.image);
+            } catch (error) {
+              return {
+                status: 400 as const,
+                body: {
+                  error: {
+                    message:
+                      error instanceof Error
+                        ? error.message
+                        : "Image access denied",
+                    code: "BAD_REQUEST",
+                  },
+                },
+              };
+            }
           }
         }
       }
     } else if (isCheckpointResume) {
       // Validate checkpoint first to get agentComposeVersionId
-      const sessionData = await runService.validateCheckpoint(
-        body.checkpointId!,
-        userId,
-      );
-      agentComposeVersionId = sessionData.agentComposeVersionId;
+      try {
+        const sessionData = await runService.validateCheckpoint(
+          body.checkpointId!,
+          userId,
+        );
+        agentComposeVersionId = sessionData.agentComposeVersionId;
+      } catch (error) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message:
+                error instanceof Error ? error.message : "Checkpoint not found",
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
 
       // Get compose name for metadata
       const [version] = await globalThis.services.db
@@ -211,10 +263,24 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Session continue - resolve to HEAD version of session's compose
-      const sessionData = await runService.validateAgentSession(
-        body.sessionId!,
-        userId,
-      );
+      let sessionData;
+      try {
+        sessionData = await runService.validateAgentSession(
+          body.sessionId!,
+          userId,
+        );
+      } catch (error) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message:
+                error instanceof Error ? error.message : "Session not found",
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
 
       // Get compose and resolve to HEAD version
       const [compose] = await globalThis.services.db
@@ -224,13 +290,27 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (!compose) {
-        throw new NotFoundError("Agent compose for session");
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: "Agent compose for session not found",
+              code: "NOT_FOUND",
+            },
+          },
+        };
       }
 
       if (!compose.headVersionId) {
-        throw new BadRequestError(
-          "Agent compose has no versions. Run 'vm0 build' first.",
-        );
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Agent compose has no versions. Run 'vm0 build' first.",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
       }
 
       agentComposeVersionId = compose.headVersionId;
@@ -337,24 +417,78 @@ export async function POST(request: NextRequest) {
       });
 
       // Return error response for preparation failures
-      const response: CreateAgentRunResponse = {
-        runId: run.id,
-        status: "failed",
-        createdAt: run.createdAt.toISOString(),
+      return {
+        status: 201 as const,
+        body: {
+          runId: run.id,
+          status: "failed" as const,
+          createdAt: run.createdAt.toISOString(),
+        },
       };
-      return successResponse(response, 201);
     }
 
     // Return response with 'running' status
     // Final status will be updated by webhook when agent completes
-    const response: CreateAgentRunResponse = {
-      runId: run.id,
-      status: "running",
-      createdAt: run.createdAt.toISOString(),
+    return {
+      status: 201 as const,
+      body: {
+        runId: run.id,
+        status: "running" as const,
+        createdAt: run.createdAt.toISOString(),
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (
+    err &&
+    typeof err === "object" &&
+    "bodyError" in err &&
+    "queryError" in err
+  ) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
     };
 
-    return successResponse(response, 201);
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        // Include field path in error message if available
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (validationError.queryError) {
+      const issue = validationError.queryError.issues[0];
+      if (issue) {
+        // Include field path in error message if available
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(runsMainContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as POST };
