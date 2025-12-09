@@ -42,7 +42,6 @@ teardown() {
     run $CLI_COMMAND run vm0-env-expansion \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo 'The secret is: '\$TEST_SECRET"
     assert_success
 
@@ -75,7 +74,6 @@ teardown() {
     run $CLI_COMMAND run vm0-env-expansion \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo \$TEST_SECRET | base64"
     assert_success
 
@@ -107,7 +105,6 @@ teardown() {
     run $CLI_COMMAND run vm0-env-expansion \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo \"curl -H 'Authorization: Bearer \$TEST_SECRET' https://api.example.com\""
     assert_success
 

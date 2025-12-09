@@ -81,7 +81,7 @@ teardown() {
     assert_output --partial "Secret updated: ${SECRET_NAME}"
 }
 
-@test "vm0 run expands vars and secrets in environment" {
+@test "vm0 run expands vars and masks secrets in environment" {
     # 1. Set up the secret
     $CLI_COMMAND secret set TEST_SECRET "$SECRET_VALUE" >/dev/null 2>&1
 
@@ -103,9 +103,13 @@ teardown() {
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
     assert_success
 
-    # 5. Verify the output contains the expanded values
+    # 5. Verify vars are expanded normally
     assert_output --partial "VAR=${VAR_VALUE}"
-    assert_output --partial "SECRET=${SECRET_VALUE}"
+
+    # 6. Verify secrets are masked in output (not showing raw value)
+    # The secret value should be replaced with *** for security
+    assert_output --partial "SECRET=***"
+    refute_output --partial "SECRET=${SECRET_VALUE}"
 }
 
 @test "vm0 run fails when required secret is missing" {
