@@ -53,7 +53,8 @@ SESSION_HISTORY_PATH_FILE = f"/tmp/vm0-session-history-{RUN_ID}.txt"
 EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 
 # Log directory and files for persistent logging
-LOG_DIR = "/var/log/vm0"
+# Use /tmp/vm0-logs since sandbox user may not have permission to write to /var/log
+LOG_DIR = "/tmp/vm0-logs"
 AGENT_LOG_FILE = f"{LOG_DIR}/agent-{RUN_ID}.log"
 
 def validate_config() -> bool:

@@ -602,8 +602,9 @@ export class E2BService {
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
     // Create log directory and redirect output to per-run log file
+    // Use /tmp/vm0-logs since sandbox user may not have permission to write to /var/log
     await sandbox.commands.run(
-      `mkdir -p /var/log/vm0 && nohup python3 ${SCRIPT_PATHS.runAgent} > /var/log/vm0/main-${runId}.log 2>&1 &`,
+      `mkdir -p /tmp/vm0-logs && nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-logs/main-${runId}.log 2>&1 &`,
     );
 
     log.debug(`Agent execution started in background for run ${runId}`);
