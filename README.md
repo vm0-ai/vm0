@@ -33,8 +33,8 @@
 
 AI development today is held back by two outdated models:
 
-- 🧱 **Container runners** — traditional tech stack
-- 🔗 **Workflow builders** — rigid, brittle, not agent-native
+- 🧱 **Container runners**: traditional tech stack
+- 🔗 **Workflow builders**: rigid, brittle, not agent-native
 
 Agents require a fundamentally different environment.
 
@@ -47,7 +47,7 @@ No workflows. No black-box containers. Just a clean, persistent, observable plac
 
 ### Natural-language powered
 
-Write a prompt or a simple config file — your agent is ready.  
+Write a prompt or a simple config file, and your agent is ready.  
 No drag-and-drop. No pipelines.
 
 ### Works with all CLI-based agents
@@ -89,7 +89,9 @@ vm0 cook "echo hello world to readme.md"
 
 The `vm0 cook` command automatically handles volume and artifact setup.
 
-> 📚 **Explore more:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 10+ examples including writing agents, web scrapers, ML trainers, and more.
+> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide →](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
+
+> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 10+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
 
 ### From scratch (build your own)
 
@@ -103,7 +105,7 @@ vm0 auth login
 cat > vm0.yaml << 'EOF'
 version: "1.0"
 agents:
-  - name: my-agent
+  my-agent:
     provider: claude-code
     image: vm0-claude-code-dev
     working_dir: /home/user/workspace
@@ -115,17 +117,27 @@ volumes:
     version: latest
 EOF
 
-# 3. Build agent
-vm0 build vm0.yaml
+# 3. Create volume with CLAUDE.md
+mkdir claude-files && cd claude-files
+cat > CLAUDE.md << 'EOF'
+You are a helpful coding assistant. Create clean, well-documented code.
+EOF
 
-# 4. Setup workspace
+vm0 volume init
+vm0 volume push
+cd ..
+
+# 4. Compose agent
+vm0 compose vm0.yaml
+
+# 5. Setup workspace
 mkdir workspace && cd workspace
 vm0 artifact init
 
-# 5. Run agent
+# 6. Run agent
 vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
 
-# 6. Get results
+# 7. Get results
 vm0 artifact pull
 cat hello.py
 ```
@@ -145,7 +157,7 @@ vm0 auth status              # Check auth status
 ### Agent management
 
 ```bash
-vm0 build <config.yaml>      # Create/update agent from config
+vm0 compose <config.yaml>    # Create/update agent compose from config
 ```
 
 ### Running agents
@@ -198,7 +210,7 @@ Create a `vm0.yaml` file to define your agent:
 version: "1.0"
 
 agents:
-  - name: my-agent
+  my-agent:
     description: "Agent description"
     provider: claude-code
     image: vm0-claude-code-dev
@@ -212,78 +224,31 @@ volumes:
     version: latest
 ```
 
-### Environment variables
-
-Use environment variables in configs:
-
-```yaml
-volumes:
-  api-keys:
-    name: "${ENV}-keys"
-    version: "${VERSION}"
-```
-
-```bash
-export ENV=production
-export VERSION=v1.0.0
-vm0 build vm0.yaml
-```
-
 ## Key concepts
 
 ### Agents
 
-Stateful AI entities that execute tasks in isolated sandboxes. Each agent:
-- Has a persistent configuration defined in `vm0.yaml`
-- Maintains memory and context across runs
-- Can access volumes and artifacts
-- Supports checkpoint/resume for exact state restoration
-- Runs in a secure, isolated environment
+Your AI worker with persistent configuration and memory. Define its capabilities in `vm0.yaml` and give instructions in `CLAUDE.md`. It remembers everything from previous runs. Each agent runs in an isolated sandbox and can specialize in tasks like coding, research, or data processing.
 
 ### Images
 
-Pre-configured runtime environments for agents. Images:
-- Define the base system and installed tools
-- Include agent CLI (e.g., Claude Code, Codex)
-- Are built with E2B templates or custom Dockerfiles
-- Can be versioned and shared across agents
-- Provide consistent execution environments
+Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Like Docker images but for AI agents, they're built with E2B templates and ensure consistent execution across runs.
 
 ### Artifacts
 
-Versioned workspaces where agents read and write files (code, documents, outputs). Artifacts:
-- Are automatically versioned on each `push`
-- Use content-addressable storage with SHA-256 hashing
-- Support deduplication (identical content = same version)
-- Can be shared across multiple agent runs
-- Sync bidirectionally between local and cloud
+Your versioned workspace where agents create and modify files. Each change is automatically versioned using SHA-256 content-addressing. Identical content produces the same version (deduplication). Sync bidirectionally between local and cloud, go back to any version, or share with other agents.
 
 ### Volumes
 
-Persistent data stores for datasets, configurations, and dependencies. Volumes:
-- Are mounted into agent sandboxes at specified paths
-- Support version pinning for reproducibility
-- Can be shared across multiple agents
-- Remain independent of artifact changes
-- Ideal for read-only data or shared resources
+Persistent storage for datasets, configs, and dependencies that don't change often. Mounted into agent sandboxes at specific paths, volumes support version pinning for reproducibility. Control exactly which version each agent uses. Great for sharing data across multiple agents.
 
 ### Checkpoints
 
-Point-in-time snapshots of a complete agent run. Each checkpoint includes:
-- Full artifact state at that moment
-- Complete conversation history
-- Agent memory and reasoning context
-- Volume versions used in the run
-- Can be resumed to continue from exact state
+Complete snapshots capturing the full state: artifact files, conversation history, agent memory, and volume versions. Resume from any checkpoint to restore the exact execution state. Useful for debugging, trying different approaches, or recovering from errors.
 
 ### Sessions
 
-Lightweight continuations of agent runs. Sessions:
-- Use the latest artifact version (not snapshot)
-- Maintain conversation context and history
-- Faster than checkpoint resume
-- Ideal for iterative development
-- Automatically track conversation flow
+Lightweight continuations where the agent remembers the conversation but uses your latest artifact version. Perfect for iterative workflows: edit code locally, run session, and the agent continues with your changes. Faster than checkpoints when you just need the agent to see your updates.
 
 ## What you can build
 
@@ -300,9 +265,9 @@ Lightweight continuations of agent runs. Sessions:
 ## Resources
 
 - [Contributing guide](./CONTRIBUTING.md) - Development setup
-- [Website](https://www.vm0.ai) - Learn more
-- [Discord](https://discord.gg/WMpAmHFfp6) - Community
-- [Email](mailto:ethan@vm0.ai) - Support
+- [Website](https://www.vm0.ai) - Learn our official website
+- [Discord](https://discord.gg/WMpAmHFfp6) - Join our community
+- [Email](mailto:ethan@vm0.ai) - Email us for questions and support
 
 ## License
 
