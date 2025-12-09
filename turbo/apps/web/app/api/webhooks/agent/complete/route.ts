@@ -169,14 +169,9 @@ export async function POST(request: NextRequest) {
       console.log(`[Complete API] Run ${runId} failed: ${errorMessage}`);
     }
 
-    // Kill sandbox (fire-and-forget, don't block response)
+    // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {
-      e2bService.killSandbox(sandboxId).catch((error) => {
-        console.error(
-          `[Complete API] Failed to kill sandbox ${sandboxId}:`,
-          error,
-        );
-      });
+      await e2bService.killSandbox(sandboxId);
     }
 
     const response: CompleteResponse = {
@@ -205,9 +200,7 @@ export async function POST(request: NextRequest) {
 
     // Still try to kill sandbox on error
     if (sandboxId) {
-      e2bService.killSandbox(sandboxId).catch(() => {
-        // Ignore cleanup errors
-      });
+      await e2bService.killSandbox(sandboxId);
     }
 
     return errorResponse(error);
