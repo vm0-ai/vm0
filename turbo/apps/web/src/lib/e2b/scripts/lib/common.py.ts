@@ -52,10 +52,8 @@ SESSION_HISTORY_PATH_FILE = f"/tmp/vm0-session-history-{RUN_ID}.txt"
 # Event error flag file - used to track if any events failed to send
 EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 
-# Log directory and files for persistent logging
-# Use /tmp/vm0-logs since sandbox user may not have permission to write to /var/log
-LOG_DIR = "/tmp/vm0-logs"
-AGENT_LOG_FILE = f"{LOG_DIR}/agent-{RUN_ID}.log"
+# Log file for persistent logging (directly in /tmp with vm0- prefix)
+AGENT_LOG_FILE = f"/tmp/vm0-agent-{RUN_ID}.log"
 
 def validate_config() -> bool:
     """Validate required configuration. Returns True if valid, exits if not."""

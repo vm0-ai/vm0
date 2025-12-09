@@ -24,7 +24,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG,
-    HEARTBEAT_URL, HEARTBEAT_INTERVAL, LOG_DIR, AGENT_LOG_FILE,
+    HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
     validate_config
 )
 from log import log_info, log_error, log_warn
@@ -109,8 +109,7 @@ def main():
     log_file = None
 
     try:
-        # Ensure log directory exists
-        os.makedirs(LOG_DIR, exist_ok=True)
+        # Open log file directly in /tmp (no need to create directory)
         log_file = open(AGENT_LOG_FILE, "w")
 
         # Python subprocess.PIPE can deadlock if buffer fills up
