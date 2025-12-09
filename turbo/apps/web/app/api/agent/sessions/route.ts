@@ -1,32 +1,47 @@
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { sessionsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../src/lib/api-response";
-import { UnauthorizedError } from "../../../../src/lib/errors";
 import { agentSessionService } from "../../../../src/lib/agent-session";
 
-/**
- * GET /api/agent/sessions
- * List all agent sessions for the authenticated user
- */
-export async function GET() {
-  try {
-    // Initialize services
+const router = tsr.router(sessionsMainContract, {
+  list: async () => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     // Get all sessions for user
     const sessions = await agentSessionService.getByUserId(userId);
 
-    return successResponse({ sessions }, 200);
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+    return {
+      status: 200 as const,
+      body: {
+        sessions: sessions.map((s) => ({
+          id: s.id,
+          userId: s.userId,
+          agentComposeId: s.agentComposeId,
+          conversationId: s.conversationId,
+          artifactName: s.artifactName,
+          templateVars: s.templateVars,
+          createdAt: s.createdAt.toISOString(),
+          updatedAt: s.updatedAt.toISOString(),
+        })),
+      },
+    };
+  },
+});
+
+const handler = createNextHandler(sessionsMainContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+});
+
+export { handler as GET };

@@ -41,3 +41,12 @@ export {
   type RunsByIdContract,
   type RunEventsContract,
 } from "./runs";
+export {
+  sessionsMainContract,
+  sessionsByIdContract,
+  agentSessionSchema,
+  conversationSchema,
+  agentSessionWithConversationSchema,
+  type SessionsMainContract,
+  type SessionsByIdContract,
+} from "./sessions";

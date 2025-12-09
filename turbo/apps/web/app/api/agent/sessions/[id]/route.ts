@@ -1,89 +1,152 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { sessionsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { agentSessionService } from "../../../../../src/lib/agent-session";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
-/**
- * GET /api/agent/sessions/:id
- * Get a specific agent session with conversation data
- */
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  try {
-    // Initialize services
+const router = tsr.router(sessionsByIdContract, {
+  getById: async ({ params }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
-
-    const { id } = await params;
 
     // Get session with conversation data
-    const session = await agentSessionService.getByIdWithConversation(id);
+    const session = await agentSessionService.getByIdWithConversation(
+      params.id,
+    );
 
     if (!session) {
-      throw new NotFoundError("Agent session");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
-    // Verify ownership
+    // Verify ownership - return 404 for security (don't reveal session exists)
     if (session.userId !== userId) {
-      throw new UnauthorizedError("Agent session does not belong to user");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
-    return successResponse({ session }, 200);
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+    return {
+      status: 200 as const,
+      body: {
+        session: {
+          id: session.id,
+          userId: session.userId,
+          agentComposeId: session.agentComposeId,
+          conversationId: session.conversationId,
+          artifactName: session.artifactName,
+          templateVars: session.templateVars,
+          createdAt: session.createdAt.toISOString(),
+          updatedAt: session.updatedAt.toISOString(),
+          conversation: session.conversation
+            ? {
+                id: session.conversation.id,
+                cliAgentType: session.conversation.cliAgentType,
+                cliAgentSessionId: session.conversation.cliAgentSessionId,
+                cliAgentSessionHistory:
+                  session.conversation.cliAgentSessionHistory,
+              }
+            : null,
+        },
+      },
+    };
+  },
 
-/**
- * DELETE /api/agent/sessions/:id
- * Delete an agent session
- */
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
-  try {
-    // Initialize services
+  delete: async ({ params }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
-
-    const { id } = await params;
 
     // Get session to verify ownership
-    const session = await agentSessionService.getById(id);
+    const session = await agentSessionService.getById(params.id);
 
     if (!session) {
-      throw new NotFoundError("Agent session");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
-    // Verify ownership
+    // Verify ownership - return 404 for security (don't reveal session exists)
     if (session.userId !== userId) {
-      throw new UnauthorizedError("Agent session does not belong to user");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Delete session
-    await agentSessionService.delete(id);
+    await agentSessionService.delete(params.id);
 
-    return successResponse({ deleted: true }, 200);
-  } catch (error) {
-    return errorResponse(error);
+    return {
+      status: 200 as const,
+      body: {
+        deleted: true as const,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "pathParamsError" in err) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
+    };
+
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(sessionsByIdContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET, handler as DELETE };
