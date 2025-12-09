@@ -23,8 +23,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
-    SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG,
-    HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
+    EVENT_ERROR_FLAG, HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
     validate_config
 )
 from log import log_info, log_error, log_warn
@@ -207,9 +206,7 @@ def main():
 
             # Get detailed error from captured stderr lines in memory
             if stderr_lines:
-                # Get last few lines of stderr, clean up formatting
-                last_lines = stderr_lines[-5:] if len(stderr_lines) >= 5 else stderr_lines
-                error_message = " ".join(line.strip() for line in last_lines)
+                error_message = " ".join(line.strip() for line in stderr_lines)
                 log_info(f"Captured stderr: {error_message}")
             else:
                 error_message = f"Agent exited with code {claude_exit_code}"
@@ -234,12 +231,7 @@ def main():
     shutdown_event.set()
     log_info("Heartbeat thread stopped")
 
-    # Cleanup temp files (but preserve log files in /var/log/vm0/)
-    for temp_file in [SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG]:
-        try:
-            os.remove(temp_file)
-        except OSError:
-            pass
+    # Note: Keep all temp files for debugging (SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG)
 
     sys.exit(final_exit_code)
 
