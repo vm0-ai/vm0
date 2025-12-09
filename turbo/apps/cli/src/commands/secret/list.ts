@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, ListSecretsResponse, ApiError } from "../../lib/api-client";
+import { listSecrets, getErrorMessage } from "../../lib/secrets-client";
 
 export const listCommand = new Command()
   .name("list")
@@ -8,16 +8,15 @@ export const listCommand = new Command()
   .description("List all secrets (names only)")
   .action(async () => {
     try {
-      const response = await apiClient.get("/api/secrets");
+      const result = await listSecrets();
 
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "Failed to list secrets");
+      if (result.status !== 200) {
+        throw new Error(getErrorMessage(result.body, "Failed to list secrets"));
       }
 
-      const result = (await response.json()) as ListSecretsResponse;
+      const { secrets } = result.body;
 
-      if (result.secrets.length === 0) {
+      if (secrets.length === 0) {
         console.log(chalk.gray("No secrets found"));
         console.log(
           chalk.gray("  Create one with: vm0 secret set <name> <value>"),
@@ -26,13 +25,13 @@ export const listCommand = new Command()
       }
 
       console.log(chalk.cyan("Secrets:"));
-      for (const secret of result.secrets) {
+      for (const secret of secrets) {
         const updatedAt = new Date(secret.updatedAt).toLocaleDateString();
         console.log(
           `  ${chalk.white(secret.name)} ${chalk.gray(`(updated: ${updatedAt})`)}`,
         );
       }
-      console.log(chalk.gray(`\nTotal: ${result.secrets.length} secret(s)`));
+      console.log(chalk.gray(`\nTotal: ${secrets.length} secret(s)`));
     } catch (error) {
       console.error(chalk.red("✗ Failed to list secrets"));
       if (error instanceof Error) {

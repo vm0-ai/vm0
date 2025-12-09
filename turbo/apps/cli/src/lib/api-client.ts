@@ -387,27 +387,7 @@ class ApiClient {
   }
 }
 
-/**
- * Response types for secrets API
- */
-export interface SecretInfo {
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ListSecretsResponse {
-  secrets: SecretInfo[];
-}
-
-export interface SetSecretResponse {
-  name: string;
-  action: "created" | "updated";
-}
-
-export interface DeleteSecretResponse {
-  name: string;
-  deleted: boolean;
-}
+// Note: Secrets API types are now defined in @vm0/core contracts
+// and used via the type-safe client in ./secrets-client.ts
 
 export const apiClient = new ApiClient();

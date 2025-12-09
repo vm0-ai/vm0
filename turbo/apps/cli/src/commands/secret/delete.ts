@@ -1,10 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  apiClient,
-  DeleteSecretResponse,
-  ApiError,
-} from "../../lib/api-client";
+import { deleteSecret, getErrorMessage } from "../../lib/secrets-client";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -13,19 +9,15 @@ export const deleteCommand = new Command()
   .argument("<name>", "Secret name to delete")
   .action(async (name: string) => {
     try {
-      const response = await apiClient.delete(
-        `/api/secrets?name=${encodeURIComponent(name)}`,
-      );
+      const result = await deleteSecret(name);
 
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || `Secret not found: ${name}`);
-      }
-
-      const result = (await response.json()) as DeleteSecretResponse;
-
-      if (result.deleted) {
-        console.log(chalk.green(`✓ Secret deleted: ${name}`));
+      if (result.status === 200) {
+        console.log(chalk.green(`✓ Secret deleted: ${result.body.name}`));
+      } else {
+        // 400, 401, or 404 error
+        throw new Error(
+          getErrorMessage(result.body, `Secret not found: ${name}`),
+        );
       }
     } catch (error) {
       console.error(chalk.red("✗ Failed to delete secret"));

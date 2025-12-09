@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, SetSecretResponse, ApiError } from "../../lib/api-client";
+import { createSecret, getErrorMessage } from "../../lib/secrets-client";
 
 export const setCommand = new Command()
   .name("set")
@@ -12,7 +12,7 @@ export const setCommand = new Command()
   .argument("<value>", "Secret value")
   .action(async (name: string, value: string) => {
     try {
-      // Validate name format
+      // Client-side validation for better UX (server also validates)
       const nameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/;
       if (!nameRegex.test(name)) {
         console.error(chalk.red("✗ Invalid secret name"));
@@ -29,21 +29,15 @@ export const setCommand = new Command()
         process.exit(1);
       }
 
-      const response = await apiClient.post("/api/secrets", {
-        body: JSON.stringify({ name, value }),
-      });
+      const result = await createSecret(name, value);
 
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "Failed to set secret");
-      }
-
-      const result = (await response.json()) as SetSecretResponse;
-
-      if (result.action === "created") {
-        console.log(chalk.green(`✓ Secret created: ${name}`));
+      if (result.status === 201) {
+        console.log(chalk.green(`✓ Secret created: ${result.body.name}`));
+      } else if (result.status === 200) {
+        console.log(chalk.green(`✓ Secret updated: ${result.body.name}`));
       } else {
-        console.log(chalk.green(`✓ Secret updated: ${name}`));
+        // 400 or 401 error
+        throw new Error(getErrorMessage(result.body, "Failed to set secret"));
       }
     } catch (error) {
       console.error(chalk.red("✗ Failed to set secret"));
