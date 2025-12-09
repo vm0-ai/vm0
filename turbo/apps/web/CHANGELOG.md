@@ -1,5 +1,135 @@
 # Changelog
 
+## [6.0.0](https://github.com/vm0-ai/vm0/compare/web-v5.0.1...web-v6.0.0) (2025-12-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Server-level Minimax configuration removed. Users must configure API credentials via vm0 secrets and Agent Compose environment.
+* Existing agent.yaml files need to be migrated from: ```yaml agents:   - name: "my-agent"     image: "..." ``` to: ```yaml agents:   my-agent:     image: "..." ```
+* CLI and API now use tar.gz format exclusively. Clients must be updated to send/receive tar.gz instead of zip.
+* Checkpoint schema changed, requires database migration
+* rename 'dynamic-volumes' to 'dynamic_volumes' in config files
+
+### Features
+
+* add checkpoint api endpoint for saving agent run state ([#152](https://github.com/vm0-ai/vm0/issues/152)) ([098adc6](https://github.com/vm0-ai/vm0/commit/098adc6368b9c7bb4f9c6584bc988dd3ab0aa311))
+* add CLI e2e device flow automation and production API fallback ([#73](https://github.com/vm0-ai/vm0/issues/73)) ([8eb2d21](https://github.com/vm0-ai/vm0/commit/8eb2d21e6a2f363f93575f85bde5081a2ff218a7))
+* add contact us and website tracking ([#205](https://github.com/vm0-ai/vm0/issues/205)) ([c3b93a9](https://github.com/vm0-ai/vm0/commit/c3b93a9375efd71c887be86a84ad2749a63d76fa))
+* add device flow authentication for cli ([#39](https://github.com/vm0-ai/vm0/issues/39)) ([b6ae61c](https://github.com/vm0-ai/vm0/commit/b6ae61c4244b318e9a6d3969d1ab57bd3d47c873))
+* add direct S3 download to sandbox for faster storage preparation ([#299](https://github.com/vm0-ai/vm0/issues/299)) ([297d508](https://github.com/vm0-ai/vm0/commit/297d508674d009d059d7dc7bad60cb297bc5bc93))
+* add e2b api key configuration ([#41](https://github.com/vm0-ai/vm0/issues/41)) ([e4fd5ed](https://github.com/vm0-ai/vm0/commit/e4fd5edd85a30225f6efac9e26677d9a4ec59f77))
+* add git volume driver support for repository mounting ([#150](https://github.com/vm0-ai/vm0/issues/150)) ([6f3d79c](https://github.com/vm0-ai/vm0/commit/6f3d79cdfb785107beab09c9fb5b7fdb737b7bb3))
+* add immutable versioning for agent composes ([#355](https://github.com/vm0-ai/vm0/issues/355)) ([10f3000](https://github.com/vm0-ai/vm0/commit/10f300049e74e902a93444b469350a4f3d13c72d))
+* add mock-claude for faster e2e testing ([#207](https://github.com/vm0-ai/vm0/issues/207)) ([745ba86](https://github.com/vm0-ai/vm0/commit/745ba86306c71af8b8c2f45b63819f8283dbeb70))
+* add support for agent names in vm0 run command ([#71](https://github.com/vm0-ai/vm0/issues/71)) ([4842d80](https://github.com/vm0-ai/vm0/commit/4842d80f0ce24aec3683ff0e364fc9e22eb24177))
+* add unified environment variable syntax ([#362](https://github.com/vm0-ai/vm0/issues/362)) ([e218dd7](https://github.com/vm0-ai/vm0/commit/e218dd76ddd4b7e6508725570b0cd7ee7d769f56))
+* add validation for environment and template variables before execution ([#164](https://github.com/vm0-ai/vm0/issues/164)) ([a197eba](https://github.com/vm0-ai/vm0/commit/a197eba8ee189e37317e80fd720d1a8df64a863a))
+* add version management to vm0 volumes ([#182](https://github.com/vm0-ai/vm0/issues/182)) ([96677de](https://github.com/vm0-ai/vm0/commit/96677de998ca22f7e441c4b38d44c1dd47bac64c))
+* add vm0 driver support for dynamic_volumes with checkpoint versioning ([#190](https://github.com/vm0-ai/vm0/issues/190)) ([a8e10b8](https://github.com/vm0-ai/vm0/commit/a8e10b848d41055686775197d4c650e70d6fe3f9))
+* add vm0 image build command for custom Dockerfile support ([#408](https://github.com/vm0-ai/vm0/issues/408)) ([66953a2](https://github.com/vm0-ai/vm0/commit/66953a22c4fce93d60ef8a176b58df555ce504a0))
+* add working_dir support for agent execution ([#113](https://github.com/vm0-ai/vm0/issues/113)) ([a96f487](https://github.com/vm0-ai/vm0/commit/a96f487d8536041b86ef49cd05621dfa5476d5dc))
+* capture stderr for detailed error messages in vm0_error ([#348](https://github.com/vm0-ai/vm0/issues/348)) ([e961a6f](https://github.com/vm0-ai/vm0/commit/e961a6f1d0edbaab2fcfd065ca7cf1158e3f34c6))
+* **ci:** add environment variables injection for e2b and minimax ([#97](https://github.com/vm0-ai/vm0/issues/97)) ([584ebcc](https://github.com/vm0-ai/vm0/commit/584ebcc92f9ef888921319d2944fa6106175c223))
+* **cli:** add --force flag to volume push command ([#321](https://github.com/vm0-ai/vm0/issues/321)) ([9e42c86](https://github.com/vm0-ai/vm0/commit/9e42c86fd6eec99062911b0e367bf27de89eabcb))
+* **cli:** add version selection support for volume and artifact pull ([#223](https://github.com/vm0-ai/vm0/issues/223)) ([7981119](https://github.com/vm0-ai/vm0/commit/7981119217f138b912773808a98e85725c7f4752))
+* **cli:** remove timeout option and detect sandbox termination via events API ([#417](https://github.com/vm0-ai/vm0/issues/417)) ([72fd836](https://github.com/vm0-ai/vm0/commit/72fd836f018e14719f1c9c47ceb11096c66228b2))
+* **cli:** support compose version specifier in vm0 run command ([#365](https://github.com/vm0-ai/vm0/issues/365)) ([7df7623](https://github.com/vm0-ai/vm0/commit/7df7623f9a2f32e5aa264bb17e348a97124e332e))
+* **config:** restructure agent.yaml format and artifact handling ([#224](https://github.com/vm0-ai/vm0/issues/224)) ([b60d92e](https://github.com/vm0-ai/vm0/commit/b60d92ef1e97aef54fc9a39b6c13e09aa593b928))
+* **e2b:** add heartbeat-based sandbox cleanup mechanism ([#405](https://github.com/vm0-ai/vm0/issues/405)) ([6648962](https://github.com/vm0-ai/vm0/commit/6648962238f1ac2954ebe1c09f0583010abe0e5a))
+* **e2b:** migrate sandbox scripts from bash to python ([#393](https://github.com/vm0-ai/vm0/issues/393)) ([a678a06](https://github.com/vm0-ai/vm0/commit/a678a06a0c72dc85143d0c4cfa212ee58ed3cc00))
+* enable runtime script transfer for dynamic agent execution ([#139](https://github.com/vm0-ai/vm0/issues/139)) ([77383f0](https://github.com/vm0-ai/vm0/commit/77383f077bc38fc64b7cb566275c6c2e23f21481))
+* enforce promise await with eslint rules ([#303](https://github.com/vm0-ai/vm0/issues/303)) ([1989958](https://github.com/vm0-ai/vm0/commit/19899587084d866c462bf552b4e78f352163e5e0))
+* enhance vm0 run output with complete execution context ([#283](https://github.com/vm0-ai/vm0/issues/283)) ([5f4eeb6](https://github.com/vm0-ai/vm0/commit/5f4eeb624522f109f4afb916b374cf005528d5cc))
+* **image:** add E2B template deletion and improve error handling ([#427](https://github.com/vm0-ai/vm0/issues/427)) ([5630899](https://github.com/vm0-ai/vm0/commit/5630899d74a223f2e6e1185b5ae620971927b61e))
+* implement checkpoint resume functionality ([#156](https://github.com/vm0-ai/vm0/issues/156)) ([304f672](https://github.com/vm0-ai/vm0/commit/304f672dd800a5d9d2b18001438ff67260019efe))
+* implement CLI build and run commands ([#65](https://github.com/vm0-ai/vm0/issues/65)) ([c0b8d11](https://github.com/vm0-ai/vm0/commit/c0b8d114a8c6910bfce7c2e4e10a82509889a28f))
+* implement event streaming for vm0 run command ([#92](https://github.com/vm0-ai/vm0/issues/92)) ([a551950](https://github.com/vm0-ai/vm0/commit/a5519501aa6e7b3b739e05a965d58868498dbdca))
+* implement incremental upload for sandbox checkpoint ([#320](https://github.com/vm0-ai/vm0/issues/320)) ([2f4f1ef](https://github.com/vm0-ai/vm0/commit/2f4f1efef12bcbefc3faf4371634320005ba4ab5))
+* implement phase 1 database schema and api framework for agent configs ([#37](https://github.com/vm0-ai/vm0/issues/37)) ([f8a9b08](https://github.com/vm0-ai/vm0/commit/f8a9b0815c8b3c4b5063d8f1d84cea522006f79c))
+* implement phase 1 database schema and api framework with integration tests ([#44](https://github.com/vm0-ai/vm0/issues/44)) ([d89e686](https://github.com/vm0-ai/vm0/commit/d89e686282b409149187c684371077387b91b31a))
+* implement Phase 1.5 E2B Service Layer with Hello World ([#46](https://github.com/vm0-ai/vm0/issues/46)) ([7e5b639](https://github.com/vm0-ai/vm0/commit/7e5b6397c21222843de07ee5895e9f7c9c844038))
+* implement vm0 managed volumes (simple MVP - full upload/download) ([#172](https://github.com/vm0-ai/vm0/issues/172)) ([ce2f717](https://github.com/vm0-ai/vm0/commit/ce2f717ae1c05c806a9a2f5cd1febd57ad7be1ce))
+* implement VM0 system events for run lifecycle management ([#154](https://github.com/vm0-ai/vm0/issues/154)) ([8e2ff1d](https://github.com/vm0-ai/vm0/commit/8e2ff1d6f8370225b3e6085a56e3bb8eb680a755))
+* implement volume mounting for S3-backed agent workspaces ([#103](https://github.com/vm0-ai/vm0/issues/103)) ([85f7b8e](https://github.com/vm0-ai/vm0/commit/85f7b8e758a6b4d2d5ae6b899be2c4b247959302))
+* implement webhook API for agent events ([#54](https://github.com/vm0-ai/vm0/issues/54)) ([ea55437](https://github.com/vm0-ai/vm0/commit/ea554376a3b0f2188d8ea53a15f02883fbd84f01))
+* initial project setup from makita template ([e9c330a](https://github.com/vm0-ai/vm0/commit/e9c330a5952526d657f245e8db9522de553018b3))
+* integrate Claude Code execution in E2B sandbox ([#58](https://github.com/vm0-ai/vm0/issues/58)) ([a8434d9](https://github.com/vm0-ai/vm0/commit/a8434d9fbf7d00b4854040227477d8d66a609266))
+* integrate clerk authentication for web app ([#15](https://github.com/vm0-ai/vm0/issues/15)) ([c855703](https://github.com/vm0-ai/vm0/commit/c8557031027ccc03d147f164bd03821962a71daa))
+* integrate database storage with agent runtime API ([#49](https://github.com/vm0-ai/vm0/issues/49)) ([d743837](https://github.com/vm0-ai/vm0/commit/d743837224cc639791bae78c28cbe1c6cf742328))
+* introduce Agent Session concept and refactor vm0 run CLI ([#243](https://github.com/vm0-ai/vm0/issues/243)) ([2211c97](https://github.com/vm0-ai/vm0/commit/2211c972d5ee295a9f84780dd938c27ebec40ff7))
+* migrate authentication from api keys to bearer tokens ([#59](https://github.com/vm0-ai/vm0/issues/59)) ([87c887c](https://github.com/vm0-ai/vm0/commit/87c887cdf900010f8b71bf900b910abf8af60a69))
+* migrate landing page to apps/web ([#136](https://github.com/vm0-ai/vm0/issues/136)) ([a11e26e](https://github.com/vm0-ai/vm0/commit/a11e26ebbc0a8787792918882c6243180a1603f4))
+* remove git driver and rename vm0 to VAS ([#230](https://github.com/vm0-ai/vm0/issues/230)) ([0c5bdad](https://github.com/vm0-ai/vm0/commit/0c5bdadf09a0d281d42a90951e5e89bc5e47550b))
+* replace dynamic_volumes with artifact concept ([#210](https://github.com/vm0-ai/vm0/issues/210)) ([5cc831c](https://github.com/vm0-ai/vm0/commit/5cc831c81041ae8f80c425d68b9491354eaafa2b))
+* **secrets:** mask user secrets in agent events before database storage ([#438](https://github.com/vm0-ai/vm0/issues/438)) ([0285f68](https://github.com/vm0-ai/vm0/commit/0285f68576f2bee83fc6a31fd51dddb88b399d66))
+* standardize config naming to snake_case for reserved keywords ([#135](https://github.com/vm0-ai/vm0/issues/135)) ([126fcfd](https://github.com/vm0-ai/vm0/commit/126fcfde1b1101fc7d10de1b4886ac11c0da156d))
+* support empty artifact and volume push ([#296](https://github.com/vm0-ai/vm0/issues/296)) ([d1449e9](https://github.com/vm0-ai/vm0/commit/d1449e9cc691d28cc9a69f622d9bf5fe5076ec3d))
+* tar.gz streaming with content-addressable blob storage ([#311](https://github.com/vm0-ai/vm0/issues/311)) ([d271acb](https://github.com/vm0-ai/vm0/commit/d271acb1ce5b641dda20e64199f9c26b3e013bff))
+* unify agent run API with volume version override support ([#258](https://github.com/vm0-ai/vm0/issues/258)) ([7a5260e](https://github.com/vm0-ai/vm0/commit/7a5260e573dbd42ef084e30d739d7a7773ec65c5))
+* use agent.image for E2B template selection ([#125](https://github.com/vm0-ai/vm0/issues/125)) ([6d73ddb](https://github.com/vm0-ai/vm0/commit/6d73ddbfe1d9589f96b9956cbe4f5284409d4478))
+* use content-based sha-256 hash for storage version ids ([#289](https://github.com/vm0-ai/vm0/issues/289)) ([69eb252](https://github.com/vm0-ai/vm0/commit/69eb252d85883f4cb9943613142f6feafbe947b6))
+* **web:** add github repository link to navbar ([#245](https://github.com/vm0-ai/vm0/issues/245)) ([f13cbbb](https://github.com/vm0-ai/vm0/commit/f13cbbba4203bbfdaf11f8b45885a914ebe837b7))
+* **web:** add structured logging system ([#277](https://github.com/vm0-ai/vm0/issues/277)) ([c2788b4](https://github.com/vm0-ai/vm0/commit/c2788b4ceb3bd140656efb890d4a55e686df4f0c))
+* **web:** increase e2b sandbox timeout to 24 hours for production ([#411](https://github.com/vm0-ai/vm0/issues/411)) ([57c0258](https://github.com/vm0-ai/vm0/commit/57c02584275c677fb0a69a5fd320e3bf77a68014))
+
+
+### Bug Fixes
+
+* add sandbox cleanup via unified complete API ([#339](https://github.com/vm0-ai/vm0/issues/339)) ([7c282b2](https://github.com/vm0-ai/vm0/commit/7c282b20651675878f854dd9e64985acb33feaef))
+* change agent_runtime_events.sequenceNumber from varchar to integer ([#55](https://github.com/vm0-ai/vm0/issues/55)) ([0b860e1](https://github.com/vm0-ai/vm0/commit/0b860e1a43ab0a1a7eb62223f8c787b2270ed05c))
+* correct typos in landing page CLI section ([#158](https://github.com/vm0-ai/vm0/issues/158)) ([eccd66b](https://github.com/vm0-ai/vm0/commit/eccd66bce473b3fa62ab652350e935671335c1da))
+* display volumes in vm0_start event ([#293](https://github.com/vm0-ai/vm0/issues/293)) ([2249f03](https://github.com/vm0-ai/vm0/commit/2249f0349a7088130ff0bd6fc17664a930ccc53e))
+* **e2b:** use nohup to prevent agent process from being killed by SIGHUP ([#395](https://github.com/vm0-ai/vm0/issues/395)) ([0bcc76d](https://github.com/vm0-ai/vm0/commit/0bcc76de0ab8a8f0d6d3fe02fe153f6c0f70e5d1))
+* **e2b:** validate checkpoint api response before returning success ([#446](https://github.com/vm0-ai/vm0/issues/446)) ([4cd32ec](https://github.com/vm0-ai/vm0/commit/4cd32ecac41cc76f03e48edc5ef80f740fb80dd7))
+* extract stderr from E2B CommandExitError for better error reporting ([#287](https://github.com/vm0-ai/vm0/issues/287)) ([80df946](https://github.com/vm0-ai/vm0/commit/80df9464df9512ecf0281c29e6c3b4bca0b9b106))
+* fail agent run when vm0 volume preparation fails ([#188](https://github.com/vm0-ai/vm0/issues/188)) ([406a5ed](https://github.com/vm0-ai/vm0/commit/406a5ed6733077696c97f734be2e8405d19e9782))
+* fail fast when vm0 artifact configured but no artifact key provided ([#214](https://github.com/vm0-ai/vm0/issues/214)) ([bebcedc](https://github.com/vm0-ai/vm0/commit/bebcedcf21111611607c9b8dc352a539dc2ed473))
+* handle empty artifact pull without TAR_BAD_ARCHIVE error ([#328](https://github.com/vm0-ai/vm0/issues/328)) ([3f23505](https://github.com/vm0-ai/vm0/commit/3f23505af3cbbb87926fd6baa255429ee52c29b8))
+* handle empty artifact/volume in storage operations ([#312](https://github.com/vm0-ai/vm0/issues/312)) ([053b658](https://github.com/vm0-ai/vm0/commit/053b658412e12b8a5f91072d781d8f3eaaa24193))
+* handle empty zip uploads in storage webhook ([#306](https://github.com/vm0-ai/vm0/issues/306)) ([cad45a8](https://github.com/vm0-ai/vm0/commit/cad45a874ab6006db3106b3aca8d36dde7f57804))
+* implement conversation restoration for direct --conversation flag ([#326](https://github.com/vm0-ai/vm0/issues/326)) ([faa5c0a](https://github.com/vm0-ai/vm0/commit/faa5c0adcb1f7c7125b35911d31275604cdd1bf8))
+* improve checkpoint resume debugging for git volumes ([#176](https://github.com/vm0-ai/vm0/issues/176)) ([#178](https://github.com/vm0-ai/vm0/issues/178)) ([228bab2](https://github.com/vm0-ai/vm0/commit/228bab2bb0fea624ee31ee99267d3179154ba2d0))
+* improve sandbox script error handling with retry and unified logging ([#273](https://github.com/vm0-ai/vm0/issues/273)) ([5201591](https://github.com/vm0-ai/vm0/commit/5201591864b327579050d94112734cc13a08adbd))
+* make s3 bucket name configurable via environment variable ([#212](https://github.com/vm0-ai/vm0/issues/212)) ([6f61cc5](https://github.com/vm0-ai/vm0/commit/6f61cc50ae59a4e3554e428c465ce7e7085b1768))
+* patch critical react server components security vulnerability ([#397](https://github.com/vm0-ai/vm0/issues/397)) ([c5d6bb5](https://github.com/vm0-ai/vm0/commit/c5d6bb51e4bb74ed235b687e9fb369e31ca47d8e))
+* preserve file permissions during tar extraction in sandbox ([#375](https://github.com/vm0-ai/vm0/issues/375)) ([f352cb0](https://github.com/vm0-ai/vm0/commit/f352cb0c08958fd00dffa9965e3db72354b9e104))
+* prevent script termination after claude exits in run-agent ([#386](https://github.com/vm0-ai/vm0/issues/386)) ([bac56b8](https://github.com/vm0-ai/vm0/commit/bac56b886a2ee25c8d8d630cfb1c81d8482a8d51))
+* push git branch to remote even when no changes to commit ([#193](https://github.com/vm0-ai/vm0/issues/193)) ([687a71d](https://github.com/vm0-ai/vm0/commit/687a71de1eb7f3869c9beab3fefb9dbe9d0d5151))
+* push git branch to remote in sandbox script even without changes ([#197](https://github.com/vm0-ai/vm0/issues/197)) ([4213bfe](https://github.com/vm0-ai/vm0/commit/4213bfe6deca858095077d1c7317bc677e77dfe1))
+* remove all eslint suppression comments and use vi.stubEnv for tests ([#171](https://github.com/vm0-ai/vm0/issues/171)) ([e210c7c](https://github.com/vm0-ai/vm0/commit/e210c7c0df82e045b3e9103b0bd6dabc28567c12))
+* remove deprecated neonConfig.fetchConnectionCache option ([#412](https://github.com/vm0-ai/vm0/issues/412)) ([df9be35](https://github.com/vm0-ai/vm0/commit/df9be35eefacd9294bd2669f63cbfe61ebc27ffc))
+* remove duplicate result event emission in agent execution ([#162](https://github.com/vm0-ai/vm0/issues/162)) ([3d7b336](https://github.com/vm0-ai/vm0/commit/3d7b3364fba12ff2519e2176e8ef42305cb8d08d))
+* remove timeout limitation for e2b sandbox command execution ([#114](https://github.com/vm0-ai/vm0/issues/114)) ([e4c5c86](https://github.com/vm0-ai/vm0/commit/e4c5c869aa4af6433f871b38a199f13895e94704))
+* rename VERCEL_CRON_SECRET to CRON_SECRET for Vercel cron authentication ([#425](https://github.com/vm0-ai/vm0/issues/425)) ([5a15fb3](https://github.com/vm0-ai/vm0/commit/5a15fb3ab53c96a8a8c40edb68016f2c2c3d977b))
+* require authentication for cli device authorization page ([#104](https://github.com/vm0-ai/vm0/issues/104)) ([39428a4](https://github.com/vm0-ai/vm0/commit/39428a4c209403e15a48eea8d468860a50ec716b))
+* resolve E2B script loading error by pre-installing run-agent.sh in template ([#68](https://github.com/vm0-ai/vm0/issues/68)) ([0cc2bd3](https://github.com/vm0-ai/vm0/commit/0cc2bd3875bce658f3055290c1f1643b732ac24c))
+* session resume fails due to agents dict being treated as array ([#347](https://github.com/vm0-ai/vm0/issues/347)) ([8bad8d9](https://github.com/vm0-ai/vm0/commit/8bad8d942621a881ffec1f8bf3452e4b004d7711))
+* set explicit 1-hour timeout for e2b sandbox lifecycle ([#117](https://github.com/vm0-ai/vm0/issues/117)) ([b1594b8](https://github.com/vm0-ai/vm0/commit/b1594b8b59600341d5ea3bde3623da4e7cec4b8d))
+* update sandboxId in database immediately after sandbox creation ([#368](https://github.com/vm0-ai/vm0/issues/368)) ([bdaeccf](https://github.com/vm0-ai/vm0/commit/bdaeccf1b6c6ebbe7267859caabafd0356b879f5))
+* update webhook sequence numbers to use integer type ([#57](https://github.com/vm0-ai/vm0/issues/57)) ([d67380a](https://github.com/vm0-ai/vm0/commit/d67380afea6aed7e09e92bef9ff71fa41efec58e))
+* use correct env var and auth header for webhook authentication ([#80](https://github.com/vm0-ai/vm0/issues/80)) ([b821df4](https://github.com/vm0-ai/vm0/commit/b821df4d412da54aa880dbd98d1b57567cf1b4e0))
+* use production url for e2b webhook callbacks ([#100](https://github.com/vm0-ai/vm0/issues/100)) ([ead881d](https://github.com/vm0-ai/vm0/commit/ead881d89efbe33d0a2f656b230aa0aac2ba51e3))
+* use waituntil to ensure background execution completes ([#302](https://github.com/vm0-ai/vm0/issues/302)) ([f95f1aa](https://github.com/vm0-ai/vm0/commit/f95f1aab327308a8097b065050eebf2078a46361))
+* **web:** capitalize 'Code' in 'Claude Code' on landing page ([#266](https://github.com/vm0-ai/vm0/issues/266)) ([1bcea6a](https://github.com/vm0-ai/vm0/commit/1bcea6a750e7aaf8ce6b8e91a1582de79cad3705))
+* **web:** make landing page cube respond to window-wide mouse movement ([#252](https://github.com/vm0-ai/vm0/issues/252)) ([ea50d7f](https://github.com/vm0-ai/vm0/commit/ea50d7f19356b5b741910d4ddd42938a00fb1c73))
+* **web:** use entry.message instead of toString() for E2B build logs ([#423](https://github.com/vm0-ai/vm0/issues/423)) ([f81de6f](https://github.com/vm0-ai/vm0/commit/f81de6f9aba612c472ffd65741027fc6b49bd0c9))
+
+
+### Performance Improvements
+
+* optimize landing page background images ([#141](https://github.com/vm0-ai/vm0/issues/141)) ([6d160ab](https://github.com/vm0-ai/vm0/commit/6d160ab3540e063856144dfbec80578920eaefda))
+* parallelize storage operations for faster agent startup ([#298](https://github.com/vm0-ai/vm0/issues/298)) ([7a643c2](https://github.com/vm0-ai/vm0/commit/7a643c2b72df679566e1d7276c81b1b2844c87d9))
+* reduce e2b api calls with tar bundling for scripts ([#361](https://github.com/vm0-ai/vm0/issues/361)) ([252e4d5](https://github.com/vm0-ai/vm0/commit/252e4d550985c7d60c5a7938b075df1b64b9af7d))
+
+
+### Code Refactoring
+
+* change agents from array to dictionary in agent.yaml ([#334](https://github.com/vm0-ai/vm0/issues/334)) ([c21a1d0](https://github.com/vm0-ai/vm0/commit/c21a1d09d36e93fdb3cba36ee16c536a8a69a960))
+* remove server-level Minimax config, use Agent Compose secrets ([#439](https://github.com/vm0-ai/vm0/issues/439)) ([b84f931](https://github.com/vm0-ai/vm0/commit/b84f9315d1516746179626b06ca712250c3d2182))
+* restructure checkpoint schema with conversations table ([#231](https://github.com/vm0-ai/vm0/issues/231)) ([#239](https://github.com/vm0-ai/vm0/issues/239)) ([8f05f0b](https://github.com/vm0-ai/vm0/commit/8f05f0b7a38dbd7ac9c24da2f442517de8c70a29))
+* unify compression stack to tar.gz ([#331](https://github.com/vm0-ai/vm0/issues/331)) ([0745967](https://github.com/vm0-ai/vm0/commit/07459676b1385d30223ec63d16b2190857b70a2b))
+
 ## [5.0.1](https://github.com/vm0-ai/vm0/compare/web-v5.0.0...web-v5.0.1) (2025-12-09)
 
 
