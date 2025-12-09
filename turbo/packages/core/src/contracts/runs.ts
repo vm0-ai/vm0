@@ -130,6 +130,7 @@ export const runsByIdContract = c.router({
     }),
     responses: {
       200: getRunResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },

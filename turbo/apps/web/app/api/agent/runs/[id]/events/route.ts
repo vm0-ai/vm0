@@ -100,8 +100,10 @@ function errorHandler(err: unknown): TsRestResponse | void {
     if (validationError.pathParamsError) {
       const issue = validationError.pathParamsError.issues[0];
       if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
         return TsRestResponse.fromJson(
-          { error: { message: issue.message, code: "BAD_REQUEST" } },
+          { error: { message, code: "BAD_REQUEST" } },
           { status: 400 },
         );
       }
@@ -110,8 +112,10 @@ function errorHandler(err: unknown): TsRestResponse | void {
     if (validationError.queryError) {
       const issue = validationError.queryError.issues[0];
       if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
         return TsRestResponse.fromJson(
-          { error: { message: issue.message, code: "BAD_REQUEST" } },
+          { error: { message, code: "BAD_REQUEST" } },
           { status: 400 },
         );
       }
