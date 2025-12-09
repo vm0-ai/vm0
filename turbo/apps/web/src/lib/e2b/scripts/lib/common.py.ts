@@ -35,9 +35,13 @@ COMPLETE_URL = f"{API_URL}/api/webhooks/agent/complete"
 STORAGE_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages"
 INCREMENTAL_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages/incremental"
 HEARTBEAT_URL = f"{API_URL}/api/webhooks/agent/heartbeat"
+TELEMETRY_URL = f"{API_URL}/api/webhooks/agent/telemetry"
 
 # Heartbeat configuration
 HEARTBEAT_INTERVAL = 60  # seconds
+
+# Telemetry upload configuration
+TELEMETRY_INTERVAL = 30  # seconds
 
 # HTTP request configuration
 HTTP_CONNECT_TIMEOUT = 10
@@ -53,10 +57,15 @@ SESSION_HISTORY_PATH_FILE = f"/tmp/vm0-session-history-{RUN_ID}.txt"
 EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 
 # Log file for persistent logging (directly in /tmp with vm0- prefix)
+MAIN_LOG_FILE = f"/tmp/vm0-main-{RUN_ID}.log"
 AGENT_LOG_FILE = f"/tmp/vm0-agent-{RUN_ID}.log"
 
 # Metrics log file for system resource metrics (JSONL format)
 METRICS_LOG_FILE = f"/tmp/vm0-metrics-{RUN_ID}.jsonl"
+
+# Telemetry position tracking files (to avoid duplicate uploads)
+TELEMETRY_LOG_POS_FILE = f"/tmp/vm0-telemetry-log-pos-{RUN_ID}.txt"
+TELEMETRY_METRICS_POS_FILE = f"/tmp/vm0-telemetry-metrics-pos-{RUN_ID}.txt"
 
 # Metrics collection configuration
 METRICS_INTERVAL = 5  # seconds

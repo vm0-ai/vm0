@@ -31,6 +31,7 @@ from events import send_event
 from checkpoint import create_checkpoint
 from http_client import http_post_json
 from metrics import start_metrics_collector
+from upload_telemetry import start_telemetry_upload, final_telemetry_upload
 
 # Global shutdown event for heartbeat thread
 shutdown_event = threading.Event()
@@ -65,6 +66,10 @@ def main():
     # Start metrics collector thread
     metrics_thread = start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
+
+    # Start telemetry upload thread
+    telemetry_thread = start_telemetry_upload(shutdown_event)
+    log_info("Telemetry upload thread started")
 
     # Change to working directory
     try:
@@ -215,6 +220,10 @@ def main():
                 log_info(f"Captured stderr: {error_message}")
             else:
                 error_message = f"Agent exited with code {claude_exit_code}"
+
+    # Perform final telemetry upload before completion
+    # This ensures all remaining data is captured
+    final_telemetry_upload()
 
     # Always call complete API at the end
     # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
