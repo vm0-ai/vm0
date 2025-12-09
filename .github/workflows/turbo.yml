@@ -143,8 +143,6 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
-          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          MINIMAX_ANTHROPIC_BASE_URL: ${{ secrets.MINIMAX_ANTHROPIC_BASE_URL }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -200,8 +198,6 @@ jobs:
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
             E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
-            MINIMAX_ANTHROPIC_BASE_URL=${{ secrets.MINIMAX_ANTHROPIC_BASE_URL }}
-            MINIMAX_API_KEY=${{ secrets.MINIMAX_API_KEY }}
             AWS_REGION=${{ secrets.AWS_REGION }}
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}

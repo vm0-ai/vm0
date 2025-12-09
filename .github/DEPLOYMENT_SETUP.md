@@ -30,10 +30,6 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Get from: https://e2b.dev/dashboard
 - `E2B_TEMPLATE_NAME`: Custom E2B template name (Optional)
   - Generate by running `cd turbo && pnpm e2b:build`
-- `MINIMAX_ANTHROPIC_BASE_URL`: Minimax API base URL (Optional)
-  - For using Minimax as an alternative LLM provider
-- `MINIMAX_API_KEY`: Minimax API key (Optional)
-  - Required if using Minimax API
 
 ### Variables (Store as Repository Variables)
 - `VERCEL_TEAM_ID`: Your Vercel team/organization ID
@@ -88,11 +84,24 @@ For running agent code in sandboxes:
   - Build template: `cd turbo && pnpm e2b:build`
   - Without this, the default E2B image is used (Claude Code must be manually installed)
 
-### Optional Minimax Configuration
-For using Minimax as an alternative LLM provider:
-- **MINIMAX_ANTHROPIC_BASE_URL**: Base URL for Minimax API
-- **MINIMAX_API_KEY**: API key for Minimax
-- Both must be set to enable Minimax integration
+### Anthropic-Compatible API Configuration
+To use Anthropic-compatible LLM providers (e.g., Anthropic, Minimax, or custom providers), configure environment variables in your Agent Compose YAML using user secrets:
+
+```yaml
+# vm0.config.yaml
+environment:
+  ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+  ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
+  ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+  # ... other model aliases as needed
+```
+
+Set up secrets using the VM0 CLI:
+```bash
+vm0 secret set ANTHROPIC_BASE_URL "https://your-api-endpoint.com"
+vm0 secret set ANTHROPIC_API_KEY "your-api-key"
+vm0 secret set ANTHROPIC_MODEL "your-model-name"
+```
 
 ### How Environment Variables are Injected
 

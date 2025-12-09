@@ -1,5 +1,4 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { env } from "../../env";
 import { e2bConfig } from "./config";
 import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
@@ -217,23 +216,6 @@ export class E2BService {
           sandboxEnvVars.VM0_ARTIFACT_MANIFEST_URL =
             artifactForCommand.manifestUrl;
         }
-      }
-
-      // Add Minimax API configuration if available
-      const minimaxBaseUrl = env().MINIMAX_ANTHROPIC_BASE_URL;
-      const minimaxApiKey = env().MINIMAX_API_KEY;
-
-      if (minimaxBaseUrl && minimaxApiKey) {
-        sandboxEnvVars.ANTHROPIC_BASE_URL = minimaxBaseUrl;
-        sandboxEnvVars.ANTHROPIC_AUTH_TOKEN = minimaxApiKey;
-        sandboxEnvVars.API_TIMEOUT_MS = "3000000";
-        sandboxEnvVars.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
-        sandboxEnvVars.ANTHROPIC_MODEL = "MiniMax-M2";
-        sandboxEnvVars.ANTHROPIC_SMALL_FAST_MODEL = "MiniMax-M2";
-        sandboxEnvVars.ANTHROPIC_DEFAULT_SONNET_MODEL = "MiniMax-M2";
-        sandboxEnvVars.ANTHROPIC_DEFAULT_OPUS_MODEL = "MiniMax-M2";
-        sandboxEnvVars.ANTHROPIC_DEFAULT_HAIKU_MODEL = "MiniMax-M2";
-        log.debug(`Using Minimax API (${minimaxBaseUrl})`);
       }
 
       // Add user-defined environment variables (expanded from ${{ vars.X }} by server)
