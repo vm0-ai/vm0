@@ -52,8 +52,9 @@ SESSION_HISTORY_PATH_FILE = f"/tmp/vm0-session-history-{RUN_ID}.txt"
 # Event error flag file - used to track if any events failed to send
 EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 
-# Stderr capture file - used to capture Claude's stderr for error messages
-STDERR_FILE = f"/tmp/vm0-stderr-{RUN_ID}"
+# Log directory and files for persistent logging
+LOG_DIR = "/var/log/vm0"
+AGENT_LOG_FILE = f"{LOG_DIR}/agent-{RUN_ID}.log"
 
 def validate_config() -> bool:
     """Validate required configuration. Returns True if valid, exits if not."""

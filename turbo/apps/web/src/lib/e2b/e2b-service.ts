@@ -601,8 +601,9 @@ export class E2BService {
     // Start Python script in background using nohup to ignore SIGHUP signal
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
+    // Create log directory and redirect output to per-run log file
     await sandbox.commands.run(
-      `nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-nohup.out 2>&1 &`,
+      `mkdir -p /var/log/vm0 && nohup python3 ${SCRIPT_PATHS.runAgent} > /var/log/vm0/main-${runId}.log 2>&1 &`,
     );
 
     log.debug(`Agent execution started in background for run ${runId}`);

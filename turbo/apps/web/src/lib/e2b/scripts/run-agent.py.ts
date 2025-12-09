@@ -23,8 +23,8 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
-    SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG, STDERR_FILE,
-    HEARTBEAT_URL, HEARTBEAT_INTERVAL,
+    SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG,
+    HEARTBEAT_URL, HEARTBEAT_INTERVAL, LOG_DIR, AGENT_LOG_FILE,
     validate_config
 )
 from log import log_info, log_error, log_warn
@@ -103,21 +103,44 @@ def main():
     cmd = [claude_bin] + claude_args + [PROMPT]
 
     # Execute Claude and process output stream
-    # Redirect stderr to file for error capture, process stdout (JSONL) in pipe
+    # Capture both stdout and stderr, write to log file, keep stderr in memory for error extraction
     claude_exit_code = 0
+    stderr_lines = []  # Keep stderr in memory for error message extraction
+
+    def stderr_reader(proc_stderr, log_file, stderr_buffer):
+        """Background thread to read stderr and write to log file."""
+        for line in proc_stderr:
+            stderr_buffer.append(line)
+            log_file.write(f"[STDERR] {line}")
+            log_file.flush()
 
     try:
-        with open(STDERR_FILE, "w") as stderr_file:
+        # Ensure log directory exists
+        os.makedirs(LOG_DIR, exist_ok=True)
+
+        with open(AGENT_LOG_FILE, "w") as log_file:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=stderr_file,
+                stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1  # Line buffered for real-time processing
             )
 
-            # Process JSONL output line by line
+            # Start background thread to read stderr
+            stderr_thread = threading.Thread(
+                target=stderr_reader,
+                args=(proc.stderr, log_file, stderr_lines),
+                daemon=True
+            )
+            stderr_thread.start()
+
+            # Process JSONL output line by line from stdout
             for line in proc.stdout:
+                # Write raw line to log file
+                log_file.write(line)
+                log_file.flush()
+
                 line = line.strip()
 
                 # Skip empty lines
@@ -141,8 +164,9 @@ def main():
                     # Not valid JSON, skip
                     pass
 
-            # Wait for process to complete
+            # Wait for process and stderr thread to complete
             proc.wait()
+            stderr_thread.join(timeout=5)
             claude_exit_code = proc.returncode
 
     except Exception as e:
@@ -175,17 +199,12 @@ def main():
         if claude_exit_code != 0:
             log_info(f"Claude Code failed with exit code {claude_exit_code}")
 
-            # Try to get detailed error from stderr file
-            if os.path.exists(STDERR_FILE) and os.path.getsize(STDERR_FILE) > 0:
-                try:
-                    with open(STDERR_FILE) as f:
-                        lines = f.readlines()
-                        # Get last few lines of stderr, clean up formatting
-                        last_lines = lines[-5:] if len(lines) >= 5 else lines
-                        error_message = " ".join(line.strip() for line in last_lines)
-                    log_info(f"Captured stderr: {error_message}")
-                except IOError:
-                    error_message = f"Agent exited with code {claude_exit_code}"
+            # Get detailed error from captured stderr lines in memory
+            if stderr_lines:
+                # Get last few lines of stderr, clean up formatting
+                last_lines = stderr_lines[-5:] if len(stderr_lines) >= 5 else stderr_lines
+                error_message = " ".join(line.strip() for line in last_lines)
+                log_info(f"Captured stderr: {error_message}")
             else:
                 error_message = f"Agent exited with code {claude_exit_code}"
 
@@ -209,8 +228,8 @@ def main():
     shutdown_event.set()
     log_info("Heartbeat thread stopped")
 
-    # Cleanup temp files
-    for temp_file in [SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG, STDERR_FILE]:
+    # Cleanup temp files (but preserve log files in /var/log/vm0/)
+    for temp_file in [SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG]:
         try:
             os.remove(temp_file)
         except OSError:
