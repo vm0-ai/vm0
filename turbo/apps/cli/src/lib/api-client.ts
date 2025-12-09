@@ -342,6 +342,11 @@ class ApiClient {
       Authorization: `Bearer ${token}`,
     };
 
+    // Add Content-Type for JSON bodies (string bodies are assumed to be JSON)
+    if (typeof options?.body === "string") {
+      headers["Content-Type"] = "application/json";
+    }
+
     // Add Vercel bypass secret if available
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) {
