@@ -18,9 +18,7 @@ describe("secret-masker", () => {
       const masker = createSecretMasker(["secret123"]);
       const result = masker.mask("secret123 and again secret123");
 
-      expect(result).toBe(
-        `${MASK_PLACEHOLDER} and again ${MASK_PLACEHOLDER}`,
-      );
+      expect(result).toBe(`${MASK_PLACEHOLDER} and again ${MASK_PLACEHOLDER}`);
     });
 
     it("should mask multiple different secrets", () => {
@@ -246,7 +244,8 @@ describe("secret-masker", () => {
         sessionId: "sess-123",
         data: {
           tool: "bash",
-          input: "curl -H 'Authorization: Bearer sk-proj-abc123xyz' https://api.example.com",
+          input:
+            "curl -H 'Authorization: Bearer sk-proj-abc123xyz' https://api.example.com",
           output: "Response received",
         },
       };
