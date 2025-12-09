@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.0.0](https://github.com/vm0-ai/vm0/compare/web-v4.9.0...web-v5.0.0) (2025-12-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Server-level Minimax configuration removed. Users must configure API credentials via vm0 secrets and Agent Compose environment.
+
+### Features
+
+* **secrets:** mask user secrets in agent events before database storage ([#438](https://github.com/vm0-ai/vm0/issues/438)) ([0285f68](https://github.com/vm0-ai/vm0/commit/0285f68576f2bee83fc6a31fd51dddb88b399d66))
+
+
+### Code Refactoring
+
+* remove server-level Minimax config, use Agent Compose secrets ([#439](https://github.com/vm0-ai/vm0/issues/439)) ([b84f931](https://github.com/vm0-ai/vm0/commit/b84f9315d1516746179626b06ca712250c3d2182))
+
 ## [4.9.0](https://github.com/vm0-ai/vm0/compare/web-v4.8.2...web-v4.9.0) (2025-12-08)
 
 
