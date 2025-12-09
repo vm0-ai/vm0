@@ -12,6 +12,7 @@ export { INCREMENTAL_SCRIPT } from "./lib/incremental.py";
 export { DOWNLOAD_SCRIPT } from "./lib/download.py";
 export { CHECKPOINT_SCRIPT } from "./lib/checkpoint.py";
 export { MOCK_CLAUDE_SCRIPT } from "./lib/mock_claude.py";
+export { METRICS_SCRIPT } from "./lib/metrics.py";
 export { RUN_AGENT_SCRIPT } from "./run-agent.py";
 
 /**
@@ -31,4 +32,5 @@ export const SCRIPT_PATHS = {
   download: "/usr/local/bin/vm0-agent/lib/download.py",
   checkpoint: "/usr/local/bin/vm0-agent/lib/checkpoint.py",
   mockClaude: "/usr/local/bin/vm0-agent/lib/mock_claude.py",
+  metrics: "/usr/local/bin/vm0-agent/lib/metrics.py",
 } as const;

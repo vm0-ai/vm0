@@ -30,6 +30,7 @@ from log import log_info, log_error, log_warn
 from events import send_event
 from checkpoint import create_checkpoint
 from http_client import http_post_json
+from metrics import start_metrics_collector
 
 # Global shutdown event for heartbeat thread
 shutdown_event = threading.Event()
@@ -60,6 +61,10 @@ def main():
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
     log_info("Heartbeat thread started")
+
+    # Start metrics collector thread
+    metrics_thread = start_metrics_collector(shutdown_event)
+    log_info("Metrics collector thread started")
 
     # Change to working directory
     try:

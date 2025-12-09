@@ -55,6 +55,12 @@ EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 # Log file for persistent logging (directly in /tmp with vm0- prefix)
 AGENT_LOG_FILE = f"/tmp/vm0-agent-{RUN_ID}.log"
 
+# Metrics log file for system resource metrics (JSONL format)
+METRICS_LOG_FILE = f"/tmp/vm0-metrics-{RUN_ID}.jsonl"
+
+# Metrics collection configuration
+METRICS_INTERVAL = 5  # seconds
+
 def validate_config() -> bool:
     """Validate required configuration. Returns True if valid, exits if not."""
     if not WORKING_DIR:

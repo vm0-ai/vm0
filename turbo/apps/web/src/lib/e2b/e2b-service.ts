@@ -21,6 +21,7 @@ import {
   DOWNLOAD_SCRIPT,
   CHECKPOINT_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
+  METRICS_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
@@ -446,6 +447,7 @@ export class E2BService {
       { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
       { content: CHECKPOINT_SCRIPT, path: SCRIPT_PATHS.checkpoint },
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
+      { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
   }
