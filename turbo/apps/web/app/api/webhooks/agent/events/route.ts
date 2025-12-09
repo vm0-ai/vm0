@@ -17,6 +17,8 @@ import type {
   WebhookRequest,
   WebhookResponse,
 } from "../../../../../src/types/webhook";
+import { createSecretMasker } from "../../../../../src/lib/secrets/secret-masker";
+import { getAllSecretValues } from "../../../../../src/lib/secrets/secrets-service";
 
 /**
  * POST /api/webhooks/agent/events
@@ -71,12 +73,16 @@ export async function POST(request: NextRequest) {
 
     const lastSequence = lastEvent?.maxSeq ?? 0;
 
-    // Prepare events for insertion
+    // Get user secrets and create masker for protecting sensitive data
+    const secretValues = await getAllSecretValues(userId);
+    const masker = createSecretMasker(secretValues);
+
+    // Prepare events for insertion with secrets masked
     const eventsToInsert = body.events.map((event, index) => ({
       runId: body.runId,
       sequenceNumber: lastSequence + index + 1,
       eventType: event.type,
-      eventData: event,
+      eventData: masker.mask(event),
     }));
 
     // Insert events in batch

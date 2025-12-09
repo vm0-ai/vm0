@@ -113,3 +113,18 @@ export async function getSecretValues(
 
   return result;
 }
+
+/**
+ * Get all decrypted secret values for a user.
+ * Used internally for secret masking in event logs - never expose to API.
+ */
+export async function getAllSecretValues(userId: string): Promise<string[]> {
+  const secrets = await globalThis.services.db
+    .select({
+      encryptedValue: userSecrets.encryptedValue,
+    })
+    .from(userSecrets)
+    .where(eq(userSecrets.userId, userId));
+
+  return secrets.map((secret) => decryptSecret(secret.encryptedValue));
+}
