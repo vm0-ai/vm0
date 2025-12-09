@@ -72,30 +72,34 @@ npm install -g @vm0/cli
 
 ## Quick start
 
-### Fastest way
+### Fastest way (with cookbooks)
+
+Try a ready-to-use example:
 
 ```bash
 vm0 auth login
-vm0 build vm0.yaml
-mkdir workspace && cd workspace
-vm0 artifact init
-vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
-vm0 artifact pull
+
+# Clone examples
+git clone https://github.com/vm0-ai/vm0-cookbooks.git
+cd vm0-cookbooks/101-intro
+
+# Run with auto-setup
+vm0 cook "echo hello world to readme.md"
 ```
 
-> **💡 Tip:** Check out [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) for ready-to-use examples with `vm0 cook` command that auto-handles setup.
+The `vm0 cook` command automatically handles volume and artifact setup.
 
-### Manual setup (step by step)
+> 📚 **Explore more:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 10+ examples including writing agents, web scrapers, ML trainers, and more.
 
-For full control over volumes and artifacts:
+### From scratch (build your own)
 
-**1. Login**
+Create your own agent from scratch:
+
 ```bash
+# 1. Login
 vm0 auth login
-```
 
-**2. Create agent config**
-```bash
+# 2. Create agent config
 cat > vm0.yaml << 'EOF'
 version: "1.0"
 agents:
@@ -110,38 +114,23 @@ volumes:
     name: claude-files
     version: latest
 EOF
-```
 
-**3. Build agent**
-```bash
+# 3. Build agent
 vm0 build vm0.yaml
-```
 
-**4. Prepare volume (if needed)**
-```bash
-mkdir claude-files && cd claude-files
-vm0 volume init
-vm0 volume push
-cd ..
-```
-
-**5. Prepare artifact workspace**
-```bash
+# 4. Setup workspace
 mkdir workspace && cd workspace
 vm0 artifact init
-vm0 artifact push  # Optional: upload existing files
-```
 
-**6. Run agent**
-```bash
+# 5. Run agent
 vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
-```
 
-**7. Get results**
-```bash
+# 6. Get results
 vm0 artifact pull
 cat hello.py
 ```
+
+> 📖 **Learn more:** See the [complete guide to creating agents](https://github.com/vm0-ai/vm0-cookbooks/blob/main/docs/vm0-guide.md) for advanced features like custom skills, secrets, and more.
 
 ## CLI reference
 
@@ -239,8 +228,6 @@ export ENV=production
 export VERSION=v1.0.0
 vm0 build vm0.yaml
 ```
-
-> 📖 **Learn more:** See the [complete guide to creating your own agents](https://github.com/vm0-ai/vm0-cookbooks/blob/main/docs/vm0-guide.md) for step-by-step instructions, best practices, and advanced features like skills and secrets.
 
 ## Key concepts
 
