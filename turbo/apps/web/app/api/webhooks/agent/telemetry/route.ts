@@ -15,6 +15,7 @@ import {
 } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
+/** Logger instance for telemetry webhook */
 const log = logger("webhooks:telemetry");
 
 /**
