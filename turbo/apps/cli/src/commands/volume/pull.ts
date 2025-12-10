@@ -46,7 +46,7 @@ export const pullCommand = new Command()
       // Download from API
       console.log(chalk.gray("Downloading..."));
 
-      let url = `/api/storages?name=${encodeURIComponent(config.name)}`;
+      let url = `/api/storages?name=${encodeURIComponent(config.name)}&type=volume`;
       if (versionId) {
         url += `&version=${encodeURIComponent(versionId)}`;
       }
