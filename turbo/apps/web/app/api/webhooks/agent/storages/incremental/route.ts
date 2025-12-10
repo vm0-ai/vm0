@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {
@@ -7,15 +7,6 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../../src/lib/errors";
 import {
   downloadManifest,
   createArchiveFromBlobs,
@@ -39,20 +30,6 @@ import type {
 
 const log = logger("webhook:storages:incremental");
 
-interface StorageVersionResponse {
-  versionId: string;
-  storageName: string;
-  size: number;
-  fileCount: number;
-  incrementalStats?: {
-    addedFiles: number;
-    modifiedFiles: number;
-    deletedFiles: number;
-    unchangedFiles: number;
-    bytesUploaded: number;
-  };
-}
-
 interface ChangesPayload {
   added: string[];
   modified: string[];
@@ -60,9 +37,24 @@ interface ChangesPayload {
 }
 
 /**
+ * Standard error response format matching ts-rest API pattern
+ */
+function errorResponse(
+  message: string,
+  code: string,
+  status: number,
+): NextResponse {
+  return NextResponse.json({ error: { message, code } }, { status });
+}
+
+/**
  * POST /api/webhooks/agent/storages/incremental
  * Create a new version of a storage using incremental upload
  * Only uploads changed files, reusing blob references for unchanged files
+ *
+ * Note: This endpoint handles binary file upload which doesn't fit
+ * the standard ts-rest JSON handler pattern. Error responses are
+ * standardized to match other ts-rest endpoints.
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -74,7 +66,7 @@ export async function POST(request: NextRequest) {
     // Authenticate using bearer token
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
     }
 
     // Parse multipart form data
@@ -88,26 +80,34 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!runId) {
-      throw new BadRequestError("Missing runId");
+      return errorResponse("runId: runId is required", "BAD_REQUEST", 400);
     }
 
     if (!storageName) {
-      throw new BadRequestError("Missing storageName");
+      return errorResponse(
+        "storageName: storageName is required",
+        "BAD_REQUEST",
+        400,
+      );
     }
 
     if (!baseVersion) {
-      throw new BadRequestError("Missing baseVersion");
+      return errorResponse(
+        "baseVersion: baseVersion is required",
+        "BAD_REQUEST",
+        400,
+      );
     }
 
     if (!changesJson) {
-      throw new BadRequestError("Missing changes");
+      return errorResponse("changes: changes is required", "BAD_REQUEST", 400);
     }
 
     let changes: ChangesPayload;
     try {
       changes = JSON.parse(changesJson) as ChangesPayload;
     } catch {
-      throw new BadRequestError("Invalid changes JSON");
+      return errorResponse("changes: Invalid JSON", "BAD_REQUEST", 400);
     }
 
     // Validate ChangesPayload structure
@@ -116,8 +116,10 @@ export async function POST(request: NextRequest) {
       !Array.isArray(changes.modified) ||
       !Array.isArray(changes.deleted)
     ) {
-      throw new BadRequestError(
-        "Invalid changes structure: added, modified, and deleted must be arrays",
+      return errorResponse(
+        "changes: added, modified, and deleted must be arrays",
+        "BAD_REQUEST",
+        400,
       );
     }
 
@@ -136,7 +138,7 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return errorResponse("Agent run not found", "NOT_FOUND", 404);
     }
 
     // Find the storage by name and user
@@ -147,7 +149,11 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!storage) {
-      throw new NotFoundError(`Storage "${storageName}"`);
+      return errorResponse(
+        `Storage "${storageName}" not found`,
+        "NOT_FOUND",
+        404,
+      );
     }
 
     // Get base version info
@@ -163,7 +169,11 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!baseVersionRecord) {
-      throw new NotFoundError(`Base version "${baseVersion}"`);
+      return errorResponse(
+        `Base version "${baseVersion}" not found`,
+        "NOT_FOUND",
+        404,
+      );
     }
 
     // Download base manifest from S3
@@ -218,7 +228,11 @@ export async function POST(request: NextRequest) {
           path.isAbsolute(relativePath) ||
           relativePath.startsWith("/")
         ) {
-          throw new BadRequestError(`Invalid file path: ${relativePath}`);
+          return errorResponse(
+            `Invalid file path: ${relativePath}`,
+            "BAD_REQUEST",
+            400,
+          );
         }
 
         const filePath = path.join(extractPath, relativePath);
@@ -226,7 +240,11 @@ export async function POST(request: NextRequest) {
         // Additional security check: ensure resolved path is within extractPath
         const resolvedPath = path.resolve(filePath);
         if (!resolvedPath.startsWith(path.resolve(extractPath) + path.sep)) {
-          throw new BadRequestError(`Invalid file path: ${relativePath}`);
+          return errorResponse(
+            `Invalid file path: ${relativePath}`,
+            "BAD_REQUEST",
+            400,
+          );
         }
 
         try {
@@ -392,7 +410,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return response
-    const response: StorageVersionResponse = {
+    return NextResponse.json({
       versionId,
       storageName,
       size: totalSize,
@@ -404,9 +422,7 @@ export async function POST(request: NextRequest) {
         unchangedFiles: unchangedCount,
         bytesUploaded,
       },
-    };
-
-    return successResponse(response, 200);
+    });
   } catch (error) {
     log.error("Error:", error);
 
@@ -417,6 +433,10 @@ export async function POST(request: NextRequest) {
         .catch(console.error);
     }
 
-    return errorResponse(error);
+    return errorResponse(
+      error instanceof Error ? error.message : "Internal server error",
+      "INTERNAL_ERROR",
+      500,
+    );
   }
 }

@@ -12,5 +12,93 @@
  * Track: https://github.com/ts-rest/ts-rest/releases
  */
 export { initContract } from "./base";
-export { apiErrorSchema, type ApiErrorResponse } from "./errors";
+export {
+  apiErrorSchema,
+  ApiError,
+  createErrorResponse,
+  type ApiErrorKey,
+  type ApiErrorResponse,
+} from "./errors";
 export { secretsContract, type SecretsContract } from "./secrets";
+export {
+  composesMainContract,
+  composesByIdContract,
+  composesVersionsContract,
+  type ComposesMainContract,
+  type ComposesByIdContract,
+  type ComposesVersionsContract,
+  agentNameSchema,
+  volumeConfigSchema,
+  agentDefinitionSchema,
+  agentComposeContentSchema,
+  composeResponseSchema,
+} from "./composes";
+export {
+  runsMainContract,
+  runsByIdContract,
+  runEventsContract,
+  runStatusSchema,
+  unifiedRunRequestSchema,
+  createRunResponseSchema,
+  getRunResponseSchema,
+  runEventSchema,
+  eventsResponseSchema,
+  type RunsMainContract,
+  type RunsByIdContract,
+  type RunEventsContract,
+} from "./runs";
+export {
+  sessionsMainContract,
+  sessionsByIdContract,
+  agentSessionSchema,
+  conversationSchema,
+  agentSessionWithConversationSchema,
+  type SessionsMainContract,
+  type SessionsByIdContract,
+} from "./sessions";
+export {
+  storagesContract,
+  storageTypeSchema,
+  uploadStorageResponseSchema,
+  type StoragesContract,
+} from "./storages";
+export {
+  webhookEventsContract,
+  webhookCompleteContract,
+  webhookCheckpointsContract,
+  webhookHeartbeatContract,
+  webhookStoragesContract,
+  webhookStoragesIncrementalContract,
+  type WebhookEventsContract,
+  type WebhookCompleteContract,
+  type WebhookCheckpointsContract,
+  type WebhookHeartbeatContract,
+  type WebhookStoragesContract,
+  type WebhookStoragesIncrementalContract,
+} from "./webhooks";
+export {
+  cliAuthDeviceContract,
+  cliAuthTokenContract,
+  type CliAuthDeviceContract,
+  type CliAuthTokenContract,
+} from "./cli-auth";
+export { authContract, type AuthContract } from "./auth";
+export {
+  imagesMainContract,
+  imagesByIdContract,
+  imageBuildsContract,
+  buildStatusSchema,
+  imageInfoSchema,
+  createImageRequestSchema,
+  createImageResponseSchema,
+  buildStatusResponseSchema,
+  type ImagesMainContract,
+  type ImagesByIdContract,
+  type ImageBuildsContract,
+} from "./images";
+export {
+  cronCleanupSandboxesContract,
+  cleanupResultSchema,
+  cleanupResponseSchema,
+  type CronCleanupSandboxesContract,
+} from "./cron";

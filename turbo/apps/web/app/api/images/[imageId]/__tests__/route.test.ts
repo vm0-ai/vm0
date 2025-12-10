@@ -68,7 +68,7 @@ describe("DELETE /api/images/:imageId", () => {
 
   it("should delete an existing image", async () => {
     // Create an image first
-    const createRequest = new Request("http://localhost:3000/api/images", {
+    const createRequest = new NextRequest("http://localhost:3000/api/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -76,26 +76,27 @@ describe("DELETE /api/images/:imageId", () => {
         alias: "delete-me-image",
       }),
     });
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     const createData = await createResponse.json();
     const imageId = createData.imageId;
 
     // Delete the image
-    const deleteRequest = new Request(
+    const deleteRequest = new NextRequest(
       `http://localhost:3000/api/images/${imageId}`,
       { method: "DELETE" },
     );
 
-    const response = await DELETE(deleteRequest as NextRequest, {
-      params: Promise.resolve({ imageId }),
-    });
+    const response = await DELETE(deleteRequest);
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(data.deleted).toBe(true);
 
     // Verify it's gone
-    const listResponse = await GET();
+    const listRequest = new NextRequest("http://localhost:3000/api/images", {
+      method: "GET",
+    });
+    const listResponse = await GET(listRequest);
     const listData = await listResponse.json();
     const imageNames = listData.images.map((i: { alias: string }) => i.alias);
     expect(imageNames).not.toContain("delete-me-image");
@@ -103,14 +104,12 @@ describe("DELETE /api/images/:imageId", () => {
 
   it("should return 404 for non-existent image", async () => {
     const fakeImageId = "00000000-0000-0000-0000-000000000000";
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${fakeImageId}`,
       { method: "DELETE" },
     );
 
-    const response = await DELETE(request as NextRequest, {
-      params: Promise.resolve({ imageId: fakeImageId }),
-    });
+    const response = await DELETE(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -120,7 +119,7 @@ describe("DELETE /api/images/:imageId", () => {
   it("should not delete another user's image", async () => {
     // Create as user 1
     mockUserId = testUserId;
-    const createRequest = new Request("http://localhost:3000/api/images", {
+    const createRequest = new NextRequest("http://localhost:3000/api/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -128,20 +127,18 @@ describe("DELETE /api/images/:imageId", () => {
         alias: "user1-private-image",
       }),
     });
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     const createData = await createResponse.json();
     const imageId = createData.imageId;
 
     // Try to delete as user 2
     mockUserId = testUserId2;
-    const deleteRequest = new Request(
+    const deleteRequest = new NextRequest(
       `http://localhost:3000/api/images/${imageId}`,
       { method: "DELETE" },
     );
 
-    const response = await DELETE(deleteRequest as NextRequest, {
-      params: Promise.resolve({ imageId }),
-    });
+    const response = await DELETE(deleteRequest);
     const data = await response.json();
 
     expect(response.status).toBe(403);
@@ -153,14 +150,12 @@ describe("DELETE /api/images/:imageId", () => {
   it("should require authentication", async () => {
     mockUserId = null;
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/images/any-image-id",
       { method: "DELETE" },
     );
 
-    const response = await DELETE(request as NextRequest, {
-      params: Promise.resolve({ imageId: "any-image-id" }),
-    });
+    const response = await DELETE(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);

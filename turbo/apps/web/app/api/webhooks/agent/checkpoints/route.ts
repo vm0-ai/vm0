@@ -1,63 +1,24 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { webhookCheckpointsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { checkpointService } from "../../../../../src/lib/checkpoint";
-import type {
-  CheckpointRequest,
-  CheckpointResponse,
-} from "../../../../../src/lib/checkpoint";
-// Note: vm0_result and vm0_error events are now sent by the complete API
 
-/**
- * POST /api/webhooks/agent/checkpoints
- * Create checkpoint for completed agent run
- */
-export async function POST(request: NextRequest) {
-  try {
-    // Initialize services
+const router = tsr.router(webhookCheckpointsContract, {
+  create: async ({ body }) => {
     initServices();
 
-    // Authenticate using bearer token
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    // Parse request body
-    const body: CheckpointRequest = await request.json();
-
-    // Validate required fields
-    if (!body.runId) {
-      throw new BadRequestError("Missing runId");
-    }
-
-    if (!body.cliAgentType) {
-      throw new BadRequestError("Missing cliAgentType");
-    }
-
-    if (!body.cliAgentSessionId) {
-      throw new BadRequestError("Missing cliAgentSessionId");
-    }
-
-    if (!body.cliAgentSessionHistory) {
-      throw new BadRequestError("Missing cliAgentSessionHistory");
-    }
-
-    if (!body.artifactSnapshot) {
-      throw new BadRequestError(
-        "Missing artifactSnapshot (artifact is required)",
-      );
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     console.log(
@@ -72,32 +33,87 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Note: We don't check run status here because the checkpoint is called from within
     // the sandbox before the E2B service updates the run status to "completed"
 
-    // Create checkpoint
-    const result = await checkpointService.createCheckpoint(body);
+    try {
+      // Create checkpoint
+      const result = await checkpointService.createCheckpoint(body);
 
-    console.log(
-      `[Checkpoint API] Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
-    );
+      console.log(
+        `[Checkpoint API] Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
+      );
 
-    // Note: vm0_result event is now sent by the complete API
-    // This endpoint only handles checkpoint data persistence
+      // Note: vm0_result event is now sent by the complete API
+      // This endpoint only handles checkpoint data persistence
 
-    // Return response
-    const response: CheckpointResponse = result;
+      return {
+        status: 200 as const,
+        body: {
+          checkpointId: result.checkpointId,
+          agentSessionId: result.agentSessionId,
+          conversationId: result.conversationId,
+          artifact: result.artifact,
+          volumes: result.volumes,
+        },
+      };
+    } catch (error) {
+      console.error("[Checkpoint API] Error:", error);
 
-    return successResponse(response, 200);
-  } catch (error) {
-    console.error("[Checkpoint API] Error:", error);
+      // Note: vm0_error event is now sent by the complete API
+      // If checkpoint fails, run-agent.sh will call complete API with exitCode != 0
 
-    // Note: vm0_error event is now sent by the complete API
-    // If checkpoint fails, run-agent.sh will call complete API with exitCode != 0
+      return {
+        status: 500 as const,
+        body: {
+          error: {
+            message:
+              error instanceof Error ? error.message : "Internal server error",
+            code: "INTERNAL_ERROR",
+          },
+        },
+      };
+    }
+  },
+});
 
-    return errorResponse(error);
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "bodyError" in err) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(webhookCheckpointsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as POST };

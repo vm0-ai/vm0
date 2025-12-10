@@ -1,46 +1,26 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { webhookHeartbeatContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhooks:heartbeat");
 
-interface HeartbeatRequest {
-  runId: string;
-}
-
-interface HeartbeatResponse {
-  ok: boolean;
-}
-
-/**
- * POST /api/webhooks/agent/heartbeat
- * Receive heartbeat signals from E2B sandbox to indicate agent is still alive
- */
-export async function POST(request: NextRequest) {
-  try {
+const router = tsr.router(webhookHeartbeatContract, {
+  send: async ({ body }) => {
     initServices();
 
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    const body: HeartbeatRequest = await request.json();
-
-    if (!body.runId) {
-      throw new BadRequestError("Missing runId");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     const result = await globalThis.services.db
@@ -50,15 +30,52 @@ export async function POST(request: NextRequest) {
       .returning({ id: agentRuns.id });
 
     if (result.length === 0) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     log.debug(`Updated heartbeat for run ${body.runId}`);
 
-    const response: HeartbeatResponse = { ok: true };
-    return successResponse(response, 200);
-  } catch (error) {
-    log.error("Heartbeat error:", error);
-    return errorResponse(error);
+    return {
+      status: 200 as const,
+      body: { ok: true },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "bodyError" in err) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(webhookHeartbeatContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as POST };

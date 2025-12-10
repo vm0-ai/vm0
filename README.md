@@ -1,5 +1,3 @@
-# VM0
-
 <p align="center">
   <img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="120" />
 </p>
@@ -31,7 +29,7 @@
 
 ## What is VM0?
 
-AI development today is held back by two outdated models:
+VM0 is born for agent building. AI development today is held back by two outdated models:
 
 - 🧱 **Container runners**: traditional tech stack
 - 🔗 **Workflow builders**: rigid, brittle, not agent-native
@@ -55,10 +53,10 @@ No drag-and-drop. No pipelines.
 VM0 supports the new wave of developer-native agent CLIs:
 
 - Claude Code
-- OpenAI Codex
-- Gemini CLI
-- Cursor CLI
-- Any custom CLI agent
+- OpenAI Codex (Coming soon)
+- Gemini CLI (Coming soon)
+- Cursor CLI (Coming soon)
+- Any custom CLI agent (Coming soon)
 
 VM0 integrates seamlessly into your development environment.
 
@@ -69,6 +67,7 @@ VM0 integrates seamlessly into your development environment.
 ```bash
 npm install -g @vm0/cli
 ```
+> **VM0 waitlist sign-up required:** VM0 is currently in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to unlock VM0. Once approved, you can sign in and start building.
 
 ## Quick start
 
@@ -89,9 +88,9 @@ vm0 cook "echo hello world to readme.md"
 
 The `vm0 cook` command automatically handles volume and artifact setup.
 
-> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide →](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
+> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
 
-> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 10+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
+> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 9+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
 
 ### From scratch (build your own)
 
@@ -232,7 +231,7 @@ Your AI worker with persistent configuration and memory. Define its capabilities
 
 ### Images
 
-Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Like Docker images but for AI agents, they're built with E2B templates and ensure consistent execution across runs.
+Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Similar to Docker images but tailored for AI agents, they ensure consistent execution and behavior across runs.
 
 ### Artifacts
 
@@ -254,7 +253,7 @@ Lightweight continuations where the agent remembers the conversation but uses yo
 
 | Use case | Description | Example |
 |----------|-------------|---------|
-| **Coding agents** | Execute code, use terminal, access the web - securely isolated | [GitHub agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/109-github-agent) |
+| **Code management agent** | Discovers trending repositories and manages issues, PRs, and repo tasks in Github.| [GitHub agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/109-github-agent) |
 | **Research agents** | Gather, analyze, and iterate in persistent workspaces | [Competitor research](https://github.com/vm0-ai/vm0-cookbooks/tree/main/108-competitor-research) |
 | **Data agents** | Process datasets, train models, generate reports with full state | [HuggingFace trainer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/105-hf-trainer) |
 | **Content agents** | Create, refine, and version content across multiple runs | [Content farm](https://github.com/vm0-ai/vm0-cookbooks/tree/main/104-content-farm), [TikTok influencer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/106-tiktok-influencer) |

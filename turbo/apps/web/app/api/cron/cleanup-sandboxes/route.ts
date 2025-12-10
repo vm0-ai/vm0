@@ -1,13 +1,10 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
+import { headers } from "next/headers";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq, and, lt, isNotNull } from "drizzle-orm";
 import { e2bService } from "../../../../src/lib/e2b/e2b-service";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../src/lib/api-response";
-import { UnauthorizedError } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:cleanup-sandboxes");
@@ -22,30 +19,17 @@ interface CleanupResult {
   error?: string;
 }
 
-interface CleanupResponse {
-  cleaned: number;
-  errors: number;
-  results: CleanupResult[];
-}
-
-/**
- * GET /api/cron/cleanup-sandboxes
- * Cron job to cleanup sandboxes that have stopped sending heartbeats
- *
- * This endpoint is called by Vercel Cron every minute.
- * It finds all running agent runs that haven't sent a heartbeat in 2+ minutes
- * and cleans them up.
- */
-export async function GET(request: NextRequest) {
-  try {
+const router = tsr.router(cronCleanupSandboxesContract, {
+  cleanup: async () => {
     initServices();
 
     // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
-    const authHeader = request.headers.get("authorization");
+    const headersList = await headers();
+    const authHeader = headersList.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      throw new UnauthorizedError("Invalid cron secret");
+      return createErrorResponse("UNAUTHORIZED", "Invalid cron secret");
     }
 
     const cutoffTime = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
@@ -72,12 +56,14 @@ export async function GET(request: NextRequest) {
 
     if (expiredRuns.length === 0) {
       log.debug("No expired sandboxes found");
-      const response: CleanupResponse = {
-        cleaned: 0,
-        errors: 0,
-        results: [],
+      return {
+        status: 200 as const,
+        body: {
+          cleaned: 0,
+          errors: 0,
+          results: [],
+        },
       };
-      return successResponse(response, 200);
     }
 
     log.debug(`Found ${expiredRuns.length} expired sandboxes to cleanup`);
@@ -123,15 +109,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const response: CleanupResponse = {
-      cleaned: results.filter((r) => r.status === "cleaned").length,
-      errors: results.filter((r) => r.status === "error").length,
-      results,
+    return {
+      status: 200 as const,
+      body: {
+        cleaned: results.filter((r) => r.status === "cleaned").length,
+        errors: results.filter((r) => r.status === "error").length,
+        results,
+      },
     };
+  },
+});
 
-    return successResponse(response, 200);
-  } catch (error) {
-    log.error("Cron cleanup error:", error);
-    return errorResponse(error);
-  }
-}
+const handler = createNextHandler(cronCleanupSandboxesContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+});
+
+export { handler as GET };

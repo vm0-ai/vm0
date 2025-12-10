@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
@@ -7,15 +7,6 @@ import {
 } from "../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { uploadStorageVersionArchive } from "../../../../../src/lib/s3/s3-client";
 import { blobService } from "../../../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
@@ -31,17 +22,25 @@ import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:storages");
 
-interface StorageVersionResponse {
-  versionId: string;
-  storageName: string;
-  size: number;
-  fileCount: number;
+/**
+ * Standard error response format matching ts-rest API pattern
+ */
+function errorResponse(
+  message: string,
+  code: string,
+  status: number,
+): NextResponse {
+  return NextResponse.json({ error: { message, code } }, { status });
 }
 
 /**
  * POST /api/webhooks/agent/storages
  * Create a new version of a storage from sandbox
  * Accepts multipart form data with storage content as tar.gz
+ *
+ * Note: This endpoint handles binary file upload which doesn't fit
+ * the standard ts-rest JSON handler pattern. Error responses are
+ * standardized to match other ts-rest endpoints.
  */
 export async function POST(request: NextRequest) {
   let tempDir: string | null = null;
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Authenticate using bearer token
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
     }
 
     // Parse multipart form data
@@ -65,15 +64,19 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!runId) {
-      throw new BadRequestError("Missing runId");
+      return errorResponse("runId: runId is required", "BAD_REQUEST", 400);
     }
 
     if (!storageName) {
-      throw new BadRequestError("Missing storageName");
+      return errorResponse(
+        "storageName: storageName is required",
+        "BAD_REQUEST",
+        400,
+      );
     }
 
     if (!file) {
-      throw new BadRequestError("Missing file");
+      return errorResponse("file: file is required", "BAD_REQUEST", 400);
     }
 
     log.debug(
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return errorResponse("Agent run not found", "NOT_FOUND", 404);
     }
 
     // Find the storage by name and user
@@ -99,7 +102,11 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!storage) {
-      throw new NotFoundError(`Storage "${storageName}"`);
+      return errorResponse(
+        `Storage "${storageName}" not found`,
+        "NOT_FOUND",
+        404,
+      );
     }
 
     // Create temp directory for extraction
@@ -156,7 +163,6 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     let versionId: string;
-    let deduplicated = false;
 
     if (existingVersion) {
       // Content already exists, use existing version (deduplication)
@@ -164,7 +170,6 @@ export async function POST(request: NextRequest) {
         `Version with same content already exists: ${existingVersion.id}`,
       );
       versionId = existingVersion.id;
-      deduplicated = true;
     } else {
       // Create new version record with content hash as ID
       const s3Key = `${userId}/${storageName}/${contentHash}`;
@@ -225,7 +230,7 @@ export async function POST(request: NextRequest) {
       .where(eq(storages.id, storage.id));
 
     log.debug(
-      `Successfully ${deduplicated ? "reused" : "created"} version ${versionId} for storage "${storageName}"`,
+      `Successfully created/reused version ${versionId} for storage "${storageName}"`,
     );
 
     // Clean up temp directory
@@ -233,14 +238,12 @@ export async function POST(request: NextRequest) {
     tempDir = null;
 
     // Return response
-    const response: StorageVersionResponse = {
+    return NextResponse.json({
       versionId,
       storageName,
       size: totalSize,
       fileCount,
-    };
-
-    return successResponse(response, 200);
+    });
   } catch (error) {
     log.error("Error:", error);
 
@@ -251,7 +254,11 @@ export async function POST(request: NextRequest) {
         .catch(console.error);
     }
 
-    return errorResponse(error);
+    return errorResponse(
+      error instanceof Error ? error.message : "Internal server error",
+      "INTERNAL_ERROR",
+      500,
+    );
   }
 }
 

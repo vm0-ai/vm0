@@ -1,53 +1,26 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { webhookEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../src/db/schema/agent-run-event";
 import { eq, max, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
-import type {
-  WebhookRequest,
-  WebhookResponse,
-} from "../../../../../src/types/webhook";
 import { createSecretMasker } from "../../../../../src/lib/secrets/secret-masker";
 import { getAllSecretValues } from "../../../../../src/lib/secrets/secrets-service";
 
-/**
- * POST /api/webhooks/agent/events
- * Receive agent events from E2B sandbox
- */
-export async function POST(request: NextRequest) {
-  try {
-    // Initialize services
+const router = tsr.router(webhookEventsContract, {
+  send: async ({ body }) => {
     initServices();
 
-    // Authenticate using bearer token
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    // Parse request body
-    const body: WebhookRequest = await request.json();
-
-    if (!body.runId) {
-      throw new BadRequestError("Missing runId");
-    }
-
-    if (!body.events || !Array.isArray(body.events)) {
-      throw new BadRequestError("Missing or invalid events array");
-    }
-
-    if (body.events.length === 0) {
-      throw new BadRequestError("Events array cannot be empty");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     console.log(
@@ -62,7 +35,12 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Get the last sequence number for this run
@@ -95,16 +73,46 @@ export async function POST(request: NextRequest) {
       `[Webhook] Stored events ${firstSequence}-${lastInsertedSequence} for run ${body.runId}`,
     );
 
-    // Return response
-    const response: WebhookResponse = {
-      received: body.events.length,
-      firstSequence,
-      lastSequence: lastInsertedSequence,
+    return {
+      status: 200 as const,
+      body: {
+        received: body.events.length,
+        firstSequence,
+        lastSequence: lastInsertedSequence,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "bodyError" in err) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
     };
 
-    return successResponse(response, 200);
-  } catch (error) {
-    console.error("[Webhook] Error:", error);
-    return errorResponse(error);
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(webhookEventsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as POST };

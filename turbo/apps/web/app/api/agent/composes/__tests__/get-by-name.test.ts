@@ -8,6 +8,25 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
+/**
+ * Helper to create a NextRequest for testing.
+ * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
+ */
+function createTestRequest(
+  url: string,
+  options?: {
+    method?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  },
+): NextRequest {
+  return new NextRequest(url, {
+    method: options?.method ?? "GET",
+    headers: options?.headers ?? {},
+    body: options?.body,
+  });
+}
+
 // Mock the auth module
 let mockUserId = "test-user-get-by-name";
 vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
@@ -42,30 +61,26 @@ describe("GET /api/agent/composes?name=<name>", () => {
       },
     };
 
-    const createRequest = new Request(
+    const createRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: config }),
       },
     );
 
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     const createData = await createResponse.json();
     expect(createResponse.status).toBe(201);
 
     // Now get it by name
-    const getRequest = new Request(
+    const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=test-get-by-name-success",
-      {
-        method: "GET",
-      },
+      { method: "GET" },
     );
 
-    const getResponse = await GET(getRequest as NextRequest);
+    const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
     expect(getResponse.status).toBe(200);
@@ -85,14 +100,12 @@ describe("GET /api/agent/composes?name=<name>", () => {
   });
 
   it("should return 400 when name does not exist", async () => {
-    const getRequest = new Request(
+    const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=nonexistent-agent",
-      {
-        method: "GET",
-      },
+      { method: "GET" },
     );
 
-    const getResponse = await GET(getRequest as NextRequest);
+    const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
     expect(getResponse.status).toBe(400);
@@ -101,15 +114,17 @@ describe("GET /api/agent/composes?name=<name>", () => {
   });
 
   it("should return 400 when name query parameter is missing", async () => {
-    const getRequest = new Request("http://localhost:3000/api/agent/composes", {
-      method: "GET",
-    });
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      { method: "GET" },
+    );
 
-    const getResponse = await GET(getRequest as NextRequest);
+    const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
     expect(getResponse.status).toBe(400);
-    expect(getData.error.message).toContain("Missing name query parameter");
+    // Zod validation returns "expected string, received undefined" for missing required params
+    expect(getData.error.message).toContain("expected string");
   });
 
   it("should only return compose for authenticated user", async () => {
@@ -127,30 +142,26 @@ describe("GET /api/agent/composes?name=<name>", () => {
       },
     };
 
-    const createRequest = new Request(
+    const createRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: config }),
       },
     );
 
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     expect(createResponse.status).toBe(201);
 
     // Try to get it as user 2
     mockUserId = "user-2-isolation";
-    const getRequest = new Request(
+    const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=test-user-isolation",
-      {
-        method: "GET",
-      },
+      { method: "GET" },
     );
 
-    const getResponse = await GET(getRequest as NextRequest);
+    const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
     expect(getResponse.status).toBe(400);
@@ -183,31 +194,27 @@ describe("GET /api/agent/composes?name=<name>", () => {
       },
     };
 
-    const createRequest = new Request(
+    const createRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: config }),
       },
     );
 
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     const createData = await createResponse.json();
     expect(createResponse.status).toBe(201);
 
     // Get it with URL-encoded name
     const encodedName = encodeURIComponent("test-agent-with-hyphens");
-    const getRequest = new Request(
+    const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes?name=${encodedName}`,
-      {
-        method: "GET",
-      },
+      { method: "GET" },
     );
 
-    const getResponse = await GET(getRequest as NextRequest);
+    const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
     expect(getResponse.status).toBe(200);

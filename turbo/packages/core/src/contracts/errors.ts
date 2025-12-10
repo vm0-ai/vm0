@@ -1,6 +1,38 @@
 import { z } from "zod";
 
 /**
+ * API error definitions with associated HTTP status codes
+ * Used across all API endpoints for consistent error responses
+ */
+export const ApiError = {
+  BAD_REQUEST: { status: 400 as const, code: "BAD_REQUEST" },
+  UNAUTHORIZED: { status: 401 as const, code: "UNAUTHORIZED" },
+  FORBIDDEN: { status: 403 as const, code: "FORBIDDEN" },
+  NOT_FOUND: { status: 404 as const, code: "NOT_FOUND" },
+  INTERNAL_SERVER_ERROR: {
+    status: 500 as const,
+    code: "INTERNAL_SERVER_ERROR",
+  },
+} as const;
+
+export type ApiErrorKey = keyof typeof ApiError;
+
+/**
+ * Helper to create a standardized error response
+ * Ensures the correct HTTP status code is always used with the error code
+ */
+export function createErrorResponse<K extends ApiErrorKey>(
+  errorKey: K,
+  message: string,
+) {
+  const { status, code } = ApiError[errorKey];
+  return {
+    status,
+    body: { error: { message, code } },
+  };
+}
+
+/**
  * Standard API error response schema
  * Used across all API endpoints for consistent error handling
  */

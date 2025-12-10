@@ -1,69 +1,98 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { runsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
-import type { GetAgentRunResponse } from "../../../../../src/types/agent-run";
 
-/**
- * GET /api/agent/runs/:id
- * Get agent run status and results
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    // Initialize services
+const router = tsr.router(runsByIdContract, {
+  getById: async ({ params }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
-
-    // Await params
-    const { id } = await params;
 
     // Query run from database
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.id, id))
+      .where(eq(agentRuns.id, params.id))
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
-    // Return response
-    const response: GetAgentRunResponse = {
-      runId: run.id,
-      agentComposeVersionId: run.agentComposeVersionId,
-      status: run.status as "pending" | "running" | "completed" | "failed",
-      prompt: run.prompt,
-      templateVars: run.templateVars as Record<string, string> | undefined,
-      sandboxId: run.sandboxId || undefined,
-      result: run.result as
-        | { output: string; executionTimeMs: number }
-        | undefined,
-      error: run.error || undefined,
-      createdAt: run.createdAt.toISOString(),
-      startedAt: run.startedAt?.toISOString(),
-      completedAt: run.completedAt?.toISOString(),
+    return {
+      status: 200 as const,
+      body: {
+        runId: run.id,
+        agentComposeVersionId: run.agentComposeVersionId,
+        status: run.status as
+          | "pending"
+          | "running"
+          | "completed"
+          | "failed"
+          | "timeout",
+        prompt: run.prompt,
+        templateVars: run.templateVars as Record<string, string> | undefined,
+        sandboxId: run.sandboxId || undefined,
+        result: run.result as
+          | { output: string; executionTimeMs: number }
+          | undefined,
+        error: run.error || undefined,
+        createdAt: run.createdAt.toISOString(),
+        startedAt: run.startedAt?.toISOString(),
+        completedAt: run.completedAt?.toISOString(),
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "pathParamsError" in err) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
     };
 
-    return successResponse(response);
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(runsByIdContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET };

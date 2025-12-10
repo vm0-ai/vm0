@@ -1,53 +1,29 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { composesVersionsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { eq, and, like } from "drizzle-orm";
 
-/**
- * GET /api/agent/composes/versions?composeId={id}&version={hashOrTag}
- * Resolve a version specifier to a full version ID
- *
- * Supports:
- * - "latest": returns HEAD version
- * - Full hash (64 chars): exact match
- * - Hash prefix (8+ chars): prefix match
- */
-export async function GET(request: NextRequest) {
-  try {
-    // Initialize services at serverless function entry
+const router = tsr.router(composesVersionsContract, {
+  resolveVersion: async ({ query }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    // Get parameters from query
-    const { searchParams } = new URL(request.url);
-    const composeId = searchParams.get("composeId");
-    const version = searchParams.get("version");
-
-    if (!composeId) {
-      throw new BadRequestError("Missing composeId query parameter");
-    }
-
-    if (!version) {
-      throw new BadRequestError("Missing version query parameter");
-    }
+    const { composeId, version } = query;
 
     // Verify compose belongs to user
     const [compose] = await globalThis.services.db
@@ -59,28 +35,49 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!compose) {
-      throw new NotFoundError("Agent compose");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent compose not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Handle "latest" tag - return HEAD version
     if (version === "latest") {
       if (!compose.headVersionId) {
-        throw new BadRequestError(
-          "Agent compose has no versions. Run 'vm0 build' first.",
-        );
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Agent compose has no versions. Run 'vm0 build' first.",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
       }
 
-      return successResponse({
-        versionId: compose.headVersionId,
-        tag: "latest",
-      });
+      return {
+        status: 200 as const,
+        body: {
+          versionId: compose.headVersionId,
+          tag: "latest",
+        },
+      };
     }
 
     // Validate version format (must be hex string, at least 8 chars)
     if (!/^[0-9a-f]{8,64}$/i.test(version)) {
-      throw new BadRequestError(
-        "Invalid version format. Must be 8-64 hex characters or 'latest'.",
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message:
+              "Invalid version format. Must be 8-64 hex characters or 'latest'.",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
     // Try exact match first (full 64-char hash)
@@ -97,12 +94,23 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (!exactMatch) {
-        throw new NotFoundError(`Version '${version.slice(0, 8)}...'`);
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Version '${version.slice(0, 8)}...' not found`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
       }
 
-      return successResponse({
-        versionId: exactMatch.id,
-      });
+      return {
+        status: 200 as const,
+        body: {
+          versionId: exactMatch.id,
+        },
+      };
     }
 
     // Prefix match for shorter hashes
@@ -118,20 +126,65 @@ export async function GET(request: NextRequest) {
       .limit(2); // Get 2 to detect ambiguous matches
 
     if (prefixMatches.length === 0) {
-      throw new NotFoundError(`Version '${version}'`);
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Version '${version}' not found`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
     }
 
     if (prefixMatches.length > 1) {
-      throw new BadRequestError(
-        `Ambiguous version prefix '${version}'. Please use more characters.`,
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Ambiguous version prefix '${version}'. Please use more characters.`,
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
-    // Safe to access [0] since we checked length === 0 and length > 1 above
-    return successResponse({
-      versionId: prefixMatches[0]!.id,
-    });
-  } catch (error) {
-    return errorResponse(error);
+    return {
+      status: 200 as const,
+      body: {
+        versionId: prefixMatches[0]!.id,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "queryError" in err) {
+    const validationError = err as {
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.queryError) {
+      const issue = validationError.queryError.issues[0];
+      if (issue) {
+        return TsRestResponse.fromJson(
+          { error: { message: issue.message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(composesVersionsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET };

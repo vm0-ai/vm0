@@ -1,42 +1,73 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { imagesByIdContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../src/lib/api-response";
-import { BadRequestError, UnauthorizedError } from "../../../../src/lib/errors";
 import { deleteImage } from "../../../../src/lib/image/image-service";
+import { NotFoundError, ForbiddenError } from "../../../../src/lib/errors";
 
-/**
- * DELETE /api/images/:imageId
- * Delete an image by ID
- */
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ imageId: string }> },
-) {
-  try {
-    // Initialize services at serverless function entry
+const router = tsr.router(imagesByIdContract, {
+  delete: async ({ params }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { imageId } = await params;
+    const { imageId } = params;
 
-    if (!imageId) {
-      throw new BadRequestError("Missing imageId");
+    try {
+      await deleteImage(userId, imageId);
+      return { status: 200 as const, body: { deleted: true } };
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return createErrorResponse("NOT_FOUND", error.message);
+      }
+      if (error instanceof ForbiddenError) {
+        return createErrorResponse("FORBIDDEN", error.message);
+      }
+      throw error;
     }
+  },
+});
 
-    // Delete the image
-    await deleteImage(userId, imageId);
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  // Handle ts-rest RequestValidationError
+  if (err && typeof err === "object" && "pathParamsError" in err) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
+    };
 
-    return successResponse({ deleted: true });
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        return TsRestResponse.fromJson(
+          {
+            error: {
+              message: "Missing imageId",
+              code: ApiError.BAD_REQUEST.code,
+            },
+          },
+          { status: ApiError.BAD_REQUEST.status },
+        );
+      }
+    }
   }
+
+  // Let other errors propagate
+  return undefined;
 }
+
+const handler = createNextHandler(imagesByIdContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as DELETE };

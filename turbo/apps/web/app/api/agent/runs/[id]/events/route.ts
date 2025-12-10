@@ -1,72 +1,47 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { runEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { eq, gt, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../../src/lib/api-response";
-import {
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../../src/lib/errors";
 import type {
   RunStatus,
   RunResult,
   RunState,
 } from "../../../../../../src/lib/run/types";
 
-export interface EventsResponse {
-  events: Array<{
-    sequenceNumber: number;
-    eventType: string;
-    eventData: unknown;
-    createdAt: string;
-  }>;
-  hasMore: boolean;
-  nextSequence: number;
-  /** Run state information (replaces previous vm0_* events) */
-  run: RunState;
-}
-
-/**
- * GET /api/agent/runs/:id/events
- * Poll for agent run events with pagination
- * Returns run state in the response (replaces vm0_start/vm0_result/vm0_error events)
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    // Initialize services
+const router = tsr.router(runEventsContract, {
+  getEvents: async ({ params, query }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    // Await params
-    const { id } = await params;
-
-    // Parse query parameters
-    const { searchParams } = new URL(request.url);
-    const since = parseInt(searchParams.get("since") || "0");
-    const limit = parseInt(searchParams.get("limit") || "100");
+    const { since, limit } = query;
 
     // Verify run exists and belongs to user
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.id, id))
+      .where(eq(agentRuns.id, params.id))
       .limit(1);
 
     if (!run || run.userId !== userId) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Query events from database (only agent events, no vm0_* events)
@@ -75,7 +50,7 @@ export async function GET(
       .from(agentRunEvents)
       .where(
         and(
-          eq(agentRunEvents.runId, id),
+          eq(agentRunEvents.runId, params.id),
           gt(agentRunEvents.sequenceNumber, since),
         ),
       )
@@ -102,21 +77,73 @@ export async function GET(
       runState.error = run.error;
     }
 
-    // Format response
-    const response: EventsResponse = {
-      events: events.map((e) => ({
-        sequenceNumber: e.sequenceNumber,
-        eventType: e.eventType,
-        eventData: e.eventData,
-        createdAt: e.createdAt.toISOString(),
-      })),
-      hasMore,
-      nextSequence,
-      run: runState,
+    return {
+      status: 200 as const,
+      body: {
+        events: events.map((e) => ({
+          sequenceNumber: e.sequenceNumber,
+          eventType: e.eventType,
+          eventData: e.eventData,
+          createdAt: e.createdAt.toISOString(),
+        })),
+        hasMore,
+        nextSequence,
+        run: runState,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (
+    err &&
+    typeof err === "object" &&
+    ("pathParamsError" in err || "queryError" in err)
+  ) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
+      queryError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
     };
 
-    return successResponse(response);
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (validationError.queryError) {
+      const issue = validationError.queryError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  return undefined;
 }
+
+const handler = createNextHandler(runEventsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET };
