@@ -1,5 +1,3 @@
-# VM0
-
 <p align="center">
   <img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="120" />
 </p>
@@ -55,10 +53,10 @@ No drag-and-drop. No pipelines.
 VM0 supports the new wave of developer-native agent CLIs:
 
 - Claude Code
-- OpenAI Codex
-- Gemini CLI
-- Cursor CLI
-- Any custom CLI agent
+- OpenAI Codex (Coming soon)
+- Gemini CLI (Coming soon)
+- Cursor CLI (Coming soon)
+- Any custom CLI agent (Coming soon)
 
 VM0 integrates seamlessly into your development environment.
 
