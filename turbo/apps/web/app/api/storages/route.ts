@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           .values({
             userId,
             name: storageName,
-            s3Prefix: `${userId}/${storageName}`,
+            s3Prefix: `${userId}/${storageType}/${storageName}`,
             size: totalSize,
             fileCount,
             type: storageType,
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
 
       // Create new version record with content hash as ID
       // Use onConflictDoNothing to handle force upload case where version already exists
-      const s3Key = `${userId}/${storageName}/${contentHash}`;
+      const s3Key = `${userId}/${storageType}/${storageName}/${contentHash}`;
       const createdVersions = await tx
         .insert(storageVersions)
         .values({

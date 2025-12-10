@@ -336,7 +336,7 @@ export async function POST(request: NextRequest) {
       deduplicated = true;
     } else {
       // Create new version record
-      const s3Key = `${userId}/${storageName}/${contentHash}`;
+      const s3Key = `${userId}/${storage.type}/${storageName}/${contentHash}`;
 
       const [version] = await globalThis.services.db
         .insert(storageVersions)

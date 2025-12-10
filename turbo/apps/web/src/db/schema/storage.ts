@@ -35,9 +35,10 @@ export const storages = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userNameIdx: uniqueIndex("idx_storages_user_name").on(
+    userNameTypeIdx: uniqueIndex("idx_storages_user_name_type").on(
       table.userId,
       table.name,
+      table.type,
     ),
   }),
 );
