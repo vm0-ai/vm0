@@ -75,6 +75,7 @@ interface PollOptions {
 
 interface PollResult {
   succeeded: boolean;
+  runId: string;
   sessionId?: string;
   checkpointId?: string;
 }
@@ -89,7 +90,7 @@ async function pollEvents(
 ): Promise<PollResult> {
   let nextSequence = 0;
   let complete = false;
-  let result: PollResult = { succeeded: true };
+  let result: PollResult = { succeeded: true, runId };
   const pollIntervalMs = 500;
   const startTimestamp = options.startTimestamp;
   let previousTimestamp = startTimestamp;
@@ -133,6 +134,7 @@ async function pollEvents(
       });
       result = {
         succeeded: true,
+        runId,
         sessionId: response.run.result?.agentSessionId,
         checkpointId: response.run.result?.checkpointId,
       };
@@ -140,11 +142,11 @@ async function pollEvents(
       complete = true;
       // Render error info
       EventRenderer.renderRunFailed(response.run.error);
-      result = { succeeded: false };
+      result = { succeeded: false, runId };
     } else if (runStatus === "timeout") {
       complete = true;
       console.error(chalk.red("\n✗ Run timed out"));
-      result = { succeeded: false };
+      result = { succeeded: false, runId };
     }
 
     // If not complete, wait before next poll
@@ -178,23 +180,26 @@ function logVerbosePreFlight(
  * Display next steps after successful run
  */
 function showNextSteps(result: PollResult): void {
-  const { sessionId, checkpointId } = result;
+  const { runId, sessionId, checkpointId } = result;
 
-  if (sessionId || checkpointId) {
-    console.log();
-    console.log("Next steps:");
-    if (sessionId) {
-      console.log("  Continue with session (latest state):");
-      console.log(
-        chalk.cyan(`    vm0 run continue ${sessionId} "your next prompt"`),
-      );
-    }
-    if (checkpointId) {
-      console.log("  Resume from checkpoint (exact snapshot state):");
-      console.log(
-        chalk.cyan(`    vm0 run resume ${checkpointId} "your next prompt"`),
-      );
-    }
+  console.log();
+  console.log("Next steps:");
+
+  // Always show logs command since we always have runId
+  console.log("  View telemetry logs:");
+  console.log(chalk.cyan(`    vm0 logs ${runId}`));
+
+  if (sessionId) {
+    console.log("  Continue with session (latest state):");
+    console.log(
+      chalk.cyan(`    vm0 run continue ${sessionId} "your next prompt"`),
+    );
+  }
+  if (checkpointId) {
+    console.log("  Resume from checkpoint (exact snapshot state):");
+    console.log(
+      chalk.cyan(`    vm0 run resume ${checkpointId} "your next prompt"`),
+    );
   }
 }
 
@@ -369,7 +374,13 @@ const runCmd = new Command()
           conversationId: options.conversation,
         });
 
-        // 4. Poll for events and exit with appropriate code
+        // 4. Display run started info
+        EventRenderer.renderRunStarted({
+          runId: response.runId,
+          sandboxId: response.sandboxId,
+        });
+
+        // 5. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
@@ -469,7 +480,13 @@ runCmd
               : undefined,
         });
 
-        // 4. Poll for events and exit with appropriate code
+        // 4. Display run started info
+        EventRenderer.renderRunStarted({
+          runId: response.runId,
+          sandboxId: response.sandboxId,
+        });
+
+        // 5. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
@@ -567,7 +584,13 @@ runCmd
               : undefined,
         });
 
-        // 4. Poll for events and exit with appropriate code
+        // 4. Display run started info
+        EventRenderer.renderRunStarted({
+          runId: response.runId,
+          sandboxId: response.sandboxId,
+        });
+
+        // 5. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,

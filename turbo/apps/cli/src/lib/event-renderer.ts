@@ -2,14 +2,23 @@
  * Event renderer for CLI output
  * Renders parsed events with colors and formatting
  *
- * Note: Run lifecycle events (vm0_start, vm0_result, vm0_error) are no longer
- * rendered from events. Instead, run state is handled by renderRunCompleted
- * and renderRunFailed methods.
+ * Run lifecycle is rendered via:
+ * - renderRunStarted: Called immediately after run is created
+ * - renderRunCompleted: Called when run completes successfully
+ * - renderRunFailed: Called when run fails
  */
 
 import chalk from "chalk";
 import type { ParsedEvent } from "./event-parser";
 import type { RunResult } from "./api-client";
+
+/**
+ * Info about a started run
+ */
+export interface RunStartedInfo {
+  runId: string;
+  sandboxId?: string;
+}
 
 /**
  * Options for rendering events
@@ -24,6 +33,19 @@ export interface RenderOptions {
 }
 
 export class EventRenderer {
+  /**
+   * Render run started info
+   * Called immediately after run is created, before polling events
+   */
+  static renderRunStarted(info: RunStartedInfo): void {
+    console.log(chalk.blue("▶ Run started"));
+    console.log(`  Run ID:   ${chalk.gray(info.runId)}`);
+    if (info.sandboxId) {
+      console.log(`  Sandbox:  ${chalk.gray(info.sandboxId)}`);
+    }
+    console.log();
+  }
+
   /**
    * Format elapsed time between two timestamps
    * Returns [+Nms] for < 1000ms, [+N.Ns] for >= 1000ms
