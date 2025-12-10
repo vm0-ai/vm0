@@ -100,6 +100,20 @@ export interface GetComposeVersionResponse {
   tag?: string;
 }
 
+export interface TelemetryMetric {
+  ts: string;
+  cpu: number;
+  mem_used: number;
+  mem_total: number;
+  disk_used: number;
+  disk_total: number;
+}
+
+export interface GetTelemetryResponse {
+  systemLog: string;
+  metrics: TelemetryMetric[];
+}
+
 export interface CreateImageResponse {
   buildId: string;
   imageId: string;
@@ -298,6 +312,26 @@ class ApiClient {
     }
 
     return (await response.json()) as AgentSessionResponse;
+  }
+
+  async getTelemetry(runId: string): Promise<GetTelemetryResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(
+      `${baseUrl}/api/agent/runs/${runId}/telemetry`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to fetch telemetry");
+    }
+
+    return (await response.json()) as GetTelemetryResponse;
   }
 
   async createImage(body: {

@@ -9,6 +9,7 @@ import { artifactCommand } from "./commands/artifact";
 import { secretCommand } from "./commands/secret";
 import { cookCommand } from "./commands/cook";
 import { imageCommand } from "./commands/image";
+import { logsCommand } from "./commands/logs";
 
 const program = new Command();
 
@@ -56,7 +57,7 @@ authCommand
     await checkAuthStatus();
   });
 
-// Register compose, run, volume, artifact, secret, and cook commands
+// Register compose, run, volume, artifact, secret, cook, image, and logs commands
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
@@ -64,6 +65,7 @@ program.addCommand(artifactCommand);
 program.addCommand(secretCommand);
 program.addCommand(cookCommand);
 program.addCommand(imageCommand);
+program.addCommand(logsCommand);
 
 export { program };
 

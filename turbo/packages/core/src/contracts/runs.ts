@@ -185,9 +185,53 @@ export const runEventsContract = c.router({
   },
 });
 
+/**
+ * Telemetry metric schema
+ */
+const telemetryMetricSchema = z.object({
+  ts: z.string(),
+  cpu: z.number(),
+  mem_used: z.number(),
+  mem_total: z.number(),
+  disk_used: z.number(),
+  disk_total: z.number(),
+});
+
+/**
+ * Telemetry response schema
+ */
+const telemetryResponseSchema = z.object({
+  systemLog: z.string(),
+  metrics: z.array(telemetryMetricSchema),
+});
+
+/**
+ * Run telemetry route contract (/api/agent/runs/[id]/telemetry)
+ */
+export const runTelemetryContract = c.router({
+  /**
+   * GET /api/agent/runs/:id/telemetry
+   * Get aggregated telemetry data for a run
+   */
+  getTelemetry: {
+    method: "GET",
+    path: "/api/agent/runs/:id/telemetry",
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    responses: {
+      200: telemetryResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get run telemetry data",
+  },
+});
+
 export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunEventsContract = typeof runEventsContract;
+export type RunTelemetryContract = typeof runTelemetryContract;
 
 // Export schemas for reuse
 export {
@@ -199,4 +243,6 @@ export {
   runResultSchema,
   runStateSchema,
   eventsResponseSchema,
+  telemetryMetricSchema,
+  telemetryResponseSchema,
 };
