@@ -24,19 +24,28 @@ export class StorageService {
    * Resolve version ID from version string
    * @param userId - User ID for storage access
    * @param storageName - Storage name
+   * @param storageType - Storage type ("volume" or "artifact")
    * @param version - Version string ("latest" or specific hash)
    * @returns Version ID and S3 key
    */
   private async resolveVersion(
     userId: string,
     storageName: string,
+    storageType: "volume" | "artifact",
     version: string,
   ): Promise<{ versionId: string; s3Key: string }> {
     // Query database for storage
+    // Must include type in query since same name can exist for different types
     const [dbStorage] = await globalThis.services.db
       .select()
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
       .limit(1);
 
     if (!dbStorage) {
@@ -143,6 +152,7 @@ export class StorageService {
       const { versionId, s3Key } = await this.resolveVersion(
         userId,
         volume.vasStorageName,
+        "volume",
         volume.vasVersion,
       );
 
@@ -190,6 +200,7 @@ export class StorageService {
           const { versionId, s3Key } = await this.resolveVersion(
             userId,
             artifactSource.vasStorageName,
+            "artifact",
             artifactSource.vasVersion,
           );
 

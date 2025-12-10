@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const runId = formData.get("runId") as string;
     const storageName = formData.get("storageName") as string;
+    const storageType = (formData.get("storageType") as string) || "volume"; // Default to "volume" for backwards compatibility
     const message = formData.get("message") as string | null;
     const file = formData.get("file") as File;
 
@@ -75,12 +76,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate storage type
+    if (storageType !== "volume" && storageType !== "artifact") {
+      return errorResponse(
+        "storageType: must be 'volume' or 'artifact'",
+        "BAD_REQUEST",
+        400,
+      );
+    }
+
     if (!file) {
       return errorResponse("file: file is required", "BAD_REQUEST", 400);
     }
 
     log.debug(
-      `Received storage version request for "${storageName}" from run ${runId}`,
+      `Received storage version request for "${storageName}" (type: ${storageType}) from run ${runId}`,
     );
 
     // Verify run exists and belongs to the authenticated user
@@ -94,11 +104,18 @@ export async function POST(request: NextRequest) {
       return errorResponse("Agent run not found", "NOT_FOUND", 404);
     }
 
-    // Find the storage by name and user
+    // Find the storage by name, type, and user
+    // Must include type in query since same name can exist for different types
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
       .limit(1);
 
     if (!storage) {

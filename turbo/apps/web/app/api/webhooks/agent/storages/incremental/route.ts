@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const runId = formData.get("runId") as string;
     const storageName = formData.get("storageName") as string;
+    const storageType = (formData.get("storageType") as string) || "volume"; // Default to "volume" for backwards compatibility
     const baseVersion = formData.get("baseVersion") as string;
     const changesJson = formData.get("changes") as string;
     const message = formData.get("message") as string | null;
@@ -86,6 +87,15 @@ export async function POST(request: NextRequest) {
     if (!storageName) {
       return errorResponse(
         "storageName: storageName is required",
+        "BAD_REQUEST",
+        400,
+      );
+    }
+
+    // Validate storage type
+    if (storageType !== "volume" && storageType !== "artifact") {
+      return errorResponse(
+        "storageType: must be 'volume' or 'artifact'",
         "BAD_REQUEST",
         400,
       );
@@ -124,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     log.debug(
-      `Received incremental upload for "${storageName}" from run ${runId}, base: ${baseVersion.slice(0, 8)}`,
+      `Received incremental upload for "${storageName}" (type: ${storageType}) from run ${runId}, base: ${baseVersion.slice(0, 8)}`,
     );
     log.debug(
       `Changes: +${changes.added.length} ~${changes.modified.length} -${changes.deleted.length}`,
@@ -141,11 +151,18 @@ export async function POST(request: NextRequest) {
       return errorResponse("Agent run not found", "NOT_FOUND", 404);
     }
 
-    // Find the storage by name and user
+    // Find the storage by name, type, and user
+    // Must include type in query since same name can exist for different types
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
       .limit(1);
 
     if (!storage) {

@@ -148,10 +148,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if storage already exists (outside transaction for read)
+    // Must include type in query since same name can exist for different types
     const existingStorages = await globalThis.services.db
       .select()
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
       .limit(1);
 
     const existingStorage = existingStorages[0];
@@ -355,21 +362,38 @@ export async function GET(request: NextRequest) {
     // Get query parameters
     const { searchParams } = new URL(request.url);
     const storageName = searchParams.get("name");
+    const storageType = searchParams.get("type") || "volume"; // Default to "volume" for backwards compatibility
     const versionId = searchParams.get("version");
 
     if (!storageName) {
       return errorResponse("Missing name parameter", "BAD_REQUEST", 400);
     }
 
+    // Validate storage type
+    if (storageType !== "volume" && storageType !== "artifact") {
+      return errorResponse(
+        "Invalid type. Must be 'volume' or 'artifact'",
+        "BAD_REQUEST",
+        400,
+      );
+    }
+
     log.debug(
-      `Downloading storage "${storageName}"${versionId ? ` version ${versionId}` : ""} for user ${userId}`,
+      `Downloading storage "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for user ${userId}`,
     );
 
     // Check if storage exists and belongs to user
+    // Must include type in query since same name can exist for different types
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.name, storageName)))
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
       .limit(1);
 
     if (!storage) {
