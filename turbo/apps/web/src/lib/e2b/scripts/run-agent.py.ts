@@ -64,11 +64,11 @@ def main():
     log_info("Heartbeat thread started")
 
     # Start metrics collector thread
-    metrics_thread = start_metrics_collector(shutdown_event)
+    start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
 
     # Start telemetry upload thread
-    telemetry_thread = start_telemetry_upload(shutdown_event)
+    start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
     # Change to working directory
