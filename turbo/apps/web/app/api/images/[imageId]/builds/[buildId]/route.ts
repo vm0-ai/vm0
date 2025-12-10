@@ -1,79 +1,63 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { imageBuildsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  UnauthorizedError,
-  NotFoundError,
-} from "../../../../../../src/lib/errors";
 import {
   getBuildStatus,
   getImageById,
 } from "../../../../../../src/lib/image/image-service";
 
-interface BuildStatusResponse {
-  status: "building" | "ready" | "error";
-  logs: string[];
-  logsOffset: number;
-  error?: string;
-}
-
-/**
- * GET /api/images/:imageId/builds/:buildId
- * Query build status with incremental logs
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ imageId: string; buildId: string }> },
-) {
-  try {
-    // Initialize services at serverless function entry
+const router = tsr.router(imageBuildsContract, {
+  getStatus: async ({ params, query }) => {
     initServices();
 
-    // Authenticate
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    const { imageId, buildId } = await params;
-
-    if (!imageId) {
-      throw new BadRequestError("Missing imageId");
-    }
-
-    if (!buildId) {
-      throw new BadRequestError("Missing buildId");
-    }
-
-    // Get logsOffset from query parameter
-    const { searchParams } = new URL(request.url);
-    const logsOffsetParam = searchParams.get("logsOffset");
-    const logsOffset = logsOffsetParam ? parseInt(logsOffsetParam, 10) : 0;
-
-    if (isNaN(logsOffset) || logsOffset < 0) {
-      throw new BadRequestError("Invalid logsOffset parameter");
-    }
+    const { imageId, buildId } = params;
+    const logsOffset = query.logsOffset ?? 0;
 
     // Get image from database by imageId
     const image = await getImageById(imageId);
 
     if (!image) {
-      throw new NotFoundError(`Image not found: ${imageId}`);
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: `Image not found: ${imageId}`, code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Verify ownership
     if (image.userId !== userId) {
-      throw new UnauthorizedError("You don't have access to this image");
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            message: "You don't have access to this image",
+            code: "UNAUTHORIZED",
+          },
+        },
+      };
     }
 
     // Verify buildId matches
     if (image.e2bBuildId !== buildId) {
-      throw new NotFoundError(`Build not found: ${buildId}`);
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: `Build not found: ${buildId}`, code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Get build status from E2B
@@ -83,15 +67,73 @@ export async function GET(
       logsOffset,
     );
 
-    const response: BuildStatusResponse = {
-      status: result.status,
-      logs: result.logs,
-      logsOffset: result.logsOffset,
-      error: result.error,
+    return {
+      status: 200 as const,
+      body: {
+        status: result.status,
+        logs: result.logs,
+        logsOffset: result.logsOffset,
+        error: result.error,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  // Handle ts-rest RequestValidationError
+  if (
+    err &&
+    typeof err === "object" &&
+    "pathParamsError" in err &&
+    "queryError" in err
+  ) {
+    const validationError = err as {
+      pathParamsError: {
+        issues: Array<{ path: string[]; message: string }>;
+      } | null;
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
     };
 
-    return successResponse(response);
-  } catch (error) {
-    return errorResponse(error);
+    if (validationError.pathParamsError) {
+      const issue = validationError.pathParamsError.issues[0];
+      if (issue) {
+        const field = issue.path[0];
+        const message =
+          field === "imageId" ? "Missing imageId" : "Missing buildId";
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (validationError.queryError) {
+      const issue = validationError.queryError.issues[0];
+      if (issue) {
+        return TsRestResponse.fromJson(
+          {
+            error: {
+              message: "Invalid logsOffset parameter",
+              code: "BAD_REQUEST",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  // Let other errors propagate
+  return undefined;
 }
+
+const handler = createNextHandler(imageBuildsContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as GET };

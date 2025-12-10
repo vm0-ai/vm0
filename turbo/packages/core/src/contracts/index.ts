@@ -77,3 +77,22 @@ export {
   type CliAuthTokenContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
+export {
+  imagesMainContract,
+  imagesByIdContract,
+  imageBuildsContract,
+  buildStatusSchema,
+  imageInfoSchema,
+  createImageRequestSchema,
+  createImageResponseSchema,
+  buildStatusResponseSchema,
+  type ImagesMainContract,
+  type ImagesByIdContract,
+  type ImageBuildsContract,
+} from "./images";
+export {
+  cronCleanupSandboxesContract,
+  cleanupResultSchema,
+  cleanupResponseSchema,
+  type CronCleanupSandboxesContract,
+} from "./cron";

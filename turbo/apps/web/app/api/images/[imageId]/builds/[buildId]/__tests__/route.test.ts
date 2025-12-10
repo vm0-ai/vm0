@@ -64,7 +64,7 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
     initServices();
 
     // Create an image for testing
-    const createRequest = new Request("http://localhost:3000/api/images", {
+    const createRequest = new NextRequest("http://localhost:3000/api/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -72,7 +72,7 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
         alias: "nested-build-test",
       }),
     });
-    const createResponse = await POST(createRequest as NextRequest);
+    const createResponse = await POST(createRequest);
     const createData = await createResponse.json();
     testImageId = createData.imageId;
     testBuildId = createData.buildId;
@@ -89,14 +89,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   });
 
   it("should return build status with logs", async () => {
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${testImageId}/builds/${testBuildId}?logsOffset=0`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({ imageId: testImageId, buildId: testBuildId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -107,17 +105,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   });
 
   it("should return 404 for non-existent image", async () => {
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/00000000-0000-0000-0000-000000000000/builds/${testBuildId}`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({
-        imageId: "00000000-0000-0000-0000-000000000000",
-        buildId: testBuildId,
-      }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -125,17 +118,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   });
 
   it("should return 404 for mismatched buildId", async () => {
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${testImageId}/builds/wrong-build-id`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({
-        imageId: testImageId,
-        buildId: "wrong-build-id",
-      }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -146,14 +134,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
     // The testImageId was created by testUserId in beforeAll
     // Try to get status as user 2
     mockUserId = testUserId2;
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${testImageId}/builds/${testBuildId}`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({ imageId: testImageId, buildId: testBuildId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -164,14 +150,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   });
 
   it("should reject invalid logsOffset", async () => {
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${testImageId}/builds/${testBuildId}?logsOffset=-1`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({ imageId: testImageId, buildId: testBuildId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -181,14 +165,12 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   it("should require authentication", async () => {
     mockUserId = null;
 
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/images/${testImageId}/builds/${testBuildId}`,
       { method: "GET" },
     );
 
-    const response = await GET(request as NextRequest, {
-      params: Promise.resolve({ imageId: testImageId, buildId: testBuildId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
