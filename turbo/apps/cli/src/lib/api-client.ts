@@ -60,6 +60,28 @@ export type RunStatus =
   | "failed"
   | "timeout";
 
+/**
+ * Run result stored when status = 'completed'
+ * Contains checkpoint and artifact information for session continuation
+ */
+export interface RunResult {
+  checkpointId: string;
+  agentSessionId: string;
+  conversationId: string;
+  artifact: Record<string, string>;
+  volumes?: Record<string, string>;
+}
+
+/**
+ * Run state information returned by events API
+ * Replaces the previous vm0_start/vm0_result/vm0_error events
+ */
+export interface RunState {
+  status: RunStatus;
+  result?: RunResult;
+  error?: string;
+}
+
 export interface GetEventsResponse {
   events: Array<{
     sequenceNumber: number;
@@ -69,7 +91,8 @@ export interface GetEventsResponse {
   }>;
   hasMore: boolean;
   nextSequence: number;
-  status: RunStatus;
+  /** Run state information (replaces previous vm0_* events) */
+  run: RunState;
 }
 
 export interface GetComposeVersionResponse {

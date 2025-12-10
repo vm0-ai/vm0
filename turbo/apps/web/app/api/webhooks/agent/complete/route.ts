@@ -7,12 +7,9 @@ import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  sendVm0ResultEvent,
-  sendVm0ErrorEvent,
-} from "../../../../../src/lib/events";
 import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
+import type { RunResult } from "../../../../../src/lib/run/types";
 
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body }) => {
@@ -68,7 +65,7 @@ const router = tsr.router(webhookCompleteContract, {
 
     try {
       if (body.exitCode === 0) {
-        // Success: query checkpoint and send vm0_result
+        // Success: query checkpoint and store result in run table
         const [checkpoint] = await globalThis.services.db
           .select()
           .from(checkpoints)
@@ -76,16 +73,14 @@ const router = tsr.router(webhookCompleteContract, {
           .limit(1);
 
         if (!checkpoint) {
-          // Send error event and update run status
-          await sendVm0ErrorEvent({
-            runId: body.runId,
-            error: "Checkpoint for run not found",
-            sandboxId,
-          });
-
+          // Update run status to failed
           await globalThis.services.db
             .update(agentRuns)
-            .set({ status: "failed", completedAt: new Date() })
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              error: "Checkpoint for run not found",
+            })
             .where(eq(agentRuns.id, body.runId));
 
           if (sandboxId) {
@@ -117,9 +112,8 @@ const router = tsr.router(webhookCompleteContract, {
           | { versions: Record<string, string> }
           | undefined;
 
-        // Send vm0_result event
-        await sendVm0ResultEvent({
-          runId: body.runId,
+        // Build result object to store in run table
+        const result: RunResult = {
           checkpointId: checkpoint.id,
           agentSessionId: session?.id ?? checkpoint.conversationId,
           conversationId: checkpoint.conversationId,
@@ -127,31 +121,33 @@ const router = tsr.router(webhookCompleteContract, {
             [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
           },
           volumes: volumeVersions?.versions,
-        });
+        };
 
-        // Update run status to completed
+        // Update run status and result
         await globalThis.services.db
           .update(agentRuns)
-          .set({ status: "completed", completedAt: new Date() })
+          .set({
+            status: "completed",
+            completedAt: new Date(),
+            result,
+          })
           .where(eq(agentRuns.id, body.runId));
 
         finalStatus = "completed";
         console.log(`[Complete API] Run ${body.runId} completed successfully`);
       } else {
-        // Failure: send vm0_error event
+        // Failure: store error in run table
         const errorMessage =
           body.error || `Agent exited with code ${body.exitCode}`;
 
-        await sendVm0ErrorEvent({
-          runId: body.runId,
-          error: errorMessage,
-          sandboxId,
-        });
-
-        // Update run status to failed
+        // Update run status and error
         await globalThis.services.db
           .update(agentRuns)
-          .set({ status: "failed", completedAt: new Date() })
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            error: errorMessage,
+          })
           .where(eq(agentRuns.id, body.runId));
 
         finalStatus = "failed";
@@ -173,17 +169,19 @@ const router = tsr.router(webhookCompleteContract, {
     } catch (error) {
       console.error("[Complete API] Error:", error);
 
-      // Try to send vm0_error event
+      // Try to update run status to failed
       try {
-        await sendVm0ErrorEvent({
-          runId: body.runId,
-          error: error instanceof Error ? error.message : "Complete API failed",
-          sandboxId,
-        });
+        await globalThis.services.db
+          .update(agentRuns)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            error:
+              error instanceof Error ? error.message : "Complete API failed",
+          })
+          .where(eq(agentRuns.id, body.runId));
       } catch {
-        console.error(
-          "[Complete API] Failed to send vm0_error event after error",
-        );
+        console.error("[Complete API] Failed to update run status after error");
       }
 
       // Still try to kill sandbox on error

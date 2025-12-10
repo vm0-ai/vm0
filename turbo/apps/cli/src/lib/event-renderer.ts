@@ -1,10 +1,15 @@
 /**
  * Event renderer for CLI output
  * Renders parsed events with colors and formatting
+ *
+ * Note: Run lifecycle events (vm0_start, vm0_result, vm0_error) are no longer
+ * rendered from events. Instead, run state is handled by renderRunCompleted
+ * and renderRunFailed methods.
  */
 
 import chalk from "chalk";
 import type { ParsedEvent } from "./event-parser";
+import type { RunResult } from "./api-client";
 
 /**
  * Options for rendering events
@@ -66,20 +71,64 @@ export class EventRenderer {
       case "result":
         this.renderResult(event, elapsedPrefix);
         break;
-      case "vm0_start":
-        this.renderVm0Start(event, elapsedPrefix);
-        break;
-      case "vm0_result":
-        this.renderVm0Result(
-          event,
-          elapsedPrefix,
-          options?.verbose ? options?.startTimestamp : undefined,
-        );
-        break;
-      case "vm0_error":
-        this.renderVm0Error(event, elapsedPrefix);
-        break;
     }
+  }
+
+  /**
+   * Render run completed state
+   * Note: This is run lifecycle status, not an event
+   */
+  static renderRunCompleted(
+    result: RunResult | undefined,
+    options?: RenderOptions,
+  ): void {
+    const now = new Date();
+
+    // Visual separator to distinguish from event stream
+    console.log("");
+    console.log(chalk.green("✓ Run completed successfully"));
+
+    if (result) {
+      console.log(`  Checkpoint:    ${chalk.gray(result.checkpointId)}`);
+      console.log(`  Session:       ${chalk.gray(result.agentSessionId)}`);
+      console.log(`  Conversation:  ${chalk.gray(result.conversationId)}`);
+
+      // Render artifact and volumes
+      if (result.artifact && Object.keys(result.artifact).length > 0) {
+        console.log(`  Artifact:`);
+        for (const [name, version] of Object.entries(result.artifact)) {
+          console.log(
+            `    ${name}: ${chalk.gray(this.formatVersion(version))}`,
+          );
+        }
+      }
+
+      if (result.volumes && Object.keys(result.volumes).length > 0) {
+        console.log(`  Volumes:`);
+        for (const [name, version] of Object.entries(result.volumes)) {
+          console.log(
+            `    ${name}: ${chalk.gray(this.formatVersion(version))}`,
+          );
+        }
+      }
+    }
+
+    // Show total time in verbose mode
+    if (options?.verbose && options?.startTimestamp) {
+      const totalTime = this.formatTotalTime(options.startTimestamp, now);
+      console.log(`  Total time:    ${chalk.gray(totalTime)}`);
+    }
+  }
+
+  /**
+   * Render run failed state
+   * Note: This is run lifecycle status, not an event
+   */
+  static renderRunFailed(error: string | undefined): void {
+    // Visual separator to distinguish from event stream
+    console.log("");
+    console.log(chalk.red("✗ Run failed"));
+    console.log(`  Error: ${chalk.red(error || "Unknown error")}`);
   }
 
   private static renderInit(event: ParsedEvent, elapsedPrefix: string): void {
@@ -176,56 +225,6 @@ export class EventRenderer {
     }
   }
 
-  private static renderVm0Start(
-    event: ParsedEvent,
-    elapsedPrefix: string,
-  ): void {
-    console.log(chalk.cyan("[vm0_start]") + elapsedPrefix + " Run starting");
-
-    if (event.data.runId) {
-      console.log(`  Run ID: ${chalk.gray(String(event.data.runId))}`);
-    }
-
-    // Show full prompt without truncation
-    const prompt = String(event.data.prompt || "");
-    console.log(`  Prompt: ${chalk.gray(prompt)}`);
-
-    if (event.data.agentName) {
-      console.log(`  Agent: ${chalk.gray(String(event.data.agentName))}`);
-    }
-
-    this.renderArtifactAndVolumes(event.data);
-  }
-
-  private static renderVm0Result(
-    event: ParsedEvent,
-    elapsedPrefix: string,
-    startTimestamp?: Date,
-  ): void {
-    console.log(
-      chalk.green("[vm0_result]") +
-        elapsedPrefix +
-        " ✓ Run completed successfully",
-    );
-    console.log(
-      `  Checkpoint: ${chalk.gray(String(event.data.checkpointId || ""))}`,
-    );
-    console.log(
-      `  Session: ${chalk.gray(String(event.data.agentSessionId || ""))}`,
-    );
-    console.log(
-      `  Conversation: ${chalk.gray(String(event.data.conversationId || ""))}`,
-    );
-
-    this.renderArtifactAndVolumes(event.data);
-
-    // Show total time in verbose mode
-    if (startTimestamp) {
-      const totalTime = this.formatTotalTime(startTimestamp, event.timestamp);
-      console.log(`  Total time: ${chalk.gray(totalTime)}`);
-    }
-  }
-
   /**
    * Format version ID for display (show short 8-character prefix)
    */
@@ -236,53 +235,5 @@ export class EventRenderer {
     }
     // For "latest" or other formats, show as-is
     return version;
-  }
-
-  /**
-   * Render artifact and volumes info
-   * Used by both vm0_start and vm0_result events
-   */
-  private static renderArtifactAndVolumes(data: Record<string, unknown>): void {
-    const artifact = data.artifact as Record<string, string> | undefined;
-    if (artifact && Object.keys(artifact).length > 0) {
-      console.log(`  Artifact:`);
-      for (const [name, version] of Object.entries(artifact)) {
-        console.log(`    ${name}: ${chalk.gray(this.formatVersion(version))}`);
-      }
-    }
-
-    const volumes = data.volumes as Record<string, string> | undefined;
-    if (volumes && Object.keys(volumes).length > 0) {
-      console.log(`  Volumes:`);
-      for (const [name, version] of Object.entries(volumes)) {
-        console.log(`    ${name}: ${chalk.gray(this.formatVersion(version))}`);
-      }
-    }
-  }
-
-  private static renderVm0Error(
-    event: ParsedEvent,
-    elapsedPrefix: string,
-  ): void {
-    console.log(chalk.red("[vm0_error]") + elapsedPrefix + " ✗ Run failed");
-
-    // Handle error as string or object
-    let errorMessage = "";
-    if (typeof event.data.error === "string") {
-      errorMessage = event.data.error;
-    } else if (event.data.error && typeof event.data.error === "object") {
-      // If error is an object, try to extract message
-      const errorObj = event.data.error as Record<string, unknown>;
-      if ("message" in errorObj && typeof errorObj.message === "string") {
-        errorMessage = errorObj.message;
-      } else {
-        errorMessage = JSON.stringify(event.data.error);
-      }
-    }
-
-    console.log(`  Error: ${chalk.red(errorMessage || "Unknown error")}`);
-    if (event.data.errorType) {
-      console.log(`  Type: ${chalk.gray(String(event.data.errorType))}`);
-    }
   }
 }

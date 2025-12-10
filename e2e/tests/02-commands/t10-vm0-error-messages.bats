@@ -50,15 +50,14 @@ teardown() {
         --artifact-name "$ARTIFACT_NAME" \
         "@fail:Error: Could not resume session 'test-session': Session history file not found"
 
-    # CLI should exit with non-zero code when agent fails (vm0_error received)
+    # CLI should exit with non-zero code when agent fails (run status: failed)
     assert_failure
 
     # Step 3: Verify error message contains the detailed stderr content
     echo "# Step 3: Verifying error message..."
     echo "# Output: $output"
 
-    # Should show vm0_error event
-    assert_output --partial "[vm0_error]"
+    # Should show failed status (not an event, just status text)
     assert_output --partial "Run failed"
 
     # Should contain the actual error message from stderr

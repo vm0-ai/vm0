@@ -80,14 +80,14 @@ interface PollResult {
 }
 
 /**
- * Poll for events until vm0_result or vm0_error is received
+ * Poll for events until run completes (via run.status field)
  * @returns Poll result with success status and optional session/checkpoint IDs
  */
 async function pollEvents(
   runId: string,
   options: PollOptions,
 ): Promise<PollResult> {
-  let nextSequence = -1;
+  let nextSequence = 0;
   let complete = false;
   let result: PollResult = { succeeded: true };
   const pollIntervalMs = 500;
@@ -100,6 +100,7 @@ async function pollEvents(
       since: nextSequence,
     });
 
+    // Render agent events
     for (const event of response.events) {
       const parsed = ClaudeEventParser.parse(
         event.eventData as Record<string, unknown>,
@@ -114,46 +115,40 @@ async function pollEvents(
 
         // Update previous timestamp for next event
         previousTimestamp = parsed.timestamp;
-
-        // Complete when we receive vm0_result or vm0_error
-        if (parsed.type === "vm0_result") {
-          complete = true;
-          result = {
-            succeeded: true,
-            sessionId: parsed.data.agentSessionId as string | undefined,
-            checkpointId: parsed.data.checkpointId as string | undefined,
-          };
-        } else if (parsed.type === "vm0_error") {
-          complete = true;
-          result = { succeeded: false };
-        }
       }
     }
 
     nextSequence = response.nextSequence;
 
-    // If no new events and not complete, check sandbox status and wait
-    if (response.events.length === 0 && !complete) {
-      // Check if sandbox was terminated unexpectedly
-      if (response.status === "failed" || response.status === "timeout") {
-        console.error(
-          chalk.red(
-            `\n✗ Sandbox terminated unexpectedly (status: ${response.status})`,
-          ),
-        );
-        throw new Error(`Sandbox terminated: ${response.status}`);
-      }
+    // Check run status for completion (replaces vm0_result/vm0_error events)
+    const runStatus = response.run.status;
 
-      // Edge case: run completed but no result event received
-      if (response.status === "completed") {
-        console.error(
-          chalk.yellow(
-            "\n⚠ Run completed but no result event received. This may indicate an issue.",
-          ),
-        );
-        return { succeeded: false };
-      }
+    if (runStatus === "completed") {
+      complete = true;
+      // Render completion info
+      EventRenderer.renderRunCompleted(response.run.result, {
+        verbose,
+        previousTimestamp,
+        startTimestamp,
+      });
+      result = {
+        succeeded: true,
+        sessionId: response.run.result?.agentSessionId,
+        checkpointId: response.run.result?.checkpointId,
+      };
+    } else if (runStatus === "failed") {
+      complete = true;
+      // Render error info
+      EventRenderer.renderRunFailed(response.run.error);
+      result = { succeeded: false };
+    } else if (runStatus === "timeout") {
+      complete = true;
+      console.error(chalk.red("\n✗ Run timed out"));
+      result = { succeeded: false };
+    }
 
+    // If not complete, wait before next poll
+    if (!complete) {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   }

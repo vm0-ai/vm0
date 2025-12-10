@@ -6,6 +6,11 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { eq, gt, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import type {
+  RunStatus,
+  RunResult,
+  RunState,
+} from "../../../../../../src/lib/run/types";
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query }) => {
@@ -39,7 +44,7 @@ const router = tsr.router(runEventsContract, {
       };
     }
 
-    // Query events from database
+    // Query events from database (only agent events, no vm0_* events)
     const events = await globalThis.services.db
       .select()
       .from(agentRunEvents)
@@ -57,6 +62,21 @@ const router = tsr.router(runEventsContract, {
     const nextSequence =
       events.length > 0 ? events[events.length - 1]!.sequenceNumber : since;
 
+    // Build run state from run record
+    const runState: RunState = {
+      status: run.status as RunStatus,
+    };
+
+    // Include result if completed
+    if (run.status === "completed" && run.result) {
+      runState.result = run.result as RunResult;
+    }
+
+    // Include error if failed
+    if (run.status === "failed" && run.error) {
+      runState.error = run.error;
+    }
+
     return {
       status: 200 as const,
       body: {
@@ -68,12 +88,7 @@ const router = tsr.router(runEventsContract, {
         })),
         hasMore,
         nextSequence,
-        status: run.status as
-          | "pending"
-          | "running"
-          | "completed"
-          | "failed"
-          | "timeout",
+        run: runState,
       },
     };
   },

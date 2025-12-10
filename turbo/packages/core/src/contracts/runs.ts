@@ -82,13 +82,33 @@ const runEventSchema = z.object({
 });
 
 /**
+ * Run result schema (present when status = 'completed')
+ */
+const runResultSchema = z.object({
+  checkpointId: z.string(),
+  agentSessionId: z.string(),
+  conversationId: z.string(),
+  artifact: z.record(z.string(), z.string()),
+  volumes: z.record(z.string(), z.string()).optional(),
+});
+
+/**
+ * Run state schema (replaces vm0_start/vm0_result/vm0_error events)
+ */
+const runStateSchema = z.object({
+  status: runStatusSchema,
+  result: runResultSchema.optional(),
+  error: z.string().optional(),
+});
+
+/**
  * Events response schema
  */
 const eventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
   nextSequence: z.number(),
-  status: runStatusSchema,
+  run: runStateSchema,
 });
 
 /**
@@ -176,5 +196,7 @@ export {
   createRunResponseSchema,
   getRunResponseSchema,
   runEventSchema,
+  runResultSchema,
+  runStateSchema,
   eventsResponseSchema,
 };

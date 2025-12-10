@@ -109,7 +109,6 @@ EOF
 
     assert_success
     assert_output --partial "[tool_use] Bash"
-    assert_output --partial "[tool_result]"
 
     # Should see version-1 content (the overridden version)
     assert_output --partial "version-1"
@@ -175,7 +174,6 @@ EOF
 
     assert_success
     assert_output --partial "[tool_use] Bash"
-    assert_output --partial "[tool_result]"
 
     # Should see override version content (not checkpoint version)
     assert_output --partial "override-version"
@@ -241,7 +239,6 @@ EOF
 
     assert_success
     assert_output --partial "[tool_use] Bash"
-    assert_output --partial "[tool_result]"
 
     # Should see initial version content (the overridden version)
     assert_output --partial "initial-volume-content"

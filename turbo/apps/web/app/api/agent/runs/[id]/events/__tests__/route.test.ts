@@ -280,6 +280,9 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.events).toEqual([]);
       expect(data.hasMore).toBe(false);
       expect(data.nextSequence).toBe(0);
+      // Verify run state is included
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("running");
     });
 
     it("should return all events when they exist", async () => {
@@ -671,6 +674,87 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.events).toHaveLength(100); // Default limit
       expect(data.hasMore).toBe(true);
       expect(data.nextSequence).toBe(100);
+    });
+  });
+
+  // ============================================
+  // Run State Tests
+  // ============================================
+
+  describe("Run State", () => {
+    it("should return run state with status 'running' for running run", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("running");
+      expect(data.run.result).toBeUndefined();
+      expect(data.run.error).toBeUndefined();
+    });
+
+    it("should return run state with result for completed run", async () => {
+      // Update run to completed with result
+      const result = {
+        checkpointId: "checkpoint-123",
+        agentSessionId: "session-456",
+        conversationId: "conversation-789",
+        artifact: { "test-artifact": "v1" },
+        volumes: { "test-volume": "v2" },
+      };
+
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "completed",
+          result,
+          completedAt: new Date(),
+        })
+        .where(eq(agentRuns.id, testRunId));
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("completed");
+      expect(data.run.result).toEqual(result);
+      expect(data.run.error).toBeUndefined();
+    });
+
+    it("should return run state with error for failed run", async () => {
+      // Update run to failed with error
+      const errorMessage = "Agent exited with code 1";
+
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "failed",
+          error: errorMessage,
+          completedAt: new Date(),
+        })
+        .where(eq(agentRuns.id, testRunId));
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("failed");
+      expect(data.run.error).toBe(errorMessage);
+      expect(data.run.result).toBeUndefined();
     });
   });
 });

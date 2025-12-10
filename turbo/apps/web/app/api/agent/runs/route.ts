@@ -12,7 +12,6 @@ import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import { sendVm0ErrorEvent } from "../../../../src/lib/events";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 
@@ -408,13 +407,6 @@ const router = tsr.router(runsMainContract, {
           completedAt: new Date(),
         })
         .where(eq(agentRuns.id, run.id));
-
-      // Send vm0_error event
-      await sendVm0ErrorEvent({
-        runId: run.id,
-        error: errorMessage,
-        errorType: "sandbox_error",
-      });
 
       // Return error response for preparation failures
       return {

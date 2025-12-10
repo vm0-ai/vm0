@@ -118,32 +118,25 @@ function execVm0RunWithCapture(
 }
 
 /**
- * Parse artifact version from vm0 run output
+ * Parse artifact version from vm0 run completion output
  * Looks for pattern like:
+ *   ✓ Run completed successfully
+ *   ...
  *   Artifact:
  *     artifactName: abc12345
  * Returns the version string (8 char truncated hash)
  */
-function parseArtifactVersion(
+function parseArtifactVersionFromCompletion(
   output: string,
   artifactName: string,
-  eventType: "vm0_start" | "vm0_result",
 ): string | null {
-  // Find the section after the event marker
-  const eventMarker =
-    eventType === "vm0_start" ? "[vm0_start]" : "[vm0_result]";
-  const eventIndex = output.indexOf(eventMarker);
-  if (eventIndex === -1) return null;
+  // Find the completion section marker
+  const completionMarker = "Run completed successfully";
+  const completionIndex = output.indexOf(completionMarker);
+  if (completionIndex === -1) return null;
 
-  // Get the section after this event (until next event or end)
-  const nextEventIndex = output.indexOf(
-    eventType === "vm0_start" ? "[vm0_result]" : "[vm0_error]",
-    eventIndex,
-  );
-  const section =
-    nextEventIndex === -1
-      ? output.slice(eventIndex)
-      : output.slice(eventIndex, nextEventIndex);
+  // Get the completion section
+  const section = output.slice(completionIndex);
 
   // Look for Artifact section and extract version
   // Pattern: "    artifactName: version" (with ANSI codes possibly)
@@ -325,19 +318,14 @@ export const cookCommand = new Command()
         process.exit(1);
       }
 
-      // Step 6: Auto-pull artifact if version changed
-      const startVersion = parseArtifactVersion(
+      // Step 6: Auto-pull artifact if run completed with artifact changes
+      // Check if completion output shows an artifact version
+      const serverVersion = parseArtifactVersionFromCompletion(
         runOutput,
         ARTIFACT_DIR,
-        "vm0_start",
-      );
-      const endVersion = parseArtifactVersion(
-        runOutput,
-        ARTIFACT_DIR,
-        "vm0_result",
       );
 
-      if (startVersion && endVersion && startVersion !== endVersion) {
+      if (serverVersion) {
         console.log();
         console.log(chalk.blue("Pulling updated artifact..."));
 
@@ -346,7 +334,7 @@ export const cookCommand = new Command()
             cwd: artifactDir,
             silent: true,
           });
-          console.log(chalk.green(`✓ Artifact pulled (${endVersion})`));
+          console.log(chalk.green(`✓ Artifact pulled (${serverVersion})`));
         } catch (error) {
           console.error(chalk.red(`✗ Artifact pull failed`));
           if (error instanceof Error) {

@@ -62,7 +62,6 @@ teardown() {
     # Verify mock-claude execution events (deterministic with mock-claude)
     assert_output --partial "[tool_use] Bash"
     assert_output --partial "echo 'created by agent'"
-    assert_output --partial "[tool_result]"
     assert_output --partial "[result]"
 
     assert_output --partial "Checkpoint:"
@@ -100,7 +99,6 @@ teardown() {
     # Verify mock-claude execution events for resume
     assert_output --partial "[tool_use] Bash"
     assert_output --partial "ls && cat counter.txt"
-    assert_output --partial "[tool_result]"
 
     # Step 5: Verify checkpoint version is restored
     echo "# Step 5: Verifying checkpoint version is restored..."

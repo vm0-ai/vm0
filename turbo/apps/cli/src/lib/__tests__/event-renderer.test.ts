@@ -613,45 +613,79 @@ describe("EventRenderer", () => {
       };
       EventRenderer.render(resultEvent, options);
       expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
-
-      consoleLogSpy.mockClear();
-
-      // Test vm0_start event
-      const vm0StartEvent: ParsedEvent = {
-        type: "vm0_start",
-        timestamp: eventTimestamp,
-        data: { runId: "test", prompt: "test" },
-      };
-      EventRenderer.render(vm0StartEvent, options);
-      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
-
-      consoleLogSpy.mockClear();
-
-      // Test vm0_error event
-      const vm0ErrorEvent: ParsedEvent = {
-        type: "vm0_error",
-        timestamp: eventTimestamp,
-        data: { error: "test error" },
-      };
-      EventRenderer.render(vm0ErrorEvent, options);
-      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+100ms]");
     });
   });
 
   // ============================================
-  // Total Time Display Tests
+  // Run State Rendering Tests
   // ============================================
 
-  describe("Total Time Display", () => {
-    it("should render total time in vm0_result in verbose mode", () => {
-      const event: ParsedEvent = {
-        type: "vm0_result",
-        timestamp: new Date("2024-01-01T00:00:06.700Z"),
-        data: {
-          checkpointId: "checkpoint-123",
-          agentSessionId: "session-456",
-          conversationId: "conv-789",
-        },
+  describe("Run State Rendering", () => {
+    it("should render run completed with result", () => {
+      const result = {
+        checkpointId: "checkpoint-123",
+        agentSessionId: "session-456",
+        conversationId: "conv-789",
+        artifact: { "my-artifact": "abc12345" },
+      };
+
+      EventRenderer.renderRunCompleted(result);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(
+        allCalls.some((call) => call.includes("Run completed successfully")),
+      ).toBe(true);
+      expect(allCalls.some((call) => call.includes("Checkpoint:"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("Session:"))).toBe(true);
+    });
+
+    it("should render run completed without result", () => {
+      EventRenderer.renderRunCompleted(undefined);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(
+        allCalls.some((call) => call.includes("Run completed successfully")),
+      ).toBe(true);
+    });
+
+    it("should render run failed with error", () => {
+      EventRenderer.renderRunFailed("Something went wrong");
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(allCalls.some((call) => call.includes("Run failed"))).toBe(true);
+      expect(
+        allCalls.some((call) => call.includes("Something went wrong")),
+      ).toBe(true);
+    });
+
+    it("should render run failed without error", () => {
+      EventRenderer.renderRunFailed(undefined);
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(allCalls.some((call) => call.includes("Run failed"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("Unknown error"))).toBe(
+        true,
+      );
+    });
+
+    it("should render total time in verbose mode", () => {
+      const result = {
+        checkpointId: "checkpoint-123",
+        agentSessionId: "session-456",
+        conversationId: "conv-789",
+        artifact: {},
       };
 
       const options: RenderOptions = {
@@ -659,9 +693,14 @@ describe("EventRenderer", () => {
         startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
       };
 
-      EventRenderer.render(event, options);
+      // Mock Date to control time
+      const mockNow = new Date("2024-01-01T00:00:06.700Z");
+      vi.setSystemTime(mockNow);
 
-      expect(consoleLogSpy).toHaveBeenCalled();
+      EventRenderer.renderRunCompleted(result, options);
+
+      vi.useRealTimers();
+
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
@@ -672,14 +711,11 @@ describe("EventRenderer", () => {
     });
 
     it("should not render total time without verbose flag", () => {
-      const event: ParsedEvent = {
-        type: "vm0_result",
-        timestamp: new Date("2024-01-01T00:00:06.700Z"),
-        data: {
-          checkpointId: "checkpoint-123",
-          agentSessionId: "session-456",
-          conversationId: "conv-789",
-        },
+      const result = {
+        checkpointId: "checkpoint-123",
+        agentSessionId: "session-456",
+        conversationId: "conv-789",
+        artifact: {},
       };
 
       const options: RenderOptions = {
@@ -687,9 +723,8 @@ describe("EventRenderer", () => {
         startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
       };
 
-      EventRenderer.render(event, options);
+      EventRenderer.renderRunCompleted(result, options);
 
-      // Check no call contains "Total time"
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
@@ -697,39 +732,6 @@ describe("EventRenderer", () => {
         (call) => call && call.includes("Total time"),
       );
       expect(hasTotalTime).toBe(false);
-    });
-
-    it("should render both elapsed time and total time in verbose mode", () => {
-      const event: ParsedEvent = {
-        type: "vm0_result",
-        timestamp: new Date("2024-01-01T00:00:06.700Z"),
-        data: {
-          checkpointId: "checkpoint-123",
-          agentSessionId: "session-456",
-          conversationId: "conv-789",
-        },
-      };
-
-      const options: RenderOptions = {
-        verbose: true,
-        previousTimestamp: new Date("2024-01-01T00:00:06.500Z"),
-        startTimestamp: new Date("2024-01-01T00:00:00.000Z"),
-      };
-
-      EventRenderer.render(event, options);
-
-      // Check first line has elapsed time
-      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[vm0_result]");
-      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[+200ms]");
-
-      // Check total time is rendered somewhere
-      const allCalls = consoleLogSpy.mock.calls.map(
-        (call) => call[0] as string,
-      );
-      const hasTotalTime = allCalls.some(
-        (call) => call.includes("Total time:") && call.includes("6.7s"),
-      );
-      expect(hasTotalTime).toBe(true);
     });
   });
 });

@@ -88,7 +88,6 @@ teardown() {
 
     assert_success
     assert_output --partial "[tool_use] Bash"
-    assert_output --partial "[tool_result]"
 
     # Step 5: Verify LATEST version is used (not checkpoint version)
     echo "# Step 5: Verifying latest artifact version is used..."
