@@ -160,7 +160,8 @@ def create_incremental_snapshot(
     storage_name: str,
     vas_storage_name: str,
     base_version_id: str,
-    manifest_url: str
+    manifest_url: str,
+    storage_type: str = "artifact"
 ) -> Optional[Dict[str, Any]]:
     """
     Main incremental upload function.
@@ -171,16 +172,17 @@ def create_incremental_snapshot(
         vas_storage_name: VAS storage name
         base_version_id: Base version ID for diff
         manifest_url: URL to download base manifest
+        storage_type: Storage type ("volume" or "artifact"), defaults to "artifact"
 
     Returns:
         Dict with versionId on success, None on failure
     """
-    log_info(f"Attempting incremental upload for '{storage_name}'")
+    log_info(f"Attempting incremental upload for '{storage_name}' (type: {storage_type})")
 
     # If no base version or manifest URL, fall back to full upload
     if not base_version_id or not manifest_url:
         log_info("No base version, falling back to full upload")
-        return create_vas_snapshot(mount_path, storage_name, vas_storage_name)
+        return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
     temp_dir = tempfile.mkdtemp(prefix=f"incremental-{RUN_ID}-{storage_name}-")
 
@@ -191,7 +193,7 @@ def create_incremental_snapshot(
 
         if not http_download(manifest_url, old_manifest_path):
             log_warn("Failed to download base manifest, falling back to full upload")
-            return create_vas_snapshot(mount_path, storage_name, vas_storage_name)
+            return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Load old manifest
         try:
@@ -199,7 +201,7 @@ def create_incremental_snapshot(
                 old_manifest = json.load(f)
         except (IOError, json.JSONDecodeError) as e:
             log_warn(f"Failed to parse base manifest: {e}, falling back to full upload")
-            return create_vas_snapshot(mount_path, storage_name, vas_storage_name)
+            return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Compute local manifest
         log_info("Computing local manifest...")
@@ -229,13 +231,14 @@ def create_incremental_snapshot(
         tar_path = os.path.join(temp_dir, "changes.tar.gz")
         if not create_incremental_tar(mount_path, tar_path, changes):
             log_warn("Failed to create incremental tar, falling back to full upload")
-            return create_vas_snapshot(mount_path, storage_name, vas_storage_name)
+            return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Upload to incremental endpoint
         log_info("Uploading incremental changes...")
         form_fields = {
             "runId": RUN_ID,
             "storageName": vas_storage_name,
+            "storageType": storage_type,
             "baseVersion": base_version_id,
             "changes": json.dumps(changes),
             "message": f"Incremental checkpoint from run {RUN_ID}"
@@ -250,7 +253,7 @@ def create_incremental_snapshot(
 
         if response is None:
             log_warn("Incremental upload failed, falling back to full upload")
-            return create_vas_snapshot(mount_path, storage_name, vas_storage_name)
+            return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Check response
         version_id = response.get("versionId")

@@ -21,7 +21,8 @@ from http_client import http_post_form
 def create_vas_snapshot(
     mount_path: str,
     storage_name: str,
-    vas_storage_name: str
+    vas_storage_name: str,
+    storage_type: str = "artifact"
 ) -> Optional[Dict[str, Any]]:
     """
     Create VAS snapshot for a storage.
@@ -31,11 +32,12 @@ def create_vas_snapshot(
         mount_path: Path to the storage directory
         storage_name: Display name of the storage
         vas_storage_name: VAS storage name
+        storage_type: Storage type ("volume" or "artifact"), defaults to "artifact"
 
     Returns:
         Dict with versionId on success, None on failure
     """
-    log_info(f"Creating VAS snapshot for storage '{storage_name}' ({vas_storage_name}) at {mount_path}")
+    log_info(f"Creating VAS snapshot for storage '{storage_name}' ({vas_storage_name}, type: {storage_type}) at {mount_path}")
     log_debug(f"STORAGE_WEBHOOK_URL: {STORAGE_WEBHOOK_URL}")
     log_debug(f"RUN_ID: {RUN_ID}")
 
@@ -71,6 +73,7 @@ def create_vas_snapshot(
         form_fields = {
             "runId": RUN_ID,
             "storageName": vas_storage_name,
+            "storageType": storage_type,
             "message": f"Checkpoint from run {RUN_ID}"
         }
 
