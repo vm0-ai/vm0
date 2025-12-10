@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.0](https://github.com/vm0-ai/vm0/compare/cli-v4.3.0...cli-v4.4.0) (2025-12-10)
+
+
+### Features
+
+* **storage:** support same name for volume and artifact with type isolation ([#477](https://github.com/vm0-ai/vm0/issues/477)) ([c7ad149](https://github.com/vm0-ai/vm0/commit/c7ad149716eae4c3ab33650c3fbcd47b881944eb))
+
 ## [4.3.0](https://github.com/vm0-ai/vm0/compare/cli-v4.2.0...cli-v4.3.0) (2025-12-10)
 
 
