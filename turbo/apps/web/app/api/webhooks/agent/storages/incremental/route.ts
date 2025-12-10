@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const runId = formData.get("runId") as string;
     const storageName = formData.get("storageName") as string;
-    const storageType = (formData.get("storageType") as string) || "volume"; // Default to "volume" for backwards compatibility
+    const storageType = formData.get("storageType") as string;
     const baseVersion = formData.get("baseVersion") as string;
     const changesJson = formData.get("changes") as string;
     const message = formData.get("message") as string | null;
@@ -92,7 +92,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate storage type
+    if (!storageType) {
+      return errorResponse(
+        "storageType: storageType is required",
+        "BAD_REQUEST",
+        400,
+      );
+    }
+
+    // Validate storage type value
     if (storageType !== "volume" && storageType !== "artifact") {
       return errorResponse(
         "storageType: must be 'volume' or 'artifact'",

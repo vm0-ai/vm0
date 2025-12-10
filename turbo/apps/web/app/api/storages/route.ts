@@ -362,11 +362,15 @@ export async function GET(request: NextRequest) {
     // Get query parameters
     const { searchParams } = new URL(request.url);
     const storageName = searchParams.get("name");
-    const storageType = searchParams.get("type") || "volume"; // Default to "volume" for backwards compatibility
+    const storageType = searchParams.get("type");
     const versionId = searchParams.get("version");
 
     if (!storageName) {
       return errorResponse("Missing name parameter", "BAD_REQUEST", 400);
+    }
+
+    if (!storageType) {
+      return errorResponse("Missing type parameter", "BAD_REQUEST", 400);
     }
 
     // Validate storage type

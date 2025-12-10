@@ -94,11 +94,12 @@ def create_checkpoint() -> bool:
             "artifact",
             ARTIFACT_VOLUME_NAME,
             ARTIFACT_VERSION_ID,
-            ARTIFACT_MANIFEST_URL
+            ARTIFACT_MANIFEST_URL,
+            "artifact"  # Explicit storage type - required by webhook API
         )
     else:
         log_info("Using full upload (no base version available)")
-        snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME)
+        snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME, "artifact")
 
     if not snapshot:
         log_error("Failed to create VAS snapshot for artifact")
