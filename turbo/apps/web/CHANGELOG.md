@@ -1,5 +1,34 @@
 # Changelog
 
+## [5.1.0](https://github.com/vm0-ai/vm0/compare/web-v5.0.1...web-v5.1.0) (2025-12-10)
+
+
+### Features
+
+* **api:** add storages contract and standardize error responses ([#465](https://github.com/vm0-ai/vm0/issues/465)) ([8fa72f4](https://github.com/vm0-ai/vm0/commit/8fa72f461adf28f5f1a5c8e285e02b2416b475bf))
+* **api:** complete ts-rest migration for images and cron routes ([#474](https://github.com/vm0-ai/vm0/issues/474)) ([fdf8657](https://github.com/vm0-ai/vm0/commit/fdf86578bd70bb850058ac1eceac3f900e1a8d51))
+* **api:** migrate /api/agent/composes routes to ts-rest contract-first architecture ([#458](https://github.com/vm0-ai/vm0/issues/458)) ([4a066d2](https://github.com/vm0-ai/vm0/commit/4a066d2489c4e05ecb4626d0c03694bd683299d9))
+* **api:** migrate /api/agent/runs to ts-rest contract-first architecture ([#463](https://github.com/vm0-ai/vm0/issues/463)) ([2f160ec](https://github.com/vm0-ai/vm0/commit/2f160ecbdae67f2a7d8346c6ee393a9dfd0e2e79))
+* **api:** migrate /api/agent/sessions to ts-rest contract-first architecture ([#464](https://github.com/vm0-ai/vm0/issues/464)) ([03f32cb](https://github.com/vm0-ai/vm0/commit/03f32cbe506b009d452bfc2b3595c793265b64fb))
+* **api:** migrate /api/secrets to ts-rest contract-first architecture ([#453](https://github.com/vm0-ai/vm0/issues/453)) ([27fd2fa](https://github.com/vm0-ai/vm0/commit/27fd2fa1cf0f5c7b3b6b227c547d59d56f13b9de))
+* **api:** migrate webhooks and auth routes to ts-rest contracts ([#468](https://github.com/vm0-ai/vm0/issues/468)) ([08c38aa](https://github.com/vm0-ai/vm0/commit/08c38aa399bc776d6ef391ae5bfdd7da1d5d5b7c))
+* **observability:** implement sandbox telemetry collection and storage ([#466](https://github.com/vm0-ai/vm0/issues/466)) ([8fe6748](https://github.com/vm0-ai/vm0/commit/8fe674887d84fba9f35838e7ebbdb288967feae4))
+* **sandbox:** add metrics collection module with file logging ([#456](https://github.com/vm0-ai/vm0/issues/456)) ([98a9642](https://github.com/vm0-ai/vm0/commit/98a96422c288f42b3c37894aa1445a9e7f1ab5e8))
+* **sandbox:** persist agent logs with per-run log files ([#451](https://github.com/vm0-ai/vm0/issues/451)) ([50bc170](https://github.com/vm0-ai/vm0/commit/50bc170028af3c8e241bf513312e07664361991d))
+
+
+### Bug Fixes
+
+* **e2b:** await sandbox kill in complete api to prevent orphaned sandboxes ([#452](https://github.com/vm0-ai/vm0/issues/452)) ([8a37ee5](https://github.com/vm0-ai/vm0/commit/8a37ee528ab8416255526d993dd637cfb0475436))
+* **sandbox:** add timestamp to main log output ([#462](https://github.com/vm0-ai/vm0/issues/462)) ([b60a27f](https://github.com/vm0-ai/vm0/commit/b60a27f398ca3e50791e774dc5be7ecedc02323e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.3.0
+
 ## [5.0.1](https://github.com/vm0-ai/vm0/compare/web-v5.0.0...web-v5.0.1) (2025-12-09)
 
 

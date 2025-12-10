@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.3.0](https://github.com/vm0-ai/vm0/compare/cli-v4.2.0...cli-v4.3.0) (2025-12-10)
+
+
+### Features
+
+* **api:** migrate /api/secrets to ts-rest contract-first architecture ([#453](https://github.com/vm0-ai/vm0/issues/453)) ([27fd2fa](https://github.com/vm0-ai/vm0/commit/27fd2fa1cf0f5c7b3b6b227c547d59d56f13b9de))
+* **observability:** implement sandbox telemetry collection and storage ([#466](https://github.com/vm0-ai/vm0/issues/466)) ([8fe6748](https://github.com/vm0-ai/vm0/commit/8fe674887d84fba9f35838e7ebbdb288967feae4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.3.0
+
 ## [4.2.0](https://github.com/vm0-ai/vm0/compare/cli-v4.1.0...cli-v4.2.0) (2025-12-08)
 
 
