@@ -57,8 +57,7 @@ teardown() {
     echo "# Step 3: Verifying error message..."
     echo "# Output: $output"
 
-    # Should show [failed] status (replaces vm0_error event)
-    assert_output --partial "[failed]"
+    # Should show failed status (not an event, just status text)
     assert_output --partial "Run failed"
 
     # Should contain the actual error message from stderr

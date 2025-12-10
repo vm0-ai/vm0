@@ -45,7 +45,7 @@ teardown() {
         "echo 'hello world'"
 
     assert_success
-    assert_output --partial "[completed]"
+    assert_output --partial "Run completed successfully"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
 
@@ -131,6 +131,7 @@ teardown() {
     assert_output --partial "new.txt"
 
     # Fork should create its own checkpoint/session/conversation
+    assert_output --partial "Run completed successfully"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
     assert_output --partial "Conversation:"

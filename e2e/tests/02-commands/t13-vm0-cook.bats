@@ -78,8 +78,8 @@ EOF
 
     echo "# Step 8: Check auto-pull behavior..."
     # If run succeeded and version changed, we should see pull message
-    # Check for [completed] which indicates run finished (replaces vm0_result)
-    if echo "$output" | grep -q "\[completed\]"; then
+    # Check for "Run completed successfully" which indicates run finished
+    if echo "$output" | grep -q "Run completed successfully"; then
         if echo "$output" | grep -q "Pulling updated artifact"; then
             assert_output --partial "Artifact pulled"
             echo "# Auto-pull triggered successfully"

@@ -75,28 +75,23 @@ export class EventRenderer {
   }
 
   /**
-   * Render run completed state (replaces vm0_result event rendering)
+   * Render run completed state
+   * Note: This is run lifecycle status, not an event
    */
   static renderRunCompleted(
     result: RunResult | undefined,
     options?: RenderOptions,
   ): void {
     const now = new Date();
-    const elapsedPrefix =
-      options?.verbose && options?.previousTimestamp
-        ? chalk.gray(this.formatElapsed(options.previousTimestamp, now))
-        : "";
 
-    console.log(
-      chalk.green("[completed]") +
-        elapsedPrefix +
-        " ✓ Run completed successfully",
-    );
+    // Visual separator to distinguish from event stream
+    console.log("");
+    console.log(chalk.green("✓ Run completed successfully"));
 
     if (result) {
-      console.log(`  Checkpoint: ${chalk.gray(result.checkpointId)}`);
-      console.log(`  Session: ${chalk.gray(result.agentSessionId)}`);
-      console.log(`  Conversation: ${chalk.gray(result.conversationId)}`);
+      console.log(`  Checkpoint:    ${chalk.gray(result.checkpointId)}`);
+      console.log(`  Session:       ${chalk.gray(result.agentSessionId)}`);
+      console.log(`  Conversation:  ${chalk.gray(result.conversationId)}`);
 
       // Render artifact and volumes
       if (result.artifact && Object.keys(result.artifact).length > 0) {
@@ -121,15 +116,18 @@ export class EventRenderer {
     // Show total time in verbose mode
     if (options?.verbose && options?.startTimestamp) {
       const totalTime = this.formatTotalTime(options.startTimestamp, now);
-      console.log(`  Total time: ${chalk.gray(totalTime)}`);
+      console.log(`  Total time:    ${chalk.gray(totalTime)}`);
     }
   }
 
   /**
-   * Render run failed state (replaces vm0_error event rendering)
+   * Render run failed state
+   * Note: This is run lifecycle status, not an event
    */
   static renderRunFailed(error: string | undefined): void {
-    console.log(chalk.red("[failed]") + " ✗ Run failed");
+    // Visual separator to distinguish from event stream
+    console.log("");
+    console.log(chalk.red("✗ Run failed"));
     console.log(`  Error: ${chalk.red(error || "Unknown error")}`);
   }
 

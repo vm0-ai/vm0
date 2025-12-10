@@ -635,7 +635,9 @@ describe("EventRenderer", () => {
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
-      expect(allCalls.some((call) => call.includes("[completed]"))).toBe(true);
+      expect(
+        allCalls.some((call) => call.includes("Run completed successfully")),
+      ).toBe(true);
       expect(allCalls.some((call) => call.includes("Checkpoint:"))).toBe(true);
       expect(allCalls.some((call) => call.includes("Session:"))).toBe(true);
     });
@@ -644,7 +646,12 @@ describe("EventRenderer", () => {
       EventRenderer.renderRunCompleted(undefined);
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      expect(consoleLogSpy.mock.calls[0]![0]).toContain("[completed]");
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(
+        allCalls.some((call) => call.includes("Run completed successfully")),
+      ).toBe(true);
     });
 
     it("should render run failed with error", () => {
@@ -654,7 +661,7 @@ describe("EventRenderer", () => {
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
-      expect(allCalls.some((call) => call.includes("[failed]"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("Run failed"))).toBe(true);
       expect(
         allCalls.some((call) => call.includes("Something went wrong")),
       ).toBe(true);
@@ -667,7 +674,7 @@ describe("EventRenderer", () => {
       const allCalls = consoleLogSpy.mock.calls.map(
         (call) => call[0] as string,
       );
-      expect(allCalls.some((call) => call.includes("[failed]"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("Run failed"))).toBe(true);
       expect(allCalls.some((call) => call.includes("Unknown error"))).toBe(
         true,
       );
