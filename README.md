@@ -29,7 +29,7 @@
 
 ## What is VM0?
 
-AI development today is held back by two outdated models:
+VM0 is born for agent building. AI development today is held back by two outdated models:
 
 - 🧱 **Container runners**: traditional tech stack
 - 🔗 **Workflow builders**: rigid, brittle, not agent-native
@@ -67,6 +67,7 @@ VM0 integrates seamlessly into your development environment.
 ```bash
 npm install -g @vm0/cli
 ```
+> **VM0 waitlist sign-up required:** VM0 is currently in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to unlock VM0. Once approved, you can sign in and start building.
 
 ## Quick start
 
@@ -87,9 +88,9 @@ vm0 cook "echo hello world to readme.md"
 
 The `vm0 cook` command automatically handles volume and artifact setup.
 
-> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide →](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
+> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
 
-> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 10+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
+> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 9+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
 
 ### From scratch (build your own)
 
