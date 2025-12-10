@@ -88,23 +88,27 @@ teardown() {
     assert_output --partial "[init]"
     echo "# --agent option works correctly"
 
-    # Step 6: Verify --system option works
+    # Step 6: Verify --system option shows system logs
     echo "# Step 6: Testing --system option..."
-    run $CLI_COMMAND logs "$RUN_ID" --system
+    run $CLI_COMMAND logs "$RUN_ID" --system --limit 100
 
     assert_success
-    # System log may be empty with mock-claude, but command should succeed
-    # If no logs, output will contain "No system log found"
-    echo "# System log option works correctly"
+    # System log should contain sandbox log entries with INFO level
+    # Format: [TIMESTAMP] [INFO] [sandbox:run-agent] message
+    assert_output --partial "[INFO]"
+    assert_output --partial "[sandbox:"
+    echo "# System log contains expected log format"
 
-    # Step 7: Verify --metrics option works
+    # Step 7: Verify --metrics option shows resource metrics
     echo "# Step 7: Testing --metrics option..."
-    run $CLI_COMMAND logs "$RUN_ID" --metrics
+    run $CLI_COMMAND logs "$RUN_ID" --metrics --limit 100
 
     assert_success
-    # Metrics may be empty with mock-claude, but command should succeed
-    # If no metrics, output will contain "No metrics found"
-    echo "# Metrics option works correctly"
+    # Metrics should contain CPU, memory, and disk information
+    assert_output --partial "CPU:"
+    assert_output --partial "Mem:"
+    assert_output --partial "Disk:"
+    echo "# Metrics contain expected resource data"
 
     # Step 8: Verify --limit option limits output
     echo "# Step 8: Testing --limit option..."
