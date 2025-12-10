@@ -230,7 +230,7 @@ Your AI worker with persistent configuration and memory. Define its capabilities
 
 ### Images
 
-Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Like Docker images but for AI agents, they're built with E2B templates and ensure consistent execution across runs.
+Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Similar to Docker images but tailored for AI agents, they ensure consistent execution and behavior across runs.
 
 ### Artifacts
 
@@ -252,7 +252,7 @@ Lightweight continuations where the agent remembers the conversation but uses yo
 
 | Use case | Description | Example |
 |----------|-------------|---------|
-| **Coding agents** | Execute code, use terminal, access the web - securely isolated | [GitHub agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/109-github-agent) |
+| **Code management agent** | Discovers trending repositories and manages issues, PRs, and repo tasks in Github.| [GitHub agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/109-github-agent) |
 | **Research agents** | Gather, analyze, and iterate in persistent workspaces | [Competitor research](https://github.com/vm0-ai/vm0-cookbooks/tree/main/108-competitor-research) |
 | **Data agents** | Process datasets, train models, generate reports with full state | [HuggingFace trainer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/105-hf-trainer) |
 | **Content agents** | Create, refine, and version content across multiple runs | [Content farm](https://github.com/vm0-ai/vm0-cookbooks/tree/main/104-content-farm), [TikTok influencer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/106-tiktok-influencer) |
