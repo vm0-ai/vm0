@@ -1,5 +1,5 @@
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
-import { cronCleanupSandboxesContract } from "@vm0/core";
+import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
 import { headers } from "next/headers";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
@@ -29,12 +29,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     const cronSecret = process.env.CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-        },
-      };
+      return createErrorResponse("UNAUTHORIZED", "Invalid cron secret");
     }
 
     const cutoffTime = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);

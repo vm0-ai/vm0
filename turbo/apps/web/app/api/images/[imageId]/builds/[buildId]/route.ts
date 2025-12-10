@@ -1,6 +1,6 @@
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
-import { imageBuildsContract } from "@vm0/core";
+import { imageBuildsContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import {
@@ -14,12 +14,7 @@ const router = tsr.router(imageBuildsContract, {
 
     const userId = await getUserId();
     if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
     const { imageId, buildId } = params;
@@ -29,35 +24,20 @@ const router = tsr.router(imageBuildsContract, {
     const image = await getImageById(imageId);
 
     if (!image) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: `Image not found: ${imageId}`, code: "NOT_FOUND" },
-        },
-      };
+      return createErrorResponse("NOT_FOUND", `Image not found: ${imageId}`);
     }
 
     // Verify ownership
     if (image.userId !== userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            message: "You don't have access to this image",
-            code: "UNAUTHORIZED",
-          },
-        },
-      };
+      return createErrorResponse(
+        "UNAUTHORIZED",
+        "You don't have access to this image",
+      );
     }
 
     // Verify buildId matches
     if (image.e2bBuildId !== buildId) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: `Build not found: ${buildId}`, code: "NOT_FOUND" },
-        },
-      };
+      return createErrorResponse("NOT_FOUND", `Build not found: ${buildId}`);
     }
 
     // Get build status from E2B
@@ -104,8 +84,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
         const message =
           field === "imageId" ? "Missing imageId" : "Missing buildId";
         return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
+          { error: { message, code: ApiError.BAD_REQUEST.code } },
+          { status: ApiError.BAD_REQUEST.status },
         );
       }
     }
@@ -117,10 +97,10 @@ function errorHandler(err: unknown): TsRestResponse | void {
           {
             error: {
               message: "Invalid logsOffset parameter",
-              code: "BAD_REQUEST",
+              code: ApiError.BAD_REQUEST.code,
             },
           },
-          { status: 400 },
+          { status: ApiError.BAD_REQUEST.status },
         );
       }
     }

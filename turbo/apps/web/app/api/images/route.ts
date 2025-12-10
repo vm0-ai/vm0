@@ -1,6 +1,6 @@
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
-import { imagesMainContract } from "@vm0/core";
+import { imagesMainContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
@@ -18,12 +18,7 @@ const router = tsr.router(imagesMainContract, {
 
     const userId = await getUserId();
     if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
     const imageList = await listImages(userId);
@@ -35,12 +30,7 @@ const router = tsr.router(imagesMainContract, {
 
     const userId = await getUserId();
     if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
     const { dockerfile, alias, deleteExisting } = body;
@@ -109,8 +99,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
         }
 
         return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
+          { error: { message, code: ApiError.BAD_REQUEST.code } },
+          { status: ApiError.BAD_REQUEST.status },
         );
       }
     }

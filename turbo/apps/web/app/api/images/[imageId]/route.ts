@@ -1,6 +1,6 @@
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
-import { imagesByIdContract } from "@vm0/core";
+import { imagesByIdContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { deleteImage } from "../../../../src/lib/image/image-service";
@@ -12,12 +12,7 @@ const router = tsr.router(imagesByIdContract, {
 
     const userId = await getUserId();
     if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
     const { imageId } = params;
@@ -27,20 +22,10 @@ const router = tsr.router(imagesByIdContract, {
       return { status: 200 as const, body: { deleted: true } };
     } catch (error) {
       if (error instanceof NotFoundError) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: error.message, code: "NOT_FOUND" },
-          },
-        };
+        return createErrorResponse("NOT_FOUND", error.message);
       }
       if (error instanceof ForbiddenError) {
-        return {
-          status: 403 as const,
-          body: {
-            error: { message: error.message, code: "FORBIDDEN" },
-          },
-        };
+        return createErrorResponse("FORBIDDEN", error.message);
       }
       throw error;
     }
@@ -63,8 +48,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
       const issue = validationError.pathParamsError.issues[0];
       if (issue) {
         return TsRestResponse.fromJson(
-          { error: { message: "Missing imageId", code: "BAD_REQUEST" } },
-          { status: 400 },
+          { error: { message: "Missing imageId", code: ApiError.BAD_REQUEST.code } },
+          { status: ApiError.BAD_REQUEST.status },
         );
       }
     }
