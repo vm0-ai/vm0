@@ -55,7 +55,7 @@ teardown() {
     assert_output --partial "hello from artifact"
     assert_output --partial "nested content"
 
-    # Step 4: Verify run completes properly (vm0_result event)
+    # Step 4: Verify run completes properly ([result] and [completed] events)
     assert_output --partial "[result]"
     assert_output --partial "Checkpoint:"
 }

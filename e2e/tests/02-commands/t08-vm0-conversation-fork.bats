@@ -2,7 +2,7 @@
 
 # Test VM0 conversation ID and fork functionality
 # This test verifies that:
-# 1. vm0_result event includes conversationId
+# 1. [completed] output includes conversationId
 # 2. --conversation flag can fork from a specific conversation
 # 3. Fork maintains conversation history while allowing different artifact version
 #
@@ -26,7 +26,7 @@ teardown() {
 }
 
 @test "VM0 conversation: output includes conversationId" {
-    # This test verifies that vm0_result event includes conversationId
+    # This test verifies that [completed] output includes conversationId
 
     # Step 1: Create artifact
     echo "# Step 1: Creating artifact..."
@@ -45,7 +45,7 @@ teardown() {
         "echo 'hello world'"
 
     assert_success
-    assert_output --partial "[vm0_result]"
+    assert_output --partial "[completed]"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
 

@@ -73,11 +73,13 @@ EOF
     run $CLI_COMMAND cook "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
-    assert_output --partial "vm0_start"
+    # Check for [init] event which indicates agent started (replaces vm0_start)
+    assert_output --partial "[init]"
 
     echo "# Step 8: Check auto-pull behavior..."
     # If run succeeded and version changed, we should see pull message
-    if echo "$output" | grep -q "vm0_result"; then
+    # Check for [completed] which indicates run finished (replaces vm0_result)
+    if echo "$output" | grep -q "\[completed\]"; then
         if echo "$output" | grep -q "Pulling updated artifact"; then
             assert_output --partial "Artifact pulled"
             echo "# Auto-pull triggered successfully"
