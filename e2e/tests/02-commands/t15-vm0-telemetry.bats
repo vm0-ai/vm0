@@ -2,8 +2,9 @@
 
 # Test VM0 telemetry collection and retrieval
 # This test verifies that:
-# 1. Agent runs collect telemetry data (system log and metrics)
-# 2. The vm0 logs command can retrieve telemetry data
+# 1. Agent runs display Run ID at start
+# 2. Agent runs collect telemetry data (system log and metrics)
+# 3. The vm0 logs command can retrieve telemetry data
 #
 # Test count: 2 tests with 1 vm0 run call
 
@@ -27,7 +28,7 @@ teardown() {
     assert_output --partial "vm0-standard"
 }
 
-@test "VM0 telemetry: system log and metrics collected during run" {
+@test "VM0 telemetry: run displays Run ID and logs command retrieves data" {
     # Step 1: Create artifact with initial content
     echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -38,7 +39,6 @@ teardown() {
     assert_success
 
     # Step 2: Run agent with a simple command
-    # The agent execution will collect telemetry (system log and metrics)
     echo "# Step 2: Running agent to trigger telemetry collection..."
     run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
@@ -46,53 +46,51 @@ teardown() {
 
     assert_success
 
+    # Verify "Run started" message with Run ID is displayed
+    assert_output --partial "Run started"
+    assert_output --partial "Run ID:"
+
     # Verify run completed successfully
     assert_output --partial "[result]"
     assert_output --partial "Run completed successfully"
 
-    # Extract run ID from the output
-    # The run ID appears after "Next steps:" section in session/checkpoint commands
-    # Format: vm0 run resume <checkpoint-id> "your next prompt"
-    RUN_CHECKPOINT_ID=$(echo "$output" | grep -oP 'vm0 run resume \K[a-f0-9-]{36}' | head -1)
-    echo "# Checkpoint ID: $RUN_CHECKPOINT_ID"
-    [ -n "$RUN_CHECKPOINT_ID" ] || {
-        echo "# Failed to extract checkpoint ID from output"
+    # Verify "vm0 logs" command hint is shown in next steps
+    assert_output --partial "View telemetry logs:"
+    assert_output --partial "vm0 logs"
+
+    # Step 3: Extract Run ID from output
+    # Format: "  Run ID:   abc12345-6789-..."
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    echo "# Run ID: $RUN_ID"
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID from output"
         echo "$output"
         return 1
     }
 
-    # Step 3: Fetch telemetry logs using the checkpoint ID
-    # The checkpoint is linked to a run, and we need to find the run ID
-    # For now, we'll verify the logs command works by using JSON output
-    echo "# Step 3: Verifying telemetry collection..."
+    # Step 4: Verify vm0 logs command works with the Run ID
+    echo "# Step 4: Fetching telemetry logs..."
+    run $CLI_COMMAND logs "$RUN_ID"
 
-    # Since we don't have direct run ID in output, we'll use the logs command
-    # with the checkpoint ID - the API should work with run ID
-    # For E2E testing, we verify the command exists and provides expected output format
+    assert_success
 
-    # Extract run ID from session continuation hint
-    # Format: vm0 run continue <session-id> "your next prompt"
-    RUN_SESSION_ID=$(echo "$output" | grep -oP 'vm0 run continue \K[a-f0-9-]{36}' | head -1)
-    echo "# Session ID: $RUN_SESSION_ID"
+    # The logs command should return telemetry data
+    # With mock-claude, there may be minimal telemetry, but command should succeed
+    # In real runs, systemLog would contain agent execution logs
+    # and metrics would contain CPU/memory/disk usage
 
-    # The telemetry is collected during the run, and should include:
-    # - System log entries from the agent execution
-    # - Metrics (CPU, memory, disk usage) collected periodically
+    echo "# Telemetry logs retrieved successfully"
+    echo "# Output: $output"
 
-    # For now, we verify the run completed successfully which indicates
-    # the telemetry upload threads started and final telemetry upload occurred
-    # The system log should contain telemetry-related messages
+    # Step 5: Verify JSON output mode works
+    echo "# Step 5: Testing JSON output mode..."
+    run $CLI_COMMAND logs "$RUN_ID" --json
 
-    # Verify that telemetry messages appear in the verbose output or run output
-    # The agent script logs: "Telemetry upload thread started"
-    # and "Performing final telemetry upload..."
+    assert_success
 
-    # These appear in the sandbox logs, not in the CLI output
-    # The CLI output just shows the agent events
+    # JSON output should be valid (contains expected fields)
+    assert_output --partial "systemLog"
+    assert_output --partial "metrics"
 
-    # Success criteria for this test:
-    # 1. Agent run completes successfully (already verified)
-    # 2. Checkpoint is created (already verified)
-    # This confirms the agent ran to completion including telemetry upload
-    echo "# Telemetry collection verified via successful run completion"
+    echo "# JSON telemetry output verified"
 }
