@@ -3,7 +3,7 @@ import { agentRuns } from "./agent-run";
 
 /**
  * Sandbox Telemetry table
- * Stores telemetry data (main log and metrics) from sandbox execution
+ * Stores telemetry data (system log and metrics) from sandbox execution
  */
 export const sandboxTelemetry = pgTable(
   "sandbox_telemetry",
@@ -12,7 +12,7 @@ export const sandboxTelemetry = pgTable(
     runId: uuid("run_id")
       .references(() => agentRuns.id, { onDelete: "cascade" })
       .notNull(),
-    data: jsonb("data").notNull(), // { mainLog: string, metrics: array }
+    data: jsonb("data").notNull(), // { systemLog: string, metrics: array }
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [index("idx_sandbox_telemetry_run_id").on(table.runId)],

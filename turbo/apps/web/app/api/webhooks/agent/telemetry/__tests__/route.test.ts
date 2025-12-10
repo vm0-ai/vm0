@@ -133,7 +133,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "test log",
+            systemLog: "test log",
             metrics: [],
           }),
         },
@@ -172,7 +172,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
             Authorization: `Bearer ${testToken}`,
           },
           body: JSON.stringify({
-            mainLog: "test log",
+            systemLog: "test log",
           }),
         },
       );
@@ -213,7 +213,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: nonExistentRunId,
-            mainLog: "test log",
+            systemLog: "test log",
           }),
         },
       );
@@ -247,7 +247,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "test log",
+            systemLog: "test log",
           }),
         },
       );
@@ -282,7 +282,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       });
     });
 
-    it("should store telemetry with mainLog only", async () => {
+    it("should store telemetry with systemLog only", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -293,7 +293,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "[2025-12-09T10:00:00Z] [INFO] Test log message",
+            systemLog: "[2025-12-09T10:00:00Z] [INFO] Test log message",
           }),
         },
       );
@@ -314,10 +314,10 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(telemetry).toBeDefined();
       expect(telemetry?.runId).toBe(testRunId);
       const telemetryData = telemetry?.data as {
-        mainLog: string;
+        systemLog: string;
         metrics: unknown[];
       };
-      expect(telemetryData.mainLog).toBe(
+      expect(telemetryData.systemLog).toBe(
         "[2025-12-09T10:00:00Z] [INFO] Test log message",
       );
       expect(telemetryData.metrics).toEqual([]);
@@ -364,14 +364,14 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(telemetry).toBeDefined();
       const telemetryData = telemetry?.data as {
-        mainLog: string;
+        systemLog: string;
         metrics: unknown[];
       };
-      expect(telemetryData.mainLog).toBe("");
+      expect(telemetryData.systemLog).toBe("");
       expect(telemetryData.metrics).toEqual(testMetrics);
     });
 
-    it("should store telemetry with both mainLog and metrics", async () => {
+    it("should store telemetry with both systemLog and metrics", async () => {
       const testMetrics = [
         {
           ts: "2025-12-09T10:00:00Z",
@@ -401,7 +401,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "[2025-12-09T10:00:00Z] [INFO] Agent started\n",
+            systemLog: "[2025-12-09T10:00:00Z] [INFO] Agent started\n",
             metrics: testMetrics,
           }),
         },
@@ -421,10 +421,10 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(telemetry).toBeDefined();
       const telemetryData = telemetry?.data as {
-        mainLog: string;
+        systemLog: string;
         metrics: unknown[];
       };
-      expect(telemetryData.mainLog).toBe(
+      expect(telemetryData.systemLog).toBe(
         "[2025-12-09T10:00:00Z] [INFO] Agent started\n",
       );
       expect(telemetryData.metrics).toEqual(testMetrics);
@@ -442,7 +442,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "First batch",
+            systemLog: "First batch",
           }),
         },
       );
@@ -461,7 +461,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            mainLog: "Second batch",
+            systemLog: "Second batch",
           }),
         },
       );

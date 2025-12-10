@@ -1,11 +1,11 @@
 /**
  * Telemetry upload module for sandbox (Python)
- * Uploads main log and metrics to VM0 API
+ * Uploads system log and metrics to VM0 API
  */
 export const UPLOAD_TELEMETRY_SCRIPT = `#!/usr/bin/env python3
 """
 Telemetry upload module for VM0 sandbox.
-Reads main log and metrics files, tracks position to avoid duplicates,
+Reads system log and metrics files, tracks position to avoid duplicates,
 and uploads to the telemetry webhook endpoint.
 """
 import json
@@ -15,7 +15,7 @@ from typing import List, Dict, Any
 
 from common import (
     RUN_ID, TELEMETRY_URL, TELEMETRY_INTERVAL,
-    MAIN_LOG_FILE, METRICS_LOG_FILE,
+    SYSTEM_LOG_FILE, METRICS_LOG_FILE,
     TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE
 )
 from log import log_info, log_error, log_debug, log_warn
@@ -101,25 +101,25 @@ def upload_telemetry() -> bool:
     Returns:
         True if upload succeeded or no data to upload, False on failure
     """
-    # Read new main log content
-    main_log, log_pos = read_file_from_position(MAIN_LOG_FILE, TELEMETRY_LOG_POS_FILE)
+    # Read new system log content
+    system_log, log_pos = read_file_from_position(SYSTEM_LOG_FILE, TELEMETRY_LOG_POS_FILE)
 
     # Read new metrics
     metrics = read_metrics_from_position(TELEMETRY_METRICS_POS_FILE)
 
     # Skip if nothing new
-    if not main_log and not metrics:
+    if not system_log and not metrics:
         log_debug("No new telemetry data to upload")
         return True
 
     # Upload to API
     payload = {
         "runId": RUN_ID,
-        "mainLog": main_log,
+        "systemLog": system_log,
         "metrics": metrics
     }
 
-    log_debug(f"Uploading telemetry: {len(main_log)} bytes log, {len(metrics)} metrics")
+    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics")
 
     result = http_post_json(TELEMETRY_URL, payload, max_retries=1)
 

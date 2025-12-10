@@ -34,7 +34,7 @@ interface MetricData {
  */
 interface TelemetryRequest {
   runId: string;
-  mainLog?: string;
+  systemLog?: string;
   metrics?: MetricData[];
 }
 
@@ -48,7 +48,7 @@ interface TelemetryResponse {
 
 /**
  * POST /api/webhooks/agent/telemetry
- * Receive telemetry data (main log and metrics) from sandbox
+ * Receive telemetry data (system log and metrics) from sandbox
  */
 export async function POST(request: NextRequest) {
   try {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       .values({
         runId: body.runId,
         data: {
-          mainLog: body.mainLog ?? "",
+          systemLog: body.systemLog ?? "",
           metrics: body.metrics ?? [],
         },
       })
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     log.debug(
-      `Stored telemetry for run ${body.runId}: mainLog=${body.mainLog?.length ?? 0} bytes, metrics=${body.metrics?.length ?? 0} entries`,
+      `Stored telemetry for run ${body.runId}: systemLog=${body.systemLog?.length ?? 0} bytes, metrics=${body.metrics?.length ?? 0} entries`,
     );
 
     const response: TelemetryResponse = {

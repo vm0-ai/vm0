@@ -57,7 +57,7 @@ SESSION_HISTORY_PATH_FILE = f"/tmp/vm0-session-history-{RUN_ID}.txt"
 EVENT_ERROR_FLAG = f"/tmp/vm0-event-error-{RUN_ID}"
 
 # Log file for persistent logging (directly in /tmp with vm0- prefix)
-MAIN_LOG_FILE = f"/tmp/vm0-main-{RUN_ID}.log"
+SYSTEM_LOG_FILE = f"/tmp/vm0-main-{RUN_ID}.log"
 AGENT_LOG_FILE = f"/tmp/vm0-agent-{RUN_ID}.log"
 
 # Metrics log file for system resource metrics (JSONL format)
