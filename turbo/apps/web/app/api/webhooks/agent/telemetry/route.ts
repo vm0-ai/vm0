@@ -1,69 +1,27 @@
-import { NextRequest } from "next/server";
+import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { TsRestResponse } from "@ts-rest/serverless";
+import { webhookTelemetryContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { sandboxTelemetry } from "../../../../../src/db/schema/sandbox-telemetry";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  successResponse,
-  errorResponse,
-} from "../../../../../src/lib/api-response";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
-/** Logger instance for telemetry webhook */
 const log = logger("webhooks:telemetry");
 
-/**
- * Metric data point from sandbox
- */
-interface MetricData {
-  ts: string;
-  cpu: number;
-  mem_used: number;
-  mem_total: number;
-  disk_used: number;
-  disk_total: number;
-}
-
-/**
- * Request body for telemetry webhook endpoint
- */
-interface TelemetryRequest {
-  runId: string;
-  systemLog?: string;
-  metrics?: MetricData[];
-}
-
-/**
- * Response from telemetry endpoint
- */
-interface TelemetryResponse {
-  success: boolean;
-  id: string;
-}
-
-/**
- * POST /api/webhooks/agent/telemetry
- * Receive telemetry data (system log and metrics) from sandbox
- */
-export async function POST(request: NextRequest) {
-  try {
+const router = tsr.router(webhookTelemetryContract, {
+  send: async ({ body }) => {
     initServices();
 
     const userId = await getUserId();
     if (!userId) {
-      throw new UnauthorizedError("Not authenticated");
-    }
-
-    const body: TelemetryRequest = await request.json();
-
-    if (!body.runId) {
-      throw new BadRequestError("Missing runId");
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
     // Verify run exists and belongs to user
@@ -74,7 +32,12 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Store telemetry data
@@ -91,20 +54,61 @@ export async function POST(request: NextRequest) {
 
     const inserted = result[0];
     if (!inserted) {
-      throw new Error("Failed to insert telemetry record");
+      return {
+        status: 500 as const,
+        body: {
+          error: {
+            message: "Failed to insert telemetry record",
+            code: "INTERNAL_ERROR",
+          },
+        },
+      };
     }
 
     log.debug(
       `Stored telemetry for run ${body.runId}: systemLog=${body.systemLog?.length ?? 0} bytes, metrics=${body.metrics?.length ?? 0} entries`,
     );
 
-    const response: TelemetryResponse = {
-      success: true,
-      id: inserted.id,
+    return {
+      status: 200 as const,
+      body: {
+        success: true,
+        id: inserted.id,
+      },
     };
-    return successResponse(response, 200);
-  } catch (error) {
-    log.error("Telemetry error:", error);
-    return errorResponse(error);
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (err && typeof err === "object" && "bodyError" in err) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  log.error("Telemetry error:", err);
+  return undefined;
 }
+
+const handler = createNextHandler(webhookTelemetryContract, router, {
+  handlerType: "app-router",
+  jsonQuery: true,
+  errorHandler,
+});
+
+export { handler as POST };

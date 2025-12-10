@@ -240,6 +240,48 @@ export const webhookStoragesIncrementalContract = c.router({
   },
 });
 
+/**
+ * Metric data point schema
+ */
+const metricDataSchema = z.object({
+  ts: z.string(),
+  cpu: z.number(),
+  mem_used: z.number(),
+  mem_total: z.number(),
+  disk_used: z.number(),
+  disk_total: z.number(),
+});
+
+/**
+ * Webhook telemetry contract for /api/webhooks/agent/telemetry
+ */
+export const webhookTelemetryContract = c.router({
+  /**
+   * POST /api/webhooks/agent/telemetry
+   * Receive telemetry data (system log and metrics) from sandbox
+   */
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/telemetry",
+    body: z.object({
+      runId: z.string().min(1, "runId is required"),
+      systemLog: z.string().optional(),
+      metrics: z.array(metricDataSchema).optional(),
+    }),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+        id: z.string(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive telemetry data from sandbox",
+  },
+});
+
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
@@ -247,3 +289,4 @@ export type WebhookHeartbeatContract = typeof webhookHeartbeatContract;
 export type WebhookStoragesContract = typeof webhookStoragesContract;
 export type WebhookStoragesIncrementalContract =
   typeof webhookStoragesIncrementalContract;
+export type WebhookTelemetryContract = typeof webhookTelemetryContract;

@@ -69,12 +69,14 @@ export {
   webhookHeartbeatContract,
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
+  webhookTelemetryContract,
   type WebhookEventsContract,
   type WebhookCompleteContract,
   type WebhookCheckpointsContract,
   type WebhookHeartbeatContract,
   type WebhookStoragesContract,
   type WebhookStoragesIncrementalContract,
+  type WebhookTelemetryContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
