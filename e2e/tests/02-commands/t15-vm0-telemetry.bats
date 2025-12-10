@@ -74,29 +74,52 @@ teardown() {
 
     assert_success
 
-    # Default output shows agent events
-    # With mock-claude, there should be at least init and result events
-    echo "# Agent events retrieved successfully"
-    echo "# Output: $output"
+    # Default output shows agent events - verify event type markers are present
+    # Mock-claude produces: [init], [text], [tool_use], [tool_result], [result]
+    assert_output --partial "[init]"
+    assert_output --partial "[result]"
+    echo "# Agent events contain expected event types"
 
-    # Step 5: Verify --system option works
-    echo "# Step 5: Testing --system option..."
+    # Step 5: Verify --agent option explicitly shows agent events
+    echo "# Step 5: Testing --agent option..."
+    run $CLI_COMMAND logs "$RUN_ID" --agent
+
+    assert_success
+    assert_output --partial "[init]"
+    echo "# --agent option works correctly"
+
+    # Step 6: Verify --system option works
+    echo "# Step 6: Testing --system option..."
     run $CLI_COMMAND logs "$RUN_ID" --system
 
     assert_success
-    echo "# System log retrieved successfully"
+    # System log may be empty with mock-claude, but command should succeed
+    # If no logs, output will contain "No system log found"
+    echo "# System log option works correctly"
 
-    # Step 6: Verify --metrics option works
-    echo "# Step 6: Testing --metrics option..."
+    # Step 7: Verify --metrics option works
+    echo "# Step 7: Testing --metrics option..."
     run $CLI_COMMAND logs "$RUN_ID" --metrics
 
     assert_success
-    echo "# Metrics retrieved successfully"
+    # Metrics may be empty with mock-claude, but command should succeed
+    # If no metrics, output will contain "No metrics found"
+    echo "# Metrics option works correctly"
 
-    # Step 7: Verify --limit option works
-    echo "# Step 7: Testing --limit option..."
-    run $CLI_COMMAND logs "$RUN_ID" --limit 10
+    # Step 8: Verify --limit option limits output
+    echo "# Step 8: Testing --limit option..."
+    run $CLI_COMMAND logs "$RUN_ID" --limit 2
 
     assert_success
+    # With limit=2, should see at most 2 events
+    # If more exist, should see "Use --limit to see more"
     echo "# Limit option works correctly"
+
+    # Step 9: Verify mutually exclusive options are enforced
+    echo "# Step 9: Testing mutually exclusive options..."
+    run $CLI_COMMAND logs "$RUN_ID" --agent --system
+
+    assert_failure
+    assert_output --partial "mutually exclusive"
+    echo "# Mutually exclusive options enforced correctly"
 }
