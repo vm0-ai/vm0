@@ -198,7 +198,31 @@ const telemetryMetricSchema = z.object({
 });
 
 /**
- * Telemetry response schema
+ * System log response schema
+ */
+const systemLogResponseSchema = z.object({
+  systemLog: z.string(),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Metrics response schema
+ */
+const metricsResponseSchema = z.object({
+  metrics: z.array(telemetryMetricSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Agent events response schema (for logs command)
+ */
+const agentEventsResponseSchema = z.object({
+  events: z.array(runEventSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Telemetry response schema (legacy - combined format)
  */
 const telemetryResponseSchema = z.object({
   systemLog: z.string(),
@@ -207,11 +231,12 @@ const telemetryResponseSchema = z.object({
 
 /**
  * Run telemetry route contract (/api/agent/runs/[id]/telemetry)
+ * Legacy combined format
  */
 export const runTelemetryContract = c.router({
   /**
    * GET /api/agent/runs/:id/telemetry
-   * Get aggregated telemetry data for a run
+   * Get aggregated telemetry data for a run (legacy combined format)
    */
   getTelemetry: {
     method: "GET",
@@ -228,10 +253,94 @@ export const runTelemetryContract = c.router({
   },
 });
 
+/**
+ * System log route contract (/api/agent/runs/[id]/telemetry/system-log)
+ */
+export const runSystemLogContract = c.router({
+  /**
+   * GET /api/agent/runs/:id/telemetry/system-log
+   * Get system log with pagination
+   */
+  getSystemLog: {
+    method: "GET",
+    path: "/api/agent/runs/:id/telemetry/system-log",
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    query: z.object({
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(100).default(5),
+    }),
+    responses: {
+      200: systemLogResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get system log with pagination",
+  },
+});
+
+/**
+ * Metrics route contract (/api/agent/runs/[id]/telemetry/metrics)
+ */
+export const runMetricsContract = c.router({
+  /**
+   * GET /api/agent/runs/:id/telemetry/metrics
+   * Get metrics with pagination
+   */
+  getMetrics: {
+    method: "GET",
+    path: "/api/agent/runs/:id/telemetry/metrics",
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    query: z.object({
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(100).default(5),
+    }),
+    responses: {
+      200: metricsResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get metrics with pagination",
+  },
+});
+
+/**
+ * Agent events route contract (/api/agent/runs/[id]/telemetry/agent)
+ */
+export const runAgentEventsContract = c.router({
+  /**
+   * GET /api/agent/runs/:id/telemetry/agent
+   * Get agent events with pagination (for vm0 logs default)
+   */
+  getAgentEvents: {
+    method: "GET",
+    path: "/api/agent/runs/:id/telemetry/agent",
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    query: z.object({
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(100).default(5),
+    }),
+    responses: {
+      200: agentEventsResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get agent events with pagination",
+  },
+});
+
 export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunEventsContract = typeof runEventsContract;
 export type RunTelemetryContract = typeof runTelemetryContract;
+export type RunSystemLogContract = typeof runSystemLogContract;
+export type RunMetricsContract = typeof runMetricsContract;
+export type RunAgentEventsContract = typeof runAgentEventsContract;
 
 // Export schemas for reuse
 export {
@@ -245,4 +354,7 @@ export {
   eventsResponseSchema,
   telemetryMetricSchema,
   telemetryResponseSchema,
+  systemLogResponseSchema,
+  metricsResponseSchema,
+  agentEventsResponseSchema,
 };

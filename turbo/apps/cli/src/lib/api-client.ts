@@ -114,6 +114,28 @@ export interface GetTelemetryResponse {
   metrics: TelemetryMetric[];
 }
 
+export interface GetSystemLogResponse {
+  systemLog: string;
+  hasMore: boolean;
+}
+
+export interface GetMetricsResponse {
+  metrics: TelemetryMetric[];
+  hasMore: boolean;
+}
+
+export interface RunEvent {
+  sequenceNumber: number;
+  eventType: string;
+  eventData: unknown;
+  createdAt: string;
+}
+
+export interface GetAgentEventsResponse {
+  events: RunEvent[];
+  hasMore: boolean;
+}
+
 export interface CreateImageResponse {
   buildId: string;
   imageId: string;
@@ -332,6 +354,99 @@ class ApiClient {
     }
 
     return (await response.json()) as GetTelemetryResponse;
+  }
+
+  async getSystemLog(
+    runId: string,
+    options?: { since?: number; limit?: number },
+  ): Promise<GetSystemLogResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams();
+    if (options?.since !== undefined) {
+      params.set("since", String(options.since));
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+
+    const queryString = params.toString();
+    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/system-log${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to fetch system log");
+    }
+
+    return (await response.json()) as GetSystemLogResponse;
+  }
+
+  async getMetrics(
+    runId: string,
+    options?: { since?: number; limit?: number },
+  ): Promise<GetMetricsResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams();
+    if (options?.since !== undefined) {
+      params.set("since", String(options.since));
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+
+    const queryString = params.toString();
+    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/metrics${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to fetch metrics");
+    }
+
+    return (await response.json()) as GetMetricsResponse;
+  }
+
+  async getAgentEvents(
+    runId: string,
+    options?: { since?: number; limit?: number },
+  ): Promise<GetAgentEventsResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams();
+    if (options?.since !== undefined) {
+      params.set("since", String(options.since));
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+
+    const queryString = params.toString();
+    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/agent${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to fetch agent events");
+    }
+
+    return (await response.json()) as GetAgentEventsResponse;
   }
 
   async createImage(body: {

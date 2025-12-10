@@ -68,29 +68,35 @@ teardown() {
         return 1
     }
 
-    # Step 4: Verify vm0 logs command works with the Run ID
-    echo "# Step 4: Fetching telemetry logs..."
+    # Step 4: Verify vm0 logs command (default: agent events)
+    echo "# Step 4: Fetching agent events (default)..."
     run $CLI_COMMAND logs "$RUN_ID"
 
     assert_success
 
-    # The logs command should return telemetry data
-    # With mock-claude, there may be minimal telemetry, but command should succeed
-    # In real runs, systemLog would contain agent execution logs
-    # and metrics would contain CPU/memory/disk usage
-
-    echo "# Telemetry logs retrieved successfully"
+    # Default output shows agent events
+    # With mock-claude, there should be at least init and result events
+    echo "# Agent events retrieved successfully"
     echo "# Output: $output"
 
-    # Step 5: Verify JSON output mode works
-    echo "# Step 5: Testing JSON output mode..."
-    run $CLI_COMMAND logs "$RUN_ID" --json
+    # Step 5: Verify --system option works
+    echo "# Step 5: Testing --system option..."
+    run $CLI_COMMAND logs "$RUN_ID" --system
 
     assert_success
+    echo "# System log retrieved successfully"
 
-    # JSON output should be valid (contains expected fields)
-    assert_output --partial "systemLog"
-    assert_output --partial "metrics"
+    # Step 6: Verify --metrics option works
+    echo "# Step 6: Testing --metrics option..."
+    run $CLI_COMMAND logs "$RUN_ID" --metrics
 
-    echo "# JSON telemetry output verified"
+    assert_success
+    echo "# Metrics retrieved successfully"
+
+    # Step 7: Verify --limit option works
+    echo "# Step 7: Testing --limit option..."
+    run $CLI_COMMAND logs "$RUN_ID" --limit 10
+
+    assert_success
+    echo "# Limit option works correctly"
 }
