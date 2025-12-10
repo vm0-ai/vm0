@@ -316,13 +316,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("[Storage] Upload error:", error);
+    log.error("Upload error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {
       await fs.promises
         .rm(tempDir, { recursive: true, force: true })
-        .catch(console.error);
+        .catch((err) => log.error("Failed to clean up temp directory:", err));
     }
 
     return errorResponse(
@@ -514,13 +514,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("[Storage] Download error:", error);
+    log.error("Download error:", error);
 
     // Clean up temp directory if exists
     if (tempDir) {
       await fs.promises
         .rm(tempDir, { recursive: true, force: true })
-        .catch(console.error);
+        .catch((err) => log.error("Failed to clean up temp directory:", err));
     }
 
     return errorResponse(

@@ -6,6 +6,9 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { checkpointService } from "../../../../../src/lib/checkpoint";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("webhook:checkpoints");
 
 const router = tsr.router(webhookCheckpointsContract, {
   create: async ({ body }) => {
@@ -21,8 +24,8 @@ const router = tsr.router(webhookCheckpointsContract, {
       };
     }
 
-    console.log(
-      `[Checkpoint API] Received checkpoint request for run ${body.runId} from user ${userId}`,
+    log.debug(
+      `Received checkpoint request for run ${body.runId} from user ${userId}`,
     );
 
     // Verify run exists and belongs to the authenticated user
@@ -48,8 +51,8 @@ const router = tsr.router(webhookCheckpointsContract, {
       // Create checkpoint
       const result = await checkpointService.createCheckpoint(body);
 
-      console.log(
-        `[Checkpoint API] Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
+      log.debug(
+        `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
       );
 
       // Note: vm0_result event is now sent by the complete API
@@ -66,7 +69,7 @@ const router = tsr.router(webhookCheckpointsContract, {
         },
       };
     } catch (error) {
-      console.error("[Checkpoint API] Error:", error);
+      log.error("Error:", error);
 
       // Note: vm0_error event is now sent by the complete API
       // If checkpoint fails, run-agent.sh will call complete API with exitCode != 0

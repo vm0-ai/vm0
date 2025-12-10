@@ -8,6 +8,9 @@ import { eq, max, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { createSecretMasker } from "../../../../../src/lib/secrets/secret-masker";
 import { getAllSecretValues } from "../../../../../src/lib/secrets/secrets-service";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
   send: async ({ body }) => {
@@ -23,8 +26,8 @@ const router = tsr.router(webhookEventsContract, {
       };
     }
 
-    console.log(
-      `[Webhook] Received ${body.events.length} events for run ${body.runId} from user ${userId}`,
+    log.debug(
+      `Received ${body.events.length} events for run ${body.runId} from user ${userId}`,
     );
 
     // Verify run exists and belongs to the authenticated user
@@ -69,8 +72,8 @@ const router = tsr.router(webhookEventsContract, {
     const firstSequence = lastSequence + 1;
     const lastInsertedSequence = lastSequence + body.events.length;
 
-    console.log(
-      `[Webhook] Stored events ${firstSequence}-${lastInsertedSequence} for run ${body.runId}`,
+    log.debug(
+      `Stored events ${firstSequence}-${lastInsertedSequence} for run ${body.runId}`,
     );
 
     return {

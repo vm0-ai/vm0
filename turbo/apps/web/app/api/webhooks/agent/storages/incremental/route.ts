@@ -455,7 +455,7 @@ export async function POST(request: NextRequest) {
     if (tempDir) {
       await fs.promises
         .rm(tempDir, { recursive: true, force: true })
-        .catch(console.error);
+        .catch((err) => log.error("Failed to clean up temp directory:", err));
     }
 
     return errorResponse(

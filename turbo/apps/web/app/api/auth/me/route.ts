@@ -2,6 +2,9 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { authContract } from "@vm0/core";
 import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:auth");
 
 const router = tsr.router(authContract, {
   me: async () => {
@@ -41,7 +44,7 @@ const router = tsr.router(authContract, {
         },
       };
     } catch (error) {
-      console.error("Failed to get user info:", error);
+      log.error("Failed to get user info:", error);
       return {
         status: 500 as const,
         body: {

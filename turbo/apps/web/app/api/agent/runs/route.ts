@@ -14,6 +14,9 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
   create: async ({ body }) => {
@@ -76,11 +79,11 @@ const router = tsr.router(runsMainContract, {
       }
     }
 
-    console.log(
-      `[API] Creating run - mode: ${isCheckpointResume ? "checkpoint" : isSessionContinue ? "session" : "new"}`,
+    log.debug(
+      `Creating run - mode: ${isCheckpointResume ? "checkpoint" : isSessionContinue ? "session" : "new"}`,
     );
-    console.log(
-      `[API] Request body.volumeVersions=${JSON.stringify(body.volumeVersions)}`,
+    log.debug(
+      `Request body.volumeVersions=${JSON.stringify(body.volumeVersions)}`,
     );
 
     // Resolve compose version ID and content for the run
@@ -316,9 +319,7 @@ const router = tsr.router(runsMainContract, {
       agentComposeName = compose.name || undefined;
     }
 
-    console.log(
-      `[API] Resolved agentComposeVersionId: ${agentComposeVersionId}`,
-    );
+    log.debug(`Resolved agentComposeVersionId: ${agentComposeVersionId}`);
 
     // Create run record in database
     const [run] = await globalThis.services.db
@@ -337,11 +338,11 @@ const router = tsr.router(runsMainContract, {
       throw new Error("Failed to create run record");
     }
 
-    console.log(`[API] Created run record: ${run.id}`);
+    log.debug(`Created run record: ${run.id}`);
 
     // Generate temporary bearer token for E2B sandbox
     const sandboxToken = await generateSandboxToken(userId, run.id);
-    console.log(`[API] Generated sandbox token for run: ${run.id}`);
+    log.debug(`Generated sandbox token for run: ${run.id}`);
 
     // Update run status to 'running' before starting E2B execution
     // Initialize lastHeartbeatAt for sandbox cleanup monitoring
@@ -383,8 +384,8 @@ const router = tsr.router(runsMainContract, {
       // Note: sandboxId is persisted to database inside executeRun() immediately after sandbox creation
       const result = await runService.executeRun(context);
 
-      console.log(
-        `[API] Run ${run.id} started successfully (sandbox: ${result.sandboxId})`,
+      log.debug(
+        `Run ${run.id} started successfully (sandbox: ${result.sandboxId})`,
       );
     } catch (error) {
       // Extract error message - E2B CommandExitError includes result with stderr
@@ -398,7 +399,7 @@ const router = tsr.router(runsMainContract, {
       }
 
       // Update run with error on preparation failure
-      console.error(`[API] Run ${run.id} preparation failed:`, errorMessage);
+      log.error(`Run ${run.id} preparation failed: ${errorMessage}`);
       await globalThis.services.db
         .update(agentRuns)
         .set({

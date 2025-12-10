@@ -10,6 +10,9 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("webhook:complete");
 
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body }) => {
@@ -25,8 +28,8 @@ const router = tsr.router(webhookCompleteContract, {
       };
     }
 
-    console.log(
-      `[Complete API] Received completion for run ${body.runId}, exitCode=${body.exitCode}`,
+    log.debug(
+      `Received completion for run ${body.runId}, exitCode=${body.exitCode}`,
     );
 
     // Get run record
@@ -49,8 +52,8 @@ const router = tsr.router(webhookCompleteContract, {
 
     // Idempotency check: if run is already completed/failed, return early
     if (run.status === "completed" || run.status === "failed") {
-      console.log(
-        `[Complete API] Run ${body.runId} already ${run.status}, skipping duplicate completion`,
+      log.debug(
+        `Run ${body.runId} already ${run.status}, skipping duplicate completion`,
       );
       return {
         status: 200 as const,
@@ -134,7 +137,7 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(agentRuns.id, body.runId));
 
         finalStatus = "completed";
-        console.log(`[Complete API] Run ${body.runId} completed successfully`);
+        log.debug(`Run ${body.runId} completed successfully`);
       } else {
         // Failure: store error in run table
         const errorMessage =
@@ -151,7 +154,7 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(agentRuns.id, body.runId));
 
         finalStatus = "failed";
-        console.log(`[Complete API] Run ${body.runId} failed: ${errorMessage}`);
+        log.warn(`Run ${body.runId} failed: ${errorMessage}`);
       }
 
       // Kill sandbox (wait for completion to ensure cleanup before response)
@@ -167,7 +170,7 @@ const router = tsr.router(webhookCompleteContract, {
         },
       };
     } catch (error) {
-      console.error("[Complete API] Error:", error);
+      log.error("Error:", error);
 
       // Try to update run status to failed
       try {
@@ -181,7 +184,7 @@ const router = tsr.router(webhookCompleteContract, {
           })
           .where(eq(agentRuns.id, body.runId));
       } catch {
-        console.error("[Complete API] Failed to update run status after error");
+        log.error("Failed to update run status after error");
       }
 
       // Still try to kill sandbox on error
