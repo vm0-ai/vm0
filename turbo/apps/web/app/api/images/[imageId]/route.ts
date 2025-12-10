@@ -48,7 +48,12 @@ function errorHandler(err: unknown): TsRestResponse | void {
       const issue = validationError.pathParamsError.issues[0];
       if (issue) {
         return TsRestResponse.fromJson(
-          { error: { message: "Missing imageId", code: ApiError.BAD_REQUEST.code } },
+          {
+            error: {
+              message: "Missing imageId",
+              code: ApiError.BAD_REQUEST.code,
+            },
+          },
           { status: ApiError.BAD_REQUEST.status },
         );
       }
