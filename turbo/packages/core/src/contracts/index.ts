@@ -117,3 +117,9 @@ export {
   cleanupResponseSchema,
   type CronCleanupSandboxesContract,
 } from "./cron";
+export {
+  proxyErrorSchema,
+  ProxyErrorCode,
+  type ProxyError,
+  type ProxyErrorCode as ProxyErrorCodeType,
+} from "./proxy";
