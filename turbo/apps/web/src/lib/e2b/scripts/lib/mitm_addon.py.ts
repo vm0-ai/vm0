@@ -83,8 +83,12 @@ def request(flow: http.HTTPFlow) -> None:
         ctx.log.warn("VM0_API_URL not set, passing through")
         return
 
-    # Skip requests already going to VM0 (avoid loops)
+    # Skip rewriting requests already going to VM0 (avoid loops)
+    # But still allow them to be logged in the response handler
     if API_URL in flow.request.pretty_url:
+        # Store original URL for logging
+        flow.metadata["original_url"] = flow.request.pretty_url
+        flow.metadata["skip_rewrite"] = True
         return
 
     # Get original target URL
