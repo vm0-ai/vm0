@@ -24,7 +24,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     EVENT_ERROR_FLAG, HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
-    validate_config
+    PROXY_ENABLED, validate_config
 )
 from log import log_info, log_error, log_warn
 from events import send_event
@@ -57,6 +57,21 @@ def main():
     validate_config()
 
     log_info(f"Working directory: {WORKING_DIR}")
+
+    # Set up proxy if enhanced security is enabled
+    # This must be done before any network requests to Claude API
+    if PROXY_ENABLED:
+        log_info("Enhanced security mode enabled, setting up mitmproxy...")
+        try:
+            from proxy_setup import setup_proxy
+            if setup_proxy():
+                log_info("Proxy setup completed successfully")
+            else:
+                log_error("Proxy setup failed, continuing without proxy")
+        except Exception as e:
+            log_error(f"Proxy setup error: {e}")
+            # Continue without proxy - traffic will fail at API level
+            # but this allows debugging
 
     # Start heartbeat thread
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)

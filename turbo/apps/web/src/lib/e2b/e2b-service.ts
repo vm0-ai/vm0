@@ -23,6 +23,8 @@ import {
   MOCK_CLAUDE_SCRIPT,
   METRICS_SCRIPT,
   UPLOAD_TELEMETRY_SCRIPT,
+  PROXY_SETUP_SCRIPT,
+  MITM_ADDON_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
@@ -168,6 +170,16 @@ export class E2BService {
       // Pass USE_MOCK_CLAUDE for testing (executes prompt as bash instead of calling LLM)
       if (process.env.USE_MOCK_CLAUDE === "true") {
         sandboxEnvVars.USE_MOCK_CLAUDE = "true";
+      }
+
+      // Enable proxy mode for enhanced security
+      // When true, mitmproxy will be set up to intercept traffic
+      // and decrypt vm0_enc_ tokens before forwarding to APIs
+      if (context.betaEnhanceSecurity) {
+        sandboxEnvVars.VM0_PROXY_ENABLED = "true";
+        log.debug(
+          `Enhanced security enabled for run ${context.runId} - proxy mode active`,
+        );
       }
 
       // Add artifact information for checkpoint
@@ -418,6 +430,8 @@ export class E2BService {
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
       { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
       { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
+      { content: PROXY_SETUP_SCRIPT, path: SCRIPT_PATHS.proxySetup },
+      { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
   }

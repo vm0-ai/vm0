@@ -24,35 +24,55 @@ import {
   groupVariablesBySource,
 } from "@vm0/core";
 import { getSecretValues } from "../secrets/secrets-service";
+import { createProxyToken } from "../proxy/token-service";
 
 const log = logger("service:run");
 
 /**
+ * Result of environment expansion
+ */
+interface ExpandedEnvironmentResult {
+  environment?: Record<string, string>;
+  betaEnhanceSecurity: boolean;
+}
+
+/**
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
+ *
+ * When beta_enhance_security is enabled:
+ * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
+ * - The betaEnhanceSecurity flag is set to true for e2b-service
+ *
  * @param agentCompose Agent compose configuration
  * @param templateVars Template variables for expansion
  * @param userId User ID for fetching secrets
- * @returns Expanded environment variables or undefined
+ * @param runId Run ID for token binding (required for enhanced security)
+ * @returns Expanded environment variables and security flag
  */
 async function expandEnvironmentFromCompose(
   agentCompose: unknown,
   templateVars: Record<string, string> | undefined,
   userId: string,
-): Promise<Record<string, string> | undefined> {
+  runId: string,
+): Promise<ExpandedEnvironmentResult> {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    return undefined;
+    return { environment: undefined, betaEnhanceSecurity: false };
   }
 
   // Get first agent's environment (currently only one agent supported)
   const agents = Object.values(compose.agents);
   const firstAgent = agents[0];
   if (!firstAgent?.environment) {
-    return undefined;
+    return {
+      environment: undefined,
+      betaEnhanceSecurity: firstAgent?.beta_enhance_security ?? false,
+    };
   }
 
   const environment = firstAgent.environment;
+  const betaEnhanceSecurity = firstAgent.beta_enhance_security ?? false;
 
   // Extract all variable references to determine what we need
   const refs = extractVariableReferences(environment);
@@ -71,14 +91,32 @@ async function expandEnvironmentFromCompose(
   let secrets: Record<string, string> | undefined;
   if (grouped.secrets.length > 0) {
     const secretNames = grouped.secrets.map((r) => r.name);
-    secrets = await getSecretValues(userId, secretNames);
+    const rawSecrets = await getSecretValues(userId, secretNames);
 
     // Check for missing secrets
-    const missingSecrets = secretNames.filter((name) => !secrets![name]);
+    const missingSecrets = secretNames.filter((name) => !rawSecrets[name]);
     if (missingSecrets.length > 0) {
       throw new BadRequestError(
         `Missing required secrets: ${missingSecrets.join(", ")}. Use 'vm0 secret set <name> <value>' to configure them.`,
       );
+    }
+
+    // If enhanced security is enabled, encrypt secrets into proxy tokens
+    if (betaEnhanceSecurity) {
+      log.debug(
+        `Enhanced security enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
+      );
+      secrets = {};
+      for (const name of secretNames) {
+        const secretValue = rawSecrets[name];
+        if (secretValue) {
+          // Create encrypted proxy token bound to this run
+          secrets[name] = createProxyToken(runId, userId, name, secretValue);
+        }
+      }
+    } else {
+      // Default: use plaintext secrets
+      secrets = rawSecrets;
     }
   }
 
@@ -116,7 +154,7 @@ async function expandEnvironmentFromCompose(
     );
   }
 
-  return result;
+  return { environment: result, betaEnhanceSecurity };
 }
 
 /**
@@ -680,11 +718,14 @@ export class RunService {
     }
 
     // Step 4: Expand environment variables from compose config using templateVars and secrets
-    const environment = await expandEnvironmentFromCompose(
-      agentCompose,
-      templateVars,
-      params.userId,
-    );
+    // When beta_enhance_security is enabled, secrets are encrypted into proxy tokens
+    const { environment, betaEnhanceSecurity } =
+      await expandEnvironmentFromCompose(
+        agentCompose,
+        templateVars,
+        params.userId,
+        params.runId,
+      );
 
     // Build final execution context
     return {
@@ -699,6 +740,7 @@ export class RunService {
       artifactVersion,
       volumeVersions,
       environment,
+      betaEnhanceSecurity,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event
