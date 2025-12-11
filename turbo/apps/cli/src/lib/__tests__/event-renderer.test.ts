@@ -621,6 +621,37 @@ describe("EventRenderer", () => {
   // ============================================
 
   describe("Run State Rendering", () => {
+    it("should render run started with run ID and logs hint", () => {
+      EventRenderer.renderRunStarted({
+        runId: "test-run-123",
+      });
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(allCalls.some((call) => call.includes("Run started"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("Run ID:"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("test-run-123"))).toBe(true);
+      expect(
+        allCalls.some((call) => call.includes("vm0 logs test-run-123")),
+      ).toBe(true);
+    });
+
+    it("should render run started with sandbox ID when provided", () => {
+      EventRenderer.renderRunStarted({
+        runId: "test-run-456",
+        sandboxId: "sandbox-abc",
+      });
+
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const allCalls = consoleLogSpy.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      expect(allCalls.some((call) => call.includes("Sandbox:"))).toBe(true);
+      expect(allCalls.some((call) => call.includes("sandbox-abc"))).toBe(true);
+    });
+
     it("should render run completed with result", () => {
       const result = {
         checkpointId: "checkpoint-123",

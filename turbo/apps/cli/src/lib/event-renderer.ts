@@ -43,6 +43,7 @@ export class EventRenderer {
     if (info.sandboxId) {
       console.log(`  Sandbox:  ${chalk.gray(info.sandboxId)}`);
     }
+    console.log(chalk.gray(`  (use "vm0 logs ${info.runId}" to view logs)`));
     console.log();
   }
 
