@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, TelemetryMetric, RunEvent } from "../../lib/api-client";
+import {
+  apiClient,
+  TelemetryMetric,
+  RunEvent,
+  NetworkLogEntry,
+} from "../../lib/api-client";
 import { parseTime } from "../../lib/time-parser";
 import { ClaudeEventParser } from "../../lib/event-parser";
 import { EventRenderer } from "../../lib/event-renderer";
@@ -8,7 +13,7 @@ import { EventRenderer } from "../../lib/event-renderer";
 /**
  * Log type for mutually exclusive options
  */
-type LogType = "agent" | "system" | "metrics";
+type LogType = "agent" | "system" | "metrics" | "network";
 
 /**
  * Format bytes to human-readable string
@@ -32,6 +37,35 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
+ * Format a single network log entry
+ */
+function formatNetworkLog(entry: NetworkLogEntry): string {
+  // Color status code based on HTTP status
+  let statusColor: typeof chalk.green;
+  if (entry.status >= 200 && entry.status < 300) {
+    statusColor = chalk.green;
+  } else if (entry.status >= 300 && entry.status < 400) {
+    statusColor = chalk.yellow;
+  } else if (entry.status >= 400) {
+    statusColor = chalk.red;
+  } else {
+    statusColor = chalk.gray;
+  }
+
+  // Format latency with color
+  let latencyColor: typeof chalk.green;
+  if (entry.latency_ms < 500) {
+    latencyColor = chalk.green;
+  } else if (entry.latency_ms < 2000) {
+    latencyColor = chalk.yellow;
+  } else {
+    latencyColor = chalk.red;
+  }
+
+  return `[${entry.timestamp}] ${chalk.cyan(entry.method.padEnd(6))} ${statusColor(entry.status)} ${latencyColor(entry.latency_ms + "ms")} ${formatBytes(entry.request_size)}/${formatBytes(entry.response_size)} ${chalk.gray(entry.url)}`;
+}
+
+/**
  * Render an agent event with timestamp for historical log viewing
  */
 function renderAgentEvent(event: RunEvent): void {
@@ -52,15 +86,19 @@ function getLogType(options: {
   agent?: boolean;
   system?: boolean;
   metrics?: boolean;
+  network?: boolean;
 }): LogType {
-  const selected = [options.agent, options.system, options.metrics].filter(
-    Boolean,
-  ).length;
+  const selected = [
+    options.agent,
+    options.system,
+    options.metrics,
+    options.network,
+  ].filter(Boolean).length;
 
   if (selected > 1) {
     console.error(
       chalk.red(
-        "Options --agent, --system, and --metrics are mutually exclusive",
+        "Options --agent, --system, --metrics, and --network are mutually exclusive",
       ),
     );
     process.exit(1);
@@ -68,6 +106,7 @@ function getLogType(options: {
 
   if (options.system) return "system";
   if (options.metrics) return "metrics";
+  if (options.network) return "network";
   return "agent"; // Default
 }
 
@@ -78,6 +117,7 @@ export const logsCommand = new Command()
   .option("-a, --agent", "Show agent events (default)")
   .option("-s, --system", "Show system log")
   .option("-m, --metrics", "Show metrics")
+  .option("-n, --network", "Show network logs (proxy traffic)")
   .option(
     "--since <time>",
     "Show logs since timestamp (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z, 1705312200)",
@@ -94,6 +134,7 @@ export const logsCommand = new Command()
         agent?: boolean;
         system?: boolean;
         metrics?: boolean;
+        network?: boolean;
         since?: string;
         limit?: string;
       },
@@ -122,6 +163,9 @@ export const logsCommand = new Command()
             break;
           case "metrics":
             await showMetrics(runId, { since, limit });
+            break;
+          case "network":
+            await showNetworkLogs(runId, { since, limit });
             break;
         }
       } catch (error) {
@@ -206,6 +250,38 @@ async function showMetrics(
     console.log(
       chalk.gray(
         `Showing ${response.metrics.length} metrics. Use --limit to see more.`,
+      ),
+    );
+  }
+}
+
+/**
+ * Show network logs
+ */
+async function showNetworkLogs(
+  runId: string,
+  options: { since?: number; limit: number },
+): Promise<void> {
+  const response = await apiClient.getNetworkLogs(runId, options);
+
+  if (response.networkLogs.length === 0) {
+    console.log(
+      chalk.yellow(
+        "No network logs found for this run. Network logs are only captured when beta_enhance_security is enabled.",
+      ),
+    );
+    return;
+  }
+
+  for (const entry of response.networkLogs) {
+    console.log(formatNetworkLog(entry));
+  }
+
+  if (response.hasMore) {
+    console.log();
+    console.log(
+      chalk.gray(
+        `Showing ${response.networkLogs.length} network logs. Use --limit to see more.`,
       ),
     );
   }

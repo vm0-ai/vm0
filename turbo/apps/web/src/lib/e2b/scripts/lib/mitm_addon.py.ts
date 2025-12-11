@@ -9,8 +9,11 @@ This addon:
 1. Intercepts all HTTPS requests
 2. Rewrites them to go through VM0 Proxy endpoint
 3. Preserves all original headers (including encrypted tokens)
+4. Logs network activity to JSONL file for observability
 """
 import os
+import json
+import time
 import urllib.parse
 from mitmproxy import http, ctx
 
@@ -22,8 +25,23 @@ API_TOKEN = os.environ.get("VM0_API_TOKEN", "")
 RUN_ID = os.environ.get("VM0_RUN_ID", "")
 VERCEL_BYPASS = os.environ.get("VERCEL_PROTECTION_BYPASS", "")
 
+# Network log file path
+NETWORK_LOG_FILE = f"/tmp/vm0-network-{RUN_ID}.jsonl"
+
+# Track request start times for latency calculation
+request_start_times = {}
+
 # Construct proxy URL
 PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
+
+
+def log_network_entry(entry: dict) -> None:
+    """Write a network log entry to the JSONL file."""
+    try:
+        with open(NETWORK_LOG_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\\n")
+    except Exception as e:
+        ctx.log.warn(f"Failed to write network log: {e}")
 
 
 def get_original_url(flow: http.HTTPFlow) -> str:
@@ -57,6 +75,9 @@ def request(flow: http.HTTPFlow) -> None:
         Headers: Authorization: Bearer vm0_live_xxx, x-api-key: vm0_enc_xxx, Content-Type: application/json
         Body: {...}
     """
+    # Track request start time for latency calculation
+    request_start_times[flow.id] = time.time()
+
     # Skip if no API URL configured
     if not API_URL:
         ctx.log.warn("VM0_API_URL not set, passing through")
@@ -68,6 +89,9 @@ def request(flow: http.HTTPFlow) -> None:
 
     # Get original target URL
     original_url = get_original_url(flow)
+
+    # Store original URL for logging in response handler
+    flow.metadata["original_url"] = original_url
 
     # Build new proxy URL with encoded target
     encoded_url = urllib.parse.quote(original_url, safe="")
@@ -105,12 +129,39 @@ def request(flow: http.HTTPFlow) -> None:
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response from VM0 Proxy.
-    Log any errors for debugging.
+    Log network activity and any errors for debugging.
     """
+    # Calculate latency
+    start_time = request_start_times.pop(flow.id, None)
+    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+
+    # Get original URL (stored in request handler) or use current URL
+    original_url = flow.metadata.get("original_url", flow.request.pretty_url)
+
+    # Calculate request/response sizes
+    request_size = len(flow.request.content) if flow.request.content else 0
+    response_size = len(flow.response.content) if flow.response and flow.response.content else 0
+
+    # Determine status code
+    status_code = flow.response.status_code if flow.response else 0
+
+    # Log network entry
+    log_entry = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+        "method": flow.request.method,
+        "url": original_url,
+        "status": status_code,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": response_size,
+    }
+    log_network_entry(log_entry)
+
+    # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:
         ctx.log.warn(
             f"Proxy response {flow.response.status_code}: "
-            f"{flow.request.pretty_url}"
+            f"{original_url}"
         )
 
 

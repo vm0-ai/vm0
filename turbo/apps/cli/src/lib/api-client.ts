@@ -136,6 +136,21 @@ export interface GetAgentEventsResponse {
   hasMore: boolean;
 }
 
+export interface NetworkLogEntry {
+  timestamp: string;
+  method: string;
+  url: string;
+  status: number;
+  latency_ms: number;
+  request_size: number;
+  response_size: number;
+}
+
+export interface GetNetworkLogsResponse {
+  networkLogs: NetworkLogEntry[];
+  hasMore: boolean;
+}
+
 export interface CreateImageResponse {
   buildId: string;
   imageId: string;
@@ -447,6 +462,37 @@ class ApiClient {
     }
 
     return (await response.json()) as GetAgentEventsResponse;
+  }
+
+  async getNetworkLogs(
+    runId: string,
+    options?: { since?: number; limit?: number },
+  ): Promise<GetNetworkLogsResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams();
+    if (options?.since !== undefined) {
+      params.set("since", String(options.since));
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+
+    const queryString = params.toString();
+    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/network${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to fetch network logs");
+    }
+
+    return (await response.json()) as GetNetworkLogsResponse;
   }
 
   async createImage(body: {

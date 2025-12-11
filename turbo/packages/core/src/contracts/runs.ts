@@ -222,6 +222,27 @@ const agentEventsResponseSchema = z.object({
 });
 
 /**
+ * Network log entry schema
+ */
+const networkLogEntrySchema = z.object({
+  timestamp: z.string(),
+  method: z.string(),
+  url: z.string(),
+  status: z.number(),
+  latency_ms: z.number(),
+  request_size: z.number(),
+  response_size: z.number(),
+});
+
+/**
+ * Network logs response schema
+ */
+const networkLogsResponseSchema = z.object({
+  networkLogs: z.array(networkLogEntrySchema),
+  hasMore: z.boolean(),
+});
+
+/**
  * Telemetry response schema (legacy - combined format)
  */
 const telemetryResponseSchema = z.object({
@@ -334,6 +355,33 @@ export const runAgentEventsContract = c.router({
   },
 });
 
+/**
+ * Network logs route contract (/api/agent/runs/[id]/telemetry/network)
+ */
+export const runNetworkLogsContract = c.router({
+  /**
+   * GET /api/agent/runs/:id/telemetry/network
+   * Get network logs with pagination (for vm0 logs --network)
+   */
+  getNetworkLogs: {
+    method: "GET",
+    path: "/api/agent/runs/:id/telemetry/network",
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    query: z.object({
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(100).default(5),
+    }),
+    responses: {
+      200: networkLogsResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get network logs with pagination",
+  },
+});
+
 export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunEventsContract = typeof runEventsContract;
@@ -341,6 +389,7 @@ export type RunTelemetryContract = typeof runTelemetryContract;
 export type RunSystemLogContract = typeof runSystemLogContract;
 export type RunMetricsContract = typeof runMetricsContract;
 export type RunAgentEventsContract = typeof runAgentEventsContract;
+export type RunNetworkLogsContract = typeof runNetworkLogsContract;
 
 // Export schemas for reuse
 export {
@@ -357,4 +406,6 @@ export {
   systemLogResponseSchema,
   metricsResponseSchema,
   agentEventsResponseSchema,
+  networkLogEntrySchema,
+  networkLogsResponseSchema,
 };

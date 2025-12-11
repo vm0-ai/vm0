@@ -15,8 +15,8 @@ from typing import List, Dict, Any
 
 from common import (
     RUN_ID, TELEMETRY_URL, TELEMETRY_INTERVAL,
-    SYSTEM_LOG_FILE, METRICS_LOG_FILE,
-    TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE
+    SYSTEM_LOG_FILE, METRICS_LOG_FILE, NETWORK_LOG_FILE,
+    TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE, TELEMETRY_NETWORK_POS_FILE
 )
 from log import log_info, log_error, log_debug, log_warn
 from http_client import http_post_json
@@ -67,6 +67,31 @@ def save_position(pos_file: str, position: int) -> None:
         log_debug(f"Failed to save position to {pos_file}: {e}")
 
 
+def read_jsonl_from_position(file_path: str, pos_file: str) -> tuple[List[Dict[str, Any]], int]:
+    """
+    Read new entries from JSONL file starting from last position.
+
+    Args:
+        file_path: Path to the JSONL file to read
+        pos_file: Path to position tracking file
+
+    Returns:
+        Tuple of (entries list, new_position)
+    """
+    content, new_pos = read_file_from_position(file_path, pos_file)
+
+    entries = []
+    if content:
+        for line in content.strip().split("\\n"):
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+
+    return entries, new_pos
+
+
 def read_metrics_from_position(pos_file: str) -> tuple[List[Dict[str, Any]], int]:
     """
     Read new metrics from JSONL file starting from last position.
@@ -77,18 +102,20 @@ def read_metrics_from_position(pos_file: str) -> tuple[List[Dict[str, Any]], int
     Returns:
         Tuple of (metrics list, new_position)
     """
-    content, new_pos = read_file_from_position(METRICS_LOG_FILE, pos_file)
+    return read_jsonl_from_position(METRICS_LOG_FILE, pos_file)
 
-    metrics = []
-    if content:
-        for line in content.strip().split("\\n"):
-            if line:
-                try:
-                    metrics.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
 
-    return metrics, new_pos
+def read_network_logs_from_position(pos_file: str) -> tuple[List[Dict[str, Any]], int]:
+    """
+    Read new network logs from JSONL file starting from last position.
+
+    Args:
+        pos_file: Path to position tracking file
+
+    Returns:
+        Tuple of (network logs list, new_position)
+    """
+    return read_jsonl_from_position(NETWORK_LOG_FILE, pos_file)
 
 
 def upload_telemetry() -> bool:
@@ -104,8 +131,11 @@ def upload_telemetry() -> bool:
     # Read new metrics
     metrics, metrics_pos = read_metrics_from_position(TELEMETRY_METRICS_POS_FILE)
 
+    # Read new network logs
+    network_logs, network_pos = read_network_logs_from_position(TELEMETRY_NETWORK_POS_FILE)
+
     # Skip if nothing new
-    if not system_log and not metrics:
+    if not system_log and not metrics and not network_logs:
         log_debug("No new telemetry data to upload")
         return True
 
@@ -113,10 +143,11 @@ def upload_telemetry() -> bool:
     payload = {
         "runId": RUN_ID,
         "systemLog": system_log,
-        "metrics": metrics
+        "metrics": metrics,
+        "networkLogs": network_logs
     }
 
-    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics")
+    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs")
 
     result = http_post_json(TELEMETRY_URL, payload, max_retries=1)
 
@@ -124,6 +155,7 @@ def upload_telemetry() -> bool:
         # Save positions only on successful upload
         save_position(TELEMETRY_LOG_POS_FILE, log_pos)
         save_position(TELEMETRY_METRICS_POS_FILE, metrics_pos)
+        save_position(TELEMETRY_NETWORK_POS_FILE, network_pos)
         log_debug(f"Telemetry uploaded successfully: {result.get('id', 'unknown')}")
         return True
     else:

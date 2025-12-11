@@ -48,6 +48,7 @@ const router = tsr.router(webhookTelemetryContract, {
         data: {
           systemLog: body.systemLog ?? "",
           metrics: body.metrics ?? [],
+          networkLogs: body.networkLogs ?? [],
         },
       })
       .returning({ id: sandboxTelemetry.id });
@@ -66,7 +67,7 @@ const router = tsr.router(webhookTelemetryContract, {
     }
 
     log.debug(
-      `Stored telemetry for run ${body.runId}: systemLog=${body.systemLog?.length ?? 0} bytes, metrics=${body.metrics?.length ?? 0} entries`,
+      `Stored telemetry for run ${body.runId}: systemLog=${body.systemLog?.length ?? 0} bytes, metrics=${body.metrics?.length ?? 0} entries, networkLogs=${body.networkLogs?.length ?? 0} entries`,
     );
 
     return {

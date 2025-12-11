@@ -253,12 +253,25 @@ const metricDataSchema = z.object({
 });
 
 /**
+ * Network log entry schema (from mitmproxy addon)
+ */
+const networkLogSchema = z.object({
+  timestamp: z.string(),
+  method: z.string(),
+  url: z.string(),
+  status: z.number(),
+  latency_ms: z.number(),
+  request_size: z.number(),
+  response_size: z.number(),
+});
+
+/**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
  */
 export const webhookTelemetryContract = c.router({
   /**
    * POST /api/webhooks/agent/telemetry
-   * Receive telemetry data (system log and metrics) from sandbox
+   * Receive telemetry data (system log, metrics, and network logs) from sandbox
    */
   send: {
     method: "POST",
@@ -267,6 +280,7 @@ export const webhookTelemetryContract = c.router({
       runId: z.string().min(1, "runId is required"),
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
+      networkLogs: z.array(networkLogSchema).optional(),
     }),
     responses: {
       200: z.object({
