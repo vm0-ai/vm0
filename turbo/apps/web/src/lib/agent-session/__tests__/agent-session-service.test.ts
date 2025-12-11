@@ -4,22 +4,40 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initServices } from "../../init-services";
 import { agentSessions } from "../../../db/schema/agent-session";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+import { agentComposes } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
 import { AgentSessionService } from "../agent-session-service";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../test/api-test-helpers";
+
+// Mock Clerk auth (needed for compose API)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+// Mock next/headers
+vi.mock("next/headers", () => ({
+  headers: vi.fn().mockImplementation(async () => ({
+    get: () => null,
+  })),
+}));
+
+import { auth } from "@clerk/nextjs/server";
+import { POST as createCompose } from "../../../../app/api/agent/composes/route";
+
+const mockAuth = vi.mocked(auth);
 
 describe("AgentSessionService", () => {
   let service: AgentSessionService;
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  const testAgentName = `test-agent-session-${Date.now()}`;
+  let testComposeId: string;
+  let testVersionId: string;
   const testRunId = randomUUID();
   const testConversationId = randomUUID();
 
@@ -27,6 +45,11 @@ describe("AgentSessionService", () => {
     vi.clearAllMocks();
     initServices();
     service = new AgentSessionService();
+
+    // Mock Clerk auth for compose API
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -38,42 +61,26 @@ describe("AgentSessionService", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
-    // Create test agent config
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        version: "1.0",
-        agents: {
-          test: {
-            working_dir: "/workspace",
-            image: "test-image",
-            provider: "claude-code",
-          },
-        },
+    // Create test compose via API endpoint
+    const config = createDefaultComposeConfig(testAgentName);
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
+    );
 
-    // Create test run
+    const response = await createCompose(request);
+    const data = await response.json();
+    testComposeId = data.composeId;
+    testVersionId = data.versionId;
+
+    // Create test run (still using DB since runs API would execute sandbox)
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
@@ -83,7 +90,7 @@ describe("AgentSessionService", () => {
       createdAt: new Date(),
     });
 
-    // Create test conversation
+    // Create test conversation (still using DB since no simple API for this)
     await globalThis.services.db.insert(conversations).values({
       id: testConversationId,
       runId: testRunId,
@@ -105,12 +112,8 @@ describe("AgentSessionService", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
   });
 
   describe("create", () => {

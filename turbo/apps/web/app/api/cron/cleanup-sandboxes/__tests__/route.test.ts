@@ -5,18 +5,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../../../src/test/api-test-helpers";
 
 // Mock e2bService
 vi.mock("../../../../../src/lib/e2b/e2b-service", () => ({
   e2bService: {
     killSandbox: vi.fn().mockResolvedValue(undefined),
   },
+}));
+
+// Mock Clerk auth (needed for compose API)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
 
 // Mock next/headers to return headers from the current request
@@ -31,17 +37,19 @@ vi.mock("next/headers", () => ({
 }));
 
 import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
+import { auth } from "@clerk/nextjs/server";
 import { GET } from "../route";
+import { POST as createCompose } from "../../../agent/composes/route";
 
 const mockKillSandbox = vi.mocked(e2bService.killSandbox);
+const mockAuth = vi.mocked(auth);
 
 describe("GET /api/cron/cleanup-sandboxes", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testAgentName = `test-agent-cleanup-${Date.now()}`;
   const testRunId1 = randomUUID();
   const testRunId2 = randomUUID();
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let testVersionId: string;
   const cronSecret = "test-cron-secret";
 
   beforeEach(async () => {
@@ -53,6 +61,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     // Reset mock auth header
     mockAuthHeader = null;
 
+    // Mock Clerk auth for compose API
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
+
     // Clean up any existing test data
     await globalThis.services.db
       .delete(agentRuns)
@@ -63,39 +76,27 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       .where(eq(agentRuns.id, testRunId2));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
-    // Create test agent compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
+    // Create test compose via API endpoint
+    const config = createDefaultComposeConfig(testAgentName);
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
+    );
+
+    const response = await createCompose(request);
+    const data = await response.json();
+    testVersionId = data.versionId;
   });
 
   afterEach(async () => {
@@ -108,12 +109,12 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       .where(eq(agentRuns.id, testRunId2));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
     delete process.env.CRON_SECRET;
   });

@@ -11,7 +11,7 @@ import {
   vi,
 } from "vitest";
 import { GET } from "../route";
-import { NextRequest } from "next/server";
+import { POST as createCompose } from "../../../../composes/route";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
@@ -22,6 +22,10 @@ import {
 import { cliTokens } from "../../../../../../../src/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -39,21 +43,12 @@ import { auth } from "@clerk/nextjs/server";
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
-/**
- * Helper to create a NextRequest for testing.
- * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
- */
-function createTestRequest(url: string): NextRequest {
-  return new NextRequest(url, { method: "GET" });
-}
-
 describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testAgentName = `test-agent-run-events-${Date.now()}`;
   const testRunId = randomUUID(); // UUID for agent run
-  const testComposeId = randomUUID(); // UUID for agent config
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let testVersionId: string;
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
@@ -80,45 +75,33 @@ describe("GET /api/agent/runs/:id/events", () => {
       .where(eq(agentRuns.id, testRunId));
 
     await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
-    // Create test agent config
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
+    // Create test compose via API endpoint
+    const config = createDefaultComposeConfig(testAgentName);
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
+    );
 
-    // Create test agent run
+    const response = await createCompose(request);
+    const data = await response.json();
+    testVersionId = data.versionId;
+
+    // Create test agent run (still using DB since runs API would execute sandbox)
     await globalThis.services.db.insert(agentRuns).values({
       id: testRunId,
       userId: testUserId,
@@ -137,16 +120,16 @@ describe("GET /api/agent/runs/:id/events", () => {
       .where(eq(agentRuns.id, testRunId));
 
     await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
   });
 
   afterAll(async () => {

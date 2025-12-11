@@ -11,15 +11,17 @@ import {
   vi,
 } from "vitest";
 import { POST } from "../route";
+import { POST as createCompose } from "../../composes/route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -58,9 +60,8 @@ const mockRunService = vi.mocked(runService);
 describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  const testAgentName = `test-agent-runs-${Date.now()}`;
+  let testComposeId: string;
 
   beforeEach(async () => {
     // Clear all mocks
@@ -79,46 +80,29 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       userId: testUserId,
     } as unknown as Awaited<ReturnType<typeof auth>>);
 
-    // Clean up test data
+    // Clean up test data from previous runs
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
-    // Create test agent compose with new agents dictionary format
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            image: "vm0-claude-code-dev",
-            provider: "claude-code",
-            working_dir: "/home/user/workspace",
-          },
-        },
+    // Create test compose via API endpoint
+    const config = createDefaultComposeConfig(testAgentName);
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
+    );
+
+    const response = await createCompose(request);
+    const data = await response.json();
+    testComposeId = data.composeId;
   });
 
   afterEach(async () => {
@@ -128,12 +112,8 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
   });
 
   afterAll(async () => {});

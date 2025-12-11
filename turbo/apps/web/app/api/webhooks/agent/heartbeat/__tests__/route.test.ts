@@ -3,16 +3,18 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
+import { POST as createCompose } from "../../../../agent/composes/route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -32,19 +34,19 @@ const mockAuth = vi.mocked(auth);
 
 describe("POST /api/webhooks/agent/heartbeat", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testAgentName = `test-agent-heartbeat-${Date.now()}`;
   const testRunId = randomUUID();
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let testVersionId: string;
   const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     initServices();
 
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    // Mock Clerk auth to return test user (needed for compose API)
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -53,64 +55,55 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
     // Clean up any existing test data
     await globalThis.services.db
       .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
+      .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
-    // Create test agent compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
+    // Create test compose via API endpoint
+    const config = createDefaultComposeConfig(testAgentName);
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
+    );
+
+    const response = await createCompose(request);
+    const data = await response.json();
+    testVersionId = data.versionId;
+
+    // Reset auth mock for webhook tests (which use token auth)
+    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
+      ReturnType<typeof auth>
+    >);
   });
 
   afterEach(async () => {
+    // Delete runs by ID (some tests create runs with different userIds)
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
 
+    // Also clean up any runs for testUserId
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
     await globalThis.services.db
       .delete(cliTokens)
       .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
   });
 
   describe("Authentication", () => {
