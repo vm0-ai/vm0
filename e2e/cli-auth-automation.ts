@@ -27,8 +27,13 @@ export async function automateCliAuth(apiHost?: string) {
     console.log("🚀 Starting CLI authentication flow...");
 
     // Step 1: Start CLI auth command
-    // Use provided apiHost or environment variable VM0_API_URL, defaults to localhost:3000
-    const apiUrl = apiHost || process.env.VM0_API_URL || "http://localhost:3000";
+    // Use provided apiHost or environment variable VM0_API_URL
+    const apiUrl = apiHost || process.env.VM0_API_URL;
+    if (!apiUrl) {
+      throw new Error(
+        "API URL must be provided via apiHost parameter or VM0_API_URL environment variable"
+      );
+    }
     console.log(`📡 Connecting to API: ${apiUrl}`);
 
     // Always use globally installed vm0 command
