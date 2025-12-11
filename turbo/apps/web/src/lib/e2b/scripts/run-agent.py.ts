@@ -95,9 +95,16 @@ def main():
         sys.exit(1)
 
     # Set Claude config directory to ensure consistent session history location
-    home_dir = os.environ.get("HOME", "/home/user")
-    os.environ["CLAUDE_CONFIG_DIR"] = f"{home_dir}/.config/claude"
-    log_info(f"Claude config directory: {os.environ['CLAUDE_CONFIG_DIR']}")
+    # When proxy is enabled, Claude runs as 'user', so use /home/user
+    if PROXY_ENABLED:
+        claude_config_dir = "/home/user/.config/claude"
+        # Ensure the directory is writable by 'user'
+        subprocess.run(["chown", "-R", "user:user", "/home/user/.config"], check=False)
+    else:
+        home_dir = os.environ.get("HOME", "/home/user")
+        claude_config_dir = f"{home_dir}/.config/claude"
+    os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
+    log_info(f"Claude config directory: {claude_config_dir}")
 
     # Execute Claude Code with JSONL output
     log_info("Starting Claude Code execution...")
