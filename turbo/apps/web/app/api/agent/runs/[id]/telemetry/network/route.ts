@@ -83,7 +83,9 @@ const router = tsr.router(runNetworkLogsContract, {
 
     // Apply limit to network logs
     const hasMore = allNetworkLogs.length > limit;
-    const networkLogs = hasMore ? allNetworkLogs.slice(0, limit) : allNetworkLogs;
+    const networkLogs = hasMore
+      ? allNetworkLogs.slice(0, limit)
+      : allNetworkLogs;
 
     return {
       status: 200 as const,
