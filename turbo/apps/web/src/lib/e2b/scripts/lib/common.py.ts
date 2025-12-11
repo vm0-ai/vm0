@@ -36,6 +36,10 @@ STORAGE_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages"
 INCREMENTAL_WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/storages/incremental"
 HEARTBEAT_URL = f"{API_URL}/api/webhooks/agent/heartbeat"
 TELEMETRY_URL = f"{API_URL}/api/webhooks/agent/telemetry"
+PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
+
+# Proxy configuration (for beta_enhance_security feature)
+PROXY_ENABLED = os.environ.get("VM0_PROXY_ENABLED", "false").lower() == "true"
 
 # Heartbeat configuration
 HEARTBEAT_INTERVAL = 60  # seconds
