@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.2](https://github.com/vm0-ai/vm0/compare/cli-v4.5.1...cli-v4.5.2) (2025-12-11)
+
+
+### Bug Fixes
+
+* **cli:** align logs timestamp format with metrics output ([#498](https://github.com/vm0-ai/vm0/issues/498)) ([b20a7c4](https://github.com/vm0-ai/vm0/commit/b20a7c4f11dbd6622fce2e9ea3596f90f91a27e3))
+
 ## [4.5.1](https://github.com/vm0-ai/vm0/compare/cli-v4.5.0...cli-v4.5.1) (2025-12-11)
 
 
