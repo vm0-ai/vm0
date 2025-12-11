@@ -248,11 +248,7 @@ export class E2BService {
       // Start Claude Code via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
       // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
-      await this.startAgentExecution(
-        sandbox,
-        context.runId,
-        context.betaNetworkSecurity,
-      );
+      await this.startAgentExecution(sandbox, context.runId);
 
       const prepTimeMs = Date.now() - startTime;
       log.debug(
@@ -585,7 +581,6 @@ export class E2BService {
   private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
-    _betaNetworkSecurity?: boolean,
   ): Promise<void> {
     log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
 
