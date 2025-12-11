@@ -46,7 +46,10 @@ def send_event(event: Dict[str, Any]) -> bool:
                 # Claude Code uses hyphen-separated path encoding
                 # e.g., /home/user/workspace -> -home-user-workspace
                 project_name = WORKING_DIR.lstrip("/").replace("/", "-")
-                home_dir = os.environ.get("HOME", "/home/user")
+                # When network security (proxy) is enabled, Claude runs as 'user' via su,
+                # so use /home/user instead of root's HOME
+                proxy_enabled = os.environ.get("VM0_PROXY_ENABLED", "false").lower() == "true"
+                home_dir = "/home/user" if proxy_enabled else os.environ.get("HOME", "/home/user")
                 session_history_path = f"{home_dir}/.config/claude/projects/-{project_name}/{session_id}.jsonl"
 
                 with open(SESSION_HISTORY_PATH_FILE, "w") as f:
