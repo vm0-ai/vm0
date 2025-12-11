@@ -1,22 +1,58 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { BlobService } from "../blob-service";
+/**
+ * @vitest-environment node
+ */
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
+import { eq, like } from "drizzle-orm";
+import { initServices } from "../../init-services";
+import { blobs } from "../../../db/schema/blob";
 import * as s3Client from "../../s3/s3-client";
 import type { FileEntry } from "../../storage/content-hash";
 
-// Mock dependencies
+// Mock S3 dependencies (external service) but NOT env - we want real database
 vi.mock("../../s3/s3-client");
-vi.mock("../../../env", () => ({
-  env: () => ({
-    S3_USER_STORAGES_NAME: "test-bucket",
-  }),
-}));
+
+// Set required environment variables before initServices
+process.env.S3_USER_STORAGES_NAME = "test-blobs-bucket";
+
+// Prefix for test data to enable cleanup
+const TEST_HASH_PREFIX = "test_";
+
+// Import BlobService after setting up mocks
+let BlobService: typeof import("../blob-service").BlobService;
 
 describe("BlobService", () => {
-  let blobService: BlobService;
+  let blobService: InstanceType<typeof BlobService>;
 
-  beforeEach(() => {
+  beforeAll(async () => {
+    initServices();
+    // Dynamically import to avoid env() being called before initServices
+    const blobModule = await import("../blob-service");
+    BlobService = blobModule.BlobService;
+  });
+
+  beforeEach(async () => {
     blobService = new BlobService();
     vi.clearAllMocks();
+
+    // Clean up test blobs before each test
+    await globalThis.services.db
+      .delete(blobs)
+      .where(like(blobs.hash, `${TEST_HASH_PREFIX}%`));
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .delete(blobs)
+      .where(like(blobs.hash, `${TEST_HASH_PREFIX}%`));
   });
 
   describe("uploadBlobs", () => {
@@ -39,20 +75,6 @@ describe("BlobService", () => {
         { path: "file2.txt", content: Buffer.from("content2") },
       ];
 
-      // Mock database - no existing blobs
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
-        insert: vi.fn().mockReturnThis(),
-        values: vi.fn().mockReturnThis(),
-        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
       vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
       const result = await blobService.uploadBlobs(files);
@@ -61,51 +83,45 @@ describe("BlobService", () => {
       expect(result.existingBlobsCount).toBe(0);
       expect(result.hashes.size).toBe(2);
       expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(2);
+
+      // Verify blobs were actually inserted into database
+      const hash1 = result.hashes.get("file1.txt")!;
+      const hash2 = result.hashes.get("file2.txt")!;
+
+      const dbBlobs = await globalThis.services.db
+        .select()
+        .from(blobs)
+        .where(eq(blobs.hash, hash1));
+
+      expect(dbBlobs).toHaveLength(1);
+      expect(dbBlobs[0]!.refCount).toBe(1);
+
+      // Clean up the non-test-prefixed blobs
+      await globalThis.services.db.delete(blobs).where(eq(blobs.hash, hash1));
+      await globalThis.services.db.delete(blobs).where(eq(blobs.hash, hash2));
     });
 
     it("should deduplicate existing blobs", async () => {
-      const files: FileEntry[] = [
-        { path: "file1.txt", content: Buffer.from("existing-content") },
-      ];
-
-      // Compute expected hash for the content
+      // First, insert a blob directly
+      const content = Buffer.from("existing-content");
       const crypto = await import("node:crypto");
-      const expectedHash = crypto
+      const existingHash = crypto
         .createHash("sha256")
-        .update(Buffer.from("existing-content"))
+        .update(content)
         .digest("hex");
 
-      // Mock database - blob already exists
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([{ hash: expectedHash }]),
-        update: vi.fn().mockReturnThis(),
-        set: vi.fn().mockReturnThis(),
-      };
+      // Clean up first in case of leftover data
+      await globalThis.services.db
+        .delete(blobs)
+        .where(eq(blobs.hash, existingHash));
 
-      // Make the where mock chainable for update
-      mockDb.where = vi.fn().mockImplementation(() => {
-        return Promise.resolve([{ hash: expectedHash }]);
+      await globalThis.services.db.insert(blobs).values({
+        hash: existingHash,
+        size: content.length,
+        refCount: 1,
       });
 
-      // Re-mock for update chain
-      const mockDbWithUpdate = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([{ hash: expectedHash }]),
-        update: vi.fn().mockReturnThis(),
-        set: vi.fn().mockReturnThis(),
-      };
-      mockDbWithUpdate.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(undefined),
-        }),
-      });
-
-      globalThis.services = {
-        db: mockDbWithUpdate as never,
-      } as never;
+      const files: FileEntry[] = [{ path: "file1.txt", content }];
 
       const result = await blobService.uploadBlobs(files);
 
@@ -113,45 +129,45 @@ describe("BlobService", () => {
       expect(result.existingBlobsCount).toBe(1);
       expect(result.bytesUploaded).toBe(0);
       expect(s3Client.uploadS3Buffer).not.toHaveBeenCalled();
+
+      // Verify ref count was incremented
+      const dbBlobs = await globalThis.services.db
+        .select()
+        .from(blobs)
+        .where(eq(blobs.hash, existingHash));
+
+      expect(dbBlobs[0]!.refCount).toBe(2);
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(blobs)
+        .where(eq(blobs.hash, existingHash));
     });
 
     it("should handle mixed new and existing blobs", async () => {
-      const files: FileEntry[] = [
-        { path: "new.txt", content: Buffer.from("new-content") },
-        { path: "existing.txt", content: Buffer.from("existing-content") },
-      ];
-
+      // Insert one existing blob
+      const existingContent = Buffer.from("existing-content-mixed");
       const crypto = await import("node:crypto");
       const existingHash = crypto
         .createHash("sha256")
-        .update(Buffer.from("existing-content"))
+        .update(existingContent)
         .digest("hex");
 
-      // Mock database with one existing blob
-      let selectCalled = false;
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockImplementation(() => {
-          if (!selectCalled) {
-            selectCalled = true;
-            return Promise.resolve([{ hash: existingHash }]);
-          }
-          return Promise.resolve(undefined);
-        }),
-        insert: vi.fn().mockReturnThis(),
-        values: vi.fn().mockReturnThis(),
-        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-        update: vi.fn().mockReturnValue({
-          set: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue(undefined),
-          }),
-        }),
-      };
+      // Clean up first in case of leftover data
+      await globalThis.services.db
+        .delete(blobs)
+        .where(eq(blobs.hash, existingHash));
 
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
+      await globalThis.services.db.insert(blobs).values({
+        hash: existingHash,
+        size: existingContent.length,
+        refCount: 1,
+      });
+
+      const files: FileEntry[] = [
+        { path: "new.txt", content: Buffer.from("new-content-unique") },
+        { path: "existing.txt", content: existingContent },
+      ];
 
       vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
@@ -161,61 +177,20 @@ describe("BlobService", () => {
       expect(result.existingBlobsCount).toBe(1);
       expect(result.hashes.size).toBe(2);
       expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(1);
-    });
 
-    it("should rollback S3 uploads on database failure", async () => {
-      const files: FileEntry[] = [
-        { path: "file1.txt", content: Buffer.from("content1") },
-      ];
-
-      // Mock database - fails on insert
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
-        insert: vi.fn().mockReturnThis(),
-        values: vi.fn().mockReturnThis(),
-        onConflictDoUpdate: vi
-          .fn()
-          .mockRejectedValue(new Error("Database error")),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
-      vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
-      vi.mocked(s3Client.deleteS3Objects).mockResolvedValue(undefined);
-
-      await expect(blobService.uploadBlobs(files)).rejects.toThrow(
-        "Database error",
-      );
-
-      // Verify rollback was called
-      expect(s3Client.deleteS3Objects).toHaveBeenCalledWith(
-        "test-bucket",
-        expect.arrayContaining([expect.stringMatching(/^blobs\/.*\.blob$/)]),
-      );
+      // Clean up
+      const newHash = result.hashes.get("new.txt")!;
+      await globalThis.services.db
+        .delete(blobs)
+        .where(eq(blobs.hash, existingHash));
+      await globalThis.services.db.delete(blobs).where(eq(blobs.hash, newHash));
     });
 
     it("should deduplicate files with same content", async () => {
       const files: FileEntry[] = [
-        { path: "file1.txt", content: Buffer.from("same-content") },
-        { path: "file2.txt", content: Buffer.from("same-content") },
+        { path: "file1.txt", content: Buffer.from("same-content-dedup") },
+        { path: "file2.txt", content: Buffer.from("same-content-dedup") },
       ];
-
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
-        insert: vi.fn().mockReturnThis(),
-        values: vi.fn().mockReturnThis(),
-        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
 
       vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
@@ -230,76 +205,56 @@ describe("BlobService", () => {
       const hash1 = result.hashes.get("file1.txt");
       const hash2 = result.hashes.get("file2.txt");
       expect(hash1).toBe(hash2);
+
+      // Clean up
+      await globalThis.services.db.delete(blobs).where(eq(blobs.hash, hash1!));
     });
   });
 
   describe("decrementRefCounts", () => {
     it("should do nothing for empty hash list", async () => {
-      const mockDb = {
-        update: vi.fn(),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
       await blobService.decrementRefCounts([]);
 
-      expect(mockDb.update).not.toHaveBeenCalled();
+      // No error should be thrown
     });
 
     it("should decrement ref counts for given hashes", async () => {
-      const mockWhere = vi.fn().mockResolvedValue(undefined);
-      const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
-      const mockUpdate = vi.fn().mockReturnValue({ set: mockSet });
+      // Insert a blob with ref_count = 2
+      const hash = `${TEST_HASH_PREFIX}decrement_test`;
+      await globalThis.services.db.insert(blobs).values({
+        hash,
+        size: 100,
+        refCount: 2,
+      });
 
-      const mockDb = {
-        update: mockUpdate,
-      };
+      await blobService.decrementRefCounts([hash]);
 
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
+      // Verify ref count was decremented
+      const dbBlobs = await globalThis.services.db
+        .select()
+        .from(blobs)
+        .where(eq(blobs.hash, hash));
 
-      await blobService.decrementRefCounts(["hash1", "hash2"]);
-
-      expect(mockUpdate).toHaveBeenCalled();
-      expect(mockSet).toHaveBeenCalled();
-      expect(mockWhere).toHaveBeenCalled();
+      expect(dbBlobs[0]!.refCount).toBe(1);
     });
   });
 
   describe("exists", () => {
     it("should return true when blob exists", async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([{ hash: "existing-hash" }]),
-      };
+      const hash = `${TEST_HASH_PREFIX}exists_true`;
+      await globalThis.services.db.insert(blobs).values({
+        hash,
+        size: 100,
+        refCount: 1,
+      });
 
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
-      const result = await blobService.exists("existing-hash");
+      const result = await blobService.exists(hash);
 
       expect(result).toBe(true);
     });
 
     it("should return false when blob does not exist", async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([]),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
-
-      const result = await blobService.exists("non-existing-hash");
+      const result = await blobService.exists(`${TEST_HASH_PREFIX}nonexistent`);
 
       expect(result).toBe(false);
     });

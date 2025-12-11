@@ -1,11 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// Mock crypto module to avoid env() access during module load
-vi.mock("../crypto", () => ({
-  encryptSecret: vi.fn((value: string) => `encrypted:${value}`),
-  decryptSecret: vi.fn((value: string) => value.replace("encrypted:", "")),
-}));
-
+/**
+ * @vitest-environment node
+ */
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterAll,
+} from "vitest";
+import { eq } from "drizzle-orm";
+import { initServices } from "../../init-services";
+import { userSecrets } from "../../../db/schema/user-secrets";
 import {
   upsertSecret,
   listSecrets,
@@ -13,125 +20,116 @@ import {
   getSecretValues,
 } from "../secrets-service";
 
+// Test user ID for isolation
+const TEST_USER_ID = "test-user-secrets-service";
+
 describe("secrets-service", () => {
-  beforeEach(() => {
+  beforeAll(() => {
+    initServices();
+  });
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    // Clean up test data before each test
+    await globalThis.services.db
+      .delete(userSecrets)
+      .where(eq(userSecrets.userId, TEST_USER_ID));
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .delete(userSecrets)
+      .where(eq(userSecrets.userId, TEST_USER_ID));
   });
 
   describe("upsertSecret", () => {
     it("creates new secret when none exists", async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([]),
-        insert: vi.fn().mockReturnThis(),
-        values: vi.fn().mockResolvedValue(undefined),
-      };
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await upsertSecret("user-1", "API_KEY", "secret-value");
+      const result = await upsertSecret(
+        TEST_USER_ID,
+        "API_KEY",
+        "secret-value",
+      );
 
       expect(result).toEqual({ action: "created" });
-      expect(mockDb.insert).toHaveBeenCalled();
-      expect(mockDb.values).toHaveBeenCalledWith({
-        userId: "user-1",
-        name: "API_KEY",
-        encryptedValue: "encrypted:secret-value",
-      });
+
+      // Verify secret was actually created in database
+      const secrets = await globalThis.services.db
+        .select()
+        .from(userSecrets)
+        .where(eq(userSecrets.userId, TEST_USER_ID));
+
+      expect(secrets).toHaveLength(1);
+      expect(secrets[0]!.name).toBe("API_KEY");
+      expect(secrets[0]!.encryptedValue).toBeDefined();
+      // Encrypted value should not be the plaintext
+      expect(secrets[0]!.encryptedValue).not.toBe("secret-value");
     });
 
     it("updates existing secret", async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([{ id: "existing-id" }]),
-        update: vi.fn().mockReturnThis(),
-        set: vi.fn().mockReturnThis(),
-      };
+      // Create initial secret
+      await upsertSecret(TEST_USER_ID, "API_KEY", "initial-value");
 
-      // Chain the where after set for update
-      mockDb.set = vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      });
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await upsertSecret("user-1", "API_KEY", "new-value");
+      // Update the secret
+      const result = await upsertSecret(TEST_USER_ID, "API_KEY", "new-value");
 
       expect(result).toEqual({ action: "updated" });
-      expect(mockDb.update).toHaveBeenCalled();
+
+      // Verify only one secret exists and it was updated
+      const secrets = await globalThis.services.db
+        .select()
+        .from(userSecrets)
+        .where(eq(userSecrets.userId, TEST_USER_ID));
+
+      expect(secrets).toHaveLength(1);
+      expect(secrets[0]!.name).toBe("API_KEY");
     });
   });
 
   describe("listSecrets", () => {
     it("returns empty array when no secrets exist", async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        orderBy: vi.fn().mockResolvedValue([]),
-      };
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await listSecrets("user-1");
+      const result = await listSecrets(TEST_USER_ID);
 
       expect(result).toEqual([]);
     });
 
     it("returns list of secrets with metadata", async () => {
-      const now = new Date();
-      const mockSecrets = [
-        { name: "API_KEY", createdAt: now, updatedAt: now },
-        { name: "DB_PASSWORD", createdAt: now, updatedAt: now },
-      ];
+      // Create some secrets
+      await upsertSecret(TEST_USER_ID, "API_KEY", "value1");
+      await upsertSecret(TEST_USER_ID, "DB_PASSWORD", "value2");
 
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        orderBy: vi.fn().mockResolvedValue(mockSecrets),
-      };
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await listSecrets("user-1");
+      const result = await listSecrets(TEST_USER_ID);
 
       expect(result).toHaveLength(2);
+      // Secrets should be ordered by name
       expect(result[0]!.name).toBe("API_KEY");
       expect(result[1]!.name).toBe("DB_PASSWORD");
-      expect(result[0]!.createdAt).toBe(now.toISOString());
+      // Should have ISO timestamp strings
+      expect(result[0]!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(result[0]!.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
   });
 
   describe("deleteSecret", () => {
     it("returns true when secret is deleted", async () => {
-      const mockDb = {
-        delete: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        returning: vi.fn().mockResolvedValue([{ id: "deleted-id" }]),
-      };
+      // Create a secret first
+      await upsertSecret(TEST_USER_ID, "TO_DELETE", "value");
 
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await deleteSecret("user-1", "API_KEY");
+      const result = await deleteSecret(TEST_USER_ID, "TO_DELETE");
 
       expect(result).toBe(true);
+
+      // Verify secret was actually deleted
+      const secrets = await globalThis.services.db
+        .select()
+        .from(userSecrets)
+        .where(eq(userSecrets.userId, TEST_USER_ID));
+
+      expect(secrets).toHaveLength(0);
     });
 
     it("returns false when secret not found", async () => {
-      const mockDb = {
-        delete: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        returning: vi.fn().mockResolvedValue([]),
-      };
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await deleteSecret("user-1", "NONEXISTENT");
+      const result = await deleteSecret(TEST_USER_ID, "NONEXISTENT");
 
       expect(result).toBe(false);
     });
@@ -139,26 +137,17 @@ describe("secrets-service", () => {
 
   describe("getSecretValues", () => {
     it("returns empty object for empty names array", async () => {
-      const result = await getSecretValues("user-1", []);
+      const result = await getSecretValues(TEST_USER_ID, []);
 
       expect(result).toEqual({});
     });
 
     it("returns decrypted secret values", async () => {
-      const mockSecrets = [
-        { name: "API_KEY", encryptedValue: "encrypted:secret-123" },
-        { name: "DB_PASSWORD", encryptedValue: "encrypted:password-456" },
-      ];
+      // Create secrets with known values
+      await upsertSecret(TEST_USER_ID, "API_KEY", "secret-123");
+      await upsertSecret(TEST_USER_ID, "DB_PASSWORD", "password-456");
 
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(mockSecrets),
-      };
-
-      globalThis.services = { db: mockDb as never } as never;
-
-      const result = await getSecretValues("user-1", [
+      const result = await getSecretValues(TEST_USER_ID, [
         "API_KEY",
         "DB_PASSWORD",
       ]);
@@ -170,20 +159,28 @@ describe("secrets-service", () => {
     });
 
     it("only returns requested secrets", async () => {
-      const mockSecrets = [
-        { name: "API_KEY", encryptedValue: "encrypted:secret-123" },
-      ];
+      // Create multiple secrets
+      await upsertSecret(TEST_USER_ID, "API_KEY", "secret-123");
+      await upsertSecret(TEST_USER_ID, "DB_PASSWORD", "password-456");
+      await upsertSecret(TEST_USER_ID, "OTHER_SECRET", "other-value");
 
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(mockSecrets),
-      };
+      // Only request one
+      const result = await getSecretValues(TEST_USER_ID, ["API_KEY"]);
 
-      globalThis.services = { db: mockDb as never } as never;
+      expect(result).toEqual({
+        API_KEY: "secret-123",
+      });
+    });
 
-      const result = await getSecretValues("user-1", ["API_KEY"]);
+    it("returns empty values for non-existent secrets", async () => {
+      await upsertSecret(TEST_USER_ID, "API_KEY", "secret-123");
 
+      const result = await getSecretValues(TEST_USER_ID, [
+        "API_KEY",
+        "NONEXISTENT",
+      ]);
+
+      // Only returns the existing secret
       expect(result).toEqual({
         API_KEY: "secret-123",
       });

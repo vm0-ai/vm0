@@ -1,24 +1,92 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StorageService } from "../storage-service";
+/**
+ * @vitest-environment node
+ */
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
+import { eq } from "drizzle-orm";
 import type { AgentVolumeConfig } from "../types";
 import * as storageResolver from "../storage-resolver";
 import * as s3Client from "../../s3/s3-client";
+import { initServices } from "../../init-services";
+import { storages, storageVersions } from "../../../db/schema/storage";
 
-// Mock dependencies
+// Mock external dependencies
 vi.mock("../storage-resolver");
 vi.mock("../../s3/s3-client");
-vi.mock("../../../env", () => ({
-  env: () => ({
-    S3_USER_STORAGES_NAME: "vas-s3-user-volumes",
-  }),
-}));
+
+// Set required environment variables before initServices
+process.env.S3_USER_STORAGES_NAME = "test-storages-bucket";
+
+// Test user ID for isolation
+const TEST_USER_ID = "test-user-storage-service";
+const TEST_PREFIX = "test-storage-";
+
+// Import StorageService after setting up mocks
+let StorageService: typeof import("../storage-service").StorageService;
 
 describe("StorageService", () => {
-  let storageService: StorageService;
+  let storageService: InstanceType<typeof StorageService>;
 
-  beforeEach(() => {
+  beforeAll(async () => {
+    initServices();
+    const storageModule = await import("../storage-service");
+    StorageService = storageModule.StorageService;
+  });
+
+  beforeEach(async () => {
     storageService = new StorageService();
     vi.clearAllMocks();
+
+    // Clean up test data - clear headVersionId first (foreign key constraint)
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+  });
+
+  afterAll(async () => {
+    // Final cleanup - clear headVersionId first (foreign key constraint)
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
   });
 
   describe("prepareStorageManifest", () => {
@@ -26,7 +94,7 @@ describe("StorageService", () => {
       const result = await storageService.prepareStorageManifest(
         undefined,
         {},
-        "user-123",
+        TEST_USER_ID,
       );
 
       expect(result).toEqual({
@@ -54,7 +122,7 @@ describe("StorageService", () => {
       const result = await storageService.prepareStorageManifest(
         agentConfig,
         {},
-        "user-123",
+        TEST_USER_ID,
       );
 
       expect(result.storages).toHaveLength(0);
@@ -62,6 +130,35 @@ describe("StorageService", () => {
     });
 
     it("should generate presigned URLs for volumes", async () => {
+      // Create test storage and version in database
+      const [storage] = await globalThis.services.db
+        .insert(storages)
+        .values({
+          userId: TEST_USER_ID,
+          name: `${TEST_PREFIX}dataset`,
+          type: "volume",
+          s3Prefix: `${TEST_USER_ID}/${TEST_PREFIX}dataset`,
+          size: 3072,
+          fileCount: 5,
+        })
+        .returning();
+
+      const versionId = `${TEST_PREFIX}version-abc`;
+      await globalThis.services.db.insert(storageVersions).values({
+        id: versionId,
+        storageId: storage!.id,
+        s3Key: `${TEST_USER_ID}/${TEST_PREFIX}dataset/${versionId}`,
+        size: 3072,
+        fileCount: 5,
+        createdBy: TEST_USER_ID,
+      });
+
+      // Update storage with head version
+      await globalThis.services.db
+        .update(storages)
+        .set({ headVersionId: versionId })
+        .where(eq(storages.id, storage!.id));
+
       const agentConfig: AgentVolumeConfig = {
         agents: {
           "test-agent": {
@@ -77,41 +174,13 @@ describe("StorageService", () => {
             name: "data",
             driver: "vas",
             mountPath: "/workspace/data",
-            vasStorageName: "my-dataset",
+            vasStorageName: `${TEST_PREFIX}dataset`,
             vasVersion: "latest",
           },
         ],
         artifact: null,
         errors: [],
       });
-
-      // Mock database queries for resolveVersion
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi
-          .fn()
-          .mockResolvedValueOnce([
-            {
-              id: "storage-123",
-              name: "my-dataset",
-              userId: "user-123",
-              headVersionId: "version-abc",
-            },
-          ])
-          .mockResolvedValueOnce([
-            {
-              id: "version-abc",
-              storageId: "storage-123",
-              s3Key: "user-123/my-dataset/version-abc",
-            },
-          ]),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
@@ -123,13 +192,13 @@ describe("StorageService", () => {
       const result = await storageService.prepareStorageManifest(
         agentConfig,
         {},
-        "user-123",
+        TEST_USER_ID,
       );
 
       expect(result.storages).toHaveLength(1);
       expect(result.storages[0]?.name).toBe("data");
-      expect(result.storages[0]?.vasStorageName).toBe("my-dataset");
-      expect(result.storages[0]?.vasVersionId).toBe("version-abc");
+      expect(result.storages[0]?.vasStorageName).toBe(`${TEST_PREFIX}dataset`);
+      expect(result.storages[0]?.vasVersionId).toBe(versionId);
       expect(result.storages[0]?.archiveUrl).toBe(
         "https://s3.example.com/archive.tar.gz",
       );
@@ -138,6 +207,35 @@ describe("StorageService", () => {
     });
 
     it("should generate presigned URLs for artifact", async () => {
+      // Create test storage and version for artifact
+      const [storage] = await globalThis.services.db
+        .insert(storages)
+        .values({
+          userId: TEST_USER_ID,
+          name: `${TEST_PREFIX}artifact`,
+          type: "artifact",
+          s3Prefix: `${TEST_USER_ID}/${TEST_PREFIX}artifact`,
+          size: 512,
+          fileCount: 2,
+        })
+        .returning();
+
+      const versionId = `${TEST_PREFIX}version-123`;
+      await globalThis.services.db.insert(storageVersions).values({
+        id: versionId,
+        storageId: storage!.id,
+        s3Key: `${TEST_USER_ID}/${TEST_PREFIX}artifact/${versionId}`,
+        size: 512,
+        fileCount: 2,
+        createdBy: TEST_USER_ID,
+      });
+
+      // Update storage with head version
+      await globalThis.services.db
+        .update(storages)
+        .set({ headVersionId: versionId })
+        .where(eq(storages.id, storage!.id));
+
       const agentConfig: AgentVolumeConfig = {
         agents: {
           "test-agent": {
@@ -151,39 +249,11 @@ describe("StorageService", () => {
         artifact: {
           driver: "vas",
           mountPath: "/home/user/workspace",
-          vasStorageName: "my-artifact",
+          vasStorageName: `${TEST_PREFIX}artifact`,
           vasVersion: "latest",
         },
         errors: [],
       });
-
-      // Mock database queries
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi
-          .fn()
-          .mockResolvedValueOnce([
-            {
-              id: "storage-123",
-              name: "my-artifact",
-              userId: "user-123",
-              headVersionId: "version-123",
-            },
-          ])
-          .mockResolvedValueOnce([
-            {
-              id: "version-123",
-              storageId: "storage-123",
-              s3Key: "user-123/my-artifact/version-123",
-            },
-          ]),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/artifact-archive.tar.gz",
@@ -195,15 +265,15 @@ describe("StorageService", () => {
       const result = await storageService.prepareStorageManifest(
         agentConfig,
         {},
-        "user-123",
-        "my-artifact",
+        TEST_USER_ID,
+        `${TEST_PREFIX}artifact`,
         "latest",
       );
 
       expect(result.storages).toHaveLength(0);
       expect(result.artifact).not.toBeNull();
-      expect(result.artifact?.vasStorageName).toBe("my-artifact");
-      expect(result.artifact?.vasVersionId).toBe("version-123");
+      expect(result.artifact?.vasStorageName).toBe(`${TEST_PREFIX}artifact`);
+      expect(result.artifact?.vasVersionId).toBe(versionId);
       expect(result.artifact?.archiveUrl).toBe(
         "https://s3.example.com/artifact-archive.tar.gz",
       );
@@ -211,6 +281,62 @@ describe("StorageService", () => {
     });
 
     it("should handle resumeArtifact for checkpoint resume", async () => {
+      // Create volume storage
+      const [volumeStorage] = await globalThis.services.db
+        .insert(storages)
+        .values({
+          userId: TEST_USER_ID,
+          name: `${TEST_PREFIX}dataset-resume`,
+          type: "volume",
+          s3Prefix: `${TEST_USER_ID}/${TEST_PREFIX}dataset-resume`,
+          size: 100,
+          fileCount: 1,
+        })
+        .returning();
+
+      const volumeVersionId = `${TEST_PREFIX}vol-version`;
+      await globalThis.services.db.insert(storageVersions).values({
+        id: volumeVersionId,
+        storageId: volumeStorage!.id,
+        s3Key: `${TEST_USER_ID}/${TEST_PREFIX}dataset-resume/${volumeVersionId}`,
+        size: 100,
+        fileCount: 1,
+        createdBy: TEST_USER_ID,
+      });
+
+      await globalThis.services.db
+        .update(storages)
+        .set({ headVersionId: volumeVersionId })
+        .where(eq(storages.id, volumeStorage!.id));
+
+      // Create checkpoint artifact storage
+      const [artifactStorage] = await globalThis.services.db
+        .insert(storages)
+        .values({
+          userId: TEST_USER_ID,
+          name: `${TEST_PREFIX}checkpoint`,
+          type: "artifact",
+          s3Prefix: `${TEST_USER_ID}/${TEST_PREFIX}checkpoint`,
+          size: 200,
+          fileCount: 3,
+        })
+        .returning();
+
+      const checkpointVersionId = `${TEST_PREFIX}checkpoint-xyz`;
+      await globalThis.services.db.insert(storageVersions).values({
+        id: checkpointVersionId,
+        storageId: artifactStorage!.id,
+        s3Key: `${TEST_USER_ID}/${TEST_PREFIX}checkpoint/${checkpointVersionId}`,
+        size: 200,
+        fileCount: 3,
+        createdBy: TEST_USER_ID,
+      });
+
+      await globalThis.services.db
+        .update(storages)
+        .set({ headVersionId: checkpointVersionId })
+        .where(eq(storages.id, artifactStorage!.id));
+
       const agentConfig: AgentVolumeConfig = {
         agents: {
           "test-agent": {
@@ -220,74 +346,19 @@ describe("StorageService", () => {
         },
       };
 
-      // When resumeArtifact is provided, resolveVolumes should skip artifact
       vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
         volumes: [
           {
             name: "data",
             driver: "vas",
             mountPath: "/workspace/data",
-            vasStorageName: "my-dataset",
+            vasStorageName: `${TEST_PREFIX}dataset-resume`,
             vasVersion: "latest",
           },
         ],
-        artifact: null, // Skipped because we're using resumeArtifact
+        artifact: null,
         errors: [],
       });
-
-      // Mock database queries - volume first, then artifact
-      let queryCount = 0;
-      const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockImplementation(() => {
-          queryCount++;
-          if (queryCount === 1) {
-            // Volume storage lookup
-            return Promise.resolve([
-              {
-                id: "vol-storage-id",
-                name: "my-dataset",
-                userId: "user-123",
-                headVersionId: "vol-version-head",
-              },
-            ]);
-          } else if (queryCount === 2) {
-            // Volume version lookup
-            return Promise.resolve([
-              {
-                id: "vol-version-head",
-                storageId: "vol-storage-id",
-                s3Key: "user-123/my-dataset/vol-version-head",
-              },
-            ]);
-          } else if (queryCount === 3) {
-            // Artifact storage lookup
-            return Promise.resolve([
-              {
-                id: "art-storage-id",
-                name: "checkpoint-artifact",
-                userId: "user-123",
-                headVersionId: "art-version-head",
-              },
-            ]);
-          } else {
-            // Artifact version lookup
-            return Promise.resolve([
-              {
-                id: "checkpoint-version-xyz",
-                storageId: "art-storage-id",
-                s3Key: "user-123/checkpoint-artifact/checkpoint-version-xyz",
-              },
-            ]);
-          }
-        }),
-      };
-
-      globalThis.services = {
-        db: mockDb as never,
-      } as never;
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
@@ -299,21 +370,21 @@ describe("StorageService", () => {
       const result = await storageService.prepareStorageManifest(
         agentConfig,
         {},
-        "user-123",
-        undefined, // No artifactName (using resumeArtifact instead)
-        undefined, // No artifactVersion
-        undefined, // No volumeVersionOverrides
+        TEST_USER_ID,
+        undefined,
+        undefined,
+        undefined,
         {
-          artifactName: "checkpoint-artifact",
-          artifactVersion: "checkpoint-version-xyz",
+          artifactName: `${TEST_PREFIX}checkpoint`,
+          artifactVersion: checkpointVersionId,
         },
-        "/workspace", // resumeArtifactMountPath
+        "/workspace",
       );
 
       expect(result.storages).toHaveLength(1);
       expect(result.artifact).not.toBeNull();
-      expect(result.artifact?.vasStorageName).toBe("checkpoint-artifact");
-      expect(result.artifact?.vasVersionId).toBe("checkpoint-version-xyz");
+      expect(result.artifact?.vasStorageName).toBe(`${TEST_PREFIX}checkpoint`);
+      expect(result.artifact?.vasVersionId).toBe(checkpointVersionId);
       expect(result.artifact?.mountPath).toBe("/workspace");
     });
 
@@ -324,12 +395,11 @@ describe("StorageService", () => {
         errors: [],
       });
 
-      // No mount path provided - should throw BadRequestError
       await expect(
         storageService.prepareStorageManifest(
           undefined,
           {},
-          "user-123",
+          TEST_USER_ID,
           undefined,
           undefined,
           undefined,
@@ -337,7 +407,6 @@ describe("StorageService", () => {
             artifactName: "my-artifact",
             artifactVersion: "version-id",
           },
-          // Missing resumeArtifactMountPath - should throw error
         ),
       ).rejects.toThrow("resumeArtifactMountPath is required");
     });
