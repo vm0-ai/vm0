@@ -30,6 +30,8 @@ export interface RenderOptions {
   previousTimestamp?: Date;
   /** Start timestamp for total time calculation */
   startTimestamp?: Date;
+  /** Whether to show timestamp prefix (useful for historical log viewing) */
+  showTimestamp?: boolean;
 }
 
 export class EventRenderer {
@@ -68,30 +70,41 @@ export class EventRenderer {
   }
 
   /**
+   * Format timestamp for display
+   */
+  static formatTimestamp(timestamp: Date): string {
+    return timestamp.toISOString();
+  }
+
+  /**
    * Render a parsed event to console
    */
   static render(event: ParsedEvent, options?: RenderOptions): void {
+    const timestampPrefix = options?.showTimestamp
+      ? chalk.gray(`[${this.formatTimestamp(event.timestamp)}] `)
+      : "";
     const elapsedPrefix =
       options?.verbose && options?.previousTimestamp
         ? chalk.gray(
             this.formatElapsed(options.previousTimestamp, event.timestamp),
           )
         : "";
+    const prefix = timestampPrefix + elapsedPrefix;
     switch (event.type) {
       case "init":
-        this.renderInit(event, elapsedPrefix);
+        this.renderInit(event, prefix);
         break;
       case "text":
-        this.renderText(event, elapsedPrefix);
+        this.renderText(event, prefix);
         break;
       case "tool_use":
-        this.renderToolUse(event, elapsedPrefix);
+        this.renderToolUse(event, prefix);
         break;
       case "tool_result":
-        this.renderToolResult(event, elapsedPrefix);
+        this.renderToolResult(event, prefix);
         break;
       case "result":
-        this.renderResult(event, elapsedPrefix);
+        this.renderResult(event, prefix);
         break;
     }
   }

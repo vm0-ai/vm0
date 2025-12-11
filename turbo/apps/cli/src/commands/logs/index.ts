@@ -32,7 +32,7 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
- * Render an agent event
+ * Render an agent event with timestamp for historical log viewing
  */
 function renderAgentEvent(event: RunEvent): void {
   const parsed = ClaudeEventParser.parse(
@@ -41,7 +41,7 @@ function renderAgentEvent(event: RunEvent): void {
   if (parsed) {
     // Set timestamp from event
     parsed.timestamp = new Date(event.createdAt);
-    EventRenderer.render(parsed);
+    EventRenderer.render(parsed, { showTimestamp: true });
   }
 }
 
