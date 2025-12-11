@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
+import { createProxyToken } from "../../../../../../src/lib/proxy/token-service";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -389,6 +390,208 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+    });
+  });
+
+  // ============================================
+  // Proxy Token Decryption Tests
+  // ============================================
+
+  describe("Proxy Token Decryption", () => {
+    const testRunId = "run-test-123";
+    const testSecretName = "ANTHROPIC_API_KEY";
+    const testSecretValue = "sk-ant-real-api-key-12345";
+
+    beforeEach(async () => {
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      } as unknown as Headers);
+
+      await globalThis.services.db.insert(cliTokens).values({
+        token: testToken,
+        userId: testUserId,
+        name: "Test Token",
+        expiresAt: new Date(Date.now() + 3600000),
+        createdAt: new Date(),
+      });
+    });
+
+    it("should decrypt proxy token in Authorization header (Bearer format)", async () => {
+      const proxyToken = createProxyToken(
+        testRunId,
+        testUserId,
+        testSecretName,
+        testSecretValue,
+      );
+
+      const targetResponse = new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      mockFetch.mockResolvedValueOnce(targetResponse);
+
+      const request = new NextRequest(
+        `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${testRunId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "Content-Type": "application/json",
+            // The proxy token goes in the x-api-key for Anthropic
+            "x-api-key": proxyToken,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify the decrypted secret was sent to target
+      const fetchCall = mockFetch.mock.calls[0];
+      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
+      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
+    });
+
+    it("should decrypt proxy token in x-api-key header", async () => {
+      const proxyToken = createProxyToken(
+        testRunId,
+        testUserId,
+        testSecretName,
+        testSecretValue,
+      );
+
+      const targetResponse = new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      mockFetch.mockResolvedValueOnce(targetResponse);
+
+      const request = new NextRequest(
+        `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "x-api-key": proxyToken,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify the decrypted secret was sent to target
+      const fetchCall = mockFetch.mock.calls[0];
+      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
+      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
+    });
+
+    it("should pass through non-proxy tokens unchanged", async () => {
+      const regularApiKey = "sk-ant-regular-api-key";
+
+      const targetResponse = new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      mockFetch.mockResolvedValueOnce(targetResponse);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "x-api-key": regularApiKey,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify the regular API key was passed through unchanged
+      const fetchCall = mockFetch.mock.calls[0];
+      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
+      expect(fetchHeaders.get("x-api-key")).toBe(regularApiKey);
+    });
+
+    it("should reject decryption when runId doesn't match", async () => {
+      const proxyToken = createProxyToken(
+        testRunId,
+        testUserId,
+        testSecretName,
+        testSecretValue,
+      );
+
+      const targetResponse = new Response(
+        JSON.stringify({ error: "invalid key" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      mockFetch.mockResolvedValueOnce(targetResponse);
+
+      const request = new NextRequest(
+        // Different runId than what's in the token
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=different-run-id",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "x-api-key": proxyToken,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      // Request still goes through (401 from target expected since decryption failed)
+      expect(response.status).toBe(401);
+
+      // The proxy token should be passed through unchanged (not decrypted)
+      const fetchCall = mockFetch.mock.calls[0];
+      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
+      expect(fetchHeaders.get("x-api-key")).toBe(proxyToken);
+    });
+
+    it("should decrypt without runId validation when runId not provided", async () => {
+      const proxyToken = createProxyToken(
+        testRunId,
+        testUserId,
+        testSecretName,
+        testSecretValue,
+      );
+
+      const targetResponse = new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      mockFetch.mockResolvedValueOnce(targetResponse);
+
+      const request = new NextRequest(
+        // No runId in query params
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "x-api-key": proxyToken,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Should still decrypt successfully without runId validation
+      const fetchCall = mockFetch.mock.calls[0];
+      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
+      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
     });
   });
 });

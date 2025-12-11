@@ -37,6 +37,13 @@ const agentDefinitionSchema = z.object({
   volumes: z.array(z.string()).optional(),
   working_dir: z.string().min(1, "Working directory is required"),
   environment: z.record(z.string(), z.string()).optional(),
+  /**
+   * Enable enhanced security mode for secrets.
+   * When true, secrets are encrypted into proxy tokens and all traffic
+   * is routed through mitmproxy -> VM0 Proxy for decryption.
+   * Default: false (plaintext secrets in env vars)
+   */
+  beta_enhance_security: z.boolean().optional().default(false),
 });
 
 /**

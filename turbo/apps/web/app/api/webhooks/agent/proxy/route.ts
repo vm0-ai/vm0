@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   // 2. Extract and validate target URL from query param
   const { searchParams } = new URL(request.url);
   const encodedUrl = searchParams.get("url");
+  const runId = searchParams.get("runId") || undefined;
 
   const targetUrl = decodeTargetUrl(encodedUrl);
   if (!targetUrl) {
@@ -47,11 +48,13 @@ export async function POST(request: Request) {
     );
   }
 
-  log.debug(`Proxying request for user ${userId} to ${targetUrl}`);
+  log.debug(
+    `Proxying request for user ${userId} to ${targetUrl}${runId ? ` (runId: ${runId})` : ""}`,
+  );
 
-  // 3. Forward request to target
+  // 3. Forward request to target (handles proxy token decryption)
   try {
-    const result = await forwardRequest(request, targetUrl);
+    const result = await forwardRequest(request, targetUrl, runId);
     return result.response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

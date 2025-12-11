@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { isProxyToken, extractSecretFromToken } from "./token-service";
 
 const log = logger("proxy");
 
@@ -49,11 +50,13 @@ export interface ProxyError {
  *
  * @param request - The incoming request
  * @param targetUrl - The target URL to forward to
+ * @param runId - Optional run ID for proxy token validation
  * @returns The proxied response
  */
 export async function forwardRequest(
   request: Request,
   targetUrl: string,
+  runId?: string,
 ): Promise<ProxyResult> {
   log.debug(`Forwarding request to ${targetUrl}`);
 
@@ -64,6 +67,48 @@ export async function forwardRequest(
       forwardHeaders.set(key, value);
     }
   });
+
+  // Check and decrypt proxy token in Authorization header
+  const authHeader = forwardHeaders.get("authorization");
+  if (authHeader) {
+    // Extract token from "Bearer <token>" format or raw token
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : authHeader;
+
+    if (isProxyToken(token)) {
+      log.debug("Detected proxy token in Authorization header, decrypting");
+      const secret = extractSecretFromToken(token, runId);
+
+      if (secret) {
+        // Replace with decrypted secret in same format
+        const newAuthHeader = authHeader.startsWith("Bearer ")
+          ? `Bearer ${secret}`
+          : secret;
+        forwardHeaders.set("authorization", newAuthHeader);
+        log.debug("Successfully decrypted proxy token");
+      } else {
+        log.warn("Failed to decrypt proxy token - token invalid or expired");
+        // Keep original header if decryption fails (will likely fail at target)
+      }
+    }
+  }
+
+  // Also check x-api-key header for proxy tokens
+  const apiKeyHeader = forwardHeaders.get("x-api-key");
+  if (apiKeyHeader && isProxyToken(apiKeyHeader)) {
+    log.debug("Detected proxy token in x-api-key header, decrypting");
+    const secret = extractSecretFromToken(apiKeyHeader, runId);
+
+    if (secret) {
+      forwardHeaders.set("x-api-key", secret);
+      log.debug("Successfully decrypted x-api-key proxy token");
+    } else {
+      log.warn(
+        "Failed to decrypt x-api-key proxy token - token invalid or expired",
+      );
+    }
+  }
 
   // Get request body
   const body = await request.arrayBuffer();
