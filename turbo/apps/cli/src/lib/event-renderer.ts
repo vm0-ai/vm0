@@ -166,9 +166,9 @@ export class EventRenderer {
     console.log(`  Error: ${chalk.red(error || "Unknown error")}`);
   }
 
-  private static renderInit(event: ParsedEvent, elapsedPrefix: string): void {
+  private static renderInit(event: ParsedEvent, prefix: string): void {
     console.log(
-      chalk.cyan("[init]") + elapsedPrefix + " Starting Claude Code agent",
+      chalk.cyan("[init]") + prefix + " Starting Claude Code agent",
     );
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
     console.log(`  Model: ${chalk.gray(String(event.data.model || ""))}`);
@@ -181,17 +181,17 @@ export class EventRenderer {
     );
   }
 
-  private static renderText(event: ParsedEvent, elapsedPrefix: string): void {
+  private static renderText(event: ParsedEvent, prefix: string): void {
     const text = String(event.data.text || "");
-    console.log(chalk.blue("[text]") + elapsedPrefix + " " + text);
+    console.log(chalk.blue("[text]") + prefix + " " + text);
   }
 
   private static renderToolUse(
     event: ParsedEvent,
-    elapsedPrefix: string,
+    prefix: string,
   ): void {
     const tool = String(event.data.tool || "");
-    console.log(chalk.yellow("[tool_use]") + elapsedPrefix + " " + tool);
+    console.log(chalk.yellow("[tool_use]") + prefix + " " + tool);
 
     // Show full input without truncation
     const input = event.data.input as Record<string, unknown>;
@@ -210,25 +210,25 @@ export class EventRenderer {
 
   private static renderToolResult(
     event: ParsedEvent,
-    elapsedPrefix: string,
+    prefix: string,
   ): void {
     const isError = Boolean(event.data.isError);
     const status = isError ? "Error" : "Completed";
     const color = isError ? chalk.red : chalk.green;
 
-    console.log(color("[tool_result]") + elapsedPrefix + " " + status);
+    console.log(color("[tool_result]") + prefix + " " + status);
 
     // Show full result without truncation
     const result = String(event.data.result || "");
     console.log(`  ${chalk.gray(result)}`);
   }
 
-  private static renderResult(event: ParsedEvent, elapsedPrefix: string): void {
+  private static renderResult(event: ParsedEvent, prefix: string): void {
     const success = Boolean(event.data.success);
     const status = success ? "✓ completed successfully" : "✗ failed";
     const color = success ? chalk.green : chalk.red;
 
-    console.log(color("[result]") + elapsedPrefix + " " + status);
+    console.log(color("[result]") + prefix + " " + status);
 
     const durationMs = Number(event.data.durationMs || 0);
     const durationSec = (durationMs / 1000).toFixed(1);
