@@ -328,7 +328,14 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         createdAt: new Date(),
       });
 
-      // Send first heartbeat
+      // Mock Date.now() to control timestamps deterministically
+      const mockNow = vi.spyOn(Date, "now");
+      const firstTimestamp = 1000000000000;
+      const secondTimestamp = 2000000000000;
+
+      // First heartbeat with controlled timestamp
+      mockNow.mockReturnValueOnce(firstTimestamp);
+
       const request1 = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
@@ -350,10 +357,9 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         .where(eq(agentRuns.id, testRunId));
       const firstHeartbeat = run1?.lastHeartbeatAt;
 
-      // Small delay to ensure different timestamp
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Second heartbeat with later controlled timestamp
+      mockNow.mockReturnValueOnce(secondTimestamp);
 
-      // Send second heartbeat
       const request2 = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
@@ -374,9 +380,11 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         .from(agentRuns)
         .where(eq(agentRuns.id, testRunId));
 
-      expect(run2?.lastHeartbeatAt!.getTime()).toBeGreaterThanOrEqual(
+      expect(run2?.lastHeartbeatAt!.getTime()).toBeGreaterThan(
         firstHeartbeat!.getTime(),
       );
+
+      mockNow.mockRestore();
     });
   });
 });
