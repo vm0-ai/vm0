@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.5.0](https://github.com/vm0-ai/vm0/compare/cli-v4.4.0...cli-v4.5.0) (2025-12-11)
+
+
+### Features
+
+* **cli:** add timestamp display for vm0 logs --agent ([#489](https://github.com/vm0-ai/vm0/issues/489)) ([862b3e2](https://github.com/vm0-ai/vm0/commit/862b3e248f4f934aca67636b586c40e747fa10de))
+* **cli:** show logs command hint when run starts ([#480](https://github.com/vm0-ai/vm0/issues/480)) ([3b12cd0](https://github.com/vm0-ai/vm0/commit/3b12cd06fd77f48f893419ddd80d3a09db81a98b))
+
 ## [4.4.0](https://github.com/vm0-ai/vm0/compare/cli-v4.3.0...cli-v4.4.0) (2025-12-10)
 
 
