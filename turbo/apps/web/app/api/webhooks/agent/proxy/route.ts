@@ -4,6 +4,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import {
   forwardRequest,
   decodeTargetUrl,
+  ProxyTokenDecryptionError,
 } from "../../../../../src/lib/proxy/proxy-service";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -57,6 +58,21 @@ export async function POST(request: Request) {
     const result = await forwardRequest(request, targetUrl, runId);
     return result.response;
   } catch (err) {
+    // Handle proxy token decryption errors specifically
+    if (err instanceof ProxyTokenDecryptionError) {
+      log.warn(`Token decryption failed for ${targetUrl}: ${err.message}`);
+      return NextResponse.json(
+        {
+          error: {
+            message: err.message,
+            code: "UNAUTHORIZED",
+            header: err.header,
+          },
+        },
+        { status: 401 },
+      );
+    }
+
     const message = err instanceof Error ? err.message : "Unknown error";
     log.error(`Proxy request failed for ${targetUrl}: ${message}`);
 

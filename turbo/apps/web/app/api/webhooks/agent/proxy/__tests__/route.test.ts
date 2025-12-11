@@ -518,22 +518,13 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(fetchHeaders.get("x-api-key")).toBe(regularApiKey);
     });
 
-    it("should reject decryption when runId doesn't match", async () => {
+    it("should return 401 when runId doesn't match", async () => {
       const proxyToken = createProxyToken(
         testRunId,
         testUserId,
         testSecretName,
         testSecretValue,
       );
-
-      const targetResponse = new Response(
-        JSON.stringify({ error: "invalid key" }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-      mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
         // Different runId than what's in the token
@@ -549,13 +540,47 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       const response = await POST(request);
 
-      // Request still goes through (401 from target expected since decryption failed)
+      // Should return 401 with clear error message instead of forwarding
       expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.code).toBe("UNAUTHORIZED");
+      expect(data.error.message).toContain("decryption failed");
+      expect(data.error.header).toBe("x-api-key");
 
-      // The proxy token should be passed through unchanged (not decrypted)
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-      expect(fetchHeaders.get("x-api-key")).toBe(proxyToken);
+      // Should NOT have called fetch since decryption failed
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("should return 401 when proxy token is expired", async () => {
+      // Create an expired token
+      const expiredToken = createProxyToken(
+        testRunId,
+        testUserId,
+        testSecretName,
+        testSecretValue,
+        -1000, // expired 1 second ago
+      );
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${testToken}`,
+            "x-api-key": expiredToken,
+          },
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.code).toBe("UNAUTHORIZED");
+      expect(data.error.message).toContain("decryption failed");
+
+      // Should NOT have called fetch
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("should decrypt without runId validation when runId not provided", async () => {

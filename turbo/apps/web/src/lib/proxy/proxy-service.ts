@@ -46,6 +46,19 @@ export interface ProxyError {
 }
 
 /**
+ * Error thrown when proxy token decryption fails
+ */
+export class ProxyTokenDecryptionError extends Error {
+  constructor(
+    message: string,
+    public readonly header: string,
+  ) {
+    super(message);
+    this.name = "ProxyTokenDecryptionError";
+  }
+}
+
+/**
  * Forward a request to a target URL
  *
  * @param request - The incoming request
@@ -89,7 +102,10 @@ export async function forwardRequest(
         log.debug("Successfully decrypted proxy token");
       } else {
         log.warn("Failed to decrypt proxy token - token invalid or expired");
-        // Keep original header if decryption fails (will likely fail at target)
+        throw new ProxyTokenDecryptionError(
+          "Proxy token decryption failed - token may be invalid or expired",
+          "Authorization",
+        );
       }
     }
   }
@@ -106,6 +122,10 @@ export async function forwardRequest(
     } else {
       log.warn(
         "Failed to decrypt x-api-key proxy token - token invalid or expired",
+      );
+      throw new ProxyTokenDecryptionError(
+        "Proxy token decryption failed - token may be invalid or expired",
+        "x-api-key",
       );
     }
   }
