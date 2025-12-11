@@ -38,6 +38,12 @@ PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
 def log_network_entry(entry: dict) -> None:
     """Write a network log entry to the JSONL file."""
     try:
+        # Create file with world-readable permissions (0644) if it doesn't exist
+        # This allows the agent process (running as 'user') to read the logs
+        # written by mitmproxy (running as root)
+        if not os.path.exists(NETWORK_LOG_FILE):
+            fd = os.open(NETWORK_LOG_FILE, os.O_CREAT | os.O_WRONLY, 0o644)
+            os.close(fd)
         with open(NETWORK_LOG_FILE, "a") as f:
             f.write(json.dumps(entry) + "\\n")
     except Exception as e:
