@@ -4,7 +4,7 @@
  */
 export const PROXY_SETUP_SCRIPT = `#!/usr/bin/env python3
 """
-Proxy setup for VM0 enhanced security mode.
+Proxy setup for VM0 network security mode.
 This script:
 1. Installs mitmproxy and dependencies
 2. Generates and installs CA certificate

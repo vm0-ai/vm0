@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-# Test VM0 network logs with enhanced security mode
+# Test VM0 network logs with network security mode
 # This test verifies that:
-# 1. Agent runs with beta_enhance_security enabled capture network traffic
+# 1. Agent runs with beta_network_security enabled capture network traffic
 # 2. The vm0 logs --network command retrieves network logs
 # 3. Network logs contain expected fields (method, url, status, latency)
 #
@@ -13,7 +13,7 @@ load '../../helpers/setup'
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-network-logs-test-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-enhanced-security.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-network-security.yaml"
 }
 
 teardown() {
@@ -22,13 +22,13 @@ teardown() {
     fi
 }
 
-@test "Build VM0 enhanced security test agent configuration" {
+@test "Build VM0 network security test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-enhanced-security"
+    assert_output --partial "vm0-network-security"
 }
 
-@test "VM0 network logs: run with enhanced security captures network traffic" {
+@test "VM0 network logs: run with network security captures network traffic" {
     # Step 1: Create artifact with initial content
     echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -38,10 +38,10 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent with enhanced security enabled
+    # Step 2: Run agent with network security enabled
     # The agent will make API calls to Claude which will be proxied
-    echo "# Step 2: Running agent with enhanced security (proxy mode)..."
-    run $CLI_COMMAND run vm0-enhanced-security \
+    echo "# Step 2: Running agent with network security (proxy mode)..."
+    run $CLI_COMMAND run vm0-network-security \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'testing network logs'"
 

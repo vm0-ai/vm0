@@ -58,10 +58,10 @@ def main():
 
     log_info(f"Working directory: {WORKING_DIR}")
 
-    # Set up proxy if enhanced security is enabled
+    # Set up proxy if network security is enabled
     # This must be done before any network requests to Claude API
     if PROXY_ENABLED:
-        log_info("Enhanced security mode enabled, setting up mitmproxy...")
+        log_info("Network security mode enabled, setting up mitmproxy...")
         try:
             from proxy_setup import setup_proxy
             if setup_proxy():

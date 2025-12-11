@@ -4,7 +4,7 @@
  */
 export const MITM_ADDON_SCRIPT = `#!/usr/bin/env python3
 """
-mitmproxy addon for VM0 enhanced security mode.
+mitmproxy addon for VM0 network security mode.
 This addon:
 1. Intercepts all HTTPS requests
 2. Rewrites them to go through VM0 Proxy endpoint

@@ -65,9 +65,9 @@ export interface ExecutionContext {
   // Uses templateVars to resolve ${{ vars.xxx }} references
   environment?: Record<string, string>;
 
-  // Enhanced security mode - when true, secrets are encrypted into proxy tokens
+  // Network security mode - when true, secrets are encrypted into proxy tokens
   // and traffic is routed through mitmproxy -> VM0 Proxy for decryption
-  betaEnhanceSecurity?: boolean;
+  betaNetworkSecurity?: boolean;
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;

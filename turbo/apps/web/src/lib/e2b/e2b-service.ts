@@ -172,13 +172,13 @@ export class E2BService {
         sandboxEnvVars.USE_MOCK_CLAUDE = "true";
       }
 
-      // Enable proxy mode for enhanced security
+      // Enable proxy mode for network security
       // When true, mitmproxy will be set up to intercept traffic
       // and decrypt vm0_enc_ tokens before forwarding to APIs
-      if (context.betaEnhanceSecurity) {
+      if (context.betaNetworkSecurity) {
         sandboxEnvVars.VM0_PROXY_ENABLED = "true";
         log.debug(
-          `Enhanced security enabled for run ${context.runId} - proxy mode active`,
+          `Network security enabled for run ${context.runId} - proxy mode active`,
         );
       }
 
