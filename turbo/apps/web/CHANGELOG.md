@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.1](https://github.com/vm0-ai/vm0/compare/web-v5.2.0...web-v5.2.1) (2025-12-11)
+
+
+### Bug Fixes
+
+* **cli:** handle run preparation failures immediately ([#496](https://github.com/vm0-ai/vm0/issues/496)) ([72917c5](https://github.com/vm0-ai/vm0/commit/72917c5c665c797dbda09b1b9278db0ef8e2afb8))
+
 ## [5.2.0](https://github.com/vm0-ai/vm0/compare/web-v5.1.0...web-v5.2.0) (2025-12-10)
 
 
