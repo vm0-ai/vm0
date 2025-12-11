@@ -1,0 +1,16 @@
+version: "1.0"
+
+agents:
+  vm0-enhanced-security:
+    description: "Test agent with enhanced security (proxy mode)"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    beta_enhance_security: true
+    volumes:
+      - claude-files:/home/user/.config/claude
+    working_dir: /home/user/workspace
+
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
