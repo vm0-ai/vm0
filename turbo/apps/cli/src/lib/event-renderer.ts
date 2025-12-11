@@ -167,9 +167,7 @@ export class EventRenderer {
   }
 
   private static renderInit(event: ParsedEvent, prefix: string): void {
-    console.log(
-      chalk.cyan("[init]") + prefix + " Starting Claude Code agent",
-    );
+    console.log(chalk.cyan("[init]") + prefix + " Starting Claude Code agent");
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
     console.log(`  Model: ${chalk.gray(String(event.data.model || ""))}`);
     console.log(
@@ -186,10 +184,7 @@ export class EventRenderer {
     console.log(chalk.blue("[text]") + prefix + " " + text);
   }
 
-  private static renderToolUse(
-    event: ParsedEvent,
-    prefix: string,
-  ): void {
+  private static renderToolUse(event: ParsedEvent, prefix: string): void {
     const tool = String(event.data.tool || "");
     console.log(chalk.yellow("[tool_use]") + prefix + " " + tool);
 
@@ -208,10 +203,7 @@ export class EventRenderer {
     }
   }
 
-  private static renderToolResult(
-    event: ParsedEvent,
-    prefix: string,
-  ): void {
+  private static renderToolResult(event: ParsedEvent, prefix: string): void {
     const isError = Boolean(event.data.isError);
     const status = isError ? "Error" : "Completed";
     const color = isError ? chalk.red : chalk.green;
