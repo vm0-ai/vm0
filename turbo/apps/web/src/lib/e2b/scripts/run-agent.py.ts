@@ -17,6 +17,7 @@ import sys
 import subprocess
 import json
 import threading
+import shlex
 
 # Add lib to path for imports
 sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
@@ -124,7 +125,16 @@ def main():
         claude_bin = "claude"
 
     # Build full command
-    cmd = [claude_bin] + claude_args + [PROMPT]
+    # When proxy is enabled, run Claude as 'user' so traffic goes through mitmproxy
+    # (nftables skips traffic from root to prevent proxy loops)
+    if PROXY_ENABLED:
+        log_info("Running Claude as 'user' for network security mode")
+        # Use su to run as user, with proper shell quoting
+        # The prompt needs to be passed through shell, so we use a shell wrapper
+        claude_cmd_str = " ".join([shlex.quote(arg) for arg in [claude_bin] + claude_args + [PROMPT]])
+        cmd = ["su", "-", "user", "-c", claude_cmd_str]
+    else:
+        cmd = [claude_bin] + claude_args + [PROMPT]
 
     # Execute Claude and process output stream
     # Capture both stdout and stderr, write to log file, keep stderr in memory for error extraction
