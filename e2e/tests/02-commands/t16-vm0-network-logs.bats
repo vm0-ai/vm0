@@ -68,21 +68,19 @@ teardown() {
 
     assert_success
 
-    # Network logs should contain HTTP request information
+    # Network logs should contain HTTP request information from webhook calls
+    # The mitmproxy intercepts ALL traffic including:
+    # - Heartbeat requests (POST /api/webhooks/agent/heartbeat)
+    # - Event requests (POST /api/webhooks/agent/events)
+    # - Telemetry requests (POST /api/webhooks/agent/telemetry)
+    # - Checkpoint requests (POST /api/webhooks/agent/checkpoints)
+    # - Storage requests (POST /api/webhooks/agent/storages)
+    #
     # Format: [timestamp] METHOD status latency request_size/response_size url
-    # The proxy intercepts Claude API calls, so we expect to see POST requests
 
-    # Check for expected format elements
-    # Note: If no network logs, the command shows a warning message
-    if [[ "$output" == *"No network logs found"* ]]; then
-        echo "# No network logs captured (proxy may not have intercepted traffic)"
-        # This is acceptable - mock-claude may not make real HTTP calls
-        # The test verifies the --network option works correctly
-    else
-        # If we have logs, verify the format
-        assert_output --partial "POST" || assert_output --partial "GET"
-        echo "# Network logs contain HTTP methods"
-    fi
+    # Should see POST requests from webhook calls
+    assert_output --partial "POST"
+    echo "# Network logs contain POST requests from webhooks"
 
     # Step 5: Verify --network is mutually exclusive with other options
     echo "# Step 5: Testing --network mutually exclusive with --agent..."
