@@ -415,6 +415,7 @@ const router = tsr.router(runsMainContract, {
         body: {
           runId: run.id,
           status: "failed" as const,
+          error: errorMessage,
           createdAt: run.createdAt.toISOString(),
         },
       };

@@ -374,13 +374,22 @@ const runCmd = new Command()
           conversationId: options.conversation,
         });
 
-        // 4. Display run started info
+        // 4. Check for immediate failure (e.g., missing secrets)
+        if (response.status === "failed") {
+          console.error(chalk.red("✗ Run preparation failed"));
+          if (response.error) {
+            console.error(chalk.gray(`  ${response.error}`));
+          }
+          process.exit(1);
+        }
+
+        // 5. Display run started info
         EventRenderer.renderRunStarted({
           runId: response.runId,
           sandboxId: response.sandboxId,
         });
 
-        // 5. Poll for events and exit with appropriate code
+        // 6. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
@@ -480,13 +489,22 @@ runCmd
               : undefined,
         });
 
-        // 4. Display run started info
+        // 4. Check for immediate failure (e.g., missing secrets)
+        if (response.status === "failed") {
+          console.error(chalk.red("✗ Run preparation failed"));
+          if (response.error) {
+            console.error(chalk.gray(`  ${response.error}`));
+          }
+          process.exit(1);
+        }
+
+        // 5. Display run started info
         EventRenderer.renderRunStarted({
           runId: response.runId,
           sandboxId: response.sandboxId,
         });
 
-        // 5. Poll for events and exit with appropriate code
+        // 6. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
@@ -584,13 +602,22 @@ runCmd
               : undefined,
         });
 
-        // 4. Display run started info
+        // 4. Check for immediate failure (e.g., missing secrets)
+        if (response.status === "failed") {
+          console.error(chalk.red("✗ Run preparation failed"));
+          if (response.error) {
+            console.error(chalk.gray(`  ${response.error}`));
+          }
+          process.exit(1);
+        }
+
+        // 5. Display run started info
         EventRenderer.renderRunStarted({
           runId: response.runId,
           sandboxId: response.sandboxId,
         });
 
-        // 5. Poll for events and exit with appropriate code
+        // 6. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose,
           startTimestamp,
