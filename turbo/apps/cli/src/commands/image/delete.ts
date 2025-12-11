@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import * as readline from "readline";
 import { apiClient } from "../../lib/api-client";
 
 interface Image {
@@ -44,7 +45,6 @@ export const deleteCommand = new Command()
 
       // Confirmation prompt (unless --force)
       if (!options.force) {
-        const readline = await import("readline");
         const rl = readline.createInterface({
           input: process.stdin,
           output: process.stdout,

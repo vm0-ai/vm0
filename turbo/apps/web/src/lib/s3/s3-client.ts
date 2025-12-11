@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import pLimit from "p-limit";
 import { env } from "../../env";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -672,7 +673,7 @@ export async function createArchiveFromBlobs(
   const uniqueHashes = [...new Set(files.map((f) => f.blobHash))];
 
   // Download blobs in parallel with concurrency limit
-  const limit = (await import("p-limit")).default(10);
+  const limit = pLimit(10);
   await Promise.all(
     uniqueHashes.map((hash) =>
       limit(async () => {
