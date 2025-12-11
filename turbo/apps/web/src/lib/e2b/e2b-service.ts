@@ -248,7 +248,11 @@ export class E2BService {
       // Start Claude Code via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
       // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
-      await this.startAgentExecution(sandbox, context.runId);
+      await this.startAgentExecution(
+        sandbox,
+        context.runId,
+        context.betaNetworkSecurity,
+      );
 
       const prepTimeMs = Date.now() - startTime;
       log.debug(
@@ -581,6 +585,7 @@ export class E2BService {
   private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
+    betaNetworkSecurity?: boolean,
   ): Promise<void> {
     log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
 
@@ -588,9 +593,17 @@ export class E2BService {
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
     // Redirect output to per-run log file in /tmp with vm0- prefix
-    await sandbox.commands.run(
-      `nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`,
-    );
+    const cmd = `nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+
+    // When network security is enabled, run as 'user' instead of root
+    // This is required because nftables skips root traffic to prevent proxy loops
+    // The mitmproxy runs as root, but agent traffic must go through it
+    if (betaNetworkSecurity) {
+      log.debug(`Running agent as 'user' for network security mode`);
+      await sandbox.commands.run(cmd, { user: "user" });
+    } else {
+      await sandbox.commands.run(cmd);
+    }
 
     log.debug(`Agent execution started in background for run ${runId}`);
   }
