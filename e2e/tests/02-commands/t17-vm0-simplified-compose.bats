@@ -61,11 +61,6 @@ EOF
     assert_output --partial "Auto-configured working_dir"
 }
 
-# Skip: This test requires Anthropic API key in sandbox environment
-# @test "vm0 run with simplified compose works end-to-end" {
-#     ...
-# }
-
 # ============================================
 # system_prompt tests
 # ============================================
@@ -215,10 +210,85 @@ EOF
     assert_output --partial "system skill"
 }
 
-# Skip: This test requires Anthropic API key in sandbox environment
-# @test "vm0 run with system_skills executes successfully" {
-#     ...
-# }
+# ============================================
+# Run tests (verify files are mounted)
+# ============================================
+
+@test "vm0 run with system_prompt mounts CLAUDE.md file" {
+    echo "# Creating config with system_prompt..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    system_prompt: AGENTS.md
+EOF
+
+    echo "# Creating AGENTS.md with unique marker..."
+    cat > "$TEST_DIR/AGENTS.md" <<EOF
+# Test System Prompt
+
+UNIQUE_MARKER_FOR_E2E_TEST_${AGENT_NAME}
+EOF
+
+    echo "# Running vm0 compose..."
+    cd "$TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running agent to verify system_prompt is mounted..."
+    # The system_prompt is mounted at /home/user/.config/claude/CLAUDE.md
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "cat /home/user/.config/claude/CLAUDE.md"
+    assert_success
+
+    echo "# Verifying output contains the marker from AGENTS.md..."
+    assert_output --partial "UNIQUE_MARKER_FOR_E2E_TEST"
+}
+
+@test "vm0 run with system_skills mounts skill directory" {
+    echo "# Creating config with system_skills..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    image: vm0-github-cli-dev
+    system_skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github
+EOF
+
+    echo "# Running vm0 compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running agent to verify system_skill is mounted..."
+    # The system_skill is mounted at /home/user/.config/claude/skills/github/
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "ls /home/user/.config/claude/skills/github/"
+    assert_success
+
+    echo "# Verifying skill directory contains SKILL.md..."
+    assert_output --partial "SKILL.md"
+}
 
 # ============================================
 # Validation tests
