@@ -152,24 +152,13 @@ export async function forwardRequest(
     }
   });
 
-  // Check if this is a streaming response (SSE)
+  // Log SSE streaming for debugging
   const contentType = targetResponse.headers.get("content-type") || "";
-  const isStreaming = contentType.includes("text/event-stream");
-
-  if (isStreaming && targetResponse.body) {
-    // For SSE, stream the response directly
+  if (contentType.includes("text/event-stream")) {
     log.debug(`Streaming SSE response from ${targetUrl}`);
-    return {
-      response: new Response(targetResponse.body, {
-        status: targetResponse.status,
-        statusText: targetResponse.statusText,
-        headers: responseHeaders,
-      }),
-      targetUrl,
-    };
   }
 
-  // For non-streaming responses, pass through the body
+  // Return response (works for both streaming and non-streaming)
   return {
     response: new Response(targetResponse.body, {
       status: targetResponse.status,
