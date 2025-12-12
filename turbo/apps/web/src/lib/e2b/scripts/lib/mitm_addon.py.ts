@@ -38,14 +38,15 @@ PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
 def log_network_entry(entry: dict) -> None:
     """Write a network log entry to the JSONL file."""
     try:
-        # Create file with world-readable permissions (0644) if it doesn't exist
-        # This allows the agent process (running as 'user') to read the logs
-        # written by mitmproxy (running as root)
-        if not os.path.exists(NETWORK_LOG_FILE):
-            fd = os.open(NETWORK_LOG_FILE, os.O_CREAT | os.O_WRONLY, 0o644)
+        # Use O_CREAT | O_APPEND | O_WRONLY with mode 0o644 atomically
+        # This avoids race conditions and ensures world-readable permissions
+        # so the agent process (running as 'user') can read logs written by
+        # mitmproxy (running as root)
+        fd = os.open(NETWORK_LOG_FILE, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+        try:
+            os.write(fd, (json.dumps(entry) + "\\n").encode())
+        finally:
             os.close(fd)
-        with open(NETWORK_LOG_FILE, "a") as f:
-            f.write(json.dumps(entry) + "\\n")
     except Exception as e:
         ctx.log.warn(f"Failed to write network log: {e}")
 
@@ -103,26 +104,22 @@ def request(flow: http.HTTPFlow) -> None:
     # Store original URL for logging in response handler
     flow.metadata["original_url"] = original_url
 
-    # Build new proxy URL with encoded target
-    encoded_url = urllib.parse.quote(original_url, safe="")
-    new_url = f"{PROXY_URL}?url={encoded_url}"
-
-    # Add runId for token validation
-    if RUN_ID:
-        new_url += f"&runId={RUN_ID}"
-
     ctx.log.info(f"Proxying: {original_url} -> VM0 Proxy")
 
     # Parse proxy URL
     parsed = urllib.parse.urlparse(PROXY_URL)
 
+    # Build query params properly using urlencode
+    query_params = {"url": original_url}
+    if RUN_ID:
+        query_params["runId"] = RUN_ID
+    query_string = urllib.parse.urlencode(query_params)
+
     # Rewrite request to proxy
     flow.request.host = parsed.hostname
     flow.request.port = 443 if parsed.scheme == "https" else 80
     flow.request.scheme = parsed.scheme
-    flow.request.path = f"{parsed.path}?url={encoded_url}"
-    if RUN_ID:
-        flow.request.path += f"&runId={RUN_ID}"
+    flow.request.path = f"{parsed.path}?{query_string}"
 
     # Add sandbox authentication token
     if API_TOKEN:
