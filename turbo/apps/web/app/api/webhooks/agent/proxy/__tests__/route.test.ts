@@ -160,6 +160,98 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       expect(response.status).toBe(400);
     });
+
+    // SSRF Protection Tests
+    it("should reject localhost URLs (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Flocalhost%3A8080%2Fadmin",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject 127.0.0.1 URLs (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F127.0.0.1%3A3000%2Fapi",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject AWS metadata URL (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject private network 10.x.x.x URLs (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F10.0.0.1%2Finternal",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject private network 172.16.x.x URLs (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F172.16.0.1%2Finternal",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject private network 192.168.x.x URLs (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F192.168.1.1%2Finternal",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject .internal hostnames (SSRF protection)", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Fmetadata.google.internal%2F",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${testToken}` },
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
   });
 
   // ============================================
