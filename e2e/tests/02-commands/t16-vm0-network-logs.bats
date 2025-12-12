@@ -1,13 +1,10 @@
 #!/usr/bin/env bats
 
-# Test VM0 network logs CLI command
+# Test VM0 network logs with network security mode
 # This test verifies that:
-# 1. The vm0 logs --network command works correctly
-# 2. Network log options are mutually exclusive with other log types
-#
-# Note: Network logs are only populated when beta_network_security is enabled
-# and actual HTTPS traffic goes through the proxy. In mock mode, we test
-# the CLI behavior rather than the full proxy flow.
+# 1. Agent runs with beta_network_security enabled capture network traffic
+# 2. The vm0 logs --network command retrieves network logs
+# 3. Network logs contain expected fields (method, url, status, latency)
 #
 # Test count: 2 tests with 1 vm0 run call
 
@@ -16,8 +13,7 @@ load '../../helpers/setup'
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-network-logs-test-$(date +%s)"
-    # Use standard test config (no network security)
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-network-security.yaml"
 }
 
 teardown() {
@@ -26,13 +22,13 @@ teardown() {
     fi
 }
 
-@test "Build VM0 standard agent configuration" {
+@test "Build VM0 network security test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "vm0-network-security"
 }
 
-@test "VM0 logs --network: CLI options work correctly" {
+@test "VM0 network logs: run with network security captures network traffic" {
     # Step 1: Create artifact with initial content
     echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -42,15 +38,19 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent to get a valid run ID
-    echo "# Step 2: Running agent..."
-    run $CLI_COMMAND run vm0-standard \
+    # Step 2: Run agent with network security enabled
+    # The agent will make API calls to Claude which will be proxied
+    echo "# Step 2: Running agent with network security (proxy mode)..."
+    run $CLI_COMMAND run vm0-network-security \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'testing network logs'"
 
     assert_success
+
+    # Verify run completed successfully
     assert_output --partial "Run started"
     assert_output --partial "Run ID:"
+    assert_output --partial "[result]"
     assert_output --partial "Run completed successfully"
 
     # Step 3: Extract Run ID from output
@@ -62,17 +62,27 @@ teardown() {
         return 1
     }
 
-    # Step 4: Verify vm0 logs --network command returns successfully
-    # (may show "No network logs found" since proxy wasn't enabled)
+    # Step 4: Verify vm0 logs --network command retrieves network logs
     echo "# Step 4: Fetching network logs..."
     run $CLI_COMMAND logs "$RUN_ID" --network --limit 100
 
     assert_success
-    # Network logs may be empty (no proxy) or contain data (with proxy)
-    # Just verify the command succeeds
-    echo "# Network logs command succeeded"
 
-    # Step 5: Verify --network is mutually exclusive with --agent
+    # Network logs should contain HTTP request information from webhook calls
+    # The mitmproxy intercepts ALL traffic including:
+    # - Heartbeat requests (POST /api/webhooks/agent/heartbeat)
+    # - Event requests (POST /api/webhooks/agent/events)
+    # - Telemetry requests (POST /api/webhooks/agent/telemetry)
+    # - Checkpoint requests (POST /api/webhooks/agent/checkpoints)
+    # - Storage requests (POST /api/webhooks/agent/storages)
+    #
+    # Format: [timestamp] METHOD status latency request_size/response_size url
+
+    # Should see POST requests from webhook calls
+    assert_output --partial "POST"
+    echo "# Network logs contain POST requests from webhooks"
+
+    # Step 5: Verify --network is mutually exclusive with other options
     echo "# Step 5: Testing --network mutually exclusive with --agent..."
     run $CLI_COMMAND logs "$RUN_ID" --network --agent
 

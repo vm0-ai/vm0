@@ -98,11 +98,14 @@ def main():
     # When proxy is enabled, Claude runs as 'user', so use /home/user
     if PROXY_ENABLED:
         claude_config_dir = "/home/user/.config/claude"
-        # Ensure claude config directory exists and is writable by 'user'
-        os.makedirs(claude_config_dir, exist_ok=True)
-        subprocess.run(["chown", "-R", "user:user", "/home/user/.config"], check=False)
+        # Ensure claude config directory and projects subdirectory exist
+        # Mock claude will need to create session history in projects/-{path}/
+        os.makedirs(f"{claude_config_dir}/projects", exist_ok=True)
+        # Change ownership recursively so 'user' can write files
+        subprocess.run(["chown", "-R", "user:user", claude_config_dir], check=False)
         # Also ensure working directory is writable by 'user'
         subprocess.run(["chown", "-R", "user:user", WORKING_DIR], check=False)
+        log_info(f"Set ownership of {claude_config_dir} and {WORKING_DIR} to user:user")
     else:
         home_dir = os.environ.get("HOME", "/home/user")
         claude_config_dir = f"{home_dir}/.config/claude"
