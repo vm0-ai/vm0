@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.1](https://github.com/vm0-ai/vm0/compare/web-v5.3.0...web-v5.3.1) (2025-12-12)
+
+
+### Bug Fixes
+
+* **web:** use pretty_host for transparent proxy hostname resolution ([#506](https://github.com/vm0-ai/vm0/issues/506)) ([1a804f5](https://github.com/vm0-ai/vm0/commit/1a804f551ed625afca2f58db96614011f162095f))
+
 ## [5.3.0](https://github.com/vm0-ai/vm0/compare/web-v5.2.1...web-v5.3.0) (2025-12-12)
 
 
