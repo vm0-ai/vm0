@@ -17,7 +17,6 @@ import sys
 import subprocess
 import json
 import threading
-import shlex
 
 # Add lib to path for imports
 sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
@@ -59,20 +58,11 @@ def main():
 
     log_info(f"Working directory: {WORKING_DIR}")
 
-    # Set up proxy if network security is enabled
-    # This must be done before any network requests to Claude API
+    # Log proxy mode status
+    # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
+    # This ensures mitmproxy is running and nftables rules are in place
     if PROXY_ENABLED:
-        log_info("Network security mode enabled, setting up mitmproxy...")
-        try:
-            from proxy_setup import setup_proxy
-            if setup_proxy():
-                log_info("Proxy setup completed successfully")
-            else:
-                log_error("Proxy setup failed, continuing without proxy")
-        except Exception as e:
-            log_error(f"Proxy setup error: {e}")
-            # Continue without proxy - traffic will fail at API level
-            # but this allows debugging
+        log_info("Network security mode enabled (proxy configured by e2b-service)")
 
     # Start heartbeat thread
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
@@ -95,20 +85,9 @@ def main():
         sys.exit(1)
 
     # Set Claude config directory to ensure consistent session history location
-    # When proxy is enabled, Claude runs as 'user', so use /home/user
-    if PROXY_ENABLED:
-        claude_config_dir = "/home/user/.config/claude"
-        # Ensure claude config directory and projects subdirectory exist
-        # Mock claude will need to create session history in projects/-{path}/
-        os.makedirs(f"{claude_config_dir}/projects", exist_ok=True)
-        # Change ownership recursively so 'user' can write files
-        subprocess.run(["chown", "-R", "user:user", claude_config_dir], check=False)
-        # Also ensure working directory is writable by 'user'
-        subprocess.run(["chown", "-R", "user:user", WORKING_DIR], check=False)
-        log_info(f"Set ownership of {claude_config_dir} and {WORKING_DIR} to user:user")
-    else:
-        home_dir = os.environ.get("HOME", "/home/user")
-        claude_config_dir = f"{home_dir}/.config/claude"
+    # Agent runs as E2B default user ('user'), so HOME is /home/user
+    home_dir = os.environ.get("HOME", "/home/user")
+    claude_config_dir = f"{home_dir}/.config/claude"
     os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
     log_info(f"Claude config directory: {claude_config_dir}")
 
@@ -138,16 +117,7 @@ def main():
         claude_bin = "claude"
 
     # Build full command
-    # When proxy is enabled, run Claude as 'user' so traffic goes through mitmproxy
-    # (nftables skips traffic from root to prevent proxy loops)
-    if PROXY_ENABLED:
-        log_info("Running Claude as 'user' for network security mode")
-        # Use su to run as user, with proper shell quoting
-        # The prompt needs to be passed through shell, so we use a shell wrapper
-        claude_cmd_str = " ".join([shlex.quote(arg) for arg in [claude_bin] + claude_args + [PROMPT]])
-        cmd = ["su", "-", "user", "-c", claude_cmd_str]
-    else:
-        cmd = [claude_bin] + claude_args + [PROMPT]
+    cmd = [claude_bin] + claude_args + [PROMPT]
 
     # Execute Claude and process output stream
     # Capture both stdout and stderr, write to log file, keep stderr in memory for error extraction

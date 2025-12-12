@@ -23,7 +23,7 @@ from log import log_info, log_error, log_warn
 
 # Proxy configuration
 MITM_PORT = 8080
-MITM_CA_DIR = "/root/.mitmproxy"
+MITM_CA_DIR = "/root/.mitmproxy"  # Proxy setup runs as root
 MITM_CA_CERT = f"{MITM_CA_DIR}/mitmproxy-ca-cert.pem"
 ADDON_PATH = "/usr/local/bin/vm0-agent/lib/mitm_addon.py"
 
@@ -42,7 +42,7 @@ def run_cmd(cmd: list, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def install_dependencies():
-    """Install required packages."""
+    """Install required packages (must run as root)."""
     log_info("Installing dependencies...")
 
     # Update apt cache
@@ -56,7 +56,7 @@ def install_dependencies():
         "ca-certificates"
     ])
 
-    # Install mitmproxy
+    # Install mitmproxy system-wide
     log_info("Installing mitmproxy (this may take a minute)...")
     run_cmd([
         "pip3", "install", "mitmproxy",
@@ -114,8 +114,9 @@ def configure_nftables():
     log_info("Configuring nftables for transparent proxy...")
 
     # nftables rules for transparent proxy
-    # - Skip root user traffic (uid 0) to avoid proxy loop
+    # - Skip traffic from root (UID 0) - mitmproxy runs as root
     # - Redirect all other TCP traffic to mitmproxy
+    # NOTE: We use UID-based filtering because mitmproxy doesn't support SO_MARK
     nft_rules = f"""
 flush ruleset
 
@@ -127,7 +128,8 @@ table ip nat {{
     chain output {{
         type nat hook output priority -100;
 
-        # Skip traffic from root (mitmproxy runs as root)
+        # Skip traffic from root (UID 0) - mitmproxy runs as root
+        # This prevents redirect loop: mitmproxy -> nftables -> mitmproxy
         meta skuid 0 return
 
         # Skip traffic to localhost
@@ -167,7 +169,8 @@ def start_mitmproxy():
         raise RuntimeError(f"Addon not found: {ADDON_PATH}")
 
     # Start mitmproxy in transparent mode with addon
-    # Run as daemon in background
+    # NOTE: mitmproxy runs as root, and nftables skips root's traffic (meta skuid 0)
+    # to avoid redirect loop
     cmd = [
         "mitmdump",
         "--mode", "transparent",

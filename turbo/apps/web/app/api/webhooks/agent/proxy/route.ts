@@ -11,13 +11,16 @@ import { logger } from "../../../../../src/lib/logger";
 const log = logger("webhook:proxy");
 
 /**
- * POST /api/webhooks/agent/proxy?url=<encoded_target_url>
+ * /api/webhooks/agent/proxy?url=<encoded_target_url>
  *
  * Generic proxy endpoint for sandbox requests.
  * Validates sandbox token, decodes target URL, and forwards the request.
  * Supports SSE streaming responses.
+ *
+ * NOTE: All HTTP methods are supported because mitmproxy preserves the original
+ * request method when forwarding through this proxy.
  */
-export async function POST(request: Request) {
+async function handleProxyRequest(request: Request) {
   initServices();
 
   // 1. Authenticate via sandbox token
@@ -88,3 +91,15 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// Export handler for all HTTP methods that might be proxied
+// mitmproxy preserves the original request method when forwarding
+export {
+  handleProxyRequest as GET,
+  handleProxyRequest as POST,
+  handleProxyRequest as PUT,
+  handleProxyRequest as DELETE,
+  handleProxyRequest as PATCH,
+  handleProxyRequest as OPTIONS,
+  handleProxyRequest as HEAD,
+};

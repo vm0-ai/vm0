@@ -6,11 +6,4 @@ agents:
     provider: claude-code
     image: vm0-claude-code-dev
     beta_network_security: true
-    volumes:
-      - claude-files:/home/user/.config/claude
     working_dir: /home/user/workspace
-
-volumes:
-  claude-files:
-    name: claude-files
-    version: latest
