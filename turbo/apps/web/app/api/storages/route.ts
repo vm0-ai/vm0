@@ -37,12 +37,12 @@ function errorResponse(
 
 /**
  * Check if name is a system storage name
- * System storage names use URI scheme format:
- * - prompt://{name} for system prompts
- * - skill://{path} for system skills
+ * System storage names use @ format:
+ * - system-prompt@{name} for system prompts
+ * - system-skill@{path} for system skills
  */
 function isSystemStorageName(name: string): boolean {
-  return name.startsWith("prompt://") || name.startsWith("skill://");
+  return name.startsWith("system-prompt@") || name.startsWith("system-skill@");
 }
 
 /**
@@ -54,23 +54,23 @@ function isSystemStorageName(name: string): boolean {
  * - Must start and end with alphanumeric
  * - No consecutive hyphens
  *
- * System storage names (URI scheme format):
- * - prompt://{name} for system prompts (name: alphanumeric with hyphens)
- * - skill://{path} for system skills (path: GitHub path with slashes, dots, hyphens)
+ * System storage names (@ format):
+ * - system-prompt@{name} for system prompts (name: alphanumeric with hyphens)
+ * - system-skill@{path} for system skills (path: GitHub path with slashes, dots, hyphens)
  * - Length: up to 256 characters
  */
 function isValidStorageName(name: string): boolean {
   // System storage names have different validation rules
   if (isSystemStorageName(name)) {
     // Length: up to 256 characters (DB limit is 256)
-    if (name.length < 10 || name.length > 256) {
+    if (name.length < 15 || name.length > 256) {
       return false;
     }
     // Must be a valid system storage type
-    // prompt://agent-name
-    const systemPromptPattern = /^prompt:\/\/[a-zA-Z0-9-]+$/;
-    // skill://owner/repo/tree/branch/path (allows dots for branch names like v1.0)
-    const systemSkillPattern = /^skill:\/\/[a-zA-Z0-9/._-]+$/;
+    // system-prompt@agent-name
+    const systemPromptPattern = /^system-prompt@[a-zA-Z0-9-]+$/;
+    // system-skill@owner/repo/tree/branch/path (allows dots for branch names like v1.0)
+    const systemSkillPattern = /^system-skill@[a-zA-Z0-9/._-]+$/;
     return systemPromptPattern.test(name) || systemSkillPattern.test(name);
   }
 

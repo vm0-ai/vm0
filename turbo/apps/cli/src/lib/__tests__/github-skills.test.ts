@@ -92,7 +92,7 @@ describe("parseGitHubTreeUrl", () => {
 });
 
 describe("getSkillStorageName", () => {
-  it("should generate correct storage name using URI scheme format", () => {
+  it("should generate correct storage name using @ format", () => {
     const parsed = {
       owner: "vm0-ai",
       repo: "vm0-skills",
@@ -103,7 +103,7 @@ describe("getSkillStorageName", () => {
     };
 
     expect(getSkillStorageName(parsed)).toBe(
-      "skill://vm0-ai/vm0-skills/tree/main/github-cli",
+      "system-skill@vm0-ai/vm0-skills/tree/main/github-cli",
     );
   });
 
@@ -118,19 +118,21 @@ describe("getSkillStorageName", () => {
     };
 
     expect(getSkillStorageName(parsed)).toBe(
-      "skill://owner/repo/tree/develop/skills/programming/python",
+      "system-skill@owner/repo/tree/develop/skills/programming/python",
     );
   });
 });
 
 describe("getSystemPromptStorageName", () => {
-  it("should generate correct storage name using URI scheme format", () => {
-    expect(getSystemPromptStorageName("my-agent")).toBe("prompt://my-agent");
+  it("should generate correct storage name using @ format", () => {
+    expect(getSystemPromptStorageName("my-agent")).toBe(
+      "system-prompt@my-agent",
+    );
   });
 
   it("should handle complex agent names", () => {
     expect(getSystemPromptStorageName("My-Test-Agent-123")).toBe(
-      "prompt://My-Test-Agent-123",
+      "system-prompt@My-Test-Agent-123",
     );
   });
 });

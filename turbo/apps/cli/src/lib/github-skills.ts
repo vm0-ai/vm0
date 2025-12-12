@@ -66,26 +66,24 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubUrl {
 
 /**
  * Generate the storage name for a system skill
- * Format: skill://{fullPath}
- * Uses URI scheme format with the full path after github.com/
+ * Format: system-skill@{fullPath}
  *
  * @param parsed - Parsed GitHub URL
  * @returns Storage name for the skill
  */
 export function getSkillStorageName(parsed: ParsedGitHubUrl): string {
-  return `skill://${parsed.fullPath}`;
+  return `system-skill@${parsed.fullPath}`;
 }
 
 /**
  * Generate the storage name for a system prompt
- * Format: prompt://{composeName}
- * Uses URI scheme format for clarity
+ * Format: system-prompt@{composeName}
  *
  * @param composeName - Name of the compose (agent name)
  * @returns Storage name for the system prompt
  */
 export function getSystemPromptStorageName(composeName: string): string {
-  return `prompt://${composeName}`;
+  return `system-prompt@${composeName}`;
 }
 
 /**
