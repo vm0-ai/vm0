@@ -96,14 +96,15 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      // UUID is used directly without fetching compose
-      expect(apiClient.getComposeById).not.toHaveBeenCalled();
+      // UUID still requires fetching compose to get content for secret extraction
+      expect(apiClient.getComposeById).toHaveBeenCalledWith(validUuid);
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentComposeId: validUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: undefined,
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -168,6 +169,7 @@ describe("run command", () => {
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: undefined,
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -417,6 +419,7 @@ describe("run command", () => {
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: { KEY1: "value1" },
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -442,6 +445,7 @@ describe("run command", () => {
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: { KEY1: "value1", KEY2: "value2" },
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -465,6 +469,7 @@ describe("run command", () => {
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: { URL: "https://example.com?foo=bar" },
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -531,6 +536,7 @@ describe("run command", () => {
         artifactName: "test-artifact",
         artifactVersion: undefined,
         vars: undefined,
+        secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
