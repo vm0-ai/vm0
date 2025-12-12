@@ -88,7 +88,9 @@ export async function forwardRequest(
 
   // Restore original Authorization header from x-vm0-original-authorization
   // mitmproxy saves the original header there before overwriting with sandbox token
-  const originalAuthHeader = request.headers.get("x-vm0-original-authorization");
+  const originalAuthHeader = request.headers.get(
+    "x-vm0-original-authorization",
+  );
   if (originalAuthHeader) {
     // Extract token from "Bearer <token>" format or raw token
     const token = originalAuthHeader.startsWith("Bearer ")
