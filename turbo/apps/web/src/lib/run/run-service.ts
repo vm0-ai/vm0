@@ -24,6 +24,7 @@ import {
   groupVariablesBySource,
 } from "@vm0/core";
 import { createProxyToken } from "../proxy/token-service";
+import { decryptSecrets } from "../crypto";
 
 const log = logger("service:run");
 
@@ -294,6 +295,14 @@ export class RunService {
     }
     const agentCompose = version.content as AgentComposeYaml;
 
+    // Decrypt secrets from snapshot (stored encrypted per-value)
+    const encryptedSecrets = agentComposeSnapshot.secrets as
+      | Record<string, string>
+      | undefined;
+    const decryptedSecrets = encryptedSecrets
+      ? decryptSecrets(encryptedSecrets)
+      : {};
+
     return {
       conversationId: checkpoint.conversationId,
       agentComposeVersionId,
@@ -306,7 +315,7 @@ export class RunService {
       artifactName: checkpointArtifact.artifactName,
       artifactVersion: checkpointArtifact.artifactVersion,
       vars: agentComposeSnapshot.vars || {},
-      secrets: agentComposeSnapshot.secrets || {},
+      secrets: decryptedSecrets,
       volumeVersions: checkpointVolumeVersions?.versions,
       buildResumeArtifact: true,
     };
@@ -370,6 +379,14 @@ export class RunService {
       throw new NotFoundError("Agent compose version");
     }
 
+    // Decrypt secrets from session (stored encrypted per-value)
+    const encryptedSessionSecrets = session.secrets as
+      | Record<string, string>
+      | undefined;
+    const decryptedSessionSecrets = encryptedSessionSecrets
+      ? decryptSecrets(encryptedSessionSecrets)
+      : {};
+
     return {
       conversationId: session.conversationId,
       agentComposeVersionId: compose.headVersionId,
@@ -382,7 +399,7 @@ export class RunService {
       artifactName: session.artifactName,
       artifactVersion: "latest",
       vars: session.vars || {},
-      secrets: session.secrets || {},
+      secrets: decryptedSessionSecrets,
       volumeVersions: undefined,
       buildResumeArtifact: true,
     };
