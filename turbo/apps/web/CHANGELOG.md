@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.4.0](https://github.com/vm0-ai/vm0/compare/web-v5.3.2...web-v5.4.0) (2025-12-12)
+
+
+### Features
+
+* **cli:** add --secrets parameter for passing secrets via CLI ([#512](https://github.com/vm0-ai/vm0/issues/512)) ([7972bf4](https://github.com/vm0-ai/vm0/commit/7972bf4f82f76112f99ebf8068c133e953a4ae20))
+* **cli:** add system_prompt and system_skills support for agent compose ([#513](https://github.com/vm0-ai/vm0/issues/513)) ([5079a4a](https://github.com/vm0-ai/vm0/commit/5079a4a9d7a41617e53b22c7ea9e666cf4838f08))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.5.0
+
 ## [5.3.2](https://github.com/vm0-ai/vm0/compare/web-v5.3.1...web-v5.3.2) (2025-12-12)
 
 
