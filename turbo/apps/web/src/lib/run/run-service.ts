@@ -505,6 +505,7 @@ export class RunService {
     userId: string,
   ): Promise<{
     agentComposeVersionId: string;
+    secrets: Record<string, string> | null;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
@@ -549,8 +550,12 @@ export class RunService {
       `Checkpoint validated: agentComposeVersionId=${agentComposeVersionId}`,
     );
 
+    // Get secrets from original run (encrypted per-value)
+    const secrets = (originalRun.secrets as Record<string, string>) ?? null;
+
     return {
       agentComposeVersionId,
+      secrets,
     };
   }
 
@@ -570,6 +575,7 @@ export class RunService {
   ): Promise<{
     agentComposeId: string;
     vars: Record<string, string> | null;
+    secrets: Record<string, string> | null;
   }> {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
@@ -600,6 +606,7 @@ export class RunService {
     return {
       agentComposeId: session.agentComposeId,
       vars: session.vars,
+      secrets: session.secrets,
     };
   }
 
