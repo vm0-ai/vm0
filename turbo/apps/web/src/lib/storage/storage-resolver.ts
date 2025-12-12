@@ -40,19 +40,14 @@ function parseGitHubTreeUrl(
  * Get storage name for system prompt
  */
 function getSystemPromptStorageName(agentName: string): string {
-  return `__system-prompt-${agentName}__`;
+  return `system-prompt@${agentName}`;
 }
 
 /**
  * Get storage name for system skill
  */
-function getSystemSkillStorageName(
-  owner: string,
-  repo: string,
-  branch: string,
-  path: string,
-): string {
-  return `__system-skill-${owner}/${repo}/${branch}/${path}__`;
+function getSystemSkillStorageName(fullPath: string): string {
+  return `system-skill@${fullPath}`;
 }
 
 /**
@@ -288,12 +283,8 @@ export function resolveVolumes(
     for (const skillUrl of agent.system_skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
-        const storageName = getSystemSkillStorageName(
-          parsed.owner,
-          parsed.repo,
-          parsed.branch,
-          parsed.path,
-        );
+        const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
+        const storageName = getSystemSkillStorageName(fullPath);
         const skillName = getSkillName(parsed.path);
         volumes.push({
           name: `__system-skill-${skillName}__`,
