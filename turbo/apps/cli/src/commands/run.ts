@@ -437,9 +437,7 @@ const runCmd = new Command()
         const secrets = loadValues(options.secrets, secretNames);
 
         if (verbose && varNames.length > 0) {
-          console.log(
-            chalk.gray(`  Required vars: ${varNames.join(", ")}`),
-          );
+          console.log(chalk.gray(`  Required vars: ${varNames.join(", ")}`));
           if (vars) {
             console.log(
               chalk.gray(`  Loaded vars: ${Object.keys(vars).join(", ")}`),
