@@ -77,8 +77,14 @@ export async function uploadSystemPrompt(
     });
 
     if (!response.ok) {
-      const error = (await response.json()) as { error: string };
-      throw new Error(error.error || "Upload failed");
+      const errorBody = (await response.json()) as {
+        error: string | { message: string; code: string };
+      };
+      const errorMessage =
+        typeof errorBody.error === "string"
+          ? errorBody.error
+          : errorBody.error?.message || "Upload failed";
+      throw new Error(errorMessage);
     }
 
     const result = (await response.json()) as {
@@ -148,8 +154,14 @@ export async function uploadSystemSkill(
     });
 
     if (!response.ok) {
-      const error = (await response.json()) as { error: string };
-      throw new Error(error.error || "Upload failed");
+      const errorBody = (await response.json()) as {
+        error: string | { message: string; code: string };
+      };
+      const errorMessage =
+        typeof errorBody.error === "string"
+          ? errorBody.error
+          : errorBody.error?.message || "Upload failed";
+      throw new Error(errorMessage);
     }
 
     const result = (await response.json()) as {

@@ -36,12 +36,42 @@ function errorResponse(
 }
 
 /**
+ * Check if name is a system storage name
+ * System storage names start and end with __
+ * Format: __system-prompt-{name}__ or __system-skill-{path}__
+ */
+function isSystemStorageName(name: string): boolean {
+  return name.startsWith("__") && name.endsWith("__");
+}
+
+/**
  * Validate storage name format
- * Length: 3-64 characters
- * Characters: lowercase letters, numbers, hyphens
- * Must start and end with alphanumeric
+ *
+ * Regular storage names:
+ * - Length: 3-64 characters
+ * - Characters: lowercase letters, numbers, hyphens
+ * - Must start and end with alphanumeric
+ * - No consecutive hyphens
+ *
+ * System storage names (prefixed/suffixed with __):
+ * - Length: 3-256 characters
+ * - Must start with __system-prompt- or __system-skill-
+ * - Can contain additional characters for paths
  */
 function isValidStorageName(name: string): boolean {
+  // System storage names have different validation rules
+  if (isSystemStorageName(name)) {
+    // Length: 3-256 characters (DB limit is 256)
+    if (name.length < 3 || name.length > 256) {
+      return false;
+    }
+    // Must be a valid system storage type
+    const systemPromptPattern = /^__system-prompt-[a-zA-Z0-9-]+__$/;
+    const systemSkillPattern = /^__system-skill-[a-zA-Z0-9/_-]+__$/;
+    return systemPromptPattern.test(name) || systemSkillPattern.test(name);
+  }
+
+  // Regular storage names
   if (name.length < 3 || name.length > 64) {
     return false;
   }
