@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.2](https://github.com/vm0-ai/vm0/compare/web-v5.3.1...web-v5.3.2) (2025-12-12)
+
+
+### Bug Fixes
+
+* **web:** implement transparent proxy for Authorization header ([#509](https://github.com/vm0-ai/vm0/issues/509)) ([5b38537](https://github.com/vm0-ai/vm0/commit/5b38537b46713ec015ab4ef23dfb79158bd0dc96))
+
 ## [5.3.1](https://github.com/vm0-ai/vm0/compare/web-v5.3.0...web-v5.3.1) (2025-12-12)
 
 
