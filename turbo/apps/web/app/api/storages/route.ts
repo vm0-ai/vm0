@@ -37,11 +37,12 @@ function errorResponse(
 
 /**
  * Check if name is a system storage name
- * System storage names start and end with __
- * Format: __system-prompt-{name}__ or __system-skill-{path}__
+ * System storage names use URI scheme format:
+ * - prompt://{name} for system prompts
+ * - skill://{path} for system skills
  */
 function isSystemStorageName(name: string): boolean {
-  return name.startsWith("__") && name.endsWith("__");
+  return name.startsWith("prompt://") || name.startsWith("skill://");
 }
 
 /**
@@ -53,22 +54,23 @@ function isSystemStorageName(name: string): boolean {
  * - Must start and end with alphanumeric
  * - No consecutive hyphens
  *
- * System storage names (prefixed/suffixed with __):
- * - Length: 3-256 characters
- * - Must start with __system-prompt- or __system-skill-
- * - Can contain additional characters for paths
+ * System storage names (URI scheme format):
+ * - prompt://{name} for system prompts (name: alphanumeric with hyphens)
+ * - skill://{path} for system skills (path: GitHub path with slashes, dots, hyphens)
+ * - Length: up to 256 characters
  */
 function isValidStorageName(name: string): boolean {
   // System storage names have different validation rules
   if (isSystemStorageName(name)) {
-    // Length: 3-256 characters (DB limit is 256)
-    if (name.length < 3 || name.length > 256) {
+    // Length: up to 256 characters (DB limit is 256)
+    if (name.length < 10 || name.length > 256) {
       return false;
     }
     // Must be a valid system storage type
-    const systemPromptPattern = /^__system-prompt-[a-zA-Z0-9-]+__$/;
-    // Skill pattern uses full GitHub path (allows dots for branch names like v1.0 and file extensions)
-    const systemSkillPattern = /^__system-skill-[a-zA-Z0-9/._-]+__$/;
+    // prompt://agent-name
+    const systemPromptPattern = /^prompt:\/\/[a-zA-Z0-9-]+$/;
+    // skill://owner/repo/tree/branch/path (allows dots for branch names like v1.0)
+    const systemSkillPattern = /^skill:\/\/[a-zA-Z0-9/._-]+$/;
     return systemPromptPattern.test(name) || systemSkillPattern.test(name);
   }
 
