@@ -80,6 +80,28 @@ setup_artifact() {
     assert_output --partial "SECRET=***"
 }
 
+@test "vm0 run loads vars from environment variables" {
+    echo "# Step 1: Create and push artifact"
+    setup_artifact
+
+    echo "# Step 2: Build the compose"
+    run $CLI_COMMAND compose "$TEST_CONFIG"
+    assert_success
+
+    echo "# Step 3: Run with var in environment variable"
+    # Export the var as an environment variable (CLI will pick it up)
+    export testVar="${VAR_VALUE}"
+    run $CLI_COMMAND run vm0-env-expansion \
+        --secrets "TEST_SECRET=${SECRET_VALUE}" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
+    assert_success
+
+    echo "# Step 4: Verify vars and secrets work"
+    assert_output --partial "VAR=${VAR_VALUE}"
+    assert_output --partial "SECRET=***"
+}
+
 @test "vm0 run loads secrets from .env file" {
     echo "# Step 1: Create and push artifact"
     setup_artifact
