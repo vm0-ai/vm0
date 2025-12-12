@@ -6,8 +6,10 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../src/db/schema/agent-run-event";
 import { eq, max, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { createSecretMasker } from "../../../../../src/lib/secrets/secret-masker";
-import { getAllSecretValues } from "../../../../../src/lib/secrets/secrets-service";
+import {
+  createSecretMasker,
+  decryptSecrets,
+} from "../../../../../src/lib/crypto";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:events");
@@ -54,8 +56,14 @@ const router = tsr.router(webhookEventsContract, {
 
     const lastSequence = lastEvent?.maxSeq ?? 0;
 
-    // Get user secrets and create masker for protecting sensitive data
-    const secretValues = await getAllSecretValues(userId);
+    // Get secrets from run record and create masker for protecting sensitive data
+    // Secrets are stored encrypted per-value in the run record
+    let secretValues: string[] = [];
+    if (run.secrets && typeof run.secrets === "object") {
+      const encryptedSecrets = run.secrets as Record<string, string>;
+      const decrypted = decryptSecrets(encryptedSecrets);
+      secretValues = Object.values(decrypted);
+    }
     const masker = createSecretMasker(secretValues);
 
     // Prepare events for insertion with secrets masked

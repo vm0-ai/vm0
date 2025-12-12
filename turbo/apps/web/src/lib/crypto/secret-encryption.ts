@@ -71,3 +71,33 @@ export function decryptSecret(encryptedValue: string): string {
 
   return decrypted.toString("utf8");
 }
+
+/**
+ * Encrypt a record of secrets (key -> value)
+ * @param secrets - Record of secret name to plaintext value
+ * @returns Record of secret name to encrypted value
+ */
+export function encryptSecrets(
+  secrets: Record<string, string>,
+): Record<string, string> {
+  const encrypted: Record<string, string> = {};
+  for (const [name, value] of Object.entries(secrets)) {
+    encrypted[name] = encryptSecret(value);
+  }
+  return encrypted;
+}
+
+/**
+ * Decrypt a record of secrets (key -> encrypted value)
+ * @param secrets - Record of secret name to encrypted value
+ * @returns Record of secret name to plaintext value
+ */
+export function decryptSecrets(
+  secrets: Record<string, string>,
+): Record<string, string> {
+  const decrypted: Record<string, string> = {};
+  for (const [name, value] of Object.entries(secrets)) {
+    decrypted[name] = decryptSecret(value);
+  }
+  return decrypted;
+}

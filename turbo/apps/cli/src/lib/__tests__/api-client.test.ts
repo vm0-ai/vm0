@@ -183,7 +183,7 @@ describe("ApiClient", () => {
       const mockRequest = {
         agentComposeId: "cmp-123",
         prompt: "test prompt",
-        templateVars: { key1: "value1", key2: "value2" },
+        vars: { key1: "value1", key2: "value2" },
         artifactName: "my-artifact",
       };
 

@@ -163,6 +163,7 @@ describe("run-service", () => {
           "test prompt",
           "sandbox-token",
           { userId: "user-1" },
+          { apiKey: "secret-123" },
           { agents: { "test-agent": { working_dir: "/workspace" } } },
           "user-1",
           "artifact-name",
@@ -173,23 +174,26 @@ describe("run-service", () => {
         expect(context.agentComposeVersionId).toBe("compose-456");
         expect(context.prompt).toBe("test prompt");
         expect(context.sandboxToken).toBe("sandbox-token");
-        expect(context.templateVars).toEqual({ userId: "user-1" });
+        expect(context.vars).toEqual({ userId: "user-1" });
+        expect(context.secrets).toEqual({ apiKey: "secret-123" });
         expect(context.userId).toBe("user-1");
         expect(context.artifactName).toBe("artifact-name");
         expect(context.artifactVersion).toBe("v1");
       });
 
-      test("handles undefined template vars", async () => {
+      test("handles undefined vars and secrets", async () => {
         const context = await runService.createRunContext(
           "run-123",
           "compose-456",
           "test prompt",
           "sandbox-token",
           undefined,
+          undefined,
           {},
         );
 
-        expect(context.templateVars).toBeUndefined();
+        expect(context.vars).toBeUndefined();
+        expect(context.secrets).toBeUndefined();
       });
     });
 
@@ -223,7 +227,7 @@ describe("run-service", () => {
             userId: TEST_USER_ID,
             artifactName: "artifact-1",
             artifactVersion: "v1",
-            templateVars: { foo: "bar" },
+            vars: { foo: "bar" },
             volumeVersions: { vol1: "version1" },
           });
 
@@ -232,7 +236,7 @@ describe("run-service", () => {
           expect(context.prompt).toBe("test prompt");
           expect(context.artifactName).toBe("artifact-1");
           expect(context.artifactVersion).toBe("v1");
-          expect(context.templateVars).toEqual({ foo: "bar" });
+          expect(context.vars).toEqual({ foo: "bar" });
           expect(context.volumeVersions).toEqual({ vol1: "version1" });
           expect(context.resumeSession).toBeUndefined();
           expect(context.resumeArtifact).toBeUndefined();

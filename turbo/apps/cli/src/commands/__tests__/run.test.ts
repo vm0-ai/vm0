@@ -103,7 +103,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: undefined,
+        vars: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -167,7 +167,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: undefined,
+        vars: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -416,7 +416,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: { KEY1: "value1" },
+        vars: { KEY1: "value1" },
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -441,7 +441,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: { KEY1: "value1", KEY2: "value2" },
+        vars: { KEY1: "value1", KEY2: "value2" },
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -464,7 +464,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: { URL: "https://example.com?foo=bar" },
+        vars: { URL: "https://example.com?foo=bar" },
         volumeVersions: undefined,
         conversationId: undefined,
       });
@@ -515,7 +515,7 @@ describe("run command", () => {
       }).rejects.toThrow();
     });
 
-    it("should omit templateVars when no vars provided", async () => {
+    it("should omit vars when no vars provided", async () => {
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -530,7 +530,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
-        templateVars: undefined,
+        vars: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
       });

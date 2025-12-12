@@ -380,7 +380,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         id: checkpointId,
         runId: testRunId,
         conversationId: conversationId,
-        agentComposeSnapshot: { config: {}, templateVars: {} },
+        agentComposeSnapshot: { config: {}, vars: {} },
         artifactSnapshot: {
           artifactName: "test-artifact",
           artifactVersion: "v1",

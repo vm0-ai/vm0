@@ -5,7 +5,7 @@
 export interface CreateAgentRunRequest {
   agentComposeVersionId: string; // Immutable compose version ID (SHA-256 hash)
   prompt: string;
-  templateVars?: Record<string, string>;
+  vars?: Record<string, string>;
   artifactName: string; // Required: artifact storage name
   artifactVersion?: string; // Optional: version hash (defaults to "latest")
   volumeVersions?: Record<string, string>; // Optional: volume name -> version overrides
@@ -14,7 +14,7 @@ export interface CreateAgentRunRequest {
 /**
  * Unified run request - supports all run modes via optional parameters
  * Shortcuts (checkpointId, sessionId) expand to base parameters
- * Note: Environment variables are expanded server-side from templateVars
+ * Note: Environment variables are expanded server-side from vars
  */
 export interface UnifiedRunRequest {
   // High-level shortcuts (mutually exclusive with each other)
@@ -27,7 +27,7 @@ export interface UnifiedRunRequest {
   conversationId?: string; // Conversation to resume from
   artifactName?: string; // Artifact storage name
   artifactVersion?: string; // Artifact version (default: "latest")
-  templateVars?: Record<string, string>; // Template variables for ${{ vars.xxx }} expansion
+  vars?: Record<string, string>; // Template variables for ${{ vars.xxx }} expansion
   volumeVersions?: Record<string, string>; // Volume name -> version overrides
 
   // Required
@@ -49,7 +49,7 @@ export interface GetAgentRunResponse {
   agentComposeVersionId: string; // Immutable compose version ID
   status: "pending" | "running" | "completed" | "failed";
   prompt: string;
-  templateVars?: Record<string, string>;
+  vars?: Record<string, string>;
   sandboxId?: string;
   result?: {
     output: string;

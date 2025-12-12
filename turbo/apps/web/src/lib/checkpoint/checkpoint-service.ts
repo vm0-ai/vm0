@@ -79,10 +79,11 @@ export class CheckpointService {
     );
 
     // Build agent compose snapshot using version ID for reproducibility
-    // Environment is re-expanded from templateVars on resume
+    // Environment is re-expanded from vars/secrets on resume
     const agentComposeSnapshot: AgentComposeSnapshot = {
       agentComposeVersionId: run.agentComposeVersionId,
-      templateVars: (run.templateVars as Record<string, string>) || undefined,
+      vars: (run.vars as Record<string, string>) || undefined,
+      secrets: (run.secrets as Record<string, string>) || undefined,
     };
 
     // Store checkpoint in database
@@ -117,14 +118,15 @@ export class CheckpointService {
     // Find or create agent session using compose ID (not version ID)
     // Sessions track the mutable compose, not a specific version
     const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
-    const templateVars =
-      (run.templateVars as Record<string, string>) || undefined;
+    const vars = (run.vars as Record<string, string>) || undefined;
+    const secrets = (run.secrets as Record<string, string>) || undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
       version.composeId,
       artifactSnapshot.artifactName,
       conversation.id,
-      templateVars,
+      vars,
+      secrets,
     );
 
     log.debug(`Agent session updated/created: ${agentSession.id}`);

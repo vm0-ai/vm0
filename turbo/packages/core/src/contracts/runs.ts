@@ -29,7 +29,8 @@ const unifiedRunRequestSchema = z.object({
   conversationId: z.string().optional(),
   artifactName: z.string().optional(),
   artifactVersion: z.string().optional(),
-  templateVars: z.record(z.string(), z.string()).optional(),
+  vars: z.record(z.string(), z.string()).optional(),
+  secrets: z.record(z.string(), z.string()).optional(),
   volumeVersions: z.record(z.string(), z.string()).optional(),
 
   // Required
@@ -57,7 +58,7 @@ const getRunResponseSchema = z.object({
   agentComposeVersionId: z.string(),
   status: runStatusSchema,
   prompt: z.string(),
-  templateVars: z.record(z.string(), z.string()).optional(),
+  vars: z.record(z.string(), z.string()).optional(),
   sandboxId: z.string().optional(),
   result: z
     .object({

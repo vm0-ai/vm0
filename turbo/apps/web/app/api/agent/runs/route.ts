@@ -14,6 +14,7 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
+import { encryptSecrets } from "../../../../src/lib/crypto";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:runs");
@@ -185,7 +186,7 @@ const router = tsr.router(runsMainContract, {
       // Validate template variables for new runs
       if (composeContent) {
         const requiredVars = extractTemplateVars(composeContent);
-        const providedVars = body.templateVars || {};
+        const providedVars = body.vars || {};
         const missingVars = requiredVars.filter(
           (varName) => providedVars[varName] === undefined,
         );
@@ -321,6 +322,9 @@ const router = tsr.router(runsMainContract, {
 
     log.debug(`Resolved agentComposeVersionId: ${agentComposeVersionId}`);
 
+    // Encrypt secrets before storing (encrypted per-value with AES-256-GCM)
+    const encryptedSecrets = body.secrets ? encryptSecrets(body.secrets) : null;
+
     // Create run record in database
     const [run] = await globalThis.services.db
       .insert(agentRuns)
@@ -329,7 +333,8 @@ const router = tsr.router(runsMainContract, {
         agentComposeVersionId,
         status: "pending",
         prompt: body.prompt,
-        templateVars: body.templateVars || null,
+        vars: body.vars || null,
+        secrets: encryptedSecrets,
         resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();
@@ -367,7 +372,8 @@ const router = tsr.router(runsMainContract, {
         conversationId: body.conversationId,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
-        templateVars: body.templateVars,
+        vars: body.vars,
+        secrets: body.secrets,
         volumeVersions: body.volumeVersions,
         prompt: body.prompt,
         runId: run.id,

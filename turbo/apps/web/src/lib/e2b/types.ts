@@ -5,7 +5,7 @@
 export interface CreateRunOptions {
   agentComposeId: string;
   prompt: string;
-  templateVars?: Record<string, string>;
+  vars?: Record<string, string>;
   sandboxToken: string; // Temporary bearer token for sandbox to call APIs
   agentCompose?: unknown; // Full agent compose JSONB for volume resolution
   apiUrl?: string; // Override API URL (auto-detected from request or from env)

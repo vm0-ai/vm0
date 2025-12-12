@@ -53,6 +53,9 @@ importers:
       commander:
         specifier: ^14.0.0
         version: 14.0.0
+      dotenv:
+        specifier: ^17.2.1
+        version: 17.2.1
       tar:
         specifier: ^7.5.2
         version: 7.5.2
