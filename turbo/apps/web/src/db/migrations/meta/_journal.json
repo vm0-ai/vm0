@@ -225,6 +225,20 @@
       "when": 1765600000000,
       "tag": "0031_add_sandbox_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1765700000000,
+      "tag": "0032_storage_type_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1765800000000,
+      "tag": "0033_secrets_via_cli",
+      "breakpoints": true
     }
   ]
 }
