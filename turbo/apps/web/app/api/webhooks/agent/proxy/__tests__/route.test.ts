@@ -118,7 +118,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject request without url parameter", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy",
+        "http://localhost:3000/api/webhooks/agent/proxy?runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -135,7 +135,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject request with invalid url", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=not-a-valid-url",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=not-a-valid-url&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -149,7 +149,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject request with non-http protocol", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=ftp%3A%2F%2Fexample.com",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=ftp%3A%2F%2Fexample.com&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -164,7 +164,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
     // SSRF Protection Tests
     it("should reject localhost URLs (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Flocalhost%3A8080%2Fadmin",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Flocalhost%3A8080%2Fadmin&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -177,7 +177,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject 127.0.0.1 URLs (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F127.0.0.1%3A3000%2Fapi",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F127.0.0.1%3A3000%2Fapi&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -190,7 +190,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject AWS metadata URL (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -203,7 +203,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject private network 10.x.x.x URLs (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F10.0.0.1%2Finternal",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F10.0.0.1%2Finternal&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -216,7 +216,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject private network 172.16.x.x URLs (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F172.16.0.1%2Finternal",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F172.16.0.1%2Finternal&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -229,7 +229,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject private network 192.168.x.x URLs (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F192.168.1.1%2Finternal",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2F192.168.1.1%2Finternal&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -242,7 +242,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     it("should reject .internal hostnames (SSRF protection)", async () => {
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Fmetadata.google.internal%2F",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=http%3A%2F%2Fmetadata.google.internal%2F&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -282,7 +282,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com%2Ftest",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com%2Ftest&runId=test-run-123",
         {
           method: "POST",
           headers: {
@@ -316,7 +316,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
         "https://api.example.com/v1/messages?stream=true&model=claude",
       );
       const request = new NextRequest(
-        `http://localhost:3000/api/webhooks/agent/proxy?url=${encodedUrl}`,
+        `http://localhost:3000/api/webhooks/agent/proxy?url=${encodedUrl}&runId=test-run-123`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -336,7 +336,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Funreachable.example.com",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Funreachable.example.com&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -378,7 +378,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=test-run-123",
         {
           method: "POST",
           headers: {
@@ -409,7 +409,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com&runId=test-run-123",
         {
           method: "POST",
           headers: {
@@ -471,7 +471,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=test-run-123",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${testToken}` },
@@ -560,7 +560,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages`,
+        `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${testRunId}`,
         {
           method: "POST",
           headers: {
@@ -590,7 +590,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       mockFetch.mockResolvedValueOnce(targetResponse);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=test-run-123",
         {
           method: "POST",
           headers: {
@@ -654,7 +654,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       );
 
       const request = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
+        `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${testRunId}`,
         {
           method: "POST",
           headers: {
@@ -675,7 +675,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("should decrypt without runId validation when runId not provided", async () => {
+    it("should reject request without runId parameter (security)", async () => {
       const proxyToken = createProxyToken(
         testRunId,
         testUserId,
@@ -683,14 +683,8 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testSecretValue,
       );
 
-      const targetResponse = new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
-
       const request = new NextRequest(
-        // No runId in query params
+        // No runId in query params - should be rejected
         "http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages",
         {
           method: "POST",
@@ -703,12 +697,14 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(200);
+      // runId is required to prevent token replay attacks
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+      expect(data.error.message).toContain("runId");
 
-      // Should still decrypt successfully without runId validation
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
+      // Should not have made any fetch calls
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

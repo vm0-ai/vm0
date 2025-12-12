@@ -33,10 +33,25 @@ async function handleProxyRequest(request: Request) {
     );
   }
 
-  // 2. Extract and validate target URL from query param
+  // 2. Extract and validate parameters from query
   const { searchParams } = new URL(request.url);
   const encodedUrl = searchParams.get("url");
-  const runId = searchParams.get("runId") || undefined;
+  const runId = searchParams.get("runId");
+
+  // runId is required to prevent token replay attacks across runs
+  // mitmproxy addon always includes runId in requests
+  if (!runId) {
+    log.warn("Proxy request without runId parameter");
+    return NextResponse.json(
+      {
+        error: {
+          message: "runId parameter is required",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
 
   const targetUrl = decodeTargetUrl(encodedUrl);
   if (!targetUrl) {
@@ -52,9 +67,7 @@ async function handleProxyRequest(request: Request) {
     );
   }
 
-  log.debug(
-    `Proxying request for user ${userId} to ${targetUrl}${runId ? ` (runId: ${runId})` : ""}`,
-  );
+  log.debug(`Proxying request for user ${userId} to ${targetUrl} (runId: ${runId})`);
 
   // 3. Forward request to target (handles proxy token decryption)
   try {
