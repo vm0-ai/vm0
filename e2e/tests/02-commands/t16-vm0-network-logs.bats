@@ -17,7 +17,7 @@ setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-network-logs-test-$(date +%s)"
     # Use standard test config (no network security)
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-test.yaml"
+    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
 }
 
 teardown() {
@@ -26,10 +26,10 @@ teardown() {
     fi
 }
 
-@test "Build VM0 test agent configuration" {
+@test "Build VM0 standard agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-test"
+    assert_output --partial "vm0-standard"
 }
 
 @test "VM0 logs --network: CLI options work correctly" {
@@ -44,7 +44,7 @@ teardown() {
 
     # Step 2: Run agent to get a valid run ID
     echo "# Step 2: Running agent..."
-    run $CLI_COMMAND run vm0-test \
+    run $CLI_COMMAND run vm0-standard \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'testing network logs'"
 
