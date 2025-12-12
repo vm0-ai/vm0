@@ -78,9 +78,13 @@ teardown() {
     #
     # Format: [timestamp] METHOD status latency request_size/response_size url
 
-    # Should see POST requests from webhook calls
+    # Should see POST requests to webhook endpoints
     assert_output --partial "POST"
-    echo "# Network logs contain POST requests from webhooks"
+
+    # Verify specific webhook endpoints are captured
+    # Events endpoint is always called during agent execution
+    assert_output --partial "/api/webhooks/agent/events"
+    echo "# Network logs contain /api/webhooks/agent/events requests"
 
     # Step 5: Verify --network is mutually exclusive with other options
     echo "# Step 5: Testing --network mutually exclusive with --agent..."
