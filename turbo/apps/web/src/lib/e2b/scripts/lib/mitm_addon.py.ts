@@ -124,6 +124,11 @@ def request(flow: http.HTTPFlow) -> None:
     flow.request.scheme = parsed.scheme
     flow.request.path = f"{parsed.path}?{query_string}"
 
+    # Save original Authorization header before overwriting (for transparent proxy)
+    # VM0 Proxy will restore this and decrypt any proxy tokens
+    if "Authorization" in flow.request.headers:
+        flow.request.headers["x-vm0-original-authorization"] = flow.request.headers["Authorization"]
+
     # Add sandbox authentication token
     if API_TOKEN:
         flow.request.headers["Authorization"] = f"Bearer {API_TOKEN}"

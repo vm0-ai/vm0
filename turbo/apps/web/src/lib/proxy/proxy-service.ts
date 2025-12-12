@@ -16,6 +16,11 @@ const HOP_BY_HOP_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
   "host",
+  // Authorization header from mitmproxy contains sandbox token for VM0 Proxy auth
+  // We'll restore the original Authorization from x-vm0-original-authorization
+  "authorization",
+  // Internal header used by mitmproxy to preserve original Authorization
+  "x-vm0-original-authorization",
 ]);
 
 /**
@@ -81,32 +86,41 @@ export async function forwardRequest(
     }
   });
 
-  // Check and decrypt proxy token in Authorization header
-  const authHeader = forwardHeaders.get("authorization");
-  if (authHeader) {
+  // Restore original Authorization header from x-vm0-original-authorization
+  // mitmproxy saves the original header there before overwriting with sandbox token
+  const originalAuthHeader = request.headers.get("x-vm0-original-authorization");
+  if (originalAuthHeader) {
     // Extract token from "Bearer <token>" format or raw token
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : authHeader;
+    const token = originalAuthHeader.startsWith("Bearer ")
+      ? originalAuthHeader.slice(7)
+      : originalAuthHeader;
 
     if (isProxyToken(token)) {
-      log.debug("Detected proxy token in Authorization header, decrypting");
+      log.debug(
+        "Detected proxy token in original Authorization header, decrypting",
+      );
       const secret = extractSecretFromToken(token, runId);
 
       if (secret) {
         // Replace with decrypted secret in same format
-        const newAuthHeader = authHeader.startsWith("Bearer ")
+        const newAuthHeader = originalAuthHeader.startsWith("Bearer ")
           ? `Bearer ${secret}`
           : secret;
         forwardHeaders.set("authorization", newAuthHeader);
-        log.debug("Successfully decrypted proxy token");
+        log.debug("Successfully decrypted Authorization proxy token");
       } else {
-        log.warn("Failed to decrypt proxy token - token invalid or expired");
+        log.warn(
+          "Failed to decrypt Authorization proxy token - token invalid or expired",
+        );
         throw new ProxyTokenDecryptionError(
           "Proxy token decryption failed - token may be invalid or expired",
           "Authorization",
         );
       }
+    } else {
+      // Not a proxy token, restore original value as-is
+      forwardHeaders.set("authorization", originalAuthHeader);
+      log.debug("Restored original Authorization header (no proxy token)");
     }
   }
 
