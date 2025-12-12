@@ -487,7 +487,7 @@ describe("run command", () => {
           "--vars",
           "EMPTY=",
         ]);
-      }).rejects.toThrow("Invalid variable format: EMPTY=");
+      }).rejects.toThrow("Invalid format: EMPTY=");
     });
 
     it("should reject invalid template variable format (missing value)", async () => {

@@ -26,20 +26,6 @@ function collectKeyValue(
   return { ...previous, [key]: val };
 }
 
-function collectVars(
-  value: string,
-  previous: Record<string, string>,
-): Record<string, string> {
-  const [key, ...valueParts] = value.split("=");
-  const val = valueParts.join("="); // Support values with '='
-
-  if (!key || val === undefined || val === "") {
-    throw new Error(`Invalid variable format: ${value} (expected key=value)`);
-  }
-
-  return { ...previous, [key]: val };
-}
-
 /**
  * Collector for --volume-version flags
  * Format: volumeName=version
@@ -65,6 +51,15 @@ function isUUID(str: string): boolean {
 }
 
 /**
+ * Extract var names from compose config
+ */
+function extractVarNames(composeContent: unknown): string[] {
+  const refs = extractVariableReferences(composeContent);
+  const grouped = groupVariablesBySource(refs);
+  return grouped.vars.map((r) => r.name);
+}
+
+/**
  * Extract secret names from compose config
  */
 function extractSecretNames(composeContent: unknown): string[] {
@@ -74,55 +69,54 @@ function extractSecretNames(composeContent: unknown): string[] {
 }
 
 /**
- * Load secrets with priority: CLI --secrets > environment variables > .env file
+ * Load values with priority: CLI args > environment variables > .env file
  *
- * @param cliSecrets Secrets passed via --secrets flags
- * @param secretNames Names of secrets referenced in compose config
- * @returns Merged secrets object with CLI taking highest priority
+ * For values referenced in the compose config but not provided via CLI,
+ * falls back to environment variables and .env file.
+ * CLI-provided values are always passed through.
+ *
+ * @param cliValues Values passed via CLI flags
+ * @param configNames Names referenced in compose config (for env fallback)
+ * @returns Merged values object with CLI taking highest priority
  */
-function loadSecrets(
-  cliSecrets: Record<string, string>,
-  secretNames: string[],
+function loadValues(
+  cliValues: Record<string, string>,
+  configNames: string[],
 ): Record<string, string> | undefined {
-  if (secretNames.length === 0) {
-    return undefined;
-  }
+  // Start with CLI-provided values (highest priority, always passed through)
+  const result: Record<string, string> = { ...cliValues };
 
-  // Load .env file if it exists (lowest priority)
-  const envFilePath = path.resolve(process.cwd(), ".env");
-  let dotenvSecrets: Record<string, string> = {};
+  // For names referenced in config but not provided via CLI, load from env/.env
+  const missingNames = configNames.filter((name) => !(name in result));
 
-  if (fs.existsSync(envFilePath)) {
-    const result = dotenvConfig({ path: envFilePath });
-    if (result.parsed) {
-      // Only include keys that are in secretNames
-      dotenvSecrets = Object.fromEntries(
-        Object.entries(result.parsed).filter(([key]) =>
-          secretNames.includes(key),
-        ),
-      );
+  if (missingNames.length > 0) {
+    // Load .env file if it exists (lowest priority)
+    const envFilePath = path.resolve(process.cwd(), ".env");
+    let dotenvValues: Record<string, string> = {};
+
+    if (fs.existsSync(envFilePath)) {
+      const dotenvResult = dotenvConfig({ path: envFilePath });
+      if (dotenvResult.parsed) {
+        // Only include keys that are missing
+        dotenvValues = Object.fromEntries(
+          Object.entries(dotenvResult.parsed).filter(([key]) =>
+            missingNames.includes(key),
+          ),
+        );
+      }
     }
-  }
 
-  // Get from environment variables (medium priority)
-  const envSecrets: Record<string, string> = {};
-  for (const name of secretNames) {
-    const envValue = process.env[name];
-    if (envValue !== undefined) {
-      envSecrets[name] = envValue;
+    // Get from environment variables (medium priority)
+    const envValues: Record<string, string> = {};
+    for (const name of missingNames) {
+      const envValue = process.env[name];
+      if (envValue !== undefined) {
+        envValues[name] = envValue;
+      }
     }
-  }
 
-  // CLI secrets have highest priority (already filtered by user intent)
-  // Merge with priority: CLI > env > .env
-  const merged = { ...dotenvSecrets, ...envSecrets, ...cliSecrets };
-
-  // Only return secrets that are actually needed
-  const result: Record<string, string> = {};
-  for (const name of secretNames) {
-    if (merged[name] !== undefined) {
-      result[name] = merged[name];
-    }
+    // Merge with priority: env > .env (CLI already in result)
+    Object.assign(result, dotenvValues, envValues);
   }
 
   return Object.keys(result).length > 0 ? result : undefined;
@@ -299,13 +293,13 @@ const runCmd = new Command()
   .argument("<prompt>", "Prompt for the agent")
   .option(
     "--vars <KEY=value>",
-    "Template variables for config placeholders (repeatable)",
-    collectVars,
+    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
+    collectKeyValue,
     {},
   )
   .option(
     "--secrets <KEY=value>",
-    "Secret values for ${{ secrets.xxx }} (repeatable, falls back to env vars and .env)",
+    "Secrets for ${{ secrets.xxx }} (repeatable, falls back to env vars and .env)",
     collectKeyValue,
     {},
   )
@@ -435,9 +429,23 @@ const runCmd = new Command()
         }
         // Note: "latest" version uses agentComposeId which resolves to HEAD
 
-        // 4. Load secrets with priority: CLI --secrets > env vars > .env file
+        // 4. Load vars and secrets with priority: CLI args > env vars > .env file
+        const varNames = extractVarNames(composeContent);
+        const vars = loadValues(options.vars, varNames);
+
         const secretNames = extractSecretNames(composeContent);
-        const secrets = loadSecrets(options.secrets, secretNames);
+        const secrets = loadValues(options.secrets, secretNames);
+
+        if (verbose && varNames.length > 0) {
+          console.log(
+            chalk.gray(`  Required vars: ${varNames.join(", ")}`),
+          );
+          if (vars) {
+            console.log(
+              chalk.gray(`  Loaded vars: ${Object.keys(vars).join(", ")}`),
+            );
+          }
+        }
 
         if (verbose && secretNames.length > 0) {
           console.log(
@@ -460,8 +468,8 @@ const runCmd = new Command()
             {
               label: "Variables",
               value:
-                Object.keys(options.vars).length > 0
-                  ? JSON.stringify(options.vars)
+                vars && Object.keys(vars).length > 0
+                  ? JSON.stringify(vars)
                   : undefined,
             },
             {
@@ -491,7 +499,7 @@ const runCmd = new Command()
             ? { agentComposeVersionId }
             : { agentComposeId: composeId }),
           prompt,
-          vars: Object.keys(options.vars).length > 0 ? options.vars : undefined,
+          vars,
           secrets,
           artifactName: options.artifactName,
           artifactVersion: options.artifactVersion,
