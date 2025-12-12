@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.3.0](https://github.com/vm0-ai/vm0/compare/web-v5.2.1...web-v5.3.0) (2025-12-12)
+
+
+### Features
+
+* **web:** add generic proxy endpoint for sandbox requests ([#503](https://github.com/vm0-ai/vm0/issues/503)) ([36eda65](https://github.com/vm0-ai/vm0/commit/36eda650e853a62e2269380a777e305505e50702))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.4.0
+
 ## [5.2.1](https://github.com/vm0-ai/vm0/compare/web-v5.2.0...web-v5.2.1) (2025-12-11)
 
 

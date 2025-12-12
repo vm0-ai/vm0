@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.6.0](https://github.com/vm0-ai/vm0/compare/cli-v4.5.2...cli-v4.6.0) (2025-12-12)
+
+
+### Features
+
+* **web:** add generic proxy endpoint for sandbox requests ([#503](https://github.com/vm0-ai/vm0/issues/503)) ([36eda65](https://github.com/vm0-ai/vm0/commit/36eda650e853a62e2269380a777e305505e50702))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.4.0
+
 ## [4.5.2](https://github.com/vm0-ai/vm0/compare/cli-v4.5.1...cli-v4.5.2) (2025-12-11)
 
 

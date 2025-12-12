@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/core-v0.3.0...core-v0.4.0) (2025-12-12)
+
+
+### Features
+
+* **web:** add generic proxy endpoint for sandbox requests ([#503](https://github.com/vm0-ai/vm0/issues/503)) ([36eda65](https://github.com/vm0-ai/vm0/commit/36eda650e853a62e2269380a777e305505e50702))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/core-v0.2.0...core-v0.3.0) (2025-12-10)
 
 
