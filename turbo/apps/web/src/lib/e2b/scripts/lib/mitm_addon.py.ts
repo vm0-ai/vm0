@@ -54,7 +54,10 @@ def log_network_entry(entry: dict) -> None:
 def get_original_url(flow: http.HTTPFlow) -> str:
     """Reconstruct the original target URL from the request."""
     scheme = "https" if flow.request.port == 443 else "http"
-    host = flow.request.host
+    # Use pretty_host which prefers Host header over IP in transparent proxy mode
+    # This is critical because flow.request.host returns the destination IP address
+    # in transparent mode, but SSL certificates are issued for hostnames
+    host = flow.request.pretty_host
     port = flow.request.port
 
     # Include port in URL only if non-standard
