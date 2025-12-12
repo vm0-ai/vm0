@@ -67,7 +67,8 @@ function isValidStorageName(name: string): boolean {
     }
     // Must be a valid system storage type
     const systemPromptPattern = /^__system-prompt-[a-zA-Z0-9-]+__$/;
-    const systemSkillPattern = /^__system-skill-[a-zA-Z0-9/_-]+__$/;
+    // Skill pattern uses full GitHub path (allows dots for branch names like v1.0 and file extensions)
+    const systemSkillPattern = /^__system-skill-[a-zA-Z0-9/._-]+__$/;
     return systemPromptPattern.test(name) || systemSkillPattern.test(name);
   }
 

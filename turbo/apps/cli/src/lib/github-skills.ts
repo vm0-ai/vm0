@@ -15,17 +15,31 @@ export interface ParsedGitHubUrl {
   branch: string;
   path: string;
   skillName: string; // Last segment of path (used for mount directory name)
+  fullPath: string; // Full path after github.com/ (unique identifier)
 }
 
 /**
  * Parse a GitHub tree URL into its components
  * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
  *
+ * Note: Branch names containing slashes (e.g., feature/foo) may not parse correctly.
+ * The fullPath field is always correct and used for unique storage naming.
+ *
  * @param url - GitHub tree URL
  * @returns Parsed URL components
  * @throws Error if URL format is invalid
  */
 export function parseGitHubTreeUrl(url: string): ParsedGitHubUrl {
+  // First, extract the full path after github.com/ (always correct)
+  const fullPathMatch = url.match(/^https:\/\/github\.com\/(.+)$/);
+  if (!fullPathMatch) {
+    throw new Error(
+      `Invalid GitHub URL: ${url}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
+    );
+  }
+  const fullPath = fullPathMatch[1]!;
+
+  // Parse components (may be incorrect for branches with slashes)
   const regex =
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
   const match = url.match(regex);
@@ -46,18 +60,20 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubUrl {
     branch: branch!,
     path: pathPart!,
     skillName,
+    fullPath,
   };
 }
 
 /**
  * Generate the storage name for a system skill
- * Format: __system-skill-{owner}/{repo}/{branch}/{path}__
+ * Format: __system-skill-{fullPath}__
+ * Uses the full path after github.com/ for unique, unambiguous naming
  *
  * @param parsed - Parsed GitHub URL
  * @returns Storage name for the skill
  */
 export function getSkillStorageName(parsed: ParsedGitHubUrl): string {
-  return `__system-skill-${parsed.owner}/${parsed.repo}/${parsed.branch}/${parsed.path}__`;
+  return `__system-skill-${parsed.fullPath}__`;
 }
 
 /**
