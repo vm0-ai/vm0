@@ -17,10 +17,10 @@ export interface VolumeConfig {
  */
 export interface AgentDefinition {
   description?: string;
-  image: string;
+  image?: string; // Optional when provider is specified (auto-resolved from provider)
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
-  working_dir: string; // Working directory for artifact mount
+  working_dir?: string; // Optional when provider is specified (defaults to /home/user/workspace)
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
    * Enable network security mode for secrets.
@@ -29,6 +29,8 @@ export interface AgentDefinition {
    * Default: false (plaintext secrets in env vars)
    */
   beta_network_security?: boolean;
+  system_prompt?: string; // Path to AGENTS.md file (stored as __system-prompt-{name}__ volume)
+  system_skills?: string[]; // GitHub tree URLs (stored as __system-skill-{path}__ volumes)
 }
 
 export interface AgentComposeYaml {

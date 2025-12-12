@@ -1,3 +1,5 @@
+import { isProviderSupported } from "./provider-config";
+
 /**
  * Validates agent.name format
  * Rules:
@@ -8,6 +10,16 @@
 export function validateAgentName(name: string): boolean {
   const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
   return nameRegex.test(name);
+}
+
+/**
+ * Validates GitHub tree URL format for system_skills
+ * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
+ */
+export function validateGitHubTreeUrl(url: string): boolean {
+  const githubTreeRegex =
+    /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+\/tree\/[^/]+\/.+$/;
+  return githubTreeRegex.test(url);
 }
 
 /**
@@ -100,28 +112,87 @@ export function validateAgentCompose(config: unknown): {
     return { valid: false, error: "Agent definition must be an object" };
   }
 
-  // Check agent.working_dir
-  if (!agent.working_dir || typeof agent.working_dir !== "string") {
-    return {
-      valid: false,
-      error: "Missing or invalid agent.working_dir (must be a string)",
-    };
-  }
-
-  // Check agent.image
-  if (!agent.image || typeof agent.image !== "string") {
-    return {
-      valid: false,
-      error: "Missing or invalid agent.image (must be a string)",
-    };
-  }
-
-  // Check agent.provider
+  // Check agent.provider (required)
   if (!agent.provider || typeof agent.provider !== "string") {
     return {
       valid: false,
       error: "Missing or invalid agent.provider (must be a string)",
     };
+  }
+
+  const providerIsSupported = isProviderSupported(agent.provider as string);
+
+  // Check agent.image (optional when provider is supported)
+  if (agent.image !== undefined && typeof agent.image !== "string") {
+    return {
+      valid: false,
+      error: "agent.image must be a string if provided",
+    };
+  }
+  if (!agent.image && !providerIsSupported) {
+    return {
+      valid: false,
+      error:
+        "Missing agent.image (required when provider is not auto-configured)",
+    };
+  }
+
+  // Check agent.working_dir (optional when provider is supported)
+  if (
+    agent.working_dir !== undefined &&
+    typeof agent.working_dir !== "string"
+  ) {
+    return {
+      valid: false,
+      error: "agent.working_dir must be a string if provided",
+    };
+  }
+  if (!agent.working_dir && !providerIsSupported) {
+    return {
+      valid: false,
+      error:
+        "Missing agent.working_dir (required when provider is not auto-configured)",
+    };
+  }
+
+  // Validate system_prompt if present (must be a relative file path)
+  if (agent.system_prompt !== undefined) {
+    if (typeof agent.system_prompt !== "string") {
+      return {
+        valid: false,
+        error: "agent.system_prompt must be a string (path to AGENTS.md file)",
+      };
+    }
+    if (agent.system_prompt.length === 0) {
+      return {
+        valid: false,
+        error: "agent.system_prompt cannot be empty",
+      };
+    }
+  }
+
+  // Validate system_skills if present (must be array of GitHub tree URLs)
+  if (agent.system_skills !== undefined) {
+    if (!Array.isArray(agent.system_skills)) {
+      return {
+        valid: false,
+        error: "agent.system_skills must be an array of GitHub tree URLs",
+      };
+    }
+    for (const skillUrl of agent.system_skills as unknown[]) {
+      if (typeof skillUrl !== "string") {
+        return {
+          valid: false,
+          error: "Each system_skill must be a string URL",
+        };
+      }
+      if (!validateGitHubTreeUrl(skillUrl)) {
+        return {
+          valid: false,
+          error: `Invalid system_skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
+        };
+      }
+    }
   }
 
   // Validate environment field if present

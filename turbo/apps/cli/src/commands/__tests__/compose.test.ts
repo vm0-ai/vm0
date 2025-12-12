@@ -12,6 +12,20 @@ vi.mock("fs");
 vi.mock("yaml");
 vi.mock("../../lib/api-client");
 vi.mock("../../lib/yaml-validator");
+vi.mock("../../lib/provider-config");
+vi.mock("../../lib/system-storage");
+
+// Valid minimal config that passes validation
+const validConfig = {
+  version: "1.0",
+  agents: {
+    "test-agent": {
+      provider: "claude-code",
+      image: "vm0-claude-code-dev",
+      working_dir: "/home/user/workspace",
+    },
+  },
+};
 
 describe("compose command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -49,13 +63,13 @@ describe("compose command", () => {
     it("should read file when it exists", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("version: 1.0");
-      vi.mocked(yaml.parse).mockReturnValue({ version: "1.0" });
+      vi.mocked(yaml.parse).mockReturnValue(validConfig);
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
-        name: "test",
+        name: "test-agent",
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
@@ -118,10 +132,10 @@ describe("compose command", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({});
     });
 
     it("should exit with error on invalid compose", async () => {
+      vi.mocked(yaml.parse).mockReturnValue({});
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: false,
         error: "Missing agent.name",
@@ -138,12 +152,13 @@ describe("compose command", () => {
     });
 
     it("should proceed with valid compose", async () => {
+      vi.mocked(yaml.parse).mockReturnValue(validConfig);
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
       vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
-        name: "test",
+        name: "test-agent",
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
@@ -240,7 +255,7 @@ describe("compose command", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({});
+      vi.mocked(yaml.parse).mockReturnValue(validConfig);
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });

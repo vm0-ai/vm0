@@ -29,13 +29,14 @@ const volumeConfigSchema = z.object({
 
 /**
  * Agent definition schema
+ * Note: image and working_dir are optional when provider is specified (auto-resolved)
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
-  image: z.string().min(1, "Image is required"),
+  image: z.string().optional(), // Optional when provider is specified (auto-resolved)
   provider: z.string().min(1, "Provider is required"),
   volumes: z.array(z.string()).optional(),
-  working_dir: z.string().min(1, "Working directory is required"),
+  working_dir: z.string().optional(), // Optional when provider is specified (defaults to /home/user/workspace)
   environment: z.record(z.string(), z.string()).optional(),
   /**
    * Enable network security mode for secrets.
@@ -44,6 +45,8 @@ const agentDefinitionSchema = z.object({
    * Default: false (plaintext secrets in env vars)
    */
   beta_network_security: z.boolean().optional().default(false),
+  system_prompt: z.string().optional(), // Path to AGENTS.md file
+  system_skills: z.array(z.string()).optional(), // GitHub tree URLs for skills
 });
 
 /**

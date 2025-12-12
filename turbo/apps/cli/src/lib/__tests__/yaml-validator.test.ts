@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { validateAgentName, validateAgentCompose } from "../yaml-validator";
+import {
+  validateAgentName,
+  validateAgentCompose,
+  validateGitHubTreeUrl,
+} from "../yaml-validator";
 
 describe("validateAgentName", () => {
   describe("valid names", () => {
@@ -74,7 +78,22 @@ describe("validateAgentName", () => {
 
 describe("validateAgentCompose", () => {
   describe("valid configs", () => {
-    it("should accept minimal valid config", () => {
+    it("should accept minimal valid config with supported provider (auto-config)", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should accept full config with explicit image and working_dir", () => {
       const config = {
         version: "1.0",
         agents: {
@@ -107,6 +126,38 @@ describe("validateAgentCompose", () => {
           "claude-files": {
             name: "claude-files",
             version: "latest",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should accept config with system_prompt", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_prompt: "AGENTS.md",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should accept config with system_skills", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_skills: [
+              "https://github.com/vm0-ai/vm0-skills/tree/main/github-cli",
+            ],
           },
         },
       };
@@ -275,28 +326,28 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with missing working_dir", () => {
+    it("should reject config with missing working_dir for unsupported provider", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
-            provider: "claude-code",
+            image: "custom-image",
+            provider: "unsupported-provider",
           },
         },
       };
 
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.working_dir");
+      expect(result.error).toContain("working_dir");
     });
 
-    it("should reject config with missing image", () => {
+    it("should reject config with missing image for unsupported provider", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            provider: "unsupported-provider",
             working_dir: "/home/user/workspace",
           },
         },
@@ -304,7 +355,7 @@ describe("validateAgentCompose", () => {
 
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.image");
+      expect(result.error).toContain("image");
     });
 
     it("should reject config with missing provider", () => {
@@ -321,6 +372,70 @@ describe("validateAgentCompose", () => {
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("agent.provider");
+    });
+
+    it("should reject config with invalid system_prompt (not a string)", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_prompt: 123,
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("system_prompt");
+    });
+
+    it("should reject config with empty system_prompt", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_prompt: "",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("empty");
+    });
+
+    it("should reject config with invalid system_skills (not an array)", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_skills: "not-an-array",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("array");
+    });
+
+    it("should reject config with invalid GitHub URL in system_skills", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            system_skills: ["https://example.com/not-github"],
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Invalid system_skill URL");
     });
 
     it("should reject config with volume reference missing from volumes section", () => {
@@ -391,6 +506,88 @@ describe("validateAgentCompose", () => {
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("'version' field");
+    });
+  });
+});
+
+describe("validateGitHubTreeUrl", () => {
+  describe("valid URLs", () => {
+    it("should accept standard GitHub tree URL", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/github-cli",
+        ),
+      ).toBe(true);
+    });
+
+    it("should accept URL with nested path", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/owner/repo/tree/main/path/to/skill",
+        ),
+      ).toBe(true);
+    });
+
+    it("should accept URL with branch name containing slashes", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/owner/repo/tree/feature/branch/skill",
+        ),
+      ).toBe(true);
+    });
+
+    it("should accept URL with numbers in owner/repo", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/owner123/repo456/tree/main/skill",
+        ),
+      ).toBe(true);
+    });
+
+    it("should accept URL with hyphens and underscores", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/my-org/my_repo/tree/main/my-skill",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("invalid URLs", () => {
+    it("should reject non-GitHub URL", () => {
+      expect(
+        validateGitHubTreeUrl("https://gitlab.com/owner/repo/tree/main/skill"),
+      ).toBe(false);
+    });
+
+    it("should reject URL without tree path", () => {
+      expect(
+        validateGitHubTreeUrl(
+          "https://github.com/owner/repo/blob/main/file.md",
+        ),
+      ).toBe(false);
+    });
+
+    it("should reject URL without path after tree/branch", () => {
+      expect(
+        validateGitHubTreeUrl("https://github.com/owner/repo/tree/main"),
+      ).toBe(false);
+    });
+
+    it("should reject repository root URL", () => {
+      expect(validateGitHubTreeUrl("https://github.com/owner/repo")).toBe(
+        false,
+      );
+    });
+
+    it("should reject http URL (must be https)", () => {
+      expect(
+        validateGitHubTreeUrl("http://github.com/owner/repo/tree/main/skill"),
+      ).toBe(false);
+    });
+
+    it("should reject empty string", () => {
+      expect(validateGitHubTreeUrl("")).toBe(false);
     });
   });
 });

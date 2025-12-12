@@ -25,7 +25,7 @@ export const storages = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
-    name: varchar("name", { length: 64 }).notNull(),
+    name: varchar("name", { length: 256 }).notNull(), // 256 to support system volume naming convention
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
