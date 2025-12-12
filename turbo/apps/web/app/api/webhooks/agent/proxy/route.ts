@@ -67,7 +67,9 @@ async function handleProxyRequest(request: Request) {
     );
   }
 
-  log.debug(`Proxying request for user ${userId} to ${targetUrl} (runId: ${runId})`);
+  log.debug(
+    `Proxying request for user ${userId} to ${targetUrl} (runId: ${runId})`,
+  );
 
   // 3. Forward request to target (handles proxy token decryption)
   try {
