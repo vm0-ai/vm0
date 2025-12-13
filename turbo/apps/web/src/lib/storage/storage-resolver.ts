@@ -10,55 +10,6 @@ import type {
 import { expandVariablesInString } from "@vm0/core";
 
 /**
- * Fixed mount paths for system volumes
- */
-const SYSTEM_PROMPT_MOUNT_PATH = "/home/user/.config/claude";
-const SYSTEM_SKILLS_BASE_PATH = "/home/user/.config/claude/skills";
-
-/**
- * Parse GitHub tree URL to extract skill name (last path segment)
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- */
-function parseGitHubTreeUrl(
-  url: string,
-): { owner: string; repo: string; branch: string; path: string } | null {
-  const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
-  if (!match) return null;
-
-  const [, owner, repo, branch, pathPart] = match;
-  return {
-    owner: owner!,
-    repo: repo!,
-    branch: branch!,
-    path: pathPart!,
-  };
-}
-
-/**
- * Get storage name for system prompt
- */
-function getSystemPromptStorageName(agentName: string): string {
-  return `system-prompt@${agentName}`;
-}
-
-/**
- * Get storage name for system skill
- */
-function getSystemSkillStorageName(fullPath: string): string {
-  return `system-skill@${fullPath}`;
-}
-
-/**
- * Get skill name from path (last segment)
- */
-function getSkillName(path: string): string {
-  const segments = path.split("/");
-  return segments[segments.length - 1]!;
-}
-
-/**
  * Parse mount path declaration
  * @param declaration - Volume declaration in format "volume-name:/mount/path"
  * @returns Parsed volume name and mount path
@@ -257,41 +208,6 @@ export function resolveVolumes(
           volumeName: "unknown",
           message: error instanceof Error ? error.message : "Unknown error",
           type: "invalid_config",
-        });
-      }
-    }
-  }
-
-  // Process system_prompt if specified
-  if (agent?.system_prompt) {
-    // Get the agent name (key in agents dictionary)
-    const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
-    if (agentName) {
-      const storageName = getSystemPromptStorageName(agentName);
-      volumes.push({
-        name: `__system-prompt__`,
-        driver: "vas",
-        mountPath: SYSTEM_PROMPT_MOUNT_PATH,
-        vasStorageName: storageName,
-        vasVersion: "latest", // System prompt uses latest version
-      });
-    }
-  }
-
-  // Process system_skills if specified
-  if (agent?.system_skills && agent.system_skills.length > 0) {
-    for (const skillUrl of agent.system_skills) {
-      const parsed = parseGitHubTreeUrl(skillUrl);
-      if (parsed) {
-        const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
-        const storageName = getSystemSkillStorageName(fullPath);
-        const skillName = getSkillName(parsed.path);
-        volumes.push({
-          name: `__system-skill-${skillName}__`,
-          driver: "vas",
-          mountPath: `${SYSTEM_SKILLS_BASE_PATH}/${skillName}`,
-          vasStorageName: storageName,
-          vasVersion: "latest", // System skills use latest version
         });
       }
     }

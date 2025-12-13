@@ -36,45 +36,12 @@ function errorResponse(
 }
 
 /**
- * Check if name is a system storage name
- * System storage names use @ format:
- * - system-prompt@{name} for system prompts
- * - system-skill@{path} for system skills
- */
-function isSystemStorageName(name: string): boolean {
-  return name.startsWith("system-prompt@") || name.startsWith("system-skill@");
-}
-
-/**
  * Validate storage name format
- *
- * Regular storage names:
- * - Length: 3-64 characters
- * - Characters: lowercase letters, numbers, hyphens
- * - Must start and end with alphanumeric
- * - No consecutive hyphens
- *
- * System storage names (@ format):
- * - system-prompt@{name} for system prompts (name: alphanumeric with hyphens)
- * - system-skill@{path} for system skills (path: GitHub path with slashes, dots, hyphens)
- * - Length: up to 256 characters
+ * Length: 3-64 characters
+ * Characters: lowercase letters, numbers, hyphens
+ * Must start and end with alphanumeric
  */
 function isValidStorageName(name: string): boolean {
-  // System storage names have different validation rules
-  if (isSystemStorageName(name)) {
-    // Length: up to 256 characters (DB limit is 256)
-    if (name.length < 15 || name.length > 256) {
-      return false;
-    }
-    // Must be a valid system storage type
-    // system-prompt@agent-name
-    const systemPromptPattern = /^system-prompt@[a-zA-Z0-9-]+$/;
-    // system-skill@owner/repo/tree/branch/path (allows dots for branch names like v1.0)
-    const systemSkillPattern = /^system-skill@[a-zA-Z0-9/._-]+$/;
-    return systemPromptPattern.test(name) || systemSkillPattern.test(name);
-  }
-
-  // Regular storage names
   if (name.length < 3 || name.length > 64) {
     return false;
   }
