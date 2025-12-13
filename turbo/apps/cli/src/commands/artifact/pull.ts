@@ -77,8 +77,14 @@ export const pullCommand = new Command()
             chalk.gray("  Or push the artifact first with: vm0 artifact push"),
           );
         } else {
-          const error = (await response.json()) as { error: string };
-          throw new Error(error.error || "Download failed");
+          const errorData = (await response.json()) as {
+            error: string | { message: string; code: string };
+          };
+          const errorMessage =
+            typeof errorData.error === "string"
+              ? errorData.error
+              : errorData.error?.message || "Download failed";
+          throw new Error(errorMessage);
         }
         process.exit(1);
       }

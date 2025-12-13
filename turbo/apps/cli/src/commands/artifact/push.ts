@@ -159,8 +159,14 @@ export const pushCommand = new Command()
       });
 
       if (!response.ok) {
-        const error = (await response.json()) as { error: string };
-        throw new Error(error.error || "Upload failed");
+        const errorData = (await response.json()) as {
+          error: string | { message: string; code: string };
+        };
+        const errorMessage =
+          typeof errorData.error === "string"
+            ? errorData.error
+            : errorData.error?.message || "Upload failed";
+        throw new Error(errorMessage);
       }
 
       const result = (await response.json()) as {

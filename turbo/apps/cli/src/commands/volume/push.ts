@@ -149,13 +149,17 @@ export const pushCommand = new Command()
       });
 
       if (!response.ok) {
-        const error = (await response.json()) as {
-          error: string;
+        const errorData = (await response.json()) as {
+          error: string | { message: string; code: string };
           cause?: string;
         };
-        const message = error.cause
-          ? `${error.error} (cause: ${error.cause})`
-          : error.error || "Upload failed";
+        const errorMessage =
+          typeof errorData.error === "string"
+            ? errorData.error
+            : errorData.error?.message || "Upload failed";
+        const message = errorData.cause
+          ? `${errorMessage} (cause: ${errorData.cause})`
+          : errorMessage;
         throw new Error(message);
       }
 
