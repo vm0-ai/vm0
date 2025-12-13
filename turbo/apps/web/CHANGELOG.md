@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.3](https://github.com/vm0-ai/vm0/compare/web-v5.4.2...web-v5.4.3) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** add sync telemetry upload and detailed logging for debugging ([#522](https://github.com/vm0-ai/vm0/issues/522)) ([d545391](https://github.com/vm0-ai/vm0/commit/d545391dcdfe8dce95cae2ba78cfc4ebbb016c2f))
+
 ## [5.4.2](https://github.com/vm0-ai/vm0/compare/web-v5.4.1...web-v5.4.2) (2025-12-13)
 
 
