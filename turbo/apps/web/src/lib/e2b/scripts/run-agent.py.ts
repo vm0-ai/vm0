@@ -77,11 +77,13 @@ def main():
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Change to working directory
+    # Create and change to working directory
+    # Directory may not exist if no artifact/storage was downloaded (e.g., first run)
     try:
+        os.makedirs(WORKING_DIR, exist_ok=True)
         os.chdir(WORKING_DIR)
     except OSError as e:
-        log_error(f"Failed to change to working directory: {WORKING_DIR} - {e}")
+        log_error(f"Failed to create/change to working directory: {WORKING_DIR} - {e}")
         sys.exit(1)
 
     # Set Claude config directory to ensure consistent session history location
