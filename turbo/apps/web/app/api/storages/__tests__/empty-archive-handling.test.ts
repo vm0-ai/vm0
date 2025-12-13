@@ -134,4 +134,81 @@ describe("Empty Archive Handling", () => {
     const exists = fs.existsSync(extractPath);
     expect(exists).toBe(true);
   });
+
+  it("Python tarfile empty archive throws TAR_BAD_ARCHIVE error", async () => {
+    // Python's tarfile.open("w:gz") with no files added creates a ~67-byte archive
+    // that Node.js tar library cannot read. This is the exact bytes Python produces:
+    // Created by: python3 -c "import tarfile; tarfile.open('/tmp/empty.tar.gz', 'w:gz').close()"
+    const pythonEmptyTarGz = Buffer.from([
+      0x1f, 0x8b, 0x08, 0x08, 0x5d, 0x8e, 0x3d, 0x69, 0x02, 0xff, 0x72, 0x65,
+      0x61, 0x6c, 0x2d, 0x70, 0x79, 0x74, 0x68, 0x6f, 0x6e, 0x2d, 0x65, 0x6d,
+      0x70, 0x74, 0x79, 0x2e, 0x74, 0x61, 0x72, 0x00, 0xed, 0xc1, 0x01, 0x0d,
+      0x00, 0x00, 0x00, 0xc2, 0xa0, 0xf7, 0x4f, 0x6d, 0x0e, 0x37, 0xa0, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x37, 0x03, 0x9a,
+      0xde, 0x1d, 0x27, 0x00, 0x28, 0x00, 0x00,
+    ]);
+
+    const tempDir = path.join(os.tmpdir(), `test-python-tar-${Date.now()}`);
+    tempDirs.push(tempDir);
+    await fs.promises.mkdir(tempDir, { recursive: true });
+
+    const tarPath = path.join(tempDir, "python-empty.tar.gz");
+    await fs.promises.writeFile(tarPath, pythonEmptyTarGz);
+
+    const extractPath = path.join(tempDir, "extracted");
+    await fs.promises.mkdir(extractPath, { recursive: true });
+
+    // Node.js tar should throw TAR_BAD_ARCHIVE error
+    await expect(
+      tar.extract({
+        file: tarPath,
+        cwd: extractPath,
+        gzip: true,
+      }),
+    ).rejects.toThrow("TAR_BAD_ARCHIVE");
+  });
+
+  it("TAR_BAD_ARCHIVE can be caught and handled gracefully", async () => {
+    // This tests the error handling pattern used in the storage webhooks
+    const pythonEmptyTarGz = Buffer.from([
+      0x1f, 0x8b, 0x08, 0x08, 0x5d, 0x8e, 0x3d, 0x69, 0x02, 0xff, 0x72, 0x65,
+      0x61, 0x6c, 0x2d, 0x70, 0x79, 0x74, 0x68, 0x6f, 0x6e, 0x2d, 0x65, 0x6d,
+      0x70, 0x74, 0x79, 0x2e, 0x74, 0x61, 0x72, 0x00, 0xed, 0xc1, 0x01, 0x0d,
+      0x00, 0x00, 0x00, 0xc2, 0xa0, 0xf7, 0x4f, 0x6d, 0x0e, 0x37, 0xa0, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x37, 0x03, 0x9a,
+      0xde, 0x1d, 0x27, 0x00, 0x28, 0x00, 0x00,
+    ]);
+
+    const tempDir = path.join(os.tmpdir(), `test-graceful-${Date.now()}`);
+    tempDirs.push(tempDir);
+    await fs.promises.mkdir(tempDir, { recursive: true });
+
+    const tarPath = path.join(tempDir, "python-empty.tar.gz");
+    await fs.promises.writeFile(tarPath, pythonEmptyTarGz);
+
+    const extractPath = path.join(tempDir, "extracted");
+    await fs.promises.mkdir(extractPath, { recursive: true });
+
+    // Simulate the error handling in storage webhooks
+    let handledAsEmpty = false;
+    try {
+      await tar.extract({
+        file: tarPath,
+        cwd: extractPath,
+        gzip: true,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("TAR_BAD_ARCHIVE")) {
+        handledAsEmpty = true;
+        // extractPath is already created and empty, continue with 0 files
+      } else {
+        throw error;
+      }
+    }
+
+    expect(handledAsEmpty).toBe(true);
+    expect(fs.existsSync(extractPath)).toBe(true);
+    const files = await fs.promises.readdir(extractPath);
+    expect(files).toHaveLength(0);
+  });
 });
