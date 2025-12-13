@@ -104,6 +104,7 @@ jobs:
             S3_USER_STORAGES_NAME=${{ secrets.S3_USER_STORAGES_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
+            DEBUG=*
 
   # Deploy docs app to production
   deploy-docs-production:
