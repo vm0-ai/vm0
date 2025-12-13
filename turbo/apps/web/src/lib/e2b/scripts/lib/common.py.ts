@@ -8,7 +8,6 @@ Common environment variables and utilities for VM0 agent scripts.
 This module should be imported by other scripts.
 """
 import os
-import sys
 
 # Environment variables
 RUN_ID = os.environ.get("VM0_RUN_ID", "")
@@ -79,9 +78,12 @@ TELEMETRY_NETWORK_POS_FILE = f"/tmp/vm0-telemetry-network-pos-{RUN_ID}.txt"
 METRICS_INTERVAL = 5  # seconds
 
 def validate_config() -> bool:
-    """Validate required configuration. Returns True if valid, exits if not."""
+    """
+    Validate required configuration.
+    Raises ValueError if configuration is invalid.
+    Returns True if valid.
+    """
     if not WORKING_DIR:
-        print("[ERROR] VM0_WORKING_DIR is required but not set", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("VM0_WORKING_DIR is required but not set")
     return True
 `;

@@ -11,6 +11,12 @@ This script coordinates the execution of Claude Code and handles:
 - Event sending to webhook
 - Checkpoint creation on success
 - Complete API call on finish
+
+Design principles:
+- Never call sys.exit() in the middle of execution - use raise instead
+- Single exit point at the very end of if __name__ == "__main__"
+- finally block guarantees cleanup runs regardless of success/failure
+- Complete API passes error message for CLI to display
 """
 import os
 import sys
@@ -51,9 +57,49 @@ def heartbeat_loop():
         shutdown_event.wait(HEARTBEAT_INTERVAL)
 
 
-def main():
-    """Main entry point for agent execution."""
-    # Validate configuration
+def _cleanup(exit_code: int, error_message: str):
+    """
+    Cleanup and notify server.
+    This function is called in the finally block to ensure it always runs.
+    """
+    # Perform final telemetry upload before completion
+    # This ensures all remaining data is captured
+    try:
+        final_telemetry_upload()
+    except Exception as e:
+        log_error(f"Final telemetry upload failed: {e}")
+
+    # Always call complete API at the end
+    # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
+    log_info(f"Calling complete API with exitCode={exit_code}")
+
+    complete_payload = {
+        "runId": RUN_ID,
+        "exitCode": exit_code
+    }
+    if error_message:
+        complete_payload["error"] = error_message
+
+    try:
+        if http_post_json(COMPLETE_URL, complete_payload):
+            log_info("Complete API called successfully")
+        else:
+            log_error("Failed to call complete API (sandbox may not be cleaned up)")
+    except Exception as e:
+        log_error(f"Complete API call failed: {e}")
+
+    # Stop heartbeat thread
+    shutdown_event.set()
+    log_info("Heartbeat thread stopped")
+
+
+def _run() -> tuple[int, str]:
+    """
+    Main execution logic.
+    Raises exceptions on failure instead of calling sys.exit().
+    Returns (exit_code, error_message) tuple on completion.
+    """
+    # Validate configuration - raises ValueError if invalid
     validate_config()
 
     log_info(f"Working directory: {WORKING_DIR}")
@@ -77,14 +123,13 @@ def main():
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Create and change to working directory
+    # Create and change to working directory - raises RuntimeError if fails
     # Directory may not exist if no artifact/storage was downloaded (e.g., first run)
     try:
         os.makedirs(WORKING_DIR, exist_ok=True)
         os.chdir(WORKING_DIR)
     except OSError as e:
-        log_error(f"Failed to create/change to working directory: {WORKING_DIR} - {e}")
-        sys.exit(1)
+        raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
 
     # Set Claude config directory to ensure consistent session history location
     # Agent runs as E2B default user ('user'), so HOME is /home/user
@@ -231,35 +276,48 @@ def main():
             else:
                 error_message = f"Agent exited with code {claude_exit_code}"
 
-    # Perform final telemetry upload before completion
-    # This ensures all remaining data is captured
-    final_telemetry_upload()
-
-    # Always call complete API at the end
-    # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
-    log_info(f"Calling complete API with exitCode={final_exit_code}")
-
-    complete_payload = {
-        "runId": RUN_ID,
-        "exitCode": final_exit_code
-    }
-    if error_message:
-        complete_payload["error"] = error_message
-
-    if http_post_json(COMPLETE_URL, complete_payload):
-        log_info("Complete API called successfully")
-    else:
-        log_error("Failed to call complete API (sandbox may not be cleaned up)")
-
-    # Stop heartbeat thread
-    shutdown_event.set()
-    log_info("Heartbeat thread stopped")
-
     # Note: Keep all temp files for debugging (SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG)
 
-    sys.exit(final_exit_code)
+    return final_exit_code, error_message
+
+
+def main() -> int:
+    """
+    Main entry point for agent execution.
+    Uses try/except/finally to ensure cleanup always runs.
+    Returns exit code (0 for success, non-zero for failure).
+    """
+    exit_code = 1  # Default to failure
+    error_message = "Unexpected termination"
+
+    try:
+        exit_code, error_message = _run()
+
+    except ValueError as e:
+        # Configuration validation errors
+        exit_code = 1
+        error_message = str(e)
+        log_error(f"Configuration error: {error_message}")
+
+    except RuntimeError as e:
+        # Runtime errors (e.g., working directory not found)
+        exit_code = 1
+        error_message = str(e)
+        log_error(f"Runtime error: {error_message}")
+
+    except Exception as e:
+        # Catch-all for unexpected exceptions
+        exit_code = 1
+        error_message = f"Unexpected error: {e}"
+        log_error(error_message)
+
+    finally:
+        # Always cleanup and notify server
+        _cleanup(exit_code, error_message)
+
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 `;
