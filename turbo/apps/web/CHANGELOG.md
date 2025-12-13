@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.8](https://github.com/vm0-ai/vm0/compare/web-v5.4.7...web-v5.4.8) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** add detailed debug logging for sandbox execution stages ([#537](https://github.com/vm0-ai/vm0/issues/537)) ([c143ea4](https://github.com/vm0-ai/vm0/commit/c143ea427d56db4e198d8238c2f707fdbc7e8ca1))
+
 ## [5.4.7](https://github.com/vm0-ai/vm0/compare/web-v5.4.6...web-v5.4.7) (2025-12-13)
 
 
