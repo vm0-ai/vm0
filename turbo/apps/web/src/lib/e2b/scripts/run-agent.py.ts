@@ -68,14 +68,10 @@ def main():
     else:
         log_error("API connectivity test: FAILED - webhooks may not work")
 
-    # Force immediate telemetry upload so startup logs are visible even if script crashes
-    log_info("Forcing immediate telemetry upload for startup diagnostics...")
+    # Skip startup telemetry upload - it seems to cause hanging
+    # The telemetry upload thread will handle uploads later
     import sys
-    sys.stderr.flush()  # Ensure logs are written before upload
-    from upload_telemetry import upload_telemetry
-    upload_result = upload_telemetry()
-    log_info(f"Startup telemetry upload: {'SUCCESS' if upload_result else 'FAILED'}")
-    sys.stderr.flush()  # Flush again after result
+    log_info("Skipping startup telemetry upload (will be handled by background thread)")
 
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
@@ -101,10 +97,9 @@ def main():
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Second telemetry upload to capture all startup logs
-    log_info("Uploading startup completion logs...")
+    # Flush stderr to ensure all startup logs are written
+    # Telemetry upload thread will handle sending them
     sys.stderr.flush()
-    upload_telemetry()
     log_info("Startup phase complete, proceeding to Claude execution")
 
     # Change to working directory
