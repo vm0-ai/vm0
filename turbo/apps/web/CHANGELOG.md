@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.4.1](https://github.com/vm0-ai/vm0/compare/web-v5.4.0...web-v5.4.1) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** add startup diagnostics for debugging sandbox execution issues ([#517](https://github.com/vm0-ai/vm0/issues/517)) ([4f0b6f9](https://github.com/vm0-ai/vm0/commit/4f0b6f977ce235abd9161e6c80634a45730f769d))
+* **web:** add sandboxId to run response and fix migration conflict ([#516](https://github.com/vm0-ai/vm0/issues/516)) ([4824851](https://github.com/vm0-ai/vm0/commit/482485182fa53e86690b537b7af589340d538958))
+
 ## [5.4.0](https://github.com/vm0-ai/vm0/compare/web-v5.3.2...web-v5.4.0) (2025-12-12)
 
 
