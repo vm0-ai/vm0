@@ -617,7 +617,8 @@ export class E2BService {
     // When network security is enabled, proxy setup is done as root before this.
     // mitmproxy also runs as root, and nftables skips root's traffic (meta skuid 0)
     // to avoid redirect loops.
-    const cmd = `nohup python3 ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+    // Use python3 -u for unbuffered stdout/stderr to ensure logs are written immediately
+    const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
     await sandbox.commands.run(cmd);
 
     log.debug(`Agent execution started in background for run ${runId}`);

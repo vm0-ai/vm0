@@ -73,23 +73,46 @@ def main():
     # This ensures mitmproxy is running and nftables rules are in place
     if PROXY_ENABLED:
         log_info("Network security mode enabled (proxy configured by e2b-service)")
+    else:
+        log_info("Network security mode disabled (direct connections)")
 
     # Start heartbeat thread
+    log_info("Starting heartbeat thread...")
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
     log_info("Heartbeat thread started")
 
     # Start metrics collector thread
+    log_info("Starting metrics collector thread...")
     start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
 
     # Start telemetry upload thread
+    log_info("Starting telemetry upload thread...")
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
+    # Synchronous telemetry upload to ensure startup logs are visible
+    # This is critical for debugging - without this, we can't see what happens
+    import sys
+    sys.stderr.flush()
+    log_info("Uploading startup logs...")
+    sys.stderr.flush()
+    from upload_telemetry import upload_telemetry
+    upload_result = upload_telemetry()
+    log_info(f"Startup logs upload: {'SUCCESS' if upload_result else 'FAILED'}")
+    sys.stderr.flush()
+
+    log_info("Startup phase complete, proceeding to Claude execution")
+    sys.stderr.flush()
+
     # Change to working directory
+    log_info(f"Changing to working directory: {WORKING_DIR}")
+    sys.stderr.flush()
     try:
         os.chdir(WORKING_DIR)
+        log_info("Working directory changed successfully")
+        sys.stderr.flush()
     except OSError as e:
         log_error(f"Failed to change to working directory: {WORKING_DIR} - {e}")
         sys.exit(1)
@@ -100,10 +123,19 @@ def main():
     claude_config_dir = f"{home_dir}/.config/claude"
     os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
     log_info(f"Claude config directory: {claude_config_dir}")
+    sys.stderr.flush()
+
+    # Upload logs before Claude execution so we can see everything up to this point
+    log_info("Uploading pre-Claude logs...")
+    sys.stderr.flush()
+    upload_telemetry()
+    log_info("Pre-Claude logs uploaded")
+    sys.stderr.flush()
 
     # Execute Claude Code with JSONL output
     log_info("Starting Claude Code execution...")
     log_info(f"Prompt: {PROMPT}")
+    sys.stderr.flush()
 
     # Build Claude command - unified for both new and resume sessions
     claude_args = [
