@@ -31,7 +31,7 @@ from events import send_event
 from checkpoint import create_checkpoint
 from http_client import http_post_json
 from metrics import start_metrics_collector
-from upload_telemetry import start_telemetry_upload, final_telemetry_upload
+from upload_telemetry import start_telemetry_upload
 
 # Global shutdown event for heartbeat thread
 shutdown_event = threading.Event()
@@ -67,14 +67,6 @@ def main():
         log_info("API connectivity test: SUCCESS")
     else:
         log_error("API connectivity test: FAILED - webhooks may not work")
-
-    # Force immediate telemetry upload so startup logs are visible even if script crashes
-    log_info("Forcing immediate telemetry upload for startup diagnostics...")
-    from upload_telemetry import upload_telemetry
-    if upload_telemetry():
-        log_info("Startup telemetry upload: SUCCESS")
-    else:
-        log_warn("Startup telemetry upload: FAILED")
 
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
@@ -246,10 +238,6 @@ def main():
                 log_info(f"Captured stderr: {error_message}")
             else:
                 error_message = f"Agent exited with code {claude_exit_code}"
-
-    # Perform final telemetry upload before completion
-    # This ensures all remaining data is captured
-    final_telemetry_upload()
 
     # Always call complete API at the end
     # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
