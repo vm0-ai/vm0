@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.7](https://github.com/vm0-ai/vm0/compare/web-v5.4.6...web-v5.4.7) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** revert all sandbox script debug changes to fix startup hang ([#534](https://github.com/vm0-ai/vm0/issues/534)) ([28c2aa0](https://github.com/vm0-ai/vm0/commit/28c2aa069754065a3ef38a5d9cfa6978070b902b))
+
 ## [5.4.6](https://github.com/vm0-ai/vm0/compare/web-v5.4.5...web-v5.4.6) (2025-12-13)
 
 
