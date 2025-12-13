@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.0](https://github.com/vm0-ai/vm0/compare/web-v5.4.9...web-v5.5.0) (2025-12-13)
+
+
+### Features
+
+* **cron:** add debug timeout for compose names starting with debug- ([#543](https://github.com/vm0-ai/vm0/issues/543)) ([3263ac2](https://github.com/vm0-ai/vm0/commit/3263ac2559e6141ed61175db467ac3d2952b9976))
+
 ## [5.4.9](https://github.com/vm0-ai/vm0/compare/web-v5.4.8...web-v5.4.9) (2025-12-13)
 
 
