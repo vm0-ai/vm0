@@ -13,13 +13,13 @@ const log = logger("webhooks:telemetry");
 const router = tsr.router(webhookTelemetryContract, {
   send: async ({ body }) => {
     const startTime = Date.now();
-    log.info(`[telemetry] START runId=${body.runId}`);
+    log.debug(`[telemetry] START runId=${body.runId}`);
 
     initServices();
 
     const authStart = Date.now();
     const userId = await getUserId();
-    log.info(`[telemetry] auth took ${Date.now() - authStart}ms`);
+    log.debug(`[telemetry] auth took ${Date.now() - authStart}ms`);
 
     if (!userId) {
       return {
@@ -37,7 +37,7 @@ const router = tsr.router(webhookTelemetryContract, {
       .from(agentRuns)
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
-    log.info(`[telemetry] SELECT took ${Date.now() - selectStart}ms`);
+    log.debug(`[telemetry] SELECT took ${Date.now() - selectStart}ms`);
 
     if (!run) {
       return {
@@ -61,7 +61,7 @@ const router = tsr.router(webhookTelemetryContract, {
         },
       })
       .returning({ id: sandboxTelemetry.id });
-    log.info(`[telemetry] INSERT took ${Date.now() - insertStart}ms`);
+    log.debug(`[telemetry] INSERT took ${Date.now() - insertStart}ms`);
 
     const inserted = result[0];
     if (!inserted) {
@@ -76,7 +76,7 @@ const router = tsr.router(webhookTelemetryContract, {
       };
     }
 
-    log.info(
+    log.debug(
       `[telemetry] DONE runId=${body.runId} total=${Date.now() - startTime}ms systemLog=${body.systemLog?.length ?? 0}B`,
     );
 
