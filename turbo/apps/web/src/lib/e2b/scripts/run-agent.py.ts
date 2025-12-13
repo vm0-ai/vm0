@@ -92,17 +92,10 @@ def main():
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Synchronous telemetry upload to ensure startup logs are visible
-    # This is critical for debugging - without this, we can't see what happens
+    # Telemetry uploads are now handled by the background thread
+    # We don't block startup waiting for telemetry - if it's slow, agent should still start
     import sys
     sys.stderr.flush()
-    log_info("Uploading startup logs...")
-    sys.stderr.flush()
-    from upload_telemetry import upload_telemetry
-    upload_result = upload_telemetry()
-    log_info(f"Startup logs upload: {'SUCCESS' if upload_result else 'FAILED'}")
-    sys.stderr.flush()
-
     log_info("Startup phase complete, proceeding to Claude execution")
     sys.stderr.flush()
 
@@ -123,13 +116,6 @@ def main():
     claude_config_dir = f"{home_dir}/.config/claude"
     os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
     log_info(f"Claude config directory: {claude_config_dir}")
-    sys.stderr.flush()
-
-    # Upload logs before Claude execution so we can see everything up to this point
-    log_info("Uploading pre-Claude logs...")
-    sys.stderr.flush()
-    upload_telemetry()
-    log_info("Pre-Claude logs uploaded")
     sys.stderr.flush()
 
     # Execute Claude Code with JSONL output

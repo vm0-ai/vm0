@@ -187,22 +187,20 @@ def upload_telemetry() -> bool:
 def telemetry_upload_loop(shutdown_event: threading.Event) -> None:
     """
     Background loop that uploads telemetry every TELEMETRY_INTERVAL seconds.
-    NOTE: Waits for interval FIRST to avoid racing with main thread's startup upload.
+    Uploads immediately on start, then waits for interval between uploads.
+    This ensures startup logs are visible without blocking main thread.
     """
     log_info(f"Telemetry upload started (interval: {TELEMETRY_INTERVAL}s)")
 
     while not shutdown_event.is_set():
-        # Wait for interval FIRST (avoids concurrent requests with main thread startup upload)
-        shutdown_event.wait(TELEMETRY_INTERVAL)
-
-        # Check if shutdown was triggered during wait
-        if shutdown_event.is_set():
-            break
-
+        # Upload telemetry (non-blocking to main thread since we're in background)
         try:
             upload_telemetry()
         except Exception as e:
             log_error(f"Telemetry upload error: {e}")
+
+        # Wait for interval before next upload
+        shutdown_event.wait(TELEMETRY_INTERVAL)
 
     log_info("Telemetry upload stopped")
 
