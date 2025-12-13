@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.1](https://github.com/vm0-ai/vm0/compare/web-v5.5.0...web-v5.5.1) (2025-12-13)
+
+
+### Bug Fixes
+
+* **sandbox:** create working directory if it doesn't exist on agent startup ([#547](https://github.com/vm0-ai/vm0/issues/547)) ([18d1e1d](https://github.com/vm0-ai/vm0/commit/18d1e1dcac481fed29313f61122569907cefc193))
+
 ## [5.5.0](https://github.com/vm0-ai/vm0/compare/web-v5.4.9...web-v5.5.0) (2025-12-13)
 
 
