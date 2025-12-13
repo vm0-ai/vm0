@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.4.9](https://github.com/vm0-ai/vm0/compare/web-v5.4.8...web-v5.4.9) (2025-12-13)
+
+
+### Bug Fixes
+
+* **cli:** revert system_prompt and system_skills feature ([#540](https://github.com/vm0-ai/vm0/issues/540)) ([b2254fe](https://github.com/vm0-ai/vm0/commit/b2254fec128a641106aa1db67faac938e39e3b3b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.5.1
+
 ## [5.4.8](https://github.com/vm0-ai/vm0/compare/web-v5.4.7...web-v5.4.8) (2025-12-13)
 
 

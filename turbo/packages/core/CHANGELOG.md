@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/core-v0.5.0...core-v0.5.1) (2025-12-13)
+
+
+### Bug Fixes
+
+* **cli:** revert system_prompt and system_skills feature ([#540](https://github.com/vm0-ai/vm0/issues/540)) ([b2254fe](https://github.com/vm0-ai/vm0/commit/b2254fec128a641106aa1db67faac938e39e3b3b))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/core-v0.4.0...core-v0.5.0) (2025-12-12)
 
 

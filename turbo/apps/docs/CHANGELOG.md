@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/vm0-ai/vm0/compare/docs-v0.1.3...docs-v0.1.4) (2025-12-13)
+
+
+### Bug Fixes
+
+* **cli:** revert system_prompt and system_skills feature ([#540](https://github.com/vm0-ai/vm0/issues/540)) ([b2254fe](https://github.com/vm0-ai/vm0/commit/b2254fec128a641106aa1db67faac938e39e3b3b))
+
 ## [0.1.3](https://github.com/vm0-ai/vm0/compare/docs-v0.1.2...docs-v0.1.3) (2025-12-05)
 
 

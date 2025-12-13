@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.7.1](https://github.com/vm0-ai/vm0/compare/cli-v4.7.0...cli-v4.7.1) (2025-12-13)
+
+
+### Bug Fixes
+
+* **cli:** revert system_prompt and system_skills feature ([#540](https://github.com/vm0-ai/vm0/issues/540)) ([b2254fe](https://github.com/vm0-ai/vm0/commit/b2254fec128a641106aa1db67faac938e39e3b3b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.5.1
+
 ## [4.7.0](https://github.com/vm0-ai/vm0/compare/cli-v4.6.0...cli-v4.7.0) (2025-12-12)
 
 
