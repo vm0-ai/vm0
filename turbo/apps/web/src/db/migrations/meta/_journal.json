@@ -239,6 +239,13 @@
       "when": 1765800000000,
       "tag": "0033_secrets_via_cli",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1765900000000,
+      "tag": "0034_storage_name_256",
+      "breakpoints": true
     }
   ]
 }

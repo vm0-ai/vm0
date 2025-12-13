@@ -413,6 +413,18 @@ const router = tsr.router(runsMainContract, {
       log.debug(
         `Run ${run.id} started successfully (sandbox: ${result.sandboxId})`,
       );
+
+      // Return response with 'running' status
+      // Final status will be updated by webhook when agent completes
+      return {
+        status: 201 as const,
+        body: {
+          runId: run.id,
+          status: "running" as const,
+          sandboxId: result.sandboxId,
+          createdAt: run.createdAt.toISOString(),
+        },
+      };
     } catch (error) {
       // Extract error message - E2B CommandExitError includes result with stderr
       let errorMessage =
@@ -446,17 +458,6 @@ const router = tsr.router(runsMainContract, {
         },
       };
     }
-
-    // Return response with 'running' status
-    // Final status will be updated by webhook when agent completes
-    return {
-      status: 201 as const,
-      body: {
-        runId: run.id,
-        status: "running" as const,
-        createdAt: run.createdAt.toISOString(),
-      },
-    };
   },
 });
 
