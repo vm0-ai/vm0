@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.4.5](https://github.com/vm0-ai/vm0/compare/web-v5.4.4...web-v5.4.5) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** avoid concurrent telemetry requests at startup ([#528](https://github.com/vm0-ai/vm0/issues/528)) ([f1f6354](https://github.com/vm0-ai/vm0/commit/f1f63545690c116f6d45f5e7d9279044a12e1af1))
+* **e2b:** use log.debug instead of log.info in telemetry endpoint ([#529](https://github.com/vm0-ai/vm0/issues/529)) ([a42b6d7](https://github.com/vm0-ai/vm0/commit/a42b6d7a25c860f88d899e1a243d987e9c8a8967))
+
 ## [5.4.4](https://github.com/vm0-ai/vm0/compare/web-v5.4.3...web-v5.4.4) (2025-12-13)
 
 
