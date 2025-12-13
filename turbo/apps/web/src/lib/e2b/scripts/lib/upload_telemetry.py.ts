@@ -125,18 +125,33 @@ def upload_telemetry() -> bool:
     Returns:
         True if upload succeeded or no data to upload, False on failure
     """
+    import sys
+
+    log_info("upload_telemetry: reading log file...")
+    sys.stderr.flush()
+
     # Read new system log content
     system_log, log_pos = read_file_from_position(SYSTEM_LOG_FILE, TELEMETRY_LOG_POS_FILE)
+
+    log_info(f"upload_telemetry: log file read, {len(system_log)} bytes")
+    sys.stderr.flush()
 
     # Read new metrics
     metrics, metrics_pos = read_metrics_from_position(TELEMETRY_METRICS_POS_FILE)
 
+    log_info(f"upload_telemetry: metrics read, {len(metrics)} entries")
+    sys.stderr.flush()
+
     # Read new network logs
     network_logs, network_pos = read_network_logs_from_position(TELEMETRY_NETWORK_POS_FILE)
 
+    log_info(f"upload_telemetry: network logs read, {len(network_logs)} entries")
+    sys.stderr.flush()
+
     # Skip if nothing new
     if not system_log and not metrics and not network_logs:
-        log_debug("No new telemetry data to upload")
+        log_info("upload_telemetry: no new data to upload")
+        sys.stderr.flush()
         return True
 
     # Upload to API
@@ -147,19 +162,25 @@ def upload_telemetry() -> bool:
         "networkLogs": network_logs
     }
 
-    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs")
+    log_info(f"upload_telemetry: calling http_post_json to {TELEMETRY_URL}...")
+    sys.stderr.flush()
 
     result = http_post_json(TELEMETRY_URL, payload, max_retries=1)
+
+    log_info(f"upload_telemetry: http_post_json returned: {result is not None}")
+    sys.stderr.flush()
 
     if result:
         # Save positions only on successful upload
         save_position(TELEMETRY_LOG_POS_FILE, log_pos)
         save_position(TELEMETRY_METRICS_POS_FILE, metrics_pos)
         save_position(TELEMETRY_NETWORK_POS_FILE, network_pos)
-        log_debug(f"Telemetry uploaded successfully: {result.get('id', 'unknown')}")
+        log_info(f"upload_telemetry: SUCCESS, id={result.get('id', 'unknown')}")
+        sys.stderr.flush()
         return True
     else:
-        log_warn("Failed to upload telemetry (will retry next interval)")
+        log_warn("upload_telemetry: FAILED (will retry next interval)")
+        sys.stderr.flush()
         return False
 
 
