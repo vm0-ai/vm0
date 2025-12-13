@@ -244,8 +244,13 @@ export class E2BService {
 
       // Download storages directly to sandbox via presigned URLs
       // Scripts are already available from uploadAllScripts()
+      // Pass working directory to ensure it exists even if no archives to download
       log.debug(`[${context.runId}] Downloading storages to sandbox...`);
-      await this.downloadStoragesDirectly(sandbox, storageManifest);
+      await this.downloadStoragesDirectly(
+        sandbox,
+        storageManifest,
+        artifactMountPath,
+      );
       log.debug(`[${context.runId}] Storages downloaded successfully`);
 
       // Restore session history for resume
@@ -641,6 +646,7 @@ export class E2BService {
   private async downloadStoragesDirectly(
     sandbox: Sandbox,
     manifest: StorageManifest,
+    workingDir?: string,
   ): Promise<void> {
     const totalArchives =
       manifest.storages.filter((s) => s.archiveUrl).length +
@@ -648,6 +654,11 @@ export class E2BService {
 
     if (totalArchives === 0) {
       log.debug("No archives to download directly");
+      // Even if no archives to download, ensure working directory exists
+      if (workingDir) {
+        log.debug(`Creating working directory: ${workingDir}`);
+        await sandbox.commands.run(`mkdir -p "${workingDir}"`);
+      }
       return;
     }
 
