@@ -30,7 +30,7 @@ const router = tsr.router(sessionsMainContract, {
           agentComposeId: s.agentComposeId,
           conversationId: s.conversationId,
           artifactName: s.artifactName,
-          vars: s.vars,
+          templateVars: s.templateVars,
           createdAt: s.createdAt.toISOString(),
           updatedAt: s.updatedAt.toISOString(),
         })),

@@ -24,8 +24,7 @@ export const agentSessions = pgTable("agent_sessions", {
     onDelete: "set null",
   }),
   artifactName: varchar("artifact_name", { length: 255 }).notNull(),
-  vars: jsonb("vars").$type<Record<string, string>>(),
-  secrets: jsonb("secrets").$type<Record<string, string>>(),
+  templateVars: jsonb("template_vars").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

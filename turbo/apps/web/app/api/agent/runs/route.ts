@@ -14,7 +14,6 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
-import { encryptSecrets } from "../../../../src/lib/crypto";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:runs");
@@ -91,8 +90,6 @@ const router = tsr.router(runsMainContract, {
     let agentComposeVersionId: string;
     let agentComposeName: string | undefined;
     let composeContent: AgentComposeYaml | undefined;
-    // For continue/resume, secrets may come from session/checkpoint (already encrypted)
-    let encryptedSecretsFromSource: Record<string, string> | null = null;
 
     if (isNewRun) {
       if (body.agentComposeVersionId) {
@@ -188,7 +185,7 @@ const router = tsr.router(runsMainContract, {
       // Validate template variables for new runs
       if (composeContent) {
         const requiredVars = extractTemplateVars(composeContent);
-        const providedVars = body.vars || {};
+        const providedVars = body.templateVars || {};
         const missingVars = requiredVars.filter(
           (varName) => providedVars[varName] === undefined,
         );
@@ -231,15 +228,13 @@ const router = tsr.router(runsMainContract, {
         }
       }
     } else if (isCheckpointResume) {
-      // Validate checkpoint first to get agentComposeVersionId and secrets
-      let checkpointSecrets: Record<string, string> | null = null;
+      // Validate checkpoint first to get agentComposeVersionId
       try {
-        const checkpointData = await runService.validateCheckpoint(
+        const sessionData = await runService.validateCheckpoint(
           body.checkpointId!,
           userId,
         );
-        agentComposeVersionId = checkpointData.agentComposeVersionId;
-        checkpointSecrets = checkpointData.secrets;
+        agentComposeVersionId = sessionData.agentComposeVersionId;
       } catch (error) {
         return {
           status: 404 as const,
@@ -251,12 +246,6 @@ const router = tsr.router(runsMainContract, {
             },
           },
         };
-      }
-
-      // Use secrets from checkpoint if not provided in request (already encrypted)
-      if (!body.secrets && checkpointSecrets) {
-        // Store encrypted secrets directly - they're already encrypted per-value
-        encryptedSecretsFromSource = checkpointSecrets;
       }
 
       // Get compose name for metadata
@@ -328,22 +317,9 @@ const router = tsr.router(runsMainContract, {
 
       agentComposeVersionId = compose.headVersionId;
       agentComposeName = compose.name || undefined;
-
-      // Use secrets from session if not provided in request (already encrypted)
-      if (!body.secrets && sessionData.secrets) {
-        encryptedSecretsFromSource = sessionData.secrets;
-      }
     }
 
     log.debug(`Resolved agentComposeVersionId: ${agentComposeVersionId}`);
-
-    // Determine secrets to store:
-    // 1. If body.secrets is provided, encrypt and use it (new run or override)
-    // 2. If encryptedSecretsFromSource is set, use it (continue/resume without override)
-    // 3. Otherwise, no secrets
-    const encryptedSecrets = body.secrets
-      ? encryptSecrets(body.secrets)
-      : encryptedSecretsFromSource;
 
     // Create run record in database
     const [run] = await globalThis.services.db
@@ -353,8 +329,7 @@ const router = tsr.router(runsMainContract, {
         agentComposeVersionId,
         status: "pending",
         prompt: body.prompt,
-        vars: body.vars || null,
-        secrets: encryptedSecrets,
+        templateVars: body.templateVars || null,
         resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();
@@ -392,8 +367,7 @@ const router = tsr.router(runsMainContract, {
         conversationId: body.conversationId,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
-        vars: body.vars,
-        secrets: body.secrets,
+        templateVars: body.templateVars,
         volumeVersions: body.volumeVersions,
         prompt: body.prompt,
         runId: run.id,

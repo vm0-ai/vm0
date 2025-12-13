@@ -1,18 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { config as dotenvConfig } from "dotenv";
 import { apiClient } from "../lib/api-client";
 import { ClaudeEventParser } from "../lib/event-parser";
 import { EventRenderer } from "../lib/event-renderer";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 
-/**
- * Collector for --secrets and --vars flags
- * Format: KEY=value
- */
-function collectKeyValue(
+function collectVars(
   value: string,
   previous: Record<string, string>,
 ): Record<string, string> {
@@ -20,7 +12,7 @@ function collectKeyValue(
   const val = valueParts.join("="); // Support values with '='
 
   if (!key || val === undefined || val === "") {
-    throw new Error(`Invalid format: ${value} (expected KEY=value)`);
+    throw new Error(`Invalid variable format: ${value} (expected key=value)`);
   }
 
   return { ...previous, [key]: val };
@@ -48,78 +40,6 @@ function collectVolumeVersions(
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f-]{36}$/i.test(str);
-}
-
-/**
- * Extract var names from compose config
- */
-function extractVarNames(composeContent: unknown): string[] {
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
-  return grouped.vars.map((r) => r.name);
-}
-
-/**
- * Extract secret names from compose config
- */
-function extractSecretNames(composeContent: unknown): string[] {
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
-  return grouped.secrets.map((r) => r.name);
-}
-
-/**
- * Load values with priority: CLI args > environment variables > .env file
- *
- * For values referenced in the compose config but not provided via CLI,
- * falls back to environment variables and .env file.
- * CLI-provided values are always passed through.
- *
- * @param cliValues Values passed via CLI flags
- * @param configNames Names referenced in compose config (for env fallback)
- * @returns Merged values object with CLI taking highest priority
- */
-function loadValues(
-  cliValues: Record<string, string>,
-  configNames: string[],
-): Record<string, string> | undefined {
-  // Start with CLI-provided values (highest priority, always passed through)
-  const result: Record<string, string> = { ...cliValues };
-
-  // For names referenced in config but not provided via CLI, load from env/.env
-  const missingNames = configNames.filter((name) => !(name in result));
-
-  if (missingNames.length > 0) {
-    // Load .env file if it exists (lowest priority)
-    const envFilePath = path.resolve(process.cwd(), ".env");
-    let dotenvValues: Record<string, string> = {};
-
-    if (fs.existsSync(envFilePath)) {
-      const dotenvResult = dotenvConfig({ path: envFilePath });
-      if (dotenvResult.parsed) {
-        // Only include keys that are missing
-        dotenvValues = Object.fromEntries(
-          Object.entries(dotenvResult.parsed).filter(([key]) =>
-            missingNames.includes(key),
-          ),
-        );
-      }
-    }
-
-    // Get from environment variables (medium priority)
-    const envValues: Record<string, string> = {};
-    for (const name of missingNames) {
-      const envValue = process.env[name];
-      if (envValue !== undefined) {
-        envValues[name] = envValue;
-      }
-    }
-
-    // Merge with priority: env > .env (CLI already in result)
-    Object.assign(result, dotenvValues, envValues);
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 /**
@@ -293,14 +213,8 @@ const runCmd = new Command()
   .argument("<prompt>", "Prompt for the agent")
   .option(
     "--vars <KEY=value>",
-    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
-    collectKeyValue,
-    {},
-  )
-  .option(
-    "--secrets <KEY=value>",
-    "Secrets for ${{ secrets.xxx }} (repeatable, falls back to env vars and .env)",
-    collectKeyValue,
+    "Template variables for config placeholders (repeatable)",
+    collectVars,
     {},
   )
   .option("--artifact-name <name>", "Artifact storage name (required for run)")
@@ -325,7 +239,6 @@ const runCmd = new Command()
       prompt: string,
       options: {
         vars: Record<string, string>;
-        secrets: Record<string, string>;
         artifactName?: string;
         artifactVersion?: string;
         volumeVersion: Record<string, string>;
@@ -352,24 +265,14 @@ const runCmd = new Command()
         // 1. Parse identifier for optional version specifier
         const { name, version } = parseIdentifier(identifier);
 
-        // 2. Resolve name to composeId and get compose content
+        // 2. Resolve name to composeId
         let composeId: string;
-        let composeContent: unknown;
 
         if (isUUID(name)) {
-          // It's a UUID compose ID - fetch compose to get content
+          // It's a UUID compose ID - use directly
+          composeId = name;
           if (verbose) {
             console.log(chalk.gray(`  Using compose ID: ${identifier}`));
-          }
-          try {
-            const compose = await apiClient.getComposeById(name);
-            composeId = compose.id;
-            composeContent = compose.content;
-          } catch (error) {
-            if (error instanceof Error) {
-              console.error(chalk.red(`✗ Compose not found: ${name}`));
-            }
-            process.exit(1);
           }
         } else {
           // It's an agent name - resolve to compose ID
@@ -379,7 +282,6 @@ const runCmd = new Command()
           try {
             const compose = await apiClient.getComposeByName(name);
             composeId = compose.id;
-            composeContent = compose.content;
             if (verbose) {
               console.log(chalk.gray(`  Resolved to compose ID: ${composeId}`));
             }
@@ -429,36 +331,7 @@ const runCmd = new Command()
         }
         // Note: "latest" version uses agentComposeId which resolves to HEAD
 
-        // 4. Load vars and secrets with priority: CLI args > env vars > .env file
-        const varNames = extractVarNames(composeContent);
-        const vars = loadValues(options.vars, varNames);
-
-        const secretNames = extractSecretNames(composeContent);
-        const secrets = loadValues(options.secrets, secretNames);
-
-        if (verbose && varNames.length > 0) {
-          console.log(chalk.gray(`  Required vars: ${varNames.join(", ")}`));
-          if (vars) {
-            console.log(
-              chalk.gray(`  Loaded vars: ${Object.keys(vars).join(", ")}`),
-            );
-          }
-        }
-
-        if (verbose && secretNames.length > 0) {
-          console.log(
-            chalk.gray(`  Required secrets: ${secretNames.join(", ")}`),
-          );
-          if (secrets) {
-            console.log(
-              chalk.gray(
-                `  Loaded secrets: ${Object.keys(secrets).join(", ")}`,
-              ),
-            );
-          }
-        }
-
-        // 5. Display starting message (verbose only)
+        // 4. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Creating agent run", [
             { label: "Prompt", value: prompt },
@@ -466,15 +339,8 @@ const runCmd = new Command()
             {
               label: "Variables",
               value:
-                vars && Object.keys(vars).length > 0
-                  ? JSON.stringify(vars)
-                  : undefined,
-            },
-            {
-              label: "Secrets",
-              value:
-                secrets && Object.keys(secrets).length > 0
-                  ? `${Object.keys(secrets).length} loaded`
+                Object.keys(options.vars).length > 0
+                  ? JSON.stringify(options.vars)
                   : undefined,
             },
             { label: "Artifact", value: options.artifactName },
@@ -490,15 +356,15 @@ const runCmd = new Command()
           ]);
         }
 
-        // 6. Call unified API (server handles all variable expansion)
+        // 3. Call unified API (server handles all variable expansion)
         const response = await apiClient.createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
             ? { agentComposeVersionId }
             : { agentComposeId: composeId }),
           prompt,
-          vars,
-          secrets,
+          templateVars:
+            Object.keys(options.vars).length > 0 ? options.vars : undefined,
           artifactName: options.artifactName,
           artifactVersion: options.artifactVersion,
           volumeVersions:

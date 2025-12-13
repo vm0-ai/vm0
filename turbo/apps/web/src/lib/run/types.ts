@@ -51,8 +51,7 @@ export interface ExecutionContext {
   agentComposeVersionId: string;
   agentCompose: unknown;
   prompt: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>; // Decrypted secrets for environment expansion
+  templateVars?: Record<string, string>;
   sandboxToken: string;
 
   // Artifact settings (new runs only)
@@ -63,7 +62,7 @@ export interface ExecutionContext {
   volumeVersions?: Record<string, string>;
 
   // Environment variables expanded server-side from compose's environment field
-  // Uses vars and secrets to resolve ${{ vars.xxx }} and ${{ secrets.xxx }} references
+  // Uses templateVars to resolve ${{ vars.xxx }} references
   environment?: Record<string, string>;
 
   // Network security mode - when true, secrets are encrypted into proxy tokens

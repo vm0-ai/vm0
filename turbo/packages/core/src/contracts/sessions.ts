@@ -13,7 +13,7 @@ const agentSessionSchema = z.object({
   agentComposeId: z.string(),
   conversationId: z.string().nullable(),
   artifactName: z.string(),
-  vars: z.record(z.string(), z.string()).nullable(),
+  templateVars: z.record(z.string(), z.string()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

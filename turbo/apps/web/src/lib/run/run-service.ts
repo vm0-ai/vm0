@@ -23,8 +23,8 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
 } from "@vm0/core";
+import { getSecretValues } from "../secrets/secrets-service";
 import { createProxyToken } from "../proxy/token-service";
-import { decryptSecrets } from "../crypto";
 
 const log = logger("service:run");
 
@@ -45,19 +45,17 @@ interface ExpandedEnvironmentResult {
  * - The betaNetworkSecurity flag is set to true for e2b-service
  *
  * @param agentCompose Agent compose configuration
- * @param vars Variables for expansion (from --vars CLI param)
- * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
- * @param userId User ID for token binding
+ * @param templateVars Template variables for expansion
+ * @param userId User ID for fetching secrets
  * @param runId Run ID for token binding (required for network security)
  * @returns Expanded environment variables and security flag
  */
-function expandEnvironmentFromCompose(
+async function expandEnvironmentFromCompose(
   agentCompose: unknown,
-  vars: Record<string, string> | undefined,
-  passedSecrets: Record<string, string> | undefined,
+  templateVars: Record<string, string> | undefined,
   userId: string,
   runId: string,
-): ExpandedEnvironmentResult {
+): Promise<ExpandedEnvironmentResult> {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
     return { environment: undefined, betaNetworkSecurity: false };
@@ -89,18 +87,17 @@ function expandEnvironmentFromCompose(
     );
   }
 
-  // Process secrets if needed
+  // Fetch secrets if needed
   let secrets: Record<string, string> | undefined;
   if (grouped.secrets.length > 0) {
     const secretNames = grouped.secrets.map((r) => r.name);
+    const rawSecrets = await getSecretValues(userId, secretNames);
 
     // Check for missing secrets
-    const missingSecrets = secretNames.filter(
-      (name) => !passedSecrets || !passedSecrets[name],
-    );
+    const missingSecrets = secretNames.filter((name) => !rawSecrets[name]);
     if (missingSecrets.length > 0) {
       throw new BadRequestError(
-        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' to provide them.`,
+        `Missing required secrets: ${missingSecrets.join(", ")}. Use 'vm0 secret set <name> <value>' to configure them.`,
       );
     }
 
@@ -111,7 +108,7 @@ function expandEnvironmentFromCompose(
       );
       secrets = {};
       for (const name of secretNames) {
-        const secretValue = passedSecrets![name];
+        const secretValue = rawSecrets[name];
         if (secretValue) {
           // Create encrypted proxy token bound to this run
           secrets[name] = createProxyToken(runId, userId, name, secretValue);
@@ -119,10 +116,7 @@ function expandEnvironmentFromCompose(
       }
     } else {
       // Default: use plaintext secrets
-      secrets = {};
-      for (const name of secretNames) {
-        secrets[name] = passedSecrets![name]!;
-      }
+      secrets = rawSecrets;
     }
   }
 
@@ -131,8 +125,8 @@ function expandEnvironmentFromCompose(
     vars?: Record<string, string>;
     secrets?: Record<string, string>;
   } = {};
-  if (vars && Object.keys(vars).length > 0) {
-    sources.vars = vars;
+  if (templateVars && Object.keys(templateVars).length > 0) {
+    sources.vars = templateVars;
   }
   if (secrets && Object.keys(secrets).length > 0) {
     sources.secrets = secrets;
@@ -142,7 +136,7 @@ function expandEnvironmentFromCompose(
   if (!sources.vars && grouped.vars.length > 0) {
     log.warn(
       "Environment contains $" +
-        "{{ vars.xxx }} but no vars provided: " +
+        "{{ vars.xxx }} but no templateVars provided: " +
         grouped.vars.map((r) => r.name).join(", "),
     );
   }
@@ -156,7 +150,7 @@ function expandEnvironmentFromCompose(
     .map((v) => v.name);
   if (missingVarNames.length > 0) {
     throw new BadRequestError(
-      `Missing required variables for environment: ${missingVarNames.join(", ")}`,
+      `Missing required template variables for environment: ${missingVarNames.join(", ")}`,
     );
   }
 
@@ -166,7 +160,7 @@ function expandEnvironmentFromCompose(
 /**
  * Intermediate resolution result from checkpoint/session/conversation expansion
  * Contains all data needed to build resumeSession uniformly
- * Note: Environment is re-expanded server-side from compose + vars/secrets, not stored in checkpoint
+ * Note: Environment is re-expanded server-side from compose + templateVars, not stored in checkpoint
  */
 interface ConversationResolution {
   conversationId: string;
@@ -179,8 +173,7 @@ interface ConversationResolution {
   };
   artifactName?: string;
   artifactVersion?: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  templateVars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   buildResumeArtifact: boolean;
 }
@@ -295,14 +288,6 @@ export class RunService {
     }
     const agentCompose = version.content as AgentComposeYaml;
 
-    // Decrypt secrets from snapshot (stored encrypted per-value)
-    const encryptedSecrets = agentComposeSnapshot.secrets as
-      | Record<string, string>
-      | undefined;
-    const decryptedSecrets = encryptedSecrets
-      ? decryptSecrets(encryptedSecrets)
-      : {};
-
     return {
       conversationId: checkpoint.conversationId,
       agentComposeVersionId,
@@ -314,8 +299,7 @@ export class RunService {
       },
       artifactName: checkpointArtifact.artifactName,
       artifactVersion: checkpointArtifact.artifactVersion,
-      vars: agentComposeSnapshot.vars || {},
-      secrets: decryptedSecrets,
+      templateVars: agentComposeSnapshot.templateVars || {},
       volumeVersions: checkpointVolumeVersions?.versions,
       buildResumeArtifact: true,
     };
@@ -379,14 +363,6 @@ export class RunService {
       throw new NotFoundError("Agent compose version");
     }
 
-    // Decrypt secrets from session (stored encrypted per-value)
-    const encryptedSessionSecrets = session.secrets as
-      | Record<string, string>
-      | undefined;
-    const decryptedSessionSecrets = encryptedSessionSecrets
-      ? decryptSecrets(encryptedSessionSecrets)
-      : {};
-
     return {
       conversationId: session.conversationId,
       agentComposeVersionId: compose.headVersionId,
@@ -398,8 +374,7 @@ export class RunService {
       },
       artifactName: session.artifactName,
       artifactVersion: "latest",
-      vars: session.vars || {},
-      secrets: decryptedSessionSecrets,
+      templateVars: session.templateVars || {},
       volumeVersions: undefined,
       buildResumeArtifact: true,
     };
@@ -459,7 +434,7 @@ export class RunService {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
       },
-      // No defaults for artifact/vars/secrets/volumeVersions - use params directly
+      // No defaults for artifact/templateVars/volumeVersions - use params directly
       buildResumeArtifact: false,
     };
   }
@@ -471,8 +446,7 @@ export class RunService {
    * @param agentComposeVersionId Agent compose version ID (SHA-256 hash)
    * @param prompt User prompt
    * @param sandboxToken Temporary bearer token for sandbox
-   * @param vars Variable replacements
-   * @param secrets Secret replacements (decrypted)
+   * @param templateVars Template variable replacements
    * @param agentCompose Full agent compose
    * @param userId User ID for volume access
    * @param artifactName Artifact storage name (required)
@@ -484,8 +458,7 @@ export class RunService {
     agentComposeVersionId: string,
     prompt: string,
     sandboxToken: string,
-    vars: Record<string, string> | undefined,
-    secrets: Record<string, string> | undefined,
+    templateVars: Record<string, string> | undefined,
     agentCompose: unknown,
     userId?: string,
     artifactName?: string,
@@ -498,8 +471,7 @@ export class RunService {
       agentComposeVersionId,
       agentCompose,
       prompt,
-      vars,
-      secrets,
+      templateVars,
       sandboxToken,
       userId,
       artifactName,
@@ -522,7 +494,6 @@ export class RunService {
     userId: string,
   ): Promise<{
     agentComposeVersionId: string;
-    secrets: Record<string, string> | null;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
@@ -567,12 +538,8 @@ export class RunService {
       `Checkpoint validated: agentComposeVersionId=${agentComposeVersionId}`,
     );
 
-    // Get secrets from original run (encrypted per-value)
-    const secrets = (originalRun.secrets as Record<string, string>) ?? null;
-
     return {
       agentComposeVersionId,
-      secrets,
     };
   }
 
@@ -582,7 +549,7 @@ export class RunService {
    *
    * @param agentSessionId Agent session ID to validate
    * @param userId User ID for authorization check
-   * @returns Session data with agentComposeId and vars
+   * @returns Session data with agentComposeId and templateVars
    * @throws NotFoundError if session doesn't exist
    * @throws UnauthorizedError if session doesn't belong to user
    */
@@ -591,8 +558,7 @@ export class RunService {
     userId: string,
   ): Promise<{
     agentComposeId: string;
-    vars: Record<string, string> | null;
-    secrets: Record<string, string> | null;
+    templateVars: Record<string, string> | null;
   }> {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
@@ -622,8 +588,7 @@ export class RunService {
 
     return {
       agentComposeId: session.agentComposeId,
-      vars: session.vars,
-      secrets: session.secrets,
+      templateVars: session.templateVars,
     };
   }
 
@@ -648,8 +613,7 @@ export class RunService {
     conversationId?: string;
     artifactName?: string;
     artifactVersion?: string;
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
+    templateVars?: Record<string, string>;
     volumeVersions?: Record<string, string>;
     // Required
     prompt: string;
@@ -670,8 +634,7 @@ export class RunService {
     let agentCompose: unknown;
     let artifactName: string | undefined = params.artifactName;
     let artifactVersion: string | undefined = params.artifactVersion;
-    let vars: Record<string, string> | undefined = params.vars;
-    let secrets: Record<string, string> | undefined = params.secrets;
+    let templateVars: Record<string, string> | undefined = params.templateVars;
     let volumeVersions: Record<string, string> | undefined =
       params.volumeVersions;
     let resumeSession: ResumeSession | undefined;
@@ -706,8 +669,7 @@ export class RunService {
       agentCompose = resolution.agentCompose;
       artifactName = artifactName || resolution.artifactName;
       artifactVersion = artifactVersion || resolution.artifactVersion;
-      vars = vars || resolution.vars;
-      secrets = secrets || resolution.secrets;
+      templateVars = templateVars || resolution.templateVars;
       volumeVersions = volumeVersions || resolution.volumeVersions;
 
       // Build resumeSession from resolution (single place!)
@@ -755,15 +717,15 @@ export class RunService {
       throw new NotFoundError("Agent compose could not be loaded");
     }
 
-    // Step 4: Expand environment variables from compose config using vars and secrets
+    // Step 4: Expand environment variables from compose config using templateVars and secrets
     // When beta_network_security is enabled, secrets are encrypted into proxy tokens
-    const { environment, betaNetworkSecurity } = expandEnvironmentFromCompose(
-      agentCompose,
-      vars,
-      secrets,
-      params.userId,
-      params.runId,
-    );
+    const { environment, betaNetworkSecurity } =
+      await expandEnvironmentFromCompose(
+        agentCompose,
+        templateVars,
+        params.userId,
+        params.runId,
+      );
 
     // Build final execution context
     return {
@@ -772,8 +734,7 @@ export class RunService {
       agentComposeVersionId,
       agentCompose,
       prompt: params.prompt,
-      vars,
-      secrets,
+      templateVars,
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,

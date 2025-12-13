@@ -426,7 +426,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
-        vars: { user: "testuser" },
+        templateVars: { user: "testuser" },
         createdAt: new Date(),
       });
 
@@ -495,12 +495,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(conversation?.cliAgentSessionId).toBe("test-session-456");
       expect(conversation?.cliAgentSessionHistory).toBe(sessionHistory);
 
-      // Verify agentComposeSnapshot contains vars
+      // Verify agentComposeSnapshot contains templateVars
       const configSnapshot = checkpoint?.agentComposeSnapshot as {
         config: unknown;
-        vars?: Record<string, string>;
+        templateVars?: Record<string, string>;
       };
-      expect(configSnapshot?.vars).toEqual({ user: "testuser" });
+      expect(configSnapshot?.templateVars).toEqual({ user: "testuser" });
 
       // Verify agent session was created/updated
       const savedSessions = await globalThis.services.db

@@ -91,7 +91,7 @@ export class E2BService {
       // This works for both new runs and resume scenarios
       const storageManifest = await storageService.prepareStorageManifest(
         agentCompose,
-        context.vars || {},
+        context.templateVars || {},
         context.userId || "",
         context.artifactName,
         context.artifactVersion,

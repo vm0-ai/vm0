@@ -97,7 +97,7 @@ export class StorageService {
    * This method generates presigned URLs instead of downloading files to local temp
    *
    * @param agentConfig - Agent configuration containing volume definitions
-   * @param vars - Template variables for placeholder replacement
+   * @param templateVars - Template variables for placeholder replacement
    * @param userId - User ID for storage access
    * @param artifactName - Artifact storage name
    * @param artifactVersion - Artifact version (defaults to "latest")
@@ -108,7 +108,7 @@ export class StorageService {
    */
   async prepareStorageManifest(
     agentConfig: AgentVolumeConfig | undefined,
-    vars: Record<string, string>,
+    templateVars: Record<string, string>,
     userId: string,
     artifactName?: string,
     artifactVersion?: string,
@@ -139,7 +139,7 @@ export class StorageService {
     const volumeResult = agentConfig
       ? resolveVolumes(
           agentConfig,
-          vars,
+          templateVars,
           skipArtifact ? undefined : effectiveArtifactName,
           skipArtifact ? undefined : effectiveArtifactVersion,
           skipArtifact,

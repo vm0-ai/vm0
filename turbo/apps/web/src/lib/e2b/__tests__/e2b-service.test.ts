@@ -148,7 +148,7 @@ describe("E2B Service - mocked unit tests", () => {
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
-        vars: { testVar: "testValue" },
+        templateVars: { testVar: "testValue" },
       };
 
       // Act
