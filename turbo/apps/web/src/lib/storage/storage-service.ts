@@ -117,6 +117,9 @@ export class StorageService {
     resumeArtifactMountPath?: string,
   ): Promise<StorageManifest> {
     log.debug("Preparing storage manifest with presigned URLs...");
+    log.debug(
+      `prepareStorageManifest params: artifactName=${artifactName}, artifactVersion=${artifactVersion}, hasAgentConfig=${!!agentConfig}, hasResumeArtifact=${!!resumeArtifact}`,
+    );
 
     const bucketName = env().S3_USER_STORAGES_NAME;
     if (!bucketName) {
@@ -130,10 +133,26 @@ export class StorageService {
     // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
     const skipArtifact = !!resumeArtifact;
 
+    log.debug(
+      `effectiveArtifact: name=${effectiveArtifactName}, version=${effectiveArtifactVersion}, skipArtifact=${skipArtifact}`,
+    );
+
     // If no agent config and no resume artifact, return empty manifest
     if (!agentConfig && !resumeArtifact) {
+      log.debug(
+        "No agent config and no resume artifact - returning empty manifest",
+      );
       return { storages: [], artifact: null };
     }
+
+    // Log agent config structure for debugging
+    const agentConfigObj = agentConfig as { agents?: Record<string, unknown> };
+    const agentNames = agentConfigObj?.agents
+      ? Object.keys(agentConfigObj.agents)
+      : [];
+    log.debug(
+      `agentConfig has ${agentNames.length} agents: ${agentNames.join(", ")}`,
+    );
 
     // Resolve volumes from agent config
     const volumeResult = agentConfig
@@ -146,6 +165,16 @@ export class StorageService {
           volumeVersionOverrides,
         )
       : { volumes: [], artifact: null, errors: [] };
+
+    // Log volume resolution result
+    log.debug(
+      `volumeResult: ${volumeResult.volumes.length} volumes, artifact=${volumeResult.artifact ? "present" : "null"}, errors=${volumeResult.errors.length}`,
+    );
+    if (volumeResult.errors.length > 0) {
+      log.warn(
+        `Volume resolution errors: ${volumeResult.errors.map((e) => e.message).join("; ")}`,
+      );
+    }
 
     // Process all volumes and artifact in parallel
     const volumePromises = volumeResult.volumes.map(async (volume) => {

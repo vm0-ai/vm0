@@ -153,6 +153,11 @@ export function resolveVolumes(
   // Get working_dir from agent config for validation
   const workingDir = agent?.working_dir;
 
+  // Debug logging for artifact resolution
+  console.log(
+    `[storage-resolver] resolveVolumes: hasAgents=${!!config.agents}, agentCount=${agentValues.length}, workingDir=${workingDir}, artifactName=${artifactName}, skipArtifact=${skipArtifact}`,
+  );
+
   // Process volume declarations
   if (agent?.volumes && agent.volumes.length > 0) {
     for (const declaration of agent.volumes) {
