@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.6](https://github.com/vm0-ai/vm0/compare/web-v5.4.5...web-v5.4.6) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** make telemetry uploads non-blocking to agent startup ([#531](https://github.com/vm0-ai/vm0/issues/531)) ([2322250](https://github.com/vm0-ai/vm0/commit/2322250295d510460cda4851de9f4fd650663630))
+
 ## [5.4.5](https://github.com/vm0-ai/vm0/compare/web-v5.4.4...web-v5.4.5) (2025-12-13)
 
 
