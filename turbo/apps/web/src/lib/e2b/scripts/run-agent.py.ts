@@ -70,30 +70,42 @@ def main():
 
     # Force immediate telemetry upload so startup logs are visible even if script crashes
     log_info("Forcing immediate telemetry upload for startup diagnostics...")
+    import sys
+    sys.stderr.flush()  # Ensure logs are written before upload
     from upload_telemetry import upload_telemetry
-    if upload_telemetry():
-        log_info("Startup telemetry upload: SUCCESS")
-    else:
-        log_warn("Startup telemetry upload: FAILED")
+    upload_result = upload_telemetry()
+    log_info(f"Startup telemetry upload: {'SUCCESS' if upload_result else 'FAILED'}")
+    sys.stderr.flush()  # Flush again after result
 
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
     # This ensures mitmproxy is running and nftables rules are in place
     if PROXY_ENABLED:
         log_info("Network security mode enabled (proxy configured by e2b-service)")
+    else:
+        log_info("Network security mode disabled (direct connections)")
 
     # Start heartbeat thread
+    log_info("Starting heartbeat thread...")
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
     log_info("Heartbeat thread started")
 
     # Start metrics collector thread
+    log_info("Starting metrics collector thread...")
     start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
 
     # Start telemetry upload thread
+    log_info("Starting telemetry upload thread...")
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
+
+    # Second telemetry upload to capture all startup logs
+    log_info("Uploading startup completion logs...")
+    sys.stderr.flush()
+    upload_telemetry()
+    log_info("Startup phase complete, proceeding to Claude execution")
 
     # Change to working directory
     try:
