@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.2](https://github.com/vm0-ai/vm0/compare/web-v5.5.1...web-v5.5.2) (2025-12-13)
+
+
+### Bug Fixes
+
+* **sandbox:** ensure cleanup runs on early errors in run-agent.py ([#551](https://github.com/vm0-ai/vm0/issues/551)) ([2551182](https://github.com/vm0-ai/vm0/commit/25511823e5182462e59a90e816c0ac76bab6e588))
+
 ## [5.5.1](https://github.com/vm0-ai/vm0/compare/web-v5.5.0...web-v5.5.1) (2025-12-13)
 
 
