@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.6.0](https://github.com/vm0-ai/vm0/compare/web-v5.5.2...web-v5.6.0) (2025-12-13)
+
+
+### Features
+
+* **storage:** optimize empty storage handling by skipping tar upload/download ([#557](https://github.com/vm0-ai/vm0/issues/557)) ([56b9ab4](https://github.com/vm0-ai/vm0/commit/56b9ab46d288abfc332c77b3725200abed857a46))
+
+
+### Bug Fixes
+
+* handle empty tar.gz from python in storage webhooks ([#554](https://github.com/vm0-ai/vm0/issues/554)) ([ddd02ca](https://github.com/vm0-ai/vm0/commit/ddd02cafd12c74608421302bfa93abb659deaf73))
+
 ## [5.5.2](https://github.com/vm0-ai/vm0/compare/web-v5.5.1...web-v5.5.2) (2025-12-13)
 
 
