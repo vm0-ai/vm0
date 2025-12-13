@@ -68,11 +68,6 @@ def main():
     else:
         log_error("API connectivity test: FAILED - webhooks may not work")
 
-    # Skip startup telemetry upload - it seems to cause hanging
-    # The telemetry upload thread will handle uploads later
-    import sys
-    log_info("Skipping startup telemetry upload (will be handled by background thread)")
-
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
     # This ensures mitmproxy is running and nftables rules are in place
@@ -97,14 +92,27 @@ def main():
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Flush stderr to ensure all startup logs are written
-    # Telemetry upload thread will handle sending them
+    # Synchronous telemetry upload to ensure startup logs are visible
+    # This is critical for debugging - without this, we can't see what happens
+    import sys
     sys.stderr.flush()
+    log_info("Uploading startup logs...")
+    sys.stderr.flush()
+    from upload_telemetry import upload_telemetry
+    upload_result = upload_telemetry()
+    log_info(f"Startup logs upload: {'SUCCESS' if upload_result else 'FAILED'}")
+    sys.stderr.flush()
+
     log_info("Startup phase complete, proceeding to Claude execution")
+    sys.stderr.flush()
 
     # Change to working directory
+    log_info(f"Changing to working directory: {WORKING_DIR}")
+    sys.stderr.flush()
     try:
         os.chdir(WORKING_DIR)
+        log_info("Working directory changed successfully")
+        sys.stderr.flush()
     except OSError as e:
         log_error(f"Failed to change to working directory: {WORKING_DIR} - {e}")
         sys.exit(1)
@@ -115,10 +123,19 @@ def main():
     claude_config_dir = f"{home_dir}/.config/claude"
     os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
     log_info(f"Claude config directory: {claude_config_dir}")
+    sys.stderr.flush()
+
+    # Upload logs before Claude execution so we can see everything up to this point
+    log_info("Uploading pre-Claude logs...")
+    sys.stderr.flush()
+    upload_telemetry()
+    log_info("Pre-Claude logs uploaded")
+    sys.stderr.flush()
 
     # Execute Claude Code with JSONL output
     log_info("Starting Claude Code execution...")
     log_info(f"Prompt: {PROMPT}")
+    sys.stderr.flush()
 
     # Build Claude command - unified for both new and resume sessions
     claude_args = [
