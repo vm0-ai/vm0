@@ -53,10 +53,28 @@ def heartbeat_loop():
 
 def main():
     """Main entry point for agent execution."""
-    # Validate configuration
+    # Validate configuration (this logs all env vars to stderr)
     validate_config()
 
     log_info(f"Working directory: {WORKING_DIR}")
+
+    # Test API connectivity immediately after startup
+    # This helps diagnose connection issues early
+    log_info(f"Testing API connectivity to heartbeat endpoint...")
+    from common import HEARTBEAT_URL
+    test_result = http_post_json(HEARTBEAT_URL, {"runId": RUN_ID})
+    if test_result:
+        log_info("API connectivity test: SUCCESS")
+    else:
+        log_error("API connectivity test: FAILED - webhooks may not work")
+
+    # Force immediate telemetry upload so startup logs are visible even if script crashes
+    log_info("Forcing immediate telemetry upload for startup diagnostics...")
+    from upload_telemetry import upload_telemetry
+    if upload_telemetry():
+        log_info("Startup telemetry upload: SUCCESS")
+    else:
+        log_warn("Startup telemetry upload: FAILED")
 
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts

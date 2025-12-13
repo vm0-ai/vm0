@@ -80,8 +80,31 @@ METRICS_INTERVAL = 5  # seconds
 
 def validate_config() -> bool:
     """Validate required configuration. Returns True if valid, exits if not."""
+    # Log all critical environment variables for debugging
+    print(f"[INFO] VM0_RUN_ID: {RUN_ID}", file=sys.stderr)
+    print(f"[INFO] VM0_API_URL: {API_URL}", file=sys.stderr)
+    print(f"[INFO] VM0_API_TOKEN: {'***' if API_TOKEN else '(not set)'}", file=sys.stderr)
+    print(f"[INFO] VM0_WORKING_DIR: {WORKING_DIR}", file=sys.stderr)
+    print(f"[INFO] VM0_PROMPT: {PROMPT[:50]}..." if len(PROMPT) > 50 else f"[INFO] VM0_PROMPT: {PROMPT}", file=sys.stderr)
+
+    # Validate required environment variables
+    errors = []
+    if not RUN_ID:
+        errors.append("VM0_RUN_ID is required but not set")
+    if not API_URL:
+        errors.append("VM0_API_URL is required but not set")
+    if not API_TOKEN:
+        errors.append("VM0_API_TOKEN is required but not set")
     if not WORKING_DIR:
-        print("[ERROR] VM0_WORKING_DIR is required but not set", file=sys.stderr)
+        errors.append("VM0_WORKING_DIR is required but not set")
+    if not PROMPT:
+        errors.append("VM0_PROMPT is required but not set")
+
+    if errors:
+        for err in errors:
+            print(f"[ERROR] {err}", file=sys.stderr)
         sys.exit(1)
+
+    print("[INFO] All required environment variables validated", file=sys.stderr)
     return True
 `;
