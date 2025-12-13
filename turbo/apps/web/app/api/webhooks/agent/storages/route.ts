@@ -147,11 +147,24 @@ export async function POST(request: NextRequest) {
     const extractPath = path.join(tempDir, "extracted");
     // Ensure extract directory exists before extraction (empty archives don't create it)
     await fs.promises.mkdir(extractPath, { recursive: true });
-    await tar.extract({
-      file: tarGzPath,
-      cwd: extractPath,
-      gzip: true,
-    });
+    try {
+      await tar.extract({
+        file: tarGzPath,
+        cwd: extractPath,
+        gzip: true,
+      });
+    } catch (error) {
+      // Handle empty archives from Python tarfile (incompatible format with Node.js tar)
+      // Python's empty tar.gz is 60 bytes, Node.js tar cannot read it
+      if (error instanceof Error && error.message.includes("TAR_BAD_ARCHIVE")) {
+        log.debug(
+          "Empty or incompatible archive from Python, treating as empty storage",
+        );
+        // extractPath is already created and empty, continue with 0 files
+      } else {
+        throw error;
+      }
+    }
 
     log.debug(`Extracted tar.gz to ${extractPath}`);
 
