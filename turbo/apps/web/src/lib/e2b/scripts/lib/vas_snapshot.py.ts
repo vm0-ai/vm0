@@ -54,20 +54,8 @@ def create_vas_snapshot(
             log_error(f"Failed to cd to {mount_path}: {e}")
             return None
 
-        # Create tar.gz file (exclude .git and .vas directories)
-        try:
-            with tarfile.open(tar_path, "w:gz") as tar:
-                for item in os.listdir("."):
-                    if item in (".git", ".vas"):
-                        continue
-                    tar.add(item)
-            log_info(f"Created tar.gz file for storage '{storage_name}'")
-        except Exception as e:
-            log_error(f"Failed to create tar.gz for storage '{storage_name}': {e}")
-            os.chdir(original_dir)
-            return None
-        finally:
-            os.chdir(original_dir)
+        # Check for files to archive (exclude .git and .vm0 directories)
+        files_to_add = [item for item in os.listdir(".") if item not in (".git", ".vm0")]
 
         # Upload to storage webhook API
         form_fields = {
@@ -77,12 +65,31 @@ def create_vas_snapshot(
             "message": f"Checkpoint from run {RUN_ID}"
         }
 
-        response = http_post_form(
-            STORAGE_WEBHOOK_URL,
-            form_fields,
-            file_path=tar_path,
-            file_field="file"
-        )
+        if not files_to_add:
+            # No files - call webhook without file attachment
+            log_info(f"No files to snapshot for '{storage_name}', creating empty version")
+            os.chdir(original_dir)
+            response = http_post_form(STORAGE_WEBHOOK_URL, form_fields)
+        else:
+            # Create tar.gz file
+            try:
+                with tarfile.open(tar_path, "w:gz") as tar:
+                    for item in files_to_add:
+                        tar.add(item)
+                log_info(f"Created tar.gz file for storage '{storage_name}'")
+            except Exception as e:
+                log_error(f"Failed to create tar.gz for storage '{storage_name}': {e}")
+                os.chdir(original_dir)
+                return None
+            finally:
+                os.chdir(original_dir)
+
+            response = http_post_form(
+                STORAGE_WEBHOOK_URL,
+                form_fields,
+                file_path=tar_path,
+                file_field="file"
+            )
 
         if response is None:
             log_error(f"Failed to upload snapshot for storage '{storage_name}'")

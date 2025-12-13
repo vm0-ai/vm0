@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     const storageName = formData.get("storageName") as string;
     const storageType = formData.get("storageType") as string;
     const message = formData.get("message") as string | null;
-    const file = formData.get("file") as File;
+    const file = formData.get("file") as File | null;
 
     // Validate required fields
     if (!runId) {
@@ -93,9 +93,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!file) {
-      return errorResponse("file: file is required", "BAD_REQUEST", 400);
-    }
+    // Note: file is optional - empty storages can be created without a file
 
     log.debug(
       `Received storage version request for "${storageName}" (type: ${storageType}) from run ${runId}`,
@@ -134,41 +132,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create temp directory for extraction
-    tempDir = path.join(os.tmpdir(), `vm0-storage-webhook-${Date.now()}`);
-    await fs.promises.mkdir(tempDir, { recursive: true });
+    let fileCount: number;
+    let totalSize: number;
+    let fileEntries: FileEntry[];
 
-    // Save uploaded file to temp location
-    const tarGzPath = path.join(tempDir, "upload.tar.gz");
-    const arrayBuffer = await file.arrayBuffer();
-    await fs.promises.writeFile(tarGzPath, Buffer.from(arrayBuffer));
+    if (file) {
+      // Create temp directory for extraction
+      tempDir = path.join(os.tmpdir(), `vm0-storage-webhook-${Date.now()}`);
+      await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Extract tar.gz file
-    const extractPath = path.join(tempDir, "extracted");
-    // Ensure extract directory exists before extraction (empty archives don't create it)
-    await fs.promises.mkdir(extractPath, { recursive: true });
-    await tar.extract({
-      file: tarGzPath,
-      cwd: extractPath,
-      gzip: true,
-    });
+      // Save uploaded file to temp location
+      const tarGzPath = path.join(tempDir, "upload.tar.gz");
+      const arrayBuffer = await file.arrayBuffer();
+      await fs.promises.writeFile(tarGzPath, Buffer.from(arrayBuffer));
 
-    log.debug(`Extracted tar.gz to ${extractPath}`);
+      // Extract tar.gz file
+      const extractPath = path.join(tempDir, "extracted");
+      // Ensure extract directory exists before extraction (empty archives don't create it)
+      await fs.promises.mkdir(extractPath, { recursive: true });
+      await tar.extract({
+        file: tarGzPath,
+        cwd: extractPath,
+        gzip: true,
+      });
 
-    // Calculate file count, size, and collect file entries for hashing
-    const filePaths = await getAllFiles(extractPath);
-    const fileCount = filePaths.length;
-    let totalSize = 0;
-    const fileEntries: FileEntry[] = [];
+      log.debug(`Extracted tar.gz to ${extractPath}`);
 
-    for (const filePath of filePaths) {
-      const stats = await fs.promises.stat(filePath);
-      totalSize += stats.size;
+      // Calculate file count, size, and collect file entries for hashing
+      const filePaths = await getAllFiles(extractPath);
+      fileCount = filePaths.length;
+      totalSize = 0;
+      fileEntries = [];
 
-      // Read file content for hash computation
-      const content = await fs.promises.readFile(filePath);
-      const relativePath = path.relative(extractPath, filePath);
-      fileEntries.push({ path: relativePath, content });
+      for (const filePath of filePaths) {
+        const stats = await fs.promises.stat(filePath);
+        totalSize += stats.size;
+
+        // Read file content for hash computation
+        const content = await fs.promises.readFile(filePath);
+        const relativePath = path.relative(extractPath, filePath);
+        fileEntries.push({ path: relativePath, content });
+      }
+    } else {
+      // No file provided - create empty storage version
+      log.debug("No file provided, creating empty storage version");
+      fileCount = 0;
+      totalSize = 0;
+      fileEntries = [];
     }
 
     // Compute content-addressable hash for version ID (includes storageId for uniqueness per storage)
@@ -258,9 +268,11 @@ export async function POST(request: NextRequest) {
       `Successfully created/reused version ${versionId} for storage "${storageName}"`,
     );
 
-    // Clean up temp directory
-    await fs.promises.rm(tempDir, { recursive: true, force: true });
-    tempDir = null;
+    // Clean up temp directory if it was created
+    if (tempDir) {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+      tempDir = null;
+    }
 
     // Return response
     return NextResponse.json({

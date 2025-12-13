@@ -225,6 +225,13 @@ export async function POST(request: NextRequest) {
     const newFileEntries: FileEntry[] = [];
     let bytesUploaded = 0;
 
+    // File is optional - delete-only changes don't need a file upload
+    if (!file && (changes.added.length > 0 || changes.modified.length > 0)) {
+      log.warn(
+        "No file provided but there are added/modified files - treating as delete-only",
+      );
+    }
+
     if (file && (changes.added.length > 0 || changes.modified.length > 0)) {
       // Create temp directory for extraction
       tempDir = path.join(os.tmpdir(), `vm0-storage-incremental-${Date.now()}`);

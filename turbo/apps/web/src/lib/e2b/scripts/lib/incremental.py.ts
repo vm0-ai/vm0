@@ -47,8 +47,8 @@ def compute_local_manifest(dir_path: str) -> Dict[str, Any]:
         os.chdir(dir_path)
 
         for root, dirs, filenames in os.walk("."):
-            # Exclude .git and .vas directories
-            dirs[:] = [d for d in dirs if d not in (".git", ".vas")]
+            # Exclude .git and .vm0 directories
+            dirs[:] = [d for d in dirs if d not in (".git", ".vm0")]
 
             for filename in filenames:
                 rel_path = os.path.join(root, filename)
@@ -113,7 +113,7 @@ def create_incremental_tar(
     mount_path: str,
     tar_path: str,
     changes: Dict[str, List[str]]
-) -> bool:
+) -> Optional[bool]:
     """
     Create tar.gz of only changed files.
 
@@ -123,7 +123,7 @@ def create_incremental_tar(
         changes: Dict with added and modified file lists
 
     Returns:
-        True on success, False on failure
+        True on success, None if no files to add, False on failure
     """
     original_dir = os.getcwd()
 
@@ -134,10 +134,8 @@ def create_incremental_tar(
         file_list = changes.get("added", []) + changes.get("modified", [])
 
         if not file_list:
-            # No files to add, create empty tar.gz
-            with tarfile.open(tar_path, "w:gz") as tar:
-                pass
-            return True
+            # No files to add - return None to indicate no tar needed
+            return None
 
         # Create tar.gz from file list
         with tarfile.open(tar_path, "w:gz") as tar:
@@ -227,14 +225,14 @@ def create_incremental_snapshot(
             log_info("No changes detected, skipping upload")
             return {"versionId": base_version_id, "unchanged": True}
 
-        # Create tar.gz of changed files
+        # Create tar.gz of changed files (if any)
         tar_path = os.path.join(temp_dir, "changes.tar.gz")
-        if not create_incremental_tar(mount_path, tar_path, changes):
+        tar_result = create_incremental_tar(mount_path, tar_path, changes)
+        if tar_result is False:
             log_warn("Failed to create incremental tar, falling back to full upload")
             return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Upload to incremental endpoint
-        log_info("Uploading incremental changes...")
         form_fields = {
             "runId": RUN_ID,
             "storageName": vas_storage_name,
@@ -244,12 +242,19 @@ def create_incremental_snapshot(
             "message": f"Incremental checkpoint from run {RUN_ID}"
         }
 
-        response = http_post_form(
-            INCREMENTAL_WEBHOOK_URL,
-            form_fields,
-            file_path=tar_path,
-            file_field="file"
-        )
+        if tar_result is None:
+            # Delete-only changes - upload without file
+            log_info("Uploading delete-only changes (no file)...")
+            response = http_post_form(INCREMENTAL_WEBHOOK_URL, form_fields)
+        else:
+            # Upload with file
+            log_info("Uploading incremental changes...")
+            response = http_post_form(
+                INCREMENTAL_WEBHOOK_URL,
+                form_fields,
+                file_path=tar_path,
+                file_field="file"
+            )
 
         if response is None:
             log_warn("Incremental upload failed, falling back to full upload")
