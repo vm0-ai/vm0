@@ -238,11 +238,15 @@ export class E2BService {
 
       // Upload all scripts to sandbox via single tar archive
       // This is done ONCE before any other operations to minimize E2B API calls
+      log.debug(`[${context.runId}] Uploading scripts to sandbox...`);
       await this.uploadAllScripts(sandbox);
+      log.debug(`[${context.runId}] Scripts uploaded successfully`);
 
       // Download storages directly to sandbox via presigned URLs
       // Scripts are already available from uploadAllScripts()
+      log.debug(`[${context.runId}] Downloading storages to sandbox...`);
       await this.downloadStoragesDirectly(sandbox, storageManifest);
+      log.debug(`[${context.runId}] Storages downloaded successfully`);
 
       // Restore session history for resume
       if (context.resumeSession) {
@@ -257,11 +261,13 @@ export class E2BService {
       // Start Claude Code via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
       // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
+      log.debug(`[${context.runId}] Starting agent execution...`);
       await this.startAgentExecution(
         sandbox,
         context.runId,
         context.betaNetworkSecurity || false,
       );
+      log.debug(`[${context.runId}] Agent execution command sent`);
 
       const prepTimeMs = Date.now() - startTime;
       log.debug(
@@ -619,9 +625,9 @@ export class E2BService {
     // to avoid redirect loops.
     // Use python3 -u for unbuffered stdout/stderr to ensure logs are written immediately
     const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+    log.debug(`[${runId}] Executing background command: ${cmd}`);
     await sandbox.commands.run(cmd);
-
-    log.debug(`Agent execution started in background for run ${runId}`);
+    log.debug(`[${runId}] Background command returned successfully`);
   }
 
   /**
