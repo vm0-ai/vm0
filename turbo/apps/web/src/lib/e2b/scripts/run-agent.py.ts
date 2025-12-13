@@ -53,59 +53,33 @@ def heartbeat_loop():
 
 def main():
     """Main entry point for agent execution."""
-    # Validate configuration (this logs all env vars to stderr)
+    # Validate configuration
     validate_config()
 
     log_info(f"Working directory: {WORKING_DIR}")
-
-    # Test API connectivity immediately after startup
-    # This helps diagnose connection issues early
-    log_info(f"Testing API connectivity to heartbeat endpoint...")
-    from common import HEARTBEAT_URL
-    test_result = http_post_json(HEARTBEAT_URL, {"runId": RUN_ID})
-    if test_result:
-        log_info("API connectivity test: SUCCESS")
-    else:
-        log_error("API connectivity test: FAILED - webhooks may not work")
 
     # Log proxy mode status
     # NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
     # This ensures mitmproxy is running and nftables rules are in place
     if PROXY_ENABLED:
         log_info("Network security mode enabled (proxy configured by e2b-service)")
-    else:
-        log_info("Network security mode disabled (direct connections)")
 
     # Start heartbeat thread
-    log_info("Starting heartbeat thread...")
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
     log_info("Heartbeat thread started")
 
     # Start metrics collector thread
-    log_info("Starting metrics collector thread...")
     start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
 
     # Start telemetry upload thread
-    log_info("Starting telemetry upload thread...")
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
 
-    # Telemetry uploads are now handled by the background thread
-    # We don't block startup waiting for telemetry - if it's slow, agent should still start
-    import sys
-    sys.stderr.flush()
-    log_info("Startup phase complete, proceeding to Claude execution")
-    sys.stderr.flush()
-
     # Change to working directory
-    log_info(f"Changing to working directory: {WORKING_DIR}")
-    sys.stderr.flush()
     try:
         os.chdir(WORKING_DIR)
-        log_info("Working directory changed successfully")
-        sys.stderr.flush()
     except OSError as e:
         log_error(f"Failed to change to working directory: {WORKING_DIR} - {e}")
         sys.exit(1)
@@ -116,12 +90,10 @@ def main():
     claude_config_dir = f"{home_dir}/.config/claude"
     os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
     log_info(f"Claude config directory: {claude_config_dir}")
-    sys.stderr.flush()
 
     # Execute Claude Code with JSONL output
     log_info("Starting Claude Code execution...")
     log_info(f"Prompt: {PROMPT}")
-    sys.stderr.flush()
 
     # Build Claude command - unified for both new and resume sessions
     claude_args = [
