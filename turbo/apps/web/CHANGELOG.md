@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.4](https://github.com/vm0-ai/vm0/compare/web-v5.4.3...web-v5.4.4) (2025-12-13)
+
+
+### Bug Fixes
+
+* **e2b:** add detailed logging inside upload_telemetry function ([#524](https://github.com/vm0-ai/vm0/issues/524)) ([11f4a7c](https://github.com/vm0-ai/vm0/commit/11f4a7cb97f2c8b137dc13335d34d673692f743d))
+
 ## [5.4.3](https://github.com/vm0-ai/vm0/compare/web-v5.4.2...web-v5.4.3) (2025-12-13)
 
 
