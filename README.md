@@ -100,7 +100,12 @@ Create your own agent from scratch:
 # 1. Login
 vm0 auth login
 
-# 2. Create agent config
+# 2. Setup secrets (get token from: claude setup-token)
+cat > .env << 'EOF'
+CLAUDE_CODE_OAUTH_TOKEN=<your-token>
+EOF
+
+# 3. Create agent config
 cat > vm0.yaml << 'EOF'
 version: "1.0"
 agents:
@@ -110,13 +115,15 @@ agents:
     working_dir: /home/user/workspace
     volumes:
       - claude-files:/home/user/.config/claude
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 volumes:
   claude-files:
     name: claude-files
     version: latest
 EOF
 
-# 3. Create volume with CLAUDE.md
+# 4. Create volume with CLAUDE.md
 mkdir claude-files && cd claude-files
 cat > CLAUDE.md << 'EOF'
 You are a helpful coding assistant. Create clean, well-documented code.
@@ -126,17 +133,17 @@ vm0 volume init
 vm0 volume push
 cd ..
 
-# 4. Compose agent
+# 5. Compose agent
 vm0 compose vm0.yaml
 
-# 5. Setup workspace
+# 6. Setup workspace
 mkdir workspace && cd workspace
 vm0 artifact init
 
-# 6. Run agent
+# 7. Run agent
 vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
 
-# 7. Get results
+# 8. Get results
 vm0 artifact pull
 cat hello.py
 ```
@@ -157,6 +164,7 @@ vm0 auth status              # Check auth status
 
 ```bash
 vm0 compose <config.yaml>    # Create/update agent compose from config
+vm0 cook "<prompt>"          # Auto-setup and run (volumes + artifacts)
 ```
 
 ### Running agents
@@ -165,9 +173,16 @@ vm0 compose <config.yaml>    # Create/update agent compose from config
 # Basic run
 vm0 run <agent-name> --artifact-name <name> "<prompt>"
 
-# With variables
+# With variables and secrets
 vm0 run my-agent --artifact-name workspace \
   --vars KEY=value \
+  --secrets API_KEY=xxx \
+  "Do something"
+
+# With version pinning
+vm0 run my-agent --artifact-name workspace \
+  --artifact-version <hash> \
+  --volume-version myvolume=<hash> \
   "Do something"
 
 # Resume from checkpoint (full state snapshot)
@@ -176,6 +191,16 @@ vm0 run resume <checkpoint-id> "<prompt>"
 # Continue from session (latest artifact version)
 vm0 run continue <session-id> "<prompt>"
 ```
+
+Options:
+- `--vars KEY=value` - Variables for `${{ vars.xxx }}` (repeatable)
+- `--secrets KEY=value` - Secrets for `${{ secrets.xxx }}` (repeatable)
+- `--artifact-version <hash>` - Use specific artifact version
+- `--volume-version <name=version>` - Override volume version
+- `--conversation <id>` - Resume from conversation ID
+- `-v, --verbose` - Show verbose output
+
+> Secrets and vars auto-load from environment variables and `.env` files.
 
 ### Artifact management
 
@@ -201,6 +226,35 @@ vm0 volume pull              # Download from cloud
 vm0 volume pull <version>    # Pull specific version
 ```
 
+### Image management
+
+Build and manage custom images for your agents.
+
+```bash
+vm0 image build -f <dockerfile> -n <name>    # Build custom image
+vm0 image list                                # List your images
+vm0 image delete <name>                       # Delete an image
+```
+
+### Logs
+
+View logs for completed or running agent runs.
+
+```bash
+vm0 logs <runId>             # Show agent events (default)
+vm0 logs <runId> --system    # Show system log
+vm0 logs <runId> --metrics   # Show CPU/memory/disk metrics
+vm0 logs <runId> --network   # Show network traffic logs
+vm0 logs <runId> --limit 50  # Limit entries (default: 5)
+vm0 logs <runId> --since 5m  # Filter by time (5m, 2h, 1d)
+```
+
+### Other commands
+
+```bash
+vm0 info                     # Display environment information
+```
+
 ## Agent configuration
 
 Create a `vm0.yaml` file to define your agent:
@@ -216,6 +270,8 @@ agents:
     working_dir: /home/user/workspace
     volumes:
       - my-volume:/home/user/data
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
 volumes:
   my-volume:
