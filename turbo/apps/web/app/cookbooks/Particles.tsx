@@ -23,12 +23,22 @@ export default function Particles() {
             "linear-gradient(rgba(255, 140, 77, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 140, 77, 0.1) 1px, transparent 1px)",
           backgroundSize: "40px 40px",
           opacity: 0.3,
-          maskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          maskImage:
+            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
         }}
       />
       {/* Particles */}
-      <div className="particles" style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+      <div
+        className="particles"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+        }}
+      >
         {particles}
       </div>
     </>

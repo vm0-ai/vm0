@@ -1809,7 +1809,9 @@ section {
   font-weight: 400;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: color 0.2s ease, opacity 0.2s ease;
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease;
   line-height: 1.5;
 }
 
