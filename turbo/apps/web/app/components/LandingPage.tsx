@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import Navbar from "./Navbar";
+import Footer from "./Footer";
 
 export default function LandingPage() {
   const sandboxRef = useRef<HTMLDivElement>(null);
@@ -104,48 +106,7 @@ export default function LandingPage() {
 
   return (
     <>
-      {/* Navigation */}
-      <nav className="navbar">
-        <div className="container">
-          <div className="nav-wrapper">
-            <div className="nav-left">
-              <div className="logo">
-                <Image
-                  src="/assets/vm0-logo.svg"
-                  alt="VM0 - Modern Runtime for Agent Development"
-                  width={120}
-                  height={30}
-                />
-              </div>
-              <span className="tagline">
-                Build and evolve AI agents in natural language.
-              </span>
-            </div>
-            <div className="nav-right">
-              <a
-                href="https://github.com/vm0-ai/vm0"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="nav-github"
-                aria-label="GitHub"
-              >
-                <Image
-                  src="/assets/github.svg"
-                  alt="GitHub"
-                  width={24}
-                  height={24}
-                />
-              </a>
-              <a href="mailto:ethan@vm0.ai" className="btn-try-demo">
-                Contact us
-              </a>
-              <Link href="/sign-up" className="btn-get-access">
-                Join waitlist
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero Section */}
       <section className="hero-section">
@@ -156,16 +117,21 @@ export default function LandingPage() {
                 The modern runtime for agent-native development
               </h1>
               <p className="hero-description">
-                Infrastructure for AI agents, not workflows. VM0&apos;s built-in
-                sandbox gives you everything you need to design, run, and
-                iterate on modern agents.
+                From workflows to real agents. VM0 makes agent building
+                accessible through natural language, backed by agent-native
+                infrastructure.
               </p>
               <div className="hero-buttons">
                 <Link href="/sign-up" className="btn-primary-large">
                   Join waitlist
                 </Link>
-                <a href="mailto:ethan@vm0.ai" className="btn-secondary-large">
-                  Contact us
+                <a
+                  href="https://github.com/vm0-ai/vm0"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary-large"
+                >
+                  GitHub
                 </a>
               </div>
             </div>
@@ -257,7 +223,7 @@ export default function LandingPage() {
       {/* Build Agents Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">Build agents in a modern way</h2>
+          <h2 className="section-title">Build agents the human way</h2>
           <p className="section-description">
             Today&apos;s options fall into two buckets: tools that only run
             containers, and workflow builders that are too rigid for real agent
@@ -310,6 +276,14 @@ export default function LandingPage() {
                       height={40}
                     />
                   </div>
+                  <div className="tool-logo">
+                    <Image
+                      src="/assets/langfuse.svg"
+                      alt="Langfuse LLM observability platform"
+                      width={80}
+                      height={40}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="comparison-divider"></div>
@@ -335,12 +309,12 @@ export default function LandingPage() {
       <section className="section-spacing">
         <div className="container">
           <h2 className="section-title">
-            Support all kinds of CLI-based agents
+            Riding the LLM wave, VM0 also acts as an agent router
           </h2>
           <p className="section-description">
             Use Claude Code, Codex, Gemini, and other CLI agents to build your
             own. VM0 fits into any agent development and provides the
-            infrastructure you need to create vertical, end-user-facing agents.
+            infrastructure you need to create your own agent or smart workflows.
           </p>
 
           <div className="cli-section-wrapper">
@@ -462,10 +436,10 @@ export default function LandingPage() {
                     height={24}
                   />
                 </div>
-                <h3 className="use-case-title">Coding agent</h3>
+                <h3 className="use-case-title">Coding management agent</h3>
                 <p className="use-case-desc">
-                  Safely run code, interact with I/O, access the web, and
-                  execute terminal operations
+                  Discovers trending repos and manages issues, PRs, and repo
+                  tasks
                 </p>
               </div>
             </div>
@@ -477,7 +451,7 @@ export default function LandingPage() {
       <section className="section-spacing">
         <div className="container">
           <h2 className="section-title">
-            We design a smarter, better agent development experience for you
+            A better agent development experience, built on solid infrastructure
           </h2>
 
           <div className="features-stack">
@@ -619,7 +593,7 @@ export default function LandingPage() {
               Build and evolve AI agents inside their own reality
             </h2>
             <p className="cta-subtitle">
-              {"//"} build logic, not infrastructure
+              {"//"} Express your intent. VM0 handles the rest.
             </p>
             <Link href="/sign-up" className="btn-primary-large">
               Join waitlist
@@ -628,34 +602,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="footer">
-        <div className="container">
-          <div className="footer-content">
-            <div className="footer-brand">
-              <div className="footer-logo">
-                <Image
-                  src="/assets/vm0-logo.svg"
-                  alt="VM0"
-                  width={112}
-                  height={28}
-                />
-              </div>
-              <p className="footer-tagline">
-                Modern infrastructure for agent development
-              </p>
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <p className="footer-copyright">
-              © 2025 VM0.ai All rights reserved.
-            </p>
-            <a href="mailto:ethan@vm0.ai" className="footer-link">
-              Contact us
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }

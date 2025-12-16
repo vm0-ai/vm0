@@ -144,7 +144,7 @@ export default function RootLayout({
                 logo: "https://vm0.ai/assets/vm0-logo.svg",
                 description:
                   "The modern runtime for agent-native development. Infrastructure for AI agents, not workflows.",
-                email: "ethan@vm0.ai",
+                email: "contact@vm0.ai",
                 foundingDate: "2025",
                 sameAs: [
                   // Add social media links if available
@@ -154,7 +154,7 @@ export default function RootLayout({
                 ],
                 contactPoint: {
                   "@type": "ContactPoint",
-                  email: "ethan@vm0.ai",
+                  email: "contact@vm0.ai",
                   contactType: "customer support",
                 },
               }),

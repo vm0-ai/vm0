@@ -3,6 +3,7 @@ import { handleCors } from "./middleware.cors";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/cookbooks",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/cli/auth/device",

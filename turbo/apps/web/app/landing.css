@@ -94,12 +94,19 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  position: relative;
 }
 
 .nav-left {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.nav-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .logo {
@@ -1765,9 +1772,9 @@ section {
 }
 
 .footer-links {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 40px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
 }
 
 .footer-column {
@@ -1794,17 +1801,29 @@ section {
 }
 
 .footer-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: "Fira Mono", monospace;
   font-size: 14px;
   font-weight: 400;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color 0.2s ease, opacity 0.2s ease;
   line-height: 1.5;
+}
+
+.footer-link img {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
 }
 
 .footer-link:hover {
   color: var(--primary);
+}
+
+.footer-link:hover img {
+  opacity: 1;
 }
 
 .footer-bottom {
@@ -1974,6 +1993,18 @@ section {
 
   .navbar {
     padding: 20px 0;
+  }
+
+  .nav-center {
+    gap: 16px !important;
+  }
+
+  .nav-center a:not([href="/cookbooks"]) {
+    display: none;
+  }
+
+  .nav-right .btn-try-demo {
+    display: none;
   }
 
   .tagline {
@@ -2221,6 +2252,10 @@ section {
 
   .navbar {
     padding: 16px 0;
+  }
+
+  .nav-center {
+    display: none;
   }
 
   .hero-text {
