@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.0](https://github.com/vm0-ai/vm0/compare/web-v5.6.0...web-v5.7.0) (2025-12-16)
+
+
+### Features
+
+* add cookbooks page to sitemap ([#561](https://github.com/vm0-ai/vm0/issues/561)) ([80e6839](https://github.com/vm0-ai/vm0/commit/80e6839798c1911d77c8aeaeac2eaebee58e5e4a))
+
 ## [5.6.0](https://github.com/vm0-ai/vm0/compare/web-v5.5.2...web-v5.6.0) (2025-12-13)
 
 
