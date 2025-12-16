@@ -139,6 +139,7 @@ vm0 compose vm0.yaml
 # 6. Setup workspace
 mkdir workspace && cd workspace
 vm0 artifact init
+vm0 artifact push
 
 # 7. Run agent
 vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
