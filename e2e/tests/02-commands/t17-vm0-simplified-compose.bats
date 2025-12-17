@@ -19,8 +19,8 @@ teardown() {
 # Provider auto-configuration tests
 # ============================================
 
-@test "vm0 compose with provider auto-config (no explicit image/working_dir)" {
-    echo "# Creating simplified config without image and working_dir..."
+@test "vm0 compose with provider auto-config (working_dir only)" {
+    echo "# Creating config with image but without working_dir..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -28,37 +28,54 @@ agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
     provider: claude-code
+    image: vm0-claude-code-dev
 EOF
 
     echo "# Running vm0 compose..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying auto-configuration messages..."
-    assert_output --partial "Auto-configured image"
+    echo "# Verifying working_dir was auto-configured..."
     assert_output --partial "Auto-configured working_dir"
     assert_output --partial "Compose created"
 }
 
-@test "vm0 compose with explicit image overrides auto-config" {
-    echo "# Creating config with explicit image..."
+@test "vm0 compose requires image even with supported provider" {
+    echo "# Creating config without image..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent with explicit image"
+    description: "Test agent without image"
+    provider: claude-code
+EOF
+
+    echo "# Running vm0 compose (should fail)..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_failure
+    assert_output --partial "agent.image"
+}
+
+@test "vm0 compose with explicit working_dir skips auto-config" {
+    echo "# Creating config with explicit image and working_dir..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with explicit config"
     provider: claude-code
     image: vm0-github-cli-dev
+    working_dir: /custom/path
 EOF
 
     echo "# Running vm0 compose..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying only working_dir was auto-configured..."
-    refute_output --partial "Auto-configured image"
-    assert_output --partial "Auto-configured working_dir"
+    echo "# Verifying no auto-configuration..."
+    refute_output --partial "Auto-configured"
 }
 
 # ============================================
@@ -73,6 +90,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -101,6 +119,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -222,6 +241,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -302,6 +322,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_skills:
       - https://example.com/not-a-github-url
 EOF
@@ -320,6 +341,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_prompt: ""
 EOF
 
@@ -337,6 +359,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
+    image: vm0-claude-code-dev
     beta_system_prompt: nonexistent-file.md
 EOF
 

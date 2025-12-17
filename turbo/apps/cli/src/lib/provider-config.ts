@@ -1,10 +1,10 @@
 /**
- * Provider configuration for auto-resolving image and working_dir
+ * Provider configuration for auto-resolving working_dir
  * When a provider is specified, these defaults can be used if not explicitly set
+ * Note: image is always required and must be explicitly configured
  */
 
 export interface ProviderDefaults {
-  image: string;
   workingDir: string;
 }
 
@@ -13,7 +13,6 @@ export interface ProviderDefaults {
  */
 const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   "claude-code": {
-    image: "vm0-claude-code-dev",
     workingDir: "/home/user/workspace",
   },
 };

@@ -17,7 +17,7 @@ export interface VolumeConfig {
  */
 export interface AgentDefinition {
   description?: string;
-  image?: string; // Optional when provider supports auto-config (e.g., claude-code)
+  image: string;
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   working_dir?: string; // Optional when provider supports auto-config

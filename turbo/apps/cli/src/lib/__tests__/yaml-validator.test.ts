@@ -399,7 +399,22 @@ describe("validateAgentCompose", () => {
   });
 
   describe("provider auto-config", () => {
-    it("should accept config without image/working_dir when provider is claude-code", () => {
+    it("should accept config without working_dir when provider is claude-code", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            image: "vm0-claude-code-dev",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should reject config without image even when provider is claude-code", () => {
       const config = {
         version: "1.0",
         agents: {
@@ -410,7 +425,8 @@ describe("validateAgentCompose", () => {
       };
 
       const result = validateAgentCompose(config);
-      expect(result.valid).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("agent.image");
     });
 
     it("should accept config with beta_system_prompt", () => {
@@ -419,6 +435,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
+            image: "vm0-claude-code-dev",
             beta_system_prompt: "AGENTS.md",
           },
         },
@@ -434,6 +451,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
+            image: "vm0-claude-code-dev",
             beta_system_skills: [
               "https://github.com/vm0-ai/vm0-skills/tree/main/github",
             ],
@@ -451,6 +469,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
+            image: "vm0-claude-code-dev",
             beta_system_prompt: "",
           },
         },
@@ -467,6 +486,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
+            image: "vm0-claude-code-dev",
             beta_system_skills: ["https://example.com/not-github"],
           },
         },

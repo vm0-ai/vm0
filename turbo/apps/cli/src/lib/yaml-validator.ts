@@ -122,18 +122,11 @@ export function validateAgentCompose(config: unknown): {
 
   const providerIsSupported = isProviderSupported(agent.provider as string);
 
-  // Check agent.image (optional when provider is supported)
-  if (agent.image !== undefined && typeof agent.image !== "string") {
+  // Check agent.image (always required)
+  if (!agent.image || typeof agent.image !== "string") {
     return {
       valid: false,
-      error: "agent.image must be a string if provided",
-    };
-  }
-  if (!agent.image && !providerIsSupported) {
-    return {
-      valid: false,
-      error:
-        "Missing agent.image (required when provider is not auto-configured)",
+      error: "Missing or invalid agent.image (must be a string)",
     };
   }
 

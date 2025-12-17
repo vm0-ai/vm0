@@ -49,16 +49,10 @@ export const composeCommand = new Command()
       const agent = agents[agentName]!;
       const basePath = dirname(configFile);
 
-      // Apply provider auto-configuration if not explicitly set
+      // Apply provider auto-configuration for working_dir if not explicitly set
       if (agent.provider) {
         const defaults = getProviderDefaults(agent.provider as string);
         if (defaults) {
-          if (!agent.image) {
-            agent.image = defaults.image;
-            console.log(
-              chalk.gray(`  Auto-configured image: ${defaults.image}`),
-            );
-          }
           if (!agent.working_dir) {
             agent.working_dir = defaults.workingDir;
             console.log(
