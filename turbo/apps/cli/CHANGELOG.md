@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.1](https://github.com/vm0-ai/vm0/compare/cli-v4.8.0...cli-v4.8.1) (2025-12-17)
+
+
+### Bug Fixes
+
+* **cli:** fix error message display in artifact/volume pull commands ([#570](https://github.com/vm0-ai/vm0/issues/570)) ([56af5c7](https://github.com/vm0-ai/vm0/commit/56af5c7d43edf0dae9b580b09cce87ed514afc3a))
+
 ## [4.8.0](https://github.com/vm0-ai/vm0/compare/cli-v4.7.1...cli-v4.8.0) (2025-12-17)
 
 
