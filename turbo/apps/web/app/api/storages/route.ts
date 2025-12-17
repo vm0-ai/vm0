@@ -296,27 +296,32 @@ export async function POST(request: NextRequest) {
         log.debug(`Version ${contentHash} already exists, recreating archive`);
       }
 
-      // Upload blobs with deduplication
-      const blobResult = await blobService.uploadBlobs(fileEntries);
-      log.debug(
-        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
-      );
+      // Skip S3 upload for empty artifacts - only create database records
+      if (fileCount === 0) {
+        log.debug("Empty artifact, skipping S3 upload");
+      } else {
+        // Upload blobs with deduplication
+        const blobResult = await blobService.uploadBlobs(fileEntries);
+        log.debug(
+          `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
+        );
 
-      // Upload manifest and archive.tar.gz
-      const bucketName = env().S3_USER_STORAGES_NAME;
-      if (!bucketName) {
-        throw new Error(
-          "S3_USER_STORAGES_NAME environment variable is not set",
+        // Upload manifest and archive.tar.gz
+        const bucketName = env().S3_USER_STORAGES_NAME;
+        if (!bucketName) {
+          throw new Error(
+            "S3_USER_STORAGES_NAME environment variable is not set",
+          );
+        }
+        const s3Uri = `s3://${bucketName}/${versionS3Key}`;
+        log.debug(`Uploading manifest and archive to ${s3Uri}...`);
+        await uploadStorageVersionArchive(
+          s3Uri,
+          contentHash,
+          fileEntries,
+          blobResult.hashes,
         );
       }
-      const s3Uri = `s3://${bucketName}/${versionS3Key}`;
-      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
-      await uploadStorageVersionArchive(
-        s3Uri,
-        contentHash,
-        fileEntries,
-        blobResult.hashes,
-      );
 
       // Update storage's HEAD pointer and metadata within transaction
       await tx
@@ -483,33 +488,11 @@ export async function GET(request: NextRequest) {
 
     log.debug(`Downloading version ${version.id} (${version.fileCount} files)`);
 
-    // Handle empty artifact case - return empty tar.gz without downloading from S3
-    // Empty archives created by archiver may not be valid tar format
+    // Handle empty artifact case - return 204 No Content
+    // No S3 download needed, client will sync to empty state
     if (version.fileCount === 0) {
-      log.debug("Empty artifact, returning empty tar.gz");
-      // Create an empty tar.gz file
-      tempDir = path.join(os.tmpdir(), `vm0-storage-${Date.now()}`);
-      await fs.promises.mkdir(tempDir, { recursive: true });
-      const emptyDir = path.join(tempDir, "empty");
-      await fs.promises.mkdir(emptyDir, { recursive: true });
-      const emptyTarPath = path.join(tempDir, "empty.tar.gz");
-      await tar.create(
-        {
-          gzip: true,
-          file: emptyTarPath,
-          cwd: emptyDir,
-        },
-        ["."],
-      );
-      const emptyTarBuffer = await fs.promises.readFile(emptyTarPath);
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-      tempDir = null;
-      return new NextResponse(new Uint8Array(emptyTarBuffer), {
-        headers: {
-          "Content-Type": "application/gzip",
-          "Content-Disposition": `attachment; filename="${storageName}.tar.gz"`,
-        },
-      });
+      log.debug("Empty artifact, returning 204 No Content");
+      return new NextResponse(null, { status: 204 });
     }
 
     // Create temp directory for download

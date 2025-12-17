@@ -83,6 +83,20 @@ export const pullCommand = new Command()
         process.exit(1);
       }
 
+      // Handle empty artifact (204 No Content)
+      if (response.status === 204) {
+        console.log(chalk.gray("Syncing local files..."));
+        // Sync to empty state - remove all local files
+        const removedCount = await removeExtraFiles(cwd, new Set());
+        if (removedCount > 0) {
+          console.log(
+            chalk.green(`✓ Removed ${removedCount} files not in remote`),
+          );
+        }
+        console.log(chalk.green("✓ Synced (0 files)"));
+        return;
+      }
+
       // Get tar.gz buffer
       const arrayBuffer = await response.arrayBuffer();
       const tarBuffer = Buffer.from(arrayBuffer);
