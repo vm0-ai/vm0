@@ -93,11 +93,10 @@ teardown() {
     run $CLI_COMMAND logs "$RUN_ID" --system --limit 100
 
     assert_success
-    # System log should contain sandbox log entries with new format
-    # Format: [timestamp] ▶ VM0 Sandbox {run_id}
-    #         [timestamp] ▷ Phase message
-    #         [timestamp] ✓ Success message
-    assert_output --partial "▶ VM0 Sandbox"
+    # System log should contain sandbox log entries with INFO level
+    # Format: [TIMESTAMP] [INFO] [sandbox:run-agent] message
+    assert_output --partial "[INFO]"
+    assert_output --partial "[sandbox:"
     echo "# System log contains expected log format"
 
     # Step 7: Verify --metrics option shows resource metrics

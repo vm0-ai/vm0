@@ -18,6 +18,7 @@ from common import (
     SYSTEM_LOG_FILE, METRICS_LOG_FILE, NETWORK_LOG_FILE,
     TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE, TELEMETRY_NETWORK_POS_FILE
 )
+from log import log_info, log_error, log_debug, log_warn
 from http_client import http_post_json
 
 
@@ -51,8 +52,8 @@ def read_file_from_position(file_path: str, pos_file: str) -> tuple[str, int]:
                 f.seek(last_pos)
                 new_content = f.read()
                 new_pos = f.tell()
-        except IOError:
-            pass
+        except IOError as e:
+            log_debug(f"Failed to read {file_path}: {e}")
 
     return new_content, new_pos
 
@@ -62,8 +63,8 @@ def save_position(pos_file: str, position: int) -> None:
     try:
         with open(pos_file, "w") as f:
             f.write(str(position))
-    except IOError:
-        pass
+    except IOError as e:
+        log_debug(f"Failed to save position to {pos_file}: {e}")
 
 
 def read_jsonl_from_position(file_path: str, pos_file: str) -> tuple[List[Dict[str, Any]], int]:
@@ -135,6 +136,7 @@ def upload_telemetry() -> bool:
 
     # Skip if nothing new
     if not system_log and not metrics and not network_logs:
+        log_debug("No new telemetry data to upload")
         return True
 
     # Upload to API
@@ -145,6 +147,8 @@ def upload_telemetry() -> bool:
         "networkLogs": network_logs
     }
 
+    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs")
+
     result = http_post_json(TELEMETRY_URL, payload, max_retries=1)
 
     if result:
@@ -152,8 +156,10 @@ def upload_telemetry() -> bool:
         save_position(TELEMETRY_LOG_POS_FILE, log_pos)
         save_position(TELEMETRY_METRICS_POS_FILE, metrics_pos)
         save_position(TELEMETRY_NETWORK_POS_FILE, network_pos)
+        log_debug(f"Telemetry uploaded successfully: {result.get('id', 'unknown')}")
         return True
     else:
+        log_warn("Failed to upload telemetry (will retry next interval)")
         return False
 
 
@@ -161,15 +167,18 @@ def telemetry_upload_loop(shutdown_event: threading.Event) -> None:
     """
     Background loop that uploads telemetry every TELEMETRY_INTERVAL seconds.
     """
-    # Silent operation - no logging to avoid noise
+    log_info(f"Telemetry upload started (interval: {TELEMETRY_INTERVAL}s)")
+
     while not shutdown_event.is_set():
         try:
             upload_telemetry()
-        except Exception:
-            pass  # Silently continue on errors
+        except Exception as e:
+            log_error(f"Telemetry upload error: {e}")
 
         # Wait for interval or shutdown
         shutdown_event.wait(TELEMETRY_INTERVAL)
+
+    log_info("Telemetry upload stopped")
 
 
 def start_telemetry_upload(shutdown_event: threading.Event) -> threading.Thread:
@@ -200,5 +209,6 @@ def final_telemetry_upload() -> bool:
     Returns:
         True if upload succeeded, False on failure
     """
+    log_info("Performing final telemetry upload...")
     return upload_telemetry()
 `;

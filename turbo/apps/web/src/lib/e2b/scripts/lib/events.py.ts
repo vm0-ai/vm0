@@ -14,7 +14,7 @@ from common import (
     RUN_ID, WORKING_DIR, WEBHOOK_URL,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG
 )
-from log import log_failure
+from log import log_info, log_error
 from http_client import http_post_json
 
 
@@ -36,6 +36,8 @@ def send_event(event: Dict[str, Any]) -> bool:
         if not os.path.exists(SESSION_ID_FILE):
             session_id = event.get("session_id", "")
             if session_id:
+                log_info(f"Captured session ID: {session_id}")
+
                 # Save to temp file to persist across subprocesses
                 with open(SESSION_ID_FILE, "w") as f:
                     f.write(session_id)
@@ -51,6 +53,8 @@ def send_event(event: Dict[str, Any]) -> bool:
                 with open(SESSION_HISTORY_PATH_FILE, "w") as f:
                     f.write(session_history_path)
 
+                log_info(f"Session history will be at: {session_history_path}")
+
     # Build payload
     payload = {
         "runId": RUN_ID,
@@ -61,7 +65,7 @@ def send_event(event: Dict[str, Any]) -> bool:
     result = http_post_json(WEBHOOK_URL, payload)
 
     if result is None:
-        log_failure("Event send failed", "Failed to send event after retries")
+        log_error("Failed to send event after retries")
         # Mark that event sending failed - run-agent will check this
         with open(EVENT_ERROR_FLAG, "w") as f:
             f.write("1")

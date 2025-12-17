@@ -16,7 +16,7 @@ import shutil
 from typing import Optional, Dict, Any, List, Set
 
 from common import RUN_ID, INCREMENTAL_WEBHOOK_URL
-from log import log_detail, log_failure
+from log import log_info, log_warn, log_error, log_debug
 from http_client import http_post_form, http_download
 from vas_snapshot import create_vas_snapshot
 
@@ -65,8 +65,8 @@ def compute_local_manifest(dir_path: str) -> Dict[str, Any]:
                         "hash": file_hash,
                         "size": file_size
                     })
-                except (IOError, OSError):
-                    pass  # Skip files that can't be processed
+                except (IOError, OSError) as e:
+                    log_warn(f"Could not process file {rel_path}: {e}")
 
     finally:
         os.chdir(original_dir)
@@ -146,7 +146,7 @@ def create_incremental_tar(
         return True
 
     except Exception as e:
-        log_failure("Failed to create incremental tar", str(e))
+        log_error(f"Failed to create incremental tar: {e}")
         return False
 
     finally:
@@ -175,20 +175,22 @@ def create_incremental_snapshot(
     Returns:
         Dict with versionId on success, None on failure
     """
+    log_info(f"Attempting incremental upload for '{storage_name}' (type: {storage_type})")
+
     # If no base version or manifest URL, fall back to full upload
     if not base_version_id or not manifest_url:
-        log_detail("No base version, using full upload")
+        log_info("No base version, falling back to full upload")
         return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
     temp_dir = tempfile.mkdtemp(prefix=f"incremental-{RUN_ID}-{storage_name}-")
 
     try:
         # Download base manifest
-        log_detail("Downloading base manifest...")
+        log_info("Downloading base manifest...")
         old_manifest_path = os.path.join(temp_dir, "old-manifest.json")
 
         if not http_download(manifest_url, old_manifest_path):
-            log_detail("Failed to download base manifest, using full upload")
+            log_warn("Failed to download base manifest, falling back to full upload")
             return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Load old manifest
@@ -196,11 +198,11 @@ def create_incremental_snapshot(
             with open(old_manifest_path) as f:
                 old_manifest = json.load(f)
         except (IOError, json.JSONDecodeError) as e:
-            log_detail(f"Failed to parse base manifest, using full upload")
+            log_warn(f"Failed to parse base manifest: {e}, falling back to full upload")
             return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Compute local manifest
-        log_detail("Computing local manifest...")
+        log_info("Computing local manifest...")
         new_manifest = compute_local_manifest(mount_path)
 
         # Save new manifest for debugging
@@ -209,25 +211,25 @@ def create_incremental_snapshot(
             json.dump(new_manifest, f)
 
         # Compute diff
-        log_detail("Computing diff...")
+        log_info("Computing diff...")
         changes = diff_manifests(old_manifest, new_manifest)
 
         added_count = len(changes.get("added", []))
         modified_count = len(changes.get("modified", []))
         deleted_count = len(changes.get("deleted", []))
 
-        log_detail(f"Changes: +{added_count} ~{modified_count} -{deleted_count}")
+        log_info(f"Changes: +{added_count} ~{modified_count} -{deleted_count}")
 
         # If no changes, skip upload
         if added_count == 0 and modified_count == 0 and deleted_count == 0:
-            log_detail("No changes detected, skipping upload")
+            log_info("No changes detected, skipping upload")
             return {"versionId": base_version_id, "unchanged": True}
 
         # Create tar.gz of changed files (if any)
         tar_path = os.path.join(temp_dir, "changes.tar.gz")
         tar_result = create_incremental_tar(mount_path, tar_path, changes)
         if tar_result is False:
-            log_detail("Failed to create incremental tar, using full upload")
+            log_warn("Failed to create incremental tar, falling back to full upload")
             return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Upload to incremental endpoint
@@ -242,11 +244,11 @@ def create_incremental_snapshot(
 
         if tar_result is None:
             # Delete-only changes - upload without file
-            log_detail("Uploading delete-only changes...")
+            log_info("Uploading delete-only changes (no file)...")
             response = http_post_form(INCREMENTAL_WEBHOOK_URL, form_fields)
         else:
             # Upload with file
-            log_detail("Uploading incremental changes...")
+            log_info("Uploading incremental changes...")
             response = http_post_form(
                 INCREMENTAL_WEBHOOK_URL,
                 form_fields,
@@ -255,15 +257,23 @@ def create_incremental_snapshot(
             )
 
         if response is None:
-            log_detail("Incremental upload failed, using full upload")
+            log_warn("Incremental upload failed, falling back to full upload")
             return create_vas_snapshot(mount_path, storage_name, vas_storage_name, storage_type)
 
         # Check response
         version_id = response.get("versionId")
         if not version_id:
-            log_failure("Incremental upload failed", f"Invalid response: {response}")
+            log_error("Invalid response from incremental upload")
+            log_error(f"Response: {response}")
             return None
 
+        # Log incremental stats if available
+        stats = response.get("incrementalStats")
+        if stats:
+            bytes_uploaded = stats.get("bytesUploaded", 0)
+            log_info(f"Incremental upload complete: {bytes_uploaded} bytes uploaded")
+
+        log_info(f"Incremental snapshot created: version {version_id}")
         return {"versionId": version_id}
 
     finally:

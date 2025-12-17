@@ -19,7 +19,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import validate_config
-from log import log_header, log_phase, log_detail, log_success, log_failure
+from log import log_info, log_error
 from http_client import http_download
 
 
@@ -34,7 +34,7 @@ def download_storage(mount_path: str, archive_url: str) -> bool:
     Returns:
         True on success, False on failure
     """
-    log_detail(f"Downloading to {mount_path}")
+    log_info(f"Downloading storage to {mount_path}")
 
     # Create temp file for download
     temp_tar = tempfile.mktemp(suffix=".tar.gz", prefix="storage-")
@@ -42,7 +42,7 @@ def download_storage(mount_path: str, archive_url: str) -> bool:
     try:
         # Download tar.gz with retry
         if not http_download(archive_url, temp_tar):
-            log_failure("Download failed", f"Failed to download archive for {mount_path}")
+            log_error(f"Failed to download archive for {mount_path}")
             return False
 
         # Create mount path directory
@@ -54,8 +54,9 @@ def download_storage(mount_path: str, archive_url: str) -> bool:
                 tar.extractall(path=mount_path)
         except tarfile.ReadError:
             # Empty or invalid archive - not a fatal error
-            log_detail(f"Archive appears empty for {mount_path}")
+            log_info(f"Archive appears empty for {mount_path}")
 
+        log_info(f"Successfully extracted to {mount_path}")
         return True
 
     finally:
@@ -69,21 +70,23 @@ def download_storage(mount_path: str, archive_url: str) -> bool:
 def main():
     """Main entry point for download storages script."""
     if len(sys.argv) < 2:
-        log_failure("Download failed", "Usage: python download.py <manifest_path>")
+        log_error("Usage: python download.py <manifest_path>")
         sys.exit(1)
 
     manifest_path = sys.argv[1]
 
     if not os.path.exists(manifest_path):
-        log_failure("Download failed", f"Manifest file not found: {manifest_path}")
+        log_error(f"Manifest file not found: {manifest_path}")
         sys.exit(1)
+
+    log_info(f"Starting storage download from manifest: {manifest_path}")
 
     # Load manifest
     try:
         with open(manifest_path) as f:
             manifest = json.load(f)
     except (IOError, json.JSONDecodeError) as e:
-        log_failure("Download failed", f"Failed to load manifest: {e}")
+        log_error(f"Failed to load manifest: {e}")
         sys.exit(1)
 
     # Count total storages
@@ -93,8 +96,7 @@ def main():
     storage_count = len(storages)
     has_artifact = artifact is not None
 
-    log_phase("Downloading storages")
-    log_detail(f"Found {storage_count} storages, artifact: {has_artifact}")
+    log_info(f"Found {storage_count} storages, artifact: {has_artifact}")
 
     # Process storages
     for storage in storages:
@@ -112,7 +114,7 @@ def main():
         if artifact_url and artifact_url != "null":
             download_storage(artifact_mount, artifact_url)
 
-    log_success("All storages downloaded")
+    log_info("All storages downloaded successfully")
 
 
 if __name__ == "__main__":

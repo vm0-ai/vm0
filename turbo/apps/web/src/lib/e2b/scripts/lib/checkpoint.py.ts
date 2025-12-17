@@ -10,7 +10,6 @@ Creates checkpoints with conversation history and artifact snapshot (VAS only).
 Supports incremental upload when manifest URL is available.
 """
 import os
-import time
 from typing import Optional, Dict, Any
 
 from common import (
@@ -19,7 +18,7 @@ from common import (
     ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME,
     ARTIFACT_VERSION_ID, ARTIFACT_MANIFEST_URL
 )
-from log import log_phase, log_detail, log_success, log_failure
+from log import log_info, log_error
 from http_client import http_post_json
 from vas_snapshot import create_vas_snapshot
 from incremental import create_incremental_snapshot
@@ -32,12 +31,11 @@ def create_checkpoint() -> bool:
     Returns:
         True on success, False on failure
     """
-    checkpoint_start_time = time.time()
-    log_phase("Creating checkpoint")
+    log_info("Creating checkpoint...")
 
     # Read session ID from temp file
     if not os.path.exists(SESSION_ID_FILE):
-        log_failure("Checkpoint failed", "No session ID found")
+        log_error("No session ID found, checkpoint creation failed")
         return False
 
     with open(SESSION_ID_FILE) as f:
@@ -45,7 +43,7 @@ def create_checkpoint() -> bool:
 
     # Read session history path from temp file
     if not os.path.exists(SESSION_HISTORY_PATH_FILE):
-        log_failure("Checkpoint failed", "No session history path found")
+        log_error("No session history path found, checkpoint creation failed")
         return False
 
     with open(SESSION_HISTORY_PATH_FILE) as f:
@@ -53,7 +51,7 @@ def create_checkpoint() -> bool:
 
     # Check if session history file exists
     if not os.path.exists(session_history_path):
-        log_failure("Checkpoint failed", f"Session history file not found at {session_history_path}")
+        log_error(f"Session history file not found at {session_history_path}, checkpoint creation failed")
         return False
 
     # Read session history
@@ -61,34 +59,36 @@ def create_checkpoint() -> bool:
         with open(session_history_path) as f:
             cli_agent_session_history = f.read()
     except IOError as e:
-        log_failure("Checkpoint failed", f"Failed to read session history: {e}")
+        log_error(f"Failed to read session history: {e}")
         return False
 
     if not cli_agent_session_history.strip():
-        log_failure("Checkpoint failed", "Session history is empty")
+        log_error("Session history is empty, checkpoint creation failed")
         return False
 
     line_count = len(cli_agent_session_history.strip().split("\\n"))
-    log_detail(f"Loading session history ({line_count} lines)")
+    log_info(f"Session history loaded ({line_count} lines)")
 
     # CLI agent type (default to claude-code)
     cli_agent_type = os.environ.get("CLI_AGENT_TYPE", "claude-code")
 
     # Create artifact snapshot (VAS only, required)
     if not ARTIFACT_DRIVER or not ARTIFACT_VOLUME_NAME:
-        log_failure("Checkpoint failed", "Artifact is required but not configured")
+        log_error("Artifact is required but not configured")
         return False
 
-    log_detail(f"Processing artifact with driver: {ARTIFACT_DRIVER}")
+    log_info(f"Processing artifact with driver: {ARTIFACT_DRIVER}")
 
     if ARTIFACT_DRIVER != "vas":
-        log_failure("Checkpoint failed", f"Unknown artifact driver: {ARTIFACT_DRIVER}")
+        log_error(f"Unknown artifact driver: {ARTIFACT_DRIVER} (only 'vas' is supported)")
         return False
 
     # VAS artifact: create snapshot (incremental if possible, fallback to full)
+    log_info(f"Creating VAS snapshot for artifact '{ARTIFACT_VOLUME_NAME}' at {ARTIFACT_MOUNT_PATH}")
+
     # Try incremental upload if manifest URL and base version are available
     if ARTIFACT_MANIFEST_URL and ARTIFACT_VERSION_ID:
-        log_detail(f"Attempting incremental upload (base: {ARTIFACT_VERSION_ID[:8]})")
+        log_info(f"Attempting incremental upload (base version: {ARTIFACT_VERSION_ID[:8]})")
         snapshot = create_incremental_snapshot(
             ARTIFACT_MOUNT_PATH,
             "artifact",
@@ -98,17 +98,17 @@ def create_checkpoint() -> bool:
             "artifact"  # Explicit storage type - required by webhook API
         )
     else:
-        log_detail("Using full upload (no base version available)")
+        log_info("Using full upload (no base version available)")
         snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME, "artifact")
 
     if not snapshot:
-        log_failure("Checkpoint failed", "Failed to create VAS snapshot")
+        log_error("Failed to create VAS snapshot for artifact")
         return False
 
     # Extract versionId from snapshot response
     artifact_version = snapshot.get("versionId")
     if not artifact_version:
-        log_failure("Checkpoint failed", "Failed to extract versionId from snapshot")
+        log_error("Failed to extract versionId from snapshot")
         return False
 
     # Build artifact snapshot JSON with new format (artifactName + artifactVersion)
@@ -117,7 +117,9 @@ def create_checkpoint() -> bool:
         "artifactVersion": artifact_version
     }
 
-    log_detail("Calling checkpoint API...")
+    log_info(f"VAS artifact snapshot created: {ARTIFACT_VOLUME_NAME}@{artifact_version}")
+
+    log_info("Calling checkpoint API...")
 
     # Build checkpoint payload with new schema
     checkpoint_payload = {
@@ -132,12 +134,12 @@ def create_checkpoint() -> bool:
     result = http_post_json(CHECKPOINT_URL, checkpoint_payload)
 
     # Validate response contains checkpointId to confirm checkpoint was actually created
+    # Note: result can be {} (empty dict) on network issues, which is not None but invalid
     if result and result.get("checkpointId"):
         checkpoint_id = result.get("checkpointId")
-        checkpoint_duration = int(time.time() - checkpoint_start_time)
-        log_success(f"Checkpoint created: {checkpoint_id} in {checkpoint_duration}s")
+        log_info(f"Checkpoint created successfully: {checkpoint_id}")
         return True
     else:
-        log_failure("Checkpoint failed", f"API returned invalid response: {result}")
+        log_error(f"Checkpoint API returned invalid response: {result}")
         return False
 `;

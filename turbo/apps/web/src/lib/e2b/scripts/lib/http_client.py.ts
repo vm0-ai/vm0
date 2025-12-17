@@ -10,6 +10,7 @@ Uses urllib (standard library) with retry logic.
 import json
 import time
 import subprocess
+import os
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from typing import Optional, Dict, Any
@@ -18,6 +19,7 @@ from common import (
     API_TOKEN, VERCEL_BYPASS,
     HTTP_CONNECT_TIMEOUT, HTTP_MAX_TIME, HTTP_MAX_TIME_UPLOAD, HTTP_MAX_RETRIES
 )
+from log import log_debug, log_warn, log_error
 
 
 def http_post_json(
@@ -46,6 +48,7 @@ def http_post_json(
     body = json.dumps(data).encode("utf-8")
 
     for attempt in range(1, max_retries + 1):
+        log_debug(f"HTTP POST attempt {attempt}/{max_retries} to {url}")
         try:
             req = Request(url, data=body, headers=headers, method="POST")
             with urlopen(req, timeout=HTTP_MAX_TIME) as resp:
@@ -53,10 +56,24 @@ def http_post_json(
                 if response_body:
                     return json.loads(response_body)
                 return {}
-        except (HTTPError, URLError, TimeoutError, Exception):
+        except HTTPError as e:
+            log_warn(f"HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {e.code}")
+            if attempt < max_retries:
+                time.sleep(1)
+        except URLError as e:
+            log_warn(f"HTTP POST failed (attempt {attempt}/{max_retries}): {e.reason}")
+            if attempt < max_retries:
+                time.sleep(1)
+        except TimeoutError:
+            log_warn(f"HTTP POST failed (attempt {attempt}/{max_retries}): Timeout")
+            if attempt < max_retries:
+                time.sleep(1)
+        except Exception as e:
+            log_warn(f"HTTP POST failed (attempt {attempt}/{max_retries}): {e}")
             if attempt < max_retries:
                 time.sleep(1)
 
+    log_error(f"HTTP POST failed after {max_retries} attempts to {url}")
     return None
 
 
@@ -82,6 +99,8 @@ def http_post_form(
         Response JSON as dict on success, None on failure
     """
     for attempt in range(1, max_retries + 1):
+        log_debug(f"HTTP POST form attempt {attempt}/{max_retries} to {url}")
+
         # Build curl command
         curl_cmd = [
             "curl", "-X", "POST", url,
@@ -115,13 +134,24 @@ def http_post_form(
                     return json.loads(result.stdout)
                 return {}
 
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): curl exit {result.returncode}")
             if attempt < max_retries:
                 time.sleep(1)
 
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        except subprocess.TimeoutExpired:
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): Timeout")
+            if attempt < max_retries:
+                time.sleep(1)
+        except json.JSONDecodeError as e:
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): Invalid JSON response")
+            if attempt < max_retries:
+                time.sleep(1)
+        except Exception as e:
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): {e}")
             if attempt < max_retries:
                 time.sleep(1)
 
+    log_error(f"HTTP POST form failed after {max_retries} attempts to {url}")
     return None
 
 
@@ -142,6 +172,8 @@ def http_download(
         True on success, False on failure
     """
     for attempt in range(1, max_retries + 1):
+        log_debug(f"HTTP download attempt {attempt}/{max_retries} from {url}")
+
         try:
             curl_cmd = [
                 "curl", "-fsSL",
@@ -158,12 +190,19 @@ def http_download(
             if result.returncode == 0:
                 return True
 
+            log_warn(f"HTTP download failed (attempt {attempt}/{max_retries}): curl exit {result.returncode}")
             if attempt < max_retries:
                 time.sleep(1)
 
-        except (subprocess.TimeoutExpired, Exception):
+        except subprocess.TimeoutExpired:
+            log_warn(f"HTTP download failed (attempt {attempt}/{max_retries}): Timeout")
+            if attempt < max_retries:
+                time.sleep(1)
+        except Exception as e:
+            log_warn(f"HTTP download failed (attempt {attempt}/{max_retries}): {e}")
             if attempt < max_retries:
                 time.sleep(1)
 
+    log_error(f"HTTP download failed after {max_retries} attempts from {url}")
     return False
 `;
