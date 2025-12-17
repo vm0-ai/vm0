@@ -14,7 +14,7 @@ export CLI_COMMAND="vm0"
 # This hook is called by BATS before teardown() when a test fails
 bats::on_failure() {
     local run_id
-    run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
     if [[ -n "$run_id" ]]; then
         echo "# === System logs for failed run ($run_id) ==="
         $CLI_COMMAND logs "$run_id" --system
