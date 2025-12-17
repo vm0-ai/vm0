@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.10.0](https://github.com/vm0-ai/vm0/compare/web-v5.9.0...web-v5.10.0) (2025-12-17)
+
+
+### Features
+
+* **e2b:** standardize sandbox logging format ([#578](https://github.com/vm0-ai/vm0/issues/578)) ([5873e6f](https://github.com/vm0-ai/vm0/commit/5873e6f397be4c6459548e3edb7c696ecc07e085))
+
 ## [5.9.0](https://github.com/vm0-ai/vm0/compare/web-v5.8.0...web-v5.9.0) (2025-12-17)
 
 
