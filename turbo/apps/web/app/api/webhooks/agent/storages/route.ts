@@ -206,9 +206,33 @@ export async function POST(request: NextRequest) {
       );
       versionId = existingVersion.id;
     } else {
-      // Create new version record with content hash as ID
+      // Create new version - upload to S3 first, then write database
+      // This ensures database records only exist when S3 files are present
       const s3Key = `${userId}/${storage.type}/${storageName}/${contentHash}`;
 
+      // 1. Upload blobs with deduplication (S3)
+      const blobResult = await blobService.uploadBlobs(fileEntries);
+      log.debug(
+        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
+      );
+
+      // 2. Upload manifest and archive.tar.gz (S3)
+      const bucketName = env().S3_USER_STORAGES_NAME;
+      if (!bucketName) {
+        throw new Error(
+          "S3_USER_STORAGES_NAME environment variable is not set",
+        );
+      }
+      const s3Uri = `s3://${bucketName}/${s3Key}`;
+      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
+      await uploadStorageVersionArchive(
+        s3Uri,
+        contentHash,
+        fileEntries,
+        blobResult.hashes,
+      );
+
+      // 3. Create database record (only after S3 upload succeeds)
       const [version] = await globalThis.services.db
         .insert(storageVersions)
         .values({
@@ -227,29 +251,6 @@ export async function POST(request: NextRequest) {
       }
 
       log.debug(`Created version: ${version.id}`);
-
-      // Upload blobs with deduplication
-      const blobResult = await blobService.uploadBlobs(fileEntries);
-      log.debug(
-        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
-      );
-
-      // Upload manifest and archive.tar.gz
-      const bucketName = env().S3_USER_STORAGES_NAME;
-      if (!bucketName) {
-        throw new Error(
-          "S3_USER_STORAGES_NAME environment variable is not set",
-        );
-      }
-      const s3Uri = `s3://${bucketName}/${s3Key}`;
-      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
-      await uploadStorageVersionArchive(
-        s3Uri,
-        contentHash,
-        fileEntries,
-        blobResult.hashes,
-      );
-
       versionId = version.id;
     }
 

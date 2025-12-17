@@ -269,9 +269,34 @@ export async function POST(request: NextRequest) {
         log.debug("Force upload enabled, skipping deduplication check");
       }
 
-      // Create new version record with content hash as ID
-      // Use onConflictDoNothing to handle force upload case where version already exists
+      // Upload to S3 first, then write database
+      // This ensures database records only exist when S3 files are present
       const s3Key = `${userId}/${storageType}/${storageName}/${contentHash}`;
+
+      // 1. Upload blobs with deduplication (S3)
+      const blobResult = await blobService.uploadBlobs(fileEntries);
+      log.debug(
+        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
+      );
+
+      // 2. Upload manifest and archive.tar.gz (S3)
+      const bucketName = env().S3_USER_STORAGES_NAME;
+      if (!bucketName) {
+        throw new Error(
+          "S3_USER_STORAGES_NAME environment variable is not set",
+        );
+      }
+      const s3Uri = `s3://${bucketName}/${s3Key}`;
+      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
+      await uploadStorageVersionArchive(
+        s3Uri,
+        contentHash,
+        fileEntries,
+        blobResult.hashes,
+      );
+
+      // 3. Create database record (only after S3 upload succeeds)
+      // Use onConflictDoNothing to handle force upload case where version already exists
       const createdVersions = await tx
         .insert(storageVersions)
         .values({
@@ -288,7 +313,6 @@ export async function POST(request: NextRequest) {
 
       const version = createdVersions[0];
       const versionId = version?.id ?? contentHash;
-      const versionS3Key = version?.s3Key ?? s3Key;
 
       if (version) {
         log.debug(`Created version: ${version.id}`);
@@ -296,29 +320,7 @@ export async function POST(request: NextRequest) {
         log.debug(`Version ${contentHash} already exists, recreating archive`);
       }
 
-      // Upload blobs with deduplication
-      const blobResult = await blobService.uploadBlobs(fileEntries);
-      log.debug(
-        `Blob upload: ${blobResult.newBlobsCount} new, ${blobResult.existingBlobsCount} existing`,
-      );
-
-      // Upload manifest and archive.tar.gz
-      const bucketName = env().S3_USER_STORAGES_NAME;
-      if (!bucketName) {
-        throw new Error(
-          "S3_USER_STORAGES_NAME environment variable is not set",
-        );
-      }
-      const s3Uri = `s3://${bucketName}/${versionS3Key}`;
-      log.debug(`Uploading manifest and archive to ${s3Uri}...`);
-      await uploadStorageVersionArchive(
-        s3Uri,
-        contentHash,
-        fileEntries,
-        blobResult.hashes,
-      );
-
-      // Update storage's HEAD pointer and metadata within transaction
+      // 4. Update storage's HEAD pointer and metadata within transaction
       await tx
         .update(storages)
         .set({

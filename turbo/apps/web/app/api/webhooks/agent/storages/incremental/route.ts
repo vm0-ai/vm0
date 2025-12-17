@@ -367,9 +367,38 @@ export async function POST(request: NextRequest) {
       versionId = existingVersion.id;
       deduplicated = true;
     } else {
-      // Create new version record
+      // Create new version - upload to S3 first, then write database
+      // This ensures database records only exist when S3 files are present
       const s3Key = `${userId}/${storage.type}/${storageName}/${contentHash}`;
 
+      // 1. Create and upload manifest (S3)
+      const manifest: S3StorageManifest = {
+        version: contentHash,
+        createdAt: new Date().toISOString(),
+        totalSize,
+        fileCount,
+        files: mergedFiles,
+      };
+
+      const manifestJson = JSON.stringify(manifest, null, 2);
+      await uploadS3Buffer(
+        bucketName,
+        `${s3Key}/manifest.json`,
+        Buffer.from(manifestJson),
+      );
+
+      // 2. Create archive from blobs (S3)
+      await createArchiveFromBlobs(
+        bucketName,
+        `${s3Key}/archive.tar.gz`,
+        mergedFiles.map((f) => ({
+          path: f.path,
+          blobHash: f.hash,
+          size: f.size,
+        })),
+      );
+
+      // 3. Create database record (only after S3 upload succeeds)
       const [version] = await globalThis.services.db
         .insert(storageVersions)
         .values({
@@ -388,35 +417,6 @@ export async function POST(request: NextRequest) {
       }
 
       log.debug(`Created version: ${version.id}`);
-
-      // Create manifest
-      const manifest: S3StorageManifest = {
-        version: contentHash,
-        createdAt: new Date().toISOString(),
-        totalSize,
-        fileCount,
-        files: mergedFiles,
-      };
-
-      // Upload manifest
-      const manifestJson = JSON.stringify(manifest, null, 2);
-      await uploadS3Buffer(
-        bucketName,
-        `${s3Key}/manifest.json`,
-        Buffer.from(manifestJson),
-      );
-
-      // Create archive from blobs
-      await createArchiveFromBlobs(
-        bucketName,
-        `${s3Key}/archive.tar.gz`,
-        mergedFiles.map((f) => ({
-          path: f.path,
-          blobHash: f.hash,
-          size: f.size,
-        })),
-      );
-
       versionId = version.id;
     }
 
