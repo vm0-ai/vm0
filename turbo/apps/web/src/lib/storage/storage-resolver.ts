@@ -269,7 +269,7 @@ export function resolveVolumes(
     if (agentName) {
       const storageName = getSystemPromptStorageName(agentName);
       volumes.push({
-        name: `__system-prompt__`,
+        name: storageName,
         driver: "vas",
         mountPath: SYSTEM_PROMPT_MOUNT_PATH,
         vasStorageName: storageName,
@@ -287,7 +287,7 @@ export function resolveVolumes(
         const storageName = getSystemSkillStorageName(fullPath);
         const skillName = getSkillName(parsed.path);
         volumes.push({
-          name: `__system-skill-${skillName}__`,
+          name: storageName,
           driver: "vas",
           mountPath: `${SYSTEM_SKILLS_BASE_PATH}/${skillName}`,
           vasStorageName: storageName,
