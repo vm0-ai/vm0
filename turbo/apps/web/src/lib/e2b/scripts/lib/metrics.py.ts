@@ -13,7 +13,6 @@ import threading
 from datetime import datetime, timezone
 
 from common import METRICS_LOG_FILE, METRICS_INTERVAL
-from log import log_info, log_error, log_debug
 
 
 def get_cpu_percent() -> float:
@@ -25,7 +24,6 @@ def get_cpu_percent() -> float:
         with open("/proc/stat", "r") as f:
             line = f.readline()
 
-        # cpu  user nice system idle iowait irq softirq steal guest guest_nice
         parts = line.split()
         if parts[0] != "cpu":
             return 0.0
@@ -34,16 +32,12 @@ def get_cpu_percent() -> float:
         idle = values[3] + values[4]  # idle + iowait
         total = sum(values)
 
-        # Store for next calculation (we need delta)
-        # For simplicity, just return instantaneous value based on idle ratio
-        # This gives a rough estimate; for accurate CPU%, we'd need to track deltas
         if total == 0:
             return 0.0
 
         cpu_percent = 100.0 * (1.0 - idle / total)
         return round(cpu_percent, 2)
-    except Exception as e:
-        log_debug(f"Failed to get CPU percent: {e}")
+    except Exception:
         return 0.0
 
 
@@ -63,8 +57,6 @@ def get_memory_info() -> tuple[int, int]:
         if result.returncode != 0:
             return (0, 0)
 
-        # Parse output:
-        # Mem:  total  used  free  shared  buff/cache  available
         lines = result.stdout.strip().split("\\n")
         for line in lines:
             if line.startswith("Mem:"):
@@ -74,8 +66,7 @@ def get_memory_info() -> tuple[int, int]:
                 return (used, total)
 
         return (0, 0)
-    except Exception as e:
-        log_debug(f"Failed to get memory info: {e}")
+    except Exception:
         return (0, 0)
 
 
@@ -95,19 +86,15 @@ def get_disk_info() -> tuple[int, int]:
         if result.returncode != 0:
             return (0, 0)
 
-        # Parse output:
-        # Filesystem  1B-blocks  Used  Available  Use%  Mounted
         lines = result.stdout.strip().split("\\n")
         if len(lines) < 2:
             return (0, 0)
 
-        # Skip header, parse data line
         parts = lines[1].split()
         total = int(parts[1])
         used = int(parts[2])
         return (used, total)
-    except Exception as e:
-        log_debug(f"Failed to get disk info: {e}")
+    except Exception:
         return (0, 0)
 
 
@@ -134,8 +121,7 @@ def metrics_collector_loop(shutdown_event: threading.Event) -> None:
     Background loop that collects metrics every METRICS_INTERVAL seconds.
     Writes metrics as JSONL to METRICS_LOG_FILE.
     """
-    log_info(f"Metrics collector started, writing to {METRICS_LOG_FILE}")
-
+    # Silent operation - no logging to avoid noise
     try:
         with open(METRICS_LOG_FILE, "a") as f:
             while not shutdown_event.is_set():
@@ -143,16 +129,13 @@ def metrics_collector_loop(shutdown_event: threading.Event) -> None:
                     metrics = collect_metrics()
                     f.write(json.dumps(metrics) + "\\n")
                     f.flush()
-                    log_debug(f"Metrics collected: cpu={metrics['cpu']}%, mem={metrics['mem_used']}/{metrics['mem_total']}")
-                except Exception as e:
-                    log_error(f"Failed to collect/write metrics: {e}")
+                except Exception:
+                    pass  # Silently continue on errors
 
                 # Wait for interval or shutdown
                 shutdown_event.wait(METRICS_INTERVAL)
-    except Exception as e:
-        log_error(f"Metrics collector error: {e}")
-
-    log_info("Metrics collector stopped")
+    except Exception:
+        pass  # Silently handle errors
 
 
 def start_metrics_collector(shutdown_event: threading.Event) -> threading.Thread:

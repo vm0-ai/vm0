@@ -14,7 +14,7 @@ import shutil
 from typing import Optional, Dict, Any
 
 from common import RUN_ID, STORAGE_WEBHOOK_URL
-from log import log_info, log_error, log_debug
+from log import log_detail, log_failure
 from http_client import http_post_form
 
 
@@ -37,9 +37,7 @@ def create_vas_snapshot(
     Returns:
         Dict with versionId on success, None on failure
     """
-    log_info(f"Creating VAS snapshot for storage '{storage_name}' ({vas_storage_name}, type: {storage_type}) at {mount_path}")
-    log_debug(f"STORAGE_WEBHOOK_URL: {STORAGE_WEBHOOK_URL}")
-    log_debug(f"RUN_ID: {RUN_ID}")
+    log_detail(f"Creating full snapshot for '{storage_name}'")
 
     # Create temp directory for tar.gz
     tar_dir = tempfile.mkdtemp(prefix=f"vas-snapshot-{RUN_ID}-{storage_name}-")
@@ -51,7 +49,7 @@ def create_vas_snapshot(
         try:
             os.chdir(mount_path)
         except OSError as e:
-            log_error(f"Failed to cd to {mount_path}: {e}")
+            log_failure("VAS snapshot failed", f"Failed to cd to {mount_path}: {e}")
             return None
 
         # Check for files to archive (exclude .git and .vm0 directories)
@@ -67,7 +65,7 @@ def create_vas_snapshot(
 
         if not files_to_add:
             # No files - call webhook without file attachment
-            log_info(f"No files to snapshot for '{storage_name}', creating empty version")
+            log_detail(f"No files to snapshot, creating empty version")
             os.chdir(original_dir)
             response = http_post_form(STORAGE_WEBHOOK_URL, form_fields)
         else:
@@ -76,14 +74,14 @@ def create_vas_snapshot(
                 with tarfile.open(tar_path, "w:gz") as tar:
                     for item in files_to_add:
                         tar.add(item)
-                log_info(f"Created tar.gz file for storage '{storage_name}'")
             except Exception as e:
-                log_error(f"Failed to create tar.gz for storage '{storage_name}': {e}")
+                log_failure("VAS snapshot failed", f"Failed to create tar.gz: {e}")
                 os.chdir(original_dir)
                 return None
             finally:
                 os.chdir(original_dir)
 
+            log_detail("Uploading full snapshot...")
             response = http_post_form(
                 STORAGE_WEBHOOK_URL,
                 form_fields,
@@ -92,18 +90,15 @@ def create_vas_snapshot(
             )
 
         if response is None:
-            log_error(f"Failed to upload snapshot for storage '{storage_name}'")
+            log_failure("VAS snapshot failed", "Upload failed")
             return None
 
         # Check if response contains versionId
         version_id = response.get("versionId")
         if not version_id:
-            log_error(f"Failed to create VAS snapshot for '{storage_name}'")
-            log_error(f"Webhook URL: {STORAGE_WEBHOOK_URL}")
-            log_error(f"Response: {response}")
+            log_failure("VAS snapshot failed", f"Invalid response: {response}")
             return None
 
-        log_info(f"VAS snapshot created for '{storage_name}': version {version_id}")
         return {"versionId": version_id}
 
     finally:
