@@ -7,6 +7,7 @@ import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient, type ApiError } from "../../lib/api-client";
 import { listTarFiles, removeExtraFiles } from "../../lib/file-utils";
+import { handleEmptyStorageResponse } from "../../lib/pull-utils";
 
 /**
  * Format bytes to human-readable format
@@ -69,6 +70,12 @@ export const pullCommand = new Command()
           throw new Error(error.error?.message || "Download failed");
         }
         process.exit(1);
+      }
+
+      // Handle empty volume (204 No Content)
+      if (response.status === 204) {
+        await handleEmptyStorageResponse(cwd);
+        return;
       }
 
       // Get tar.gz buffer
