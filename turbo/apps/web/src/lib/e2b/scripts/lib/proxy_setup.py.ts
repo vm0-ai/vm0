@@ -19,7 +19,7 @@ import time
 # Add lib to path for imports
 sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 
-from log import log_info, log_error, log_warn
+from log import log_phase, log_detail, log_success, log_failure
 
 # Proxy configuration
 MITM_PORT = 8080
@@ -30,12 +30,12 @@ ADDON_PATH = "/usr/local/bin/vm0-agent/lib/mitm_addon.py"
 
 def run_cmd(cmd: list, check: bool = True) -> subprocess.CompletedProcess:
     """Run a command and log output."""
-    log_info(f"Running: {' '.join(cmd)}")
+    log_detail(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.stdout:
-        log_info(f"stdout: {result.stdout.strip()}")
+        log_detail(f"stdout: {result.stdout.strip()}")
     if result.stderr:
-        log_warn(f"stderr: {result.stderr.strip()}")
+        log_detail(f"stderr: {result.stderr.strip()}")
     if check and result.returncode != 0:
         raise RuntimeError(f"Command failed with code {result.returncode}")
     return result
@@ -43,7 +43,7 @@ def run_cmd(cmd: list, check: bool = True) -> subprocess.CompletedProcess:
 
 def install_dependencies():
     """Install required packages (must run as root)."""
-    log_info("Installing dependencies...")
+    log_phase("Installing dependencies")
 
     # Update apt cache
     run_cmd(["apt-get", "update", "-qq"])
@@ -57,26 +57,26 @@ def install_dependencies():
     ])
 
     # Install mitmproxy system-wide
-    log_info("Installing mitmproxy (this may take a minute)...")
+    log_detail("Installing mitmproxy (this may take a minute)...")
     run_cmd([
         "pip3", "install", "mitmproxy",
         "--break-system-packages",
         "--quiet"
     ])
 
-    log_info("Dependencies installed successfully")
+    log_success("Dependencies installed")
 
 
 def setup_ca_certificate():
     """Generate and install mitmproxy CA certificate."""
-    log_info("Setting up CA certificate...")
+    log_phase("Setting up CA certificate")
 
     # Create mitmproxy config directory
     os.makedirs(MITM_CA_DIR, exist_ok=True)
 
     # Generate CA certificate by running mitmproxy briefly
     # This creates the CA cert if it doesn't exist
-    log_info("Generating mitmproxy CA certificate...")
+    log_detail("Generating mitmproxy CA certificate...")
     proc = subprocess.Popen(
         ["mitmdump", "--set", "confdir=" + MITM_CA_DIR],
         stdout=subprocess.PIPE,
@@ -91,7 +91,7 @@ def setup_ca_certificate():
         raise RuntimeError("Failed to generate CA certificate")
 
     # Install CA certificate system-wide
-    log_info("Installing CA certificate system-wide...")
+    log_detail("Installing CA certificate system-wide...")
 
     # Copy to system CA directory
     run_cmd([
@@ -106,12 +106,12 @@ def setup_ca_certificate():
     os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
     os.environ["SSL_CERT_FILE"] = "/etc/ssl/certs/ca-certificates.crt"
 
-    log_info("CA certificate installed successfully")
+    log_success("CA certificate installed")
 
 
 def configure_nftables():
     """Configure nftables for transparent proxying."""
-    log_info("Configuring nftables for transparent proxy...")
+    log_phase("Configuring nftables")
 
     # nftables rules for transparent proxy
     # - Skip traffic from root (UID 0) - mitmproxy runs as root
@@ -157,12 +157,12 @@ table ip nat {{
     # Apply rules
     run_cmd(["nft", "-f", nft_file])
 
-    log_info("nftables configured successfully")
+    log_success("nftables configured")
 
 
 def start_mitmproxy():
     """Start mitmproxy with the VM0 addon in background."""
-    log_info("Starting mitmproxy...")
+    log_phase("Starting mitmproxy")
 
     # Verify addon exists
     if not os.path.exists(ADDON_PATH):
@@ -180,7 +180,7 @@ def start_mitmproxy():
         "--quiet"  # Reduce log noise
     ]
 
-    log_info(f"mitmproxy command: {' '.join(cmd)}")
+    log_detail(f"mitmproxy command: {' '.join(cmd)}")
 
     # Start in background
     proc = subprocess.Popen(
@@ -195,7 +195,7 @@ def start_mitmproxy():
     if proc.poll() is not None:
         raise RuntimeError("mitmproxy failed to start")
 
-    log_info(f"mitmproxy started (PID: {proc.pid})")
+    log_success(f"mitmproxy started (PID: {proc.pid})")
 
     # Save PID for later cleanup if needed
     with open("/tmp/vm0-mitmproxy.pid", "w") as f:
@@ -204,7 +204,7 @@ def start_mitmproxy():
 
 def setup_proxy():
     """Main setup function."""
-    log_info("=== VM0 Proxy Setup Starting ===")
+    log_phase("VM0 Proxy Setup")
     start_time = time.time()
 
     try:
@@ -214,11 +214,11 @@ def setup_proxy():
         start_mitmproxy()
 
         elapsed = time.time() - start_time
-        log_info(f"=== Proxy Setup Complete ({elapsed:.1f}s) ===")
+        log_success(f"Proxy setup complete ({elapsed:.1f}s)")
         return True
 
     except Exception as e:
-        log_error(f"Proxy setup failed: {e}")
+        log_failure("Proxy setup failed", str(e))
         return False
 
 
