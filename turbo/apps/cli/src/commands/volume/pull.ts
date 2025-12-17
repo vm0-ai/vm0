@@ -7,6 +7,7 @@ import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
 import { apiClient, type ApiError } from "../../lib/api-client";
 import { listTarFiles, removeExtraFiles } from "../../lib/file-utils";
+import { handleEmptyStorageResponse } from "../../lib/pull-utils";
 
 /**
  * Format bytes to human-readable format
@@ -73,15 +74,7 @@ export const pullCommand = new Command()
 
       // Handle empty volume (204 No Content)
       if (response.status === 204) {
-        console.log(chalk.gray("Syncing local files..."));
-        // Sync to empty state - remove all local files
-        const removedCount = await removeExtraFiles(cwd, new Set());
-        if (removedCount > 0) {
-          console.log(
-            chalk.green(`✓ Removed ${removedCount} files not in remote`),
-          );
-        }
-        console.log(chalk.green("✓ Synced (0 files)"));
+        await handleEmptyStorageResponse(cwd);
         return;
       }
 
