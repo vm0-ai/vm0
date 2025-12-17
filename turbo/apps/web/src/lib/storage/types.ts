@@ -66,7 +66,9 @@ export interface AgentVolumeConfig {
     string,
     {
       volumes?: string[];
-      working_dir: string;
+      working_dir?: string; // Optional when provider supports auto-config
+      beta_system_prompt?: string; // Path to system prompt file (stored as system-prompt@{name} volume)
+      beta_system_skills?: string[]; // GitHub tree URLs (stored as system-skill@{path} volumes)
     }
   >;
   volumes?: Record<string, VolumeConfig>;

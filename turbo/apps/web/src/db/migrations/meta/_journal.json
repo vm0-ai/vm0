@@ -253,6 +253,13 @@
       "when": 1766000000000,
       "tag": "0035_revert_storage_name_256",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1766100000000,
+      "tag": "0036_storage_name_256",
+      "breakpoints": true
     }
   ]
 }

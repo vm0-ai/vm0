@@ -17,10 +17,10 @@ export interface VolumeConfig {
  */
 export interface AgentDefinition {
   description?: string;
-  image: string;
+  image?: string; // Optional when provider supports auto-config (e.g., claude-code)
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
-  working_dir: string; // Working directory for artifact mount
+  working_dir?: string; // Optional when provider supports auto-config
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
    * Enable network security mode for secrets.
@@ -29,6 +29,19 @@ export interface AgentDefinition {
    * Default: false (plaintext secrets in env vars)
    */
   beta_network_security?: boolean;
+  /**
+   * Path to system prompt file (e.g., AGENTS.md).
+   * Auto-uploaded as volume and mounted at /home/user/.config/claude/CLAUDE.md
+   * Beta feature: field name may change in future versions.
+   */
+  beta_system_prompt?: string;
+  /**
+   * Array of GitHub tree URLs for system skills.
+   * Each skill is auto-downloaded and mounted at /home/user/.config/claude/skills/{skillName}/
+   * Format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
+   * Beta feature: field name may change in future versions.
+   */
+  beta_system_skills?: string[];
 }
 
 export interface AgentComposeYaml {

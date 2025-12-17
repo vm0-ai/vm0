@@ -12,6 +12,13 @@ vi.mock("fs");
 vi.mock("yaml");
 vi.mock("../../lib/api-client");
 vi.mock("../../lib/yaml-validator");
+vi.mock("../../lib/provider-config", () => ({
+  getProviderDefaults: vi.fn().mockReturnValue(undefined),
+}));
+vi.mock("../../lib/system-storage", () => ({
+  uploadSystemPrompt: vi.fn(),
+  uploadSystemSkill: vi.fn(),
+}));
 
 describe("compose command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -49,7 +56,10 @@ describe("compose command", () => {
     it("should read file when it exists", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("version: 1.0");
-      vi.mocked(yaml.parse).mockReturnValue({ version: "1.0" });
+      vi.mocked(yaml.parse).mockReturnValue({
+        version: "1.0",
+        agents: { test: { provider: "test", working_dir: "/" } },
+      });
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
@@ -118,7 +128,10 @@ describe("compose command", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({});
+      vi.mocked(yaml.parse).mockReturnValue({
+        version: "1.0",
+        agents: { test: { provider: "test", working_dir: "/" } },
+      });
     });
 
     it("should exit with error on invalid compose", async () => {
@@ -240,7 +253,10 @@ describe("compose command", () => {
     beforeEach(() => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({});
+      vi.mocked(yaml.parse).mockReturnValue({
+        version: "1.0",
+        agents: { test: { provider: "test", working_dir: "/" } },
+      });
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });

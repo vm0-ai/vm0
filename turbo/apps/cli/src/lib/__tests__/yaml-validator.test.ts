@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { validateAgentName, validateAgentCompose } from "../yaml-validator";
+import {
+  validateAgentName,
+  validateAgentCompose,
+  validateGitHubTreeUrl,
+} from "../yaml-validator";
 
 describe("validateAgentName", () => {
   describe("valid names", () => {
@@ -275,13 +279,13 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with missing working_dir", () => {
+    it("should reject config with missing working_dir when provider not supported", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
-            provider: "claude-code",
+            image: "custom-image",
+            provider: "custom-provider",
           },
         },
       };
@@ -291,12 +295,12 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("agent.working_dir");
     });
 
-    it("should reject config with missing image", () => {
+    it("should reject config with missing image when provider not supported", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            provider: "custom-provider",
             working_dir: "/home/user/workspace",
           },
         },
@@ -392,5 +396,129 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(false);
       expect(result.error).toContain("'version' field");
     });
+  });
+
+  describe("provider auto-config", () => {
+    it("should accept config without image/working_dir when provider is claude-code", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should accept config with beta_system_prompt", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            beta_system_prompt: "AGENTS.md",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should accept config with beta_system_skills", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            beta_system_skills: [
+              "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+            ],
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should reject empty beta_system_prompt", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            beta_system_prompt: "",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("cannot be empty");
+    });
+
+    it("should reject invalid beta_system_skills URL", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            beta_system_skills: ["https://example.com/not-github"],
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Invalid beta_system_skill URL");
+    });
+  });
+});
+
+describe("validateGitHubTreeUrl", () => {
+  it("should accept valid GitHub tree URL", () => {
+    expect(
+      validateGitHubTreeUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+      ),
+    ).toBe(true);
+  });
+
+  it("should accept URL with nested path", () => {
+    expect(
+      validateGitHubTreeUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/skills/github-cli",
+      ),
+    ).toBe(true);
+  });
+
+  it("should accept URL with version branch", () => {
+    expect(
+      validateGitHubTreeUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/v1.0/notion",
+      ),
+    ).toBe(true);
+  });
+
+  it("should reject non-GitHub URL", () => {
+    expect(validateGitHubTreeUrl("https://example.com/foo/bar")).toBe(false);
+  });
+
+  it("should reject GitHub URL without tree path", () => {
+    expect(validateGitHubTreeUrl("https://github.com/vm0-ai/vm0-skills")).toBe(
+      false,
+    );
+  });
+
+  it("should reject GitHub blob URL", () => {
+    expect(
+      validateGitHubTreeUrl(
+        "https://github.com/vm0-ai/vm0-skills/blob/main/README.md",
+      ),
+    ).toBe(false);
   });
 });
