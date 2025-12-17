@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.9.0](https://github.com/vm0-ai/vm0/compare/cli-v4.8.1...cli-v4.9.0) (2025-12-17)
+
+
+### Features
+
+* **storage:** skip S3 upload/download for empty artifacts ([#575](https://github.com/vm0-ai/vm0/issues/575)) ([bd75e53](https://github.com/vm0-ai/vm0/commit/bd75e53f28019fa262f98adede304c99556d999d))
+
 ## [4.8.1](https://github.com/vm0-ai/vm0/compare/cli-v4.8.0...cli-v4.8.1) (2025-12-17)
 
 

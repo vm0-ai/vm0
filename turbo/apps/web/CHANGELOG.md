@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.9.0](https://github.com/vm0-ai/vm0/compare/web-v5.8.0...web-v5.9.0) (2025-12-17)
+
+
+### Features
+
+* **storage:** skip S3 upload/download for empty artifacts ([#575](https://github.com/vm0-ai/vm0/issues/575)) ([bd75e53](https://github.com/vm0-ai/vm0/commit/bd75e53f28019fa262f98adede304c99556d999d))
+
+
+### Bug Fixes
+
+* **storage:** reorder s3 upload before database write for transactional consistency ([#573](https://github.com/vm0-ai/vm0/issues/573)) ([910d7a4](https://github.com/vm0-ai/vm0/commit/910d7a4a274471cc6f8f09e83b1a0fd97c61eda0))
+
 ## [5.8.0](https://github.com/vm0-ai/vm0/compare/web-v5.7.0...web-v5.8.0) (2025-12-17)
 
 
