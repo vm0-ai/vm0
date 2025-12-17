@@ -32,7 +32,7 @@ const volumeConfigSchema = z.object({
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
-  image: z.string().optional(), // Optional when provider supports auto-config
+  image: z.string().min(1, "Image is required"),
   provider: z.string().min(1, "Provider is required"),
   volumes: z.array(z.string()).optional(),
   working_dir: z.string().optional(), // Optional when provider supports auto-config
