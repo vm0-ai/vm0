@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.8.0](https://github.com/vm0-ai/vm0/compare/web-v5.7.0...web-v5.8.0) (2025-12-17)
+
+
+### Features
+
+* **cli:** add beta_system_prompt and beta_system_skills support for agent compose ([#565](https://github.com/vm0-ai/vm0/issues/565)) ([b6388d9](https://github.com/vm0-ai/vm0/commit/b6388d9b9511bf7a6407dc2d17a6a81f85e8d3eb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.6.0
+
 ## [5.7.0](https://github.com/vm0-ai/vm0/compare/web-v5.6.0...web-v5.7.0) (2025-12-16)
 
 

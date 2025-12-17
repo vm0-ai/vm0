@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/core-v0.5.1...core-v0.6.0) (2025-12-17)
+
+
+### Features
+
+* **cli:** add beta_system_prompt and beta_system_skills support for agent compose ([#565](https://github.com/vm0-ai/vm0/issues/565)) ([b6388d9](https://github.com/vm0-ai/vm0/commit/b6388d9b9511bf7a6407dc2d17a6a81f85e8d3eb))
+
 ## [0.5.1](https://github.com/vm0-ai/vm0/compare/core-v0.5.0...core-v0.5.1) (2025-12-13)
 
 
