@@ -24,6 +24,21 @@ export function isSystemTemplate(alias: string): boolean {
 }
 
 /**
+ * Map system template names based on environment
+ * In non-production environments, map production templates to dev versions
+ */
+function mapSystemTemplateForEnvironment(templateName: string): string {
+  const isProduction = process.env.VERCEL_ENV === "production";
+
+  // In non-production (preview, development, CI, local), use dev templates
+  if (!isProduction && templateName === "vm0-claude-code") {
+    return "vm0-claude-code-dev";
+  }
+
+  return templateName;
+}
+
+/**
  * Try to delete an E2B template by its alias
  * This is needed when database record doesn't exist but E2B template might
  * E2B API accepts alias as templateID parameter (same as buildInBackground)
@@ -229,7 +244,7 @@ export async function getImageByBuildId(buildId: string) {
 
 /**
  * Resolve an image alias to E2B template name
- * - System templates (vm0-*): return as-is
+ * - System templates (vm0-*): mapped based on environment (prod vs dev)
  * - User templates: lookup in DB and return e2bAlias
  * @throws NotFoundError if user image not found
  * @throws BadRequestError if user image is not ready
@@ -238,9 +253,10 @@ export async function resolveImageAlias(
   userId: string,
   alias: string,
 ): Promise<{ templateName: string; isUserImage: boolean }> {
-  // System templates bypass DB lookup
+  // System templates bypass DB lookup but are mapped based on environment
   if (isSystemTemplate(alias)) {
-    return { templateName: alias, isUserImage: false };
+    const mappedTemplate = mapSystemTemplateForEnvironment(alias);
+    return { templateName: mappedTemplate, isUserImage: false };
   }
 
   // User template - must exist in DB
