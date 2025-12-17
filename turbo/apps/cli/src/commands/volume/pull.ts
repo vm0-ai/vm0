@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
-import { apiClient } from "../../lib/api-client";
+import { apiClient, type ApiError } from "../../lib/api-client";
 import { listTarFiles, removeExtraFiles } from "../../lib/file-utils";
 
 /**
@@ -65,8 +65,8 @@ export const pullCommand = new Command()
             chalk.gray("  Or push the volume first with: vm0 volume push"),
           );
         } else {
-          const error = (await response.json()) as { error: string };
-          throw new Error(error.error || "Download failed");
+          const error = (await response.json()) as ApiError;
+          throw new Error(error.error?.message || "Download failed");
         }
         process.exit(1);
       }
