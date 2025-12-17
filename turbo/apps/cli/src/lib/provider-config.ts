@@ -13,7 +13,7 @@ export interface ProviderDefaults {
  */
 const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   "claude-code": {
-    image: "vm0-claude-code",
+    image: "vm0-claude-code-dev",
     workingDir: "/home/user/workspace",
   },
 };
