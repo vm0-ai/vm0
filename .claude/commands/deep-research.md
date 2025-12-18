@@ -45,7 +45,7 @@ Before diving into code, ask the user any clarifying questions needed to underst
 
 ### Phase 2: Research Execution
 
-1. **Create research file** at `/tmp/claude/research/{name}.md` where `{name}` is a short descriptive name you choose based on the task.
+1. **Create research file** at `/tmp/deep-dive/{task-name}/research.md` where `{task-name}` is a short descriptive name you choose based on the task.
 
 2. **Systematically analyze**:
    - Identify core files and functions related to the task
