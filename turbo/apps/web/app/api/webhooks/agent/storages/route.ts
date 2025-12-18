@@ -6,7 +6,7 @@ import {
   storageVersions,
 } from "../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { uploadStorageVersionArchive } from "../../../../../src/lib/s3/s3-client";
 import { blobService } from "../../../../../src/lib/blob/blob-service";
 import * as fs from "node:fs";
@@ -49,13 +49,7 @@ export async function POST(request: NextRequest) {
     // Initialize services
     initServices();
 
-    // Authenticate using bearer token
-    const userId = await getUserId();
-    if (!userId) {
-      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
-    }
-
-    // Parse multipart form data
+    // Parse multipart form data first to get runId
     const formData = await request.formData();
     const runId = formData.get("runId") as string;
     const storageName = formData.get("storageName") as string;
@@ -67,6 +61,18 @@ export async function POST(request: NextRequest) {
     if (!runId) {
       return errorResponse("runId: runId is required", "BAD_REQUEST", 400);
     }
+
+    // Authenticate with sandbox JWT and verify runId matches
+    const auth = await getSandboxAuthForRun(runId);
+    if (!auth) {
+      return errorResponse(
+        "Not authenticated or runId mismatch",
+        "UNAUTHORIZED",
+        401,
+      );
+    }
+
+    const { userId } = auth;
 
     if (!storageName) {
       return errorResponse(

@@ -4,7 +4,7 @@ import { webhookHeartbeatContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhooks:heartbeat");
@@ -13,15 +13,21 @@ const router = tsr.router(webhookHeartbeatContract, {
   send: async ({ body }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    // Authenticate with sandbox JWT and verify runId matches
+    const auth = await getSandboxAuthForRun(body.runId);
+    if (!auth) {
       return {
         status: 401 as const,
         body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          error: {
+            message: "Not authenticated or runId mismatch",
+            code: "UNAUTHORIZED",
+          },
         },
       };
     }
+
+    const { userId } = auth;
 
     const result = await globalThis.services.db
       .update(agentRuns)

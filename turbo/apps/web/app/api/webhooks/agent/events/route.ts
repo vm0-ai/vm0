@@ -5,7 +5,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../src/db/schema/agent-run-event";
 import { eq, max, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import {
   createSecretMasker,
   decryptSecrets,
@@ -18,15 +18,21 @@ const router = tsr.router(webhookEventsContract, {
   send: async ({ body }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    // Authenticate with sandbox JWT and verify runId matches
+    const auth = await getSandboxAuthForRun(body.runId);
+    if (!auth) {
       return {
         status: 401 as const,
         body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          error: {
+            message: "Not authenticated or runId mismatch",
+            code: "UNAUTHORIZED",
+          },
         },
       };
     }
+
+    const { userId } = auth;
 
     log.debug(
       `Received ${body.events.length} events for run ${body.runId} from user ${userId}`,

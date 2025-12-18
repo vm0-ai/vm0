@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import {
   forwardRequest,
   decodeTargetUrl,
@@ -11,10 +11,10 @@ import { logger } from "../../../../../src/lib/logger";
 const log = logger("webhook:proxy");
 
 /**
- * /api/webhooks/agent/proxy?url=<encoded_target_url>
+ * /api/webhooks/agent/proxy?url=<encoded_target_url>&runId=<run_id>
  *
  * Generic proxy endpoint for sandbox requests.
- * Validates sandbox token, decodes target URL, and forwards the request.
+ * Validates sandbox JWT token and verifies runId matches, then forwards the request.
  * Supports SSE streaming responses.
  *
  * NOTE: All HTTP methods are supported because mitmproxy preserves the original
@@ -23,17 +23,7 @@ const log = logger("webhook:proxy");
 async function handleProxyRequest(request: Request) {
   initServices();
 
-  // 1. Authenticate via sandbox token
-  const userId = await getUserId();
-  if (!userId) {
-    log.warn("Proxy request without valid authentication");
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
-  }
-
-  // 2. Extract and validate parameters from query
+  // 1. Extract runId from query params first (needed for JWT validation)
   const { searchParams } = new URL(request.url);
   const encodedUrl = searchParams.get("url");
   const runId = searchParams.get("runId");
@@ -52,6 +42,23 @@ async function handleProxyRequest(request: Request) {
       { status: 400 },
     );
   }
+
+  // 2. Authenticate via sandbox JWT and verify runId matches
+  const auth = await getSandboxAuthForRun(runId);
+  if (!auth) {
+    log.warn("Proxy request without valid authentication or runId mismatch");
+    return NextResponse.json(
+      {
+        error: {
+          message: "Not authenticated or runId mismatch",
+          code: "UNAUTHORIZED",
+        },
+      },
+      { status: 401 },
+    );
+  }
+
+  const { userId } = auth;
 
   const targetUrl = decodeTargetUrl(encodedUrl);
   if (!targetUrl) {

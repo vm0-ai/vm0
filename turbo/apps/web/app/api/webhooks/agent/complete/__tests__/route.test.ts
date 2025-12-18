@@ -19,13 +19,13 @@ import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
-import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
+  createTestSandboxToken,
 } from "../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
@@ -59,7 +59,7 @@ describe("POST /api/webhooks/agent/complete", () => {
   const testRunId = randomUUID();
   let testComposeId: string;
   let testVersionId: string;
-  const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
+  let testToken: string;
   const testSandboxId = `sandbox-${Date.now()}`;
 
   beforeEach(async () => {
@@ -68,6 +68,9 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     // Initialize services
     initServices();
+
+    // Generate JWT token for sandbox auth
+    testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockAuth.mockResolvedValue({
@@ -91,10 +94,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(cliTokens)
-      .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -141,10 +140,6 @@ describe("POST /api/webhooks/agent/complete", () => {
       .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
-      .delete(cliTokens)
-      .where(eq(cliTokens.token, testToken));
-
-    await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
   });
@@ -186,19 +181,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   describe("Validation", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
-
-      // Create valid token for validation tests
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
     });
 
     it("should reject complete without runId", async () => {
@@ -253,24 +239,18 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Authorization", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
-      // Create valid token
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-    });
-
     it("should reject complete for non-existent run", async () => {
       const nonExistentRunId = randomUUID();
+      // Generate JWT with the non-existent runId
+      const tokenForNonExistentRun = await createTestSandboxToken(
+        testUserId,
+        nonExistentRunId,
+      );
+
+      // Mock headers() to return the token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
+      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -278,7 +258,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${tokenForNonExistentRun}`,
           },
           body: JSON.stringify({
             runId: nonExistentRunId,
@@ -306,6 +286,11 @@ describe("POST /api/webhooks/agent/complete", () => {
         prompt: "Test prompt",
         createdAt: new Date(),
       });
+
+      // Mock headers() to return the test token (JWT with testUserId)
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -336,19 +321,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   describe("Success", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
-
-      // Create valid token
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
     });
 
     it("should handle successful completion (exitCode=0) and send vm0_result", async () => {
@@ -522,19 +498,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   describe("Error Handling", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
-
-      // Create valid token
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
     });
 
     it("should return 404 when checkpoint not found for successful run", async () => {
@@ -577,19 +544,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   describe("Idempotency", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
-
-      // Create valid token
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
     });
 
     it("should return success without processing for already completed run", async () => {

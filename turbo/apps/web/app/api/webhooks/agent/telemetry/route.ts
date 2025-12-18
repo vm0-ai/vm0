@@ -5,7 +5,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { sandboxTelemetry } from "../../../../../src/db/schema/sandbox-telemetry";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhooks:telemetry");
@@ -17,18 +17,24 @@ const router = tsr.router(webhookTelemetryContract, {
 
     initServices();
 
+    // Authenticate with sandbox JWT and verify runId matches
     const authStart = Date.now();
-    const userId = await getUserId();
+    const auth = await getSandboxAuthForRun(body.runId);
     log.debug(`[telemetry] auth took ${Date.now() - authStart}ms`);
 
-    if (!userId) {
+    if (!auth) {
       return {
         status: 401 as const,
         body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          error: {
+            message: "Not authenticated or runId mismatch",
+            code: "UNAUTHORIZED",
+          },
         },
       };
     }
+
+    const { userId } = auth;
 
     // Verify run exists and belongs to user
     const selectStart = Date.now();

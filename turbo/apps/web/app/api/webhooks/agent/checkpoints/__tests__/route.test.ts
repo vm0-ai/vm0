@@ -18,13 +18,13 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { cliTokens } from "../../../../../../src/db/schema/cli-tokens";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
+  createTestSandboxToken,
 } from "../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
@@ -50,7 +50,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   const testRunId = randomUUID();
   let testComposeId: string;
   let testVersionId: string;
-  const testToken = `vm0_live_test_${Date.now()}_${process.pid}`;
+  let testToken: string;
 
   beforeEach(async () => {
     // Clear all mocks
@@ -58,6 +58,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
     // Initialize services
     initServices();
+
+    // Generate JWT token for sandbox auth
+    testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockAuth.mockResolvedValue({
@@ -78,10 +81,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(cliTokens)
-      .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -124,10 +123,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(cliTokens)
-      .where(eq(cliTokens.token, testToken));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -177,19 +172,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Validation", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
-
-      // Create valid token for validation tests
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
     });
 
     it("should reject checkpoint without runId", async () => {
@@ -311,24 +297,18 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   // ============================================
 
   describe("Authorization", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
-      // Create valid token
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-    });
-
     it("should reject checkpoint for non-existent run", async () => {
       const nonExistentRunId = randomUUID();
+      // Generate JWT with the non-existent runId
+      const tokenForNonExistentRun = await createTestSandboxToken(
+        testUserId,
+        nonExistentRunId,
+      );
+
+      // Mock headers() to return the token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
+      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -336,7 +316,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${tokenForNonExistentRun}`,
           },
           body: JSON.stringify({
             runId: nonExistentRunId,
@@ -370,6 +350,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         prompt: "Test prompt",
         createdAt: new Date(),
       });
+
+      // Mock headers() to return the test token (JWT with testUserId)
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -406,20 +391,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Success", () => {
     it("should create checkpoint with artifact snapshot", async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
 
       // Setup
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,
@@ -523,20 +500,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Uniqueness", () => {
     it("should prevent duplicate checkpoints for same run", async () => {
-      // Mock headers() to return the test token
+      // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
       } as unknown as Headers);
 
       // Setup
-      await globalThis.services.db.insert(cliTokens).values({
-        token: testToken,
-        userId: testUserId,
-        name: "Test Token",
-        expiresAt: new Date(Date.now() + 3600000),
-        createdAt: new Date(),
-      });
-
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,

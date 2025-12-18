@@ -6,7 +6,7 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
@@ -18,15 +18,21 @@ const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    // Authenticate with sandbox JWT and verify runId matches
+    const auth = await getSandboxAuthForRun(body.runId);
+    if (!auth) {
       return {
         status: 401 as const,
         body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+          error: {
+            message: "Not authenticated or runId mismatch",
+            code: "UNAUTHORIZED",
+          },
         },
       };
     }
+
+    const { userId } = auth;
 
     log.debug(
       `Received completion for run ${body.runId}, exitCode=${body.exitCode}`,

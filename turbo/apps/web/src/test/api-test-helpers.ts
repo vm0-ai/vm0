@@ -6,17 +6,19 @@
  * complete API flow, catching issues that direct DB operations might miss.
  *
  * Usage:
- *   import { createTestRequest, createDefaultComposeConfig } from "@/test/api-test-helpers";
+ *   import { createTestRequest, createDefaultComposeConfig, createTestSandboxToken } from "@/test/api-test-helpers";
  *
  *   const config = createDefaultComposeConfig("my-agent");
+ *   const token = await createTestSandboxToken(userId, runId);
  *   const request = createTestRequest("http://localhost:3000/api/agent/composes", {
  *     method: "POST",
- *     headers: { "Content-Type": "application/json" },
+ *     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
  *     body: JSON.stringify({ content: config }),
  *   });
  */
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
+import { generateSandboxToken } from "../lib/auth/sandbox-token";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -55,4 +57,19 @@ export function createDefaultComposeConfig(
       },
     },
   };
+}
+
+/**
+ * Create a test sandbox JWT token for webhook endpoints
+ * This generates a valid JWT that can be used to authenticate sandbox requests
+ *
+ * @param userId - The user ID to encode in the token
+ * @param runId - The run ID to encode in the token
+ * @returns A valid JWT token string
+ */
+export async function createTestSandboxToken(
+  userId: string,
+  runId: string,
+): Promise<string> {
+  return generateSandboxToken(userId, runId);
 }
