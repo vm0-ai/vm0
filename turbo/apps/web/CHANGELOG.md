@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.11.0](https://github.com/vm0-ai/vm0/compare/web-v5.10.1...web-v5.11.0) (2025-12-18)
+
+
+### Features
+
+* **web:** add light/dark theme toggle to website ([#599](https://github.com/vm0-ai/vm0/issues/599)) ([e27761f](https://github.com/vm0-ai/vm0/commit/e27761fddffea7901add954740784f3aa2c3fd8f))
+
 ## [5.10.1](https://github.com/vm0-ai/vm0/compare/web-v5.10.0...web-v5.10.1) (2025-12-18)
 
 

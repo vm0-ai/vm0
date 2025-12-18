@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.0](https://github.com/vm0-ai/vm0/compare/cli-v4.10.0...cli-v4.11.0) (2025-12-18)
+
+
+### Features
+
+* **cli:** add auto-upgrade check for cook command ([#598](https://github.com/vm0-ai/vm0/issues/598)) ([e388796](https://github.com/vm0-ai/vm0/commit/e388796a7ba8c9f755d3bd7886a6227907614ea5))
+
 ## [4.10.0](https://github.com/vm0-ai/vm0/compare/cli-v4.9.0...cli-v4.10.0) (2025-12-18)
 
 
