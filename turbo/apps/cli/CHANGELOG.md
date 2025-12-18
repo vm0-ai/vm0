@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.10.0](https://github.com/vm0-ai/vm0/compare/cli-v4.9.0...cli-v4.10.0) (2025-12-18)
+
+
+### Features
+
+* **cli:** add system logs tip on run failure ([#587](https://github.com/vm0-ai/vm0/issues/587)) ([90491d6](https://github.com/vm0-ai/vm0/commit/90491d6ecf587b6bf654afe9c1205b161cb6f7de))
+* **cli:** auto-generate .env file for missing variables in vm0 cook ([#584](https://github.com/vm0-ai/vm0/issues/584)) ([5b150cf](https://github.com/vm0-ai/vm0/commit/5b150cfb195892be6ca3ab688bc66657780c9853))
+
 ## [4.9.0](https://github.com/vm0-ai/vm0/compare/cli-v4.8.1...cli-v4.9.0) (2025-12-17)
 
 

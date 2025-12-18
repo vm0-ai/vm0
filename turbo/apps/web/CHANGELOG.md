@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.10.1](https://github.com/vm0-ai/vm0/compare/web-v5.10.0...web-v5.10.1) (2025-12-18)
+
+
+### Bug Fixes
+
+* **e2b:** add -f flag to curl in http_post_form for proper HTTP error handling ([#590](https://github.com/vm0-ai/vm0/issues/590)) ([5168d59](https://github.com/vm0-ai/vm0/commit/5168d593d3b36df7d1f83abdd53fece7884b0358))
+
 ## [5.10.0](https://github.com/vm0-ai/vm0/compare/web-v5.9.0...web-v5.10.0) (2025-12-17)
 
 
