@@ -7,10 +7,28 @@ const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAG
 const TIMEOUT_MS = 5000;
 
 /**
+ * Escape a string for use in shell command display
+ * Uses double quotes and escapes internal double quotes
+ */
+export function escapeForShell(str: string): string {
+  return `"${str.replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Build the re-run command string
+ */
+export function buildRerunCommand(prompt: string | undefined): string {
+  if (prompt) {
+    return `vm0 cook ${escapeForShell(prompt)}`;
+  }
+  return "vm0 cook";
+}
+
+/**
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
-function getLatestVersion(): Promise<string | null> {
+export function getLatestVersion(): Promise<string | null> {
   return new Promise((resolve) => {
     const req = https.get(NPM_REGISTRY_URL, (res) => {
       let data = "";
@@ -44,7 +62,7 @@ function getLatestVersion(): Promise<string | null> {
  * Execute npm install -g @vm0/cli@latest
  * Returns true on success, false on failure
  */
-function performUpgrade(): Promise<boolean> {
+export function performUpgrade(): Promise<boolean> {
   return new Promise((resolve) => {
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
     const child = spawn(npm, ["install", "-g", `${PACKAGE_NAME}@latest`], {
@@ -60,24 +78,6 @@ function performUpgrade(): Promise<boolean> {
       resolve(false);
     });
   });
-}
-
-/**
- * Escape a string for use in shell command display
- * Uses double quotes and escapes internal double quotes
- */
-function escapeForShell(str: string): string {
-  return `"${str.replace(/"/g, '\\"')}"`;
-}
-
-/**
- * Build the re-run command string
- */
-function buildRerunCommand(prompt: string | undefined): string {
-  if (prompt) {
-    return `vm0 cook ${escapeForShell(prompt)}`;
-  }
-  return "vm0 cook";
 }
 
 /**
