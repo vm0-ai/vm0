@@ -3,20 +3,13 @@ command: pr-review
 description: Review a pull request with detailed analysis of changes
 ---
 
-Reviews a pull request by analyzing its diff, understanding the changes, and providing feedback.
+Reviews a pull request by fetching PR information and delegating the code review to `/code-review`.
 
 Usage: `/pr-review [PR_NUMBER]`
 - If PR_NUMBER is provided, reviews that specific PR
 - If no argument is given, reviews the PR associated with the current branch
 
-The review includes:
-1. Summary of what the PR accomplishes
-2. List of modified files
-3. Key code changes, especially:
-   - Data structure modifications
-   - API changes
-   - Critical logic updates
-4. Code review feedback and suggestions
+## Workflow
 
 ```bash
 # Get PR number from argument or current branch
@@ -25,10 +18,10 @@ if [ -n "$1" ]; then
 else
     # Get current branch name
     CURRENT_BRANCH=$(git branch --show-current)
-    
+
     # Find PR associated with current branch
     PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
-    
+
     if [ -z "$PR_NUMBER" ]; then
         echo "No PR found for current branch '$CURRENT_BRANCH'. Please specify a PR number."
         exit 1
@@ -40,40 +33,17 @@ echo
 
 # Get PR information
 gh pr view "$PR_NUMBER" --json title,body,author,url | jq -r '"Title: \(.title)\nAuthor: \(.author.login)\nURL: \(.url)\n"'
-
-# Get the diff
-echo "Fetching PR diff..."
-gh pr diff "$PR_NUMBER"
 ```
 
-After fetching the diff, analyze:
+After fetching PR information, delegate to `/code-review` for the actual code review:
 
-1. **What this PR does:**
-   - Main purpose and goals
-   - Problems it solves
-   - Features it adds/modifies
+**Execute `/code-review $PR_NUMBER`** to perform the detailed code review.
 
-2. **Modified files:**
-   - List all changed files with statistics
-   - Group by type (source, config, tests, docs)
-
-3. **Key changes:**
-   - Data structures (interfaces, types, schemas)
-   - API endpoints or function signatures
-   - Database schema changes
-   - Configuration changes
-   - Breaking changes
-
-4. **Code review:**
-   - Code quality and style consistency
-   - Potential bugs or edge cases
-   - Performance considerations
-   - Security implications
-   - Test coverage
-   - Documentation updates needed
-
-5. **Suggestions:**
-   - Improvements or optimizations
-   - Missing error handling
-   - Alternative approaches
-   - Additional test cases needed
+The `/code-review` command will:
+1. Parse the PR and get the commit list
+2. Create output directory `codereviews/yyyymmdd`
+3. Generate `commit-list.md` with checkboxes for each commit
+4. Review each commit against the project's bad code smell criteria
+5. Generate individual review files per commit
+6. Update commit list with links to review files
+7. Generate overall review summary
