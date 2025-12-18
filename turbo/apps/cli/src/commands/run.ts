@@ -221,11 +221,14 @@ async function pollEvents(
     } else if (runStatus === "failed") {
       complete = true;
       // Render error info
-      EventRenderer.renderRunFailed(response.run.error);
+      EventRenderer.renderRunFailed(response.run.error, runId);
       result = { succeeded: false, runId };
     } else if (runStatus === "timeout") {
       complete = true;
       console.error(chalk.red("\n✗ Run timed out"));
+      console.error(
+        chalk.gray(`  (use "vm0 logs ${runId} --system" to view system logs)`),
+      );
       result = { succeeded: false, runId };
     }
 

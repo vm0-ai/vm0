@@ -160,11 +160,14 @@ export class EventRenderer {
    * Render run failed state
    * Note: This is run lifecycle status, not an event
    */
-  static renderRunFailed(error: string | undefined): void {
+  static renderRunFailed(error: string | undefined, runId: string): void {
     // Visual separator to distinguish from event stream
     console.log("");
     console.log(chalk.red("✗ Run failed"));
     console.log(`  Error: ${chalk.red(error || "Unknown error")}`);
+    console.log(
+      chalk.gray(`  (use "vm0 logs ${runId} --system" to view system logs)`),
+    );
   }
 
   private static renderInit(

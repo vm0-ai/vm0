@@ -686,7 +686,7 @@ describe("EventRenderer", () => {
     });
 
     it("should render run failed with error", () => {
-      EventRenderer.renderRunFailed("Something went wrong");
+      EventRenderer.renderRunFailed("Something went wrong", "run-123");
 
       expect(consoleLogSpy).toHaveBeenCalled();
       const allCalls = consoleLogSpy.mock.calls.map(
@@ -696,10 +696,13 @@ describe("EventRenderer", () => {
       expect(
         allCalls.some((call) => call.includes("Something went wrong")),
       ).toBe(true);
+      expect(
+        allCalls.some((call) => call.includes("vm0 logs run-123 --system")),
+      ).toBe(true);
     });
 
     it("should render run failed without error", () => {
-      EventRenderer.renderRunFailed(undefined);
+      EventRenderer.renderRunFailed(undefined, "run-456");
 
       expect(consoleLogSpy).toHaveBeenCalled();
       const allCalls = consoleLogSpy.mock.calls.map(
@@ -709,6 +712,9 @@ describe("EventRenderer", () => {
       expect(allCalls.some((call) => call.includes("Unknown error"))).toBe(
         true,
       );
+      expect(
+        allCalls.some((call) => call.includes("vm0 logs run-456 --system")),
+      ).toBe(true);
     });
 
     it("should render total time in verbose mode", () => {
