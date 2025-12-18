@@ -205,6 +205,7 @@ jobs:
             SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
             USE_MOCK_CLAUDE=true
             DEBUG=*
+            CRON_SECRET=${{ secrets.CRON_SECRET }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
@@ -291,9 +292,27 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Start Cron Simulator
+        run: |
+          chmod +x ./e2e/scripts/cron-simulator.sh
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
       - name: Run CLI E2E Tests
         run: ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/**/*.bats
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+
+      - name: Stop Cron Simulator
+        if: always()
+        run: |
+          if [ -n "$CRON_SIMULATOR_PID" ]; then
+            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
+            echo "Cron simulator stopped"
+          fi
