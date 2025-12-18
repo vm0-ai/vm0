@@ -279,7 +279,8 @@ export default function CookbooksPage() {
               display: "flex",
               flexDirection: "column",
               gap: "1px",
-              background: "var(--border-light)",
+              background: "var(--card-bg)",
+              border: "1px solid var(--border-light)",
               borderRadius: "12px",
               overflow: "hidden",
             }}
@@ -287,7 +288,7 @@ export default function CookbooksPage() {
             {/* Title */}
             <div
               style={{
-                background: "var(--bg-secondary)",
+                background: "var(--card-bg)",
                 padding: "32px 32px 16px 32px",
               }}
             >
@@ -296,7 +297,7 @@ export default function CookbooksPage() {
                   fontFamily: '"Noto Sans", sans-serif',
                   fontSize: "28px",
                   fontWeight: 400,
-                  color: "white",
+                  color: "var(--text-primary)",
                   margin: 0,
                 }}
               >
@@ -306,7 +307,7 @@ export default function CookbooksPage() {
             {/* Step 1 */}
             <div
               style={{
-                background: "var(--bg-secondary)",
+                background: "var(--card-bg)",
                 padding: "10px 32px",
                 display: "flex",
                 alignItems: "center",
@@ -348,7 +349,7 @@ export default function CookbooksPage() {
             {/* Step 2 */}
             <div
               style={{
-                background: "var(--bg-secondary)",
+                background: "var(--card-bg)",
                 padding: "10px 32px",
                 display: "flex",
                 alignItems: "center",
@@ -367,10 +368,10 @@ export default function CookbooksPage() {
               </span>
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.3)",
+                  background: "var(--code-input-bg)",
                   borderRadius: "6px",
                   padding: "8px 14px",
-                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  border: "1px solid var(--code-input-border)",
                   flex: 1,
                   display: "flex",
                   alignItems: "center",
@@ -393,7 +394,7 @@ export default function CookbooksPage() {
             {/* Step 3 */}
             <div
               style={{
-                background: "var(--bg-secondary)",
+                background: "var(--card-bg)",
                 padding: "10px 32px 32px 32px",
                 display: "flex",
                 alignItems: "center",
@@ -412,10 +413,10 @@ export default function CookbooksPage() {
               </span>
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.3)",
+                  background: "var(--code-input-bg)",
                   borderRadius: "6px",
                   padding: "8px 14px",
-                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  border: "1px solid var(--code-input-border)",
                   flex: 1,
                   display: "flex",
                   alignItems: "center",
@@ -454,8 +455,10 @@ export default function CookbooksPage() {
             {cookbooks.map((cookbook) => (
               <div
                 key={cookbook.id}
+                className="cookbook-card"
                 style={{
-                  background: "var(--bg-secondary)",
+                  background: "var(--card-bg)",
+                  border: "1px solid var(--border-light)",
                   borderRadius: "16px",
                   padding: "24px",
                   transition: "all 0.3s ease",
@@ -491,7 +494,7 @@ export default function CookbooksPage() {
                     fontSize: "20px",
                     fontWeight: 600,
                     marginBottom: "8px",
-                    color: "white",
+                    color: "var(--text-primary)",
                   }}
                 >
                   {cookbook.name}

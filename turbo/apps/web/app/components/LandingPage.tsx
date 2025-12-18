@@ -5,21 +5,29 @@ import Image from "next/image";
 import Link from "next/link";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
+import { useTheme } from "./ThemeProvider";
 
 export default function LandingPage() {
   const sandboxRef = useRef<HTMLDivElement>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     const handleScroll = () => {
       const navbar = document.querySelector(".navbar") as HTMLElement;
       const currentScroll = window.pageYOffset;
+      const isDarkMode =
+        document.documentElement.getAttribute("data-theme") !== "light";
 
       if (navbar) {
         if (currentScroll > 50) {
-          navbar.style.background = "rgba(10, 10, 10, 0.95)";
+          navbar.style.background = isDarkMode
+            ? "rgba(10, 10, 10, 0.95)"
+            : "rgba(255, 255, 255, 0.95)";
           navbar.style.backdropFilter = "blur(30px)";
         } else {
-          navbar.style.background = "rgba(10, 10, 10, 0.8)";
+          navbar.style.background = isDarkMode
+            ? "rgba(10, 10, 10, 0.8)"
+            : "rgba(255, 255, 255, 0.8)";
           navbar.style.backdropFilter = "blur(20px)";
         }
       }
@@ -238,7 +246,11 @@ export default function LandingPage() {
                 <div className="old-tools-grid">
                   <div className="tool-logo">
                     <Image
-                      src="/assets/n8n.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/n8n-dark.svg"
+                          : "/assets/n8n.svg"
+                      }
                       alt="n8n workflow automation tool"
                       width={80}
                       height={40}
@@ -246,7 +258,11 @@ export default function LandingPage() {
                   </div>
                   <div className="tool-logo">
                     <Image
-                      src="/assets/dify.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/dify-dark.svg"
+                          : "/assets/dify.svg"
+                      }
                       alt="Dify AI application platform"
                       width={80}
                       height={40}
@@ -254,7 +270,11 @@ export default function LandingPage() {
                   </div>
                   <div className="tool-logo">
                     <Image
-                      src="/assets/modal.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/modal-dark.svg"
+                          : "/assets/modal.svg"
+                      }
                       alt="Modal cloud computing platform"
                       width={80}
                       height={40}
@@ -262,7 +282,11 @@ export default function LandingPage() {
                   </div>
                   <div className="tool-logo">
                     <Image
-                      src="/assets/e2b.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/e2b-dark.svg"
+                          : "/assets/e2b.svg"
+                      }
                       alt="E2B code interpreter sandbox"
                       width={80}
                       height={40}
@@ -270,7 +294,11 @@ export default function LandingPage() {
                   </div>
                   <div className="tool-logo">
                     <Image
-                      src="/assets/langgraph.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/langgraph-dark.svg"
+                          : "/assets/langgraph.svg"
+                      }
                       alt="LangGraph agent framework"
                       width={80}
                       height={40}
@@ -278,7 +306,11 @@ export default function LandingPage() {
                   </div>
                   <div className="tool-logo">
                     <Image
-                      src="/assets/langfuse.svg"
+                      src={
+                        theme === "light"
+                          ? "/assets/langfuse-dark.svg"
+                          : "/assets/langfuse.svg"
+                      }
                       alt="Langfuse LLM observability platform"
                       width={80}
                       height={40}
@@ -290,7 +322,11 @@ export default function LandingPage() {
               <div className="comparison-right">
                 <div className="vm0-logo-large">
                   <Image
-                    src="/assets/vm0-logo.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/vm0-logo-dark.svg"
+                        : "/assets/vm0-logo.svg"
+                    }
                     alt="VM0"
                     width={180}
                     height={60}
@@ -322,7 +358,11 @@ export default function LandingPage() {
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
                   <Image
-                    src="/assets/claudecode.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/claudecode-dark.svg"
+                        : "/assets/claudecode.svg"
+                    }
                     alt="Claude Code - AI coding assistant"
                     width={40}
                     height={40}
@@ -334,7 +374,11 @@ export default function LandingPage() {
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
                   <Image
-                    src="/assets/codex.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/codex-dark.svg"
+                        : "/assets/codex.svg"
+                    }
                     alt="OpenAI Codex - AI code generation"
                     width={40}
                     height={40}
@@ -346,7 +390,11 @@ export default function LandingPage() {
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
                   <Image
-                    src="/assets/gemini.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/gemini-dark.svg"
+                        : "/assets/gemini.svg"
+                    }
                     alt="Google Gemini CLI agent"
                     width={40}
                     height={40}
@@ -358,7 +406,11 @@ export default function LandingPage() {
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
                   <Image
-                    src="/assets/cursor-cli.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/cursor-cli-dark.svg"
+                        : "/assets/cursor-cli.svg"
+                    }
                     alt="Cursor CLI - AI code editor"
                     width={40}
                     height={40}
@@ -370,7 +422,11 @@ export default function LandingPage() {
               <div className="cli-tool-item">
                 <div className="cli-icon-wrapper">
                   <Image
-                    src="/assets/qianwen.svg"
+                    src={
+                      theme === "light"
+                        ? "/assets/qianwen-dark.svg"
+                        : "/assets/qianwen.svg"
+                    }
                     alt="Other CLI agents and tools"
                     width={40}
                     height={40}

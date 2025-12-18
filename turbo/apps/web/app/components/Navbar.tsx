@@ -2,8 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import ThemeToggle from "./ThemeToggle";
+import { useTheme } from "./ThemeProvider";
 
 export default function Navbar() {
+  const { theme } = useTheme();
+
   return (
     <nav className="navbar">
       <div className="container">
@@ -11,7 +15,11 @@ export default function Navbar() {
           <div className="nav-left">
             <Link href="/" className="logo">
               <Image
-                src="/assets/vm0-logo.svg"
+                src={
+                  theme === "light"
+                    ? "/assets/vm0-logo-dark.svg"
+                    : "/assets/vm0-logo.svg"
+                }
                 alt="VM0 - Modern Runtime for Agent Development"
                 width={120}
                 height={30}
@@ -35,6 +43,7 @@ export default function Navbar() {
             </a>
           </div>
           <div className="nav-right">
+            <ThemeToggle />
             <a href="mailto:contact@vm0.ai" className="btn-try-demo">
               Contact us
             </a>
