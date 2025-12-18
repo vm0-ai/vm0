@@ -37,8 +37,7 @@ For each missing phase, execute in order using the corresponding slash command, 
 #### Phase 1: Research (if no research.md exists)
 
 1. **Execute `/deep-research`** with the issue context
-   - Use task-name: `issue-{{ISSUE_ID}}`
-   - This will create `/tmp/deep-dive/issue-{{ISSUE_ID}}/research.md`
+   - This will create `/tmp/deep-dive/{task-name}/research.md`
 
 2. **Post research comment to issue**:
    ```
@@ -56,7 +55,7 @@ For each missing phase, execute in order using the corresponding slash command, 
 #### Phase 2: Innovate (if no innovate.md exists)
 
 1. **Execute `/deep-innovate`** with the issue context
-   - This will read research.md and create `/tmp/deep-dive/issue-{{ISSUE_ID}}/innovate.md`
+   - This will read research.md and create `/tmp/deep-dive/{task-name}/innovate.md`
 
 2. **Post innovation comment to issue**:
    ```
@@ -74,7 +73,7 @@ For each missing phase, execute in order using the corresponding slash command, 
 #### Phase 3: Plan (if no plan.md exists)
 
 1. **Execute `/deep-plan`** with the issue context
-   - This will read research.md and innovate.md, then create `/tmp/deep-dive/issue-{{ISSUE_ID}}/plan.md`
+   - This will read research.md and innovate.md, then create `/tmp/deep-dive/{task-name}/plan.md`
 
 2. **Post plan comment to issue**:
    ```
