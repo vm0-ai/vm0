@@ -182,7 +182,9 @@ export async function GET(request: NextRequest) {
     log.error("Download URL generation error:", error);
 
     return errorResponse(
-      error instanceof Error ? error.message : "Failed to generate download URL",
+      error instanceof Error
+        ? error.message
+        : "Failed to generate download URL",
       "INTERNAL_ERROR",
       500,
     );
