@@ -64,7 +64,7 @@ When research is complete:
 2. Briefly summarize what you've learned (facts only, no recommendations)
 3. Ask the user: **"What would you like to do next?"**
    - Continue exploring specific areas
-   - Move to solution discussion
+   - Move to `/deep-innovate` to brainstorm potential approaches
    - Something else entirely
 
 ## TASK TO RESEARCH
