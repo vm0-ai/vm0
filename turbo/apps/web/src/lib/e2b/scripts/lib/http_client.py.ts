@@ -102,8 +102,9 @@ def http_post_form(
         log_debug(f"HTTP POST form attempt {attempt}/{max_retries} to {url}")
 
         # Build curl command
+        # -f flag makes curl return non-zero exit code on HTTP 4xx/5xx errors
         curl_cmd = [
-            "curl", "-X", "POST", url,
+            "curl", "-f", "-X", "POST", url,
             "-H", f"Authorization: Bearer {API_TOKEN}",
             "--connect-timeout", str(HTTP_CONNECT_TIMEOUT),
             "--max-time", str(HTTP_MAX_TIME_UPLOAD),
@@ -134,7 +135,11 @@ def http_post_form(
                     return json.loads(result.stdout)
                 return {}
 
-            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): curl exit {result.returncode}")
+            # Log curl exit code and stderr for better debugging
+            error_msg = f"curl exit {result.returncode}"
+            if result.stderr:
+                error_msg += f": {result.stderr.strip()}"
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): {error_msg}")
             if attempt < max_retries:
                 time.sleep(1)
 
@@ -144,6 +149,9 @@ def http_post_form(
                 time.sleep(1)
         except json.JSONDecodeError as e:
             log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): Invalid JSON response")
+            # Log raw response for debugging (truncate to avoid log spam)
+            if result.stdout:
+                log_debug(f"Raw response: {result.stdout[:500]}")
             if attempt < max_retries:
                 time.sleep(1)
         except Exception as e:
