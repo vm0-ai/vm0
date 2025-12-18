@@ -295,5 +295,4 @@ describe("POST /api/storages/prepare", () => {
     expect(json1.versionId).toBe(json2.versionId);
     expect(json1.versionId).toHaveLength(64);
   });
-
 });

@@ -23,6 +23,7 @@ if (existingBlobHashes.size > 0) {
 ```
 
 **Issue**: If two concurrent uploads reference the same blob, there's a potential race condition where:
+
 1. Both uploads query existing blobs and see the blob exists
 2. Both try to increment the ref count
 3. The ref count might be incorrect due to concurrent updates
@@ -52,16 +53,19 @@ const blobUploads = await Promise.all(
 ```
 
 **Issue**: The prepare endpoint generates presigned URLs for individual blobs, but:
+
 1. CLI `direct-upload.ts` never uploads blobs (only archive and manifest)
 2. Sandbox `direct_upload.py.ts` never uploads blobs (only archive and manifest)
 3. The commit endpoint never verifies blobs exist
 
 **Impact**:
+
 - Unused presigned URL generation wastes AWS API calls
 - Content-addressable blob deduplication is not functioning as designed
 - The blobs are only referenced in database, but actual blob files in S3 are never created
 
 **Recommendation**: Either:
+
 - Remove blob presigned URL generation entirely (if not using blob-level deduplication)
 - Or implement blob upload in CLI and sandbox scripts
 
@@ -84,6 +88,7 @@ const blobUploads = await Promise.all(
 **Location**: CLI pull commands and download endpoint
 
 **Issue**: Empty storage handling varies:
+
 - `download/route.ts:149-156`: Returns `{ empty: true }` for `fileCount === 0`
 - `pull.ts:89-92`: Checks `downloadInfo.empty`
 - But what if archive exists but is empty (has 0 files)?
@@ -113,6 +118,7 @@ if (!expectedSignature.equals(actualSignature)) {
 **Location**: `apps/web/app/api/storages/prepare/route.ts` and `commit/route.ts`
 
 **Issue**: The `files` array is not validated for size limits:
+
 ```typescript
 if (!files || !Array.isArray(files)) {
   return errorResponse("files array is required", "BAD_REQUEST", 400);
@@ -120,6 +126,7 @@ if (!files || !Array.isArray(files)) {
 ```
 
 **Impact**: A malicious client could send an extremely large `files` array causing:
+
 - Memory exhaustion on the server
 - Slow database queries with many hashes
 
@@ -132,6 +139,7 @@ if (!files || !Array.isArray(files)) {
 **Location**: `apps/cli/src/lib/direct-upload.ts`
 
 **Issue**: The flow is:
+
 1. Get presigned URLs (valid for 1 hour)
 2. Create archive locally
 3. Upload to S3
@@ -163,6 +171,7 @@ const manifest = {
 ### 9. Duplicate Code Between CLI and Webhook Endpoints
 
 **Location**:
+
 - `apps/web/app/api/storages/prepare/route.ts`
 - `apps/web/app/api/webhooks/agent/storages/prepare/route.ts`
 
@@ -226,20 +235,20 @@ if not prepare_response:
 
 ## Summary Table
 
-| # | Severity | Issue | Fix Required |
-|---|----------|-------|--------------|
-| 1 | 🔴 Critical | Race condition in blob ref counting | Yes |
-| 2 | 🔴 Critical | Blob URLs generated but never used | Yes |
-| 3 | 🟠 Medium | Missing download endpoint tests | Recommended |
-| 4 | 🟠 Medium | Inconsistent empty archive handling | Review |
-| 5 | 🟠 Medium | Timing attack (minor) | Optional |
-| 6 | 🟠 Medium | No size limit on files array | Recommended |
-| 7 | 🟠 Medium | Presigned URL expiration timing | Consider |
-| 8 | 🟡 Minor | Hardcoded manifest version | Document |
-| 9 | 🟡 Minor | Duplicate code | Refactor |
-| 10 | 🟡 Minor | No retry on download | Consider |
-| 11 | 🟡 Minor | Temp directory cleanup | Fix |
-| 12 | 🟡 Minor | Python error handling | Review |
+| #   | Severity    | Issue                               | Fix Required |
+| --- | ----------- | ----------------------------------- | ------------ |
+| 1   | 🔴 Critical | Race condition in blob ref counting | Yes          |
+| 2   | 🔴 Critical | Blob URLs generated but never used  | Yes          |
+| 3   | 🟠 Medium   | Missing download endpoint tests     | Recommended  |
+| 4   | 🟠 Medium   | Inconsistent empty archive handling | Review       |
+| 5   | 🟠 Medium   | Timing attack (minor)               | Optional     |
+| 6   | 🟠 Medium   | No size limit on files array        | Recommended  |
+| 7   | 🟠 Medium   | Presigned URL expiration timing     | Consider     |
+| 8   | 🟡 Minor    | Hardcoded manifest version          | Document     |
+| 9   | 🟡 Minor    | Duplicate code                      | Refactor     |
+| 10  | 🟡 Minor    | No retry on download                | Consider     |
+| 11  | 🟡 Minor    | Temp directory cleanup              | Fix          |
+| 12  | 🟡 Minor    | Python error handling               | Review       |
 
 ---
 
