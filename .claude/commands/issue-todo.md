@@ -2,6 +2,22 @@
 
 Your job is to start working on GitHub issue {{ISSUE_ID}} for the current project. This command integrates with the deep-dive workflow to ensure thorough exploration before implementation.
 
+## Task Tracking (CRITICAL)
+
+**You MUST use the TodoWrite tool to track your progress through this workflow.** Create the following todo list at the START of execution:
+
+1. Fetch issue #{{ISSUE_ID}} details
+2. Check for existing deep-dive artifacts
+3. Execute research phase (if needed)
+4. Post research comment to issue
+5. Execute innovate phase (if needed)
+6. Post innovate comment to issue
+7. Execute plan phase (if needed)
+8. Post plan comment to issue
+9. Add pending label and finalize
+
+**Update your todo list after completing each step.** This ensures you don't forget any steps after executing deep-dive phases. Mark each step as `in_progress` when starting and `completed` when done.
+
 ## Important Notes
 - Follow software engineering best practices: create independent feature branches (git checkout -b feature/issue-{{ISSUE_ID}}-xxx)
 - Commit messages must follow Conventional Commits specification (feat / fix / docs / refactor / test / chore)
@@ -39,6 +55,8 @@ When executing deep-dive phases within `/issue-todo`, run in **auto-continue mod
 - Do NOT ask "What would you like to do next?"
 - Automatically proceed through all three phases: research → innovate → plan
 - Only stop after ALL phases are complete and comments are posted
+- **After completing each deep-dive phase, IMMEDIATELY update your todo list** to mark the phase as completed and the next step (posting comment) as in_progress
+- **Check your todo list** after each phase to ensure you don't skip any steps
 
 For each missing phase, execute in order, then post comments to the issue:
 
@@ -48,6 +66,7 @@ For each missing phase, execute in order, then post comments to the issue:
    - Systematically analyze the codebase related to the issue
    - Create `/tmp/deep-dive/{task-name}/research.md`
    - Do NOT ask user what to do next - automatically continue to Phase 2
+   - ✅ **Update todo:** Mark "Execute research phase" as completed
 
 2. **Post research comment to issue**:
    ```
@@ -61,6 +80,7 @@ For each missing phase, execute in order, then post comments to the issue:
    EOF
    )"
    ```
+   - ✅ **Update todo:** Mark "Post research comment to issue" as completed
 
 #### Phase 2: Innovate (if no innovate.md exists)
 
@@ -69,6 +89,7 @@ For each missing phase, execute in order, then post comments to the issue:
    - Explore multiple solution approaches and evaluate trade-offs
    - Create `/tmp/deep-dive/{task-name}/innovate.md`
    - Do NOT ask user for direction - automatically continue to Phase 3
+   - ✅ **Update todo:** Mark "Execute innovate phase" as completed
 
 2. **Post innovation comment to issue**:
    ```
@@ -82,6 +103,7 @@ For each missing phase, execute in order, then post comments to the issue:
    EOF
    )"
    ```
+   - ✅ **Update todo:** Mark "Post innovate comment to issue" as completed
 
 #### Phase 3: Plan (if no plan.md exists)
 
@@ -91,6 +113,7 @@ For each missing phase, execute in order, then post comments to the issue:
    - Ensure goal focus - connect all planning to original requirements
    - Create `/tmp/deep-dive/{task-name}/plan.md`
    - Do NOT ask user for approval here - that happens via GitHub issue
+   - ✅ **Update todo:** Mark "Execute plan phase" as completed
 
 2. **Post plan comment to issue**:
    ```
@@ -104,12 +127,15 @@ For each missing phase, execute in order, then post comments to the issue:
    EOF
    )"
    ```
+   - ✅ **Update todo:** Mark "Post plan comment to issue" as completed
 
 ### Step 4: Finalize
 
 1. **Add pending label**: Use `gh issue edit {{ISSUE_ID}} --add-label pending` to wait for user approval
 2. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
-3. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
+3. ✅ **Update todo:** Mark "Add pending label and finalize" as completed
+4. **Verify all todos are complete**: Check your todo list - ALL items should be marked as completed before exiting
+5. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
 
 ## Label Management
 - **Add "pending" label** when waiting for user input (after all phases complete)
