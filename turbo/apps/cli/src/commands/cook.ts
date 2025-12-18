@@ -1,10 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { readFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
+import { readFile, mkdir, writeFile, appendFile } from "fs/promises";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { parse as parseYaml } from "yaml";
+import { config as dotenvConfig } from "dotenv";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+} from "@vm0/core";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { readStorageConfig } from "../lib/storage-utils";
 
@@ -155,6 +160,74 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Extract all required variable names from compose config
+ * Returns unique names from both vars and secrets references
+ */
+function extractRequiredVarNames(config: AgentComposeConfig): string[] {
+  const refs = extractVariableReferences(config);
+  const grouped = groupVariablesBySource(refs);
+  // Combine vars and secrets names (both are loaded from .env)
+  const varNames = grouped.vars.map((r) => r.name);
+  const secretNames = grouped.secrets.map((r) => r.name);
+  return [...new Set([...varNames, ...secretNames])];
+}
+
+/**
+ * Check which variables are missing from environment and .env file
+ * @param varNames - Variable names to check
+ * @param envFilePath - Path to .env file
+ * @returns Array of missing variable names
+ */
+function checkMissingVariables(
+  varNames: string[],
+  envFilePath: string,
+): string[] {
+  // Load .env file if it exists
+  let dotenvValues: Record<string, string> = {};
+  if (existsSync(envFilePath)) {
+    const result = dotenvConfig({ path: envFilePath });
+    if (result.parsed) {
+      dotenvValues = result.parsed;
+    }
+  }
+
+  // Check which variables are missing
+  const missing: string[] = [];
+  for (const name of varNames) {
+    const inEnv = process.env[name] !== undefined;
+    const inDotenv = dotenvValues[name] !== undefined;
+    if (!inEnv && !inDotenv) {
+      missing.push(name);
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * Generate .env file with placeholder entries for missing variables
+ * Creates file if it doesn't exist, appends to existing file
+ * @param missingVars - Variable names to add as placeholders
+ * @param envFilePath - Path to .env file
+ */
+async function generateEnvPlaceholders(
+  missingVars: string[],
+  envFilePath: string,
+): Promise<void> {
+  const placeholders = missingVars.map((name) => `${name}=`).join("\n");
+
+  if (existsSync(envFilePath)) {
+    // Read existing content to check if we need a newline
+    const existingContent = readFileSync(envFilePath, "utf8");
+    const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
+    const prefix = needsNewline ? "\n" : "";
+    await appendFile(envFilePath, `${prefix}${placeholders}\n`);
+  } else {
+    await writeFile(envFilePath, `${placeholders}\n`);
+  }
+}
+
 export const cookCommand = new Command()
   .name("cook")
   .description("One-click agent preparation and execution from vm0.yaml")
@@ -195,6 +268,27 @@ export const cookCommand = new Command()
     console.log(
       chalk.green(`✓ Config validated: 1 agent, ${volumeCount} volume(s)`),
     );
+
+    // Step 1.5: Check for missing environment variables
+    const requiredVarNames = extractRequiredVarNames(config);
+    if (requiredVarNames.length > 0) {
+      const envFilePath = path.join(cwd, ".env");
+      const missingVars = checkMissingVariables(requiredVarNames, envFilePath);
+
+      if (missingVars.length > 0) {
+        await generateEnvPlaceholders(missingVars, envFilePath);
+        console.log();
+        console.log(
+          chalk.yellow(
+            `⚠ Missing environment variables. Please fill in values in .env file:`,
+          ),
+        );
+        for (const varName of missingVars) {
+          console.log(chalk.yellow(`    ${varName}`));
+        }
+        process.exit(1);
+      }
+    }
 
     // Step 2: Process volumes
     if (config.volumes && Object.keys(config.volumes).length > 0) {
