@@ -132,7 +132,7 @@ export async function checkAndUpgrade(
   // Upgrade failed - show manual instructions
   console.log();
   console.log(chalk.red("Upgrade failed. Please run manually:"));
-  console.log(chalk.cyan(`  sudo npm install -g ${PACKAGE_NAME}@latest`));
+  console.log(chalk.cyan(`  npm install -g ${PACKAGE_NAME}@latest`));
   console.log();
   console.log("Then re-run:");
   console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
