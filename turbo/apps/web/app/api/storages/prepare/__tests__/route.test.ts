@@ -16,7 +16,6 @@ import {
   storages,
   storageVersions,
 } from "../../../../../src/db/schema/storage";
-import { blobs } from "../../../../../src/db/schema/blob";
 
 // Mock external dependencies
 vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
@@ -297,56 +296,4 @@ describe("POST /api/storages/prepare", () => {
     expect(json1.versionId).toHaveLength(64);
   });
 
-  it("should skip presigned URLs for existing blobs", async () => {
-    const { POST } = await import("../route");
-    const storageName = `${TEST_PREFIX}blob-dedup`;
-
-    // Create storage
-    await globalThis.services.db.insert(storages).values({
-      userId: TEST_USER_ID,
-      name: storageName,
-      type: "volume",
-      s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
-      size: 0,
-      fileCount: 0,
-    });
-
-    // Create existing blob
-    const existingHash =
-      "existing_blob_hash_abcdef1234567890abcdef1234567890abcdef1234";
-    await globalThis.services.db
-      .insert(blobs)
-      .values({ hash: existingHash, size: 100, refCount: 1 })
-      .onConflictDoNothing();
-
-    const files = [
-      { path: "existing.txt", hash: existingHash, size: 100 },
-      {
-        path: "new.txt",
-        hash: "new_blob_hash_1234567890abcdef1234567890abcdef12345678",
-        size: 200,
-      },
-    ];
-
-    const request = new Request("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "volume", files }),
-    });
-
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
-    expect(response.status).toBe(200);
-
-    const json = await response.json();
-    // Should only have presigned URL for new blob, not existing one
-    expect(json.uploads.blobs).toHaveLength(1);
-    expect(json.uploads.blobs[0].hash).toBe(files[1]!.hash);
-
-    // Clean up test blob
-    await globalThis.services.db
-      .delete(blobs)
-      .where(eq(blobs.hash, existingHash));
-  });
 });

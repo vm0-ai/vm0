@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
-import { blobs } from "../../../../src/db/schema/blob";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { s3ObjectExists } from "../../../../src/lib/s3/s3-client";
 import {
@@ -224,56 +223,8 @@ export async function POST(request: NextRequest) {
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     const fileCount = files.length;
 
-    // Get unique blob hashes
-    const uniqueHashes = [...new Set(files.map((f) => f.hash))];
-
     // Use transaction for atomicity
     await globalThis.services.db.transaction(async (tx) => {
-      // Query existing blobs
-      const existingBlobs =
-        uniqueHashes.length > 0
-          ? await tx
-              .select({ hash: blobs.hash })
-              .from(blobs)
-              .where(inArray(blobs.hash, uniqueHashes))
-          : [];
-      const existingBlobHashes = new Set(existingBlobs.map((b) => b.hash));
-
-      // Insert new blobs and update ref counts
-      const newHashes = uniqueHashes.filter((h) => !existingBlobHashes.has(h));
-
-      if (newHashes.length > 0) {
-        // Get sizes for new blobs from files array
-        const hashToSize = new Map<string, number>();
-        for (const file of files) {
-          if (!hashToSize.has(file.hash)) {
-            hashToSize.set(file.hash, file.size);
-          }
-        }
-
-        const newBlobRecords = newHashes.map((hash) => ({
-          hash,
-          size: hashToSize.get(hash) || 0,
-          refCount: 1,
-        }));
-
-        await tx
-          .insert(blobs)
-          .values(newBlobRecords)
-          .onConflictDoUpdate({
-            target: blobs.hash,
-            set: { refCount: sql`${blobs.refCount} + 1` },
-          });
-      }
-
-      // Increment ref count for existing blobs
-      if (existingBlobHashes.size > 0) {
-        await tx
-          .update(blobs)
-          .set({ refCount: sql`${blobs.refCount} + 1` })
-          .where(inArray(blobs.hash, Array.from(existingBlobHashes)));
-      }
-
       // Create storage version record
       await tx
         .insert(storageVersions)

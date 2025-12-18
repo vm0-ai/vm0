@@ -22,7 +22,6 @@ interface PrepareResponse {
   versionId: string;
   existing: boolean;
   uploads?: {
-    blobs: Array<{ hash: string; presignedUrl: string }>;
     archive: { key: string; presignedUrl: string };
     manifest: { key: string; presignedUrl: string };
   };

@@ -5,8 +5,7 @@ import {
   storages,
   storageVersions,
 } from "../../../../../../src/db/schema/storage";
-import { blobs } from "../../../../../../src/db/schema/blob";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import {
   generatePresignedPutUrl,
@@ -56,7 +55,6 @@ interface PrepareResponse {
   versionId: string;
   existing: boolean;
   uploads?: {
-    blobs: Array<{ hash: string; presignedUrl: string }>;
     archive: { key: string; presignedUrl: string };
     manifest: { key: string; presignedUrl: string };
   };
@@ -267,39 +265,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Query existing blobs to avoid re-uploading
-    const fileHashes = mergedFiles.map((f) => f.hash);
-    const uniqueHashes = [...new Set(fileHashes)];
-
-    let existingBlobHashes = new Set<string>();
-    if (uniqueHashes.length > 0) {
-      const existingBlobs = await globalThis.services.db
-        .select({ hash: blobs.hash })
-        .from(blobs)
-        .where(inArray(blobs.hash, uniqueHashes));
-      existingBlobHashes = new Set(existingBlobs.map((b) => b.hash));
-    }
-
-    // Generate presigned URLs for new blobs only
-    const newBlobHashes = uniqueHashes.filter(
-      (h) => !existingBlobHashes.has(h),
-    );
-    const blobUploads = await Promise.all(
-      newBlobHashes.map(async (hash) => ({
-        hash,
-        presignedUrl: await generatePresignedPutUrl(
-          bucketName,
-          `blobs/${hash}.blob`,
-          "application/octet-stream",
-          3600, // 1 hour
-        ),
-      })),
-    );
-
-    log.debug(
-      `Blob deduplication: ${existingBlobHashes.size} existing, ${newBlobHashes.length} new`,
-    );
-
     // Generate presigned URLs for archive and manifest
     const s3Key = `${userId}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
@@ -319,7 +284,6 @@ export async function POST(request: NextRequest) {
       versionId,
       existing: false,
       uploads: {
-        blobs: blobUploads,
         archive: { key: archiveKey, presignedUrl: archiveUrl },
         manifest: { key: manifestKey, presignedUrl: manifestUrl },
       },
