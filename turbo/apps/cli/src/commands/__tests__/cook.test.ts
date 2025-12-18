@@ -44,9 +44,21 @@ describe("cook command - environment variable check", () => {
   describe("extractRequiredVarNames", () => {
     it("should extract variable names from vars and secrets references", () => {
       const mockRefs = [
-        { source: "vars" as const, name: TEST_VAR_1, fullMatch: `\${{ vars.${TEST_VAR_1} }}` },
-        { source: "secrets" as const, name: TEST_VAR_2, fullMatch: `\${{ secrets.${TEST_VAR_2} }}` },
-        { source: "vars" as const, name: TEST_VAR_3, fullMatch: `\${{ vars.${TEST_VAR_3} }}` },
+        {
+          source: "vars" as const,
+          name: TEST_VAR_1,
+          fullMatch: `\${{ vars.${TEST_VAR_1} }}`,
+        },
+        {
+          source: "secrets" as const,
+          name: TEST_VAR_2,
+          fullMatch: `\${{ secrets.${TEST_VAR_2} }}`,
+        },
+        {
+          source: "vars" as const,
+          name: TEST_VAR_3,
+          fullMatch: `\${{ vars.${TEST_VAR_3} }}`,
+        },
       ];
 
       vi.mocked(core.extractVariableReferences).mockReturnValue(mockRefs);
@@ -57,7 +69,9 @@ describe("cook command - environment variable check", () => {
       });
 
       // The actual function is internal, so we verify the logic through integration
-      const result = core.groupVariablesBySource(core.extractVariableReferences({}));
+      const result = core.groupVariablesBySource(
+        core.extractVariableReferences({}),
+      );
       const varNames = result.vars.map((r) => r.name);
       const secretNames = result.secrets.map((r) => r.name);
       const combined = [...new Set([...varNames, ...secretNames])];
@@ -154,7 +168,10 @@ describe("cook command - environment variable check", () => {
 
       await fs.writeFile(".env", `${placeholders}\n`);
 
-      expect(mockWriteFile).toHaveBeenCalledWith(".env", "API_KEY=\nDB_PASSWORD=\n");
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        ".env",
+        "API_KEY=\nDB_PASSWORD=\n",
+      );
     });
 
     it("should append to existing .env file", async () => {
@@ -163,7 +180,8 @@ describe("cook command - environment variable check", () => {
       const mockAppendFile = vi.mocked(fs.appendFile).mockResolvedValue();
 
       const existingContent = readFileSync(".env", "utf8");
-      const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
+      const needsNewline =
+        existingContent.length > 0 && !existingContent.endsWith("\n");
       const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
       const placeholders = missingVars.map((name) => `${name}=`).join("\n");
@@ -179,7 +197,8 @@ describe("cook command - environment variable check", () => {
       const mockAppendFile = vi.mocked(fs.appendFile).mockResolvedValue();
 
       const existingContent = readFileSync(".env", "utf8");
-      const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
+      const needsNewline =
+        existingContent.length > 0 && !existingContent.endsWith("\n");
       const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
       const placeholders = missingVars.map((name) => `${name}=`).join("\n");

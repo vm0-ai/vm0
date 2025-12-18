@@ -6,10 +6,7 @@ import path from "path";
 import { spawn } from "child_process";
 import { parse as parseYaml } from "yaml";
 import { config as dotenvConfig } from "dotenv";
-import {
-  extractVariableReferences,
-  groupVariablesBySource,
-} from "@vm0/core";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { readStorageConfig } from "../lib/storage-utils";
 
@@ -220,7 +217,8 @@ async function generateEnvPlaceholders(
   if (existsSync(envFilePath)) {
     // Read existing content to check if we need a newline
     const existingContent = readFileSync(envFilePath, "utf8");
-    const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
+    const needsNewline =
+      existingContent.length > 0 && !existingContent.endsWith("\n");
     const prefix = needsNewline ? "\n" : "";
     await appendFile(envFilePath, `${prefix}${placeholders}\n`);
   } else {
