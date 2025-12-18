@@ -36,6 +36,8 @@ interface PrepareRequest {
   storageName: string;
   storageType: "volume" | "artifact";
   files: FileEntryWithHash[];
+  // Force upload even if version already exists
+  force?: boolean;
   // Sandbox-specific fields (optional)
   runId?: string;
   baseVersion?: string;
@@ -82,8 +84,15 @@ export async function POST(request: NextRequest) {
 
     // Parse JSON body
     const body = (await request.json()) as PrepareRequest;
-    const { storageName, storageType, files, runId, baseVersion, changes } =
-      body;
+    const {
+      storageName,
+      storageType,
+      files,
+      force,
+      runId,
+      baseVersion,
+      changes,
+    } = body;
 
     // Validate required fields
     if (!storageName) {
@@ -215,24 +224,28 @@ export async function POST(request: NextRequest) {
     const versionId = computeContentHashFromHashes(storage.id, mergedFiles);
     log.debug(`Computed version ID: ${versionId}`);
 
-    // Check if version already exists (deduplication)
-    const [existingVersion] = await globalThis.services.db
-      .select()
-      .from(storageVersions)
-      .where(
-        and(
-          eq(storageVersions.storageId, storage.id),
-          eq(storageVersions.id, versionId),
-        ),
-      )
-      .limit(1);
+    // Check if version already exists (deduplication) - skip if force is true
+    if (!force) {
+      const [existingVersion] = await globalThis.services.db
+        .select()
+        .from(storageVersions)
+        .where(
+          and(
+            eq(storageVersions.storageId, storage.id),
+            eq(storageVersions.id, versionId),
+          ),
+        )
+        .limit(1);
 
-    if (existingVersion) {
-      log.debug(`Version ${versionId} already exists, returning existing`);
-      return NextResponse.json({
-        versionId,
-        existing: true,
-      } satisfies PrepareResponse);
+      if (existingVersion) {
+        log.debug(`Version ${versionId} already exists, returning existing`);
+        return NextResponse.json({
+          versionId,
+          existing: true,
+        } satisfies PrepareResponse);
+      }
+    } else {
+      log.debug(`Force flag set, skipping deduplication check for ${versionId}`);
     }
 
     // Get bucket name

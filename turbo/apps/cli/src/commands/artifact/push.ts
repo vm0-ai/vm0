@@ -21,7 +21,7 @@ export const pushCommand = new Command()
     "-f, --force",
     "Force upload even if content unchanged (recreate archive)",
   )
-  .action(async () => {
+  .action(async (options: { force?: boolean }) => {
     try {
       const cwd = process.cwd();
 
@@ -46,14 +46,12 @@ export const pushCommand = new Command()
       console.log(chalk.cyan(`Pushing artifact: ${config.name}`));
 
       // Perform direct S3 upload
-      const result = await directUpload(
-        config.name,
-        "artifact",
-        cwd,
-        (message) => {
+      const result = await directUpload(config.name, "artifact", cwd, {
+        onProgress: (message) => {
           console.log(chalk.gray(message));
         },
-      );
+        force: options.force,
+      });
 
       // Display short version (8 characters) by default
       const shortVersion = result.versionId.slice(0, 8);

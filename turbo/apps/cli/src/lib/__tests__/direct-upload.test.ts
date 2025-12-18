@@ -5,6 +5,7 @@ import * as os from "os";
 import * as tar from "tar";
 import {
   hashFileContent,
+  hashFileStream,
   getAllFiles,
   collectFileMetadata,
   createArchive,
@@ -63,6 +64,61 @@ describe("direct-upload", () => {
 
       expect(hash).toHaveLength(64);
       expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
+  describe("hashFileStream", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hash-stream-test-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("should compute same hash as hashFileContent", async () => {
+      const content = "hello world";
+      const filePath = path.join(tempDir, "test.txt");
+      fs.writeFileSync(filePath, content);
+
+      const streamHash = await hashFileStream(filePath);
+      const bufferHash = hashFileContent(Buffer.from(content));
+
+      expect(streamHash).toBe(bufferHash);
+    });
+
+    it("should handle empty files", async () => {
+      const filePath = path.join(tempDir, "empty.txt");
+      fs.writeFileSync(filePath, "");
+
+      const hash = await hashFileStream(filePath);
+
+      // SHA-256 of empty string
+      expect(hash).toBe(
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      );
+    });
+
+    it("should handle binary files", async () => {
+      const filePath = path.join(tempDir, "binary.bin");
+      fs.writeFileSync(filePath, Buffer.from([0x00, 0x01, 0x02, 0xff]));
+
+      const streamHash = await hashFileStream(filePath);
+      const bufferHash = hashFileContent(Buffer.from([0x00, 0x01, 0x02, 0xff]));
+
+      expect(streamHash).toBe(bufferHash);
+    });
+
+    it("should be deterministic", async () => {
+      const filePath = path.join(tempDir, "test.txt");
+      fs.writeFileSync(filePath, "deterministic content");
+
+      const hash1 = await hashFileStream(filePath);
+      const hash2 = await hashFileStream(filePath);
+
+      expect(hash1).toBe(hash2);
     });
   });
 

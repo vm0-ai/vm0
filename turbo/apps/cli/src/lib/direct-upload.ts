@@ -57,10 +57,24 @@ export interface DirectUploadResult {
 export type ProgressCallback = (message: string) => void;
 
 /**
- * Compute SHA-256 hash of file content
+ * Compute SHA-256 hash of file content (for testing with small buffers)
  */
 export function hashFileContent(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+/**
+ * Compute SHA-256 hash of a file using streaming to avoid loading large files into memory
+ */
+export async function hashFileStream(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
 }
 
 /**
@@ -94,7 +108,7 @@ export async function getAllFiles(
 }
 
 /**
- * Collect file metadata with hashes
+ * Collect file metadata with hashes using streaming to handle large files
  */
 export async function collectFileMetadata(
   cwd: string,
@@ -106,14 +120,17 @@ export async function collectFileMetadata(
   for (let i = 0; i < files.length; i++) {
     const file = files[i]!;
     const relativePath = path.relative(cwd, file);
-    const content = await fs.promises.readFile(file);
-    const hash = hashFileContent(content);
-    const size = content.length;
+
+    // Use streaming hash to avoid loading large files into memory
+    const [hash, stats] = await Promise.all([
+      hashFileStream(file),
+      fs.promises.stat(file),
+    ]);
 
     fileEntries.push({
       path: relativePath,
       hash,
-      size,
+      size: stats.size,
     });
 
     // Report progress every 100 files
@@ -184,25 +201,72 @@ export function createManifest(files: FileEntryWithHash[]): Buffer {
 }
 
 /**
- * Upload buffer to presigned URL
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Upload buffer to presigned URL with retry logic
  */
 async function uploadToPresignedUrl(
   presignedUrl: string,
   data: Buffer,
   contentType: string,
+  maxRetries: number = 3,
 ): Promise<void> {
-  const response = await fetch(presignedUrl, {
-    method: "PUT",
-    body: data,
-    headers: {
-      "Content-Type": contentType,
-    },
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`S3 upload failed: ${response.status} - ${text}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(presignedUrl, {
+        method: "PUT",
+        body: data,
+        headers: {
+          "Content-Type": contentType,
+        },
+      });
+
+      if (response.ok) {
+        return;
+      }
+
+      // For 4xx errors (client errors), don't retry
+      if (response.status >= 400 && response.status < 500) {
+        const text = await response.text();
+        throw new Error(`S3 upload failed: ${response.status} - ${text}`);
+      }
+
+      // For 5xx errors, retry with backoff
+      const text = await response.text();
+      lastError = new Error(`S3 upload failed: ${response.status} - ${text}`);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("Unknown upload error");
+
+      // Don't retry on client errors
+      if (lastError.message.includes("400") || lastError.message.includes("403")) {
+        throw lastError;
+      }
+    }
+
+    // Exponential backoff: 1s, 2s, 4s...
+    if (attempt < maxRetries) {
+      const backoffMs = Math.pow(2, attempt - 1) * 1000;
+      await sleep(backoffMs);
+    }
   }
+
+  throw lastError || new Error("S3 upload failed after retries");
+}
+
+/**
+ * Options for direct upload
+ */
+export interface DirectUploadOptions {
+  onProgress?: ProgressCallback;
+  force?: boolean;
 }
 
 /**
@@ -218,8 +282,10 @@ export async function directUpload(
   storageName: string,
   storageType: "volume" | "artifact",
   cwd: string,
-  onProgress?: ProgressCallback,
+  options?: DirectUploadOptions,
 ): Promise<DirectUploadResult> {
+  const { onProgress, force } = options || {};
+
   // Step 1: Collect all files
   onProgress?.("Collecting files...");
   const files = await getAllFiles(cwd);
@@ -238,6 +304,7 @@ export async function directUpload(
       storageName,
       storageType,
       files: fileEntries,
+      force,
     }),
   });
 
