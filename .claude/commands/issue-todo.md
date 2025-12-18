@@ -1,6 +1,6 @@
 # Start Working on GitHub Issue
 
-Your job is to start working on GitHub issue {{ISSUE_ID}} for the current project. This is the initial workflow for a new issue.
+Your job is to start working on GitHub issue {{ISSUE_ID}} for the current project. This command integrates with the deep-dive workflow to ensure thorough exploration before implementation.
 
 ## Important Notes
 - Follow software engineering best practices: create independent feature branches (git checkout -b feature/issue-{{ISSUE_ID}}-xxx)
@@ -13,21 +13,133 @@ Your job is to start working on GitHub issue {{ISSUE_ID}} for the current projec
 - Core principle: propose and verify hypotheses at fine granularity through continuous iteration
 
 ## Workflow
-1. **Fetch issue details**: Use `gh issue view {{ISSUE_ID}} --json title,body,comments,labels` to read complete issue information
-2. **Analyze and plan**:
-   - Review issue description and all comments for requirements, suggestions, and context
-   - Create detailed work plan with specific implementation steps
-   - Post plan as issue comment: `gh issue comment {{ISSUE_ID}} --body "..."`
-3. **Add pending label**: Use `gh issue edit {{ISSUE_ID}} --add-label pending` to wait for user approval
-4. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
-5. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
+
+### Step 1: Fetch Issue Details
+
+Use `gh issue view {{ISSUE_ID}} --json title,body,comments,labels` to read complete issue information.
+
+### Step 2: Check for Existing Deep-Dive Artifacts
+
+Look for existing deep-dive work in the current conversation context:
+
+1. **Search for existing directories** in `/tmp/deep-dive/*/`
+2. **Check for artifacts**:
+   - `research.md` - Research phase completed
+   - `innovate.md` - Innovation phase completed
+   - `plan.md` - Plan phase completed
+3. **If multiple directories exist** and it's unclear which relates to this issue, ask the user to confirm
+4. **If a matching directory is found**, note which phases are already complete
+
+### Step 3: Execute Deep-Dive Workflow
+
+For each missing phase, execute in order and post comments to the issue:
+
+#### Phase 1: Research (if no research.md exists)
+
+1. **Execute research phase**:
+   - Create directory `/tmp/deep-dive/issue-{{ISSUE_ID}}/` if not exists
+   - Systematically analyze the codebase related to the issue
+   - Identify core files, trace code flow, map architecture
+   - Document findings in `/tmp/deep-dive/issue-{{ISSUE_ID}}/research.md`
+
+2. **Post research comment to issue**:
+   ```
+   gh issue comment {{ISSUE_ID}} --body "$(cat <<'EOF'
+   ## 🔬 Research Phase
+
+   [Contents of research.md]
+
+   ---
+   *Phase 1/3 of deep-dive workflow*
+   EOF
+   )"
+   ```
+
+#### Phase 2: Innovate (if no innovate.md exists)
+
+1. **Execute innovation phase**:
+   - Read research findings from `research.md`
+   - Explore multiple solution approaches
+   - Evaluate pros and cons of each approach
+   - Document in `/tmp/deep-dive/issue-{{ISSUE_ID}}/innovate.md`
+
+2. **Post innovation comment to issue**:
+   ```
+   gh issue comment {{ISSUE_ID}} --body "$(cat <<'EOF'
+   ## 💡 Innovation Phase
+
+   [Contents of innovate.md]
+
+   ---
+   *Phase 2/3 of deep-dive workflow*
+   EOF
+   )"
+   ```
+
+#### Phase 3: Plan (if no plan.md exists)
+
+1. **Execute planning phase**:
+   - Read research and innovation documents
+   - Create detailed implementation plan with specific steps
+   - Ensure goal focus - connect all planning to original requirements
+   - Do not skip or abbreviate specifications
+   - Document in `/tmp/deep-dive/issue-{{ISSUE_ID}}/plan.md`
+
+2. **Post plan comment to issue**:
+   ```
+   gh issue comment {{ISSUE_ID}} --body "$(cat <<'EOF'
+   ## 📋 Plan Phase
+
+   [Contents of plan.md]
+
+   ---
+   *Phase 3/3 - Ready for approval*
+   EOF
+   )"
+   ```
+
+### Step 4: Finalize
+
+1. **Add pending label**: Use `gh issue edit {{ISSUE_ID}} --add-label pending` to wait for user approval
+2. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
+3. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
+
+## Deep-Dive Phase Guidelines
+
+### Research Phase Focus
+- Understanding the current codebase state
+- Identifying technical constraints
+- Mapping dependencies and relationships
+- NO suggestions or solutions
+
+### Innovation Phase Focus
+- Exploring multiple solution paths
+- Evaluating trade-offs
+- Considering feasibility and maintainability
+- NO concrete planning or implementation details
+
+### Plan Phase Focus
+- Creating actionable implementation steps
+- Specifying file changes
+- Defining acceptance criteria
+- Ensuring goal alignment with original requirements
 
 ## Label Management
-- **Add "pending" label** when waiting for user input (step 3)
+- **Add "pending" label** when waiting for user input (after all phases complete)
 
 ## Error Handling
 - If issue doesn't exist or is inaccessible: report error and exit
 - If "pending" label doesn't exist: create it first with `gh label create pending --description "Waiting for human input" --color FFA500`
 - If feature branch already exists: ask user whether to reuse or create new branch
+- If deep-dive directory association is unclear: ask user to confirm which directory to use
+
+## Skipping Phases
+
+If artifacts already exist from previous deep-dive work:
+- **If research.md exists**: Skip research phase, post existing content as comment (if not already posted)
+- **If innovate.md exists**: Skip innovation phase, post existing content as comment (if not already posted)
+- **If plan.md exists**: Skip plan phase, post existing content as comment (if not already posted)
+
+To determine if a comment was already posted, check the issue comments for the phase headers (🔬 Research Phase, 💡 Innovation Phase, 📋 Plan Phase).
 
 Let's get started!
