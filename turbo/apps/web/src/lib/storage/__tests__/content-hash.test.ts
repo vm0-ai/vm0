@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   computeContentHash,
+  computeContentHashFromHashes,
+  hashFileContent,
   formatShortVersion,
   isValidVersionId,
   isValidVersionPrefix,
@@ -195,5 +197,121 @@ describe("isValidVersionPrefix", () => {
 
   it("should have correct minimum length constant", () => {
     expect(MIN_VERSION_PREFIX_LENGTH).toBe(8);
+  });
+});
+
+describe("computeContentHashFromHashes", () => {
+  it("should produce IDENTICAL hash to computeContentHash for same data", () => {
+    const files = [
+      { path: "a.txt", content: Buffer.from("content a") },
+      { path: "b.txt", content: Buffer.from("content b") },
+    ];
+
+    // Compute hash using original method (with content)
+    const hashFromContent = computeContentHash(STORAGE_ID_1, files);
+
+    // Compute hash using new method (with pre-computed hashes)
+    const filesWithHashes = files.map((f) => ({
+      path: f.path,
+      hash: hashFileContent(f.content),
+      size: f.content.length,
+    }));
+    const hashFromHashes = computeContentHashFromHashes(
+      STORAGE_ID_1,
+      filesWithHashes,
+    );
+
+    // They MUST be identical
+    expect(hashFromHashes).toBe(hashFromContent);
+  });
+
+  it("should produce IDENTICAL hash regardless of file order", () => {
+    const filesOrder1 = [
+      {
+        path: "a.txt",
+        hash: hashFileContent(Buffer.from("content a")),
+        size: 9,
+      },
+      {
+        path: "b.txt",
+        hash: hashFileContent(Buffer.from("content b")),
+        size: 9,
+      },
+    ];
+
+    const filesOrder2 = [
+      {
+        path: "b.txt",
+        hash: hashFileContent(Buffer.from("content b")),
+        size: 9,
+      },
+      {
+        path: "a.txt",
+        hash: hashFileContent(Buffer.from("content a")),
+        size: 9,
+      },
+    ];
+
+    const hash1 = computeContentHashFromHashes(STORAGE_ID_1, filesOrder1);
+    const hash2 = computeContentHashFromHashes(STORAGE_ID_1, filesOrder2);
+
+    expect(hash1).toBe(hash2);
+  });
+
+  it("should handle empty file list", () => {
+    const hashFromContent = computeContentHash(STORAGE_ID_1, []);
+    const hashFromHashes = computeContentHashFromHashes(STORAGE_ID_1, []);
+
+    expect(hashFromHashes).toBe(hashFromContent);
+  });
+
+  it("should produce different hash for different storageId", () => {
+    const files = [
+      {
+        path: "test.txt",
+        hash: hashFileContent(Buffer.from("content")),
+        size: 7,
+      },
+    ];
+
+    const hash1 = computeContentHashFromHashes(STORAGE_ID_1, files);
+    const hash2 = computeContentHashFromHashes(STORAGE_ID_2, files);
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it("should return 64-character hex string", () => {
+    const files = [
+      {
+        path: "test.txt",
+        hash: hashFileContent(Buffer.from("hello")),
+        size: 5,
+      },
+    ];
+    const hash = computeContentHashFromHashes(STORAGE_ID_1, files);
+
+    expect(hash).toHaveLength(FULL_VERSION_LENGTH);
+    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("should work with many files", () => {
+    // Create 100 files
+    const files = Array.from({ length: 100 }, (_, i) => ({
+      path: `file${i}.txt`,
+      content: Buffer.from(`content ${i}`),
+    }));
+
+    const hashFromContent = computeContentHash(STORAGE_ID_1, files);
+    const filesWithHashes = files.map((f) => ({
+      path: f.path,
+      hash: hashFileContent(f.content),
+      size: f.content.length,
+    }));
+    const hashFromHashes = computeContentHashFromHashes(
+      STORAGE_ID_1,
+      filesWithHashes,
+    );
+
+    expect(hashFromHashes).toBe(hashFromContent);
   });
 });

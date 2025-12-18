@@ -104,3 +104,46 @@ export function isValidVersionPrefix(prefix: string): boolean {
     /^[a-f0-9]+$/i.test(prefix) && prefix.length >= MIN_VERSION_PREFIX_LENGTH
   );
 }
+
+/**
+ * File entry with pre-computed hash (no content needed)
+ * Used for direct upload flow where client computes hashes
+ */
+export interface FileEntryWithHash {
+  /** Relative path within the storage */
+  path: string;
+  /** SHA-256 hash of file content (computed by client) */
+  hash: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
+ * Compute content-addressable hash from file metadata only.
+ *
+ * This produces IDENTICAL hashes to computeContentHash() when given matching data,
+ * because both use the same format: "storage:{storageId}\n{sorted path:hash entries}"
+ *
+ * Used in direct upload flow where the client has already computed file hashes,
+ * so the server doesn't need to download file content.
+ *
+ * @param storageId The storage UUID to include in the hash
+ * @param files Array of file entries with path and pre-computed hash
+ * @returns 64-character lowercase hexadecimal SHA-256 hash
+ */
+export function computeContentHashFromHashes(
+  storageId: string,
+  files: FileEntryWithHash[],
+): string {
+  // Handle empty storage case - same as computeContentHash
+  if (files.length === 0) {
+    return createHash("sha256").update(`storage:${storageId}\n`).digest("hex");
+  }
+
+  // Create sorted list of "path:hash" entries - same format as computeContentHash
+  const entries = files.map((file) => `${file.path}:${file.hash}`).sort();
+
+  // Include storageId prefix and combine with file entries
+  const combined = `storage:${storageId}\n${entries.join("\n")}`;
+  return createHash("sha256").update(combined).digest("hex");
+}

@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   DeleteObjectsCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -691,4 +692,64 @@ export async function createArchiveFromBlobs(
 
   // Stream archive to S3
   await streamTarGzToS3(bucket, archiveKey, fileEntries);
+}
+
+/**
+ * Generate presigned URL for uploading (PUT) a single S3 object
+ * Used for direct client-to-S3 uploads that bypass Vercel serverless limits
+ *
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param contentType - MIME type of the file (default: application/octet-stream)
+ * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @returns Presigned PUT URL string
+ */
+export async function generatePresignedPutUrl(
+  bucket: string,
+  key: string,
+  contentType: string = "application/octet-stream",
+  expiresIn: number = 3600,
+): Promise<string> {
+  const client = getS3Client();
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+/**
+ * Check if an S3 object exists using HeadObject
+ * Does not download the object content, only checks metadata
+ *
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @returns true if object exists, false if not found
+ * @throws Error for other S3 errors (permissions, etc.)
+ */
+export async function s3ObjectExists(
+  bucket: string,
+  key: string,
+): Promise<boolean> {
+  const client = getS3Client();
+
+  try {
+    await client.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+    return true;
+  } catch (error) {
+    // NotFound is the expected error when object doesn't exist
+    if ((error as { name?: string }).name === "NotFound") {
+      return false;
+    }
+    // Re-throw other errors (permissions, etc.)
+    throw error;
+  }
 }
