@@ -37,6 +37,10 @@ HEARTBEAT_URL = f"{API_URL}/api/webhooks/agent/heartbeat"
 TELEMETRY_URL = f"{API_URL}/api/webhooks/agent/telemetry"
 PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
 
+# Direct S3 upload endpoints (bypasses Vercel 4.5MB limit)
+STORAGE_PREPARE_URL = f"{API_URL}/api/storages/prepare"
+STORAGE_COMMIT_URL = f"{API_URL}/api/storages/commit"
+
 # Proxy configuration (for beta_network_security feature)
 PROXY_ENABLED = os.environ.get("VM0_PROXY_ENABLED", "false").lower() == "true"
 

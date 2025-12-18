@@ -1,42 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import path from "path";
-import * as fs from "fs";
-import * as os from "os";
-import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage-utils";
-import { apiClient } from "../../lib/api-client";
-import { excludeVm0Filter } from "../../lib/file-utils";
-
-/**
- * Get all files in directory recursively, excluding .vm0/
- */
-async function getAllFiles(
-  dirPath: string,
-  baseDir: string = dirPath,
-): Promise<string[]> {
-  const files: string[] = [];
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-    const relativePath = path.relative(baseDir, fullPath);
-
-    // Skip .vm0 directory
-    if (relativePath.startsWith(".vm0")) {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      const subFiles = await getAllFiles(fullPath, baseDir);
-      files.push(...subFiles);
-    } else {
-      files.push(fullPath);
-    }
-  }
-
-  return files;
-}
+import { directUpload } from "../../lib/direct-upload";
 
 /**
  * Format bytes to human-readable format
@@ -56,7 +21,7 @@ export const pushCommand = new Command()
     "-f, --force",
     "Force upload even if content unchanged (recreate archive)",
   )
-  .action(async (options: { force?: boolean }) => {
+  .action(async () => {
     try {
       const cwd = process.cwd();
 
@@ -70,102 +35,15 @@ export const pushCommand = new Command()
 
       console.log(chalk.cyan(`Pushing volume: ${config.name}`));
 
-      // Get all files
-      console.log(chalk.gray("Collecting files..."));
-      const files = await getAllFiles(cwd);
-
-      // Calculate total size
-      let totalSize = 0;
-      for (const file of files) {
-        const stats = await fs.promises.stat(file);
-        totalSize += stats.size;
-      }
-
-      if (files.length === 0) {
-        console.log(chalk.gray("No files found (empty volume)"));
-      } else {
-        console.log(
-          chalk.gray(`Found ${files.length} files (${formatBytes(totalSize)})`),
-        );
-      }
-
-      // Create tar.gz file
-      console.log(chalk.gray("Compressing files..."));
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vm0-"));
-      const tarPath = path.join(tmpDir, "volume.tar.gz");
-
-      // Get relative paths for tar
-      const relativePaths = files.map((file) => path.relative(cwd, file));
-
-      // Create tar.gz archive
-      if (relativePaths.length > 0) {
-        await tar.create(
-          {
-            gzip: true,
-            file: tarPath,
-            cwd: cwd,
-          },
-          relativePaths,
-        );
-      } else {
-        // For empty directories, create tar.gz excluding .vm0
-        await tar.create(
-          {
-            gzip: true,
-            file: tarPath,
-            cwd: cwd,
-            filter: excludeVm0Filter,
-          },
-          ["."],
-        );
-      }
-
-      const tarBuffer = await fs.promises.readFile(tarPath);
-      // Clean up temp files
-      await fs.promises.unlink(tarPath);
-      await fs.promises.rmdir(tmpDir);
-
-      console.log(
-        chalk.green(`✓ Compressed to ${formatBytes(tarBuffer.length)}`),
+      // Perform direct S3 upload
+      const result = await directUpload(
+        config.name,
+        "volume",
+        cwd,
+        (message) => {
+          console.log(chalk.gray(message));
+        },
       );
-
-      // Upload to API
-      console.log(chalk.gray("Uploading..."));
-
-      const formData = new FormData();
-      formData.append("name", config.name);
-      formData.append("type", "volume");
-      if (options.force) {
-        formData.append("force", "true");
-      }
-      formData.append(
-        "file",
-        new Blob([tarBuffer], { type: "application/gzip" }),
-        "volume.tar.gz",
-      );
-
-      const response = await apiClient.post("/api/storages", {
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = (await response.json()) as {
-          error: string;
-          cause?: string;
-        };
-        const message = error.cause
-          ? `${error.error} (cause: ${error.cause})`
-          : error.error || "Upload failed";
-        throw new Error(message);
-      }
-
-      const result = (await response.json()) as {
-        name: string;
-        versionId: string;
-        size: number;
-        fileCount: number;
-        deduplicated?: boolean;
-      };
 
       // Display short version (8 characters) by default
       const shortVersion = result.versionId.slice(0, 8);

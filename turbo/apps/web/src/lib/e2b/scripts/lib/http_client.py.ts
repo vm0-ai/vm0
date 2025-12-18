@@ -164,6 +164,70 @@ def http_post_form(
     return None
 
 
+def http_put_presigned(
+    presigned_url: str,
+    file_path: str,
+    content_type: str = "application/octet-stream",
+    max_retries: int = HTTP_MAX_RETRIES
+) -> bool:
+    """
+    HTTP PUT to a presigned S3 URL with retry logic.
+    Used for direct S3 uploads bypassing Vercel's 4.5MB limit.
+
+    Args:
+        presigned_url: S3 presigned PUT URL
+        file_path: Path to file to upload
+        content_type: Content-Type header value
+        max_retries: Maximum retry attempts
+
+    Returns:
+        True on success, False on failure
+    """
+    for attempt in range(1, max_retries + 1):
+        log_debug(f"HTTP PUT presigned attempt {attempt}/{max_retries}")
+
+        try:
+            # Use curl for reliable large file uploads
+            curl_cmd = [
+                "curl", "-f", "-X", "PUT",
+                "-H", f"Content-Type: {content_type}",
+                "--data-binary", f"@{file_path}",
+                "--connect-timeout", str(HTTP_CONNECT_TIMEOUT),
+                "--max-time", str(HTTP_MAX_TIME_UPLOAD),
+                "--silent",
+                presigned_url
+            ]
+
+            result = subprocess.run(
+                curl_cmd,
+                capture_output=True,
+                text=True,
+                timeout=HTTP_MAX_TIME_UPLOAD
+            )
+
+            if result.returncode == 0:
+                return True
+
+            error_msg = f"curl exit {result.returncode}"
+            if result.stderr:
+                error_msg += f": {result.stderr.strip()}"
+            log_warn(f"HTTP PUT presigned failed (attempt {attempt}/{max_retries}): {error_msg}")
+            if attempt < max_retries:
+                time.sleep(1)
+
+        except subprocess.TimeoutExpired:
+            log_warn(f"HTTP PUT presigned failed (attempt {attempt}/{max_retries}): Timeout")
+            if attempt < max_retries:
+                time.sleep(1)
+        except Exception as e:
+            log_warn(f"HTTP PUT presigned failed (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(1)
+
+    log_error(f"HTTP PUT presigned failed after {max_retries} attempts")
+    return False
+
+
 def http_download(
     url: str,
     dest_path: str,

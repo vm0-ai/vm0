@@ -18,8 +18,9 @@ from common import (
     ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME,
     ARTIFACT_VERSION_ID, ARTIFACT_MANIFEST_URL
 )
-from log import log_info, log_error
+from log import log_info, log_warn, log_error
 from http_client import http_post_json
+from direct_upload import create_direct_upload_snapshot
 from vas_snapshot import create_vas_snapshot
 from incremental import create_incremental_snapshot
 
@@ -83,23 +84,35 @@ def create_checkpoint() -> bool:
         log_error(f"Unknown artifact driver: {ARTIFACT_DRIVER} (only 'vas' is supported)")
         return False
 
-    # VAS artifact: create snapshot (incremental if possible, fallback to full)
+    # VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
     log_info(f"Creating VAS snapshot for artifact '{ARTIFACT_VOLUME_NAME}' at {ARTIFACT_MOUNT_PATH}")
 
-    # Try incremental upload if manifest URL and base version are available
-    if ARTIFACT_MANIFEST_URL and ARTIFACT_VERSION_ID:
-        log_info(f"Attempting incremental upload (base version: {ARTIFACT_VERSION_ID[:8]})")
-        snapshot = create_incremental_snapshot(
-            ARTIFACT_MOUNT_PATH,
-            "artifact",
-            ARTIFACT_VOLUME_NAME,
-            ARTIFACT_VERSION_ID,
-            ARTIFACT_MANIFEST_URL,
-            "artifact"  # Explicit storage type - required by webhook API
-        )
-    else:
-        log_info("Using full upload (no base version available)")
-        snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME, "artifact")
+    # Use direct upload as primary method (bypasses Vercel 4.5MB limit)
+    log_info("Using direct S3 upload...")
+    snapshot = create_direct_upload_snapshot(
+        ARTIFACT_MOUNT_PATH,
+        ARTIFACT_VOLUME_NAME,
+        "artifact",
+        RUN_ID,
+        f"Checkpoint from run {RUN_ID}"
+    )
+
+    # Fallback to legacy methods if direct upload fails
+    if not snapshot:
+        log_warn("Direct upload failed, falling back to legacy upload")
+        if ARTIFACT_MANIFEST_URL and ARTIFACT_VERSION_ID:
+            log_info(f"Attempting incremental upload (base version: {ARTIFACT_VERSION_ID[:8]})")
+            snapshot = create_incremental_snapshot(
+                ARTIFACT_MOUNT_PATH,
+                "artifact",
+                ARTIFACT_VOLUME_NAME,
+                ARTIFACT_VERSION_ID,
+                ARTIFACT_MANIFEST_URL,
+                "artifact"
+            )
+        else:
+            log_info("Using full upload (no base version available)")
+            snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME, "artifact")
 
     if not snapshot:
         log_error("Failed to create VAS snapshot for artifact")
