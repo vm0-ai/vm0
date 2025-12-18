@@ -245,7 +245,9 @@ export async function POST(request: NextRequest) {
         } satisfies PrepareResponse);
       }
     } else {
-      log.debug(`Force flag set, skipping deduplication check for ${versionId}`);
+      log.debug(
+        `Force flag set, skipping deduplication check for ${versionId}`,
+      );
     }
 
     // Get bucket name

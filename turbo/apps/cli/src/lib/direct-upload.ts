@@ -246,7 +246,10 @@ async function uploadToPresignedUrl(
         error instanceof Error ? error : new Error("Unknown upload error");
 
       // Don't retry on client errors
-      if (lastError.message.includes("400") || lastError.message.includes("403")) {
+      if (
+        lastError.message.includes("400") ||
+        lastError.message.includes("403")
+      ) {
         throw lastError;
       }
     }
