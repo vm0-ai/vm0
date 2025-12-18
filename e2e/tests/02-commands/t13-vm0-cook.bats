@@ -97,3 +97,115 @@ EOF
     assert_failure
     assert_output --partial "Config file not found"
 }
+
+@test "cook command detects missing environment variables and creates .env placeholders" {
+    cd "$TEST_DIR"
+
+    echo "# Step 1: Create vm0.yaml with variable references..."
+    cat > vm0.yaml <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "E2E test agent for env check"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: \${{ vars.E2E_TEST_API_KEY }}
+      SECRET_TOKEN: \${{ secrets.E2E_TEST_SECRET }}
+EOF
+
+    echo "# Step 2: Ensure no .env file exists..."
+    rm -f .env
+
+    echo "# Step 3: Run cook (should fail due to missing vars)..."
+    run $CLI_COMMAND cook
+    assert_failure
+
+    echo "# Step 4: Verify error message mentions missing variables..."
+    assert_output --partial "Missing environment variables"
+    assert_output --partial "E2E_TEST_API_KEY"
+    assert_output --partial "E2E_TEST_SECRET"
+
+    echo "# Step 5: Verify .env file was created with placeholders..."
+    [ -f ".env" ]
+
+    echo "# Step 6: Verify .env content has correct format..."
+    grep -q "^E2E_TEST_API_KEY=$" .env
+    grep -q "^E2E_TEST_SECRET=$" .env
+}
+
+@test "cook command succeeds when variables are set in .env file" {
+    # Skip if not authenticated (requires VM0_TOKEN or logged in)
+    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+        skip "Not authenticated - run 'vm0 auth login' first"
+    fi
+
+    cd "$TEST_DIR"
+
+    echo "# Step 1: Create vm0.yaml with variable references..."
+    cat > vm0.yaml <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "E2E test agent for env check"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: \${{ vars.E2E_TEST_VAR }}
+EOF
+
+    echo "# Step 2: Create .env file with values..."
+    cat > .env <<EOF
+E2E_TEST_VAR=test-value-123
+EOF
+
+    echo "# Step 3: Run cook (should succeed)..."
+    run $CLI_COMMAND cook
+    assert_success
+
+    echo "# Step 4: Verify normal cook output..."
+    assert_output --partial "Config validated"
+    assert_output --partial "Compose uploaded"
+}
+
+@test "cook command appends to existing .env file without overwriting" {
+    cd "$TEST_DIR"
+
+    echo "# Step 1: Create vm0.yaml with variable references..."
+    cat > vm0.yaml <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "E2E test agent for env check"
+    provider: claude-code
+    image: vm0-claude-code-dev
+    working_dir: /home/user/workspace
+    environment:
+      EXISTING_VAR: \${{ vars.EXISTING_VAR }}
+      NEW_VAR: \${{ vars.NEW_VAR }}
+EOF
+
+    echo "# Step 2: Create .env file with only one variable..."
+    cat > .env <<EOF
+EXISTING_VAR=existing-value
+EOF
+
+    echo "# Step 3: Run cook (should fail due to missing NEW_VAR)..."
+    run $CLI_COMMAND cook
+    assert_failure
+
+    echo "# Step 4: Verify error message mentions only the missing variable..."
+    assert_output --partial "Missing environment variables"
+    assert_output --partial "NEW_VAR"
+
+    echo "# Step 5: Verify .env file still has existing content..."
+    grep -q "^EXISTING_VAR=existing-value$" .env
+
+    echo "# Step 6: Verify .env file has new placeholder appended..."
+    grep -q "^NEW_VAR=$" .env
+}
