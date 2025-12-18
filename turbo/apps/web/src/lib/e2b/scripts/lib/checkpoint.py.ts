@@ -1,13 +1,13 @@
 /**
  * Checkpoint creation script (Python)
  * Creates checkpoints with conversation history and artifact snapshot (VAS only)
- * Supports incremental upload when manifest URL is available
+ * Uses direct S3 upload to bypass Vercel 4.5MB limit
  */
 export const CHECKPOINT_SCRIPT = `#!/usr/bin/env python3
 """
 Checkpoint creation module.
 Creates checkpoints with conversation history and artifact snapshot (VAS only).
-Supports incremental upload when manifest URL is available.
+Uses direct S3 upload exclusively (no fallback to legacy methods).
 """
 import os
 from typing import Optional, Dict, Any
@@ -15,14 +15,11 @@ from typing import Optional, Dict, Any
 from common import (
     RUN_ID, CHECKPOINT_URL,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE,
-    ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME,
-    ARTIFACT_VERSION_ID, ARTIFACT_MANIFEST_URL
+    ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME
 )
-from log import log_info, log_warn, log_error
+from log import log_info, log_error
 from http_client import http_post_json
 from direct_upload import create_direct_upload_snapshot
-from vas_snapshot import create_vas_snapshot
-from incremental import create_incremental_snapshot
 
 
 def create_checkpoint() -> bool:
@@ -86,9 +83,8 @@ def create_checkpoint() -> bool:
 
     # VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
     log_info(f"Creating VAS snapshot for artifact '{ARTIFACT_VOLUME_NAME}' at {ARTIFACT_MOUNT_PATH}")
-
-    # Use direct upload as primary method (bypasses Vercel 4.5MB limit)
     log_info("Using direct S3 upload...")
+
     snapshot = create_direct_upload_snapshot(
         ARTIFACT_MOUNT_PATH,
         ARTIFACT_VOLUME_NAME,
@@ -96,23 +92,6 @@ def create_checkpoint() -> bool:
         RUN_ID,
         f"Checkpoint from run {RUN_ID}"
     )
-
-    # Fallback to legacy methods if direct upload fails
-    if not snapshot:
-        log_warn("Direct upload failed, falling back to legacy upload")
-        if ARTIFACT_MANIFEST_URL and ARTIFACT_VERSION_ID:
-            log_info(f"Attempting incremental upload (base version: {ARTIFACT_VERSION_ID[:8]})")
-            snapshot = create_incremental_snapshot(
-                ARTIFACT_MOUNT_PATH,
-                "artifact",
-                ARTIFACT_VOLUME_NAME,
-                ARTIFACT_VERSION_ID,
-                ARTIFACT_MANIFEST_URL,
-                "artifact"
-            )
-        else:
-            log_info("Using full upload (no base version available)")
-            snapshot = create_vas_snapshot(ARTIFACT_MOUNT_PATH, "artifact", ARTIFACT_VOLUME_NAME, "artifact")
 
     if not snapshot:
         log_error("Failed to create VAS snapshot for artifact")

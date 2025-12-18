@@ -7,8 +7,6 @@ export { COMMON_SCRIPT } from "./lib/common.py";
 export { LOG_SCRIPT } from "./lib/log.py";
 export { HTTP_SCRIPT } from "./lib/http_client.py";
 export { EVENTS_SCRIPT } from "./lib/events.py";
-export { VAS_SNAPSHOT_SCRIPT } from "./lib/vas_snapshot.py";
-export { INCREMENTAL_SCRIPT } from "./lib/incremental.py";
 export { DIRECT_UPLOAD_SCRIPT } from "./lib/direct_upload.py";
 export { DOWNLOAD_SCRIPT } from "./lib/download.py";
 export { CHECKPOINT_SCRIPT } from "./lib/checkpoint.py";
@@ -31,8 +29,6 @@ export const SCRIPT_PATHS = {
   log: "/usr/local/bin/vm0-agent/lib/log.py",
   httpClient: "/usr/local/bin/vm0-agent/lib/http_client.py",
   events: "/usr/local/bin/vm0-agent/lib/events.py",
-  vasSnapshot: "/usr/local/bin/vm0-agent/lib/vas_snapshot.py",
-  incremental: "/usr/local/bin/vm0-agent/lib/incremental.py",
   directUpload: "/usr/local/bin/vm0-agent/lib/direct_upload.py",
   download: "/usr/local/bin/vm0-agent/lib/download.py",
   checkpoint: "/usr/local/bin/vm0-agent/lib/checkpoint.py",

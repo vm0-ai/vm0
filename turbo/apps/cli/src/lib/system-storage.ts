@@ -1,8 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import * as tar from "tar";
-import { apiClient } from "./api-client";
 import {
   parseGitHubTreeUrl,
   downloadGitHubSkill,
@@ -10,6 +8,7 @@ import {
   getSystemPromptStorageName,
   validateSkillDirectory,
 } from "./github-skills";
+import { directUpload } from "./direct-upload";
 
 export interface SystemStorageUploadResult {
   name: string;
@@ -49,49 +48,8 @@ export async function uploadSystemPrompt(
   await fs.writeFile(path.join(promptDir, "CLAUDE.md"), content);
 
   try {
-    // Create tar.gz archive
-    const tarPath = path.join(tmpDir, "prompt.tar.gz");
-    await tar.create(
-      {
-        gzip: true,
-        file: tarPath,
-        cwd: promptDir,
-      },
-      ["."],
-    );
-
-    const tarBuffer = await fs.readFile(tarPath);
-
-    // Upload to storage API
-    const formData = new FormData();
-    formData.append("name", storageName);
-    formData.append("type", "volume");
-    formData.append(
-      "file",
-      new Blob([new Uint8Array(tarBuffer)], { type: "application/gzip" }),
-      "volume.tar.gz",
-    );
-
-    const response = await apiClient.post("/api/storages", {
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorBody = (await response.json()) as {
-        error: string | { message: string; code: string };
-      };
-      const errorMessage =
-        typeof errorBody.error === "string"
-          ? errorBody.error
-          : errorBody.error?.message || "Upload failed";
-      throw new Error(errorMessage);
-    }
-
-    const result = (await response.json()) as {
-      name: string;
-      versionId: string;
-      deduplicated?: boolean;
-    };
+    // Use direct upload (bypasses Vercel 4.5MB limit)
+    const result = await directUpload(storageName, "volume", promptDir);
 
     return {
       name: storageName,
@@ -126,49 +84,8 @@ export async function uploadSystemSkill(
     // Validate the skill has SKILL.md
     await validateSkillDirectory(skillDir);
 
-    // Create tar.gz archive
-    const tarPath = path.join(tmpDir, "skill.tar.gz");
-    await tar.create(
-      {
-        gzip: true,
-        file: tarPath,
-        cwd: skillDir,
-      },
-      ["."],
-    );
-
-    const tarBuffer = await fs.readFile(tarPath);
-
-    // Upload to storage API
-    const formData = new FormData();
-    formData.append("name", storageName);
-    formData.append("type", "volume");
-    formData.append(
-      "file",
-      new Blob([new Uint8Array(tarBuffer)], { type: "application/gzip" }),
-      "volume.tar.gz",
-    );
-
-    const response = await apiClient.post("/api/storages", {
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorBody = (await response.json()) as {
-        error: string | { message: string; code: string };
-      };
-      const errorMessage =
-        typeof errorBody.error === "string"
-          ? errorBody.error
-          : errorBody.error?.message || "Upload failed";
-      throw new Error(errorMessage);
-    }
-
-    const result = (await response.json()) as {
-      name: string;
-      versionId: string;
-      deduplicated?: boolean;
-    };
+    // Use direct upload (bypasses Vercel 4.5MB limit)
+    const result = await directUpload(storageName, "volume", skillDir);
 
     return {
       name: storageName,

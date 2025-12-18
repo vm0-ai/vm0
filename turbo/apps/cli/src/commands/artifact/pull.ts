@@ -20,6 +20,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }
 
+/**
+ * Download response from /api/storages/download
+ */
+interface DownloadResponse {
+  url?: string;
+  empty?: boolean;
+  versionId: string;
+  fileCount: number;
+  size: number;
+}
+
 export const pullCommand = new Command()
   .name("pull")
   .description("Pull cloud artifact to local directory")
@@ -56,10 +67,10 @@ export const pullCommand = new Command()
         console.log(chalk.cyan(`Pulling artifact: ${config.name}`));
       }
 
-      // Download from API
-      console.log(chalk.gray("Downloading..."));
+      // Get download URL from API
+      console.log(chalk.gray("Getting download URL..."));
 
-      let url = `/api/storages?name=${encodeURIComponent(config.name)}&type=artifact`;
+      let url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=artifact`;
       if (versionId) {
         url += `&version=${encodeURIComponent(versionId)}`;
       }
@@ -84,14 +95,28 @@ export const pullCommand = new Command()
         process.exit(1);
       }
 
-      // Handle empty artifact (204 No Content)
-      if (response.status === 204) {
+      const downloadInfo = (await response.json()) as DownloadResponse;
+
+      // Handle empty artifact
+      if (downloadInfo.empty) {
         await handleEmptyStorageResponse(cwd);
         return;
       }
 
+      if (!downloadInfo.url) {
+        throw new Error("No download URL returned");
+      }
+
+      // Download directly from S3
+      console.log(chalk.gray("Downloading from S3..."));
+      const s3Response = await fetch(downloadInfo.url);
+
+      if (!s3Response.ok) {
+        throw new Error(`S3 download failed: ${s3Response.status}`);
+      }
+
       // Get tar.gz buffer
-      const arrayBuffer = await response.arrayBuffer();
+      const arrayBuffer = await s3Response.arrayBuffer();
       const tarBuffer = Buffer.from(arrayBuffer);
 
       console.log(chalk.green(`✓ Downloaded ${formatBytes(tarBuffer.length)}`));
