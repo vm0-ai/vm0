@@ -1,13 +1,11 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme="light"] {
+  --background: #fafafa;
+  --foreground: #171717;
 }
 
 html,
@@ -32,19 +30,19 @@ a {
   text-decoration: none;
 }
 
+/* Theme-based image display */
 .imgDark {
+  display: block;
+}
+
+.imgLight {
   display: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+[data-theme="light"] .imgLight {
+  display: block;
+}
 
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
+[data-theme="light"] .imgDark {
+  display: none;
 }

@@ -1,8 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { useTheme } from "./ThemeProvider";
 
 export default function Footer() {
+  const { theme } = useTheme();
+
   return (
     <footer className="footer">
       <div className="container">
@@ -10,7 +13,11 @@ export default function Footer() {
           <div className="footer-brand">
             <div className="footer-logo">
               <Image
-                src="/assets/vm0-logo.svg"
+                src={
+                  theme === "light"
+                    ? "/assets/vm0-logo-dark.svg"
+                    : "/assets/vm0-logo.svg"
+                }
                 alt="VM0"
                 width={112}
                 height={28}

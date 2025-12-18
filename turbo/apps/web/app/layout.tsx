@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Noto_Sans, Fira_Code, Fira_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
+import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
 
@@ -115,8 +116,24 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider publishableKey={getClerkPublishableKey()}>
-      <html lang="en">
+      <html lang="en" data-theme="dark" suppressHydrationWarning>
         <head>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                (function() {
+                  try {
+                    var theme = localStorage.getItem('theme');
+                    if (theme === 'light' || theme === 'dark') {
+                      document.documentElement.setAttribute('data-theme', theme);
+                    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+                      document.documentElement.setAttribute('data-theme', 'light');
+                    }
+                  } catch (e) {}
+                })();
+              `,
+            }}
+          />
           <Script
             src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
             strategy="afterInteractive"
@@ -200,7 +217,7 @@ export default function RootLayout({
               }),
             }}
           />
-          {children}
+          <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
