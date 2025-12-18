@@ -48,6 +48,7 @@ export interface DirectUploadResult {
   size: number;
   fileCount: number;
   deduplicated: boolean;
+  empty: boolean;
 }
 
 /**
@@ -256,6 +257,7 @@ export async function directUpload(
       size: totalSize,
       fileCount: fileEntries.length,
       deduplicated: true,
+      empty: fileEntries.length === 0,
     };
   }
 
@@ -308,5 +310,6 @@ export async function directUpload(
     size: commitResult.size,
     fileCount: commitResult.fileCount,
     deduplicated: commitResult.deduplicated || false,
+    empty: commitResult.fileCount === 0,
   };
 }

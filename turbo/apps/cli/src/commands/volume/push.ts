@@ -48,7 +48,9 @@ export const pushCommand = new Command()
       // Display short version (8 characters) by default
       const shortVersion = result.versionId.slice(0, 8);
 
-      if (result.deduplicated) {
+      if (result.empty) {
+        console.log(chalk.yellow("No files found (empty volume)"));
+      } else if (result.deduplicated) {
         console.log(chalk.green("✓ Content unchanged (deduplicated)"));
       } else {
         console.log(chalk.green("✓ Upload complete"));
