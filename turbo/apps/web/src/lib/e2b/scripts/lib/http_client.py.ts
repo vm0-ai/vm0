@@ -122,6 +122,7 @@ def http_post_form(
         if file_path:
             curl_cmd.extend(["-F", f"{file_field}=@{file_path}"])
 
+        result = None  # Initialize for use in except blocks
         try:
             result = subprocess.run(
                 curl_cmd,
@@ -148,9 +149,9 @@ def http_post_form(
             if attempt < max_retries:
                 time.sleep(1)
         except json.JSONDecodeError as e:
-            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): Invalid JSON response")
+            log_warn(f"HTTP POST form failed (attempt {attempt}/{max_retries}): Invalid JSON response: {e}")
             # Log raw response for debugging (truncate to avoid log spam)
-            if result.stdout:
+            if result and result.stdout:
                 log_debug(f"Raw response: {result.stdout[:500]}")
             if attempt < max_retries:
                 time.sleep(1)
