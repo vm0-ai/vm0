@@ -22,6 +22,7 @@ If either document is missing, inform the user and suggest running the appropria
 - Defining task dependencies and order
 - Breaking down work into actionable items
 - Identifying potential blockers or risks
+- Ensuring goal focus - connecting all planning to original requirements
 - Documenting the plan in `/tmp/deep-dive/{task-name}/plan.md`
 
 **ABSOLUTELY FORBIDDEN:**
@@ -30,6 +31,7 @@ If either document is missing, inform the user and suggest running the appropria
 - Running tests or build commands
 - Any implementation execution
 - Deviating from the chosen approach without user approval
+- Skipping or abbreviating specifications
 
 ## CORE THINKING PRINCIPLES
 
