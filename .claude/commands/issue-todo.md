@@ -32,15 +32,13 @@ Look for existing deep-dive work in the current conversation context:
 
 ### Step 3: Execute Deep-Dive Workflow
 
-For each missing phase, execute in order and post comments to the issue:
+For each missing phase, execute in order using the corresponding slash command, then post comments to the issue:
 
 #### Phase 1: Research (if no research.md exists)
 
-1. **Execute research phase**:
-   - Create directory `/tmp/deep-dive/issue-{{ISSUE_ID}}/` if not exists
-   - Systematically analyze the codebase related to the issue
-   - Identify core files, trace code flow, map architecture
-   - Document findings in `/tmp/deep-dive/issue-{{ISSUE_ID}}/research.md`
+1. **Execute `/deep-research`** with the issue context
+   - Use task-name: `issue-{{ISSUE_ID}}`
+   - This will create `/tmp/deep-dive/issue-{{ISSUE_ID}}/research.md`
 
 2. **Post research comment to issue**:
    ```
@@ -57,11 +55,8 @@ For each missing phase, execute in order and post comments to the issue:
 
 #### Phase 2: Innovate (if no innovate.md exists)
 
-1. **Execute innovation phase**:
-   - Read research findings from `research.md`
-   - Explore multiple solution approaches
-   - Evaluate pros and cons of each approach
-   - Document in `/tmp/deep-dive/issue-{{ISSUE_ID}}/innovate.md`
+1. **Execute `/deep-innovate`** with the issue context
+   - This will read research.md and create `/tmp/deep-dive/issue-{{ISSUE_ID}}/innovate.md`
 
 2. **Post innovation comment to issue**:
    ```
@@ -78,12 +73,8 @@ For each missing phase, execute in order and post comments to the issue:
 
 #### Phase 3: Plan (if no plan.md exists)
 
-1. **Execute planning phase**:
-   - Read research and innovation documents
-   - Create detailed implementation plan with specific steps
-   - Ensure goal focus - connect all planning to original requirements
-   - Do not skip or abbreviate specifications
-   - Document in `/tmp/deep-dive/issue-{{ISSUE_ID}}/plan.md`
+1. **Execute `/deep-plan`** with the issue context
+   - This will read research.md and innovate.md, then create `/tmp/deep-dive/issue-{{ISSUE_ID}}/plan.md`
 
 2. **Post plan comment to issue**:
    ```
@@ -104,26 +95,6 @@ For each missing phase, execute in order and post comments to the issue:
 2. **Remember issue ID**: Store {{ISSUE_ID}} in context for future `/issue-continue` calls
 3. **Exit and wait**: Stop here and wait for user to review the plan and call `/issue-continue`
 
-## Deep-Dive Phase Guidelines
-
-### Research Phase Focus
-- Understanding the current codebase state
-- Identifying technical constraints
-- Mapping dependencies and relationships
-- NO suggestions or solutions
-
-### Innovation Phase Focus
-- Exploring multiple solution paths
-- Evaluating trade-offs
-- Considering feasibility and maintainability
-- NO concrete planning or implementation details
-
-### Plan Phase Focus
-- Creating actionable implementation steps
-- Specifying file changes
-- Defining acceptance criteria
-- Ensuring goal alignment with original requirements
-
 ## Label Management
 - **Add "pending" label** when waiting for user input (after all phases complete)
 
@@ -136,9 +107,9 @@ For each missing phase, execute in order and post comments to the issue:
 ## Skipping Phases
 
 If artifacts already exist from previous deep-dive work:
-- **If research.md exists**: Skip research phase, post existing content as comment (if not already posted)
-- **If innovate.md exists**: Skip innovation phase, post existing content as comment (if not already posted)
-- **If plan.md exists**: Skip plan phase, post existing content as comment (if not already posted)
+- **If research.md exists**: Skip `/deep-research`, post existing content as comment (if not already posted)
+- **If innovate.md exists**: Skip `/deep-innovate`, post existing content as comment (if not already posted)
+- **If plan.md exists**: Skip `/deep-plan`, post existing content as comment (if not already posted)
 
 To determine if a comment was already posted, check the issue comments for the phase headers (🔬 Research Phase, 💡 Innovation Phase, 📋 Plan Phase).
 
