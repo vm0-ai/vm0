@@ -32,12 +32,22 @@ Look for existing deep-dive work in the current conversation context:
 
 ### Step 3: Execute Deep-Dive Workflow
 
-For each missing phase, execute in order using the corresponding slash command, then post comments to the issue:
+**IMPORTANT: Auto-Continue Mode**
+
+When executing deep-dive phases within `/issue-todo`, run in **auto-continue mode**:
+- Do NOT ask user for confirmation between phases
+- Do NOT ask "What would you like to do next?"
+- Automatically proceed through all three phases: research → innovate → plan
+- Only stop after ALL phases are complete and comments are posted
+
+For each missing phase, execute in order, then post comments to the issue:
 
 #### Phase 1: Research (if no research.md exists)
 
-1. **Execute `/deep-research`** with the issue context
-   - This will create `/tmp/deep-dive/{task-name}/research.md`
+1. **Execute research** following `/deep-research` guidelines (but skip user confirmation)
+   - Systematically analyze the codebase related to the issue
+   - Create `/tmp/deep-dive/{task-name}/research.md`
+   - Do NOT ask user what to do next - automatically continue to Phase 2
 
 2. **Post research comment to issue**:
    ```
@@ -54,8 +64,11 @@ For each missing phase, execute in order using the corresponding slash command, 
 
 #### Phase 2: Innovate (if no innovate.md exists)
 
-1. **Execute `/deep-innovate`** with the issue context
-   - This will read research.md and create `/tmp/deep-dive/{task-name}/innovate.md`
+1. **Execute innovation** following `/deep-innovate` guidelines (but skip user confirmation)
+   - Read research.md for context
+   - Explore multiple solution approaches and evaluate trade-offs
+   - Create `/tmp/deep-dive/{task-name}/innovate.md`
+   - Do NOT ask user for direction - automatically continue to Phase 3
 
 2. **Post innovation comment to issue**:
    ```
@@ -72,8 +85,12 @@ For each missing phase, execute in order using the corresponding slash command, 
 
 #### Phase 3: Plan (if no plan.md exists)
 
-1. **Execute `/deep-plan`** with the issue context
-   - This will read research.md and innovate.md, then create `/tmp/deep-dive/{task-name}/plan.md`
+1. **Execute planning** following `/deep-plan` guidelines (but skip user confirmation)
+   - Read research.md and innovate.md for context
+   - Create detailed implementation plan with specific steps
+   - Ensure goal focus - connect all planning to original requirements
+   - Create `/tmp/deep-dive/{task-name}/plan.md`
+   - Do NOT ask user for approval here - that happens via GitHub issue
 
 2. **Post plan comment to issue**:
    ```
