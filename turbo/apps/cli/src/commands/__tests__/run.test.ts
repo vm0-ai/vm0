@@ -1190,6 +1190,7 @@ describe("run command", () => {
       // Note: EventRenderer.renderRunFailed is mocked, so we check it was called
       expect(EventRenderer.renderRunFailed).toHaveBeenCalledWith(
         "Agent crashed",
+        "run-123",
       );
     });
 
