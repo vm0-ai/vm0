@@ -9,6 +9,9 @@ import { config as dotenvConfig } from "dotenv";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { readStorageConfig } from "../lib/storage-utils";
+import { checkAndUpgrade } from "../lib/update-checker";
+
+declare const __CLI_VERSION__: string;
 
 interface VolumeConfig {
   name: string;
@@ -231,6 +234,12 @@ export const cookCommand = new Command()
   .description("One-click agent preparation and execution from vm0.yaml")
   .argument("[prompt]", "Prompt for the agent")
   .action(async (prompt: string | undefined) => {
+    // Step 0: Check for updates and auto-upgrade if needed
+    const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
+    if (shouldExit) {
+      process.exit(0);
+    }
+
     const cwd = process.cwd();
 
     // Step 1: Read and parse config
