@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.14.1](https://github.com/vm0-ai/vm0/compare/cli-v4.14.0...cli-v4.14.1) (2025-12-19)
+
+
+### Bug Fixes
+
+* **cli:** call commit even when version exists to update HEAD ([#627](https://github.com/vm0-ai/vm0/issues/627)) ([acae00b](https://github.com/vm0-ai/vm0/commit/acae00b6ee1fc296eb950a555137f12a67059b49))
+
 ## [4.14.0](https://github.com/vm0-ai/vm0/compare/cli-v4.13.1...cli-v4.14.0) (2025-12-19)
 
 
