@@ -5,8 +5,8 @@ load '../../helpers/setup'
 setup() {
     # Create temporary test directory for dynamic configs
     export TEST_DIR="$(mktemp -d)"
-    # Use unique agent name with timestamp to avoid conflicts
-    export AGENT_NAME="e2e-versioning-$(date +%s)"
+    # Use UUID for reliable uniqueness in parallel test runs
+    export AGENT_NAME="e2e-versioning-$(cat /proc/sys/kernel/random/uuid | head -c 8)"
 }
 
 teardown() {
