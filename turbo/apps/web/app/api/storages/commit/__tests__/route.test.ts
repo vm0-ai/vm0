@@ -306,6 +306,68 @@ describe("POST /api/storages/commit", () => {
       .where(eq(blobs.hash, files[1]!.hash));
   });
 
+  it("should commit empty artifact without requiring archive in S3", async () => {
+    // This test verifies the fix for issue #617:
+    // Empty artifacts (fileCount === 0) should not require archive.tar.gz in S3
+    const { s3ObjectExists } = await import(
+      "../../../../../src/lib/s3/s3-client"
+    );
+    // Mock: manifest exists (only one call expected for empty artifact)
+    vi.mocked(s3ObjectExists).mockResolvedValueOnce(true); // manifest exists
+
+    const { POST } = await import("../route");
+    const storageName = `${TEST_PREFIX}empty`;
+
+    // Create storage
+    const [storage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: TEST_USER_ID,
+        name: storageName,
+        type: "artifact",
+        s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
+        size: 0,
+        fileCount: 0,
+      })
+      .returning();
+
+    // Empty files array
+    const files: { path: string; hash: string; size: number }[] = [];
+    const versionId = computeContentHashFromHashes(storage!.id, files);
+
+    const request = new Request("http://localhost:3000/api/storages/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storageName,
+        storageType: "artifact",
+        versionId,
+        files,
+      }),
+    });
+
+    const response = await POST(
+      request as unknown as import("next/server").NextRequest,
+    );
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.success).toBe(true);
+    expect(json.versionId).toBe(versionId);
+    expect(json.fileCount).toBe(0);
+    expect(json.size).toBe(0);
+
+    // Verify HEAD was updated to empty version
+    const [updatedStorage] = await globalThis.services.db
+      .select()
+      .from(storages)
+      .where(eq(storages.id, storage!.id));
+    expect(updatedStorage!.headVersionId).toBe(versionId);
+
+    // Verify s3ObjectExists was only called once (for manifest, not archive)
+    expect(s3ObjectExists).toHaveBeenCalledTimes(1);
+  });
+
   it("should return deduplicated=true when version already exists", async () => {
     const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}idempotent`;
