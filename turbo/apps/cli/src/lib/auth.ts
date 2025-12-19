@@ -190,7 +190,13 @@ export async function setupToken(): Promise<void> {
 
   if (!token) {
     console.error(chalk.red("Error: Not authenticated."));
-    console.error("Run 'vm0 auth login' first.");
+    console.error("");
+    console.error("To get a token for CI/CD:");
+    console.error("  1. Run 'vm0 auth login' to authenticate");
+    console.error("  2. Run 'vm0 auth setup-token' to get your token");
+    console.error(
+      "  3. Store the token in your CI/CD secrets (e.g., VM0_TOKEN)",
+    );
     process.exit(1);
   }
 

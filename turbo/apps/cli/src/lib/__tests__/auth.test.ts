@@ -57,12 +57,17 @@ describe("auth", () => {
       expect(consoleSpy).toHaveBeenCalledWith("vm0_live_envtoken456");
     });
 
-    it("should exit with error when not authenticated", async () => {
+    it("should exit with error and show instructions when not authenticated", async () => {
       const consoleErrorSpy = vi.spyOn(console, "error");
 
       await setupToken();
 
       expect(consoleErrorSpy).toHaveBeenCalled();
+      // Check that helpful instructions are shown
+      const errorCalls = consoleErrorSpy.mock.calls.flat().join(" ");
+      expect(errorCalls).toContain("Not authenticated");
+      expect(errorCalls).toContain("vm0 auth login");
+      expect(errorCalls).toContain("CI/CD");
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
