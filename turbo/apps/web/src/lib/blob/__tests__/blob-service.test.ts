@@ -20,7 +20,7 @@ import type { FileEntry } from "../../storage/content-hash";
 vi.mock("../../s3/s3-client");
 
 // Set required environment variables before initServices
-process.env.S3_USER_STORAGES_NAME = "test-blobs-bucket";
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-blobs-bucket";
 
 // Prefix for test data to enable cleanup
 const TEST_HASH_PREFIX = "test_";

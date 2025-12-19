@@ -157,10 +157,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate presigned URL for archive.tar.gz
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
       return errorResponse(
-        "S3_USER_STORAGES_NAME environment variable is not set",
+        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
         "INTERNAL_ERROR",
         500,
       );

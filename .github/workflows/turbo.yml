@@ -143,10 +143,10 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          S3_USER_STORAGES_NAME: ${{ secrets.CI_S3_USER_STORAGES_NAME }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
         run: pnpm test
 
@@ -198,10 +198,10 @@ jobs:
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
             E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
-            AWS_REGION=${{ secrets.AWS_REGION }}
-            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            S3_USER_STORAGES_NAME=${{ secrets.CI_S3_USER_STORAGES_NAME }}
+            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
             USE_MOCK_CLAUDE=true
             DEBUG=*

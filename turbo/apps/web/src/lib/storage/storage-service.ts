@@ -118,9 +118,11 @@ export class StorageService {
   ): Promise<StorageManifest> {
     log.debug("Preparing storage manifest with presigned URLs...");
 
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+      throw new Error(
+        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
+      );
     }
 
     // For resume scenario, use resumeArtifact; otherwise use artifactName/artifactVersion

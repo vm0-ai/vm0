@@ -60,9 +60,11 @@ export class BlobService {
       };
     }
 
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+      throw new Error(
+        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
+      );
     }
 
     // Step 1: Compute hashes for all files
@@ -226,9 +228,11 @@ export class BlobService {
    * @returns Blob content as Buffer
    */
   async downloadBlob(hash: string): Promise<Buffer> {
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+      throw new Error(
+        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
+      );
     }
 
     return downloadBlobFromS3(bucketName, hash);
@@ -246,9 +250,11 @@ export class BlobService {
       return new Map();
     }
 
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      throw new Error("S3_USER_STORAGES_NAME environment variable is not set");
+      throw new Error(
+        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
+      );
     }
 
     const result = new Map<string, Buffer>();

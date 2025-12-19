@@ -22,7 +22,7 @@ vi.mock("../storage-resolver");
 vi.mock("../../s3/s3-client");
 
 // Set required environment variables before initServices
-process.env.S3_USER_STORAGES_NAME = "test-storages-bucket";
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Test user ID for isolation
 const TEST_USER_ID = "test-user-storage-service";

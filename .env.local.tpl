@@ -3,8 +3,8 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishab
 E2B_API_KEY=op://Development/vm0-env-local/e2b_api_key
 E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
-# AWS S3 Configuration for Volume Mounting
-AWS_REGION=op://Development/vm0-env-local/aws_region
-AWS_ACCESS_KEY_ID=op://Development/vm0-env-local/aws_access_key_id
-AWS_SECRET_ACCESS_KEY=op://Development/vm0-env-local/aws_secret_access_key
-S3_USER_STORAGES_NAME=op://Development/vm0-env-local/s3_user_storages_name
+# Cloudflare R2 Configuration for Storage
+R2_ACCOUNT_ID=op://Development/vm0-env-local/r2_account_id
+R2_ACCESS_KEY_ID=op://Development/vm0-env-local/r2_access_key_id
+R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/r2_secret_access_key
+R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_bucket_name

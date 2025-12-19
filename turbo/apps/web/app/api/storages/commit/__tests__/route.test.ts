@@ -29,7 +29,7 @@ vi.mock("../../../../../src/lib/s3/s3-client", () => ({
 }));
 
 // Set required environment variables
-process.env.S3_USER_STORAGES_NAME = "test-storages-bucket";
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Test constants
 const TEST_USER_ID = "test-user-commit";

@@ -192,10 +192,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Get bucket name
-    const bucketName = env().S3_USER_STORAGES_NAME;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
       return errorResponse(
-        "S3_USER_STORAGES_NAME not configured",
+        "R2_USER_STORAGES_BUCKET_NAME not configured",
         "INTERNAL_ERROR",
         500,
       );

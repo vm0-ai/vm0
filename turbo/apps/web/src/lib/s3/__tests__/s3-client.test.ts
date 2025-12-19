@@ -25,11 +25,10 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
 
 vi.mock("../../../env", () => ({
   env: () => ({
-    AWS_ACCESS_KEY_ID: "test-key",
-    AWS_SECRET_ACCESS_KEY: "test-secret",
-    AWS_REGION: "us-east-1",
-    S3_ENDPOINT: "https://s3.example.com",
-    S3_USER_STORAGES_NAME: "test-bucket",
+    R2_ACCOUNT_ID: "test-account-id",
+    R2_ACCESS_KEY_ID: "test-key",
+    R2_SECRET_ACCESS_KEY: "test-secret",
+    R2_USER_STORAGES_BUCKET_NAME: "test-bucket",
   }),
 }));
 
