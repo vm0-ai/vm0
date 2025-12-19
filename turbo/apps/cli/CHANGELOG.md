@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.0](https://github.com/vm0-ai/vm0/compare/cli-v4.11.0...cli-v4.12.0) (2025-12-19)
+
+
+### Features
+
+* **cli:** add setup-token command for CI/CD token export ([#605](https://github.com/vm0-ai/vm0/issues/605)) ([c2a9aec](https://github.com/vm0-ai/vm0/commit/c2a9aec4494695f0f26839c5dbc34c142d8c73ad))
+
 ## [4.11.0](https://github.com/vm0-ai/vm0/compare/cli-v4.10.0...cli-v4.11.0) (2025-12-18)
 
 
