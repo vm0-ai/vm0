@@ -296,9 +296,6 @@ export async function directUpload(
   onProgress?.("Computing file hashes...");
   const fileEntries = await collectFileMetadata(cwd, files, onProgress);
 
-  // Calculate total size
-  const totalSize = fileEntries.reduce((sum, f) => sum + f.size, 0);
-
   // Step 3: Call prepare endpoint
   onProgress?.("Preparing upload...");
   const prepareResponse = await apiClient.post("/api/storages/prepare", {
@@ -320,13 +317,34 @@ export async function directUpload(
   const prepareResult = (await prepareResponse.json()) as PrepareResponse;
 
   // Step 4: Check if version already exists (deduplication)
+  // Skip upload but still call commit to update HEAD (fixes #626)
   if (prepareResult.existing) {
+    onProgress?.("Version exists, updating HEAD...");
+
+    const commitResponse = await apiClient.post("/api/storages/commit", {
+      body: JSON.stringify({
+        storageName,
+        storageType,
+        versionId: prepareResult.versionId,
+        files: fileEntries,
+      }),
+    });
+
+    if (!commitResponse.ok) {
+      const error = (await commitResponse.json()) as {
+        error: { message: string; code: string };
+      };
+      throw new Error(error.error?.message || "Commit failed");
+    }
+
+    const commitResult = (await commitResponse.json()) as CommitResponse;
+
     return {
-      versionId: prepareResult.versionId,
-      size: totalSize,
-      fileCount: fileEntries.length,
+      versionId: commitResult.versionId,
+      size: commitResult.size,
+      fileCount: commitResult.fileCount,
       deduplicated: true,
-      empty: fileEntries.length === 0,
+      empty: commitResult.fileCount === 0,
     };
   }
 
