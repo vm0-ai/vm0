@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.14.0](https://github.com/vm0-ai/vm0/compare/cli-v4.13.1...cli-v4.14.0) (2025-12-19)
+
+
+### Features
+
+* **cli:** add status command for volume and artifact ([#624](https://github.com/vm0-ai/vm0/issues/624)) ([a586930](https://github.com/vm0-ai/vm0/commit/a586930b44c66442f850e5ea2b6d2244c2049018))
+
 ## [4.13.1](https://github.com/vm0-ai/vm0/compare/cli-v4.13.0...cli-v4.13.1) (2025-12-19)
 
 

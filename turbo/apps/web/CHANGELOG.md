@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.15.0](https://github.com/vm0-ai/vm0/compare/web-v5.14.0...web-v5.15.0) (2025-12-19)
+
+
+### Features
+
+* **api:** add secrets masking to telemetry webhook ([#621](https://github.com/vm0-ai/vm0/issues/621)) ([6755f65](https://github.com/vm0-ai/vm0/commit/6755f6587253d39949515860e67e44a1c74c302f))
+
 ## [5.14.0](https://github.com/vm0-ai/vm0/compare/web-v5.13.0...web-v5.14.0) (2025-12-19)
 
 
