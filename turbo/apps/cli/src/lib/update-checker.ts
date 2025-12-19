@@ -6,6 +6,20 @@ const PACKAGE_NAME = "@vm0/cli";
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE_NAME)}/latest`;
 const TIMEOUT_MS = 5000;
 
+type PackageManager = "npm" | "pnpm";
+
+/**
+ * Detect which package manager was used to install the CLI
+ * by checking if the executable path contains "pnpm"
+ */
+export function detectPackageManager(): PackageManager {
+  const execPath = process.argv[1] ?? "";
+  if (execPath.includes("pnpm")) {
+    return "pnpm";
+  }
+  return "npm";
+}
+
 /**
  * Escape a string for use in shell command display
  * Uses double quotes and escapes internal double quotes
@@ -59,15 +73,25 @@ export function getLatestVersion(): Promise<string | null> {
 }
 
 /**
- * Execute npm install -g @vm0/cli@latest
+ * Execute package manager upgrade command
+ * - npm: npm install -g @vm0/cli@latest
+ * - pnpm: pnpm add -g @vm0/cli@latest
  * Returns true on success, false on failure
  */
-export function performUpgrade(): Promise<boolean> {
+export function performUpgrade(
+  packageManager: PackageManager,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(npm, ["install", "-g", `${PACKAGE_NAME}@latest`], {
+    const isWindows = process.platform === "win32";
+    const command = isWindows ? `${packageManager}.cmd` : packageManager;
+    const args =
+      packageManager === "pnpm"
+        ? ["add", "-g", `${PACKAGE_NAME}@latest`]
+        : ["install", "-g", `${PACKAGE_NAME}@latest`];
+
+    const child = spawn(command, args, {
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: isWindows,
     });
 
     child.on("close", (code) => {
@@ -118,8 +142,9 @@ export async function checkAndUpgrade(
   console.log();
 
   // Perform upgrade
-  console.log("Upgrading...");
-  const success = await performUpgrade();
+  const packageManager = detectPackageManager();
+  console.log(`Upgrading via ${packageManager}...`);
+  const success = await performUpgrade(packageManager);
 
   if (success) {
     console.log(chalk.green(`Upgraded to ${latestVersion}`));
@@ -133,6 +158,8 @@ export async function checkAndUpgrade(
   console.log();
   console.log(chalk.red("Upgrade failed. Please run manually:"));
   console.log(chalk.cyan(`  npm install -g ${PACKAGE_NAME}@latest`));
+  console.log(chalk.gray("  # or"));
+  console.log(chalk.cyan(`  pnpm add -g ${PACKAGE_NAME}@latest`));
   console.log();
   console.log("Then re-run:");
   console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));

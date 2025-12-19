@@ -4,6 +4,7 @@ import {
   buildRerunCommand,
   getLatestVersion,
   checkAndUpgrade,
+  detectPackageManager,
 } from "../update-checker";
 import https from "https";
 import { EventEmitter } from "events";
@@ -21,6 +22,53 @@ vi.mock("child_process", () => ({
 }));
 
 describe("update-checker", () => {
+  describe("detectPackageManager", () => {
+    const originalArgv = process.argv;
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    it("should return 'pnpm' when path contains pnpm", () => {
+      process.argv = [
+        "/usr/bin/node",
+        "/home/user/.local/share/pnpm/global/5/node_modules/.bin/vm0",
+      ];
+      expect(detectPackageManager()).toBe("pnpm");
+    });
+
+    it("should return 'npm' when path does not contain pnpm", () => {
+      process.argv = [
+        "/usr/bin/node",
+        "/Users/user/.nvm/versions/node/v20.0.0/bin/vm0",
+      ];
+      expect(detectPackageManager()).toBe("npm");
+    });
+
+    it("should return 'npm' for standard npm global path", () => {
+      process.argv = ["/usr/bin/node", "/usr/local/bin/vm0"];
+      expect(detectPackageManager()).toBe("npm");
+    });
+
+    it("should return 'npm' for fnm path", () => {
+      process.argv = [
+        "/usr/bin/node",
+        "/home/user/.fnm/node-versions/v20.0.0/installation/bin/vm0",
+      ];
+      expect(detectPackageManager()).toBe("npm");
+    });
+
+    it("should return 'npm' for volta path", () => {
+      process.argv = ["/usr/bin/node", "/home/user/.volta/bin/vm0"];
+      expect(detectPackageManager()).toBe("npm");
+    });
+
+    it("should return 'npm' when argv[1] is undefined", () => {
+      process.argv = ["/usr/bin/node"];
+      expect(detectPackageManager()).toBe("npm");
+    });
+  });
+
   describe("escapeForShell", () => {
     it("should wrap string in double quotes", () => {
       expect(escapeForShell("hello world")).toBe('"hello world"');
