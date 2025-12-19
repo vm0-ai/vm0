@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.13.0](https://github.com/vm0-ai/vm0/compare/web-v5.12.0...web-v5.13.0) (2025-12-19)
+
+
+### Features
+
+* **api:** migrate storage backend from AWS S3 to Cloudflare R2 ([#614](https://github.com/vm0-ai/vm0/issues/614)) ([a61592f](https://github.com/vm0-ai/vm0/commit/a61592f9f44dc49d7d2b4338f5dbfd0c8e609df2))
+
 ## [5.12.0](https://github.com/vm0-ai/vm0/compare/web-v5.11.0...web-v5.12.0) (2025-12-19)
 
 
