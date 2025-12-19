@@ -617,7 +617,9 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const telemetryData = telemetry?.data as { systemLog: string };
 
       // Content should be unchanged
-      expect(telemetryData.systemLog).toBe("No secrets here, just regular text");
+      expect(telemetryData.systemLog).toBe(
+        "No secrets here, just regular text",
+      );
     });
   });
 });
