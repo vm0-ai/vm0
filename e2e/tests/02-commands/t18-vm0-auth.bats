@@ -19,12 +19,15 @@ load '../../helpers/setup'
     assert_output --partial "Output auth token for CI/CD environments"
 }
 
-@test "vm0 auth setup-token outputs token when authenticated" {
+@test "vm0 auth setup-token outputs token with human-readable format when authenticated" {
     # This test assumes the CLI is already authenticated (done in CI setup)
     run $CLI_COMMAND auth setup-token
     assert_success
-    # Token should start with vm0_live_ prefix
-    assert_output --regexp '^vm0_live_'
+    # Check for human-readable output format
+    assert_output --partial "Authentication token exported successfully"
+    assert_output --partial "Your token:"
+    assert_output --partial "vm0_live_"
+    assert_output --partial "export VM0_TOKEN=<token>"
 }
 
 @test "vm0 auth status shows authenticated status" {
