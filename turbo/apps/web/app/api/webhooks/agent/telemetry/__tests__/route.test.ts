@@ -14,6 +14,7 @@ import {
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createTestSandboxToken } from "../../../../../../src/test/api-test-helpers";
+import { encryptSecrets } from "../../../../../../src/lib/crypto";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -458,6 +459,165 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         .where(eq(sandboxTelemetry.runId, testRunId));
 
       expect(telemetries.length).toBe(2);
+    });
+  });
+
+  describe("Secrets Masking", () => {
+    const secretValue = "super_secret_api_key_12345";
+    const encryptedSecrets = encryptSecrets({ API_KEY: secretValue });
+
+    beforeEach(async () => {
+      // Mock headers() to return the test token (JWT)
+      mockHeaders.mockResolvedValue({
+        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      } as unknown as Headers);
+
+      // Create run with encrypted secrets
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        secrets: encryptedSecrets,
+        createdAt: new Date(),
+      });
+    });
+
+    it("should mask secrets in systemLog", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            systemLog: `[INFO] Using API key: ${secretValue} for authentication`,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // Verify database entry has masked secret
+      const [telemetry] = await globalThis.services.db
+        .select()
+        .from(sandboxTelemetry)
+        .where(eq(sandboxTelemetry.id, data.id));
+
+      const telemetryData = telemetry?.data as { systemLog: string };
+
+      // Secret should be masked with ***
+      expect(telemetryData.systemLog).not.toContain(secretValue);
+      expect(telemetryData.systemLog).toContain("***");
+      expect(telemetryData.systemLog).toBe(
+        "[INFO] Using API key: *** for authentication",
+      );
+    });
+
+    it("should mask secrets in networkLogs URLs", async () => {
+      const networkLogs = [
+        {
+          timestamp: "2025-12-19T10:00:00Z",
+          method: "GET",
+          url: `https://api.example.com/data?api_key=${secretValue}`,
+          status: 200,
+          latency_ms: 150,
+          request_size: 0,
+          response_size: 1024,
+        },
+      ];
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            networkLogs,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // Verify database entry has masked secret in URL
+      const [telemetry] = await globalThis.services.db
+        .select()
+        .from(sandboxTelemetry)
+        .where(eq(sandboxTelemetry.id, data.id));
+
+      const telemetryData = telemetry?.data as {
+        networkLogs: Array<{ url: string }>;
+      };
+      const firstNetworkLog = telemetryData.networkLogs[0];
+      if (!firstNetworkLog) {
+        throw new Error("Expected networkLogs[0] to be defined");
+      }
+
+      // Secret should be masked in URL
+      expect(firstNetworkLog.url).not.toContain(secretValue);
+      expect(firstNetworkLog.url).toContain("***");
+    });
+
+    it("should not mask when run has no secrets", async () => {
+      // Delete run with secrets and create one without
+      await globalThis.services.db
+        .delete(agentRuns)
+        .where(eq(agentRuns.id, testRunId));
+
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        secrets: null,
+        createdAt: new Date(),
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            systemLog: "No secrets here, just regular text",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      const [telemetry] = await globalThis.services.db
+        .select()
+        .from(sandboxTelemetry)
+        .where(eq(sandboxTelemetry.id, data.id));
+
+      const telemetryData = telemetry?.data as { systemLog: string };
+
+      // Content should be unchanged
+      expect(telemetryData.systemLog).toBe("No secrets here, just regular text");
     });
   });
 });
