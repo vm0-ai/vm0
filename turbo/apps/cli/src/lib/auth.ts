@@ -1,5 +1,11 @@
 import chalk from "chalk";
-import { saveConfig, clearConfig, loadConfig, getApiUrl } from "./config";
+import {
+  saveConfig,
+  clearConfig,
+  loadConfig,
+  getApiUrl,
+  getToken,
+} from "./config";
 
 /**
  * Build headers with optional Vercel bypass secret
@@ -176,5 +182,21 @@ export async function checkAuthStatus(): Promise<void> {
   // Also check for environment variable
   if (process.env.VM0_TOKEN) {
     console.log(chalk.blue("Using token from VM0_TOKEN environment variable"));
+  }
+}
+
+export async function setupToken(options: { export?: boolean }): Promise<void> {
+  const token = await getToken();
+
+  if (!token) {
+    console.error(chalk.red("Error: Not authenticated."));
+    console.error("Run 'vm0 auth login' first.");
+    process.exit(1);
+  }
+
+  if (options.export) {
+    console.log(`export VM0_TOKEN="${token}"`);
+  } else {
+    console.log(token);
   }
 }

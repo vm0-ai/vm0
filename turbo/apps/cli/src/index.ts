@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { authenticate, logout, checkAuthStatus } from "./lib/auth";
+import { authenticate, logout, checkAuthStatus, setupToken } from "./lib/auth";
 import { getApiUrl } from "./lib/config";
 import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
@@ -54,6 +54,14 @@ authCommand
   .description("Show current authentication status")
   .action(async () => {
     await checkAuthStatus();
+  });
+
+authCommand
+  .command("setup-token")
+  .description("Output auth token for CI/CD environments")
+  .option("-e, --export", "Output as shell export statement")
+  .action(async (options: { export?: boolean }) => {
+    await setupToken(options);
   });
 
 // Register compose, run, volume, artifact, cook, image, and logs commands

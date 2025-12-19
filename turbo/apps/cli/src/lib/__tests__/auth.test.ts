@@ -1,0 +1,81 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { setupToken } from "../auth";
+import * as config from "../config";
+import { existsSync } from "fs";
+import { unlink, mkdir } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
+
+const CONFIG_DIR = join(homedir(), ".vm0");
+const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+
+describe("auth", () => {
+  const originalEnv = { ...process.env };
+  const originalExit = process.exit;
+  const mockExit = vi.fn() as unknown as typeof process.exit;
+
+  beforeEach(async () => {
+    // Clean up any existing test config
+    if (existsSync(CONFIG_FILE)) {
+      await unlink(CONFIG_FILE);
+    }
+    // Reset environment variables
+    delete process.env.VM0_TOKEN;
+    // Mock process.exit
+    process.exit = mockExit;
+  });
+
+  afterEach(async () => {
+    // Restore original env vars
+    process.env = { ...originalEnv };
+    // Restore process.exit
+    process.exit = originalExit;
+    vi.restoreAllMocks();
+    // Clean up test config
+    if (existsSync(CONFIG_FILE)) {
+      await unlink(CONFIG_FILE);
+    }
+  });
+
+  describe("setupToken", () => {
+    it("should output token when authenticated via config file", async () => {
+      await mkdir(CONFIG_DIR, { recursive: true });
+      await config.saveConfig({ token: "vm0_live_test123" });
+      const consoleSpy = vi.spyOn(console, "log");
+
+      await setupToken({});
+
+      expect(consoleSpy).toHaveBeenCalledWith("vm0_live_test123");
+    });
+
+    it("should output token when authenticated via VM0_TOKEN env var", async () => {
+      process.env.VM0_TOKEN = "vm0_live_envtoken456";
+      const consoleSpy = vi.spyOn(console, "log");
+
+      await setupToken({});
+
+      expect(consoleSpy).toHaveBeenCalledWith("vm0_live_envtoken456");
+    });
+
+    it("should output export statement with --export flag", async () => {
+      await mkdir(CONFIG_DIR, { recursive: true });
+      await config.saveConfig({ token: "vm0_live_test123" });
+      const consoleSpy = vi.spyOn(console, "log");
+
+      await setupToken({ export: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'export VM0_TOKEN="vm0_live_test123"',
+      );
+    });
+
+    it("should exit with error when not authenticated", async () => {
+      const consoleErrorSpy = vi.spyOn(console, "error");
+
+      await setupToken({});
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+});
