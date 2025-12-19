@@ -7,6 +7,10 @@ import { sandboxTelemetry } from "../../../../../src/db/schema/sandbox-telemetry
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
+import {
+  createSecretMasker,
+  decryptSecrets,
+} from "../../../../../src/lib/crypto";
 
 const log = logger("webhooks:telemetry");
 
@@ -36,10 +40,10 @@ const router = tsr.router(webhookTelemetryContract, {
 
     const { userId } = auth;
 
-    // Verify run exists and belongs to user
+    // Verify run exists and belongs to user, and fetch secrets for masking
     const selectStart = Date.now();
     const [run] = await globalThis.services.db
-      .select({ id: agentRuns.id })
+      .select({ id: agentRuns.id, secrets: agentRuns.secrets })
       .from(agentRuns)
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
@@ -54,16 +58,25 @@ const router = tsr.router(webhookTelemetryContract, {
       };
     }
 
-    // Store telemetry data
+    // Get secrets from run record and create masker for protecting sensitive data
+    let secretValues: string[] = [];
+    if (run.secrets && typeof run.secrets === "object") {
+      const encryptedSecrets = run.secrets as Record<string, string>;
+      const decrypted = decryptSecrets(encryptedSecrets);
+      secretValues = Object.values(decrypted);
+    }
+    const masker = createSecretMasker(secretValues);
+
+    // Store telemetry data with secrets masked
     const insertStart = Date.now();
     const result = await globalThis.services.db
       .insert(sandboxTelemetry)
       .values({
         runId: body.runId,
         data: {
-          systemLog: body.systemLog ?? "",
+          systemLog: masker.mask(body.systemLog ?? "") as string,
           metrics: body.metrics ?? [],
-          networkLogs: body.networkLogs ?? [],
+          networkLogs: masker.mask(body.networkLogs ?? []),
         },
       })
       .returning({ id: sandboxTelemetry.id });
