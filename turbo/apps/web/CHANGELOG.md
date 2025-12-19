@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.12.0](https://github.com/vm0-ai/vm0/compare/web-v5.11.0...web-v5.12.0) (2025-12-19)
+
+
+### Features
+
+* **api:** add direct S3 upload endpoints for large file support ([#595](https://github.com/vm0-ai/vm0/issues/595)) ([5eb11d0](https://github.com/vm0-ai/vm0/commit/5eb11d05c12ee55064dd946a1c99f3a19aaf96e9))
+
 ## [5.11.0](https://github.com/vm0-ai/vm0/compare/web-v5.10.1...web-v5.11.0) (2025-12-18)
 
 

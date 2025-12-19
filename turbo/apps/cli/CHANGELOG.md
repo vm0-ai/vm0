@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.13.0](https://github.com/vm0-ai/vm0/compare/cli-v4.12.0...cli-v4.13.0) (2025-12-19)
+
+
+### Features
+
+* **api:** add direct S3 upload endpoints for large file support ([#595](https://github.com/vm0-ai/vm0/issues/595)) ([5eb11d0](https://github.com/vm0-ai/vm0/commit/5eb11d05c12ee55064dd946a1c99f3a19aaf96e9))
+* **cli:** improve setup-token output with human-readable format ([#610](https://github.com/vm0-ai/vm0/issues/610)) ([46ca67d](https://github.com/vm0-ai/vm0/commit/46ca67d4a08f8113d662a9cc398d0ae16b2e2846))
+* **cli:** support pnpm in auto-upgrade feature ([#612](https://github.com/vm0-ai/vm0/issues/612)) ([a7ed12f](https://github.com/vm0-ai/vm0/commit/a7ed12faaf6b24821a3083e68471a1c9a061a281))
+
 ## [4.12.0](https://github.com/vm0-ai/vm0/compare/cli-v4.11.0...cli-v4.12.0) (2025-12-19)
 
 
