@@ -43,7 +43,7 @@ describe("auth", () => {
       await config.saveConfig({ token: "vm0_live_test123" });
       const consoleSpy = vi.spyOn(console, "log");
 
-      await setupToken({});
+      await setupToken();
 
       expect(consoleSpy).toHaveBeenCalledWith("vm0_live_test123");
     });
@@ -52,27 +52,15 @@ describe("auth", () => {
       process.env.VM0_TOKEN = "vm0_live_envtoken456";
       const consoleSpy = vi.spyOn(console, "log");
 
-      await setupToken({});
+      await setupToken();
 
       expect(consoleSpy).toHaveBeenCalledWith("vm0_live_envtoken456");
-    });
-
-    it("should output export statement with --export flag", async () => {
-      await mkdir(CONFIG_DIR, { recursive: true });
-      await config.saveConfig({ token: "vm0_live_test123" });
-      const consoleSpy = vi.spyOn(console, "log");
-
-      await setupToken({ export: true });
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'export VM0_TOKEN="vm0_live_test123"',
-      );
     });
 
     it("should exit with error when not authenticated", async () => {
       const consoleErrorSpy = vi.spyOn(console, "error");
 
-      await setupToken({});
+      await setupToken();
 
       expect(consoleErrorSpy).toHaveBeenCalled();
       expect(mockExit).toHaveBeenCalledWith(1);

@@ -185,7 +185,7 @@ export async function checkAuthStatus(): Promise<void> {
   }
 }
 
-export async function setupToken(options: { export?: boolean }): Promise<void> {
+export async function setupToken(): Promise<void> {
   const token = await getToken();
 
   if (!token) {
@@ -194,9 +194,5 @@ export async function setupToken(options: { export?: boolean }): Promise<void> {
     process.exit(1);
   }
 
-  if (options.export) {
-    console.log(`export VM0_TOKEN="${token}"`);
-  } else {
-    console.log(token);
-  }
+  console.log(token);
 }

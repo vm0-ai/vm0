@@ -59,9 +59,8 @@ authCommand
 authCommand
   .command("setup-token")
   .description("Output auth token for CI/CD environments")
-  .option("-e, --export", "Output as shell export statement")
-  .action(async (options: { export?: boolean }) => {
-    await setupToken(options);
+  .action(async () => {
+    await setupToken();
   });
 
 // Register compose, run, volume, artifact, cook, image, and logs commands
