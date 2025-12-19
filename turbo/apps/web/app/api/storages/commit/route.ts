@@ -193,14 +193,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify required S3 objects exist (manifest and archive)
+    // Verify required S3 objects exist
+    // For empty artifacts (fileCount === 0), only manifest is required
+    // since there's no archive to extract
     const s3Key = `${userId}/${storageType}/${storageName}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
+    const fileCount = files.length;
 
     const [manifestExists, archiveExists] = await Promise.all([
       s3ObjectExists(bucketName, manifestKey),
-      s3ObjectExists(bucketName, archiveKey),
+      fileCount > 0
+        ? s3ObjectExists(bucketName, archiveKey)
+        : Promise.resolve(true),
     ]);
 
     if (!manifestExists) {
@@ -211,7 +216,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!archiveExists) {
+    if (fileCount > 0 && !archiveExists) {
       return errorResponse(
         "Archive not uploaded - upload failed or incomplete",
         "BAD_REQUEST",
@@ -221,7 +226,6 @@ export async function POST(request: NextRequest) {
 
     // Calculate totals
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    const fileCount = files.length;
 
     // Use transaction for atomicity
     await globalThis.services.db.transaction(async (tx) => {

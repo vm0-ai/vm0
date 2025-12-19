@@ -330,23 +330,28 @@ export async function directUpload(
     };
   }
 
-  // Step 5: Create and upload archive
-  onProgress?.("Compressing files...");
-  const archiveBuffer = await createArchive(cwd, files);
+  // Step 5: Create and upload archive (skip for empty artifacts)
+  if (files.length > 0) {
+    onProgress?.("Compressing files...");
+    const archiveBuffer = await createArchive(cwd, files);
 
-  onProgress?.("Uploading archive to S3...");
-  if (!prepareResult.uploads) {
-    throw new Error("No upload URLs received from prepare endpoint");
+    onProgress?.("Uploading archive to S3...");
+    if (!prepareResult.uploads) {
+      throw new Error("No upload URLs received from prepare endpoint");
+    }
+
+    await uploadToPresignedUrl(
+      prepareResult.uploads.archive.presignedUrl,
+      archiveBuffer,
+      "application/gzip",
+    );
   }
-
-  await uploadToPresignedUrl(
-    prepareResult.uploads.archive.presignedUrl,
-    archiveBuffer,
-    "application/gzip",
-  );
 
   // Step 6: Create and upload manifest
   onProgress?.("Uploading manifest...");
+  if (!prepareResult.uploads) {
+    throw new Error("No upload URLs received from prepare endpoint");
+  }
   const manifestBuffer = createManifest(fileEntries);
   await uploadToPresignedUrl(
     prepareResult.uploads.manifest.presignedUrl,

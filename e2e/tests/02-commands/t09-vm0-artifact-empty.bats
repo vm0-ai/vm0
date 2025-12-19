@@ -76,6 +76,52 @@ teardown() {
     assert_output --partial "nested file"
 }
 
+@test "Push empty artifact after non-empty updates HEAD correctly" {
+    # This test verifies the fix for issue #617:
+    # Push with files first, then push empty, and verify pull gets empty artifact
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # First push with files
+    echo "version 1 with files" > data.txt
+    mkdir -p subdir
+    echo "nested file" > subdir/nested.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+
+    # Remove all files (make it empty)
+    rm -rf data.txt subdir
+
+    # Push empty artifact
+    run $CLI_COMMAND artifact push
+    assert_success
+    assert_output --partial "No files found (empty artifact)"
+    VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+
+    # Verify versions are different
+    [ "$VERSION1" != "$VERSION2" ]
+
+    # Pull in a different directory to verify HEAD was updated to empty
+    NEW_DIR="$(mktemp -d)"
+    cd "$NEW_DIR"
+    mkdir -p .vm0
+    cat > .vm0/storage.yaml <<EOF
+name: $ARTIFACT_NAME
+type: artifact
+EOF
+
+    run $CLI_COMMAND artifact pull
+    assert_success
+
+    # Verify we got empty artifact (not the old files)
+    local file_count=$(find . -type f ! -path './.vm0/*' | wc -l)
+    [ "$file_count" -eq 0 ]
+
+    rm -rf "$NEW_DIR"
+}
+
 @test "VM0 artifact pull succeeds after agent removes all files" {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
