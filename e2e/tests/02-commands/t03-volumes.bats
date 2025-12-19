@@ -201,4 +201,64 @@ EOF
     assert_output --partial "not found"
 
     rm -rf "$NEW_DIR"
+}
+
+@test "volume status fails without init" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+
+    # No .vm0/storage.yaml exists
+    run $CLI_COMMAND volume status
+    assert_failure
+    assert_output --partial "No volume initialized"
+    assert_output --partial "vm0 volume init"
+}
+
+@test "volume status fails when not pushed to remote" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    # Init but no push - remote doesn't exist
+    run $CLI_COMMAND volume status
+    assert_failure
+    assert_output --partial "Checking volume"
+    assert_output --partial "Not found on remote"
+    assert_output --partial "vm0 volume push"
+}
+
+@test "volume status shows version info after push" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    echo "# Step 1: Push volume..."
+    echo "test content" > test-file.txt
+    $CLI_COMMAND volume push >/dev/null
+
+    echo "# Step 2: Check status..."
+    run $CLI_COMMAND volume status
+    assert_success
+    assert_output --partial "Checking volume"
+    assert_output --partial "Found"
+    assert_output --partial "Version:"
+    assert_output --partial "Files:"
+    assert_output --partial "Size:"
+    assert_output --regexp "[0-9a-f]{8}"
+}
+
+@test "volume status shows empty indicator for empty volume" {
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    $CLI_COMMAND volume init >/dev/null
+
+    echo "# Step 1: Push empty volume..."
+    $CLI_COMMAND volume push >/dev/null
+
+    echo "# Step 2: Check status..."
+    run $CLI_COMMAND volume status
+    assert_success
+    assert_output --partial "Checking volume"
+    assert_output --partial "Found (empty)"
+    assert_output --partial "Version:"
 } 

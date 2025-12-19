@@ -207,3 +207,63 @@ EOF
 
     rm -rf "$NEW_DIR"
 }
+
+@test "artifact status fails without init" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+
+    # No .vm0/storage.yaml exists
+    run $CLI_COMMAND artifact status
+    assert_failure
+    assert_output --partial "No artifact initialized"
+    assert_output --partial "vm0 artifact init"
+}
+
+@test "artifact status fails when not pushed to remote" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # Init but no push - remote doesn't exist
+    run $CLI_COMMAND artifact status
+    assert_failure
+    assert_output --partial "Checking artifact"
+    assert_output --partial "Not found on remote"
+    assert_output --partial "vm0 artifact push"
+}
+
+@test "artifact status shows version info after push" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    echo "# Step 1: Push artifact..."
+    echo "test content" > test-file.txt
+    $CLI_COMMAND artifact push >/dev/null
+
+    echo "# Step 2: Check status..."
+    run $CLI_COMMAND artifact status
+    assert_success
+    assert_output --partial "Checking artifact"
+    assert_output --partial "Found"
+    assert_output --partial "Version:"
+    assert_output --partial "Files:"
+    assert_output --partial "Size:"
+    assert_output --regexp "[0-9a-f]{8}"
+}
+
+@test "artifact status shows empty indicator for empty artifact" {
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    echo "# Step 1: Push empty artifact..."
+    $CLI_COMMAND artifact push >/dev/null
+
+    echo "# Step 2: Check status..."
+    run $CLI_COMMAND artifact status
+    assert_success
+    assert_output --partial "Checking artifact"
+    assert_output --partial "Found (empty)"
+    assert_output --partial "Version:"
+}
