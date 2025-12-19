@@ -27,9 +27,14 @@ export default function Navbar() {
             </Link>
           </div>
           <div className="nav-center" style={{ display: "flex", gap: "32px" }}>
-            <Link href="/" className="nav-link">
-              Home
-            </Link>
+            <a
+              href="https://blog.vm0.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="nav-link"
+            >
+              Blog
+            </a>
             <Link href="/cookbooks" className="nav-link">
               Cookbooks
             </Link>
