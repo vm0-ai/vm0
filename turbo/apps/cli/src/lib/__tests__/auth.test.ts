@@ -38,23 +38,30 @@ describe("auth", () => {
   });
 
   describe("setupToken", () => {
-    it("should output token when authenticated via config file", async () => {
+    it("should output token with human-readable format when authenticated via config file", async () => {
       await mkdir(CONFIG_DIR, { recursive: true });
       await config.saveConfig({ token: "vm0_live_test123" });
       const consoleSpy = vi.spyOn(console, "log");
 
       await setupToken();
 
-      expect(consoleSpy).toHaveBeenCalledWith("vm0_live_test123");
+      const logCalls = consoleSpy.mock.calls.flat().join(" ");
+      expect(logCalls).toContain("Authentication token exported successfully");
+      expect(logCalls).toContain("Your token:");
+      expect(logCalls).toContain("vm0_live_test123");
+      expect(logCalls).toContain("export VM0_TOKEN=<token>");
     });
 
-    it("should output token when authenticated via VM0_TOKEN env var", async () => {
+    it("should output token with human-readable format when authenticated via VM0_TOKEN env var", async () => {
       process.env.VM0_TOKEN = "vm0_live_envtoken456";
       const consoleSpy = vi.spyOn(console, "log");
 
       await setupToken();
 
-      expect(consoleSpy).toHaveBeenCalledWith("vm0_live_envtoken456");
+      const logCalls = consoleSpy.mock.calls.flat().join(" ");
+      expect(logCalls).toContain("Authentication token exported successfully");
+      expect(logCalls).toContain("vm0_live_envtoken456");
+      expect(logCalls).toContain("export VM0_TOKEN=<token>");
     });
 
     it("should exit with error and show instructions when not authenticated", async () => {

@@ -200,5 +200,13 @@ export async function setupToken(): Promise<void> {
     process.exit(1);
   }
 
+  console.log(chalk.green("✓ Authentication token exported successfully!"));
+  console.log("");
+  console.log("Your token:");
+  console.log("");
   console.log(token);
+  console.log("");
+  console.log(
+    `Use this token by setting: ${chalk.cyan("export VM0_TOKEN=<token>")}`,
+  );
 }
