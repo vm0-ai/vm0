@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.14.0](https://github.com/vm0-ai/vm0/compare/web-v5.13.0...web-v5.14.0) (2025-12-19)
+
+
+### Features
+
+* **web:** replace Home nav link with Blog link ([#620](https://github.com/vm0-ai/vm0/issues/620)) ([a63e083](https://github.com/vm0-ai/vm0/commit/a63e08360be3fda9a20f4a30df87a14076432001))
+
+
+### Bug Fixes
+
+* **storage:** allow empty artifact push to update remote HEAD ([#618](https://github.com/vm0-ai/vm0/issues/618)) ([93352c4](https://github.com/vm0-ai/vm0/commit/93352c4ac03c5a4861edb1d94e188efb17195694))
+
 ## [5.13.0](https://github.com/vm0-ai/vm0/compare/web-v5.12.0...web-v5.13.0) (2025-12-19)
 
 

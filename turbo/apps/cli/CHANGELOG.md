@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.13.1](https://github.com/vm0-ai/vm0/compare/cli-v4.13.0...cli-v4.13.1) (2025-12-19)
+
+
+### Bug Fixes
+
+* **storage:** allow empty artifact push to update remote HEAD ([#618](https://github.com/vm0-ai/vm0/issues/618)) ([93352c4](https://github.com/vm0-ai/vm0/commit/93352c4ac03c5a4861edb1d94e188efb17195694))
+
 ## [4.13.0](https://github.com/vm0-ai/vm0/compare/cli-v4.12.0...cli-v4.13.0) (2025-12-19)
 
 
