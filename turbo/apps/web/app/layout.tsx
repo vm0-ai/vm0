@@ -136,13 +136,14 @@ export default function RootLayout({
           />
           <Script
             src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
+            data-domain="vm0.ai"
             strategy="afterInteractive"
             async
           />
           <Script id="plausible-init" strategy="afterInteractive">
             {`
               window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
-              plausible.init()
+              plausible.init({domain:"vm0.ai"})
             `}
           </Script>
         </head>
