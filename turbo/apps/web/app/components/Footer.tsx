@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
+import ThemeToggle from "./ThemeToggle";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function Footer() {
   const { theme } = useTheme();
@@ -84,6 +86,10 @@ export default function Footer() {
                 height={20}
               />
             </a>
+          </div>
+          <div className="footer-controls">
+            <ThemeToggle />
+            <LanguageSwitcher />
           </div>
         </div>
       </div>

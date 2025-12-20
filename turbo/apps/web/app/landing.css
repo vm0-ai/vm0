@@ -1970,6 +1970,12 @@ section {
   gap: 24px;
 }
 
+.footer-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .footer-column {
   display: flex;
   flex-direction: column;
@@ -2468,6 +2474,11 @@ section {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+  }
+
+  .footer-controls {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 

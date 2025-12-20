@@ -50,14 +50,9 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
       return handleCors(request);
     }
 
-    // Handle Clerk auth for CLI auth and sign-up pages
-    if (
-      request.nextUrl.pathname.startsWith("/cli-auth") ||
-      request.nextUrl.pathname.startsWith("/sign-up")
-    ) {
-      if (!isPublicRoute(request)) {
-        await auth.protect();
-      }
+    // Handle Clerk auth for CLI auth pages (requires login)
+    if (request.nextUrl.pathname.startsWith("/cli-auth")) {
+      await auth.protect();
     }
 
     return;
