@@ -1,0 +1,151 @@
+{
+  "hero": {
+    "title": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
+    "subtitle": "Von Workflows zu echten Agenten. VM0 macht die Entwicklung von Agenten durch natürliche Sprache zugänglich, unterstützt durch agentenbasierte Infrastruktur.",
+    "joinWaitlist": "Warteliste beitreten",
+    "github": "GitHub"
+  },
+  "build": {
+    "title": "Erstellen Sie Agenten auf menschliche Weise",
+    "description": "Die heutigen Optionen fallen in zwei Kategorien: Tools, die nur Container ausführen, und Workflow-Builder, die zu starr für echtes Agentenverhalten sind. Entwickler fehlt immer noch eine Umgebung, die für agentenbasierte Ausführung gebaut wurde. VM0 schließt diese Lücke mit einer End-to-End-Laufzeitumgebung für Agenten.",
+    "vm0Tagline": "Erstellen und entwickeln Sie KI-Agenten, nur mit natürlicher Sprache."
+  },
+  "cliAgents": {
+    "title": "Auf der LLM-Welle reitend, fungiert VM0 auch als Agenten-Router",
+    "description": "Nutzen Sie Claude Code, Codex, Gemini und andere CLI-Agenten, um Ihre eigenen zu erstellen. VM0 passt in jede Agentenentwicklung und bietet die Infrastruktur, die Sie benötigen, um Ihren eigenen Agenten oder intelligente Workflows zu erstellen.",
+    "marketingAgent": {
+      "title": "Marketing-Agent",
+      "description": "Ein geschützter Raum für Marketing-Agenten, um Aufgaben auszuführen und Kampagnen risikofrei zu verfeinern"
+    },
+    "productivityAgent": {
+      "title": "Produktivitäts-Agent",
+      "description": "Führen Sie Aktionen aus und verfeinern Sie Routinen sicher, mit voller Kontrolle und ohne Risiko für die Produktion"
+    },
+    "researchAgent": {
+      "title": "Tiefgehender Research-Agent",
+      "description": "Sammeln Sie Informationen, analysieren Sie Quellen und iterieren Sie sicher in einem isolierten Arbeitsbereich"
+    },
+    "codingAgent": {
+      "title": "Code-Management-Agent",
+      "description": "Entdeckt angesagte Repositories und verwaltet Issues, PRs und Repository-Aufgaben"
+    }
+  },
+  "features": {
+    "title": "Eine bessere Agentenentwicklungserfahrung, basierend auf solider Infrastruktur",
+    "noWorkflows": {
+      "title": "Keine Workflows mehr. Es kann so einfach wie nur ein Prompt sein.",
+      "description": "Kein Drag-and-Drop erforderlich – schreiben Sie einen Prompt oder beliebige Konfigurationsdateien, verbinden Sie diese mit VM0 und die Kernlogik Ihres Agenten ist fertig."
+    },
+    "purposeBuilt": {
+      "title": "Speziell für Agenten entwickelt, nicht nur für Code",
+      "description": "Traditionelle Container führen Programme aus. VM0 führt Agenten aus und bewahrt deren Sitzungen, Speicher und Reasoning-Kontext. Es versteht Agenten als zustandsbehaftete, iterative Prozesse, nicht als einmalige Skripte."
+    },
+    "observable": {
+      "title": "Von Grund auf beobachtbar",
+      "description": "Jeder Durchlauf ist transparent. Sie können Logs, Metriken und Tool-Aufrufe in Echtzeit sehen, keine Black-Box-Container mehr. Debuggen, wiederholen und überwachen Sie jeden Schritt des Agenten-Lebenszyklus."
+    },
+    "reproducible": {
+      "title": "Reproduzierbar und persistent",
+      "description": "Jeder Durchlauf erstellt einen Checkpoint, den Sie wiederherstellen, forken oder optimieren können. Sitzungen und Artefakte bleiben über Durchläufe und Umgebungen hinweg bestehen. Agenten behalten ihr Gedächtnis. Entwickler behalten die Kontrolle."
+    }
+  },
+  "infrastructure": {
+    "title": "VM0 ist KI-Infrastruktur, gebaut für das nächste Paradigma",
+    "versionedStorage": {
+      "title": "Versionierter Artefaktspeicher",
+      "description": "Synchronisieren Sie Dateien sofort zwischen Ihrer Sandbox und Cloud-Speicher, vorgewärmt vor der Laufzeit."
+    },
+    "sessionContinuity": {
+      "title": "Sitzungskontinuität",
+      "description": "Speichert automatisch CLI-Agenten-Sitzungen und -Speicher, unbeeinflusst von Container-Lebensdauern."
+    },
+    "structuredObservability": {
+      "title": "Strukturierte Beobachtbarkeit",
+      "description": "Streamen Sie jeden Log, jede Metrik und jeden Token-Trace über eine saubere API oder ein Dashboard, ohne manuelle Protokollierung."
+    },
+    "checkpoint": {
+      "title": "Checkpoint & Replay",
+      "description": "Jeder Durchlauf erstellt einen Checkpoint-Snapshot. Verbinden Sie sich erneut, wiederholen Sie oder optimieren Sie den Prompt jederzeit."
+    }
+  },
+  "cta": {
+    "title": "Erstellen und entwickeln Sie KI-Agenten in ihrer eigenen Realität",
+    "subtitle": "// Drücken Sie Ihre Absicht aus. VM0 erledigt den Rest.",
+    "button": "Warteliste beitreten"
+  },
+  "nav": {
+    "blog": "Blog",
+    "cookbooks": "Kochbücher",
+    "github": "GitHub",
+    "contact": "Kontakt",
+    "joinWaitlist": "Warteliste beitreten"
+  },
+  "footer": {
+    "tagline": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
+    "copyright": "© 2025 VM0.ai Alle Rechte vorbehalten.",
+    "language": "Sprache"
+  },
+  "cookbooks": {
+    "hero": {
+      "title": "Kochbücher",
+      "description": "Sofort einsatzbereite Agentenbeispiele für einen schnellen Start. Jedes Kochbuch ist ein vollständiges, funktionierendes Beispiel, das Sie in wenigen Minuten bereitstellen können.",
+      "viewOnGithub": "Auf GitHub ansehen"
+    },
+    "getStarted": {
+      "title": "Erste Schritte",
+      "step1": "Treten Sie der Warteliste bei unter"
+    },
+    "allCookbooks": {
+      "title": "Alle Kochbücher",
+      "viewCookbook": "Kochbuch ansehen"
+    },
+    "cta": {
+      "title": "Bereit, Ihren eigenen Agenten zu erstellen?",
+      "subtitle": "// Beginnen Sie mit einem Kochbuch und machen Sie es zu Ihrem eigenen",
+      "joinWaitlist": "Warteliste beitreten",
+      "exploreCookbooks": "Kochbücher erkunden"
+    },
+    "items": {
+      "101-intro": {
+        "name": "Einführungs-Kochbuch",
+        "description": "Schritt-für-Schritt-Einführung mit essentiellen CLI-Befehlen, Grundlagen der Agentenentwicklung und Plattform-Fundamenten."
+      },
+      "102-writing-agent": {
+        "name": "Schreib-Agent",
+        "description": "Mehrstufiger Schreib-Agent, der Inhalte generiert, überprüft und mit iterativen Verbesserungszyklen verfeinert."
+      },
+      "103-fetch-stores": {
+        "name": "Abrufen & Speichern",
+        "description": "Demonstriert das Abrufen externer Daten und Speichern der Ergebnisse im Artefakt-System von VM0 für Persistenz."
+      },
+      "104-content-farm": {
+        "name": "Content-Farm",
+        "description": "Automatisierte Content-Generierungs-Pipeline mit Qualitätsprüfungen, SEO-Optimierung und Multi-Format-Ausgabe."
+      },
+      "105-hf-trainer": {
+        "name": "HuggingFace Trainer",
+        "description": "Fine-Tuning von HuggingFace-Modellen in VM0-Sandboxen mit GPU-Unterstützung und Experiment-Tracking."
+      },
+      "106-tiktok-influencer": {
+        "name": "TikTok Influencer",
+        "description": "Analysieren Sie TikTok-Trends, generieren Sie virale Content-Ideen und automatisieren Sie Posting-Zeitpläne."
+      },
+      "107-firecrawl-summary": {
+        "name": "Firecrawl-Zusammenfassung",
+        "description": "Durchsuchen Sie Websites mit Firecrawl und generieren Sie intelligente Zusammenfassungen und Einblicke aus Webinhalten."
+      },
+      "108-competitor-research": {
+        "name": "Wettbewerber-Recherche",
+        "description": "Automatisierte Competitive Intelligence mit Marktanalyse und Trend-Erkennung."
+      },
+      "109-github-agent": {
+        "name": "GitHub-Agent",
+        "description": "Autonomer GitHub-Workflow-Agent für Code-Reviews, Issue-Triage und PR-Management."
+      },
+      "110-startup-portrait": {
+        "name": "Startup-Portrait",
+        "description": "Erstellen Sie umfassende Startup-Analyseberichte mit Marktgrößenbestimmung und Wettbewerbspositionierung."
+      }
+    }
+  }
+}

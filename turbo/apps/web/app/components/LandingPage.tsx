@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import { Link } from "../../navigation";
+import { useTranslations } from "next-intl";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import { useTheme } from "./ThemeProvider";
@@ -10,6 +11,12 @@ import { useTheme } from "./ThemeProvider";
 export default function LandingPage() {
   const sandboxRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
+  const t = useTranslations("hero");
+  const tBuild = useTranslations("build");
+  const tCliAgents = useTranslations("cliAgents");
+  const tFeatures = useTranslations("features");
+  const tInfra = useTranslations("infrastructure");
+  const tCta = useTranslations("cta");
 
   useEffect(() => {
     const handleScroll = () => {
@@ -121,17 +128,11 @@ export default function LandingPage() {
         <div className="container">
           <div className="hero-grid">
             <div className="hero-text">
-              <h1 className="hero-title">
-                The modern runtime for agent-native development
-              </h1>
-              <p className="hero-description">
-                From workflows to real agents. VM0 makes agent building
-                accessible through natural language, backed by agent-native
-                infrastructure.
-              </p>
+              <h1 className="hero-title">{t("title")}</h1>
+              <p className="hero-description">{t("subtitle")}</p>
               <div className="hero-buttons">
                 <Link href="/sign-up" className="btn-primary-large">
-                  Join waitlist
+                  {t("joinWaitlist")}
                 </Link>
                 <a
                   href="https://github.com/vm0-ai/vm0"
@@ -139,7 +140,7 @@ export default function LandingPage() {
                   rel="noopener noreferrer"
                   className="btn-secondary-large"
                 >
-                  GitHub
+                  {t("github")}
                 </a>
               </div>
             </div>
@@ -231,14 +232,8 @@ export default function LandingPage() {
       {/* Build Agents Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">Build agents the human way</h2>
-          <p className="section-description">
-            Today&apos;s options fall into two buckets: tools that only run
-            containers, and workflow builders that are too rigid for real agent
-            behavior. Developers still lack an environment built for
-            agent-native execution. VM0 bridges this gap with an end to end
-            agent-native runtime.
-          </p>
+          <h2 className="section-title">{tBuild("title")}</h2>
+          <p className="section-description">{tBuild("description")}</p>
 
           <div className="comparison-wrapper">
             <div className="comparison-content">
@@ -332,9 +327,7 @@ export default function LandingPage() {
                     height={60}
                   />
                 </div>
-                <p className="vm0-tagline">
-                  Build and evolve AI agents, just natural language.
-                </p>
+                <p className="vm0-tagline">{tBuild("vm0Tagline")}</p>
               </div>
             </div>
           </div>
@@ -344,14 +337,8 @@ export default function LandingPage() {
       {/* CLI Agents Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">
-            Riding the LLM wave, VM0 also acts as an agent router
-          </h2>
-          <p className="section-description">
-            Use Claude Code, Codex, Gemini, and other CLI agents to build your
-            own. VM0 fits into any agent development and provides the
-            infrastructure you need to create your own agent or smart workflows.
-          </p>
+          <h2 className="section-title">{tCliAgents("title")}</h2>
+          <p className="section-description">{tCliAgents("description")}</p>
 
           <div className="cli-section-wrapper">
             <div className="cli-tools-row">
@@ -447,10 +434,11 @@ export default function LandingPage() {
                     height={24}
                   />
                 </div>
-                <h3 className="use-case-title">Marketing agent</h3>
+                <h3 className="use-case-title">
+                  {tCliAgents("marketingAgent.title")}
+                </h3>
                 <p className="use-case-desc">
-                  A protected space for marketing agents to run tasks and refine
-                  campaigns risk-free
+                  {tCliAgents("marketingAgent.description")}
                 </p>
               </div>
               <div className="use-case-item">
@@ -462,10 +450,11 @@ export default function LandingPage() {
                     height={24}
                   />
                 </div>
-                <h3 className="use-case-title">Productivity agent</h3>
+                <h3 className="use-case-title">
+                  {tCliAgents("productivityAgent.title")}
+                </h3>
                 <p className="use-case-desc">
-                  Run actions and refine routines safely, with full control and
-                  zero risk to production
+                  {tCliAgents("productivityAgent.description")}
                 </p>
               </div>
               <div className="use-case-item">
@@ -477,10 +466,11 @@ export default function LandingPage() {
                     height={24}
                   />
                 </div>
-                <h3 className="use-case-title">Deep research agent</h3>
+                <h3 className="use-case-title">
+                  {tCliAgents("researchAgent.title")}
+                </h3>
                 <p className="use-case-desc">
-                  Gather information, analyze sources, and iterate safely in an
-                  isolated workspace
+                  {tCliAgents("researchAgent.description")}
                 </p>
               </div>
               <div className="use-case-item">
@@ -492,10 +482,11 @@ export default function LandingPage() {
                     height={24}
                   />
                 </div>
-                <h3 className="use-case-title">Coding management agent</h3>
+                <h3 className="use-case-title">
+                  {tCliAgents("codingAgent.title")}
+                </h3>
                 <p className="use-case-desc">
-                  Discovers trending repos and manages issues, PRs, and repo
-                  tasks
+                  {tCliAgents("codingAgent.description")}
                 </p>
               </div>
             </div>
@@ -506,20 +497,16 @@ export default function LandingPage() {
       {/* Features Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">
-            A better agent development experience, built on solid infrastructure
-          </h2>
+          <h2 className="section-title">{tFeatures("title")}</h2>
 
           <div className="features-stack">
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  No more workflows. It can be simple as just one prompt.
+                  {tFeatures("noWorkflows.title")}
                 </h3>
                 <p className="feature-text">
-                  No drag-and-drop needed — write a prompt or any type of
-                  configure files, connect it to VM0, and your agent&apos;s core
-                  logic is ready.
+                  {tFeatures("noWorkflows.description")}
                 </p>
               </div>
               <div className="feature-visual prompt-visual">
@@ -536,13 +523,10 @@ export default function LandingPage() {
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  Purpose-built for agents, not just code
+                  {tFeatures("purposeBuilt.title")}
                 </h3>
                 <p className="feature-text">
-                  Traditional containers run programs. VM0 runs agents,
-                  preserving their sessions, memory, and reasoning context. It
-                  understands agents as stateful, iterative processes, not
-                  one-off scripts.
+                  {tFeatures("purposeBuilt.description")}
                 </p>
               </div>
               <div className="feature-visual agent-visual">
@@ -558,11 +542,11 @@ export default function LandingPage() {
 
             <div className="feature-card">
               <div className="feature-content">
-                <h3 className="feature-title">Observable by design</h3>
+                <h3 className="feature-title">
+                  {tFeatures("observable.title")}
+                </h3>
                 <p className="feature-text">
-                  Every run is transparent. You can see logs, metrics, and tool
-                  calls in real time, no more black-box containers. Debug,
-                  replay, and monitor every step of the agent lifecycle.
+                  {tFeatures("observable.description")}
                 </p>
               </div>
               <div className="feature-visual observable-visual">
@@ -578,12 +562,11 @@ export default function LandingPage() {
 
             <div className="feature-card">
               <div className="feature-content">
-                <h3 className="feature-title">Reproducible and persistent</h3>
+                <h3 className="feature-title">
+                  {tFeatures("reproducible.title")}
+                </h3>
                 <p className="feature-text">
-                  Each run creates a checkpoint you can restore, fork, or
-                  optimize. Sessions and artifacts persist across runs and
-                  environments. Agents keep their memory. Developers keep
-                  control.
+                  {tFeatures("reproducible.description")}
                 </p>
               </div>
               <div className="feature-visual persistent-visual">
@@ -603,38 +586,36 @@ export default function LandingPage() {
       {/* Infrastructure Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">
-            VM0 is AI infrastructure built for the next paradigm
-          </h2>
+          <h2 className="section-title">{tInfra("title")}</h2>
 
           <div className="infra-grid">
             <div className="infra-item">
-              <h3 className="infra-title">Versioned artifact storage</h3>
+              <h3 className="infra-title">
+                {tInfra("versionedStorage.title")}
+              </h3>
               <p className="infra-desc">
-                Sync files instantly between your sandbox and cloud storage,
-                prewarmed before runtime.
+                {tInfra("versionedStorage.description")}
               </p>
             </div>
             <div className="infra-item">
-              <h3 className="infra-title">Session continuity</h3>
+              <h3 className="infra-title">
+                {tInfra("sessionContinuity.title")}
+              </h3>
               <p className="infra-desc">
-                Automatically persists CLI agent sessions and memory, unaffected
-                by container lifetimes.
+                {tInfra("sessionContinuity.description")}
               </p>
             </div>
             <div className="infra-item">
-              <h3 className="infra-title">Structured observability</h3>
+              <h3 className="infra-title">
+                {tInfra("structuredObservability.title")}
+              </h3>
               <p className="infra-desc">
-                Stream every log, metric, and token trace through a clean API or
-                dashboard, no manual logging needed.
+                {tInfra("structuredObservability.description")}
               </p>
             </div>
             <div className="infra-item">
-              <h3 className="infra-title">Checkpoint & replay</h3>
-              <p className="infra-desc">
-                Each run creates a checkpoint snapshot. Reattach, replay, or
-                tweak the prompt anytime.
-              </p>
+              <h3 className="infra-title">{tInfra("checkpoint.title")}</h3>
+              <p className="infra-desc">{tInfra("checkpoint.description")}</p>
             </div>
           </div>
         </div>
@@ -645,14 +626,10 @@ export default function LandingPage() {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">
-              Build and evolve AI agents inside their own reality
-            </h2>
-            <p className="cta-subtitle">
-              {"//"} Express your intent. VM0 handles the rest.
-            </p>
+            <h2 className="cta-title">{tCta("title")}</h2>
+            <p className="cta-subtitle">{tCta("subtitle")}</p>
             <Link href="/sign-up" className="btn-primary-large">
-              Join waitlist
+              {tCta("button")}
             </Link>
           </div>
         </div>

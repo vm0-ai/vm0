@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.16.0](https://github.com/vm0-ai/vm0/compare/web-v5.15.0...web-v5.16.0) (2025-12-20)
+
+
+### Features
+
+* add multi-language support (de, ja, es) ([#638](https://github.com/vm0-ai/vm0/issues/638)) ([0cf687b](https://github.com/vm0-ai/vm0/commit/0cf687b360fef7c599bfd5ec57feeb3e68d8ee5b))
+
+
+### Bug Fixes
+
+* explicitly set Plausible domain to vm0.ai ([#630](https://github.com/vm0-ai/vm0/issues/630)) ([d2dfb7e](https://github.com/vm0-ai/vm0/commit/d2dfb7ec6595f3879577deab5031be0a3852cbff))
+
 ## [5.15.0](https://github.com/vm0-ai/vm0/compare/web-v5.14.0...web-v5.15.0) (2025-12-19)
 
 
