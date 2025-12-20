@@ -54,6 +54,7 @@ export default function Navbar() {
             <a href="mailto:contact@vm0.ai" className="btn-try-demo">
               {t("contact")}
             </a>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/sign-up" className="btn-get-access">
               {t("joinWaitlist")}
             </a>

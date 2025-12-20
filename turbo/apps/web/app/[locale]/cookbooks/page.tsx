@@ -1,7 +1,6 @@
 "use client";
 
 import type { JSX } from "react";
-import { Link } from "../../../navigation";
 import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
@@ -243,6 +242,7 @@ export default function CookbooksPage() {
               >
                 {t("getStarted.step1")}
               </span>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a
                 href="/sign-up"
                 style={{
@@ -471,6 +471,7 @@ export default function CookbooksPage() {
             <h2 className="cta-title">{t("cta.title")}</h2>
             <p className="cta-subtitle">{t("cta.subtitle")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a href="/sign-up" className="btn-primary-large">
                 {t("cta.joinWaitlist")}
               </a>
