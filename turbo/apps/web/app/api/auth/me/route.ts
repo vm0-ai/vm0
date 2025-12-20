@@ -1,8 +1,8 @@
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { authContract } from "@vm0/core";
-import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
+import { isCommunityEdition } from "../../../../src/lib/edition";
 
 const log = logger("api:auth");
 
@@ -19,7 +19,20 @@ const router = tsr.router(authContract, {
       };
     }
 
+    // Community Edition: return fixed user info
+    if (isCommunityEdition()) {
+      return {
+        status: 200 as const,
+        body: {
+          userId: "community_edition",
+          email: "community@local",
+        },
+      };
+    }
+
+    // Cloud Edition: fetch user info from Clerk
     try {
+      const { clerkClient } = await import("@clerk/nextjs/server");
       const client = await clerkClient();
       const user = await client.users.getUser(userId);
 

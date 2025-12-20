@@ -1,6 +1,13 @@
 import { SignUp } from "@clerk/nextjs";
+import { redirect } from "next/navigation";
+import { isCommunityEdition } from "../../../src/lib/edition";
 
 export default function SignUpPage() {
+  // Community Edition: redirect to dashboard (no signup needed)
+  if (isCommunityEdition()) {
+    redirect("/dashboard");
+  }
+
   return (
     <div
       style={{

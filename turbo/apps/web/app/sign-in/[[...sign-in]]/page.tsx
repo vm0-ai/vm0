@@ -1,6 +1,13 @@
 import { SignIn } from "@clerk/nextjs";
+import { redirect } from "next/navigation";
+import { isCommunityEdition } from "../../../src/lib/edition";
 
 export default function SignInPage() {
+  // Community Edition: redirect to dashboard (no login needed)
+  if (isCommunityEdition()) {
+    redirect("/dashboard");
+  }
+
   return (
     <div
       style={{

@@ -11,7 +11,9 @@ function initEnv() {
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),
-      CLERK_SECRET_KEY: z.string().min(1),
+      VM0_EDITION: z.enum(["community", "cloud"]).default("cloud"),
+      VM0_COMMUNITY_AUTH_TOKEN: z.string().min(1).optional(),
+      CLERK_SECRET_KEY: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),
       E2B_TEMPLATE_NAME: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
@@ -24,11 +26,13 @@ function initEnv() {
       SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
     },
     client: {
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
       NODE_ENV: process.env.NODE_ENV,
+      VM0_EDITION: process.env.VM0_EDITION,
+      VM0_COMMUNITY_AUTH_TOKEN: process.env.VM0_COMMUNITY_AUTH_TOKEN,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
       E2B_API_KEY: process.env.E2B_API_KEY,
       E2B_TEMPLATE_NAME: process.env.E2B_TEMPLATE_NAME,
