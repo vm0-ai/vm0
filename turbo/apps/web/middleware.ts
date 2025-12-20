@@ -16,11 +16,21 @@ const isPublicRoute = createRouteMatcher([
 
 /**
  * Community Edition middleware - CORS only, no auth
+ * Redirects auth pages since they're not needed
  */
 function communityMiddleware(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/api/")) {
+  const { pathname } = request.nextUrl;
+
+  // Redirect auth pages to home (no login needed in Community Edition)
+  if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  // Handle CORS for API routes
+  if (pathname.startsWith("/api/")) {
     return handleCors(request);
   }
+
   return NextResponse.next();
 }
 
