@@ -75,6 +75,13 @@ teardown() {
     assert_output --partial "not found"
 }
 
+@test "vm0 image versions --help shows usage" {
+    run $CLI_COMMAND image versions --help
+    assert_success
+    assert_output --partial "List all versions"
+    assert_output --partial "<name>"
+}
+
 # ============================================
 # Multiple Version Builds
 # ============================================
@@ -109,6 +116,26 @@ teardown() {
     # Clean up - delete all versions
     run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force
     assert_success
+}
+
+# ============================================
+# Delete Command Help and Aliases
+# ============================================
+
+@test "vm0 image delete --help shows options" {
+    run $CLI_COMMAND image delete --help
+    assert_success
+    assert_output --partial "Delete a custom image"
+    assert_output --partial "--force"
+    assert_output --partial "--all"
+    assert_output --partial "name:version"
+}
+
+@test "vm0 image rm alias works" {
+    # rm is alias for delete
+    run $CLI_COMMAND image rm --help
+    assert_success
+    assert_output --partial "Delete a custom image"
 }
 
 # ============================================
@@ -157,6 +184,46 @@ teardown() {
 
     # Image should no longer exist
     run $CLI_COMMAND image versions "$TEST_IMAGE_NAME"
+    assert_failure
+    assert_output --partial "not found"
+}
+
+@test "vm0 image delete without --all deletes latest version only" {
+    # Clean up first
+    run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force 2>/dev/null || true
+
+    # Build two versions
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    assert_success
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    assert_success
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+
+    # Delete without --all should delete latest (VERSION2)
+    run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --force
+    assert_success
+
+    # VERSION1 should still exist
+    run $CLI_COMMAND image versions "$TEST_IMAGE_NAME"
+    assert_success
+    assert_output --partial "$VERSION1"
+    # VERSION2 (latest) should be gone
+    refute_output --partial "$VERSION2"
+
+    # Clean up
+    run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force
+}
+
+@test "vm0 image delete non-existent version fails" {
+    run $CLI_COMMAND image delete "${TEST_IMAGE_NAME}:nonexistent123" --force
+    assert_failure
+    assert_output --partial "not found"
+}
+
+@test "vm0 image delete non-existent image fails" {
+    run $CLI_COMMAND image delete "nonexistent-image-xyz" --force
     assert_failure
     assert_output --partial "not found"
 }
