@@ -16,7 +16,7 @@ export const checkpoints = pgTable("checkpoints", {
     .references(() => conversations.id, { onDelete: "cascade" })
     .notNull(),
   agentComposeSnapshot: jsonb("agent_compose_snapshot").notNull(),
-  artifactSnapshot: jsonb("artifact_snapshot").notNull(),
+  artifactSnapshot: jsonb("artifact_snapshot"),
   volumeVersionsSnapshot: jsonb("volume_versions_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

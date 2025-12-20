@@ -293,13 +293,14 @@ describe("resolveVolumes", () => {
     expect(result.artifact?.vasVersion).toBe("latest");
   });
 
-  test("reports error when artifact name is required but not provided", () => {
+  test("allows artifact name to be optional (no error when not provided)", () => {
     const config = createConfig([], {}, "/workspace");
 
     const result = resolveVolumes(config, {});
 
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]?.type).toBe("missing_artifact_name");
+    // artifactName is now optional - should return null artifact with no errors
+    expect(result.errors).toHaveLength(0);
+    expect(result.artifact).toBeNull();
   });
 
   test("skips artifact resolution when skipArtifact is true", () => {

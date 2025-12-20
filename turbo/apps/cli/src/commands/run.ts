@@ -338,17 +338,6 @@ const runCmd = new Command()
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
 
-      // Validate artifact-name is provided for non-resume runs
-      if (!options.artifactName) {
-        console.error(
-          chalk.red("✗ Missing required option: --artifact-name <name>"),
-        );
-        console.error(
-          chalk.gray("  The artifact-name is required for new agent runs."),
-        );
-        process.exit(1);
-      }
-
       const verbose = options.verbose;
 
       try {

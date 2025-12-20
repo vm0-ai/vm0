@@ -265,7 +265,26 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.error.message).toContain("cliAgentSessionHistory");
     });
 
-    it("should reject checkpoint without artifactSnapshot", async () => {
+    it("should accept checkpoint without artifactSnapshot (optional artifact)", async () => {
+      // Setup - create the agent run first
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "running",
+        prompt: "Test prompt without artifact",
+        vars: { user: "testuser" },
+        createdAt: new Date(),
+      });
+
+      const sessionHistory = JSON.stringify({
+        type: "queue-operation",
+        operation: "enqueue",
+        timestamp: "2025-11-22T04:00:00.000Z",
+        content: "test prompt",
+        sessionId: "test-session-no-artifact",
+      });
+
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -277,18 +296,23 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           body: JSON.stringify({
             runId: testRunId,
             cliAgentType: "claude-code",
-            cliAgentSessionId: "test-session",
-            cliAgentSessionHistory: '{"type":"test"}',
-            // artifactSnapshot: missing (now required)
+            cliAgentSessionId: "test-session-no-artifact",
+            cliAgentSessionHistory: sessionHistory,
+            // artifactSnapshot: optional - runs without artifact don't have one
           }),
         },
       );
 
       const response = await POST(request);
 
-      expect(response.status).toBe(400);
+      // Should succeed - artifact is now optional
+      expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.error.message).toContain("artifactSnapshot");
+      expect(data.checkpointId).toBeDefined();
+      expect(data.agentSessionId).toBeDefined();
+      expect(data.conversationId).toBeDefined();
+      // artifact should be undefined when not provided
+      expect(data.artifact).toBeUndefined();
     });
   });
 

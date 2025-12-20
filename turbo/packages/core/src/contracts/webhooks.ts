@@ -109,7 +109,7 @@ export const webhookCheckpointsContract = c.router({
       cliAgentSessionHistory: z
         .string()
         .min(1, "cliAgentSessionHistory is required"),
-      artifactSnapshot: artifactSnapshotSchema,
+      artifactSnapshot: artifactSnapshotSchema.optional(),
       volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
     }),
     responses: {
@@ -117,7 +117,7 @@ export const webhookCheckpointsContract = c.router({
         checkpointId: z.string(),
         agentSessionId: z.string(),
         conversationId: z.string(),
-        artifact: artifactSnapshotSchema,
+        artifact: artifactSnapshotSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,
