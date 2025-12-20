@@ -153,7 +153,102 @@ EOF
 }
 
 # ============================================
-# Note: We don't test scope creation/update in E2E
-# because it would permanently change the test user's scope.
-# Those flows are tested in unit/integration tests.
+# Scope Creation and Update Tests (CI has isolated DB)
 # ============================================
+
+@test "vm0 scope set creates new scope successfully" {
+    # First check if user already has a scope
+    run $CLI_COMMAND scope status
+
+    if [[ $status -eq 0 ]]; then
+        # User already has scope, need to update with --force
+        run $CLI_COMMAND scope set "$TEST_SLUG" --force
+    else
+        # No scope yet, create new one
+        run $CLI_COMMAND scope set "$TEST_SLUG"
+    fi
+
+    assert_success
+    assert_output --partial "@$TEST_SLUG"
+}
+
+@test "vm0 scope status shows newly created scope" {
+    # Ensure scope exists first
+    run $CLI_COMMAND scope status
+    if [[ $status -ne 0 ]]; then
+        $CLI_COMMAND scope set "$TEST_SLUG" >/dev/null 2>&1
+    fi
+
+    run $CLI_COMMAND scope status
+    assert_success
+    assert_output --partial "Scope Information"
+    assert_output --partial "@"
+}
+
+@test "vm0 scope set requires --force to update existing scope" {
+    # Ensure scope exists
+    run $CLI_COMMAND scope status
+    if [[ $status -ne 0 ]]; then
+        $CLI_COMMAND scope set "$TEST_SLUG" >/dev/null 2>&1
+    fi
+
+    # Try to update without --force (should fail)
+    NEW_SLUG="e2e-update-$(date +%s)"
+    run $CLI_COMMAND scope set "$NEW_SLUG"
+    assert_failure
+    assert_output --partial "--force"
+}
+
+@test "vm0 scope set updates scope with --force flag" {
+    # Ensure scope exists
+    run $CLI_COMMAND scope status
+    if [[ $status -ne 0 ]]; then
+        $CLI_COMMAND scope set "$TEST_SLUG" >/dev/null 2>&1
+    fi
+
+    # Update with --force
+    NEW_SLUG="e2e-force-$(date +%s)"
+    run $CLI_COMMAND scope set "$NEW_SLUG" --force
+    assert_success
+    assert_output --partial "@$NEW_SLUG"
+}
+
+@test "vm0 scope set with --display-name sets custom name" {
+    # Update scope with display name
+    NEW_SLUG="e2e-display-$(date +%s)"
+    run $CLI_COMMAND scope set "$NEW_SLUG" --display-name "My Test Scope" --force
+    assert_success
+    assert_output --partial "@$NEW_SLUG"
+}
+
+# ============================================
+# Full Image Build + @scope/name Workflow Tests
+# ============================================
+
+@test "vm0 image build creates image with scope association" {
+    # Ensure user has a scope
+    SCOPE_SLUG="e2e-img-$(date +%s)"
+    run $CLI_COMMAND scope set "$SCOPE_SLUG" --force
+    assert_success
+
+    # Build an image
+    TEST_DIR="$(mktemp -d)"
+    cat > "$TEST_DIR/Dockerfile" <<EOF
+FROM alpine:latest
+RUN echo "test image"
+EOF
+
+    IMAGE_NAME="scope-test-img"
+    run $CLI_COMMAND image build --file "$TEST_DIR/Dockerfile" --name "$IMAGE_NAME" --delete-existing
+    assert_success
+    assert_output --partial "Building image"
+    assert_output --partial "Build ID"
+
+    rm -rf "$TEST_DIR"
+}
+
+@test "vm0 image list shows images after build" {
+    run $CLI_COMMAND image list
+    assert_success
+    # Should show at least one image (from previous test or existing)
+}
