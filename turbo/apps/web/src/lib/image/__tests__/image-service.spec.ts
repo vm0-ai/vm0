@@ -167,13 +167,19 @@ describe("Image Service", () => {
 
     it("should throw NotFoundError for non-existent version", async () => {
       await expect(
-        resolveImageAlias(testUserId, `@${testScopeSlug}/test-image:nonexistent`),
+        resolveImageAlias(
+          testUserId,
+          `@${testScopeSlug}/test-image:nonexistent`,
+        ),
       ).rejects.toThrow("not found");
     });
 
     it("should throw BadRequestError for version not ready", async () => {
       await expect(
-        resolveImageAlias(testUserId, `@${testScopeSlug}/building-image:build001`),
+        resolveImageAlias(
+          testUserId,
+          `@${testScopeSlug}/building-image:build001`,
+        ),
       ).rejects.toThrow("not ready");
     });
 
@@ -190,7 +196,10 @@ describe("Image Service", () => {
     });
 
     it("should resolve plain alias with tag to specific version", async () => {
-      const result = await resolveImageAlias(testUserId, `test-image:${testVersionId1}`);
+      const result = await resolveImageAlias(
+        testUserId,
+        `test-image:${testVersionId1}`,
+      );
       expect(result.templateName).toContain(testVersionId1);
       expect(result.versionId).toBe(testVersionId1);
     });

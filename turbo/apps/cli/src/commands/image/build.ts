@@ -114,8 +114,14 @@ export const buildCommand = new Command()
           console.log("Use in vm0.yaml:");
           console.log(chalk.cyan(`  agents:`));
           console.log(chalk.cyan(`    your-agent:`));
-          console.log(chalk.cyan(`      image: "${name}"          # uses latest version`));
-          console.log(chalk.cyan(`      # image: "${name}:${versionId}"  # pin to this version`));
+          console.log(
+            chalk.cyan(`      image: "${name}"          # uses latest version`),
+          );
+          console.log(
+            chalk.cyan(
+              `      # image: "${name}:${versionId}"  # pin to this version`,
+            ),
+          );
         } else {
           console.error(chalk.red(`✗ Build failed`));
           process.exit(1);

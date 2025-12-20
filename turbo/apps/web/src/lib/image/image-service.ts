@@ -8,10 +8,7 @@ import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import type { ImageStatusEnum } from "../../db/schema/image";
-import {
-  parseImageReferenceWithTag,
-  generateScopedE2bAlias,
-} from "@vm0/core";
+import { parseImageReferenceWithTag, generateScopedE2bAlias } from "@vm0/core";
 
 const log = logger("service:image");
 
@@ -371,9 +368,7 @@ export async function resolveImageAlias(
   }
 
   // 2. Resolve scope
-  const scope = ref.scope
-    ? await getScopeBySlug(ref.scope)
-    : userScope;
+  const scope = ref.scope ? await getScopeBySlug(ref.scope) : userScope;
 
   if (!scope) {
     throw new NotFoundError(`Scope "@${ref.scope}" not found`);
