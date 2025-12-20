@@ -6,7 +6,6 @@ import {
   resolveImageReference,
   parseImageReferenceWithTag,
   generateScopedE2bAlias,
-  computeDockerfileVersionHash,
 } from "../scope-reference";
 
 describe("parseScopedReference", () => {
@@ -272,23 +271,3 @@ describe("generateScopedE2bAlias", () => {
   });
 });
 
-describe("computeDockerfileVersionHash", () => {
-  it("returns 8 character hash", async () => {
-    const result = await computeDockerfileVersionHash("FROM ubuntu:22.04");
-    expect(result).toHaveLength(8);
-    expect(result).toMatch(/^[a-f0-9]{8}$/);
-  });
-
-  it("returns consistent hash for same content", async () => {
-    const dockerfile = "FROM node:18\nRUN npm install";
-    const hash1 = await computeDockerfileVersionHash(dockerfile);
-    const hash2 = await computeDockerfileVersionHash(dockerfile);
-    expect(hash1).toBe(hash2);
-  });
-
-  it("returns different hash for different content", async () => {
-    const hash1 = await computeDockerfileVersionHash("FROM ubuntu:22.04");
-    const hash2 = await computeDockerfileVersionHash("FROM ubuntu:24.04");
-    expect(hash1).not.toBe(hash2);
-  });
-});

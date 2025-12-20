@@ -258,19 +258,3 @@ export function generateScopedE2bAlias(
   return `scope-${sanitizedScopeId}-image-${sanitizedName}-version-${sanitizedHash}`;
 }
 
-/**
- * Compute version hash from Dockerfile content
- * Uses SHA-256 hash, returning first 8 characters
- */
-export async function computeDockerfileVersionHash(
-  dockerfile: string,
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(dockerfile);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return hashHex.slice(0, 8);
-}
