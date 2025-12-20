@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=web && (node turbo/apps/web/scripts/configure-vercel-output.mjs || echo 'Config script skipped')",
+  "buildCommand": "cd ../.. && pnpm run build --filter=web",
   "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": ".next",
   "crons": [
