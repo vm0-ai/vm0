@@ -257,4 +257,3 @@ export function generateScopedE2bAlias(
 
   return `scope-${sanitizedScopeId}-image-${sanitizedName}-version-${sanitizedHash}`;
 }
-

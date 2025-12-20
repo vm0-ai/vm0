@@ -270,4 +270,3 @@ describe("generateScopedE2bAlias", () => {
     expect(result).toBe("scope-12345678-image-my-image-v1-version-abcd1234");
   });
 });
-
