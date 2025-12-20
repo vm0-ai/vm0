@@ -7,6 +7,12 @@
 
 load '../../helpers/setup'
 
+# Run once before all tests in this file
+setup_file() {
+    # Ensure scope is set up for versioning tests
+    $CLI_COMMAND scope set "e2e-versioning" --force >/dev/null 2>&1 || true
+}
+
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
     export TEST_TMP_DIR="$(mktemp -d)"
@@ -87,18 +93,21 @@ teardown() {
 # ============================================
 
 @test "vm0 image build creates multiple versions" {
-    # Clean up first
-    run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force 2>/dev/null || true
+    # Use unique image name for this test to avoid conflicts with parallel tests
+    local MULTI_VER_IMAGE="e2e-multi-ver-test"
+
+    # Clean up first (ignore errors if nothing to delete)
+    $CLI_COMMAND image delete "$MULTI_VER_IMAGE" --all --force 2>/dev/null || true
 
     # Build first version
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
     assert_success
 
     # Extract version ID from output (nanoid includes - and _)
     VERSION1=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
 
     # Build second version (without --delete-existing to keep both)
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
     assert_success
 
     # Extract second version ID
@@ -108,14 +117,13 @@ teardown() {
     [ "$VERSION1" != "$VERSION2" ]
 
     # List versions should show both
-    run $CLI_COMMAND image versions "$TEST_IMAGE_NAME"
+    run $CLI_COMMAND image versions "$MULTI_VER_IMAGE"
     assert_success
     assert_output --partial "$VERSION1"
     assert_output --partial "$VERSION2"
 
-    # Clean up - delete all versions
-    run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force
-    assert_success
+    # Clean up - delete all versions (best effort, don't fail test on cleanup)
+    $CLI_COMMAND image delete "$MULTI_VER_IMAGE" --all --force 2>/dev/null || true
 }
 
 # ============================================
