@@ -73,19 +73,22 @@ teardown() {
 }
 
 @test "vm0 scope set rejects reserved vm0 prefix" {
-    run $CLI_COMMAND scope set "vm0test"
+    # Use --force in case user already has a scope from prior tests
+    run $CLI_COMMAND scope set "vm0test" --force
     assert_failure
     assert_output --partial "reserved"
 }
 
 @test "vm0 scope set rejects reserved system slug" {
-    run $CLI_COMMAND scope set "system"
+    # Use --force in case user already has a scope from prior tests
+    run $CLI_COMMAND scope set "system" --force
     assert_failure
     assert_output --partial "reserved"
 }
 
 @test "vm0 scope set rejects slug with invalid characters" {
-    run $CLI_COMMAND scope set "Test_Slug"
+    # Use --force in case user already has a scope from prior tests
+    run $CLI_COMMAND scope set "Test_Slug" --force
     assert_failure
     # Should fail validation (uppercase or underscore)
 }
