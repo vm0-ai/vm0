@@ -267,11 +267,11 @@ export class RunService {
       throw new NotFoundError("Conversation");
     }
 
-    // Extract snapshots
+    // Extract snapshots (artifactSnapshot may be null for runs without artifact)
     const agentComposeSnapshot =
       checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
     const checkpointArtifact =
-      checkpoint.artifactSnapshot as unknown as ArtifactSnapshot;
+      checkpoint.artifactSnapshot as unknown as ArtifactSnapshot | null;
     const checkpointVolumeVersions =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -312,12 +312,12 @@ export class RunService {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: conversation.cliAgentSessionHistory,
       },
-      artifactName: checkpointArtifact.artifactName,
-      artifactVersion: checkpointArtifact.artifactVersion,
+      artifactName: checkpointArtifact?.artifactName,
+      artifactVersion: checkpointArtifact?.artifactVersion,
       vars: agentComposeSnapshot.vars || {},
       secrets: decryptedSecrets,
       volumeVersions: checkpointVolumeVersions?.versions,
-      buildResumeArtifact: true,
+      buildResumeArtifact: !!checkpointArtifact, // Only build resumeArtifact if checkpoint has artifact
     };
   }
 
@@ -396,12 +396,12 @@ export class RunService {
         cliAgentSessionId: session.conversation.cliAgentSessionId,
         cliAgentSessionHistory: session.conversation.cliAgentSessionHistory,
       },
-      artifactName: session.artifactName,
-      artifactVersion: "latest",
+      artifactName: session.artifactName ?? undefined, // Convert null to undefined
+      artifactVersion: session.artifactName ? "latest" : undefined, // Only set version if artifact exists
       vars: session.vars || {},
       secrets: decryptedSessionSecrets,
       volumeVersions: undefined,
-      buildResumeArtifact: true,
+      buildResumeArtifact: !!session.artifactName, // Only build resumeArtifact if session has artifact
     };
   }
 

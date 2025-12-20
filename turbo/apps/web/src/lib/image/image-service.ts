@@ -2,11 +2,60 @@ import { eq, and, desc } from "drizzle-orm";
 import { ApiClient, ConnectionConfig, Template, BuildError } from "e2b";
 
 import { images } from "../../db/schema/image";
+import { scopes } from "../../db/schema/scope";
 import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
+import { getUserScopeByClerkId } from "../scope/scope-service";
 import type { ImageStatusEnum } from "../../db/schema/image";
 
 const log = logger("service:image");
+
+/**
+ * Check if an image alias is a legacy system template (starts with vm0-)
+ */
+function isLegacySystemTemplate(reference: string): boolean {
+  return reference.startsWith("vm0-");
+}
+
+/**
+ * Parse a scoped reference string (@scope/name format)
+ */
+function parseScopedReference(reference: string): {
+  scope: string;
+  name: string;
+} {
+  if (!reference.startsWith("@")) {
+    throw new Error(
+      `Invalid scoped reference: must start with @ (got "${reference}")`,
+    );
+  }
+
+  const withoutAt = reference.slice(1);
+  const slashIndex = withoutAt.indexOf("/");
+
+  if (slashIndex === -1) {
+    throw new Error(
+      `Invalid scoped reference: missing / separator (got "${reference}")`,
+    );
+  }
+
+  const scope = withoutAt.slice(0, slashIndex);
+  const name = withoutAt.slice(slashIndex + 1);
+
+  if (!scope) {
+    throw new Error(
+      `Invalid scoped reference: empty scope (got "${reference}")`,
+    );
+  }
+
+  if (!name) {
+    throw new Error(
+      `Invalid scoped reference: empty name (got "${reference}")`,
+    );
+  }
+
+  return { scope, name };
+}
 
 /**
  * Generate E2B alias from userId and user-specified alias
@@ -20,7 +69,31 @@ export function generateE2bAlias(userId: string, alias: string): string {
  * Check if an image alias is a system template (starts with vm0-)
  */
 export function isSystemTemplate(alias: string): boolean {
-  return alias.startsWith("vm0-");
+  return isLegacySystemTemplate(alias);
+}
+
+/**
+ * Get scope by slug
+ */
+async function getScopeBySlug(slug: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(eq(scopes.slug, slug))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Get image by scope ID and alias
+ */
+export async function getImageByScopeAndAlias(scopeId: string, alias: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(images)
+    .where(and(eq(images.scopeId, scopeId), eq(images.alias, alias)))
+    .limit(1);
+  return result[0] ?? null;
 }
 
 /**
@@ -70,7 +143,11 @@ export async function buildImage(
 ): Promise<BuildResult> {
   const e2bAlias = generateE2bAlias(userId, alias);
 
-  log.debug("starting image build", { userId, alias, e2bAlias });
+  // Get user's scope if they have one (for @scope/name resolution)
+  const userScope = await getUserScopeByClerkId(userId);
+  const scopeId = userScope?.id ?? null;
+
+  log.debug("starting image build", { userId, alias, e2bAlias, scopeId });
 
   // Create template from Dockerfile content
   const template = Template().fromDockerfile(dockerfile);
@@ -109,6 +186,7 @@ export async function buildImage(
     .insert(images)
     .values({
       userId,
+      scopeId,
       alias,
       e2bAlias,
       e2bTemplateId: buildInfo.templateId,
@@ -118,6 +196,7 @@ export async function buildImage(
     .onConflictDoUpdate({
       target: [images.userId, images.alias],
       set: {
+        scopeId,
         e2bAlias,
         e2bTemplateId: buildInfo.templateId,
         e2bBuildId: buildInfo.buildId,
@@ -229,8 +308,10 @@ export async function getImageByBuildId(buildId: string) {
 
 /**
  * Resolve an image alias to E2B template name
- * - System templates (vm0-*): return as-is
- * - User templates: lookup in DB and return e2bAlias
+ * Supports multiple formats:
+ * - Legacy vm0-* prefix: passthrough directly (system templates)
+ * - @scope/name format: explicit scope resolution
+ * - Plain name: lookup by userId (legacy) or user's scope
  * @throws NotFoundError if user image not found
  * @throws BadRequestError if user image is not ready
  */
@@ -238,12 +319,50 @@ export async function resolveImageAlias(
   userId: string,
   alias: string,
 ): Promise<{ templateName: string; isUserImage: boolean }> {
-  // System templates bypass DB lookup
+  // 1. Legacy vm0-* system templates: passthrough directly
   if (isSystemTemplate(alias)) {
     return { templateName: alias, isUserImage: false };
   }
 
-  // User template - must exist in DB
+  // 2. Try to parse as scoped reference (@scope/name format)
+  if (alias.startsWith("@")) {
+    try {
+      const parsed = parseScopedReference(alias);
+
+      // Lookup scope by slug
+      const scope = await getScopeBySlug(parsed.scope);
+      if (!scope) {
+        throw new NotFoundError(`Scope "@${parsed.scope}" not found`);
+      }
+
+      // Lookup image by scope and name
+      const image = await getImageByScopeAndAlias(scope.id, parsed.name);
+      if (!image) {
+        throw new NotFoundError(
+          `Image "@${parsed.scope}/${parsed.name}" not found`,
+        );
+      }
+
+      if (image.status !== "ready") {
+        throw new BadRequestError(
+          `Image "@${parsed.scope}/${parsed.name}" is not ready (status: ${image.status})`,
+        );
+      }
+
+      return { templateName: image.e2bAlias, isUserImage: true };
+    } catch (error) {
+      // If parsing fails, fall through to legacy lookup
+      if (error instanceof NotFoundError || error instanceof BadRequestError) {
+        throw error;
+      }
+      log.debug("Failed to parse scoped reference, falling back to legacy", {
+        alias,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // 3. Legacy lookup by userId (for backward compatibility)
   const image = await getImageByAlias(userId, alias);
 
   if (!image) {

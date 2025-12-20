@@ -359,7 +359,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(data.error.message).toContain("prompt");
     });
 
-    it("should reject request without artifactName", async () => {
+    it("should accept request without artifactName (optional artifact)", async () => {
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
         headers: {
@@ -373,9 +373,9 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("artifactName");
+      // artifactName is now optional - request should be accepted
+      // The response should be 200 or 201 (success), not 400 (validation error)
+      expect(response.status).not.toBe(400);
     });
 
     it("should reject request for non-existent agent compose", async () => {

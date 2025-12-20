@@ -86,7 +86,7 @@ export class CheckpointService {
       secrets: (run.secrets as Record<string, string>) || undefined,
     };
 
-    // Store checkpoint in database
+    // Store checkpoint in database (artifactSnapshot may be undefined for runs without artifact)
     const [checkpoint] = await globalThis.services.db
       .insert(checkpoints)
       .values({
@@ -96,10 +96,9 @@ export class CheckpointService {
           string,
           unknown
         >,
-        artifactSnapshot: request.artifactSnapshot as unknown as Record<
-          string,
-          unknown
-        >,
+        artifactSnapshot: request.artifactSnapshot
+          ? (request.artifactSnapshot as unknown as Record<string, unknown>)
+          : null,
         volumeVersionsSnapshot: request.volumeVersionsSnapshot
           ? (request.volumeVersionsSnapshot as unknown as Record<
               string,
@@ -117,13 +116,16 @@ export class CheckpointService {
 
     // Find or create agent session using compose ID (not version ID)
     // Sessions track the mutable compose, not a specific version
-    const artifactSnapshot = request.artifactSnapshot as ArtifactSnapshot;
+    // artifactSnapshot may be undefined for runs without artifact
+    const artifactSnapshot = request.artifactSnapshot as
+      | ArtifactSnapshot
+      | undefined;
     const vars = (run.vars as Record<string, string>) || undefined;
     const secrets = (run.secrets as Record<string, string>) || undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
       version.composeId,
-      artifactSnapshot.artifactName,
+      artifactSnapshot?.artifactName, // May be undefined for runs without artifact
       conversation.id,
       vars,
       secrets,

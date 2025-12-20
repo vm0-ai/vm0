@@ -23,7 +23,7 @@ export const agentSessions = pgTable("agent_sessions", {
   conversationId: uuid("conversation_id").references(() => conversations.id, {
     onDelete: "set null",
   }),
-  artifactName: varchar("artifact_name", { length: 255 }).notNull(),
+  artifactName: varchar("artifact_name", { length: 255 }),
   vars: jsonb("vars").$type<Record<string, string>>(),
   secrets: jsonb("secrets").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
