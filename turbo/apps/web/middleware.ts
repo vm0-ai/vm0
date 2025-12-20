@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { handleCors } from "./middleware.cors";
 import { isCommunityEdition } from "./src/lib/edition";
+
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/cookbooks",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/cli/auth/device",
+  "/api/cli/auth/token",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
 
 /**
  * Community Edition middleware - CORS only, no auth
  */
-async function communityMiddleware(request: NextRequest) {
+function communityMiddleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/api/")) {
     return handleCors(request);
   }
@@ -15,22 +27,7 @@ async function communityMiddleware(request: NextRequest) {
 /**
  * Cloud Edition middleware - Clerk auth with CLI token bypass
  */
-async function cloudMiddleware(request: NextRequest) {
-  const { clerkMiddleware, createRouteMatcher } = await import(
-    "@clerk/nextjs/server"
-  );
-
-  const isPublicRoute = createRouteMatcher([
-    "/",
-    "/cookbooks",
-    "/sign-in(.*)",
-    "/sign-up(.*)",
-    "/api/cli/auth/device",
-    "/api/cli/auth/token",
-    "/robots.txt",
-    "/sitemap.xml",
-  ]);
-
+function cloudMiddleware(request: NextRequest) {
   return clerkMiddleware(async (auth, req) => {
     // Check if this might be a CLI token request BEFORE handling CORS
     const authHeader = req.headers.get("Authorization");
@@ -57,7 +54,7 @@ async function cloudMiddleware(request: NextRequest) {
   })(request, {} as never);
 }
 
-export default async function middleware(request: NextRequest) {
+export default function middleware(request: NextRequest) {
   if (isCommunityEdition()) {
     return communityMiddleware(request);
   }

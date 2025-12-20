@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
@@ -89,8 +90,7 @@ export async function getUserId(): Promise<string | null> {
     return null;
   }
 
-  // Fall back to Clerk session auth (dynamic import to avoid build issues in Community Edition)
-  const { auth } = await import("@clerk/nextjs/server");
+  // Fall back to Clerk session auth
   const { userId } = await auth();
   return userId;
 }
