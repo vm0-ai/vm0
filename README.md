@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0&env=VM0_EDITION&envDescription=Set%20to%20%27community%27%20for%20self-hosting&envLink=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0%23community-edition&project-name=vm0&repository-name=vm0&root-directory=turbo%2Fapps%2Fweb">
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0&project-name=vm0-community&repository-name=vm0-community&root-directory=turbo%2Fapps%2Fweb&env=VM0_COMMUNITY_AUTH_TOKEN&envDescription=Optional%20API%20protection%20token%20(leave%20empty%20for%20open%20access)&envLink=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0%2Fblob%2Fmain%2Fdocs%2Fself-hosting.md&integration-ids=oac_3sK3gnG06emjIEVL09jjntDD&skippable-integrations=1">
     <img src="https://vercel.com/button" alt="Deploy with Vercel" />
   </a>
 </p>
