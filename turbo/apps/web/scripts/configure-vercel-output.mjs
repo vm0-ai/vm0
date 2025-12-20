@@ -7,12 +7,17 @@
 
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, "../.vercel/output/config.json");
+// Use CWD-relative path since script is called from monorepo root
+const CONFIG_PATH = path.join(
+  process.cwd(),
+  "turbo/apps/web/.vercel/output/config.json",
+);
 
 const edition = process.env.VM0_EDITION;
+
+console.log(`[configure-vercel-output] CWD: ${process.cwd()}`);
+console.log(`[configure-vercel-output] CONFIG_PATH: ${CONFIG_PATH}`);
 
 // Only modify for community edition
 if (edition !== "community") {
