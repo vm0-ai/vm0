@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Configure Vercel Build Output based on VM0_EDITION
 #
 # For Community Edition: removes crons (Vercel Hobby Plan compatibility)
@@ -18,12 +18,17 @@ if [ ! -f "$CONFIG_PATH" ]; then
   exit 0
 fi
 
-# Remove crons using jq if available, otherwise use sed
-if command -v jq &> /dev/null; then
+# Remove crons using jq if available, otherwise use node
+if command -v jq > /dev/null 2>&1; then
   jq 'del(.crons)' "$CONFIG_PATH" > "${CONFIG_PATH}.tmp" && mv "${CONFIG_PATH}.tmp" "$CONFIG_PATH"
   echo "[configure-vercel-output] Community Edition: removed crons from build output (jq)"
 else
-  # Fallback: use sed to remove crons block (simple pattern)
-  sed -i '/"crons"/,/^\s*\]/d' "$CONFIG_PATH"
-  echo "[configure-vercel-output] Community Edition: removed crons from build output (sed)"
+  # Fallback: use node to remove crons
+  node -e "
+    const fs = require('fs');
+    const config = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf-8'));
+    delete config.crons;
+    fs.writeFileSync('$CONFIG_PATH', JSON.stringify(config, null, 2));
+  "
+  echo "[configure-vercel-output] Community Edition: removed crons from build output (node)"
 fi
