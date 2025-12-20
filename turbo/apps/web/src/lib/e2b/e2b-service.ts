@@ -4,6 +4,7 @@ import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
 import { BadRequestError } from "../errors";
 import { resolveImageAlias } from "../image/image-service";
+import { isCommunityEdition } from "../edition";
 import type {
   AgentVolumeConfig,
   PreparedArtifact,
@@ -385,9 +386,12 @@ export class E2BService {
     agentCompose: AgentComposeYaml | undefined,
     userId: string,
   ): Promise<Sandbox> {
-    // Use 24 hour timeout for Vercel production, 1 hour for other environments
+    // Timeout configuration:
+    // - Community Edition: Always 1 hour (E2B free plan limit)
+    // - Cloud Edition: 24 hours for production, 1 hour for other environments
     const isVercelProduction = process.env.VERCEL_ENV === "production";
-    const timeoutMs = isVercelProduction ? 86_400_000 : 3_600_000;
+    const timeoutMs =
+      isCommunityEdition() || !isVercelProduction ? 3_600_000 : 86_400_000;
 
     const sandboxOptions = {
       timeoutMs,
