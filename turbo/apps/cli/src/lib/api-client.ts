@@ -157,6 +157,15 @@ export interface CreateImageResponse {
   alias: string;
 }
 
+export interface ScopeResponse {
+  id: string;
+  slug: string;
+  type: "personal" | "organization" | "system";
+  displayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -516,6 +525,74 @@ class ApiClient {
     }
 
     return (await response.json()) as CreateImageResponse;
+  }
+
+  /**
+   * Get current user's scope
+   */
+  async getScope(): Promise<ScopeResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/scope`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to get scope");
+    }
+
+    return (await response.json()) as ScopeResponse;
+  }
+
+  /**
+   * Create user's scope
+   */
+  async createScope(body: {
+    slug: string;
+    displayName?: string;
+  }): Promise<ScopeResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/scope`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to create scope");
+    }
+
+    return (await response.json()) as ScopeResponse;
+  }
+
+  /**
+   * Update user's scope slug
+   */
+  async updateScope(body: {
+    slug: string;
+    force?: boolean;
+  }): Promise<ScopeResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/scope`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(error.error?.message || "Failed to update scope");
+    }
+
+    return (await response.json()) as ScopeResponse;
   }
 
   /**

@@ -260,6 +260,34 @@
       "when": 1766100000000,
       "tag": "0036_storage_name_256",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1766200000000,
+      "tag": "0037_add_scopes_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1766300000000,
+      "tag": "0038_add_scope_id_to_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1766400000000,
+      "tag": "0039_expand_e2b_alias",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1766500000000,
+      "tag": "0040_add_scope_id_to_images",
+      "breakpoints": true
     }
   ]
 }
