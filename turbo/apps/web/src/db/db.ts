@@ -11,6 +11,7 @@ import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
 import * as imageSchema from "./schema/image";
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
+import * as scopeSchema from "./schema/scope";
 
 export const schema = {
   ...userSchema,
@@ -26,4 +27,5 @@ export const schema = {
   ...blobSchema,
   ...imageSchema,
   ...sandboxTelemetrySchema,
+  ...scopeSchema,
 };
