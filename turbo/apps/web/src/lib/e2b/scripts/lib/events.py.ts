@@ -53,10 +53,11 @@ def send_event(event: Dict[str, Any]) -> bool:
         home_dir = os.environ.get("HOME", "/home/user")
 
         if CLI_AGENT_TYPE == "codex":
-            # Codex stores sessions in ~/.codex/sessions/
-            # The exact path structure may vary, but we use a simplified path
+            # Codex stores sessions in ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+            # We'll store a marker path here; checkpoint.py will search for the actual file
             codex_home = os.environ.get("CODEX_HOME", f"{home_dir}/.codex")
-            session_history_path = f"{codex_home}/sessions/{session_id}.jsonl"
+            # Use special marker format that checkpoint.py will recognize
+            session_history_path = f"CODEX_SEARCH:{codex_home}/sessions:{session_id}"
         else:
             # Claude Code uses hyphen-separated path encoding
             # e.g., /home/user/workspace -> -home-user-workspace

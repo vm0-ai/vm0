@@ -6,6 +6,7 @@ import { config as dotenvConfig } from "dotenv";
 import { apiClient } from "../lib/api-client";
 import { parseEvent } from "../lib/event-parser-factory";
 import { EventRenderer } from "../lib/event-renderer";
+import { CodexEventRenderer } from "../lib/codex-event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 
 /**
@@ -181,19 +182,24 @@ async function pollEvents(
       since: nextSequence,
     });
 
-    // Render agent events (auto-detects event format for Claude Code or Codex)
+    // Render agent events (use appropriate renderer for Claude Code or Codex)
     for (const event of response.events) {
-      const parsed = parseEvent(event.eventData as Record<string, unknown>);
+      const eventData = event.eventData as Record<string, unknown>;
 
-      if (parsed) {
-        EventRenderer.render(parsed, {
-          verbose,
-          previousTimestamp,
-          startTimestamp,
-        });
-
-        // Update previous timestamp for next event
-        previousTimestamp = parsed.timestamp;
+      // Use Codex renderer for Codex events
+      if (CodexEventRenderer.isCodexEvent(eventData)) {
+        CodexEventRenderer.render(eventData);
+      } else {
+        // Use Claude Code renderer
+        const parsed = parseEvent(eventData);
+        if (parsed) {
+          EventRenderer.render(parsed, {
+            verbose,
+            previousTimestamp,
+            startTimestamp,
+          });
+          previousTimestamp = parsed.timestamp;
+        }
       }
     }
 

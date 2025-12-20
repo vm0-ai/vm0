@@ -34,6 +34,11 @@ interface TurnFailedEvent {
   error?: string;
 }
 
+interface FileChange {
+  kind: "add" | "modify" | "delete";
+  path: string;
+}
+
 interface CodexItem {
   id: string;
   type: string;
@@ -42,13 +47,15 @@ interface CodexItem {
   command?: string;
   exit_code?: number;
   output?: string;
+  aggregated_output?: string;
   // For agent_message
   text?: string;
   // For file operations
   path?: string;
   diff?: string;
-  // For reasoning
-  reasoning?: string;
+  // For file_change
+  changes?: FileChange[];
+  // For reasoning (text field is used)
 }
 
 interface ItemEvent {
@@ -119,6 +126,7 @@ export class CodexEventParser {
       type: "init",
       timestamp: new Date(),
       data: {
+        provider: "codex",
         sessionId: event.thread_id,
         model: "unknown", // Codex thread.started doesn't include model; actual model set via OPENAI_MODEL env var
         tools: [],
@@ -190,13 +198,15 @@ export class CodexEventParser {
         };
       }
 
-      if (event.type === "item.completed" && item.output !== undefined) {
+      // Codex uses aggregated_output for command output
+      if (event.type === "item.completed") {
+        const output = item.aggregated_output ?? item.output ?? "";
         return {
           type: "tool_result",
           timestamp: new Date(),
           data: {
             toolUseId: item.id,
-            result: item.output || "",
+            result: output,
             isError: item.exit_code !== 0,
           },
         };
@@ -257,12 +267,32 @@ export class CodexEventParser {
       }
     }
 
-    // Reasoning = text (if we want to show it)
-    if (itemType === "reasoning" && item.reasoning) {
+    // File change = text showing what files were modified
+    if (itemType === "file_change" && item.changes && item.changes.length > 0) {
+      const changes = item.changes
+        .map((c) => {
+          const action =
+            c.kind === "add"
+              ? "Created"
+              : c.kind === "modify"
+                ? "Modified"
+                : "Deleted";
+          return `${action}: ${c.path}`;
+        })
+        .join("\n");
       return {
         type: "text",
         timestamp: new Date(),
-        data: { text: `[Reasoning] ${item.reasoning}` },
+        data: { text: `[files]\n${changes}` },
+      };
+    }
+
+    // Reasoning = text (Codex uses text field for reasoning content)
+    if (itemType === "reasoning" && item.text) {
+      return {
+        type: "text",
+        timestamp: new Date(),
+        data: { text: `[thinking] ${item.text}` },
       };
     }
 

@@ -153,8 +153,26 @@ def _run() -> tuple[int, str]:
     if CLI_AGENT_TYPE == "codex":
         # Codex uses ~/.codex for configuration and session storage
         codex_home = f"{home_dir}/.codex"
+        os.makedirs(codex_home, exist_ok=True)
         os.environ["CODEX_HOME"] = codex_home
         log_info(f"Codex home directory: {codex_home}")
+
+        # Login with API key via stdin (recommended method)
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if api_key:
+            import subprocess
+            result = subprocess.run(
+                ["codex", "login", "--with-api-key"],
+                input=api_key,
+                text=True,
+                capture_output=True
+            )
+            if result.returncode == 0:
+                log_info("Codex authenticated with API key")
+            else:
+                log_error(f"Codex login failed: {result.stderr}")
+        else:
+            log_error("OPENAI_API_KEY not set")
     else:
         # Claude Code uses ~/.config/claude for configuration
         claude_config_dir = f"{home_dir}/.config/claude"
@@ -184,7 +202,13 @@ def _run() -> tuple[int, str]:
         if RESUME_SESSION_ID:
             # Codex resume uses subcommand: codex exec resume <session_id> <prompt>
             log_info(f"Resuming session: {RESUME_SESSION_ID}")
-            codex_args = ["exec"]
+            codex_args = [
+                "exec",
+                "--json",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "-C", WORKING_DIR,
+            ]
             if OPENAI_MODEL:
                 codex_args.extend(["-m", OPENAI_MODEL])
             codex_args.extend(["resume", RESUME_SESSION_ID, PROMPT])
@@ -195,6 +219,7 @@ def _run() -> tuple[int, str]:
                 "exec",
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
                 "-C", WORKING_DIR,
             ]
             if OPENAI_MODEL:

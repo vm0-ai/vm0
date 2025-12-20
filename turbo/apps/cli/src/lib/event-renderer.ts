@@ -175,8 +175,9 @@ export class EventRenderer {
     prefix: string,
     suffix: string,
   ): void {
+    const provider = event.data.provider === "codex" ? "Codex" : "Claude Code";
     console.log(
-      prefix + chalk.cyan("[init]") + suffix + " Starting Claude Code agent",
+      prefix + chalk.cyan("[init]") + suffix + ` Starting ${provider} agent`,
     );
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
     console.log(`  Model: ${chalk.gray(String(event.data.model || ""))}`);

@@ -260,6 +260,13 @@
       "when": 1766100000000,
       "tag": "0036_storage_name_256",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1766200000000,
+      "tag": "0037_add_vars_secrets_to_agent_sessions",
+      "breakpoints": true
     }
   ]
 }
