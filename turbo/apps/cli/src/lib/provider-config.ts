@@ -15,6 +15,9 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
   },
+  codex: {
+    workingDir: "/home/user/workspace",
+  },
 };
 
 /**

@@ -211,6 +211,12 @@ export class E2BService {
         );
       }
 
+      // Set CLI_AGENT_TYPE based on provider (defaults to "claude-code")
+      // This is used by run-agent.py to determine which CLI to invoke
+      const provider = firstAgent.provider || "claude-code";
+      sandboxEnvVars.CLI_AGENT_TYPE = provider;
+      log.debug(`CLI_AGENT_TYPE set to: ${provider}`);
+
       sandbox = await this.createSandbox(
         sandboxEnvVars,
         agentCompose as AgentComposeYaml | undefined,
@@ -248,10 +254,11 @@ export class E2BService {
           context.resumeSession.sessionId,
           context.resumeSession.sessionHistory,
           context.resumeSession.workingDir,
+          provider,
         );
       }
 
-      // Start Claude Code via run-agent.sh (fire-and-forget)
+      // Start agent via run-agent.sh (fire-and-forget)
       // The script will send events via webhook and update status when complete
       // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
       log.debug(`[${context.runId}] Starting agent execution...`);
@@ -330,18 +337,20 @@ export class E2BService {
 
   /**
    * Restore session history for resume functionality
-   * Writes session history JSONL file to correct location for Claude Code to detect
+   * Writes session history JSONL file to correct location for CLI to detect
    *
    * @param sandbox E2B sandbox instance
    * @param sessionId Session ID to restore
    * @param sessionHistory JSONL content of session history
    * @param workingDir Working directory for path calculation
+   * @param agentType CLI agent type (claude-code or codex)
    */
   private async restoreSessionHistory(
     sandbox: Sandbox,
     sessionId: string,
     sessionHistory: string,
     workingDir: string,
+    agentType: string,
   ): Promise<void> {
     log.debug(`Restoring session history for ${sessionId}...`);
 
@@ -349,6 +358,7 @@ export class E2BService {
     const sessionHistoryPath = calculateSessionHistoryPath(
       workingDir,
       sessionId,
+      agentType,
     );
 
     log.debug(`Session history path: ${sessionHistoryPath}`);

@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import { apiClient } from "../lib/api-client";
-import { ClaudeEventParser } from "../lib/event-parser";
+import { parseEvent } from "../lib/event-parser-factory";
 import { EventRenderer } from "../lib/event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 
@@ -181,11 +181,9 @@ async function pollEvents(
       since: nextSequence,
     });
 
-    // Render agent events
+    // Render agent events (auto-detects event format for Claude Code or Codex)
     for (const event of response.events) {
-      const parsed = ClaudeEventParser.parse(
-        event.eventData as Record<string, unknown>,
-      );
+      const parsed = parseEvent(event.eventData as Record<string, unknown>);
 
       if (parsed) {
         EventRenderer.render(parsed, {
