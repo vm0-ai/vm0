@@ -160,7 +160,6 @@ def _run() -> tuple[int, str]:
         # Login with API key via stdin (recommended method)
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if api_key:
-            import subprocess
             result = subprocess.run(
                 ["codex", "login", "--with-api-key"],
                 input=api_key,
