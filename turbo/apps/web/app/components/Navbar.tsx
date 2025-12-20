@@ -54,9 +54,9 @@ export default function Navbar() {
             <a href="mailto:contact@vm0.ai" className="btn-try-demo">
               {t("contact")}
             </a>
-            <Link href="/sign-up" className="btn-get-access">
+            <a href="/sign-up" className="btn-get-access">
               {t("joinWaitlist")}
-            </Link>
+            </a>
           </div>
         </div>
       </div>

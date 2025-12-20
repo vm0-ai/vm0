@@ -243,7 +243,7 @@ export default function CookbooksPage() {
               >
                 {t("getStarted.step1")}
               </span>
-              <Link
+              <a
                 href="/sign-up"
                 style={{
                   fontFamily: '"Fira Mono", monospace',
@@ -253,7 +253,7 @@ export default function CookbooksPage() {
                 }}
               >
                 vm0.ai/sign-up
-              </Link>
+              </a>
             </div>
 
             {/* Step 2 */}
@@ -471,9 +471,9 @@ export default function CookbooksPage() {
             <h2 className="cta-title">{t("cta.title")}</h2>
             <p className="cta-subtitle">{t("cta.subtitle")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-              <Link href="/sign-up" className="btn-primary-large">
+              <a href="/sign-up" className="btn-primary-large">
                 {t("cta.joinWaitlist")}
-              </Link>
+              </a>
               <a
                 href="https://github.com/vm0-ai/vm0-cookbooks"
                 target="_blank"

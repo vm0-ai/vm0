@@ -25,11 +25,12 @@ const intlMiddleware = createIntlMiddleware({
 });
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  // Skip i18n for API routes, static files, CLI auth, and Next.js internals
+  // Skip i18n for API routes, static files, CLI auth, sign-up, and Next.js internals
   if (
     request.nextUrl.pathname.startsWith("/api/") ||
     request.nextUrl.pathname.startsWith("/_next/") ||
     request.nextUrl.pathname.startsWith("/cli-auth") ||
+    request.nextUrl.pathname.startsWith("/sign-up") ||
     request.nextUrl.pathname.includes("/assets/") ||
     /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i.test(
       request.nextUrl.pathname,
@@ -49,8 +50,11 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
       return handleCors(request);
     }
 
-    // Handle Clerk auth for CLI auth page
-    if (request.nextUrl.pathname.startsWith("/cli-auth")) {
+    // Handle Clerk auth for CLI auth and sign-up pages
+    if (
+      request.nextUrl.pathname.startsWith("/cli-auth") ||
+      request.nextUrl.pathname.startsWith("/sign-up")
+    ) {
       if (!isPublicRoute(request)) {
         await auth.protect();
       }
