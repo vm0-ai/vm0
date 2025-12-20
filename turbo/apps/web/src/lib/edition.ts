@@ -7,31 +7,17 @@ export type Edition = "community" | "cloud";
 /**
  * Get the current edition from environment
  *
- * Detection logic:
- * 1. If VM0_EDITION is explicitly set, use that value
- * 2. If Clerk keys are not configured, auto-detect as 'community'
- * 3. Otherwise, default to 'cloud'
+ * Must be explicitly configured via VM0_EDITION environment variable.
+ * Defaults to "cloud" if not specified.
  */
 export function getEdition(): Edition {
   const edition = process.env.VM0_EDITION;
 
-  // Explicit configuration takes precedence
   if (edition === "community") {
     return "community";
   }
-  if (edition === "cloud") {
-    return "cloud";
-  }
 
-  // Auto-detect: if no Clerk keys configured, use community edition
-  const hasClerkKeys =
-    process.env.CLERK_SECRET_KEY &&
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-  if (!hasClerkKeys) {
-    return "community";
-  }
-
+  // Default to cloud edition
   return "cloud";
 }
 

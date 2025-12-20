@@ -15,12 +15,12 @@ The deployment will:
 
 ## Environment Variables
 
-### Auto-Configured
+### Required
 
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string (auto-provisioned by Neon integration) |
-| `VM0_EDITION` | **Auto-detected!** When Clerk keys are not configured, Community Edition is automatically enabled. No manual configuration needed. |
+| `VM0_EDITION` | Must be set to `community` for Community Edition. Pre-filled by deploy button. |
 
 ### Optional
 
