@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=web",
+  "buildCommand": "cd ../.. && pnpm run build --filter=web && bash turbo/apps/web/scripts/configure-vercel-output.sh",
   "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": ".next",
   "crons": [
