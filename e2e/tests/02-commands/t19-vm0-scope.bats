@@ -231,11 +231,11 @@ EOF
     run $CLI_COMMAND scope set "$SCOPE_SLUG" --force
     assert_success
 
-    # Build an image
+    # Build an image using E2B base image (has required packages pre-installed)
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/Dockerfile" <<EOF
-FROM alpine:latest
-RUN echo "test image"
+FROM e2bdev/code-interpreter:latest
+RUN echo "scope-test-marker" > /tmp/scope-test.txt
 EOF
 
     IMAGE_NAME="scope-test-img"
