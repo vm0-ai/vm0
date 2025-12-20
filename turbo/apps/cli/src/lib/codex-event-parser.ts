@@ -120,7 +120,7 @@ export class CodexEventParser {
       timestamp: new Date(),
       data: {
         sessionId: event.thread_id,
-        model: "codex", // Codex doesn't include model in thread.started
+        model: "unknown", // Codex thread.started doesn't include model; actual model set via OPENAI_MODEL env var
         tools: [],
       },
     };
