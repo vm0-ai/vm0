@@ -1,12 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import { Link } from "../../navigation";
+import { useTranslations } from "next-intl";
 import ThemeToggle from "./ThemeToggle";
+import LanguageSwitcher from "./LanguageSwitcher";
 import { useTheme } from "./ThemeProvider";
 
 export default function Navbar() {
   const { theme } = useTheme();
+  const t = useTranslations("nav");
 
   return (
     <nav className="navbar">
@@ -33,10 +36,10 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="nav-link"
             >
-              Blog
+              {t("blog")}
             </a>
             <Link href="/cookbooks" className="nav-link">
-              Cookbooks
+              {t("cookbooks")}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
@@ -44,19 +47,22 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="nav-link"
             >
-              GitHub
+              {t("github")}
             </a>
           </div>
           <div className="nav-right">
-            <ThemeToggle />
             <a href="mailto:contact@vm0.ai" className="btn-try-demo">
-              Contact us
+              {t("contact")}
             </a>
             <Link href="/sign-up" className="btn-get-access">
-              Join waitlist
+              {t("joinWaitlist")}
             </Link>
           </div>
         </div>
+      </div>
+      <div className="navbar-edge-controls">
+        <ThemeToggle />
+        <LanguageSwitcher />
       </div>
     </nav>
   );

@@ -1,113 +1,24 @@
-import type { Metadata } from "next";
+"use client";
+
 import type { JSX } from "react";
-import Link from "next/link";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import { Link } from "../../../navigation";
+import { useTranslations } from "next-intl";
+import Navbar from "../../components/Navbar";
+import Footer from "../../components/Footer";
 import Particles from "./Particles";
 import CopyButton from "./CopyButton";
 
-export const metadata: Metadata = {
-  title: "Cookbooks - Ready-to-Use Agent Examples",
-  description:
-    "Explore VM0 cookbooks: ready-to-run agent examples for code review, content generation, data processing, research, and more. Get started in minutes.",
-  keywords: [
-    "VM0 cookbooks",
-    "AI agent examples",
-    "Claude Code examples",
-    "agent templates",
-    "GitHub agent",
-    "content generation agent",
-    "research agent",
-    "data processing agent",
-    "TikTok influencer agent",
-    "competitor research",
-  ],
-  openGraph: {
-    title: "VM0 Cookbooks - Ready-to-Use Agent Examples",
-    description:
-      "Explore ready-to-run agent examples for code review, content generation, data processing, research, and more.",
-    url: "https://vm0.ai/cookbooks",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "VM0 Cookbooks - Ready-to-Use Agent Examples",
-    description:
-      "Explore ready-to-run agent examples for code review, content generation, data processing, research, and more.",
-  },
-};
-
 const cookbooks = [
-  {
-    id: "101-intro",
-    name: "Intro Cookbook",
-    description:
-      "Step-by-step introduction covering essential CLI commands, agent development basics, and platform fundamentals.",
-    icon: "book",
-  },
-  {
-    id: "102-writing-agent",
-    name: "Writing Agent",
-    description:
-      "Multi-step writing agent that generates, reviews, and refines content with iterative improvement cycles.",
-    icon: "pen",
-  },
-  {
-    id: "103-fetch-stores",
-    name: "Fetch & Store",
-    description:
-      "Demonstrates fetching external data and storing results in VM0's artifact system for persistence.",
-    icon: "database",
-  },
-  {
-    id: "104-content-farm",
-    name: "Content Farm",
-    description:
-      "Automated content generation pipeline with quality checks, SEO optimization, and multi-format output.",
-    icon: "layers",
-  },
-  {
-    id: "105-hf-trainer",
-    name: "HuggingFace Trainer",
-    description:
-      "Fine-tune HuggingFace models inside VM0 sandboxes with GPU support and experiment tracking.",
-    icon: "cpu",
-  },
-  {
-    id: "106-tiktok-influencer",
-    name: "TikTok Influencer",
-    description:
-      "Analyze TikTok trends, generate viral content ideas, and automate posting schedules.",
-    icon: "video",
-  },
-  {
-    id: "107-firecrawl-summary",
-    name: "Firecrawl Summary",
-    description:
-      "Crawl websites with Firecrawl and generate intelligent summaries and insights from web content.",
-    icon: "globe",
-  },
-  {
-    id: "108-competitor-research",
-    name: "Competitor Research",
-    description:
-      "Automated competitive intelligence gathering with market analysis and trend detection.",
-    icon: "search",
-  },
-  {
-    id: "109-github-agent",
-    name: "GitHub Agent",
-    description:
-      "Autonomous GitHub workflow agent for code reviews, issue triage, and PR management.",
-    icon: "git",
-  },
-  {
-    id: "110-startup-portrait",
-    name: "Startup Portrait",
-    description:
-      "Generate comprehensive startup analysis reports with market sizing and competitive positioning.",
-    icon: "briefcase",
-  },
+  { id: "101-intro", icon: "book" },
+  { id: "102-writing-agent", icon: "pen" },
+  { id: "103-fetch-stores", icon: "database" },
+  { id: "104-content-farm", icon: "layers" },
+  { id: "105-hf-trainer", icon: "cpu" },
+  { id: "106-tiktok-influencer", icon: "video" },
+  { id: "107-firecrawl-summary", icon: "globe" },
+  { id: "108-competitor-research", icon: "search" },
+  { id: "109-github-agent", icon: "git" },
+  { id: "110-startup-portrait", icon: "briefcase" },
 ];
 
 function getIcon(iconName: string) {
@@ -241,6 +152,8 @@ function getIcon(iconName: string) {
 }
 
 export default function CookbooksPage() {
+  const t = useTranslations("cookbooks");
+
   return (
     <>
       {/* Particles Background */}
@@ -252,11 +165,8 @@ export default function CookbooksPage() {
       <section className="hero-section" style={{ paddingBottom: "80px" }}>
         <div className="container">
           <div>
-            <h1 className="hero-title">Cookbooks</h1>
-            <p className="hero-description">
-              Ready-to-run agent examples to get you started quickly. Each
-              cookbook is a complete, working example you can deploy in minutes.
-            </p>
+            <h1 className="hero-title">{t("hero.title")}</h1>
+            <p className="hero-description">{t("hero.description")}</p>
             <div className="hero-buttons">
               <a
                 href="https://github.com/vm0-ai/vm0-cookbooks"
@@ -264,7 +174,7 @@ export default function CookbooksPage() {
                 rel="noopener noreferrer"
                 className="btn-primary-large"
               >
-                View on GitHub
+                {t("hero.viewOnGithub")}
               </a>
             </div>
           </div>
@@ -301,7 +211,7 @@ export default function CookbooksPage() {
                   margin: 0,
                 }}
               >
-                Get Started
+                {t("getStarted.title")}
               </h2>
             </div>
             {/* Step 1 */}
@@ -331,7 +241,7 @@ export default function CookbooksPage() {
                   fontSize: "14px",
                 }}
               >
-                Join the waitlist at
+                {t("getStarted.step1")}
               </span>
               <Link
                 href="/sign-up"
@@ -443,7 +353,7 @@ export default function CookbooksPage() {
       <section className="section-spacing">
         <div className="container">
           <h2 className="section-title" style={{ marginBottom: "40px" }}>
-            All Cookbooks
+            {t("allCookbooks.title")}
           </h2>
           <div
             style={{
@@ -497,7 +407,7 @@ export default function CookbooksPage() {
                     color: "var(--text-primary)",
                   }}
                 >
-                  {cookbook.name}
+                  {t(`items.${cookbook.id}.name`)}
                 </h3>
                 <p
                   style={{
@@ -509,7 +419,7 @@ export default function CookbooksPage() {
                     flex: 1,
                   }}
                 >
-                  {cookbook.description}
+                  {t(`items.${cookbook.id}.description`)}
                 </p>
                 <div
                   style={{
@@ -533,7 +443,7 @@ export default function CookbooksPage() {
                       fontWeight: 500,
                     }}
                   >
-                    View cookbook
+                    {t("allCookbooks.viewCookbook")}
                     <svg
                       width="16"
                       height="16"
@@ -558,13 +468,11 @@ export default function CookbooksPage() {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">Ready to build your own agent?</h2>
-            <p className="cta-subtitle">
-              {"// start with a cookbook, make it yours"}
-            </p>
+            <h2 className="cta-title">{t("cta.title")}</h2>
+            <p className="cta-subtitle">{t("cta.subtitle")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               <Link href="/sign-up" className="btn-primary-large">
-                Join waitlist
+                {t("cta.joinWaitlist")}
               </Link>
               <a
                 href="https://github.com/vm0-ai/vm0-cookbooks"
@@ -572,7 +480,7 @@ export default function CookbooksPage() {
                 rel="noopener noreferrer"
                 className="btn-secondary-large"
               >
-                Explore cookbooks
+                {t("cta.exploreCookbooks")}
               </a>
             </div>
           </div>

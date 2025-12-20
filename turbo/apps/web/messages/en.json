@@ -1,0 +1,151 @@
+{
+  "hero": {
+    "title": "The modern runtime for agent-native development",
+    "subtitle": "From workflows to real agents. VM0 makes agent building accessible through natural language, backed by agent-native infrastructure.",
+    "joinWaitlist": "Join waitlist",
+    "github": "GitHub"
+  },
+  "build": {
+    "title": "Build agents the human way",
+    "description": "Today's options fall into two buckets: tools that only run containers, and workflow builders that are too rigid for real agent behavior. Developers still lack an environment built for agent-native execution. VM0 bridges this gap with an end to end agent-native runtime.",
+    "vm0Tagline": "Build and evolve AI agents, just natural language."
+  },
+  "cliAgents": {
+    "title": "Riding the LLM wave, VM0 also acts as an agent router",
+    "description": "Use Claude Code, Codex, Gemini, and other CLI agents to build your own. VM0 fits into any agent development and provides the infrastructure you need to create your own agent or smart workflows.",
+    "marketingAgent": {
+      "title": "Marketing agent",
+      "description": "A protected space for marketing agents to run tasks and refine campaigns risk-free"
+    },
+    "productivityAgent": {
+      "title": "Productivity agent",
+      "description": "Run actions and refine routines safely, with full control and zero risk to production"
+    },
+    "researchAgent": {
+      "title": "Deep research agent",
+      "description": "Gather information, analyze sources, and iterate safely in an isolated workspace"
+    },
+    "codingAgent": {
+      "title": "Coding management agent",
+      "description": "Discovers trending repos and manages issues, PRs, and repo tasks"
+    }
+  },
+  "features": {
+    "title": "A better agent development experience, built on solid infrastructure",
+    "noWorkflows": {
+      "title": "No more workflows. It can be simple as just one prompt.",
+      "description": "No drag-and-drop needed — write a prompt or any type of configure files, connect it to VM0, and your agent's core logic is ready."
+    },
+    "purposeBuilt": {
+      "title": "Purpose-built for agents, not just code",
+      "description": "Traditional containers run programs. VM0 runs agents, preserving their sessions, memory, and reasoning context. It understands agents as stateful, iterative processes, not one-off scripts."
+    },
+    "observable": {
+      "title": "Observable by design",
+      "description": "Every run is transparent. You can see logs, metrics, and tool calls in real time, no more black-box containers. Debug, replay, and monitor every step of the agent lifecycle."
+    },
+    "reproducible": {
+      "title": "Reproducible and persistent",
+      "description": "Each run creates a checkpoint you can restore, fork, or optimize. Sessions and artifacts persist across runs and environments. Agents keep their memory. Developers keep control."
+    }
+  },
+  "infrastructure": {
+    "title": "VM0 is AI infrastructure built for the next paradigm",
+    "versionedStorage": {
+      "title": "Versioned artifact storage",
+      "description": "Sync files instantly between your sandbox and cloud storage, prewarmed before runtime."
+    },
+    "sessionContinuity": {
+      "title": "Session continuity",
+      "description": "Automatically persists CLI agent sessions and memory, unaffected by container lifetimes."
+    },
+    "structuredObservability": {
+      "title": "Structured observability",
+      "description": "Stream every log, metric, and token trace through a clean API or dashboard, no manual logging needed."
+    },
+    "checkpoint": {
+      "title": "Checkpoint & replay",
+      "description": "Each run creates a checkpoint snapshot. Reattach, replay, or tweak the prompt anytime."
+    }
+  },
+  "cta": {
+    "title": "Build and evolve AI agents inside their own reality",
+    "subtitle": "// Express your intent. VM0 handles the rest.",
+    "button": "Join waitlist"
+  },
+  "nav": {
+    "blog": "Blog",
+    "cookbooks": "Cookbooks",
+    "github": "GitHub",
+    "contact": "Contact us",
+    "joinWaitlist": "Join waitlist"
+  },
+  "footer": {
+    "tagline": "The modern runtime for agent-native development",
+    "copyright": "© 2025 VM0.ai All rights reserved.",
+    "language": "Language"
+  },
+  "cookbooks": {
+    "hero": {
+      "title": "Cookbooks",
+      "description": "Ready-to-run agent examples to get you started quickly. Each cookbook is a complete, working example you can deploy in minutes.",
+      "viewOnGithub": "View on GitHub"
+    },
+    "getStarted": {
+      "title": "Get Started",
+      "step1": "Join the waitlist at"
+    },
+    "allCookbooks": {
+      "title": "All Cookbooks",
+      "viewCookbook": "View cookbook"
+    },
+    "cta": {
+      "title": "Ready to build your own agent?",
+      "subtitle": "// start with a cookbook, make it yours",
+      "joinWaitlist": "Join waitlist",
+      "exploreCookbooks": "Explore cookbooks"
+    },
+    "items": {
+      "101-intro": {
+        "name": "Intro Cookbook",
+        "description": "Step-by-step introduction covering essential CLI commands, agent development basics, and platform fundamentals."
+      },
+      "102-writing-agent": {
+        "name": "Writing Agent",
+        "description": "Multi-step writing agent that generates, reviews, and refines content with iterative improvement cycles."
+      },
+      "103-fetch-stores": {
+        "name": "Fetch & Store",
+        "description": "Demonstrates fetching external data and storing results in VM0's artifact system for persistence."
+      },
+      "104-content-farm": {
+        "name": "Content Farm",
+        "description": "Automated content generation pipeline with quality checks, SEO optimization, and multi-format output."
+      },
+      "105-hf-trainer": {
+        "name": "HuggingFace Trainer",
+        "description": "Fine-tune HuggingFace models inside VM0 sandboxes with GPU support and experiment tracking."
+      },
+      "106-tiktok-influencer": {
+        "name": "TikTok Influencer",
+        "description": "Analyze TikTok trends, generate viral content ideas, and automate posting schedules."
+      },
+      "107-firecrawl-summary": {
+        "name": "Firecrawl Summary",
+        "description": "Crawl websites with Firecrawl and generate intelligent summaries and insights from web content."
+      },
+      "108-competitor-research": {
+        "name": "Competitor Research",
+        "description": "Automated competitive intelligence gathering with market analysis and trend detection."
+      },
+      "109-github-agent": {
+        "name": "GitHub Agent",
+        "description": "Autonomous GitHub workflow agent for code reviews, issue triage, and PR management."
+      },
+      "110-startup-portrait": {
+        "name": "Startup Portrait",
+        "description": "Generate comprehensive startup analysis reports with market sizing and competitive positioning."
+      }
+    }
+  }
+}
