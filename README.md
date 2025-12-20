@@ -25,6 +25,12 @@
   <a href="mailto:ethan@vm0.ai">Contact</a>
 </p>
 
+<p align="center">
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0&env=VM0_EDITION&envDescription=Set%20to%20%27community%27%20for%20self-hosting&envLink=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0%23community-edition&project-name=vm0&repository-name=vm0&root-directory=turbo%2Fapps%2Fweb">
+    <img src="https://vercel.com/button" alt="Deploy with Vercel" />
+  </a>
+</p>
+
 ---
 
 ## What is VM0?
