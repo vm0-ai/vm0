@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.17.0](https://github.com/vm0-ai/vm0/compare/web-v5.16.0...web-v5.17.0) (2025-12-20)
+
+
+### Features
+
+* add scope/namespace system for resource isolation ([#636](https://github.com/vm0-ai/vm0/issues/636)) ([1369059](https://github.com/vm0-ai/vm0/commit/1369059e3e3d7a82aca3f00e59dd2f2814dab0e4))
+* **cli:** make --artifact-name optional for vm0 run command ([#640](https://github.com/vm0-ai/vm0/issues/640)) ([6895cfe](https://github.com/vm0-ai/vm0/commit/6895cfe6411b48b23b49d9c5a500fdd0aa746fd0))
+
+
+### Bug Fixes
+
+* remove locale prefix from sign-up links ([#644](https://github.com/vm0-ai/vm0/issues/644)) ([167b4bd](https://github.com/vm0-ai/vm0/commit/167b4bdc0ee947130042b9dae7bbfc829022f707))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.7.0
+
 ## [5.16.0](https://github.com/vm0-ai/vm0/compare/web-v5.15.0...web-v5.16.0) (2025-12-20)
 
 

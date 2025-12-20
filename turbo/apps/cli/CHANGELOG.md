@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.15.0](https://github.com/vm0-ai/vm0/compare/cli-v4.14.1...cli-v4.15.0) (2025-12-20)
+
+
+### Features
+
+* add scope/namespace system for resource isolation ([#636](https://github.com/vm0-ai/vm0/issues/636)) ([1369059](https://github.com/vm0-ai/vm0/commit/1369059e3e3d7a82aca3f00e59dd2f2814dab0e4))
+* **cli:** make --artifact-name optional for vm0 run command ([#640](https://github.com/vm0-ai/vm0/issues/640)) ([6895cfe](https://github.com/vm0-ai/vm0/commit/6895cfe6411b48b23b49d9c5a500fdd0aa746fd0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.7.0
+
 ## [4.14.1](https://github.com/vm0-ai/vm0/compare/cli-v4.14.0...cli-v4.14.1) (2025-12-19)
 
 
