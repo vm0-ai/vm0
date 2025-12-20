@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { agentSessions } from "../../db/schema/agent-session";
 import { conversations } from "../../db/schema/conversation";
 import { NotFoundError } from "../errors";
@@ -162,19 +162,15 @@ export class AgentSessionService {
       : and(
           eq(agentSessions.userId, userId),
           eq(agentSessions.agentComposeId, agentComposeId),
+          isNull(agentSessions.artifactName),
         );
 
-    // First try to find existing session with same compose and artifact
-    const sessions = await globalThis.services.db
+    // Find existing session with same compose and artifact
+    const [existing] = await globalThis.services.db
       .select()
       .from(agentSessions)
       .where(conditions)
-      .limit(10); // Get multiple to filter null artifactName if needed
-
-    // When artifactName is undefined, we need to find a session with null artifactName
-    const existing = artifactName
-      ? sessions[0]
-      : sessions.find((s) => s.artifactName === null);
+      .limit(1);
 
     if (existing) {
       // Update conversation, vars, and secrets if provided
