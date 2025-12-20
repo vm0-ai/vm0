@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.17.1](https://github.com/vm0-ai/vm0/compare/web-v5.17.0...web-v5.17.1) (2025-12-20)
+
+
+### Bug Fixes
+
+* move theme toggle and language switcher to footer ([#645](https://github.com/vm0-ai/vm0/issues/645)) ([9cf6d5b](https://github.com/vm0-ai/vm0/commit/9cf6d5b9649ea3bee1263df99c38e57f8ac451b9))
+
 ## [5.17.0](https://github.com/vm0-ai/vm0/compare/web-v5.16.0...web-v5.17.0) (2025-12-20)
 
 
