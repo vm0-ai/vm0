@@ -33,12 +33,12 @@ export const buildCommand = new Command()
         process.exit(1);
       }
 
-      // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
-      const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
+      // Validate name format: 3-256 chars, alphanumeric and hyphens, start/end with alphanumeric
+      const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,254}[a-zA-Z0-9]$/;
       if (!nameRegex.test(name)) {
         console.error(
           chalk.red(
-            "✗ Invalid name format. Must be 3-64 characters, letters, numbers, and hyphens only.",
+            "✗ Invalid name format. Must be 3-256 characters, letters, numbers, and hyphens only.",
           ),
         );
         process.exit(1);

@@ -31,10 +31,10 @@ const createImageRequestSchema = z.object({
   alias: z
     .string()
     .min(3, "alias must be at least 3 characters")
-    .max(64, "alias must be at most 64 characters")
+    .max(256, "alias must be at most 256 characters")
     .regex(
-      /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/,
-      "alias must be 3-64 characters, alphanumeric and hyphens, start/end with alphanumeric",
+      /^[a-zA-Z0-9][a-zA-Z0-9-]{1,254}[a-zA-Z0-9]$/,
+      "alias must be 3-256 characters, alphanumeric and hyphens, start/end with alphanumeric",
     )
     .refine(
       (val) => !val.startsWith("vm0-"),

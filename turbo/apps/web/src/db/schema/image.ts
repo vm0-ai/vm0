@@ -27,7 +27,7 @@ export const images = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     scopeId: uuid("scope_id").references(() => scopes.id), // Scope FK (nullable for migration)
-    alias: varchar("alias", { length: 64 }).notNull(), // User-specified name
+    alias: varchar("alias", { length: 256 }).notNull(), // User-specified name
     versionId: varchar("version_id", { length: 16 }), // nanoid(8), null for legacy images
     e2bAlias: varchar("e2b_alias", { length: 256 }).notNull(), // E2B template name: scope-{scopeId}-image-{name}-version-{versionId}
     e2bTemplateId: varchar("e2b_template_id", { length: 64 }), // E2B template ID (set after build completes)
