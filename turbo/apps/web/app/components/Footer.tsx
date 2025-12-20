@@ -1,10 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
 
 export default function Footer() {
   const { theme } = useTheme();
+  const t = useTranslations("footer");
 
   return (
     <footer className="footer">
@@ -23,15 +25,13 @@ export default function Footer() {
                 height={28}
               />
             </div>
-            <p className="footer-tagline">
-              The modern runtime for agent-native development
-            </p>
+            <p className="footer-tagline">{t("tagline")}</p>
           </div>
         </div>
         <div className="footer-bottom">
-          <p className="footer-copyright">
-            © 2025 VM0.ai All rights reserved.
-          </p>
+          <div className="footer-left">
+            <p className="footer-copyright">{t("copyright")}</p>
+          </div>
           <div className="footer-links">
             <a
               href="https://github.com/vm0-ai/vm0"
