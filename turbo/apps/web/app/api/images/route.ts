@@ -95,7 +95,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
               'Invalid alias. User images cannot start with "vm0-" prefix (reserved for system templates).';
           } else {
             message =
-              "Invalid alias format. Must be 3-256 characters, letters, numbers, and hyphens only. Must start and end with letter or number.";
+              "Invalid alias format. Must be 3-64 characters, letters, numbers, and hyphens only. Must start and end with letter or number.";
           }
         }
 
