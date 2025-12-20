@@ -31,6 +31,7 @@
     "archiver": "^7.0.1",
     "dotenv": "^17.2.1",
     "drizzle-orm": "^0.44.5",
+    "nanoid": "^5.1.6",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",
     "p-limit": "^7.2.0",

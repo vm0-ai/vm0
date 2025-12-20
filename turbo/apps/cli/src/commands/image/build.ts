@@ -68,7 +68,7 @@ export const buildCommand = new Command()
           alias: name,
           deleteExisting,
         });
-        const { imageId, buildId } = buildInfo;
+        const { imageId, buildId, versionId } = buildInfo;
 
         console.log(chalk.gray(`  Build ID: ${buildId}`));
         console.log();
@@ -109,12 +109,13 @@ export const buildCommand = new Command()
         console.log();
 
         if (status === "ready") {
-          console.log(chalk.green(`✓ Image built: ${name}`));
+          console.log(chalk.green(`✓ Image built: ${name}:${versionId}`));
           console.log();
           console.log("Use in vm0.yaml:");
           console.log(chalk.cyan(`  agents:`));
           console.log(chalk.cyan(`    your-agent:`));
-          console.log(chalk.cyan(`      image: "${name}"`));
+          console.log(chalk.cyan(`      image: "${name}"          # uses latest version`));
+          console.log(chalk.cyan(`      # image: "${name}:${versionId}"  # pin to this version`));
         } else {
           console.error(chalk.red(`✗ Build failed`));
           process.exit(1);

@@ -16,6 +16,7 @@ const buildStatusSchema = z.enum(["building", "ready", "error"]);
 const imageInfoSchema = z.object({
   id: z.string(),
   alias: z.string(),
+  versionId: z.string().nullable(), // null for legacy images without versioning
   status: z.string(),
   errorMessage: z.string().nullable(),
   createdAt: z.coerce.date(),
@@ -49,6 +50,7 @@ const createImageResponseSchema = z.object({
   buildId: z.string(),
   imageId: z.string(),
   alias: z.string(),
+  versionId: z.string(), // nanoid(8), unique per build
 });
 
 /**

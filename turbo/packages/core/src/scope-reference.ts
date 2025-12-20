@@ -19,6 +19,16 @@ export interface ResolvedImageReference {
 }
 
 /**
+ * Versioned image reference with optional tag
+ */
+export interface VersionedImageReference {
+  scope?: string;
+  name: string;
+  tag?: string; // 'latest' or version ID (e.g., 'a1b2c3d4')
+  isLegacy: boolean;
+}
+
+/**
  * Parse a scoped reference string (@scope/name format)
  * @throws Error if format is invalid
  */
@@ -115,6 +125,109 @@ export function resolveImageReference(
   return {
     scope: userScopeSlug,
     name: input,
+    isLegacy: false,
+  };
+}
+
+/**
+ * Parse image reference with optional tag
+ *
+ * Supports these formats:
+ *   @scope/name         → { scope, name, tag: undefined }
+ *   @scope/name:latest  → { scope, name, tag: 'latest' }
+ *   @scope/name:a1b2    → { scope, name, tag: 'a1b2' }
+ *   name                → { name, tag: undefined } (implicit scope)
+ *   name:tag            → { name, tag } (implicit scope with tag)
+ *   vm0-*               → { name, isLegacy: true } (legacy system template)
+ *
+ * @param input - The image reference string
+ * @param userScopeSlug - The user's default scope slug (required for implicit references)
+ * @returns Versioned reference with scope, name, tag, and legacy flag
+ * @throws Error if implicit reference without userScopeSlug
+ */
+export function parseImageReferenceWithTag(
+  input: string,
+  userScopeSlug?: string,
+): VersionedImageReference {
+  // 1. Legacy vm0-* format: passthrough directly (no tag support)
+  if (isLegacySystemTemplate(input)) {
+    return {
+      name: input,
+      isLegacy: true,
+    };
+  }
+
+  // 2. Explicit @scope/name format (potentially with tag)
+  if (input.startsWith("@")) {
+    // Find the colon for tag, but only after the slash
+    const slashIndex = input.indexOf("/");
+    if (slashIndex === -1) {
+      throw new Error(
+        `Invalid scoped reference: missing / separator (got "${input}")`,
+      );
+    }
+
+    const afterSlash = input.slice(slashIndex + 1);
+    const colonIndex = afterSlash.indexOf(":");
+
+    let name: string;
+    let tag: string | undefined;
+
+    if (colonIndex !== -1) {
+      name = afterSlash.slice(0, colonIndex);
+      tag = afterSlash.slice(colonIndex + 1);
+      if (!tag) {
+        throw new Error(`Invalid tag: empty tag after colon (got "${input}")`);
+      }
+    } else {
+      name = afterSlash;
+    }
+
+    const scope = input.slice(1, slashIndex);
+    if (!scope) {
+      throw new Error(`Invalid scoped reference: empty scope (got "${input}")`);
+    }
+    if (!name) {
+      throw new Error(`Invalid scoped reference: empty name (got "${input}")`);
+    }
+
+    return {
+      scope,
+      name,
+      tag,
+      isLegacy: false,
+    };
+  }
+
+  // 3. Implicit format (potentially with tag)
+  if (!userScopeSlug) {
+    throw new Error(
+      "Please set up your scope first with: vm0 scope set <slug>",
+    );
+  }
+
+  const colonIndex = input.indexOf(":");
+  let name: string;
+  let tag: string | undefined;
+
+  if (colonIndex !== -1) {
+    name = input.slice(0, colonIndex);
+    tag = input.slice(colonIndex + 1);
+    if (!tag) {
+      throw new Error(`Invalid tag: empty tag after colon (got "${input}")`);
+    }
+  } else {
+    name = input;
+  }
+
+  if (!name) {
+    throw new Error(`Invalid image reference: empty name (got "${input}")`);
+  }
+
+  return {
+    scope: userScopeSlug,
+    name,
+    tag,
     isLegacy: false,
   };
 }

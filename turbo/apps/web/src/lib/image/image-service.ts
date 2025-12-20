@@ -1,5 +1,6 @@
 import { eq, and, desc } from "drizzle-orm";
 import { ApiClient, ConnectionConfig, Template, BuildError } from "e2b";
+import { nanoid } from "nanoid";
 
 import { images } from "../../db/schema/image";
 import { scopes } from "../../db/schema/scope";
@@ -7,6 +8,10 @@ import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import type { ImageStatusEnum } from "../../db/schema/image";
+import {
+  parseImageReferenceWithTag,
+  generateScopedE2bAlias,
+} from "@vm0/core";
 
 const log = logger("service:image");
 
@@ -15,46 +20,6 @@ const log = logger("service:image");
  */
 function isLegacySystemTemplate(reference: string): boolean {
   return reference.startsWith("vm0-");
-}
-
-/**
- * Parse a scoped reference string (@scope/name format)
- */
-function parseScopedReference(reference: string): {
-  scope: string;
-  name: string;
-} {
-  if (!reference.startsWith("@")) {
-    throw new Error(
-      `Invalid scoped reference: must start with @ (got "${reference}")`,
-    );
-  }
-
-  const withoutAt = reference.slice(1);
-  const slashIndex = withoutAt.indexOf("/");
-
-  if (slashIndex === -1) {
-    throw new Error(
-      `Invalid scoped reference: missing / separator (got "${reference}")`,
-    );
-  }
-
-  const scope = withoutAt.slice(0, slashIndex);
-  const name = withoutAt.slice(slashIndex + 1);
-
-  if (!scope) {
-    throw new Error(
-      `Invalid scoped reference: empty scope (got "${reference}")`,
-    );
-  }
-
-  if (!name) {
-    throw new Error(
-      `Invalid scoped reference: empty name (got "${reference}")`,
-    );
-  }
-
-  return { scope, name };
 }
 
 /**
@@ -85,7 +50,8 @@ async function getScopeBySlug(slug: string) {
 }
 
 /**
- * Get image by scope ID and alias
+ * Get image by scope ID and alias (legacy - returns first match)
+ * @deprecated Use getLatestImage or getImageByScopeAliasAndVersion instead
  */
 export async function getImageByScopeAndAlias(scopeId: string, alias: string) {
   const result = await globalThis.services.db
@@ -94,6 +60,69 @@ export async function getImageByScopeAndAlias(scopeId: string, alias: string) {
     .where(and(eq(images.scopeId, scopeId), eq(images.alias, alias)))
     .limit(1);
   return result[0] ?? null;
+}
+
+/**
+ * Get the latest ready version of an image by scope ID and alias
+ * Orders by createdAt DESC to get the most recently built version
+ */
+export async function getLatestImage(scopeId: string, alias: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(images)
+    .where(
+      and(
+        eq(images.scopeId, scopeId),
+        eq(images.alias, alias),
+        eq(images.status, "ready"),
+      ),
+    )
+    .orderBy(desc(images.createdAt))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Get a specific version of an image by scope ID, alias, and version ID
+ */
+export async function getImageByScopeAliasAndVersion(
+  scopeId: string,
+  alias: string,
+  versionId: string,
+) {
+  const result = await globalThis.services.db
+    .select()
+    .from(images)
+    .where(
+      and(
+        eq(images.scopeId, scopeId),
+        eq(images.alias, alias),
+        eq(images.versionId, versionId),
+      ),
+    )
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * List all versions of an image by scope ID and alias
+ * Orders by createdAt DESC (newest first)
+ */
+export async function listImageVersions(scopeId: string, alias: string) {
+  const result = await globalThis.services.db
+    .select({
+      id: images.id,
+      alias: images.alias,
+      versionId: images.versionId,
+      status: images.status,
+      errorMessage: images.errorMessage,
+      createdAt: images.createdAt,
+      updatedAt: images.updatedAt,
+    })
+    .from(images)
+    .where(and(eq(images.scopeId, scopeId), eq(images.alias, alias)))
+    .orderBy(desc(images.createdAt));
+  return result;
 }
 
 /**
@@ -129,25 +158,41 @@ interface BuildResult {
   imageId: string;
   buildId: string;
   alias: string;
+  versionId: string;
   e2bAlias: string;
 }
 
 /**
  * Start building an image from a Dockerfile
  * Uses E2B's Template.buildInBackground for async building
+ * Each build creates a new version with a unique versionId
  */
 export async function buildImage(
   userId: string,
   dockerfile: string,
   alias: string,
 ): Promise<BuildResult> {
-  const e2bAlias = generateE2bAlias(userId, alias);
-
-  // Get user's scope if they have one (for @scope/name resolution)
+  // Get user's scope - required for versioned builds
   const userScope = await getUserScopeByClerkId(userId);
-  const scopeId = userScope?.id ?? null;
+  if (!userScope) {
+    throw new BadRequestError(
+      "Please set up your scope first with: vm0 scope set <slug>",
+    );
+  }
 
-  log.debug("starting image build", { userId, alias, e2bAlias, scopeId });
+  // Generate fresh version ID for each build
+  const versionId = nanoid(8);
+
+  // Generate versioned E2B alias: scope-{scopeId}-image-{name}-version-{versionId}
+  const e2bAlias = generateScopedE2bAlias(userScope.id, alias, versionId);
+
+  log.debug("starting image build", {
+    userId,
+    alias,
+    versionId,
+    e2bAlias,
+    scopeId: userScope.id,
+  });
 
   // Create template from Dockerfile content
   const template = Template().fromDockerfile(dockerfile);
@@ -162,13 +207,7 @@ export async function buildImage(
     // Convert E2B BuildError to BadRequestError so it's returned to user
     if (error instanceof BuildError) {
       const message = error.message;
-      log.debug("E2B build error", { alias, e2bAlias, message });
-      // Provide helpful message for alias conflict (E2B buildInBackground bug)
-      if (message.includes("403") && message.includes("already used")) {
-        throw new BadRequestError(
-          `Image "${alias}" already exists. Delete it first with: vm0 image delete ${alias}`,
-        );
-      }
+      log.debug("E2B build error", { alias, versionId, e2bAlias, message });
       throw new BadRequestError(message);
     }
     throw error;
@@ -176,43 +215,38 @@ export async function buildImage(
 
   log.debug("E2B build started", {
     alias,
+    versionId,
     e2bAlias,
     buildId: buildInfo.buildId,
     templateId: buildInfo.templateId,
   });
 
-  // Insert record into database
+  // Insert new version record (each build = new record)
   const [image] = await globalThis.services.db
     .insert(images)
     .values({
       userId,
-      scopeId,
+      scopeId: userScope.id,
       alias,
+      versionId,
       e2bAlias,
       e2bTemplateId: buildInfo.templateId,
       e2bBuildId: buildInfo.buildId,
       status: "building" as ImageStatusEnum,
     })
-    .onConflictDoUpdate({
-      target: [images.userId, images.alias],
-      set: {
-        scopeId,
-        e2bAlias,
-        e2bTemplateId: buildInfo.templateId,
-        e2bBuildId: buildInfo.buildId,
-        status: "building" as ImageStatusEnum,
-        errorMessage: null,
-        updatedAt: new Date(),
-      },
-    })
     .returning();
 
-  log.debug("image record created", { imageId: image!.id, alias });
+  log.debug("image version record created", {
+    imageId: image!.id,
+    alias,
+    versionId,
+  });
 
   return {
     imageId: image!.id,
     buildId: buildInfo.buildId,
     alias,
+    versionId,
     e2bAlias,
   };
 }
@@ -308,76 +342,76 @@ export async function getImageByBuildId(buildId: string) {
 
 /**
  * Resolve an image alias to E2B template name
- * Supports multiple formats:
+ * Supports multiple formats with optional tag:
  * - Legacy vm0-* prefix: passthrough directly (system templates)
- * - @scope/name format: explicit scope resolution
- * - Plain name: lookup by userId (legacy) or user's scope
+ * - @scope/name[:tag] format: explicit scope resolution with optional tag
+ * - name[:tag]: implicit scope (user's scope) with optional tag
+ *
+ * Tag resolution:
+ * - No tag or :latest → most recently built ready version
+ * - Specific tag (e.g., :a1b2c3d4) → exact version by versionId
+ *
  * @throws NotFoundError if user image not found
  * @throws BadRequestError if user image is not ready
  */
 export async function resolveImageAlias(
   userId: string,
   alias: string,
-): Promise<{ templateName: string; isUserImage: boolean }> {
+): Promise<{ templateName: string; isUserImage: boolean; versionId?: string }> {
+  // Get user's scope for implicit references
+  const userScope = await getUserScopeByClerkId(userId);
+  const userScopeSlug = userScope?.slug;
+
+  // Parse reference with tag support
+  const ref = parseImageReferenceWithTag(alias, userScopeSlug);
+
   // 1. Legacy vm0-* system templates: passthrough directly
-  if (isSystemTemplate(alias)) {
-    return { templateName: alias, isUserImage: false };
+  if (ref.isLegacy) {
+    return { templateName: ref.name, isUserImage: false };
   }
 
-  // 2. Try to parse as scoped reference (@scope/name format)
-  if (alias.startsWith("@")) {
-    try {
-      const parsed = parseScopedReference(alias);
+  // 2. Resolve scope
+  const scope = ref.scope
+    ? await getScopeBySlug(ref.scope)
+    : userScope;
 
-      // Lookup scope by slug
-      const scope = await getScopeBySlug(parsed.scope);
-      if (!scope) {
-        throw new NotFoundError(`Scope "@${parsed.scope}" not found`);
-      }
+  if (!scope) {
+    throw new NotFoundError(`Scope "@${ref.scope}" not found`);
+  }
 
-      // Lookup image by scope and name
-      const image = await getImageByScopeAndAlias(scope.id, parsed.name);
-      if (!image) {
-        throw new NotFoundError(
-          `Image "@${parsed.scope}/${parsed.name}" not found`,
-        );
-      }
+  // 3. Resolve version based on tag
+  let image;
+  const refDisplay = ref.scope ? `@${ref.scope}/${ref.name}` : ref.name;
 
-      if (image.status !== "ready") {
-        throw new BadRequestError(
-          `Image "@${parsed.scope}/${parsed.name}" is not ready (status: ${image.status})`,
-        );
-      }
+  if (!ref.tag || ref.tag === "latest") {
+    // Resolve :latest or no tag to most recent ready version
+    image = await getLatestImage(scope.id, ref.name);
+    if (!image) {
+      throw new NotFoundError(
+        `Image "${refDisplay}" not found. Build it first with: vm0 image build`,
+      );
+    }
+  } else {
+    // Resolve specific version by tag (versionId)
+    image = await getImageByScopeAliasAndVersion(scope.id, ref.name, ref.tag);
+    if (!image) {
+      throw new NotFoundError(
+        `Image "${refDisplay}:${ref.tag}" not found. Check available versions with: vm0 image versions ${ref.name}`,
+      );
+    }
 
-      return { templateName: image.e2bAlias, isUserImage: true };
-    } catch (error) {
-      // If parsing fails, fall through to legacy lookup
-      if (error instanceof NotFoundError || error instanceof BadRequestError) {
-        throw error;
-      }
-      log.debug("Failed to parse scoped reference, falling back to legacy", {
-        alias,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (image.status !== "ready") {
+      throw new BadRequestError(
+        `Image "${refDisplay}:${ref.tag}" is not ready (status: ${image.status})`,
+      );
     }
   }
 
-  // 3. Legacy lookup by userId (for backward compatibility)
-  const image = await getImageByAlias(userId, alias);
-
-  if (!image) {
-    throw new NotFoundError(
-      `Image "${alias}" not found. Build it first with: vm0 image build`,
-    );
-  }
-
-  if (image.status !== "ready") {
-    throw new BadRequestError(
-      `Image "${alias}" is not ready (status: ${image.status}). Check build status with: vm0 image list`,
-    );
-  }
-
-  return { templateName: image.e2bAlias, isUserImage: true };
+  return {
+    templateName: image.e2bAlias,
+    isUserImage: true,
+    versionId: image.versionId ?? undefined,
+  };
 }
 
 /**
@@ -439,13 +473,15 @@ export async function assertImageAccess(
 }
 
 /**
- * List all images for a user
+ * List all images (all versions) for a user
+ * Orders by createdAt DESC (newest first)
  */
 export async function listImages(userId: string) {
   const result = await globalThis.services.db
     .select({
       id: images.id,
       alias: images.alias,
+      versionId: images.versionId,
       status: images.status,
       errorMessage: images.errorMessage,
       createdAt: images.createdAt,
