@@ -91,6 +91,68 @@ teardown() {
 }
 
 # ============================================
+# @scope/name Image Reference Tests
+# ============================================
+
+@test "vm0 compose with @scope/name validates format" {
+    # Create a test config with @scope/name format
+    TEST_DIR="$(mktemp -d)"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  test-agent:
+    provider: claude-code
+    image: "@invalid/missing-image"
+EOF
+
+    # Should fail because the scope or image doesn't exist, not because of format
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_failure
+    # Should show scope/image not found error, not a format error
+    assert_output --partial "not found"
+
+    rm -rf "$TEST_DIR"
+}
+
+@test "vm0 compose with invalid @scope format fails" {
+    TEST_DIR="$(mktemp -d)"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  test-agent:
+    provider: claude-code
+    image: "@no-slash-here"
+EOF
+
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_failure
+    # Should fail due to invalid scoped reference format
+
+    rm -rf "$TEST_DIR"
+}
+
+@test "vm0 run with @scope/name shows appropriate error for missing scope" {
+    TEST_DIR="$(mktemp -d)"
+    mkdir -p "$TEST_DIR/artifact"
+    cd "$TEST_DIR/artifact"
+    $CLI_COMMAND artifact init >/dev/null 2>&1 || true
+    $CLI_COMMAND artifact push >/dev/null 2>&1 || true
+
+    # Try to run with a non-existent scope
+    run $CLI_COMMAND run "@nonexistent-scope/test-image" \
+        --artifact-name "e2e-scope-test-$(date +%s)" \
+        "echo hello"
+
+    # Should fail with scope not found
+    assert_failure
+    assert_output --partial "not found"
+
+    rm -rf "$TEST_DIR"
+}
+
+# ============================================
 # Note: We don't test scope creation/update in E2E
 # because it would permanently change the test user's scope.
 # Those flows are tested in unit/integration tests.

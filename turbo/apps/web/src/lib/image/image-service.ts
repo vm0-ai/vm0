@@ -5,6 +5,7 @@ import { images } from "../../db/schema/image";
 import { scopes } from "../../db/schema/scope";
 import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
+import { getUserScopeByClerkId } from "../scope/scope-service";
 import type { ImageStatusEnum } from "../../db/schema/image";
 
 const log = logger("service:image");
@@ -142,7 +143,11 @@ export async function buildImage(
 ): Promise<BuildResult> {
   const e2bAlias = generateE2bAlias(userId, alias);
 
-  log.debug("starting image build", { userId, alias, e2bAlias });
+  // Get user's scope if they have one (for @scope/name resolution)
+  const userScope = await getUserScopeByClerkId(userId);
+  const scopeId = userScope?.id ?? null;
+
+  log.debug("starting image build", { userId, alias, e2bAlias, scopeId });
 
   // Create template from Dockerfile content
   const template = Template().fromDockerfile(dockerfile);
@@ -181,6 +186,7 @@ export async function buildImage(
     .insert(images)
     .values({
       userId,
+      scopeId,
       alias,
       e2bAlias,
       e2bTemplateId: buildInfo.templateId,
@@ -190,6 +196,7 @@ export async function buildImage(
     .onConflictDoUpdate({
       target: [images.userId, images.alias],
       set: {
+        scopeId,
         e2bAlias,
         e2bTemplateId: buildInfo.templateId,
         e2bBuildId: buildInfo.buildId,
