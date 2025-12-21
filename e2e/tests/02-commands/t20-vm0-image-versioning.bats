@@ -35,10 +35,12 @@ teardown() {
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
 
     assert_success
-    # Should show the version in the success message
+    # Should show the @scope/name:version format
+    assert_output --partial "@"
+    assert_output --partial "/"
     assert_output --partial ":"
-    # Should mention pinning to version
-    assert_output --partial "pin to this version"
+    # Should show success message
+    assert_output --partial "Image built:"
 }
 
 # ============================================
@@ -99,21 +101,33 @@ teardown() {
     # Clean up first (ignore errors if nothing to delete)
     $CLI_COMMAND image delete "$MULTI_VER_IMAGE" --all --force 2>/dev/null || true
 
+    # Create two different Dockerfiles (SHA256 versioning is content-based)
+    local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.v1"
+    local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.v2"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "version-1" > /tmp/version.txt
+USER user' > "$DOCKERFILE1"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "version-2" > /tmp/version.txt
+USER user' > "$DOCKERFILE2"
+
     # Build first version
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
+    run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$MULTI_VER_IMAGE"
     assert_success
 
-    # Extract version ID from output (SHA256 hex, first 12 chars displayed)
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    # Extract version ID from output (SHA256 hex, first 8 chars displayed)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
 
-    # Build second version (without --delete-existing to keep both)
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
+    # Build second version with different content
+    run $CLI_COMMAND image build --file "$DOCKERFILE2" --name "$MULTI_VER_IMAGE"
     assert_success
 
     # Extract second version ID
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
 
-    # Versions should be different
+    # Versions should be different (different Dockerfile content)
     [ "$VERSION1" != "$VERSION2" ]
 
     # List versions should show both
@@ -154,14 +168,26 @@ teardown() {
     # Clean up first
     run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force 2>/dev/null || true
 
-    # Build two versions
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
-    assert_success
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    # Create two different Dockerfiles (SHA256 versioning is content-based)
+    local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.del1"
+    local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.del2"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "delete-test-v1" > /tmp/version.txt
+USER user' > "$DOCKERFILE1"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "delete-test-v2" > /tmp/version.txt
+USER user' > "$DOCKERFILE2"
 
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    # Build two different versions
+    run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
+
+    run $CLI_COMMAND image build --file "$DOCKERFILE2" --name "$TEST_IMAGE_NAME"
+    assert_success
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
 
     # Delete specific version
     run $CLI_COMMAND image delete "${TEST_IMAGE_NAME}:${VERSION1}" --force
@@ -200,14 +226,26 @@ teardown() {
     # Clean up first
     run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --all --force 2>/dev/null || true
 
-    # Build two versions
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
-    assert_success
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    # Create two different Dockerfiles (SHA256 versioning is content-based)
+    local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.latest1"
+    local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.latest2"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "latest-test-v1" > /tmp/version.txt
+USER user' > "$DOCKERFILE1"
+    echo 'FROM e2bdev/code-interpreter:latest
+USER root
+RUN echo "latest-test-v2" > /tmp/version.txt
+USER user' > "$DOCKERFILE2"
 
-    run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
+    # Build two different versions
+    run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
+
+    run $CLI_COMMAND image build --file "$DOCKERFILE2" --name "$TEST_IMAGE_NAME"
+    assert_success
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{8}' | head -1)
 
     # Delete without --all should delete latest (VERSION2)
     run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --force
