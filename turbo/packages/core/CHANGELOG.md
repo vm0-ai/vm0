@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/core-v0.7.0...core-v0.8.0) (2025-12-21)
+
+
+### Features
+
+* **image:** add versioning support with tag syntax ([#643](https://github.com/vm0-ai/vm0/issues/643)) ([761ce57](https://github.com/vm0-ai/vm0/commit/761ce5791aca56e96739db7513fd4e5a83065717))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/core-v0.6.0...core-v0.7.0) (2025-12-20)
 
 
