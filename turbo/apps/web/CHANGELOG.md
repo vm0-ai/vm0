@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.18.1](https://github.com/vm0-ai/vm0/compare/web-v5.18.0...web-v5.18.1) (2025-12-21)
+
+
+### Bug Fixes
+
+* sandbox calls commit on deduplication to update HEAD ([#650](https://github.com/vm0-ai/vm0/issues/650)) ([51da31a](https://github.com/vm0-ai/vm0/commit/51da31a7bae1e431d7f3fd8b8cc04f0e951603f7))
+
 ## [5.18.0](https://github.com/vm0-ai/vm0/compare/web-v5.17.1...web-v5.18.0) (2025-12-21)
 
 

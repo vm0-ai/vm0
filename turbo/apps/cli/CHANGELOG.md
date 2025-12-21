@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.16.1](https://github.com/vm0-ai/vm0/compare/cli-v4.16.0...cli-v4.16.1) (2025-12-21)
+
+
+### Bug Fixes
+
+* sandbox calls commit on deduplication to update HEAD ([#650](https://github.com/vm0-ai/vm0/issues/650)) ([51da31a](https://github.com/vm0-ai/vm0/commit/51da31a7bae1e431d7f3fd8b8cc04f0e951603f7))
+
 ## [4.16.0](https://github.com/vm0-ai/vm0/compare/cli-v4.15.0...cli-v4.16.0) (2025-12-21)
 
 
