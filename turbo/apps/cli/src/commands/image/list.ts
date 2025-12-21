@@ -1,10 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
 
 interface Image {
   id: string;
   alias: string;
+  versionId: string | null;
   status: "building" | "ready" | "error";
   errorMessage: string | null;
   createdAt: string;
@@ -47,13 +49,29 @@ export const listCommand = new Command()
       console.log(chalk.bold("Your images:"));
       console.log();
 
+      // Group images by alias to determine latest versions
+      const imagesByAlias = new Map<string, Image[]>();
+      for (const image of images) {
+        const list = imagesByAlias.get(image.alias) || [];
+        list.push(image);
+        imagesByAlias.set(image.alias, list);
+      }
+
+      // Find latest ready version for each alias
+      const latestVersions = new Map<string, string | null>();
+      for (const [alias, versions] of imagesByAlias) {
+        // Already sorted by createdAt DESC from API, find first ready version
+        const latestReady = versions.find((v) => v.status === "ready");
+        latestVersions.set(alias, latestReady?.versionId || null);
+      }
+
       // Table header
       console.log(
         chalk.gray(
-          `${"NAME".padEnd(30)} ${"STATUS".padEnd(12)} ${"CREATED".padEnd(20)}`,
+          `${"NAME".padEnd(40)} ${"STATUS".padEnd(12)} ${"CREATED".padEnd(20)}`,
         ),
       );
-      console.log(chalk.gray("-".repeat(62)));
+      console.log(chalk.gray("-".repeat(72)));
 
       for (const image of images) {
         const statusColor =
@@ -65,8 +83,22 @@ export const listCommand = new Command()
 
         const createdAt = new Date(image.createdAt).toLocaleString();
 
+        // Build name with version (display first 12 chars of version ID)
+        let displayName = image.alias;
+        if (image.versionId) {
+          const shortVersion = formatVersionIdForDisplay(image.versionId);
+          displayName = `${image.alias}:${shortVersion}`;
+          // Add (latest) marker if this is the latest ready version
+          if (
+            image.status === "ready" &&
+            latestVersions.get(image.alias) === image.versionId
+          ) {
+            displayName = `${displayName} ${chalk.cyan("(latest)")}`;
+          }
+        }
+
         console.log(
-          `${image.alias.padEnd(30)} ${statusColor(image.status.padEnd(12))} ${createdAt.padEnd(20)}`,
+          `${displayName.padEnd(40)} ${statusColor(image.status.padEnd(12))} ${createdAt.padEnd(20)}`,
         );
 
         if (image.status === "error" && image.errorMessage) {
@@ -75,7 +107,7 @@ export const listCommand = new Command()
       }
 
       console.log();
-      console.log(chalk.gray(`Total: ${images.length} image(s)`));
+      console.log(chalk.gray(`Total: ${images.length} version(s)`));
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {

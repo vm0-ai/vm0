@@ -3,8 +3,6 @@
 import Image from "next/image";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
-import ThemeToggle from "./ThemeToggle";
-import LanguageSwitcher from "./LanguageSwitcher";
 import { useTheme } from "./ThemeProvider";
 
 export default function Navbar() {
@@ -54,15 +52,12 @@ export default function Navbar() {
             <a href="mailto:contact@vm0.ai" className="btn-try-demo">
               {t("contact")}
             </a>
-            <Link href="/sign-up" className="btn-get-access">
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/sign-up" className="btn-get-access">
               {t("joinWaitlist")}
-            </Link>
+            </a>
           </div>
         </div>
-      </div>
-      <div className="navbar-edge-controls">
-        <ThemeToggle />
-        <LanguageSwitcher />
       </div>
     </nav>
   );

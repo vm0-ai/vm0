@@ -12,7 +12,7 @@ const agentSessionSchema = z.object({
   userId: z.string(),
   agentComposeId: z.string(),
   conversationId: z.string().nullable(),
-  artifactName: z.string(),
+  artifactName: z.string().nullable(), // nullable when session has no artifact
   vars: z.record(z.string(), z.string()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),

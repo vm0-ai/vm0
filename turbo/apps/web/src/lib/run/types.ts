@@ -18,7 +18,7 @@ export interface RunResult {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifact: Record<string, string>; // { artifactName: version }
+  artifact?: Record<string, string>; // { artifactName: version } - optional when run has no artifact
   volumes?: Record<string, string>; // { volumeName: version }
 }
 

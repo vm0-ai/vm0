@@ -297,22 +297,14 @@ export function resolveVolumes(
     }
   }
 
-  // Process artifact (skip when resuming from checkpoint)
-  if (workingDir && !skipArtifact) {
-    if (!artifactName) {
-      errors.push({
-        volumeName: "artifact",
-        message:
-          "Artifact name is required. Use --artifact-name flag to specify artifact.",
-        type: "missing_artifact_name",
-      });
-    } else {
-      const { artifact: resolvedArtifact, errors: artifactErrors } =
-        resolveArtifact(workingDir, artifactName, artifactVersion);
+  // Process artifact (skip when resuming from checkpoint or when not provided)
+  // Artifact is now optional - runs without artifact won't have persistent storage
+  if (workingDir && !skipArtifact && artifactName) {
+    const { artifact: resolvedArtifact, errors: artifactErrors } =
+      resolveArtifact(workingDir, artifactName, artifactVersion);
 
-      artifact = resolvedArtifact;
-      errors.push(...artifactErrors);
-    }
+    artifact = resolvedArtifact;
+    errors.push(...artifactErrors);
   }
 
   return { volumes, artifact, errors };

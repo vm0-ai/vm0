@@ -33,6 +33,7 @@ function shouldSkipI18n(pathname: string): boolean {
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/cli-auth") ||
+    pathname.startsWith("/sign-up") ||
     pathname.includes("/assets/") ||
     /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i.test(pathname)
   );

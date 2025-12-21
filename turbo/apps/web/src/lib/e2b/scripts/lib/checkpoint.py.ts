@@ -1,12 +1,12 @@
 /**
  * Checkpoint creation script (Python)
- * Creates checkpoints with conversation history and artifact snapshot (VAS only)
+ * Creates checkpoints with conversation history and optional artifact snapshot (VAS only)
  * Uses direct S3 upload to bypass Vercel 4.5MB limit
  */
 export const CHECKPOINT_SCRIPT = `#!/usr/bin/env python3
 """
 Checkpoint creation module.
-Creates checkpoints with conversation history and artifact snapshot (VAS only).
+Creates checkpoints with conversation history and optional artifact snapshot (VAS only).
 Uses direct S3 upload exclusively (no fallback to legacy methods).
 """
 import os
@@ -70,46 +70,48 @@ def create_checkpoint() -> bool:
     # CLI agent type (default to claude-code)
     cli_agent_type = os.environ.get("CLI_AGENT_TYPE", "claude-code")
 
-    # Create artifact snapshot (VAS only, required)
-    if not ARTIFACT_DRIVER or not ARTIFACT_VOLUME_NAME:
-        log_error("Artifact is required but not configured")
-        return False
+    # Create artifact snapshot (VAS only, optional)
+    # If artifact is not configured, checkpoint is created without artifact snapshot
+    artifact_snapshot = None
 
-    log_info(f"Processing artifact with driver: {ARTIFACT_DRIVER}")
+    if ARTIFACT_DRIVER and ARTIFACT_VOLUME_NAME:
+        log_info(f"Processing artifact with driver: {ARTIFACT_DRIVER}")
 
-    if ARTIFACT_DRIVER != "vas":
-        log_error(f"Unknown artifact driver: {ARTIFACT_DRIVER} (only 'vas' is supported)")
-        return False
+        if ARTIFACT_DRIVER != "vas":
+            log_error(f"Unknown artifact driver: {ARTIFACT_DRIVER} (only 'vas' is supported)")
+            return False
 
-    # VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
-    log_info(f"Creating VAS snapshot for artifact '{ARTIFACT_VOLUME_NAME}' at {ARTIFACT_MOUNT_PATH}")
-    log_info("Using direct S3 upload...")
+        # VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
+        log_info(f"Creating VAS snapshot for artifact '{ARTIFACT_VOLUME_NAME}' at {ARTIFACT_MOUNT_PATH}")
+        log_info("Using direct S3 upload...")
 
-    snapshot = create_direct_upload_snapshot(
-        ARTIFACT_MOUNT_PATH,
-        ARTIFACT_VOLUME_NAME,
-        "artifact",
-        RUN_ID,
-        f"Checkpoint from run {RUN_ID}"
-    )
+        snapshot = create_direct_upload_snapshot(
+            ARTIFACT_MOUNT_PATH,
+            ARTIFACT_VOLUME_NAME,
+            "artifact",
+            RUN_ID,
+            f"Checkpoint from run {RUN_ID}"
+        )
 
-    if not snapshot:
-        log_error("Failed to create VAS snapshot for artifact")
-        return False
+        if not snapshot:
+            log_error("Failed to create VAS snapshot for artifact")
+            return False
 
-    # Extract versionId from snapshot response
-    artifact_version = snapshot.get("versionId")
-    if not artifact_version:
-        log_error("Failed to extract versionId from snapshot")
-        return False
+        # Extract versionId from snapshot response
+        artifact_version = snapshot.get("versionId")
+        if not artifact_version:
+            log_error("Failed to extract versionId from snapshot")
+            return False
 
-    # Build artifact snapshot JSON with new format (artifactName + artifactVersion)
-    artifact_snapshot = {
-        "artifactName": ARTIFACT_VOLUME_NAME,
-        "artifactVersion": artifact_version
-    }
+        # Build artifact snapshot JSON with new format (artifactName + artifactVersion)
+        artifact_snapshot = {
+            "artifactName": ARTIFACT_VOLUME_NAME,
+            "artifactVersion": artifact_version
+        }
 
-    log_info(f"VAS artifact snapshot created: {ARTIFACT_VOLUME_NAME}@{artifact_version}")
+        log_info(f"VAS artifact snapshot created: {ARTIFACT_VOLUME_NAME}@{artifact_version}")
+    else:
+        log_info("No artifact configured, creating checkpoint without artifact snapshot")
 
     log_info("Calling checkpoint API...")
 
@@ -118,9 +120,12 @@ def create_checkpoint() -> bool:
         "runId": RUN_ID,
         "cliAgentType": cli_agent_type,
         "cliAgentSessionId": cli_agent_session_id,
-        "cliAgentSessionHistory": cli_agent_session_history,
-        "artifactSnapshot": artifact_snapshot
+        "cliAgentSessionHistory": cli_agent_session_history
     }
+
+    # Only add artifact snapshot if present
+    if artifact_snapshot:
+        checkpoint_payload["artifactSnapshot"] = artifact_snapshot
 
     # Call checkpoint API
     result = http_post_json(CHECKPOINT_URL, checkpoint_payload)

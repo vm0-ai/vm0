@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { agentSessions } from "../../db/schema/agent-session";
 import { conversations } from "../../db/schema/conversation";
 import { NotFoundError } from "../errors";
@@ -140,26 +140,36 @@ export class AgentSessionService {
   /**
    * Find existing session or create a new one
    * Used when checkpoint is created to ensure session exists
+   * Note: artifactName is optional - sessions without artifact use (userId, composeId) as key
    */
   async findOrCreate(
     userId: string,
     agentComposeId: string,
-    artifactName: string,
+    artifactName?: string,
     conversationId?: string,
     vars?: Record<string, string>,
     secrets?: Record<string, string>,
   ): Promise<{ session: AgentSessionData; created: boolean }> {
-    // First try to find existing session with same compose and artifact
-    const [existing] = await globalThis.services.db
-      .select()
-      .from(agentSessions)
-      .where(
-        and(
+    // Build query conditions - handle null artifactName for sessions without artifact
+    // For sessions with artifact: match (userId, composeId, artifactName)
+    // For sessions without artifact: match (userId, composeId, artifactName IS NULL)
+    const conditions = artifactName
+      ? and(
           eq(agentSessions.userId, userId),
           eq(agentSessions.agentComposeId, agentComposeId),
           eq(agentSessions.artifactName, artifactName),
-        ),
-      )
+        )
+      : and(
+          eq(agentSessions.userId, userId),
+          eq(agentSessions.agentComposeId, agentComposeId),
+          isNull(agentSessions.artifactName),
+        );
+
+    // Find existing session with same compose and artifact
+    const [existing] = await globalThis.services.db
+      .select()
+      .from(agentSessions)
+      .where(conditions)
       .limit(1);
 
     if (existing) {
