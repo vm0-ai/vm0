@@ -1,8 +1,8 @@
 -- Add version_id column to images table for image versioning support
--- Each build creates a new version with a unique nanoid(8) identifier
+-- Each build creates a new version with a unique SHA256 hex identifier (64 chars)
 
 -- Add version_id column (nullable for legacy images)
-ALTER TABLE "images" ADD COLUMN "version_id" varchar(16);
+ALTER TABLE "images" ADD COLUMN "version_id" varchar(64);
 
 -- Drop old unique constraint (userId, alias) to allow multiple versions per alias
 DROP INDEX IF EXISTS "idx_images_user_alias";

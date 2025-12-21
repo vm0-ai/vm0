@@ -103,15 +103,15 @@ teardown() {
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
     assert_success
 
-    # Extract version ID from output (nanoid includes - and _)
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    # Extract version ID from output (SHA256 hex, first 12 chars displayed)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     # Build second version (without --delete-existing to keep both)
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$MULTI_VER_IMAGE"
     assert_success
 
     # Extract second version ID
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     # Versions should be different
     [ "$VERSION1" != "$VERSION2" ]
@@ -157,11 +157,11 @@ teardown() {
     # Build two versions
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     # Delete specific version
     run $CLI_COMMAND image delete "${TEST_IMAGE_NAME}:${VERSION1}" --force
@@ -203,11 +203,11 @@ teardown() {
     # Build two versions
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION1=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    VERSION1=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME"
     assert_success
-    VERSION2=$(echo "$output" | grep -oP ':\K[a-zA-Z0-9_-]{8}' | head -1)
+    VERSION2=$(echo "$output" | grep -oP ':\K[a-f0-9]{12}' | head -1)
 
     # Delete without --all should delete latest (VERSION2)
     run $CLI_COMMAND image delete "$TEST_IMAGE_NAME" --force

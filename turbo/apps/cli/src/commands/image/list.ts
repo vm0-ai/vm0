@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
 
 interface Image {
@@ -82,10 +83,11 @@ export const listCommand = new Command()
 
         const createdAt = new Date(image.createdAt).toLocaleString();
 
-        // Build name with version
+        // Build name with version (display first 12 chars of version ID)
         let displayName = image.alias;
         if (image.versionId) {
-          displayName = `${image.alias}:${image.versionId}`;
+          const shortVersion = formatVersionIdForDisplay(image.versionId);
+          displayName = `${image.alias}:${shortVersion}`;
           // Add (latest) marker if this is the latest ready version
           if (
             image.status === "ready" &&

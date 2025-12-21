@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
 
 interface Image {
@@ -67,8 +68,10 @@ export const versionsCommand = new Command()
 
         const createdAt = new Date(version.createdAt).toLocaleString();
 
-        // Build version display
-        let versionDisplay = version.versionId || "(legacy)";
+        // Build version display (show first 12 chars of version ID)
+        let versionDisplay = version.versionId
+          ? formatVersionIdForDisplay(version.versionId)
+          : "(legacy)";
         if (
           version.status === "ready" &&
           version.versionId === latestVersionId
@@ -91,9 +94,10 @@ export const versionsCommand = new Command()
       console.log(chalk.gray("Usage:"));
       console.log(chalk.gray(`  image: "${name}"              # uses latest`));
       if (latestVersionId) {
+        const shortVersion = formatVersionIdForDisplay(latestVersionId);
         console.log(
           chalk.gray(
-            `  image: "${name}:${latestVersionId}"   # pin to specific version`,
+            `  image: "${name}:${shortVersion}"   # pin to specific version`,
           ),
         );
       }

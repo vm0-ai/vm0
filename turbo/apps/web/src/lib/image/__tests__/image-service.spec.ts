@@ -9,6 +9,7 @@ import {
   getImageByScopeAndAlias,
   getLatestImage,
   getImageByScopeAliasAndVersion,
+  isImageResolutionError,
   listImageVersions,
 } from "../image-service";
 import { initServices } from "../../init-services";
@@ -264,8 +265,13 @@ describe("Image Service", () => {
     const testUserId = "test-version-query-user";
     const testScopeSlug = `ver-test-${Date.now()}`;
     let testScopeId: string;
-    const version1 = "oldver01";
-    const version2 = "newver02";
+    // Use hex version IDs (like SHA256 hashes) for realistic testing
+    const version1 =
+      "a1b2c3d4e5f6789012345678901234567890123456789012345678901234";
+    const version2 =
+      "b2c3d4e5f6a1789012345678901234567890123456789012345678901234";
+    const buildingVersion =
+      "c3d4e5f6a1b2789012345678901234567890123456789012345678901234";
 
     beforeAll(async () => {
       initServices();
@@ -305,8 +311,8 @@ describe("Image Service", () => {
         userId: testUserId,
         scopeId: testScopeId,
         alias: "versioned-img",
-        versionId: "building1",
-        e2bAlias: `scope-${testScopeId}-image-versioned-img-version-building1`,
+        versionId: buildingVersion,
+        e2bAlias: `scope-${testScopeId}-image-versioned-img-version-${buildingVersion}`,
         e2bTemplateId: "template-building",
         e2bBuildId: "build-building",
         status: "building",
@@ -339,28 +345,61 @@ describe("Image Service", () => {
       it("should skip non-ready versions", async () => {
         // The building version has a newer createdAt but should be skipped
         const image = await getLatestImage(testScopeId, "versioned-img");
-        expect(image!.versionId).not.toBe("building1");
+        // Should return version2 (the latest ready version), not the building version
+        expect(image!.versionId).toBe(version2);
       });
     });
 
     describe("getImageByScopeAliasAndVersion", () => {
       it("should return specific version by versionId", async () => {
-        const image = await getImageByScopeAliasAndVersion(
+        const result = await getImageByScopeAliasAndVersion(
           testScopeId,
           "versioned-img",
           version1,
         );
-        expect(image).toBeDefined();
-        expect(image!.versionId).toBe(version1);
+        expect(isImageResolutionError(result)).toBe(false);
+        if (!isImageResolutionError(result)) {
+          expect(result.image.versionId).toBe(version1);
+        }
       });
 
-      it("should return null for non-existent version", async () => {
-        const image = await getImageByScopeAliasAndVersion(
+      it("should return error for non-existent version", async () => {
+        const result = await getImageByScopeAliasAndVersion(
           testScopeId,
           "versioned-img",
           "nonexistent",
         );
-        expect(image).toBeNull();
+        expect(isImageResolutionError(result)).toBe(true);
+        if (isImageResolutionError(result)) {
+          expect(result.status).toBe(404);
+          expect(result.error).toContain("not found");
+        }
+      });
+
+      it("should support prefix matching", async () => {
+        // version1 starts with "a1b2c3d4", prefix "a1b2c3d4" should match (8 chars minimum)
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          "a1b2c3d4",
+        );
+        expect(isImageResolutionError(result)).toBe(false);
+        if (!isImageResolutionError(result)) {
+          expect(result.image.versionId).toBe(version1);
+        }
+      });
+
+      it("should return error for too short prefix", async () => {
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          "a1b2c3", // 6 chars, minimum is 8
+        );
+        expect(isImageResolutionError(result)).toBe(true);
+        if (isImageResolutionError(result)) {
+          expect(result.status).toBe(400);
+          expect(result.error).toContain("Minimum");
+        }
       });
     });
 
@@ -369,7 +408,7 @@ describe("Image Service", () => {
         const versions = await listImageVersions(testScopeId, "versioned-img");
         expect(versions).toHaveLength(3);
         // Should be ordered newest first
-        expect(versions[0]!.versionId).toBe("building1");
+        expect(versions[0]!.versionId).toBe(buildingVersion);
         expect(versions[1]!.versionId).toBe(version2);
         expect(versions[2]!.versionId).toBe(version1);
       });

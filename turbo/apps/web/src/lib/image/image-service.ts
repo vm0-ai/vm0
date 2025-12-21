@@ -1,6 +1,6 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, like } from "drizzle-orm";
 import { ApiClient, ConnectionConfig, Template, BuildError } from "e2b";
-import { nanoid } from "nanoid";
+import { createHash } from "crypto";
 
 import { images } from "../../db/schema/image";
 import { scopes } from "../../db/schema/scope";
@@ -8,9 +8,34 @@ import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import type { ImageStatusEnum } from "../../db/schema/image";
-import { parseImageReferenceWithTag, generateScopedE2bAlias } from "@vm0/core";
+import {
+  parseImageReferenceWithTag,
+  generateScopedE2bAlias,
+  MIN_VERSION_PREFIX_LENGTH,
+  isValidVersionPrefix,
+} from "@vm0/core";
 
 const log = logger("service:image");
+
+/**
+ * Generate a deterministic version ID from build inputs
+ * Uses SHA256 hash of dockerfile content + timestamp + scope + alias
+ *
+ * @param dockerfile - The Dockerfile content
+ * @param timestamp - Build timestamp (Date.now())
+ * @param scopeId - The scope UUID
+ * @param alias - The image alias
+ * @returns 64-character lowercase hex string
+ */
+export function generateVersionId(
+  dockerfile: string,
+  timestamp: number,
+  scopeId: string,
+  alias: string,
+): string {
+  const content = `${scopeId}:${alias}:${timestamp}:${dockerfile}`;
+  return createHash("sha256").update(content).digest("hex");
+}
 
 /**
  * Check if an image alias is a legacy system template (starts with vm0-)
@@ -80,25 +105,97 @@ export async function getLatestImage(scopeId: string, alias: string) {
 }
 
 /**
- * Get a specific version of an image by scope ID, alias, and version ID
+ * Image version resolution result
+ */
+export type ImageVersionResolutionResult =
+  | { image: typeof images.$inferSelect }
+  | { error: string; status: number };
+
+/**
+ * Get a specific version of an image by scope ID, alias, and version ID or prefix
+ * Supports both exact match and prefix matching (minimum 8 characters)
  */
 export async function getImageByScopeAliasAndVersion(
   scopeId: string,
   alias: string,
-  versionId: string,
-) {
-  const result = await globalThis.services.db
+  versionIdOrPrefix: string,
+): Promise<ImageVersionResolutionResult> {
+  // First, try exact match
+  const [exactMatch] = await globalThis.services.db
     .select()
     .from(images)
     .where(
       and(
         eq(images.scopeId, scopeId),
         eq(images.alias, alias),
-        eq(images.versionId, versionId),
+        eq(images.versionId, versionIdOrPrefix),
       ),
     )
     .limit(1);
-  return result[0] ?? null;
+
+  if (exactMatch) {
+    return { image: exactMatch };
+  }
+
+  // If not exact match, try prefix match
+  if (!isValidVersionPrefix(versionIdOrPrefix)) {
+    if (versionIdOrPrefix.length < MIN_VERSION_PREFIX_LENGTH) {
+      return {
+        error: `Version prefix too short. Minimum ${MIN_VERSION_PREFIX_LENGTH} characters required.`,
+        status: 400,
+      };
+    }
+    return {
+      error: `Version "${versionIdOrPrefix}" not found`,
+      status: 404,
+    };
+  }
+
+  // Search by prefix using LIKE
+  const prefixMatches = await globalThis.services.db
+    .select()
+    .from(images)
+    .where(
+      and(
+        eq(images.scopeId, scopeId),
+        eq(images.alias, alias),
+        like(images.versionId, `${versionIdOrPrefix.toLowerCase()}%`),
+      ),
+    )
+    .limit(2); // Only need to know if there's more than one
+
+  if (prefixMatches.length === 0) {
+    return {
+      error: `Version "${versionIdOrPrefix}" not found`,
+      status: 404,
+    };
+  }
+
+  if (prefixMatches.length > 1) {
+    return {
+      error: `Ambiguous version prefix "${versionIdOrPrefix}". Please use more characters.`,
+      status: 400,
+    };
+  }
+
+  const matchedImage = prefixMatches[0];
+  if (!matchedImage) {
+    return {
+      error: `Version "${versionIdOrPrefix}" not found`,
+      status: 404,
+    };
+  }
+
+  return { image: matchedImage };
+}
+
+/**
+ * Check if a resolution result is an error
+ */
+export function isImageResolutionError(
+  result: ImageVersionResolutionResult,
+): result is { error: string; status: number } {
+  return "error" in result;
 }
 
 /**
@@ -177,8 +274,14 @@ export async function buildImage(
     );
   }
 
-  // Generate fresh version ID for each build
-  const versionId = nanoid(8);
+  // Generate version ID from build inputs (SHA256-based, Docker-style)
+  const buildTimestamp = Date.now();
+  const versionId = generateVersionId(
+    dockerfile,
+    buildTimestamp,
+    userScope.id,
+    alias,
+  );
 
   // Generate versioned E2B alias: scope-{scopeId}-image-{name}-version-{versionId}
   const e2bAlias = generateScopedE2bAlias(userScope.id, alias, versionId);
@@ -387,13 +490,21 @@ export async function resolveImageAlias(
       );
     }
   } else {
-    // Resolve specific version by tag (versionId)
-    image = await getImageByScopeAliasAndVersion(scope.id, ref.name, ref.tag);
-    if (!image) {
+    // Resolve specific version by tag (versionId or prefix)
+    const result = await getImageByScopeAliasAndVersion(
+      scope.id,
+      ref.name,
+      ref.tag,
+    );
+    if (isImageResolutionError(result)) {
+      if (result.status === 400) {
+        throw new BadRequestError(result.error);
+      }
       throw new NotFoundError(
         `Image "${refDisplay}:${ref.tag}" not found. Check available versions with: vm0 image versions ${ref.name}`,
       );
     }
+    image = result.image;
 
     if (image.status !== "ready") {
       throw new BadRequestError(

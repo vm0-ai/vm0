@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
+import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
 
 interface Image {
@@ -49,15 +50,26 @@ export const deleteCommand = new Command()
         // Find matching images
         let imagesToDelete: Image[];
         if (versionId) {
-          // Delete specific version
-          const image = data.images.find(
-            (img) => img.alias === name && img.versionId === versionId,
+          // Delete specific version (supports prefix matching)
+          const matchingVersions = data.images.filter(
+            (img) =>
+              img.alias === name &&
+              img.versionId &&
+              img.versionId.startsWith(versionId.toLowerCase()),
           );
-          if (!image) {
+          if (matchingVersions.length === 0) {
             console.error(chalk.red(`Image version not found: ${nameArg}`));
             process.exit(1);
           }
-          imagesToDelete = [image];
+          if (matchingVersions.length > 1) {
+            console.error(
+              chalk.red(
+                `Ambiguous version prefix "${versionId}". Please use more characters.`,
+              ),
+            );
+            process.exit(1);
+          }
+          imagesToDelete = [matchingVersions[0]!];
         } else if (options.all) {
           // Delete all versions
           imagesToDelete = data.images.filter((img) => img.alias === name);
@@ -86,10 +98,14 @@ export const deleteCommand = new Command()
           }
         }
 
-        // Build confirmation message
+        // Build confirmation message (display first 12 chars of version ID)
+        const firstImage = imagesToDelete[0]!;
+        const firstVersionDisplay = firstImage.versionId
+          ? `:${formatVersionIdForDisplay(firstImage.versionId)}`
+          : "";
         const confirmMsg =
           imagesToDelete.length === 1
-            ? `Delete image "${imagesToDelete[0]!.alias}${imagesToDelete[0]!.versionId ? `:${imagesToDelete[0]!.versionId}` : ""}"?`
+            ? `Delete image "${firstImage.alias}${firstVersionDisplay}"?`
             : `Delete ${imagesToDelete.length} versions of "${name}"?`;
 
         // Confirmation prompt (unless --force)
@@ -127,7 +143,7 @@ export const deleteCommand = new Command()
           }
 
           const displayName = image.versionId
-            ? `${image.alias}:${image.versionId}`
+            ? `${image.alias}:${formatVersionIdForDisplay(image.versionId)}`
             : image.alias;
           console.log(chalk.green(`Deleted image: ${displayName}`));
         }
