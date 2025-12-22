@@ -6,6 +6,13 @@ import {
   resolveImageReference,
   parseImageReferenceWithTag,
   generateScopedE2bAlias,
+  isSystemScope,
+  isValidSystemTag,
+  resolveSystemImageToE2b,
+  getLegacySystemTemplateWarning,
+  SYSTEM_SCOPE_SLUG,
+  SYSTEM_IMAGE_CLAUDE_CODE,
+  SYSTEM_VALID_TAGS,
 } from "../scope-reference";
 
 describe("parseScopedReference", () => {
@@ -268,5 +275,125 @@ describe("generateScopedE2bAlias", () => {
       "abcd1234",
     );
     expect(result).toBe("scope-12345678-image-my-image-v1-version-abcd1234");
+  });
+});
+
+describe("system scope constants", () => {
+  it("has correct system scope slug", () => {
+    expect(SYSTEM_SCOPE_SLUG).toBe("vm0");
+  });
+
+  it("has correct system image name", () => {
+    expect(SYSTEM_IMAGE_CLAUDE_CODE).toBe("claude-code");
+  });
+
+  it("has correct valid tags", () => {
+    expect(SYSTEM_VALID_TAGS).toEqual(["latest", "dev"]);
+  });
+});
+
+describe("isSystemScope", () => {
+  it("returns true for vm0 scope", () => {
+    expect(isSystemScope("vm0")).toBe(true);
+  });
+
+  it("returns false for other scopes", () => {
+    expect(isSystemScope("myuser")).toBe(false);
+    expect(isSystemScope("vm0-extra")).toBe(false);
+    expect(isSystemScope("VM0")).toBe(false);
+  });
+});
+
+describe("isValidSystemTag", () => {
+  it("returns true for undefined (default)", () => {
+    expect(isValidSystemTag(undefined)).toBe(true);
+  });
+
+  it("returns true for latest", () => {
+    expect(isValidSystemTag("latest")).toBe(true);
+  });
+
+  it("returns true for dev", () => {
+    expect(isValidSystemTag("dev")).toBe(true);
+  });
+
+  it("returns false for hash versions", () => {
+    expect(isValidSystemTag("a1b2c3d4")).toBe(false);
+    expect(isValidSystemTag("abc123")).toBe(false);
+  });
+
+  it("returns false for other tags", () => {
+    expect(isValidSystemTag("v1.0")).toBe(false);
+    expect(isValidSystemTag("production")).toBe(false);
+  });
+});
+
+describe("resolveSystemImageToE2b", () => {
+  describe("successful conversions", () => {
+    it("converts @vm0/claude-code to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
+    });
+
+    it("converts @vm0/claude-code:latest to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code", "latest");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
+    });
+
+    it("converts @vm0/claude-code:dev to vm0-claude-code-dev", () => {
+      const result = resolveSystemImageToE2b("claude-code", "dev");
+      expect(result.e2bTemplate).toBe("vm0-claude-code-dev");
+    });
+  });
+
+  describe("error cases", () => {
+    it("throws for unknown system image", () => {
+      expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
+        "Unknown system image: @vm0/unknown-image",
+      );
+    });
+
+    it("throws for hash version tag", () => {
+      expect(() => resolveSystemImageToE2b("claude-code", "a1b2c3d4")).toThrow(
+        'Invalid tag ":a1b2c3d4" for system image',
+      );
+    });
+
+    it("throws for arbitrary tag", () => {
+      expect(() => resolveSystemImageToE2b("claude-code", "v1.0")).toThrow(
+        'Invalid tag ":v1.0" for system image',
+      );
+    });
+  });
+});
+
+describe("getLegacySystemTemplateWarning", () => {
+  it("returns warning for vm0-claude-code", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-claude-code");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("@vm0/claude-code");
+  });
+
+  it("returns warning for vm0-claude-code-dev", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-claude-code-dev");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("@vm0/claude-code:dev");
+  });
+
+  it("returns warning for vm0-github-cli", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-github-cli");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("will be removed");
+  });
+
+  it("returns generic warning for other vm0-* formats", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-other-template");
+    expect(warning).toContain("deprecated");
+  });
+
+  it("returns undefined for non-legacy formats", () => {
+    expect(getLegacySystemTemplateWarning("@vm0/claude-code")).toBeUndefined();
+    expect(getLegacySystemTemplateWarning("my-image")).toBeUndefined();
+    expect(getLegacySystemTemplateWarning("@myorg/image")).toBeUndefined();
   });
 });

@@ -3,9 +3,97 @@
  *
  * Handles parsing and formatting of scoped resource references:
  * - @scope/name - explicit scope reference
+ * - @vm0/name - system scope (special handling)
  * - name - implicit (uses user's default scope)
- * - vm0-* - legacy system template passthrough
+ * - vm0-* - legacy system template passthrough (deprecated)
  */
+
+/**
+ * System scope constants
+ */
+export const SYSTEM_SCOPE_SLUG = "vm0";
+export const SYSTEM_IMAGE_CLAUDE_CODE = "claude-code";
+export const SYSTEM_VALID_TAGS = ["latest", "dev"] as const;
+
+export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
+
+/**
+ * Check if a scope is the system scope
+ */
+export function isSystemScope(scope: string): boolean {
+  return scope === SYSTEM_SCOPE_SLUG;
+}
+
+/**
+ * Check if a tag is valid for system images
+ */
+export function isValidSystemTag(
+  tag: string | undefined,
+): tag is SystemValidTag | undefined {
+  return tag === undefined || SYSTEM_VALID_TAGS.includes(tag as SystemValidTag);
+}
+
+/**
+ * Resolve a system image reference to E2B template name
+ *
+ * Conversion rules:
+ * - @vm0/claude-code → vm0-claude-code
+ * - @vm0/claude-code:latest → vm0-claude-code
+ * - @vm0/claude-code:dev → vm0-claude-code-dev
+ *
+ * @throws Error if image name is unknown or tag is not supported
+ */
+export function resolveSystemImageToE2b(
+  name: string,
+  tag?: string,
+): { e2bTemplate: string; deprecationWarning?: string } {
+  // Only claude-code is supported
+  if (name !== SYSTEM_IMAGE_CLAUDE_CODE) {
+    throw new Error(
+      `Unknown system image: @${SYSTEM_SCOPE_SLUG}/${name}. Available: @${SYSTEM_SCOPE_SLUG}/${SYSTEM_IMAGE_CLAUDE_CODE}`,
+    );
+  }
+
+  // Validate tag
+  if (!isValidSystemTag(tag)) {
+    throw new Error(
+      `Invalid tag ":${tag}" for system image. System images only support: :latest, :dev (hash versions not supported)`,
+    );
+  }
+
+  // Convert to E2B template name
+  if (tag === "dev") {
+    return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}-dev` };
+  }
+
+  // Default (undefined or 'latest') → vm0-claude-code
+  return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}` };
+}
+
+/**
+ * Get deprecation warning for legacy system template format
+ */
+export function getLegacySystemTemplateWarning(
+  legacyFormat: string,
+): string | undefined {
+  if (!isLegacySystemTemplate(legacyFormat)) {
+    return undefined;
+  }
+
+  // Map legacy format to new format
+  if (legacyFormat === "vm0-claude-code") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "@vm0/claude-code" instead.`;
+  }
+  if (legacyFormat === "vm0-claude-code-dev") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "@vm0/claude-code:dev" instead.`;
+  }
+  if (legacyFormat.startsWith("vm0-github-cli")) {
+    return `Warning: "${legacyFormat}" is deprecated and will be removed. No replacement available.`;
+  }
+
+  // Generic warning for other vm0-* formats
+  return `Warning: "${legacyFormat}" format is deprecated.`;
+}
 
 export interface ScopedReference {
   scope: string;
