@@ -3032,7 +3032,17 @@ section {
   }
 
   .language-switcher-dropdown {
-    min-width: 140px;
+    min-width: auto;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    right: 0;
+  }
+
+  .language-switcher-dropdown.dropdown-up {
+    min-width: auto;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    right: 0;
   }
 
   .language-switcher-option {
