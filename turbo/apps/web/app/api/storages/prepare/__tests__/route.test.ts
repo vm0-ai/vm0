@@ -27,6 +27,7 @@ vi.mock("../../../../../src/lib/s3/s3-client", () => ({
     .fn()
     .mockResolvedValue("https://s3.example.com/presigned-url"),
   downloadManifest: vi.fn().mockResolvedValue({ files: [] }),
+  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
 }));
 
 // Set required environment variables
@@ -294,5 +295,75 @@ describe("POST /api/storages/prepare", () => {
     // Version IDs should be identical
     expect(json1.versionId).toBe(json2.versionId);
     expect(json1.versionId).toHaveLength(64);
+  });
+
+  it("should return upload URLs when version exists but S3 files are missing", async () => {
+    // Import mock to control verifyS3FilesExist behavior
+    const s3Mock = await import("../../../../../src/lib/s3/s3-client");
+    const verifyS3FilesMock = vi.mocked(s3Mock.verifyS3FilesExist);
+
+    const { POST } = await import("../route");
+    const storageName = `${TEST_PREFIX}s3missing`;
+
+    // Create storage
+    const [storage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: TEST_USER_ID,
+        name: storageName,
+        type: "volume",
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
+        size: 100,
+        fileCount: 1,
+      })
+      .returning();
+
+    // Prepare with files to get the version ID
+    const files = [{ path: "test.txt", hash: "abc123missing", size: 100 }];
+    const request1 = new Request("http://localhost:3000/api/storages/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storageName, storageType: "volume", files }),
+    });
+
+    const response1 = await POST(
+      request1 as unknown as import("next/server").NextRequest,
+    );
+    const json1 = await response1.json();
+    const versionId = json1.versionId;
+
+    // Create version record (simulating DB has record but S3 files deleted)
+    await globalThis.services.db.insert(storageVersions).values({
+      id: versionId,
+      storageId: storage!.id,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
+      size: 100,
+      fileCount: 1,
+      createdBy: TEST_USER_ID,
+    });
+
+    // Mock S3 files as missing
+    verifyS3FilesMock.mockResolvedValueOnce(false);
+
+    // Prepare again with same files - should get upload URLs since S3 missing
+    const request2 = new Request("http://localhost:3000/api/storages/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storageName, storageType: "volume", files }),
+    });
+
+    const response2 = await POST(
+      request2 as unknown as import("next/server").NextRequest,
+    );
+    expect(response2.status).toBe(200);
+
+    const json2 = await response2.json();
+    expect(json2.versionId).toBe(versionId);
+    // Should NOT return existing: true since S3 files are missing
+    expect(json2.existing).toBe(false);
+    // Should return upload URLs for re-upload
+    expect(json2.uploads).toBeDefined();
+    expect(json2.uploads.archive.presignedUrl).toBeDefined();
+    expect(json2.uploads.manifest.presignedUrl).toBeDefined();
   });
 });

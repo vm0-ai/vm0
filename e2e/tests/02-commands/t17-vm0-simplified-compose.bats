@@ -28,7 +28,7 @@ agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
 EOF
 
     echo "# Running vm0 compose..."
@@ -90,7 +90,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -119,7 +119,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -241,7 +241,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_prompt: AGENTS.md
 EOF
 
@@ -265,10 +265,10 @@ EOF
     assert_success
 
     echo "# Running agent to verify beta_system_prompt is mounted..."
-    # The beta_system_prompt is mounted at /home/user/.config/claude/CLAUDE.md
+    # The beta_system_prompt is mounted at /home/user/.claude/CLAUDE.md
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "cat /home/user/.config/claude/CLAUDE.md"
+        "cat /home/user/.claude/CLAUDE.md"
     assert_success
 
     echo "# Verifying output contains the marker from AGENTS.md..."
@@ -300,10 +300,10 @@ EOF
     assert_success
 
     echo "# Running agent to verify beta_system_skill is mounted..."
-    # The beta_system_skill is mounted at /home/user/.config/claude/skills/github/
+    # The beta_system_skill is mounted at /home/user/.claude/skills/github/
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "ls /home/user/.config/claude/skills/github/"
+        "ls /home/user/.claude/skills/github/"
     assert_success
 
     echo "# Verifying skill directory contains SKILL.md..."
@@ -322,7 +322,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_skills:
       - https://example.com/not-a-github-url
 EOF
@@ -341,7 +341,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_prompt: ""
 EOF
 
@@ -359,7 +359,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     beta_system_prompt: nonexistent-file.md
 EOF
 

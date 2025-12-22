@@ -69,7 +69,7 @@ export class AgentSessionService {
       .returning();
 
     if (!session) {
-      throw new NotFoundError("AgentSession");
+      throw new NotFoundError("AgentSession not found");
     }
 
     return this.mapToAgentSessionData(session);

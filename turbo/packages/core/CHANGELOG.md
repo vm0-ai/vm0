@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/vm0-ai/vm0/compare/core-v0.8.0...core-v1.0.0) (2025-12-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* Users must update volume mounts from /home/user/.config/claude to /home/user/.claude in their vm0.yaml files.
+
+### Features
+
+* **image:** support @vm0/claude-code format for system images ([#655](https://github.com/vm0-ai/vm0/issues/655)) ([1ddd99f](https://github.com/vm0-ai/vm0/commit/1ddd99fa1b640956244dfd463e6eda6a942e8416))
+
+
+### Code Refactoring
+
+* remove CLAUDE_CONFIG_DIR override and use ~/.claude default ([#656](https://github.com/vm0-ai/vm0/issues/656)) ([bb009a0](https://github.com/vm0-ai/vm0/commit/bb009a0edbda1a8064a396991ee51f3ea9f38a1f))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/core-v0.7.0...core-v0.8.0) (2025-12-21)
 
 

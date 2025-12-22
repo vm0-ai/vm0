@@ -113,7 +113,7 @@ describe("run-service", () => {
     test("handles simple workspace path", () => {
       const result = calculateSessionHistoryPath("/workspace", "session-123");
       expect(result).toBe(
-        "/home/user/.config/claude/projects/-workspace/session-123.jsonl",
+        "/home/user/.claude/projects/-workspace/session-123.jsonl",
       );
     });
 
@@ -123,22 +123,18 @@ describe("run-service", () => {
         "session-456",
       );
       expect(result).toBe(
-        "/home/user/.config/claude/projects/-home-user-projects-myapp/session-456.jsonl",
+        "/home/user/.claude/projects/-home-user-projects-myapp/session-456.jsonl",
       );
     });
 
     test("handles path with multiple leading slashes", () => {
       const result = calculateSessionHistoryPath("/test/path", "abc");
-      expect(result).toBe(
-        "/home/user/.config/claude/projects/-test-path/abc.jsonl",
-      );
+      expect(result).toBe("/home/user/.claude/projects/-test-path/abc.jsonl");
     });
 
     test("handles single directory path", () => {
       const result = calculateSessionHistoryPath("/myproject", "xyz");
-      expect(result).toBe(
-        "/home/user/.config/claude/projects/-myproject/xyz.jsonl",
-      );
+      expect(result).toBe("/home/user/.claude/projects/-myproject/xyz.jsonl");
     });
 
     test("preserves session ID exactly", () => {
