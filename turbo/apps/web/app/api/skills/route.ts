@@ -403,7 +403,7 @@ async function fetchSkillMetadata(
 
     // Look for the first paragraph after the title
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      const line = lines[i]?.trim();
       if (
         line &&
         !line.startsWith("#") &&
