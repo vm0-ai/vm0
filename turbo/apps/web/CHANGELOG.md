@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.1](https://github.com/vm0-ai/vm0/compare/web-v6.0.0...web-v6.0.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* verify S3 files exist during deduplication to prevent 404 errors ([#659](https://github.com/vm0-ai/vm0/issues/659)) ([25288d7](https://github.com/vm0-ai/vm0/commit/25288d79091744ad828b8d435170673688d54b6c))
+
 ## [6.0.0](https://github.com/vm0-ai/vm0/compare/web-v5.19.0...web-v6.0.0) (2025-12-22)
 
 
