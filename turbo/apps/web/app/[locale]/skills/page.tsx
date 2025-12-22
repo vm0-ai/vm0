@@ -26,12 +26,17 @@ interface SkillMetadata {
 
 async function getSkills(): Promise<SkillMetadata[]> {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/skills`,
-      {
-        next: { revalidate: 3600 },
-      },
-    );
+    // Use absolute URL in production (Vercel), relative in development
+    const baseUrl =
+      process.env.VERCEL_URL && process.env.VERCEL_ENV === "production"
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : "http://localhost:3000";
+
+    const response = await fetch(`${baseUrl}/api/skills`, {
+      next: { revalidate: 3600 },
+    });
 
     if (!response.ok) {
       console.error("Failed to fetch skills");
