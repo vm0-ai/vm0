@@ -55,10 +55,19 @@ export function generateE2bAlias(userId: string, alias: string): string {
 }
 
 /**
- * Check if an image alias is a system template (starts with vm0-)
+ * Check if an image alias is a system template
+ * Supports both legacy (vm0-*) and new (@vm0/...) formats
  */
 export function isSystemTemplate(alias: string): boolean {
-  return isLegacySystemTemplate(alias);
+  // Legacy vm0-* format
+  if (isLegacySystemTemplate(alias)) {
+    return true;
+  }
+  // New @vm0/... format (system scope)
+  if (alias.startsWith("@vm0/")) {
+    return true;
+  }
+  return false;
 }
 
 /**
