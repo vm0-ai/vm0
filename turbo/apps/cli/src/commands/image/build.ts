@@ -4,6 +4,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
+import { validateDockerfile } from "../../lib/dockerfile-validator";
 
 interface BuildStatusResponse {
   status: "building" | "ready" | "error";
@@ -61,6 +62,27 @@ export const buildCommand = new Command()
 
         // Read Dockerfile content
         const dockerfile = await readFile(file, "utf8");
+
+        // Validate Dockerfile instructions
+        const validation = validateDockerfile(dockerfile);
+        if (!validation.valid) {
+          console.error(chalk.red("✗ Dockerfile validation failed\n"));
+          for (const error of validation.errors) {
+            console.error(chalk.red(`  ${error}`));
+          }
+          console.error();
+          console.error(
+            chalk.yellow(
+              "  vm0 image build only supports FROM and RUN instructions.",
+            ),
+          );
+          console.error(
+            chalk.yellow(
+              "  The purpose is to pre-install environment dependencies.",
+            ),
+          );
+          process.exit(1);
+        }
 
         console.log(chalk.blue(`Building image: ${scope.slug}/${name}`));
         console.log();
