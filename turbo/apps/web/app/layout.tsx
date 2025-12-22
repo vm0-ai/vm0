@@ -7,6 +7,8 @@ import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
 
+const bypassAuth = process.env.BYPASS_AUTH === "true";
+
 const notoSans = Noto_Sans({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -114,9 +116,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <ClerkProvider publishableKey={getClerkPublishableKey()}>
-      <html lang="en" data-theme="dark" suppressHydrationWarning>
+  const content = (
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
         <head>
           <script
             dangerouslySetInnerHTML={{
@@ -221,6 +222,15 @@ export default function RootLayout({
           <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>
+  );
+
+  if (bypassAuth) {
+    return content;
+  }
+
+  return (
+    <ClerkProvider publishableKey={getClerkPublishableKey()}>
+      {content}
     </ClerkProvider>
   );
 }

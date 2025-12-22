@@ -71,6 +71,9 @@ export default function Navbar() {
             <Link href="/cookbooks" className="nav-link">
               {t("cookbooks")}
             </Link>
+            <Link href="/skills" className="nav-link">
+              {t("skills")}
+            </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
               target="_blank"
@@ -134,6 +137,13 @@ export default function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               {t("cookbooks")}
+            </Link>
+            <Link
+              href="/skills"
+              className="mobile-menu-link"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {t("skills")}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
