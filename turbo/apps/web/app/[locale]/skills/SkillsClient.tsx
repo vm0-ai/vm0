@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "../cookbooks/Particles";
@@ -23,13 +22,16 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // Group skills by category
-  const skillsByCategory = initialSkills.reduce((acc, skill) => {
-    if (!acc[skill.category]) {
-      acc[skill.category] = [];
-    }
-    acc[skill.category].push(skill);
-    return acc;
-  }, {} as Record<string, SkillMetadata[]>);
+  const skillsByCategory = initialSkills.reduce(
+    (acc, skill) => {
+      if (!acc[skill.category]) {
+        acc[skill.category] = [];
+      }
+      acc[skill.category].push(skill);
+      return acc;
+    },
+    {} as Record<string, SkillMetadata[]>,
+  );
 
   const skillsData = {
     success: true,
@@ -66,8 +68,8 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
           <div>
             <h1 className="hero-title">VM0 Agent Skills</h1>
             <p className="hero-description">
-              Pre-built integrations for AI agents. Connect to popular services with
-              zero configuration.
+              Pre-built integrations for AI agents. Connect to popular services
+              with zero configuration.
             </p>
 
             {/* Stats */}
@@ -84,7 +86,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 fontFamily: '"Noto Sans", sans-serif',
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
                 <div
                   style={{
                     width: "8px",
@@ -95,7 +99,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 />
                 <span>{skillsData.total} Skills</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
                 <div
                   style={{
                     width: "8px",
@@ -281,6 +287,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                       }}
                     >
                       {skill.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={skill.logo}
                           alt={skill.name}
@@ -313,7 +320,11 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                         />
                       ) : (
                         <svg
-                          style={{ width: "28px", height: "28px", color: "var(--text-muted)" }}
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            color: "var(--text-muted)",
+                          }}
                           fill="none"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -422,7 +433,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">Can't find what you need?</h2>
+            <h2 className="cta-title">Can&apos;t find what you need?</h2>
             <p className="cta-subtitle">
               Request a new skill or contribute to our open-source collection
             </p>
@@ -450,6 +461,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
 
       <Footer />
 
+      {/* eslint-disable-next-line react/no-unknown-property */}
       <style jsx>{`
         @keyframes spin {
           to {
