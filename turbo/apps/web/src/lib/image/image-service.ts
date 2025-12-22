@@ -549,39 +549,34 @@ export async function resolveImageAlias(
 /**
  * Validate that a user has access to an image
  * Returns null if access is granted, or an error message if denied
+ *
+ * Supports all image reference formats:
+ * - Plain alias: "my-image"
+ * - Scoped reference: "scope/my-image"
+ * - Version tags: "my-image:latest", "my-image:abc123", "scope/my-image:v1"
  */
 export async function validateImageAccess(
   userId: string,
   imageAlias: string,
 ): Promise<{ error: string; status: number } | null> {
-  // System templates are always allowed
+  // System templates (vm0-* prefix) are always allowed
   if (isSystemTemplate(imageAlias)) {
     return null;
   }
 
-  // Check if image exists for this user
-  // Each user has their own namespace of images, so we query by userId + alias
-  const existingImage = await globalThis.services.db
-    .select()
-    .from(images)
-    .where(and(eq(images.userId, userId), eq(images.alias, imageAlias)))
-    .limit(1);
-
-  if (existingImage.length === 0) {
-    return { error: `Image "${imageAlias}" not found`, status: 404 };
+  try {
+    // Use the same resolution logic as runtime - handles scope/name:tag format
+    await resolveImageAlias(userId, imageAlias);
+    return null;
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return { error: error.message, status: 404 };
+    }
+    if (error instanceof BadRequestError) {
+      return { error: error.message, status: 400 };
+    }
+    throw error;
   }
-
-  const image = existingImage[0]!;
-
-  // Check if image is ready
-  if (image.status !== "ready") {
-    return {
-      error: `Image "${imageAlias}" is not ready (status: ${image.status})`,
-      status: 400,
-    };
-  }
-
-  return null;
 }
 
 /**
