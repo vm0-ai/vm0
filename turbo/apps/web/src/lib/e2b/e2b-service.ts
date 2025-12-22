@@ -238,7 +238,11 @@ export class E2BService {
       // Download storages directly to sandbox via presigned URLs
       // Scripts are already available from uploadAllScripts()
       log.debug(`[${context.runId}] Downloading storages to sandbox...`);
-      await this.downloadStoragesDirectly(sandbox, storageManifest);
+      await this.downloadStoragesDirectly(
+        sandbox,
+        storageManifest,
+        context.runId,
+      );
       log.debug(`[${context.runId}] Storages downloaded successfully`);
 
       // Restore session history for resume
@@ -609,14 +613,15 @@ export class E2BService {
     // Start Python script in background using nohup to ignore SIGHUP signal
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
-    // Redirect output to per-run log file in /tmp with vm0- prefix
+    // Append output to per-run log file in /tmp with vm0- prefix (file created by downloadStoragesDirectly)
     //
     // NOTE: Agent runs as E2B default user ('user').
     // When network security is enabled, proxy setup is done as root before this.
     // mitmproxy also runs as root, and nftables skips root's traffic (meta skuid 0)
     // to avoid redirect loops.
     // Use python3 -u for unbuffered stdout/stderr to ensure logs are written immediately
-    const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+    // Use >> to append to log file (header and Storage phase already written by downloadStoragesDirectly)
+    const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} >> /tmp/vm0-main-${runId}.log 2>&1 &`;
     log.debug(`[${runId}] Executing background command: ${cmd}`);
     await sandbox.commands.run(cmd);
     log.debug(`[${runId}] Background command returned successfully`);
@@ -627,13 +632,26 @@ export class E2BService {
    * This method uploads a manifest file and runs a download script inside the sandbox
    * NOTE: Scripts must be uploaded first via uploadAllScripts()
    *
+   * Logs are written to the main system log file for visibility in `vm0 logs --system`
+   *
    * @param sandbox - E2B sandbox instance
    * @param manifest - Storage manifest with presigned URLs
+   * @param runId - Run ID for log file naming
    */
   private async downloadStoragesDirectly(
     sandbox: Sandbox,
     manifest: StorageManifest,
+    runId: string,
   ): Promise<void> {
+    const logFile = `/tmp/vm0-main-${runId}.log`;
+
+    // Initialize log file with run header
+    // This creates the file before download.py runs so logs can be appended
+    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    await sandbox.commands.run(
+      `echo "[${timestamp}] [INFO] [sandbox:run-agent] ▶ VM0 Sandbox ${runId}" > ${logFile}`,
+    );
+
     const totalArchives =
       manifest.storages.filter((s) => s.archiveUrl).length +
       (manifest.artifact?.archiveUrl ? 1 : 0);
@@ -659,10 +677,12 @@ export class E2BService {
     await sandbox.files.write(manifestPath, arrayBuffer);
     log.debug(`Uploaded storage manifest to ${manifestPath}`);
 
-    // Execute download script (scripts already uploaded via uploadAllScripts)
+    // Execute download script with output redirected to log file
+    // LOG_SCRIPT_NAME=download sets the script name in log output
+    // python3 -u ensures unbuffered output for real-time logging
     const downloadStart = Date.now();
     const result = await sandbox.commands.run(
-      `python3 ${SCRIPT_PATHS.download} ${manifestPath}`,
+      `LOG_SCRIPT_NAME=download python3 -u ${SCRIPT_PATHS.download} ${manifestPath} >> ${logFile} 2>&1`,
       {
         timeoutMs: 300000, // 5 minute timeout for downloads
       },
@@ -671,8 +691,11 @@ export class E2BService {
     const downloadTimeMs = Date.now() - downloadStart;
 
     if (result.exitCode !== 0) {
-      log.error(`Storage download failed: ${result.stderr}`);
-      throw new Error(`Storage download failed: ${result.stderr}`);
+      // On failure, read the log file for error details
+      const logResult = await sandbox.commands.run(`cat ${logFile}`);
+      const errorDetails = logResult.stdout || result.stderr || "Unknown error";
+      log.error(`Storage download failed: ${errorDetails}`);
+      throw new Error(`Storage download failed: ${errorDetails}`);
     }
 
     log.debug(

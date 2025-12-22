@@ -111,8 +111,8 @@ def _run() -> tuple[int, str]:
     # Validate configuration - raises ValueError if invalid
     validate_config()
 
-    # Lifecycle: Header
-    log_info(f"▶ VM0 Sandbox {RUN_ID}")
+    # NOTE: Header "▶ VM0 Sandbox {RUN_ID}" is now written by e2b-service.ts
+    # in downloadStoragesDirectly() before this script runs
 
     # Lifecycle: Initialization
     log_info("▷ Initialization")
