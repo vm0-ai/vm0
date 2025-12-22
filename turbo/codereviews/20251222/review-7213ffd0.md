@@ -10,14 +10,14 @@ This commit implements case-insensitive image name handling by normalizing all i
 
 ## Files Changed
 
-| File | Changes |
-|------|---------|
-| `apps/cli/src/lib/__tests__/yaml-validator.test.ts` | +26 lines - Added tests for `normalizeAgentName()` |
-| `apps/cli/src/lib/yaml-validator.ts` | +11 lines - Added `normalizeAgentName()` function |
-| `apps/web/app/api/agent/composes/route.ts` | +4/-4 lines - Normalize agent name before storage |
-| `packages/core/src/__tests__/scope-reference.spec.ts` | +78 lines - Added case normalization tests |
-| `packages/core/src/contracts/images.ts` | +3/-2 lines - Added `.transform()` to alias schema |
-| `packages/core/src/scope-reference.ts` | +6/-6 lines - Normalize scope/name in parsers |
+| File                                                  | Changes                                            |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| `apps/cli/src/lib/__tests__/yaml-validator.test.ts`   | +26 lines - Added tests for `normalizeAgentName()` |
+| `apps/cli/src/lib/yaml-validator.ts`                  | +11 lines - Added `normalizeAgentName()` function  |
+| `apps/web/app/api/agent/composes/route.ts`            | +4/-4 lines - Normalize agent name before storage  |
+| `packages/core/src/__tests__/scope-reference.spec.ts` | +78 lines - Added case normalization tests         |
+| `packages/core/src/contracts/images.ts`               | +3/-2 lines - Added `.transform()` to alias schema |
+| `packages/core/src/scope-reference.ts`                | +6/-6 lines - Normalize scope/name in parsers      |
 
 ## Review Findings
 
