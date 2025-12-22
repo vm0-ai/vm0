@@ -779,7 +779,7 @@ section {
     var(--particle-color-lighter) 70%,
     transparent 100%
   );
-  animation: particleTech 20s ease-in-out infinite;
+  animation: particleTech 45s ease-in-out infinite;
 }
 
 .particle-large {
@@ -812,156 +812,156 @@ section {
   0%,
   100% {
     transform: translate(0, 0) scale(1) rotate(0deg);
-    opacity: 0.4;
+    opacity: 0.3;
   }
   25% {
-    transform: translate(var(--tx, 100px), var(--ty, -80px)) scale(1.5)
-      rotate(90deg);
-    opacity: 1;
+    transform: translate(var(--tx, 40px), var(--ty, -30px)) scale(1.05)
+      rotate(15deg);
+    opacity: 0.5;
   }
   50% {
-    transform: translate(var(--tx2, 150px), var(--ty2, 60px)) scale(0.8)
-      rotate(180deg);
-    opacity: 0.6;
+    transform: translate(var(--tx2, 50px), var(--ty2, 35px)) scale(0.95)
+      rotate(25deg);
+    opacity: 0.4;
   }
   75% {
-    transform: translate(var(--tx3, -80px), var(--ty3, 100px)) scale(1.3)
-      rotate(270deg);
-    opacity: 0.9;
+    transform: translate(var(--tx3, -30px), var(--ty3, 40px)) scale(1.08)
+      rotate(35deg);
+    opacity: 0.48;
   }
 }
 
 .particle:nth-child(1) {
   top: 10%;
   left: 15%;
-  --tx: 120px;
-  --ty: -100px;
-  --tx2: 180px;
-  --ty2: 80px;
-  --tx3: -100px;
-  --ty3: 120px;
+  --tx: 35px;
+  --ty: -40px;
+  --tx2: 50px;
+  --ty2: 30px;
+  --tx3: -30px;
+  --ty3: 45px;
   animation-delay: 0s;
 }
 
 .particle:nth-child(2) {
   top: 25%;
   right: 20%;
-  --tx: -120px;
-  --ty: 90px;
-  --tx2: 80px;
-  --ty2: -110px;
-  --tx3: -90px;
-  --ty3: 130px;
+  --tx: -40px;
+  --ty: 35px;
+  --tx2: 30px;
+  --ty2: -45px;
+  --tx3: -35px;
+  --ty3: 50px;
   animation-delay: 1s;
 }
 .particle:nth-child(3) {
   bottom: 30%;
   left: 10%;
-  --tx: 110px;
-  --ty: 70px;
-  --tx2: -90px;
-  --ty2: 120px;
-  --tx3: 100px;
-  --ty3: -80px;
+  --tx: 45px;
+  --ty: 30px;
+  --tx2: -35px;
+  --ty2: 50px;
+  --tx3: 40px;
+  --ty3: -30px;
   animation-delay: 2s;
 }
 .particle:nth-child(4) {
   top: 50%;
   right: 15%;
-  --tx: -130px;
-  --ty: -60px;
-  --tx2: 90px;
-  --ty2: 110px;
-  --tx3: 70px;
-  --ty3: -90px;
+  --tx: -50px;
+  --ty: -25px;
+  --tx2: 35px;
+  --ty2: 45px;
+  --tx3: 30px;
+  --ty3: -35px;
   animation-delay: 0.5s;
 }
 .particle:nth-child(5) {
   bottom: 20%;
   right: 30%;
-  --tx: 140px;
-  --ty: 80px;
-  --tx2: -100px;
-  --ty2: -120px;
-  --tx3: -70px;
-  --ty3: 100px;
+  --tx: 50px;
+  --ty: 30px;
+  --tx2: -40px;
+  --ty2: -50px;
+  --tx3: -30px;
+  --ty3: 40px;
   animation-delay: 3s;
 }
 .particle:nth-child(6) {
   top: 70%;
   left: 25%;
-  --tx: 100px;
-  --ty: -90px;
-  --tx2: 150px;
-  --ty2: 70px;
-  --tx3: -80px;
-  --ty3: 110px;
+  --tx: 40px;
+  --ty: -35px;
+  --tx2: 50px;
+  --ty2: 30px;
+  --tx3: -30px;
+  --ty3: 45px;
   animation-delay: 1.5s;
 }
 .particle:nth-child(7) {
   top: 15%;
   left: 50%;
-  --tx: -110px;
-  --ty: 100px;
-  --tx2: 100px;
-  --ty2: -80px;
-  --tx3: 50px;
-  --ty3: 120px;
+  --tx: -45px;
+  --ty: 40px;
+  --tx2: 40px;
+  --ty2: -30px;
+  --tx3: 25px;
+  --ty3: 50px;
   animation-delay: 2.5s;
 }
 .particle:nth-child(8) {
   bottom: 40%;
   right: 10%;
-  --tx: 130px;
-  --ty: 50px;
-  --tx2: -110px;
-  --ty2: -100px;
-  --tx3: -60px;
-  --ty3: 90px;
+  --tx: 50px;
+  --ty: 25px;
+  --tx2: -45px;
+  --ty2: -40px;
+  --tx3: -25px;
+  --ty3: 35px;
   animation-delay: 0.8s;
 }
 .particle:nth-child(9) {
   top: 60%;
   left: 5%;
-  --tx: 90px;
-  --ty: -70px;
-  --tx2: 120px;
-  --ty2: 80px;
-  --tx3: -100px;
-  --ty3: 100px;
+  --tx: 35px;
+  --ty: -30px;
+  --tx2: 50px;
+  --ty2: 30px;
+  --tx3: -40px;
+  --ty3: 40px;
   animation-delay: 4s;
 }
 .particle:nth-child(10) {
   bottom: 15%;
   left: 40%;
-  --tx: -100px;
-  --ty: 90px;
-  --tx2: 110px;
-  --ty2: -90px;
-  --tx3: 80px;
-  --ty3: 110px;
+  --tx: -40px;
+  --ty: 35px;
+  --tx2: 45px;
+  --ty2: -35px;
+  --tx3: 30px;
+  --ty3: 45px;
   animation-delay: 1.2s;
 }
 .particle:nth-child(11) {
   top: 35%;
   right: 5%;
-  --tx: 120px;
-  --ty: -80px;
-  --tx2: -90px;
-  --ty2: 100px;
-  --tx3: 100px;
-  --ty3: -70px;
+  --tx: 50px;
+  --ty: -30px;
+  --tx2: -35px;
+  --ty2: 40px;
+  --tx3: 40px;
+  --ty3: -30px;
   animation-delay: 3.5s;
 }
 .particle:nth-child(12) {
   bottom: 50%;
   left: 30%;
-  --tx: -130px;
-  --ty: -70px;
-  --tx2: 100px;
-  --ty2: 110px;
-  --tx3: 70px;
-  --ty3: -90px;
+  --tx: -50px;
+  --ty: -30px;
+  --tx2: 40px;
+  --ty2: 45px;
+  --tx3: 30px;
+  --ty3: -35px;
   animation-delay: 2.2s;
 }
 .particle:nth-child(13) {
