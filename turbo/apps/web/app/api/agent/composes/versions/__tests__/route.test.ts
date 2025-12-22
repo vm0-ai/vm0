@@ -51,7 +51,7 @@ describe("GET /api/agent/composes/versions", () => {
       agents: {
         "test-version-agent": {
           description: "Test agent for version tests",
-          image: "@vm0/claude-code:dev",
+          image: "vm0/claude-code:dev",
           provider: "claude-code",
           working_dir: "/home/user/workspace",
         },

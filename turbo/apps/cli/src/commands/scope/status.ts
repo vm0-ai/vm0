@@ -10,7 +10,7 @@ export const statusCommand = new Command()
       const scope = await apiClient.getScope();
 
       console.log(chalk.cyan("Scope Information:"));
-      console.log(`  Slug: ${chalk.green("@" + scope.slug)}`);
+      console.log(`  Slug: ${chalk.green(scope.slug)}`);
       console.log(`  Type: ${scope.type}`);
       if (scope.displayName) {
         console.log(`  Display Name: ${scope.displayName}`);

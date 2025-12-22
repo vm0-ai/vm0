@@ -138,7 +138,7 @@ export async function createUserScope(
 
   if (existingScope.length > 0) {
     throw new BadRequestError(
-      `You already have a scope: @${existingScope[0]!.slug}. Use --force to change it.`,
+      `You already have a scope: ${existingScope[0]!.slug}. Use --force to change it.`,
     );
   }
 

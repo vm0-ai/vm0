@@ -27,7 +27,7 @@ export const setCommand = new Command()
           // User already has a scope - update it
           if (!options.force) {
             console.error(
-              chalk.yellow(`You already have a scope: @${existingScope.slug}`),
+              chalk.yellow(`You already have a scope: ${existingScope.slug}`),
             );
             console.error();
             console.error("To change your scope, use --force:");
@@ -42,19 +42,19 @@ export const setCommand = new Command()
           }
 
           scope = await apiClient.updateScope({ slug, force: true });
-          console.log(chalk.green(`✓ Scope updated to @${scope.slug}`));
+          console.log(chalk.green(`✓ Scope updated to ${scope.slug}`));
         } else {
           // Create new scope
           scope = await apiClient.createScope({
             slug,
             displayName: options.displayName,
           });
-          console.log(chalk.green(`✓ Scope created: @${scope.slug}`));
+          console.log(chalk.green(`✓ Scope created: ${scope.slug}`));
         }
 
         console.log();
         console.log("Your images will now be namespaced as:");
-        console.log(chalk.cyan(`  @${scope.slug}/<image-name>`));
+        console.log(chalk.cyan(`  ${scope.slug}/<image-name>`));
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {

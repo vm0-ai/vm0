@@ -62,7 +62,7 @@ export const buildCommand = new Command()
         // Read Dockerfile content
         const dockerfile = await readFile(file, "utf8");
 
-        console.log(chalk.blue(`Building image: @${scope.slug}/${name}`));
+        console.log(chalk.blue(`Building image: ${scope.slug}/${name}`));
         console.log();
 
         // Start build
@@ -114,9 +114,7 @@ export const buildCommand = new Command()
         if (status === "ready") {
           const shortVersion = formatVersionIdForDisplay(versionId);
           console.log(
-            chalk.green(
-              `✓ Image built: @${scope.slug}/${name}:${shortVersion}`,
-            ),
+            chalk.green(`✓ Image built: ${scope.slug}/${name}:${shortVersion}`),
           );
         } else {
           console.error(chalk.red(`✗ Build failed`));

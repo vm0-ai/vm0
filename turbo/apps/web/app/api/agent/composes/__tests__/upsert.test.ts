@@ -54,7 +54,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "test-agent-create": {
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -87,7 +87,7 @@ describe("Agent Compose Upsert Behavior", () => {
         agents: {
           "test-agent-update": {
             description: "Initial description",
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -159,7 +159,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "test-unique-constraint": {
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -218,12 +218,12 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "agent-one": {
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
           "agent-two": {
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -254,7 +254,7 @@ describe("Agent Compose Upsert Behavior", () => {
         agents: {
           ab: {
             // Too short name
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -282,7 +282,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "my-test-agent-123": {
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -317,7 +317,7 @@ describe("Agent Compose Upsert Behavior", () => {
         agents: {
           "test-get-compose": {
             description: "Test",
-            image: "@vm0/claude-code:dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
