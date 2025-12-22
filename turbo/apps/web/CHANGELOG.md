@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.1](https://github.com/vm0-ai/vm0/compare/web-v6.1.0...web-v6.1.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* use correct base URL for skills API in server-side fetch ([#671](https://github.com/vm0-ai/vm0/issues/671)) ([4cd2723](https://github.com/vm0-ai/vm0/commit/4cd2723ce696ff11d9b02215a7f6d9311186cd5d))
+
 ## [6.1.0](https://github.com/vm0-ai/vm0/compare/web-v6.0.1...web-v6.1.0) (2025-12-22)
 
 
