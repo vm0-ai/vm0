@@ -162,6 +162,9 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
+    // Normalize agent name to lowercase for consistent storage
+    const normalizedAgentName = agentName.toLowerCase();
+
     // Validate image access
     const agent = content.agents[agentName];
     if (agent?.image) {
@@ -191,7 +194,7 @@ const router = tsr.router(composesMainContract, {
       .where(
         and(
           eq(agentComposes.userId, userId),
-          eq(agentComposes.name, agentName),
+          eq(agentComposes.name, normalizedAgentName),
         ),
       )
       .limit(1);
@@ -207,7 +210,7 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
-          name: agentName,
+          name: normalizedAgentName,
         })
         .returning({ id: agentComposes.id });
 
@@ -258,7 +261,7 @@ const router = tsr.router(composesMainContract, {
         status: 201 as const,
         body: {
           composeId,
-          name: agentName,
+          name: normalizedAgentName,
           versionId,
           action: action as "created" | "existing",
           updatedAt,
@@ -270,7 +273,7 @@ const router = tsr.router(composesMainContract, {
       status: 200 as const,
       body: {
         composeId,
-        name: agentName,
+        name: normalizedAgentName,
         versionId,
         action: action as "created" | "existing",
         updatedAt,

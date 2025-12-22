@@ -197,8 +197,8 @@ export function resolveImageReference(
   if (input.startsWith("@")) {
     const { scope, name } = parseScopedReference(input);
     return {
-      scope,
-      name,
+      scope: scope.toLowerCase(),
+      name: name.toLowerCase(),
       isLegacy: false,
     };
   }
@@ -212,7 +212,7 @@ export function resolveImageReference(
 
   return {
     scope: userScopeSlug,
-    name: input,
+    name: input.toLowerCase(),
     isLegacy: false,
   };
 }
@@ -280,8 +280,8 @@ export function parseImageReferenceWithTag(
     }
 
     return {
-      scope,
-      name,
+      scope: scope.toLowerCase(),
+      name: name.toLowerCase(),
       tag,
       isLegacy: false,
     };
@@ -314,7 +314,7 @@ export function parseImageReferenceWithTag(
 
   return {
     scope: userScopeSlug,
-    name,
+    name: name.toLowerCase(),
     tag,
     isLegacy: false,
   };

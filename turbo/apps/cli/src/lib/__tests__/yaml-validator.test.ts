@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   validateAgentName,
+  normalizeAgentName,
   validateAgentCompose,
   validateGitHubTreeUrl,
 } from "../yaml-validator";
@@ -73,6 +74,31 @@ describe("validateAgentName", () => {
     it("should reject name with only hyphen", () => {
       expect(validateAgentName("-")).toBe(false);
     });
+  });
+});
+
+describe("normalizeAgentName", () => {
+  it("should normalize valid name to lowercase", () => {
+    expect(normalizeAgentName("My-Agent")).toBe("my-agent");
+  });
+
+  it("should normalize uppercase name to lowercase", () => {
+    expect(normalizeAgentName("MY-AGENT")).toBe("my-agent");
+  });
+
+  it("should keep lowercase name unchanged", () => {
+    expect(normalizeAgentName("my-agent")).toBe("my-agent");
+  });
+
+  it("should normalize mixed case with numbers", () => {
+    expect(normalizeAgentName("My-Agent-123")).toBe("my-agent-123");
+  });
+
+  it("should return null for invalid name format", () => {
+    expect(normalizeAgentName("ab")).toBeNull(); // too short
+    expect(normalizeAgentName("-agent")).toBeNull(); // starts with hyphen
+    expect(normalizeAgentName("agent-")).toBeNull(); // ends with hyphen
+    expect(normalizeAgentName("my_agent")).toBeNull(); // invalid character
   });
 });
 

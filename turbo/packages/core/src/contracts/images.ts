@@ -37,9 +37,10 @@ const createImageRequestSchema = z.object({
       "alias must be 3-64 characters, alphanumeric and hyphens, start/end with alphanumeric",
     )
     .refine(
-      (val) => !val.startsWith("vm0-"),
+      (val) => !val.toLowerCase().startsWith("vm0-"),
       'alias cannot start with "vm0-" (reserved for system templates)',
-    ),
+    )
+    .transform((s) => s.toLowerCase()),
   deleteExisting: z.boolean().optional(),
 });
 

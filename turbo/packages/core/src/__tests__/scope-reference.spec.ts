@@ -110,6 +110,41 @@ describe("resolveImageReference", () => {
       "Please set up your scope first",
     );
   });
+
+  describe("case normalization", () => {
+    it("normalizes explicit scope and name to lowercase", () => {
+      const result = resolveImageReference("@MyOrg/My-Image");
+      expect(result).toEqual({
+        scope: "myorg",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes uppercase scope and name to lowercase", () => {
+      const result = resolveImageReference("@LANCY/MY-IMAGE");
+      expect(result).toEqual({
+        scope: "lancy",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes implicit name to lowercase", () => {
+      const result = resolveImageReference("My-Image", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("does not normalize legacy templates", () => {
+      // Legacy templates are passed through as-is
+      const result = resolveImageReference("vm0-claude-code");
+      expect(result.name).toBe("vm0-claude-code");
+    });
+  });
 });
 
 describe("parseImageReferenceWithTag", () => {
@@ -247,6 +282,49 @@ describe("parseImageReferenceWithTag", () => {
       expect(() => parseImageReferenceWithTag(":latest", "myuser")).toThrow(
         "empty name",
       );
+    });
+  });
+
+  describe("case normalization", () => {
+    it("normalizes explicit scope and name to lowercase", () => {
+      const result = parseImageReferenceWithTag("@VM0/Claude-Code:dev");
+      expect(result).toEqual({
+        scope: "vm0",
+        name: "claude-code",
+        tag: "dev",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes uppercase scope and name to lowercase", () => {
+      const result = parseImageReferenceWithTag("@LANCY/MY-IMAGE");
+      expect(result).toEqual({
+        scope: "lancy",
+        name: "my-image",
+        tag: undefined,
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes implicit name to lowercase", () => {
+      const result = parseImageReferenceWithTag("My-Image:latest", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        tag: "latest",
+        isLegacy: false,
+      });
+    });
+
+    it("preserves tag case", () => {
+      // Tags should preserve original case (version hashes, etc.)
+      const result = parseImageReferenceWithTag("@myorg/my-image:DeadBeef");
+      expect(result.tag).toBe("DeadBeef");
+    });
+
+    it("does not normalize legacy templates", () => {
+      const result = parseImageReferenceWithTag("vm0-claude-code");
+      expect(result.name).toBe("vm0-claude-code");
     });
   });
 });
