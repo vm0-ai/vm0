@@ -4,6 +4,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname } from "path";
 import { parse as parseYaml } from "yaml";
+import { getLegacySystemTemplateWarning } from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { getProviderDefaults } from "../lib/provider-config";
@@ -42,9 +43,24 @@ export const composeCommand = new Command()
         process.exit(1);
       }
 
-      // 4. Process beta_system_prompt and beta_system_skills
+      // 3.5 Check for legacy image format and show deprecation warning
       const cfg = config as Record<string, unknown>;
-      const agents = cfg.agents as Record<string, Record<string, unknown>>;
+      const agentsConfig = cfg.agents as Record<
+        string,
+        Record<string, unknown>
+      >;
+      for (const [name, agentConfig] of Object.entries(agentsConfig)) {
+        const image = agentConfig.image as string | undefined;
+        if (image) {
+          const warning = getLegacySystemTemplateWarning(image);
+          if (warning) {
+            console.log(chalk.yellow(`⚠ Agent "${name}": ${warning}`));
+          }
+        }
+      }
+
+      // 4. Process beta_system_prompt and beta_system_skills
+      const agents = agentsConfig;
       const agentName = Object.keys(agents)[0]!;
       const agent = agents[agentName]!;
       const basePath = dirname(configFile);
