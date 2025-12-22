@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.19.0](https://github.com/vm0-ai/vm0/compare/web-v5.18.1...web-v5.19.0) (2025-12-22)
+
+
+### Features
+
+* add responsive mobile menu and improve footer layout ([#647](https://github.com/vm0-ai/vm0/issues/647)) ([1649810](https://github.com/vm0-ai/vm0/commit/1649810be1ed8ca353a1116ae4e631b04e46d52e))
+
 ## [5.18.1](https://github.com/vm0-ai/vm0/compare/web-v5.18.0...web-v5.18.1) (2025-12-21)
 
 
