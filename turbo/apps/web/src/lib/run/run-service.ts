@@ -238,7 +238,7 @@ export class RunService {
       .limit(1);
 
     if (!checkpoint) {
-      throw new NotFoundError("Checkpoint");
+      throw new NotFoundError("Checkpoint not found");
     }
 
     // Verify checkpoint belongs to user
@@ -264,7 +264,7 @@ export class RunService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundError("Conversation");
+      throw new NotFoundError("Conversation not found");
     }
 
     // Extract snapshots (artifactSnapshot may be null for runs without artifact)
@@ -291,7 +291,9 @@ export class RunService {
       .limit(1);
 
     if (!version) {
-      throw new NotFoundError(`Agent compose version ${agentComposeVersionId}`);
+      throw new NotFoundError(
+        `Agent compose version ${agentComposeVersionId} not found`,
+      );
     }
     const agentCompose = version.content as AgentComposeYaml;
 
@@ -332,7 +334,7 @@ export class RunService {
       await agentSessionService.getByIdWithConversation(sessionId);
 
     if (!session) {
-      throw new NotFoundError("Agent session");
+      throw new NotFoundError("Agent session not found");
     }
 
     if (session.userId !== userId) {
@@ -359,7 +361,7 @@ export class RunService {
       .limit(1);
 
     if (!compose) {
-      throw new NotFoundError("Agent compose");
+      throw new NotFoundError("Agent compose not found");
     }
 
     if (!compose.headVersionId) {
@@ -376,7 +378,7 @@ export class RunService {
       .limit(1);
 
     if (!version) {
-      throw new NotFoundError("Agent compose version");
+      throw new NotFoundError("Agent compose version not found");
     }
 
     // Decrypt secrets from session (stored encrypted per-value)
@@ -421,7 +423,7 @@ export class RunService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundError("Conversation");
+      throw new NotFoundError("Conversation not found");
     }
 
     // Verify conversation belongs to user
@@ -447,7 +449,7 @@ export class RunService {
       .limit(1);
 
     if (!version) {
-      throw new NotFoundError("Agent compose version");
+      throw new NotFoundError("Agent compose version not found");
     }
 
     return {
@@ -534,7 +536,7 @@ export class RunService {
       .limit(1);
 
     if (!checkpoint) {
-      throw new NotFoundError("Checkpoint");
+      throw new NotFoundError("Checkpoint not found");
     }
 
     // Verify checkpoint belongs to user by checking the associated run
@@ -601,7 +603,7 @@ export class RunService {
       await agentSessionService.getByIdWithConversation(agentSessionId);
 
     if (!session) {
-      throw new NotFoundError("Agent session");
+      throw new NotFoundError("Agent session not found");
     }
 
     // Verify session belongs to user
@@ -738,7 +740,7 @@ export class RunService {
         .limit(1);
 
       if (!version) {
-        throw new NotFoundError("Agent compose version");
+        throw new NotFoundError("Agent compose version not found");
       }
 
       agentCompose = version.content;
