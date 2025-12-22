@@ -5,7 +5,13 @@ import { useLocale } from "next-intl";
 import { usePathname, useRouter } from "../../navigation";
 import { locales, languageNames, type Locale } from "../../i18n";
 
-export default function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+  openDirection?: "up" | "down";
+}
+
+export default function LanguageSwitcher({
+  openDirection = "down",
+}: LanguageSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const locale = useLocale();
@@ -74,7 +80,9 @@ export default function LanguageSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="language-switcher-dropdown">
+        <div
+          className={`language-switcher-dropdown ${openDirection === "up" ? "dropdown-up" : ""}`}
+        >
           {locales.map((loc) => (
             <button
               key={loc}

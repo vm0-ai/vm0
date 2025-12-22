@@ -252,6 +252,123 @@ section {
   align-items: center;
 }
 
+/* Hamburger Menu Button */
+.hamburger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid var(--border-lighter);
+  border-radius: 4px;
+  cursor: pointer;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.hamburger-btn:hover {
+  background: var(--card-hover-bg);
+  border-color: var(--primary);
+}
+
+.hamburger-line {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: var(--text-primary);
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.hamburger-line.open:nth-child(1) {
+  transform: rotate(45deg) translate(4px, 4px);
+}
+
+.hamburger-line.open:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-line.open:nth-child(3) {
+  transform: rotate(-45deg) translate(4px, -4px);
+}
+
+/* Mobile Menu */
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 61px;
+  right: 0;
+  width: 280px;
+  height: calc(100vh - 61px);
+  background: var(--card-bg);
+  border-left: 1px solid var(--border-light);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 999;
+  overflow-y: auto;
+}
+
+.mobile-menu.open {
+  transform: translateX(0);
+}
+
+.mobile-menu-content {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  gap: 32px;
+}
+
+.mobile-menu-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 12px 16px;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.mobile-menu-link:hover {
+  background: var(--card-hover-bg);
+  color: var(--primary);
+}
+
+.mobile-menu-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.mobile-menu-overlay {
+  display: none;
+  position: fixed;
+  top: 61px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998;
+}
+
+/* Desktop-only elements */
+.nav-desktop {
+  display: flex;
+}
+
 .nav-link {
   font-family: "Noto Sans", sans-serif;
   font-size: 14px;
@@ -1976,6 +2093,12 @@ section {
   gap: 12px;
 }
 
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .footer-column {
   display: flex;
   flex-direction: column;
@@ -2247,19 +2370,35 @@ section {
   }
 
   .navbar {
-    padding: 20px 0;
+    padding: 12px 0;
   }
 
-  .nav-center {
-    gap: 16px !important;
+  /* Hide desktop navigation */
+  .nav-desktop {
+    display: none !important;
   }
 
-  .nav-center a:not([href="/cookbooks"]) {
-    display: none;
+  /* Show hamburger button */
+  .hamburger-btn {
+    display: flex;
   }
 
-  .nav-right .btn-try-demo {
-    display: none;
+  /* Show mobile menu and overlay */
+  .mobile-menu {
+    display: block;
+  }
+
+  .mobile-menu-overlay {
+    display: block;
+  }
+
+  .nav-right {
+    gap: 12px;
+  }
+
+  .btn-get-access {
+    padding: 8px 16px;
+    font-size: 13px;
   }
 
   .tagline {
@@ -2476,6 +2615,13 @@ section {
     gap: 16px;
   }
 
+  .footer-right {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
   .footer-controls {
     width: 100%;
     justify-content: flex-start;
@@ -2511,11 +2657,7 @@ section {
   }
 
   .navbar {
-    padding: 16px 0;
-  }
-
-  .nav-center {
-    display: none;
+    padding: 12px 0;
   }
 
   .hero-text {
@@ -2813,6 +2955,11 @@ section {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   padding: 8px;
   z-index: 1000;
+}
+
+.language-switcher-dropdown.dropdown-up {
+  top: auto;
+  bottom: calc(100% + 8px);
   animation: fadeIn 0.2s ease;
 }
 

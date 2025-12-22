@@ -34,62 +34,64 @@ export default function Footer() {
           <div className="footer-left">
             <p className="footer-copyright">{t("copyright")}</p>
           </div>
-          <div className="footer-links">
-            <a
-              href="https://github.com/vm0-ai/vm0"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="footer-link"
-              aria-label="GitHub"
-            >
-              <Image
-                src="/assets/github-gray.svg"
-                alt="GitHub"
-                width={20}
-                height={20}
-              />
-            </a>
-            <a
-              href="https://discord.gg/WMpAmHFfp6"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="footer-link"
-              aria-label="Discord"
-            >
-              <Image
-                src="/assets/discord.svg"
-                alt="Discord"
-                width={20}
-                height={20}
-              />
-            </a>
-            <a
-              href="https://x.com/vm0_ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="footer-link"
-              aria-label="X"
-            >
-              <Image src="/assets/x.svg" alt="X" width={20} height={20} />
-            </a>
-            <a
-              href="https://www.linkedin.com/company/vm0"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="footer-link"
-              aria-label="LinkedIn"
-            >
-              <Image
-                src="/assets/linkedin.svg"
-                alt="LinkedIn"
-                width={20}
-                height={20}
-              />
-            </a>
-          </div>
-          <div className="footer-controls">
-            <ThemeToggle />
-            <LanguageSwitcher />
+          <div className="footer-right">
+            <div className="footer-links">
+              <a
+                href="https://github.com/vm0-ai/vm0"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link"
+                aria-label="GitHub"
+              >
+                <Image
+                  src="/assets/github-gray.svg"
+                  alt="GitHub"
+                  width={20}
+                  height={20}
+                />
+              </a>
+              <a
+                href="https://discord.gg/WMpAmHFfp6"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link"
+                aria-label="Discord"
+              >
+                <Image
+                  src="/assets/discord.svg"
+                  alt="Discord"
+                  width={20}
+                  height={20}
+                />
+              </a>
+              <a
+                href="https://x.com/vm0_ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link"
+                aria-label="X"
+              >
+                <Image src="/assets/x.svg" alt="X" width={20} height={20} />
+              </a>
+              <a
+                href="https://www.linkedin.com/company/vm0"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link"
+                aria-label="LinkedIn"
+              >
+                <Image
+                  src="/assets/linkedin.svg"
+                  alt="LinkedIn"
+                  width={20}
+                  height={20}
+                />
+              </a>
+            </div>
+            <div className="footer-controls">
+              <ThemeToggle />
+              <LanguageSwitcher openDirection="up" />
+            </div>
           </div>
         </div>
       </div>
