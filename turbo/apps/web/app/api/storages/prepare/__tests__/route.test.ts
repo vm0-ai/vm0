@@ -27,6 +27,7 @@ vi.mock("../../../../../src/lib/s3/s3-client", () => ({
     .fn()
     .mockResolvedValue("https://s3.example.com/presigned-url"),
   downloadManifest: vi.fn().mockResolvedValue({ files: [] }),
+  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
 }));
 
 // Set required environment variables

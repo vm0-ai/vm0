@@ -26,6 +26,7 @@ vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
 
 vi.mock("../../../../../src/lib/s3/s3-client", () => ({
   s3ObjectExists: vi.fn().mockResolvedValue(true),
+  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
 }));
 
 // Set required environment variables
