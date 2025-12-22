@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.4](https://github.com/vm0-ai/vm0/compare/web-v6.1.3...web-v6.1.4) (2025-12-22)
+
+
+### Bug Fixes
+
+* update skills page and fix mobile language switcher ([#682](https://github.com/vm0-ai/vm0/issues/682)) ([83de928](https://github.com/vm0-ai/vm0/commit/83de9283e853b20b666c3aa3731d65a89b2ff162))
+
 ## [6.1.3](https://github.com/vm0-ai/vm0/compare/web-v6.1.2...web-v6.1.3) (2025-12-22)
 
 
