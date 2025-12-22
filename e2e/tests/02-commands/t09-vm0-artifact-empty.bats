@@ -209,3 +209,88 @@ EOF
     local file_count=$(find . -type f ! -path './.vm0/*' | wc -l)
     [ "$file_count" -eq 0 ]
 }
+
+@test "VM0 artifact pull succeeds after sandbox deduplication (issue #649)" {
+    # This test verifies the fix for issue #649:
+    # When sandbox creates a checkpoint with same artifact content (deduplication),
+    # the commit endpoint should still be called to update HEAD pointer.
+    # Without this fix, auto-pull would use outdated HEAD and fail with 404.
+
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # Step 1: Create artifact with files
+    echo "test content" > data.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+
+    # Step 2: Run agent that only reads files (no modifications)
+    # This creates a checkpoint where artifact content is unchanged
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        "cat data.txt"
+    assert_success
+    assert_output --partial "[result]"
+    assert_output --partial "Checkpoint:"
+    # Extract artifact version from run output
+    RUN_VERSION=$(echo "$output" | grep -oP 'artifact:\s+\K[0-9a-f]+' | tail -1)
+
+    # Step 3: Run agent again - this triggers sandbox deduplication
+    # The artifact content is the same, so sandbox gets existing=true from prepare
+    # Bug #649: sandbox returned early without calling commit, HEAD was not updated
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        "cat data.txt"
+    assert_success
+    assert_output --partial "[result]"
+    assert_output --partial "Checkpoint:"
+
+    # Step 4: Pull artifact - this should succeed
+    # Before fix: would fail with 404 because HEAD pointed to wrong version
+    run $CLI_COMMAND artifact pull
+    assert_success
+
+    # Verify file content is correct
+    [ -f "data.txt" ]
+    grep -q "test content" data.txt
+}
+
+@test "VM0 consecutive runs with unchanged artifact both succeed with pull" {
+    # Additional test for issue #649:
+    # Run multiple times without modifying artifact, verify pull works each time
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init >/dev/null
+
+    # Create artifact with files
+    echo "unchanged content" > file.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Run 1: read-only operation
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        "cat file.txt"
+    assert_success
+    assert_output --partial "Checkpoint:"
+
+    # Pull after run 1
+    run $CLI_COMMAND artifact pull
+    assert_success
+    [ -f "file.txt" ]
+
+    # Run 2: another read-only operation (deduplication in sandbox)
+    run $CLI_COMMAND run vm0-standard \
+        --artifact-name "$ARTIFACT_NAME" \
+        "wc -l file.txt"
+    assert_success
+    assert_output --partial "Checkpoint:"
+
+    # Pull after run 2 - this is where bug #649 would cause 404
+    run $CLI_COMMAND artifact pull
+    assert_success
+    [ -f "file.txt" ]
+    grep -q "unchanged content" file.txt
+}

@@ -191,8 +191,25 @@ def create_direct_upload_snapshot(
         return None
 
     # Step 3: Check if version already exists (deduplication)
+    # Still call commit to update HEAD pointer (fixes #649)
     if prepare_response.get("existing"):
         log_info(f"Version already exists (deduplicated): {version_id[:8]}")
+        log_info("Updating HEAD pointer...")
+
+        commit_payload = {
+            "storageName": storage_name,
+            "storageType": storage_type,
+            "versionId": version_id,
+            "files": files
+        }
+        if run_id:
+            commit_payload["runId"] = run_id
+
+        commit_response = http_post_json(STORAGE_COMMIT_URL, commit_payload)
+        if not commit_response or not commit_response.get("success"):
+            log_error(f"Failed to update HEAD: {commit_response}")
+            return None
+
         return {"versionId": version_id, "deduplicated": True}
 
     # Step 4: Get presigned URLs

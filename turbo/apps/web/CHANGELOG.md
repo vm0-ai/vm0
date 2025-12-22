@@ -1,5 +1,60 @@
 # Changelog
 
+## [5.19.0](https://github.com/vm0-ai/vm0/compare/web-v5.18.1...web-v5.19.0) (2025-12-22)
+
+
+### Features
+
+* add responsive mobile menu and improve footer layout ([#647](https://github.com/vm0-ai/vm0/issues/647)) ([1649810](https://github.com/vm0-ai/vm0/commit/1649810be1ed8ca353a1116ae4e631b04e46d52e))
+
+## [5.18.1](https://github.com/vm0-ai/vm0/compare/web-v5.18.0...web-v5.18.1) (2025-12-21)
+
+
+### Bug Fixes
+
+* sandbox calls commit on deduplication to update HEAD ([#650](https://github.com/vm0-ai/vm0/issues/650)) ([51da31a](https://github.com/vm0-ai/vm0/commit/51da31a7bae1e431d7f3fd8b8cc04f0e951603f7))
+
+## [5.18.0](https://github.com/vm0-ai/vm0/compare/web-v5.17.1...web-v5.18.0) (2025-12-21)
+
+
+### Features
+
+* **image:** add versioning support with tag syntax ([#643](https://github.com/vm0-ai/vm0/issues/643)) ([761ce57](https://github.com/vm0-ai/vm0/commit/761ce5791aca56e96739db7513fd4e5a83065717))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.8.0
+
+## [5.17.1](https://github.com/vm0-ai/vm0/compare/web-v5.17.0...web-v5.17.1) (2025-12-20)
+
+
+### Bug Fixes
+
+* move theme toggle and language switcher to footer ([#645](https://github.com/vm0-ai/vm0/issues/645)) ([9cf6d5b](https://github.com/vm0-ai/vm0/commit/9cf6d5b9649ea3bee1263df99c38e57f8ac451b9))
+
+## [5.17.0](https://github.com/vm0-ai/vm0/compare/web-v5.16.0...web-v5.17.0) (2025-12-20)
+
+
+### Features
+
+* add scope/namespace system for resource isolation ([#636](https://github.com/vm0-ai/vm0/issues/636)) ([1369059](https://github.com/vm0-ai/vm0/commit/1369059e3e3d7a82aca3f00e59dd2f2814dab0e4))
+* **cli:** make --artifact-name optional for vm0 run command ([#640](https://github.com/vm0-ai/vm0/issues/640)) ([6895cfe](https://github.com/vm0-ai/vm0/commit/6895cfe6411b48b23b49d9c5a500fdd0aa746fd0))
+
+
+### Bug Fixes
+
+* remove locale prefix from sign-up links ([#644](https://github.com/vm0-ai/vm0/issues/644)) ([167b4bd](https://github.com/vm0-ai/vm0/commit/167b4bdc0ee947130042b9dae7bbfc829022f707))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.7.0
+
 ## [5.16.0](https://github.com/vm0-ai/vm0/compare/web-v5.15.0...web-v5.16.0) (2025-12-20)
 
 

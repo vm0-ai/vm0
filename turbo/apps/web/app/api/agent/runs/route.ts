@@ -52,7 +52,8 @@ const router = tsr.router(runsMainContract, {
     const isSessionContinue = !!body.sessionId;
     const isNewRun = !isCheckpointResume && !isSessionContinue;
 
-    // For new runs, require either agentComposeId or agentComposeVersionId, and artifactName
+    // For new runs, require either agentComposeId or agentComposeVersionId
+    // Note: artifactName is optional - runs without artifact won't have persistent storage
     if (isNewRun) {
       if (!body.agentComposeId && !body.agentComposeVersionId) {
         return {
@@ -61,18 +62,6 @@ const router = tsr.router(runsMainContract, {
             error: {
               message:
                 "Missing agentComposeId or agentComposeVersionId. For new runs, one is required.",
-              code: "BAD_REQUEST",
-            },
-          },
-        };
-      }
-      if (!body.artifactName) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message:
-                "Missing artifactName. Use --artifact-name flag to specify artifact.",
               code: "BAD_REQUEST",
             },
           },

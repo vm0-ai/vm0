@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
-import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
@@ -131,9 +130,10 @@ export default function LandingPage() {
               <h1 className="hero-title">{t("title")}</h1>
               <p className="hero-description">{t("subtitle")}</p>
               <div className="hero-buttons">
-                <Link href="/sign-up" className="btn-primary-large">
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+                <a href="/sign-up" className="btn-primary-large">
                   {t("joinWaitlist")}
-                </Link>
+                </a>
                 <a
                   href="https://github.com/vm0-ai/vm0"
                   target="_blank"
@@ -628,9 +628,10 @@ export default function LandingPage() {
             <div className="cta-ellipse"></div>
             <h2 className="cta-title">{tCta("title")}</h2>
             <p className="cta-subtitle">{tCta("subtitle")}</p>
-            <Link href="/sign-up" className="btn-primary-large">
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/sign-up" className="btn-primary-large">
               {tCta("button")}
-            </Link>
+            </a>
           </div>
         </div>
       </section>

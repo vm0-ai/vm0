@@ -48,7 +48,7 @@ export interface CheckpointData {
   runId: string;
   conversationId: string;
   agentComposeSnapshot: AgentComposeSnapshot;
-  artifactSnapshot: ArtifactSnapshot;
+  artifactSnapshot?: ArtifactSnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
@@ -60,7 +60,7 @@ export interface CheckpointRequest {
   cliAgentType: string;
   cliAgentSessionId: string;
   cliAgentSessionHistory: string;
-  artifactSnapshot: ArtifactSnapshot;
+  artifactSnapshot?: ArtifactSnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
@@ -71,6 +71,6 @@ export interface CheckpointResponse {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifact: ArtifactSnapshot;
+  artifact?: ArtifactSnapshot;
   volumes?: Record<string, string>;
 }

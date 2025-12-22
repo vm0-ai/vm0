@@ -7,7 +7,9 @@ import { DELETE } from "../route";
 import { POST, GET } from "../../route";
 import { initServices } from "../../../../../src/lib/init-services";
 import { images } from "../../../../../src/db/schema/image";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { createUserScope } from "../../../../../src/lib/scope/scope-service";
 
 // Mock the auth module
 let mockUserId: string | null = "test-user-delete-images";
@@ -52,8 +54,11 @@ describe("DELETE /api/images/:imageId", () => {
   const testUserId = "test-user-delete-images";
   const testUserId2 = "test-user-delete-images-2";
 
-  beforeAll(() => {
+  beforeAll(async () => {
     initServices();
+    // Create scopes for test users (required for image builds)
+    await createUserScope(testUserId, `del-test-${Date.now()}`);
+    await createUserScope(testUserId2, `del-test2-${Date.now()}`);
   });
 
   afterAll(async () => {
@@ -64,6 +69,13 @@ describe("DELETE /api/images/:imageId", () => {
     await globalThis.services.db
       .delete(images)
       .where(eq(images.userId, testUserId2));
+    // Cleanup: Delete test scopes
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId2));
   });
 
   it("should delete an existing image", async () => {

@@ -311,6 +311,65 @@ describe("AgentSessionService", () => {
       expect(result.session.id).toBe(initial.id);
       expect(result.session.conversationId).toBe(testConversationId);
     });
+
+    it("should handle undefined artifactName correctly (sessions without artifact)", async () => {
+      // First call should create a new session with null artifactName
+      const result1 = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        undefined, // No artifact
+        testConversationId,
+      );
+
+      expect(result1.created).toBe(true);
+      expect(result1.session.artifactName).toBeNull();
+
+      // Second call should find the existing session with null artifactName
+      const result2 = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        undefined, // No artifact
+      );
+
+      expect(result2.created).toBe(false);
+      expect(result2.session.id).toBe(result1.session.id);
+      expect(result2.session.artifactName).toBeNull();
+    });
+
+    it("should distinguish between sessions with artifact and without artifact", async () => {
+      // Create session without artifact
+      const noArtifactResult = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        undefined, // No artifact
+      );
+
+      expect(noArtifactResult.created).toBe(true);
+      expect(noArtifactResult.session.artifactName).toBeNull();
+
+      // Create session with artifact - should create new session
+      const withArtifactResult = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        "my-artifact",
+      );
+
+      expect(withArtifactResult.created).toBe(true);
+      expect(withArtifactResult.session.artifactName).toBe("my-artifact");
+      expect(withArtifactResult.session.id).not.toBe(
+        noArtifactResult.session.id,
+      );
+
+      // Query for no-artifact session should still find the original
+      const noArtifactAgain = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        undefined,
+      );
+
+      expect(noArtifactAgain.created).toBe(false);
+      expect(noArtifactAgain.session.id).toBe(noArtifactResult.session.id);
+    });
   });
 
   describe("delete", () => {

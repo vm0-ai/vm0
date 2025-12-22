@@ -89,7 +89,7 @@ const runResultSchema = z.object({
   checkpointId: z.string(),
   agentSessionId: z.string(),
   conversationId: z.string(),
-  artifact: z.record(z.string(), z.string()),
+  artifact: z.record(z.string(), z.string()).optional(), // optional when run has no artifact
   volumes: z.record(z.string(), z.string()).optional(),
 });
 

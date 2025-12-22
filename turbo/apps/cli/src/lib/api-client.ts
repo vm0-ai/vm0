@@ -155,6 +155,7 @@ export interface CreateImageResponse {
   buildId: string;
   imageId: string;
   alias: string;
+  versionId: string;
 }
 
 export interface ScopeResponse {

@@ -11,7 +11,7 @@ export interface AgentSessionData {
   userId: string;
   agentComposeId: string;
   conversationId: string | null;
-  artifactName: string;
+  artifactName: string | null;
   vars: Record<string, string> | null;
   secrets: Record<string, string> | null;
   createdAt: Date;
@@ -24,7 +24,7 @@ export interface AgentSessionData {
 export interface CreateAgentSessionInput {
   userId: string;
   agentComposeId: string;
-  artifactName: string;
+  artifactName?: string;
   conversationId?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;

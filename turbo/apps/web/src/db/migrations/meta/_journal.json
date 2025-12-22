@@ -288,6 +288,20 @@
       "when": 1766500000000,
       "tag": "0040_add_scope_id_to_images",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1766600000000,
+      "tag": "0041_optional_artifact_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1766700000000,
+      "tag": "0042_add_image_version_id",
+      "breakpoints": true
     }
   ]
 }

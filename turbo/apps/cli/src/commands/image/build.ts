@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
+import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
 
 interface BuildStatusResponse {
@@ -55,11 +56,13 @@ export const buildCommand = new Command()
       }
 
       try {
+        // Get user's scope for output
+        const scope = await apiClient.getScope();
+
         // Read Dockerfile content
         const dockerfile = await readFile(file, "utf8");
 
-        console.log(chalk.blue(`Building image: ${name}`));
-        console.log(chalk.gray(`  Dockerfile: ${file}`));
+        console.log(chalk.blue(`Building image: @${scope.slug}/${name}`));
         console.log();
 
         // Start build
@@ -68,7 +71,7 @@ export const buildCommand = new Command()
           alias: name,
           deleteExisting,
         });
-        const { imageId, buildId } = buildInfo;
+        const { imageId, buildId, versionId } = buildInfo;
 
         console.log(chalk.gray(`  Build ID: ${buildId}`));
         console.log();
@@ -109,12 +112,12 @@ export const buildCommand = new Command()
         console.log();
 
         if (status === "ready") {
-          console.log(chalk.green(`✓ Image built: ${name}`));
-          console.log();
-          console.log("Use in vm0.yaml:");
-          console.log(chalk.cyan(`  agents:`));
-          console.log(chalk.cyan(`    your-agent:`));
-          console.log(chalk.cyan(`      image: "${name}"`));
+          const shortVersion = formatVersionIdForDisplay(versionId);
+          console.log(
+            chalk.green(
+              `✓ Image built: @${scope.slug}/${name}:${shortVersion}`,
+            ),
+          );
         } else {
           console.error(chalk.red(`✗ Build failed`));
           process.exit(1);

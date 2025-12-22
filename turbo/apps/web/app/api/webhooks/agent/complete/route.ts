@@ -114,9 +114,9 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(agentSessions.conversationId, checkpoint.conversationId))
           .limit(1);
 
-        // Extract artifact info from checkpoint
+        // Extract artifact info from checkpoint (may be null for runs without artifact)
         const artifactSnapshot =
-          checkpoint.artifactSnapshot as ArtifactSnapshot;
+          checkpoint.artifactSnapshot as ArtifactSnapshot | null;
         const volumeVersions = checkpoint.volumeVersionsSnapshot as
           | { versions: Record<string, string> }
           | undefined;
@@ -126,11 +126,15 @@ const router = tsr.router(webhookCompleteContract, {
           checkpointId: checkpoint.id,
           agentSessionId: session?.id ?? checkpoint.conversationId,
           conversationId: checkpoint.conversationId,
-          artifact: {
-            [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
-          },
           volumes: volumeVersions?.versions,
         };
+
+        // Only add artifact if present in checkpoint
+        if (artifactSnapshot) {
+          result.artifact = {
+            [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+          };
+        }
 
         // Update run status and result
         await globalThis.services.db
