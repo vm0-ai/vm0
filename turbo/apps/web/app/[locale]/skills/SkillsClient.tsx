@@ -69,7 +69,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
             <h1 className="hero-title">VM0 Agent Skills</h1>
             <p className="hero-description">
               Pre-built integrations for AI agents. Connect to popular services
-              with zero configuration.
+              with simple setup.
             </p>
 
             {/* Stats */}
