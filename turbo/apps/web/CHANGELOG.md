@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.2](https://github.com/vm0-ai/vm0/compare/web-v6.1.1...web-v6.1.2) (2025-12-22)
+
+
+### Bug Fixes
+
+* **image:** support scoped references and version tags in validateImageAccess ([#674](https://github.com/vm0-ai/vm0/issues/674)) ([3f6d715](https://github.com/vm0-ai/vm0/commit/3f6d7156b7903cfc46518abaab9fcdc12ffacf5c))
+
 ## [6.1.1](https://github.com/vm0-ai/vm0/compare/web-v6.1.0...web-v6.1.1) (2025-12-22)
 
 
