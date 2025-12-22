@@ -4,7 +4,7 @@ agents:
   vm0-env-expansion:
     description: "Test agent for environment variable expansion"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       TEST_VAR: "${{ vars.testVar }}"
