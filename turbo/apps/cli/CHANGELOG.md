@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.17.0](https://github.com/vm0-ai/vm0/compare/cli-v4.16.1...cli-v4.17.0) (2025-12-22)
+
+
+### Features
+
+* **image:** support @vm0/claude-code format for system images ([#655](https://github.com/vm0-ai/vm0/issues/655)) ([1ddd99f](https://github.com/vm0-ai/vm0/commit/1ddd99fa1b640956244dfd463e6eda6a942e8416))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.0.0
+
 ## [4.16.1](https://github.com/vm0-ai/vm0/compare/cli-v4.16.0...cli-v4.16.1) (2025-12-21)
 
 
