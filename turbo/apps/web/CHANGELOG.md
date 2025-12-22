@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.3](https://github.com/vm0-ai/vm0/compare/web-v6.1.2...web-v6.1.3) (2025-12-22)
+
+
+### Bug Fixes
+
+* use direct API import instead of HTTP fetch in server component ([#676](https://github.com/vm0-ai/vm0/issues/676)) ([99d57e4](https://github.com/vm0-ai/vm0/commit/99d57e414561760e4227b841898bdeaf14fca7f2))
+
 ## [6.1.2](https://github.com/vm0-ai/vm0/compare/web-v6.1.1...web-v6.1.2) (2025-12-22)
 
 
