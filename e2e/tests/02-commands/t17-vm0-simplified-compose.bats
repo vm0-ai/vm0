@@ -265,10 +265,10 @@ EOF
     assert_success
 
     echo "# Running agent to verify beta_system_prompt is mounted..."
-    # The beta_system_prompt is mounted at /home/user/.config/claude/CLAUDE.md
+    # The beta_system_prompt is mounted at /home/user/.claude/CLAUDE.md
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "cat /home/user/.config/claude/CLAUDE.md"
+        "cat /home/user/.claude/CLAUDE.md"
     assert_success
 
     echo "# Verifying output contains the marker from AGENTS.md..."
@@ -300,10 +300,10 @@ EOF
     assert_success
 
     echo "# Running agent to verify beta_system_skill is mounted..."
-    # The beta_system_skill is mounted at /home/user/.config/claude/skills/github/
+    # The beta_system_skill is mounted at /home/user/.claude/skills/github/
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "ls /home/user/.config/claude/skills/github/"
+        "ls /home/user/.claude/skills/github/"
     assert_success
 
     echo "# Verifying skill directory contains SKILL.md..."
