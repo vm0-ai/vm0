@@ -4,8 +4,8 @@ import {
   formatScopedReference,
   isLegacySystemTemplate,
   resolveImageReference,
+  parseImageReferenceWithTag,
   generateScopedE2bAlias,
-  computeDockerfileVersionHash,
 } from "../scope-reference";
 
 describe("parseScopedReference", () => {
@@ -105,6 +105,145 @@ describe("resolveImageReference", () => {
   });
 });
 
+describe("parseImageReferenceWithTag", () => {
+  describe("legacy vm0-* templates", () => {
+    it("passes through legacy templates without tag parsing", () => {
+      const result = parseImageReferenceWithTag("vm0-claude-code");
+      expect(result).toEqual({
+        name: "vm0-claude-code",
+        isLegacy: true,
+      });
+    });
+
+    it("does not require userScopeSlug for legacy templates", () => {
+      const result = parseImageReferenceWithTag("vm0-base");
+      expect(result.isLegacy).toBe(true);
+    });
+  });
+
+  describe("explicit @scope/name format", () => {
+    it("parses @scope/name without tag", () => {
+      const result = parseImageReferenceWithTag("@myorg/my-image");
+      expect(result).toEqual({
+        scope: "myorg",
+        name: "my-image",
+        tag: undefined,
+        isLegacy: false,
+      });
+    });
+
+    it("parses @scope/name:latest", () => {
+      const result = parseImageReferenceWithTag("@myorg/my-image:latest");
+      expect(result).toEqual({
+        scope: "myorg",
+        name: "my-image",
+        tag: "latest",
+        isLegacy: false,
+      });
+    });
+
+    it("parses @scope/name with version ID", () => {
+      const result = parseImageReferenceWithTag("@myorg/my-image:a1b2c3d4");
+      expect(result).toEqual({
+        scope: "myorg",
+        name: "my-image",
+        tag: "a1b2c3d4",
+        isLegacy: false,
+      });
+    });
+
+    it("does not require userScopeSlug for explicit scope", () => {
+      const result = parseImageReferenceWithTag("@other/image:v1");
+      expect(result.scope).toBe("other");
+      expect(result.tag).toBe("v1");
+    });
+
+    it("throws for empty tag after colon", () => {
+      expect(() => parseImageReferenceWithTag("@myorg/my-image:")).toThrow(
+        "empty tag after colon",
+      );
+    });
+
+    it("throws for missing / separator", () => {
+      expect(() => parseImageReferenceWithTag("@myorg")).toThrow(
+        "missing / separator",
+      );
+    });
+
+    it("throws for empty scope", () => {
+      expect(() => parseImageReferenceWithTag("@/my-image")).toThrow(
+        "empty scope",
+      );
+    });
+
+    it("throws for empty name", () => {
+      expect(() => parseImageReferenceWithTag("@myorg/")).toThrow("empty name");
+    });
+
+    it("throws for empty name with tag", () => {
+      expect(() => parseImageReferenceWithTag("@myorg/:latest")).toThrow(
+        "empty name",
+      );
+    });
+  });
+
+  describe("implicit format with user scope", () => {
+    it("parses name without tag", () => {
+      const result = parseImageReferenceWithTag("my-image", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        tag: undefined,
+        isLegacy: false,
+      });
+    });
+
+    it("parses name:latest", () => {
+      const result = parseImageReferenceWithTag("my-image:latest", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        tag: "latest",
+        isLegacy: false,
+      });
+    });
+
+    it("parses name with version ID", () => {
+      const result = parseImageReferenceWithTag("my-image:a1b2c3d4", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        tag: "a1b2c3d4",
+        isLegacy: false,
+      });
+    });
+
+    it("throws for implicit reference without userScopeSlug", () => {
+      expect(() => parseImageReferenceWithTag("my-image")).toThrow(
+        "Please set up your scope first",
+      );
+    });
+
+    it("throws for implicit reference with tag without userScopeSlug", () => {
+      expect(() => parseImageReferenceWithTag("my-image:latest")).toThrow(
+        "Please set up your scope first",
+      );
+    });
+
+    it("throws for empty tag after colon", () => {
+      expect(() => parseImageReferenceWithTag("my-image:", "myuser")).toThrow(
+        "empty tag after colon",
+      );
+    });
+
+    it("throws for empty name", () => {
+      expect(() => parseImageReferenceWithTag(":latest", "myuser")).toThrow(
+        "empty name",
+      );
+    });
+  });
+});
+
 describe("generateScopedE2bAlias", () => {
   it("generates correct format", () => {
     const result = generateScopedE2bAlias(
@@ -129,26 +268,5 @@ describe("generateScopedE2bAlias", () => {
       "abcd1234",
     );
     expect(result).toBe("scope-12345678-image-my-image-v1-version-abcd1234");
-  });
-});
-
-describe("computeDockerfileVersionHash", () => {
-  it("returns 8 character hash", async () => {
-    const result = await computeDockerfileVersionHash("FROM ubuntu:22.04");
-    expect(result).toHaveLength(8);
-    expect(result).toMatch(/^[a-f0-9]{8}$/);
-  });
-
-  it("returns consistent hash for same content", async () => {
-    const dockerfile = "FROM node:18\nRUN npm install";
-    const hash1 = await computeDockerfileVersionHash(dockerfile);
-    const hash2 = await computeDockerfileVersionHash(dockerfile);
-    expect(hash1).toBe(hash2);
-  });
-
-  it("returns different hash for different content", async () => {
-    const hash1 = await computeDockerfileVersionHash("FROM ubuntu:22.04");
-    const hash2 = await computeDockerfileVersionHash("FROM ubuntu:24.04");
-    expect(hash1).not.toBe(hash2);
   });
 });

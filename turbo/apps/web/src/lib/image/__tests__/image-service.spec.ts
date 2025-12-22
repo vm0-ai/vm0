@@ -7,6 +7,10 @@ import {
   isSystemTemplate,
   resolveImageAlias,
   getImageByScopeAndAlias,
+  getLatestImage,
+  getImageByScopeAliasAndVersion,
+  isImageResolutionError,
+  listImageVersions,
 } from "../image-service";
 import { initServices } from "../../init-services";
 import { createUserScope } from "../../scope/scope-service";
@@ -58,10 +62,12 @@ describe("Image Service", () => {
     });
   });
 
-  describe("resolveImageAlias with @scope/name", () => {
+  describe("resolveImageAlias with @scope/name and tags", () => {
     const testUserId = "test-image-resolve-user";
     const testScopeSlug = `img-test-${Date.now()}`;
     let testScopeId: string;
+    const testVersionId1 = "v1abc123";
+    const testVersionId2 = "v2def456";
 
     beforeAll(async () => {
       initServices();
@@ -70,15 +76,30 @@ describe("Image Service", () => {
       const scope = await createUserScope(testUserId, testScopeSlug);
       testScopeId = scope.id;
 
-      // Create a test image with scopeId
+      // Create first version of test image (older)
       await globalThis.services.db.insert(images).values({
         userId: testUserId,
         scopeId: testScopeId,
         alias: "test-image",
-        e2bAlias: `user-${testUserId}-test-image`,
-        e2bTemplateId: "test-template-id",
-        e2bBuildId: "test-build-id",
+        versionId: testVersionId1,
+        e2bAlias: `scope-${testScopeId}-image-test-image-version-${testVersionId1}`,
+        e2bTemplateId: "test-template-id-v1",
+        e2bBuildId: "test-build-id-v1",
         status: "ready",
+        createdAt: new Date("2024-01-01"),
+      });
+
+      // Create second version of test image (newer - should be :latest)
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "test-image",
+        versionId: testVersionId2,
+        e2bAlias: `scope-${testScopeId}-image-test-image-version-${testVersionId2}`,
+        e2bTemplateId: "test-template-id-v2",
+        e2bBuildId: "test-build-id-v2",
+        status: "ready",
+        createdAt: new Date("2024-01-02"),
       });
 
       // Create a building image
@@ -86,7 +107,8 @@ describe("Image Service", () => {
         userId: testUserId,
         scopeId: testScopeId,
         alias: "building-image",
-        e2bAlias: `user-${testUserId}-building-image`,
+        versionId: "build001",
+        e2bAlias: `scope-${testScopeId}-image-building-image-version-build001`,
         e2bTemplateId: "build-template-id",
         e2bBuildId: "build-build-id",
         status: "building",
@@ -103,13 +125,33 @@ describe("Image Service", () => {
         .where(eq(scopes.ownerId, testUserId));
     });
 
-    it("should resolve @scope/name format to e2bAlias", async () => {
+    it("should resolve @scope/name to latest version", async () => {
       const result = await resolveImageAlias(
         testUserId,
         `@${testScopeSlug}/test-image`,
       );
-      expect(result.templateName).toBe(`user-${testUserId}-test-image`);
+      // Should resolve to the newer version (v2)
+      expect(result.templateName).toContain(testVersionId2);
       expect(result.isUserImage).toBe(true);
+      expect(result.versionId).toBe(testVersionId2);
+    });
+
+    it("should resolve @scope/name:latest to latest version", async () => {
+      const result = await resolveImageAlias(
+        testUserId,
+        `@${testScopeSlug}/test-image:latest`,
+      );
+      expect(result.templateName).toContain(testVersionId2);
+      expect(result.versionId).toBe(testVersionId2);
+    });
+
+    it("should resolve @scope/name:versionId to specific version", async () => {
+      const result = await resolveImageAlias(
+        testUserId,
+        `@${testScopeSlug}/test-image:${testVersionId1}`,
+      );
+      expect(result.templateName).toContain(testVersionId1);
+      expect(result.versionId).toBe(testVersionId1);
     });
 
     it("should throw NotFoundError for non-existent scope", async () => {
@@ -124,9 +166,21 @@ describe("Image Service", () => {
       ).rejects.toThrow(`not found`);
     });
 
-    it("should throw BadRequestError for image not ready", async () => {
+    it("should throw NotFoundError for non-existent version", async () => {
       await expect(
-        resolveImageAlias(testUserId, `@${testScopeSlug}/building-image`),
+        resolveImageAlias(
+          testUserId,
+          `@${testScopeSlug}/test-image:nonexistent`,
+        ),
+      ).rejects.toThrow("not found");
+    });
+
+    it("should throw BadRequestError for version not ready", async () => {
+      await expect(
+        resolveImageAlias(
+          testUserId,
+          `@${testScopeSlug}/building-image:build001`,
+        ),
       ).rejects.toThrow("not ready");
     });
 
@@ -136,10 +190,19 @@ describe("Image Service", () => {
       expect(result.isUserImage).toBe(false);
     });
 
-    it("should resolve plain alias via legacy lookup", async () => {
+    it("should resolve plain alias (implicit scope) to latest version", async () => {
       const result = await resolveImageAlias(testUserId, "test-image");
-      expect(result.templateName).toBe(`user-${testUserId}-test-image`);
+      expect(result.templateName).toContain(testVersionId2);
       expect(result.isUserImage).toBe(true);
+    });
+
+    it("should resolve plain alias with tag to specific version", async () => {
+      const result = await resolveImageAlias(
+        testUserId,
+        `test-image:${testVersionId1}`,
+      );
+      expect(result.templateName).toContain(testVersionId1);
+      expect(result.versionId).toBe(testVersionId1);
     });
   });
 
@@ -155,12 +218,13 @@ describe("Image Service", () => {
       const scope = await createUserScope(testUserId, testScopeSlug);
       testScopeId = scope.id;
 
-      // Create test image
+      // Create test image with versionId
       await globalThis.services.db.insert(images).values({
         userId: testUserId,
         scopeId: testScopeId,
         alias: "scoped-image",
-        e2bAlias: `user-${testUserId}-scoped-image`,
+        versionId: "ver12345",
+        e2bAlias: `scope-${testScopeId}-image-scoped-image-version-ver12345`,
         e2bTemplateId: "scoped-template-id",
         e2bBuildId: "scoped-build-id",
         status: "ready",
@@ -194,6 +258,165 @@ describe("Image Service", () => {
         "scoped-image",
       );
       expect(image).toBeNull();
+    });
+  });
+
+  describe("Version query functions", () => {
+    const testUserId = "test-version-query-user";
+    const testScopeSlug = `ver-test-${Date.now()}`;
+    let testScopeId: string;
+    // Use hex version IDs (like SHA256 hashes) for realistic testing
+    const version1 =
+      "a1b2c3d4e5f6789012345678901234567890123456789012345678901234";
+    const version2 =
+      "b2c3d4e5f6a1789012345678901234567890123456789012345678901234";
+    const buildingVersion =
+      "c3d4e5f6a1b2789012345678901234567890123456789012345678901234";
+
+    beforeAll(async () => {
+      initServices();
+
+      // Create test scope
+      const scope = await createUserScope(testUserId, testScopeSlug);
+      testScopeId = scope.id;
+
+      // Create older version (ready)
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "versioned-img",
+        versionId: version1,
+        e2bAlias: `scope-${testScopeId}-image-versioned-img-version-${version1}`,
+        e2bTemplateId: "template-v1",
+        e2bBuildId: "build-v1",
+        status: "ready",
+        createdAt: new Date("2024-01-01"),
+      });
+
+      // Create newer version (ready - should be latest)
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "versioned-img",
+        versionId: version2,
+        e2bAlias: `scope-${testScopeId}-image-versioned-img-version-${version2}`,
+        e2bTemplateId: "template-v2",
+        e2bBuildId: "build-v2",
+        status: "ready",
+        createdAt: new Date("2024-01-02"),
+      });
+
+      // Create a building version (not ready - should not be latest)
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "versioned-img",
+        versionId: buildingVersion,
+        e2bAlias: `scope-${testScopeId}-image-versioned-img-version-${buildingVersion}`,
+        e2bTemplateId: "template-building",
+        e2bBuildId: "build-building",
+        status: "building",
+        createdAt: new Date("2024-01-03"),
+      });
+    });
+
+    afterAll(async () => {
+      await globalThis.services.db
+        .delete(images)
+        .where(eq(images.userId, testUserId));
+      await globalThis.services.db
+        .delete(scopes)
+        .where(eq(scopes.ownerId, testUserId));
+    });
+
+    describe("getLatestImage", () => {
+      it("should return the most recent ready version", async () => {
+        const image = await getLatestImage(testScopeId, "versioned-img");
+        expect(image).toBeDefined();
+        expect(image!.versionId).toBe(version2);
+        expect(image!.status).toBe("ready");
+      });
+
+      it("should return null for non-existent image", async () => {
+        const image = await getLatestImage(testScopeId, "nonexistent");
+        expect(image).toBeNull();
+      });
+
+      it("should skip non-ready versions", async () => {
+        // The building version has a newer createdAt but should be skipped
+        const image = await getLatestImage(testScopeId, "versioned-img");
+        // Should return version2 (the latest ready version), not the building version
+        expect(image!.versionId).toBe(version2);
+      });
+    });
+
+    describe("getImageByScopeAliasAndVersion", () => {
+      it("should return specific version by versionId", async () => {
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          version1,
+        );
+        expect(isImageResolutionError(result)).toBe(false);
+        if (!isImageResolutionError(result)) {
+          expect(result.image.versionId).toBe(version1);
+        }
+      });
+
+      it("should return error for non-existent version", async () => {
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          "nonexistent",
+        );
+        expect(isImageResolutionError(result)).toBe(true);
+        if (isImageResolutionError(result)) {
+          expect(result.status).toBe(404);
+          expect(result.error).toContain("not found");
+        }
+      });
+
+      it("should support prefix matching", async () => {
+        // version1 starts with "a1b2c3d4", prefix "a1b2c3d4" should match (8 chars minimum)
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          "a1b2c3d4",
+        );
+        expect(isImageResolutionError(result)).toBe(false);
+        if (!isImageResolutionError(result)) {
+          expect(result.image.versionId).toBe(version1);
+        }
+      });
+
+      it("should return error for too short prefix", async () => {
+        const result = await getImageByScopeAliasAndVersion(
+          testScopeId,
+          "versioned-img",
+          "a1b2c3", // 6 chars, minimum is 8
+        );
+        expect(isImageResolutionError(result)).toBe(true);
+        if (isImageResolutionError(result)) {
+          expect(result.status).toBe(400);
+          expect(result.error).toContain("Minimum");
+        }
+      });
+    });
+
+    describe("listImageVersions", () => {
+      it("should return all versions ordered by createdAt DESC", async () => {
+        const versions = await listImageVersions(testScopeId, "versioned-img");
+        expect(versions).toHaveLength(3);
+        // Should be ordered newest first
+        expect(versions[0]!.versionId).toBe(buildingVersion);
+        expect(versions[1]!.versionId).toBe(version2);
+        expect(versions[2]!.versionId).toBe(version1);
+      });
+
+      it("should return empty array for non-existent image", async () => {
+        const versions = await listImageVersions(testScopeId, "nonexistent");
+        expect(versions).toHaveLength(0);
+      });
     });
   });
 });

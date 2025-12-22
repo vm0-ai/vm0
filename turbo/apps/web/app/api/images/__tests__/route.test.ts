@@ -6,7 +6,9 @@ import { NextRequest } from "next/server";
 import { GET, POST } from "../route";
 import { initServices } from "../../../../src/lib/init-services";
 import { images } from "../../../../src/db/schema/image";
+import { scopes } from "../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { createUserScope } from "../../../../src/lib/scope/scope-service";
 
 // Mock the auth module
 let mockUserId: string | null = "test-user-images";
@@ -51,8 +53,11 @@ describe("/api/images", () => {
   const testUserId = "test-user-images";
   const testUserId2 = "test-user-images-2";
 
-  beforeAll(() => {
+  beforeAll(async () => {
     initServices();
+    // Create scopes for test users (required for image builds)
+    await createUserScope(testUserId, `img-test-${Date.now()}`);
+    await createUserScope(testUserId2, `img-test2-${Date.now()}`);
   });
 
   afterAll(async () => {
@@ -63,6 +68,13 @@ describe("/api/images", () => {
     await globalThis.services.db
       .delete(images)
       .where(eq(images.userId, testUserId2));
+    // Cleanup: Delete test scopes
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId2));
   });
 
   describe("POST /api/images", () => {
@@ -83,6 +95,7 @@ describe("/api/images", () => {
       expect(data.buildId).toBe("test-build-id");
       expect(data.alias).toBe("test-image-build");
       expect(data.imageId).toBeDefined();
+      expect(data.versionId).toBeDefined();
     });
 
     it("should reject missing dockerfile", async () => {

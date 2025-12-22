@@ -7,7 +7,9 @@ import { GET } from "../route";
 import { POST } from "../../../../route";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { images } from "../../../../../../../src/db/schema/image";
+import { scopes } from "../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { createUserScope } from "../../../../../../../src/lib/scope/scope-service";
 
 // Mock the auth module
 let mockUserId: string | null = "test-user-nested-builds";
@@ -63,6 +65,10 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
   beforeAll(async () => {
     initServices();
 
+    // Create scopes for test users (required for image builds)
+    await createUserScope(testUserId, `build-test-${Date.now()}`);
+    await createUserScope(testUserId2, `build-test2-${Date.now()}`);
+
     // Create an image for testing
     const createRequest = new NextRequest("http://localhost:3000/api/images", {
       method: "POST",
@@ -86,6 +92,13 @@ describe("GET /api/images/:imageId/builds/:buildId", () => {
     await globalThis.services.db
       .delete(images)
       .where(eq(images.userId, testUserId2));
+    // Cleanup: Delete test scopes
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.ownerId, testUserId2));
   });
 
   it("should return build status with logs", async () => {

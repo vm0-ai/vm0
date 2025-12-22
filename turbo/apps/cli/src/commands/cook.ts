@@ -431,7 +431,7 @@ export const cookCommand = new Command()
         console.log(chalk.blue("Pulling updated artifact..."));
 
         try {
-          await execVm0Command(["artifact", "pull"], {
+          await execVm0Command(["artifact", "pull", serverVersion], {
             cwd: artifactDir,
             silent: true,
           });

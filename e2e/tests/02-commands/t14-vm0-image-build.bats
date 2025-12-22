@@ -69,6 +69,10 @@ teardown() {
 # ============================================
 
 @test "vm0 image build submits build request successfully" {
+    # Ensure scope is set up (required for image building since scope feature)
+    run $CLI_COMMAND scope set "e2e-image-build" --force
+    assert_success
+
     # Submit build request with --delete-existing to test delete functionality
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
 

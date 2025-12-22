@@ -57,6 +57,7 @@ const router = tsr.router(imagesMainContract, {
         buildId: result.buildId,
         imageId: result.imageId,
         alias: result.alias,
+        versionId: result.versionId,
       },
     };
   },

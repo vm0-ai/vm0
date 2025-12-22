@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.16.1](https://github.com/vm0-ai/vm0/compare/cli-v4.16.0...cli-v4.16.1) (2025-12-21)
+
+
+### Bug Fixes
+
+* sandbox calls commit on deduplication to update HEAD ([#650](https://github.com/vm0-ai/vm0/issues/650)) ([51da31a](https://github.com/vm0-ai/vm0/commit/51da31a7bae1e431d7f3fd8b8cc04f0e951603f7))
+
+## [4.16.0](https://github.com/vm0-ai/vm0/compare/cli-v4.15.0...cli-v4.16.0) (2025-12-21)
+
+
+### Features
+
+* **image:** add versioning support with tag syntax ([#643](https://github.com/vm0-ai/vm0/issues/643)) ([761ce57](https://github.com/vm0-ai/vm0/commit/761ce5791aca56e96739db7513fd4e5a83065717))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 0.8.0
+
 ## [4.15.0](https://github.com/vm0-ai/vm0/compare/cli-v4.14.1...cli-v4.15.0) (2025-12-20)
 
 
