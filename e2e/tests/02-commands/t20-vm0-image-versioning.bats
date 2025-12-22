@@ -104,13 +104,9 @@ teardown() {
     local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.v1"
     local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.v2"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "version-1" > /tmp/version.txt
-USER user' > "$DOCKERFILE1"
+RUN echo "version-1" > /tmp/version.txt' > "$DOCKERFILE1"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "version-2" > /tmp/version.txt
-USER user' > "$DOCKERFILE2"
+RUN echo "version-2" > /tmp/version.txt' > "$DOCKERFILE2"
 
     # Build first version
     run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$MULTI_VER_IMAGE"
@@ -171,13 +167,9 @@ USER user' > "$DOCKERFILE2"
     local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.del1"
     local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.del2"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "delete-test-v1" > /tmp/version.txt
-USER user' > "$DOCKERFILE1"
+RUN echo "delete-test-v1" > /tmp/version.txt' > "$DOCKERFILE1"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "delete-test-v2" > /tmp/version.txt
-USER user' > "$DOCKERFILE2"
+RUN echo "delete-test-v2" > /tmp/version.txt' > "$DOCKERFILE2"
 
     # Build two different versions
     run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$TEST_IMAGE_NAME"
@@ -229,13 +221,9 @@ USER user' > "$DOCKERFILE2"
     local DOCKERFILE1="${TEST_TMP_DIR}/Dockerfile.latest1"
     local DOCKERFILE2="${TEST_TMP_DIR}/Dockerfile.latest2"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "latest-test-v1" > /tmp/version.txt
-USER user' > "$DOCKERFILE1"
+RUN echo "latest-test-v1" > /tmp/version.txt' > "$DOCKERFILE1"
     echo 'FROM e2bdev/code-interpreter:latest
-USER root
-RUN echo "latest-test-v2" > /tmp/version.txt
-USER user' > "$DOCKERFILE2"
+RUN echo "latest-test-v2" > /tmp/version.txt' > "$DOCKERFILE2"
 
     # Build two different versions
     run $CLI_COMMAND image build --file "$DOCKERFILE1" --name "$TEST_IMAGE_NAME"
