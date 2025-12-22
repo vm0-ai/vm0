@@ -12,8 +12,8 @@ import { expandVariablesInString } from "@vm0/core";
 /**
  * Fixed mount paths for system volumes
  */
-const SYSTEM_PROMPT_MOUNT_PATH = "/home/user/.config/claude";
-const SYSTEM_SKILLS_BASE_PATH = "/home/user/.config/claude/skills";
+const SYSTEM_PROMPT_MOUNT_PATH = "/home/user/.claude";
+const SYSTEM_SKILLS_BASE_PATH = "/home/user/.claude/skills";
 
 /**
  * Parse GitHub tree URL to extract skill name (last path segment)

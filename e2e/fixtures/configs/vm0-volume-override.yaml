@@ -7,7 +7,7 @@ agents:
     image: vm0-claude-code-dev
     volumes:
       - test-volume:/home/user/data
-      - claude-files:/home/user/.config/claude
+      - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
 
 volumes:

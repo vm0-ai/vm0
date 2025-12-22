@@ -195,7 +195,7 @@ export function calculateSessionHistoryPath(
 ): string {
   // Remove leading slash and replace all slashes with hyphens
   const projectName = workingDir.replace(/^\//, "").replace(/\//g, "-");
-  return `/home/user/.config/claude/projects/-${projectName}/${sessionId}.jsonl`;
+  return `/home/user/.claude/projects/-${projectName}/${sessionId}.jsonl`;
 }
 
 /**

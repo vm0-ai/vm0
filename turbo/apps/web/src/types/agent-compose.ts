@@ -31,13 +31,13 @@ export interface AgentDefinition {
   beta_network_security?: boolean;
   /**
    * Path to system prompt file (e.g., AGENTS.md).
-   * Auto-uploaded as volume and mounted at /home/user/.config/claude/CLAUDE.md
+   * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    * Beta feature: field name may change in future versions.
    */
   beta_system_prompt?: string;
   /**
    * Array of GitHub tree URLs for system skills.
-   * Each skill is auto-downloaded and mounted at /home/user/.config/claude/skills/{skillName}/
+   * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
    * Format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
    * Beta feature: field name may change in future versions.
    */

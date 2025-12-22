@@ -10,7 +10,7 @@ agents:
       TEST_VAR: "${{ vars.testVar }}"
       TEST_SECRET: "${{ secrets.TEST_SECRET }}"
     volumes:
-      - claude-files:/home/user/.config/claude
+      - claude-files:/home/user/.claude
 
 volumes:
   claude-files:
