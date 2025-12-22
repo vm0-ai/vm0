@@ -32,7 +32,7 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for cook command"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     volumes:
       - test-volume:/home/user/data
     working_dir: /home/user/workspace
@@ -109,7 +109,7 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       API_KEY: \${{ vars.E2E_TEST_API_KEY }}
@@ -152,7 +152,7 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       API_KEY: \${{ vars.E2E_TEST_VAR }}
@@ -183,7 +183,7 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       EXISTING_VAR: \${{ vars.EXISTING_VAR }}

@@ -1,5 +1,25 @@
 # Changelog
 
+## [6.1.0](https://github.com/vm0-ai/vm0/compare/web-v6.0.1...web-v6.1.0) (2025-12-22)
+
+
+### Features
+
+* add dynamic skills page with local logo assets ([#667](https://github.com/vm0-ai/vm0/issues/667)) ([a0112e8](https://github.com/vm0-ai/vm0/commit/a0112e89c87aa6f24e437d74444f1b7d62c4a8d9))
+* **image:** enforce lowercase image names for Docker compatibility ([#662](https://github.com/vm0-ai/vm0/issues/662)) ([7a6f5ff](https://github.com/vm0-ai/vm0/commit/7a6f5fffb0d517d853e2bd272534a868b0875837))
+
+
+### Bug Fixes
+
+* prevent duplicate "not found" in error messages ([#666](https://github.com/vm0-ai/vm0/issues/666)) ([cd472af](https://github.com/vm0-ai/vm0/commit/cd472af752f28a055682e337918a354e2c9b6502))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.1.0
+
 ## [6.0.1](https://github.com/vm0-ai/vm0/compare/web-v6.0.0...web-v6.0.1) (2025-12-22)
 
 

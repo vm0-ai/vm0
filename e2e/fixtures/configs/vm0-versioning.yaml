@@ -4,5 +4,5 @@ agents:
   vm0-versioning:
     description: "Test agent for version testing"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace

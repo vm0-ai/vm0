@@ -4,7 +4,7 @@ agents:
   vm0-template-validation:
     description: "Test agent for template variable validation"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     volumes:
       - user-data:/home/user/data

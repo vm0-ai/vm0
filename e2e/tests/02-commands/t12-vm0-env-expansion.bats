@@ -202,7 +202,7 @@ agents:
   multi-secrets:
     description: "Test agent with multiple secrets"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       SECRET_A: "\${{ secrets.SECRET_A }}"

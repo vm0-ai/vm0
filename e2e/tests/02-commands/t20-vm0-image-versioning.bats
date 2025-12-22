@@ -35,8 +35,7 @@ teardown() {
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
 
     assert_success
-    # Should show the @scope/name:version format
-    assert_output --partial "@"
+    # Should show the scope/name:version format
     assert_output --partial "/"
     assert_output --partial ":"
     # Should show success message

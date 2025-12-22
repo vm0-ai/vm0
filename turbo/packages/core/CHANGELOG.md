@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/core-v1.0.0...core-v1.1.0) (2025-12-22)
+
+
+### Features
+
+* **image:** enforce lowercase image names for Docker compatibility ([#662](https://github.com/vm0-ai/vm0/issues/662)) ([7a6f5ff](https://github.com/vm0-ai/vm0/commit/7a6f5fffb0d517d853e2bd272534a868b0875837))
+
 ## [1.0.0](https://github.com/vm0-ai/vm0/compare/core-v0.8.0...core-v1.0.0) (2025-12-22)
 
 

@@ -56,15 +56,15 @@ export function generateE2bAlias(userId: string, alias: string): string {
 
 /**
  * Check if an image alias is a system template
- * Supports both legacy (vm0-*) and new (@vm0/...) formats
+ * Supports both legacy (vm0-*) and new (vm0/...) formats
  */
 export function isSystemTemplate(alias: string): boolean {
   // Legacy vm0-* format
   if (isLegacySystemTemplate(alias)) {
     return true;
   }
-  // New @vm0/... format (system scope)
-  if (alias.startsWith("@vm0/")) {
+  // New vm0/... format (system scope)
+  if (alias.startsWith("vm0/")) {
     return true;
   }
   return false;
@@ -455,8 +455,8 @@ export async function getImageByBuildId(buildId: string) {
  * Resolve an image alias to E2B template name
  * Supports multiple formats with optional tag:
  * - Legacy vm0-* prefix: passthrough directly (system templates, deprecated)
- * - @vm0/name[:tag] format: system scope with special handling
- * - @scope/name[:tag] format: explicit scope resolution with optional tag
+ * - vm0/name[:tag] format: system scope with special handling
+ * - scope/name[:tag] format: explicit scope resolution with optional tag
  * - name[:tag]: implicit scope (user's scope) with optional tag
  *
  * Tag resolution:
@@ -483,7 +483,7 @@ export async function resolveImageAlias(
     return { templateName: ref.name, isUserImage: false };
   }
 
-  // 2. System scope (@vm0/...) - special handling
+  // 2. System scope (vm0/...) - special handling
   if (ref.scope && isSystemScope(ref.scope)) {
     try {
       const { e2bTemplate } = resolveSystemImageToE2b(ref.name, ref.tag);
@@ -500,12 +500,12 @@ export async function resolveImageAlias(
   const scope = ref.scope ? await getScopeBySlug(ref.scope) : userScope;
 
   if (!scope) {
-    throw new NotFoundError(`Scope "@${ref.scope}" not found`);
+    throw new NotFoundError(`Scope "${ref.scope}" not found`);
   }
 
   // 4. Resolve version based on tag
   let image;
-  const refDisplay = ref.scope ? `@${ref.scope}/${ref.name}` : ref.name;
+  const refDisplay = ref.scope ? `${ref.scope}/${ref.name}` : ref.name;
 
   if (!ref.tag || ref.tag === "latest") {
     // Resolve :latest or no tag to most recent ready version

@@ -62,7 +62,7 @@ describe("Image Service", () => {
     });
   });
 
-  describe("resolveImageAlias with @scope/name and tags", () => {
+  describe("resolveImageAlias with scope/name and tags", () => {
     const testUserId = "test-image-resolve-user";
     const testScopeSlug = `img-test-${Date.now()}`;
     let testScopeId: string;
@@ -125,10 +125,10 @@ describe("Image Service", () => {
         .where(eq(scopes.ownerId, testUserId));
     });
 
-    it("should resolve @scope/name to latest version", async () => {
+    it("should resolve scope/name to latest version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image`,
+        `${testScopeSlug}/test-image`,
       );
       // Should resolve to the newer version (v2)
       expect(result.templateName).toContain(testVersionId2);
@@ -136,19 +136,19 @@ describe("Image Service", () => {
       expect(result.versionId).toBe(testVersionId2);
     });
 
-    it("should resolve @scope/name:latest to latest version", async () => {
+    it("should resolve scope/name:latest to latest version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image:latest`,
+        `${testScopeSlug}/test-image:latest`,
       );
       expect(result.templateName).toContain(testVersionId2);
       expect(result.versionId).toBe(testVersionId2);
     });
 
-    it("should resolve @scope/name:versionId to specific version", async () => {
+    it("should resolve scope/name:versionId to specific version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image:${testVersionId1}`,
+        `${testScopeSlug}/test-image:${testVersionId1}`,
       );
       expect(result.templateName).toContain(testVersionId1);
       expect(result.versionId).toBe(testVersionId1);
@@ -156,13 +156,13 @@ describe("Image Service", () => {
 
     it("should throw NotFoundError for non-existent scope", async () => {
       await expect(
-        resolveImageAlias(testUserId, "@nonexistent-scope/test-image"),
-      ).rejects.toThrow('Scope "@nonexistent-scope" not found');
+        resolveImageAlias(testUserId, "nonexistent-scope/test-image"),
+      ).rejects.toThrow('Scope "nonexistent-scope" not found');
     });
 
     it("should throw NotFoundError for non-existent image in scope", async () => {
       await expect(
-        resolveImageAlias(testUserId, `@${testScopeSlug}/nonexistent`),
+        resolveImageAlias(testUserId, `${testScopeSlug}/nonexistent`),
       ).rejects.toThrow(`not found`);
     });
 
@@ -170,7 +170,7 @@ describe("Image Service", () => {
       await expect(
         resolveImageAlias(
           testUserId,
-          `@${testScopeSlug}/test-image:nonexistent`,
+          `${testScopeSlug}/test-image:nonexistent`,
         ),
       ).rejects.toThrow("not found");
     });
@@ -179,7 +179,7 @@ describe("Image Service", () => {
       await expect(
         resolveImageAlias(
           testUserId,
-          `@${testScopeSlug}/building-image:build001`,
+          `${testScopeSlug}/building-image:build001`,
         ),
       ).rejects.toThrow("not ready");
     });
