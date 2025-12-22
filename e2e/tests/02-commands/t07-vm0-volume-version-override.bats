@@ -38,7 +38,7 @@ agents:
   vm0-volume-override:
     description: "Test agent with volume for override testing"
     provider: claude-code
-    image: "@vm0/claude-code:dev"
+    image: "vm0/claude-code:dev"
     volumes:
       - test-volume:/home/user/data
       - claude-files:/home/user/.config/claude
