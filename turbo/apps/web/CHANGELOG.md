@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.4.0](https://github.com/vm0-ai/vm0/compare/web-v6.3.2...web-v6.4.0) (2025-12-23)
+
+
+### Features
+
+* add auto-fetch and multilingual support for cookbooks and skills ([#696](https://github.com/vm0-ai/vm0/issues/696)) ([a331bc9](https://github.com/vm0-ai/vm0/commit/a331bc92e5153b9f7214c400c0e82f82a7918c19))
+
 ## [6.3.2](https://github.com/vm0-ai/vm0/compare/web-v6.3.1...web-v6.3.2) (2025-12-23)
 
 
