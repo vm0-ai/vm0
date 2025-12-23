@@ -5,51 +5,51 @@ import {
   parseGitHubTreeUrl,
   downloadGitHubSkill,
   getSkillStorageName,
-  getSystemPromptStorageName,
+  getInstructionsStorageName,
   validateSkillDirectory,
 } from "./github-skills";
 import { directUpload } from "./direct-upload";
 
-export interface SystemStorageUploadResult {
+export interface StorageUploadResult {
   name: string;
   versionId: string;
   action: "created" | "deduplicated";
 }
 
 /**
- * Upload system prompt file as a volume
+ * Upload instructions file as a volume
  *
  * @param agentName - Name of the agent (used for storage name)
- * @param promptFilePath - Path to the system prompt file (AGENTS.md)
+ * @param instructionsFilePath - Path to the instructions file (e.g., AGENTS.md)
  * @param basePath - Base path for resolving relative paths
  * @returns Upload result with storage name and version
  */
-export async function uploadSystemPrompt(
+export async function uploadInstructions(
   agentName: string,
-  promptFilePath: string,
+  instructionsFilePath: string,
   basePath: string,
-): Promise<SystemStorageUploadResult> {
-  const storageName = getSystemPromptStorageName(agentName);
+): Promise<StorageUploadResult> {
+  const storageName = getInstructionsStorageName(agentName);
 
   // Resolve file path relative to base path
-  const absolutePath = path.isAbsolute(promptFilePath)
-    ? promptFilePath
-    : path.join(basePath, promptFilePath);
+  const absolutePath = path.isAbsolute(instructionsFilePath)
+    ? instructionsFilePath
+    : path.join(basePath, instructionsFilePath);
 
-  // Read the prompt file
+  // Read the instructions file
   const content = await fs.readFile(absolutePath, "utf8");
 
   // Create a temporary directory with the file
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-prompt-"));
-  const promptDir = path.join(tmpDir, "prompt");
-  await fs.mkdir(promptDir);
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-instructions-"));
+  const instructionsDir = path.join(tmpDir, "instructions");
+  await fs.mkdir(instructionsDir);
 
-  // Write file as CLAUDE.md (the canonical name for Claude Code system prompts)
-  await fs.writeFile(path.join(promptDir, "CLAUDE.md"), content);
+  // Write file as CLAUDE.md (the canonical name for Claude Code instructions)
+  await fs.writeFile(path.join(instructionsDir, "CLAUDE.md"), content);
 
   try {
     // Use direct upload (bypasses Vercel 4.5MB limit)
-    const result = await directUpload(storageName, "volume", promptDir);
+    const result = await directUpload(storageName, "volume", instructionsDir);
 
     return {
       name: storageName,
@@ -68,9 +68,9 @@ export async function uploadSystemPrompt(
  * @param skillUrl - GitHub tree URL for the skill
  * @returns Upload result with storage name and version
  */
-export async function uploadSystemSkill(
+export async function uploadSkill(
   skillUrl: string,
-): Promise<SystemStorageUploadResult> {
+): Promise<StorageUploadResult> {
   const parsed = parseGitHubTreeUrl(skillUrl);
   const storageName = getSkillStorageName(parsed);
 
