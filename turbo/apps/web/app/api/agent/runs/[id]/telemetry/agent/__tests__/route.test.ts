@@ -468,4 +468,138 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.events[0].eventData).toEqual(complexEventData);
     });
   });
+
+  describe("Provider Field", () => {
+    it("should return default provider 'claude-code' for compose without provider", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.provider).toBe("claude-code");
+    });
+
+    it("should return 'codex' provider when compose has codex provider", async () => {
+      // Create a compose with codex provider
+      const codexComposeId = randomUUID();
+      const codexVersionId =
+        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+      const codexRunId = randomUUID();
+
+      await globalThis.services.db.insert(agentComposes).values({
+        id: codexComposeId,
+        userId: testUserId,
+        name: "codex-agent",
+        headVersionId: codexVersionId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await globalThis.services.db.insert(agentComposeVersions).values({
+        id: codexVersionId,
+        composeId: codexComposeId,
+        content: {
+          agent: {
+            provider: "codex",
+            model: "codex",
+          },
+        },
+        createdBy: testUserId,
+        createdAt: new Date(),
+      });
+
+      await globalThis.services.db.insert(agentRuns).values({
+        id: codexRunId,
+        userId: testUserId,
+        agentComposeVersionId: codexVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        createdAt: new Date(),
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${codexRunId}/telemetry/agent`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.provider).toBe("codex");
+
+      // Clean up
+      await globalThis.services.db
+        .delete(agentRuns)
+        .where(eq(agentRuns.id, codexRunId));
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, codexVersionId));
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, codexComposeId));
+    });
+
+    it("should return explicit provider from compose configuration", async () => {
+      // Create a compose with explicit claude-code provider
+      const explicitComposeId = randomUUID();
+      const explicitVersionId =
+        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+      const explicitRunId = randomUUID();
+
+      await globalThis.services.db.insert(agentComposes).values({
+        id: explicitComposeId,
+        userId: testUserId,
+        name: "explicit-agent",
+        headVersionId: explicitVersionId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await globalThis.services.db.insert(agentComposeVersions).values({
+        id: explicitVersionId,
+        composeId: explicitComposeId,
+        content: {
+          agent: {
+            provider: "claude-code",
+            model: "claude-3-5-sonnet-20241022",
+          },
+        },
+        createdBy: testUserId,
+        createdAt: new Date(),
+      });
+
+      await globalThis.services.db.insert(agentRuns).values({
+        id: explicitRunId,
+        userId: testUserId,
+        agentComposeVersionId: explicitVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        createdAt: new Date(),
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${explicitRunId}/telemetry/agent`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.provider).toBe("claude-code");
+
+      // Clean up
+      await globalThis.services.db
+        .delete(agentRuns)
+        .where(eq(agentRuns.id, explicitRunId));
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, explicitVersionId));
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, explicitComposeId));
+    });
+  });
 });

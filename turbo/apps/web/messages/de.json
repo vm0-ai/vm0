@@ -146,7 +146,50 @@
       "110-startup-portrait": {
         "name": "Startup-Portrait",
         "description": "Erstellen Sie umfassende Startup-Analyseberichte mit Marktgrößenbestimmung und Wettbewerbspositionierung."
+      },
+      "111-daily-data-report": {
+        "name": "Täglicher Datenbericht",
+        "description": "Generieren Sie umfassende tägliche Berichte, die Daten von GitHub, Plausible Analytics und anderen Quellen aggregieren."
+      },
+      "201-intro-skills": {
+        "name": "Einführung in Skills",
+        "description": "Entdecken Sie, wie Sie Agentenfähigkeiten mit vorgefertigten Skills und benutzerdefinierten Integrationen erweitern können."
       }
+    }
+  },
+  "skills": {
+    "hero": {
+      "title": "Vorgefertigte Skills",
+      "description": "Erweitern Sie Ihre Agenten mit 54+ vorgefertigten Integrationen. Verbinden Sie sich mit beliebten Diensten und APIs ohne Konfiguration."
+    },
+    "search": {
+      "placeholder": "Skills durchsuchen...",
+      "allCategories": "Alle Kategorien",
+      "showing": "Zeige alle",
+      "found": "Gefunden",
+      "results": "Skills",
+      "noResults": "Keine Skills gefunden, die Ihren Kriterien entsprechen"
+    },
+    "viewDocs": "Dokumentation ansehen",
+    "cta": {
+      "title": "Können Sie nicht finden, was Sie brauchen?",
+      "subtitle": "Fordern Sie eine neue Skill an oder tragen Sie zu unserer Open-Source-Sammlung bei",
+      "requestSkill": "Skill anfordern",
+      "contribute": "Auf GitHub beitragen"
+    },
+    "categories": {
+      "Communication": "Kommunikation",
+      "Search": "Suche",
+      "Web Scraping": "Web Scraping",
+      "Development": "Entwicklung",
+      "Cloud Storage": "Cloud-Speicher",
+      "AI & Media": "KI & Medien",
+      "Productivity": "Produktivität",
+      "Documents": "Dokumente",
+      "Analytics": "Analytik",
+      "Content": "Inhalt",
+      "Utilities": "Dienstprogramme",
+      "Other": "Sonstiges"
     }
   }
 }

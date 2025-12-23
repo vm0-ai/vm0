@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/vm0-ai/vm0/compare/core-v1.3.0...core-v1.3.1) (2025-12-23)
+
+
+### Bug Fixes
+
+* return provider in events APIs for correct rendering ([#697](https://github.com/vm0-ai/vm0/issues/697)) ([c72c9d7](https://github.com/vm0-ai/vm0/commit/c72c9d7d90792ffffde7f92737dfdbe022052a99))
+
 ## [1.3.0](https://github.com/vm0-ai/vm0/compare/core-v1.2.0...core-v1.3.0) (2025-12-23)
 
 

@@ -110,6 +110,7 @@ const eventsResponseSchema = z.object({
   hasMore: z.boolean(),
   nextSequence: z.number(),
   run: runStateSchema,
+  provider: z.string(),
 });
 
 /**
@@ -220,6 +221,7 @@ const metricsResponseSchema = z.object({
 const agentEventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
+  provider: z.string(),
 });
 
 /**

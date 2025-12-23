@@ -4,11 +4,11 @@ import SkillsClient from "./SkillsClient";
 export const metadata: Metadata = {
   title: "VM0 Agent Skills - Pre-built Integrations",
   description:
-    "Explore our comprehensive collection of pre-built skills for AI agents. Connect to 50+ services including Slack, GitHub, Notion, and more.",
+    "Explore our comprehensive collection of 54+ pre-built skills for AI agents. Connect to services including Slack, GitHub, Notion, Discord, Linear, and more.",
   openGraph: {
     title: "VM0 Agent Skills - Pre-built Integrations",
     description:
-      "Explore our comprehensive collection of pre-built skills for AI agents.",
+      "Explore our comprehensive collection of 54+ pre-built skills for AI agents.",
     type: "website",
   },
 };
@@ -28,7 +28,7 @@ async function getSkills(): Promise<SkillMetadata[]> {
   try {
     // Import the API handler directly for server-side rendering
     // This avoids issues with VERCEL_URL vs custom domain
-    const { GET } = await import("../../api/skills/route");
+    const { GET } = await import("../../api/web/skills/route");
     const response = await GET();
     const data = await response.json();
     return data.skills || [];

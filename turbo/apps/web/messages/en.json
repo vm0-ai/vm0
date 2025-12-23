@@ -146,7 +146,50 @@
       "110-startup-portrait": {
         "name": "Startup Portrait",
         "description": "Generate comprehensive startup analysis reports with market sizing and competitive positioning."
+      },
+      "111-daily-data-report": {
+        "name": "Daily Data Report",
+        "description": "Generate comprehensive daily reports aggregating data from GitHub, Plausible analytics, and other sources."
+      },
+      "201-intro-skills": {
+        "name": "Introduction to Skills",
+        "description": "Discover how to extend agent capabilities with pre-built skills and custom integrations."
       }
+    }
+  },
+  "skills": {
+    "hero": {
+      "title": "Pre-built Skills",
+      "description": "Extend your agents with 54+ pre-built integrations. Connect to popular services and APIs with zero configuration."
+    },
+    "search": {
+      "placeholder": "Search skills...",
+      "allCategories": "All Categories",
+      "showing": "Showing all",
+      "found": "Found",
+      "results": "skills",
+      "noResults": "No skills found matching your criteria"
+    },
+    "viewDocs": "View documentation",
+    "cta": {
+      "title": "Can't find what you need?",
+      "subtitle": "Request a new skill or contribute to our open-source collection",
+      "requestSkill": "Request a Skill",
+      "contribute": "Contribute on GitHub"
+    },
+    "categories": {
+      "Communication": "Communication",
+      "Search": "Search",
+      "Web Scraping": "Web Scraping",
+      "Development": "Development",
+      "Cloud Storage": "Cloud Storage",
+      "AI & Media": "AI & Media",
+      "Productivity": "Productivity",
+      "Documents": "Documents",
+      "Analytics": "Analytics",
+      "Content": "Content",
+      "Utilities": "Utilities",
+      "Other": "Other"
     }
   }
 }

@@ -1,5 +1,33 @@
 # Changelog
 
+## [6.4.0](https://github.com/vm0-ai/vm0/compare/web-v6.3.2...web-v6.4.0) (2025-12-23)
+
+
+### Features
+
+* add auto-fetch and multilingual support for cookbooks and skills ([#696](https://github.com/vm0-ai/vm0/issues/696)) ([a331bc9](https://github.com/vm0-ai/vm0/commit/a331bc92e5153b9f7214c400c0e82f82a7918c19))
+
+## [6.3.2](https://github.com/vm0-ai/vm0/compare/web-v6.3.1...web-v6.3.2) (2025-12-23)
+
+
+### Bug Fixes
+
+* return provider in events APIs for correct rendering ([#697](https://github.com/vm0-ai/vm0/issues/697)) ([c72c9d7](https://github.com/vm0-ai/vm0/commit/c72c9d7d90792ffffde7f92737dfdbe022052a99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.1
+
+## [6.3.1](https://github.com/vm0-ai/vm0/compare/web-v6.3.0...web-v6.3.1) (2025-12-23)
+
+
+### Performance Improvements
+
+* **web:** optimize images and enhance seo ([#693](https://github.com/vm0-ai/vm0/issues/693)) ([769dc3a](https://github.com/vm0-ai/vm0/commit/769dc3a4af24d72d6c7e5839b2c8d560dda34a0d))
+
 ## [6.3.0](https://github.com/vm0-ai/vm0/compare/web-v6.2.0...web-v6.3.0) (2025-12-23)
 
 

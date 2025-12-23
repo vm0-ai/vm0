@@ -93,6 +93,8 @@ export interface GetEventsResponse {
   nextSequence: number;
   /** Run state information (replaces previous vm0_* events) */
   run: RunState;
+  /** Provider type from compose configuration */
+  provider: string;
 }
 
 export interface GetComposeVersionResponse {
@@ -134,6 +136,8 @@ export interface RunEvent {
 export interface GetAgentEventsResponse {
   events: RunEvent[];
   hasMore: boolean;
+  /** Provider type from compose configuration */
+  provider: string;
 }
 
 export interface NetworkLogEntry {

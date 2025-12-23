@@ -4,6 +4,7 @@ import { runEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
+import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { eq, gt, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import type {
@@ -28,14 +29,25 @@ const router = tsr.router(runEventsContract, {
 
     const { since, limit } = query;
 
-    // Verify run exists and belongs to user
-    const [run] = await globalThis.services.db
-      .select()
+    // Verify run exists and belongs to user, join with compose version to get provider
+    const [runWithCompose] = await globalThis.services.db
+      .select({
+        id: agentRuns.id,
+        userId: agentRuns.userId,
+        status: agentRuns.status,
+        result: agentRuns.result,
+        error: agentRuns.error,
+        composeContent: agentComposeVersions.content,
+      })
       .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
       .where(eq(agentRuns.id, params.id))
       .limit(1);
 
-    if (!run || run.userId !== userId) {
+    if (!runWithCompose || runWithCompose.userId !== userId) {
       return {
         status: 404 as const,
         body: {
@@ -43,6 +55,12 @@ const router = tsr.router(runEventsContract, {
         },
       };
     }
+
+    // Extract provider from compose content
+    const composeContent = runWithCompose.composeContent as {
+      agent?: { provider?: string };
+    } | null;
+    const provider = composeContent?.agent?.provider ?? "claude-code";
 
     // Query events from database (only agent events, no vm0_* events)
     const events = await globalThis.services.db
@@ -64,17 +82,17 @@ const router = tsr.router(runEventsContract, {
 
     // Build run state from run record
     const runState: RunState = {
-      status: run.status as RunStatus,
+      status: runWithCompose.status as RunStatus,
     };
 
     // Include result if completed
-    if (run.status === "completed" && run.result) {
-      runState.result = run.result as RunResult;
+    if (runWithCompose.status === "completed" && runWithCompose.result) {
+      runState.result = runWithCompose.result as RunResult;
     }
 
     // Include error if failed
-    if (run.status === "failed" && run.error) {
-      runState.error = run.error;
+    if (runWithCompose.status === "failed" && runWithCompose.error) {
+      runState.error = runWithCompose.error;
     }
 
     return {
@@ -89,6 +107,7 @@ const router = tsr.router(runEventsContract, {
         hasMore,
         nextSequence,
         run: runState,
+        provider,
       },
     };
   },

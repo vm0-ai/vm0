@@ -146,7 +146,50 @@
       "110-startup-portrait": {
         "name": "スタートアップポートレート",
         "description": "市場規模測定と競争上のポジショニングを含む包括的なスタートアップ分析レポートを生成。"
+      },
+      "111-daily-data-report": {
+        "name": "日次データレポート",
+        "description": "GitHub、Plausible Analytics、その他のソースからデータを集約した包括的な日次レポートを生成。"
+      },
+      "201-intro-skills": {
+        "name": "スキル入門",
+        "description": "事前構築されたスキルとカスタム統合でエージェント機能を拡張する方法を学ぶ。"
       }
+    }
+  },
+  "skills": {
+    "hero": {
+      "title": "事前構築スキル",
+      "description": "54以上の事前構築統合でエージェントを拡張。設定不要で人気のサービスやAPIに接続。"
+    },
+    "search": {
+      "placeholder": "スキルを検索...",
+      "allCategories": "すべてのカテゴリー",
+      "showing": "すべて表示",
+      "found": "見つかりました",
+      "results": "スキル",
+      "noResults": "条件に一致するスキルが見つかりませんでした"
+    },
+    "viewDocs": "ドキュメントを見る",
+    "cta": {
+      "title": "お探しのものが見つかりませんか？",
+      "subtitle": "新しいスキルをリクエストするか、オープンソースコレクションに貢献してください",
+      "requestSkill": "スキルをリクエスト",
+      "contribute": "GitHubで貢献"
+    },
+    "categories": {
+      "Communication": "コミュニケーション",
+      "Search": "検索",
+      "Web Scraping": "Webスクレイピング",
+      "Development": "開発",
+      "Cloud Storage": "クラウドストレージ",
+      "AI & Media": "AIとメディア",
+      "Productivity": "生産性",
+      "Documents": "ドキュメント",
+      "Analytics": "分析",
+      "Content": "コンテンツ",
+      "Utilities": "ユーティリティ",
+      "Other": "その他"
     }
   }
 }

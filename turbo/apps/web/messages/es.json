@@ -146,7 +146,50 @@
       "110-startup-portrait": {
         "name": "Retrato de Startup",
         "description": "Genera informes completos de análisis de startups con dimensionamiento de mercado y posicionamiento competitivo."
+      },
+      "111-daily-data-report": {
+        "name": "Informe Diario de Datos",
+        "description": "Genera informes diarios completos que agregan datos de GitHub, Plausible Analytics y otras fuentes."
+      },
+      "201-intro-skills": {
+        "name": "Introducción a Skills",
+        "description": "Descubre cómo extender las capacidades de los agentes con skills predefinidas e integraciones personalizadas."
       }
+    }
+  },
+  "skills": {
+    "hero": {
+      "title": "Skills Predefinidas",
+      "description": "Extiende tus agentes con 54+ integraciones predefinidas. Conéctate a servicios y APIs populares sin configuración."
+    },
+    "search": {
+      "placeholder": "Buscar skills...",
+      "allCategories": "Todas las Categorías",
+      "showing": "Mostrando todas",
+      "found": "Encontrado",
+      "results": "skills",
+      "noResults": "No se encontraron skills que coincidan con tus criterios"
+    },
+    "viewDocs": "Ver documentación",
+    "cta": {
+      "title": "¿No encuentras lo que necesitas?",
+      "subtitle": "Solicita una nueva skill o contribuye a nuestra colección de código abierto",
+      "requestSkill": "Solicitar una Skill",
+      "contribute": "Contribuir en GitHub"
+    },
+    "categories": {
+      "Communication": "Comunicación",
+      "Search": "Búsqueda",
+      "Web Scraping": "Web Scraping",
+      "Development": "Desarrollo",
+      "Cloud Storage": "Almacenamiento en la Nube",
+      "AI & Media": "IA y Medios",
+      "Productivity": "Productividad",
+      "Documents": "Documentos",
+      "Analytics": "Analítica",
+      "Content": "Contenido",
+      "Utilities": "Utilidades",
+      "Other": "Otros"
     }
   }
 }
