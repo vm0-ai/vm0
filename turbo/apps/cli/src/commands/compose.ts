@@ -7,8 +7,8 @@ import { parse as parseYaml } from "yaml";
 import { getLegacySystemTemplateWarning } from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
-import { getProviderDefaults } from "../lib/provider-config";
-import { uploadSystemPrompt, uploadSystemSkill } from "../lib/system-storage";
+import { getProviderDefaults, getDefaultImage } from "../lib/provider-config";
+import { uploadInstructions, uploadSkill } from "../lib/system-storage";
 
 export const composeCommand = new Command()
   .name("compose")
@@ -65,10 +65,19 @@ export const composeCommand = new Command()
       const agent = agents[agentName]!;
       const basePath = dirname(configFile);
 
-      // Apply provider auto-configuration for working_dir if not explicitly set
+      // Apply provider auto-configuration for image and working_dir if not explicitly set
       if (agent.provider) {
         const defaults = getProviderDefaults(agent.provider as string);
         if (defaults) {
+          if (!agent.image) {
+            const defaultImage = getDefaultImage(agent.provider as string);
+            if (defaultImage) {
+              agent.image = defaultImage;
+              console.log(
+                chalk.gray(`  Auto-configured image: ${defaultImage}`),
+              );
+            }
+          }
           if (!agent.working_dir) {
             agent.working_dir = defaults.workingDir;
             console.log(
@@ -80,23 +89,23 @@ export const composeCommand = new Command()
         }
       }
 
-      // Upload beta_system_prompt if specified
-      if (agent.beta_system_prompt) {
-        const promptPath = agent.beta_system_prompt as string;
-        console.log(chalk.blue(`Uploading system prompt: ${promptPath}`));
+      // Upload instructions if specified
+      if (agent.instructions) {
+        const instructionsPath = agent.instructions as string;
+        console.log(chalk.blue(`Uploading instructions: ${instructionsPath}`));
         try {
-          const result = await uploadSystemPrompt(
+          const result = await uploadInstructions(
             agentName,
-            promptPath,
+            instructionsPath,
             basePath,
           );
           console.log(
             chalk.green(
-              `✓ System prompt ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
+              `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
             ),
           );
         } catch (error) {
-          console.error(chalk.red(`✗ Failed to upload system prompt`));
+          console.error(chalk.red(`✗ Failed to upload instructions`));
           if (error instanceof Error) {
             console.error(chalk.gray(`  ${error.message}`));
           }
@@ -104,16 +113,14 @@ export const composeCommand = new Command()
         }
       }
 
-      // Upload beta_system_skills if specified
-      if (agent.beta_system_skills && Array.isArray(agent.beta_system_skills)) {
-        const skillUrls = agent.beta_system_skills as string[];
-        console.log(
-          chalk.blue(`Uploading ${skillUrls.length} system skill(s)...`),
-        );
+      // Upload skills if specified
+      if (agent.skills && Array.isArray(agent.skills)) {
+        const skillUrls = agent.skills as string[];
+        console.log(chalk.blue(`Uploading ${skillUrls.length} skill(s)...`));
         for (const skillUrl of skillUrls) {
           try {
             console.log(chalk.gray(`  Downloading: ${skillUrl}`));
-            const result = await uploadSystemSkill(skillUrl);
+            const result = await uploadSkill(skillUrl);
             console.log(
               chalk.green(
                 `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,

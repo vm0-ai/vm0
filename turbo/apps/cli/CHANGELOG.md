@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.20.0](https://github.com/vm0-ai/vm0/compare/cli-v4.19.0...cli-v4.20.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** promote beta features to stable and add image auto-config ([#689](https://github.com/vm0-ai/vm0/issues/689)) ([76161b2](https://github.com/vm0-ai/vm0/commit/76161b2d6a982fafc9eb6fdf731d9b485f263b21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.2.0
+
 ## [4.19.0](https://github.com/vm0-ai/vm0/compare/cli-v4.18.0...cli-v4.19.0) (2025-12-23)
 
 

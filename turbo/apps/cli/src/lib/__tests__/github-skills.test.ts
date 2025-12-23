@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseGitHubTreeUrl,
   getSkillStorageName,
-  getSystemPromptStorageName,
+  getInstructionsStorageName,
 } from "../github-skills";
 
 describe("github-skills", () => {
@@ -73,7 +73,7 @@ describe("github-skills", () => {
       );
       const name = getSkillStorageName(parsed);
 
-      expect(name).toBe("system-skill@vm0-ai/vm0-skills/tree/main/github");
+      expect(name).toBe("agent-skills@vm0-ai/vm0-skills/tree/main/github");
     });
 
     it("should include full path for nested skills", () => {
@@ -83,20 +83,20 @@ describe("github-skills", () => {
       const name = getSkillStorageName(parsed);
 
       expect(name).toBe(
-        "system-skill@vm0-ai/vm0-skills/tree/v1.0/skills/notion",
+        "agent-skills@vm0-ai/vm0-skills/tree/v1.0/skills/notion",
       );
     });
   });
 
-  describe("getSystemPromptStorageName", () => {
+  describe("getInstructionsStorageName", () => {
     it("should generate storage name with @ format", () => {
-      const name = getSystemPromptStorageName("my-agent");
-      expect(name).toBe("system-prompt@my-agent");
+      const name = getInstructionsStorageName("my-agent");
+      expect(name).toBe("agent-instructions@my-agent");
     });
 
     it("should handle agent names with hyphens", () => {
-      const name = getSystemPromptStorageName("my-cool-agent-v2");
-      expect(name).toBe("system-prompt@my-cool-agent-v2");
+      const name = getInstructionsStorageName("my-cool-agent-v2");
+      expect(name).toBe("agent-instructions@my-cool-agent-v2");
     });
   });
 });

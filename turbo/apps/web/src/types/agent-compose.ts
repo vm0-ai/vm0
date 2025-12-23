@@ -17,7 +17,7 @@ export interface VolumeConfig {
  */
 export interface AgentDefinition {
   description?: string;
-  image: string;
+  image?: string; // Optional when provider supports auto-config
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   working_dir?: string; // Optional when provider supports auto-config
@@ -30,18 +30,16 @@ export interface AgentDefinition {
    */
   beta_network_security?: boolean;
   /**
-   * Path to system prompt file (e.g., AGENTS.md).
+   * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
-   * Beta feature: field name may change in future versions.
    */
-  beta_system_prompt?: string;
+  instructions?: string;
   /**
-   * Array of GitHub tree URLs for system skills.
+   * Array of GitHub tree URLs for agent skills.
    * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
    * Format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
-   * Beta feature: field name may change in future versions.
    */
-  beta_system_skills?: string[];
+  skills?: string[];
 }
 
 export interface AgentComposeYaml {

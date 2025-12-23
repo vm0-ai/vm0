@@ -1,11 +1,14 @@
 /**
- * Provider configuration for auto-resolving working_dir
+ * Provider configuration for auto-resolving working_dir and image
  * When a provider is specified, these defaults can be used if not explicitly set
- * Note: image is always required and must be explicitly configured
  */
 
 export interface ProviderDefaults {
   workingDir: string;
+  image: {
+    production: string;
+    development: string;
+  };
 }
 
 /**
@@ -14,6 +17,10 @@ export interface ProviderDefaults {
 const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
+    image: {
+      production: "vm0/claude-code:latest",
+      development: "vm0/claude-code:dev",
+    },
   },
 };
 
@@ -43,4 +50,19 @@ export function isProviderSupported(provider: string): boolean {
  */
 export function getSupportedProviders(): string[] {
   return Object.keys(PROVIDER_DEFAULTS);
+}
+
+/**
+ * Get the default image for a provider based on the current environment
+ * @param provider - The provider name
+ * @returns Default image string or undefined if provider is not recognized
+ */
+export function getDefaultImage(provider: string): string | undefined {
+  const defaults = PROVIDER_DEFAULTS[provider];
+  if (!defaults) return undefined;
+
+  // Only use production image when NODE_ENV is explicitly "production"
+  // All other cases (development, test, undefined) use dev image
+  const isProduction = process.env.NODE_ENV === "production";
+  return isProduction ? defaults.image.production : defaults.image.development;
 }
