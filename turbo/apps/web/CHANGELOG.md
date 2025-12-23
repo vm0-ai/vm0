@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.5.0](https://github.com/vm0-ai/vm0/compare/web-v6.4.0...web-v6.5.0) (2025-12-23)
+
+
+### Features
+
+* add blog.vm0.ai to sitemap with multilingual support ([#700](https://github.com/vm0-ai/vm0/issues/700)) ([d0b5359](https://github.com/vm0-ai/vm0/commit/d0b535940e26633ab509cf0fa7e9d9e1a0e47246))
+
 ## [6.4.0](https://github.com/vm0-ai/vm0/compare/web-v6.3.2...web-v6.4.0) (2025-12-23)
 
 
