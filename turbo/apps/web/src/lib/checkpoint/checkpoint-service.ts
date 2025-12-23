@@ -59,19 +59,43 @@ export class CheckpointService {
       `Creating conversation record for CLI agent: ${request.cliAgentType}`,
     );
 
-    // Create conversation record first
-    const [conversation] = await globalThis.services.db
-      .insert(conversations)
-      .values({
-        runId: request.runId,
-        cliAgentType: request.cliAgentType,
-        cliAgentSessionId: request.cliAgentSessionId,
-        cliAgentSessionHistory: request.cliAgentSessionHistory,
-      })
-      .returning();
+    // Check if conversation already exists for this run (e.g., from a retry)
+    const [existingConversation] = await globalThis.services.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.runId, request.runId))
+      .limit(1);
+
+    let conversation;
+    if (existingConversation) {
+      // Update existing conversation with new session data
+      log.debug(`Updating existing conversation for run ${request.runId}`);
+      const [updated] = await globalThis.services.db
+        .update(conversations)
+        .set({
+          cliAgentType: request.cliAgentType,
+          cliAgentSessionId: request.cliAgentSessionId,
+          cliAgentSessionHistory: request.cliAgentSessionHistory,
+        })
+        .where(eq(conversations.runId, request.runId))
+        .returning();
+      conversation = updated;
+    } else {
+      // Create new conversation record
+      const [inserted] = await globalThis.services.db
+        .insert(conversations)
+        .values({
+          runId: request.runId,
+          cliAgentType: request.cliAgentType,
+          cliAgentSessionId: request.cliAgentSessionId,
+          cliAgentSessionHistory: request.cliAgentSessionHistory,
+        })
+        .returning();
+      conversation = inserted;
+    }
 
     if (!conversation) {
-      throw new Error("Failed to create conversation record");
+      throw new Error("Failed to create/update conversation record");
     }
 
     log.debug(
@@ -86,30 +110,65 @@ export class CheckpointService {
       secrets: (run.secrets as Record<string, string>) || undefined,
     };
 
-    // Store checkpoint in database (artifactSnapshot may be undefined for runs without artifact)
-    const [checkpoint] = await globalThis.services.db
-      .insert(checkpoints)
-      .values({
-        runId: request.runId,
-        conversationId: conversation.id,
-        agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
-          string,
-          unknown
-        >,
-        artifactSnapshot: request.artifactSnapshot
-          ? (request.artifactSnapshot as unknown as Record<string, unknown>)
-          : null,
-        volumeVersionsSnapshot: request.volumeVersionsSnapshot
-          ? (request.volumeVersionsSnapshot as unknown as Record<
-              string,
-              unknown
-            >)
-          : null,
-      })
-      .returning();
+    // Check if checkpoint already exists for this run (e.g., from a retry)
+    const [existingCheckpoint] = await globalThis.services.db
+      .select()
+      .from(checkpoints)
+      .where(eq(checkpoints.runId, request.runId))
+      .limit(1);
+
+    let checkpoint;
+    if (existingCheckpoint) {
+      // Update existing checkpoint with new data
+      log.debug(`Updating existing checkpoint for run ${request.runId}`);
+      const [updated] = await globalThis.services.db
+        .update(checkpoints)
+        .set({
+          conversationId: conversation.id,
+          agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
+            string,
+            unknown
+          >,
+          artifactSnapshot: request.artifactSnapshot
+            ? (request.artifactSnapshot as unknown as Record<string, unknown>)
+            : null,
+          volumeVersionsSnapshot: request.volumeVersionsSnapshot
+            ? (request.volumeVersionsSnapshot as unknown as Record<
+                string,
+                unknown
+              >)
+            : null,
+        })
+        .where(eq(checkpoints.runId, request.runId))
+        .returning();
+      checkpoint = updated;
+    } else {
+      // Create new checkpoint record (artifactSnapshot may be undefined for runs without artifact)
+      const [inserted] = await globalThis.services.db
+        .insert(checkpoints)
+        .values({
+          runId: request.runId,
+          conversationId: conversation.id,
+          agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
+            string,
+            unknown
+          >,
+          artifactSnapshot: request.artifactSnapshot
+            ? (request.artifactSnapshot as unknown as Record<string, unknown>)
+            : null,
+          volumeVersionsSnapshot: request.volumeVersionsSnapshot
+            ? (request.volumeVersionsSnapshot as unknown as Record<
+                string,
+                unknown
+              >)
+            : null,
+        })
+        .returning();
+      checkpoint = inserted;
+    }
 
     if (!checkpoint) {
-      throw new Error("Failed to create checkpoint record");
+      throw new Error("Failed to create/update checkpoint record");
     }
 
     log.debug(`Checkpoint created successfully: ${checkpoint.id}`);

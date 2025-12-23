@@ -523,7 +523,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   // ============================================
 
   describe("Uniqueness", () => {
-    it("should prevent duplicate checkpoints for same run", async () => {
+    it("should handle duplicate checkpoint requests via upsert", async () => {
       // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -574,7 +574,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const response1 = await POST(request1);
       expect(response1.status).toBe(200);
 
-      // Second request - should fail due to unique constraint
+      // Second request - should succeed via upsert (update existing)
       const request2 = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -588,9 +588,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       );
 
       const response2 = await POST(request2);
-      expect(response2.status).toBe(500); // Database constraint violation
+      expect(response2.status).toBe(200); // Upsert handles duplicates gracefully
 
-      // Verify only one checkpoint exists
+      // Verify only one checkpoint exists (upsert maintains uniqueness)
       const savedCheckpoints = await globalThis.services.db
         .select()
         .from(checkpoints)

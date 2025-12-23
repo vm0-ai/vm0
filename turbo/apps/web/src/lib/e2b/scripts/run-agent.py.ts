@@ -31,7 +31,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     EVENT_ERROR_FLAG, HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
-    PROXY_ENABLED, validate_config
+    PROXY_ENABLED, CLI_AGENT_TYPE, OPENAI_MODEL, validate_config
 )
 from log import log_info, log_error, log_warn
 from events import send_event
@@ -147,6 +147,32 @@ def _run() -> tuple[int, str]:
     except OSError as e:
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
 
+    # Set up Codex configuration if using Codex CLI
+    # Claude Code uses ~/.claude by default (no configuration needed)
+    if CLI_AGENT_TYPE == "codex":
+        home_dir = os.environ.get("HOME", "/home/user")
+        # Codex uses ~/.codex for configuration and session storage
+        codex_home = f"{home_dir}/.codex"
+        os.makedirs(codex_home, exist_ok=True)
+        os.environ["CODEX_HOME"] = codex_home
+        log_info(f"Codex home directory: {codex_home}")
+
+        # Login with API key via stdin (recommended method)
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if api_key:
+            result = subprocess.run(
+                ["codex", "login", "--with-api-key"],
+                input=api_key,
+                text=True,
+                capture_output=True
+            )
+            if result.returncode == 0:
+                log_info("Codex authenticated with API key")
+            else:
+                log_error(f"Codex login failed: {result.stderr}")
+        else:
+            log_error("OPENAI_API_KEY not set")
+
     init_duration = int(time.time() - init_start_time)
     log_info(f"✓ Initialization complete ({init_duration}s)")
 
@@ -154,37 +180,73 @@ def _run() -> tuple[int, str]:
     log_info("▷ Execution")
     exec_start_time = time.time()
 
-    # Execute Claude Code with JSONL output
-    log_info("Starting Claude Code execution...")
+    # Execute CLI agent with JSONL output
+    log_info(f"Starting {CLI_AGENT_TYPE} execution...")
     log_info(f"Prompt: {PROMPT}")
 
-    # Build Claude command - unified for both new and resume sessions
-    claude_args = [
-        "--print", "--verbose",
-        "--output-format", "stream-json",
-        "--dangerously-skip-permissions"
-    ]
-
-    if RESUME_SESSION_ID:
-        log_info(f"Resuming session: {RESUME_SESSION_ID}")
-        claude_args.extend(["--resume", RESUME_SESSION_ID])
-    else:
-        log_info("Starting new session")
-
-    # Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
+    # Build command based on CLI agent type
     use_mock = os.environ.get("USE_MOCK_CLAUDE") == "true"
-    if use_mock:
-        claude_bin = "/usr/local/bin/vm0-agent/lib/mock_claude.py"
-        log_info("Using mock-claude for testing")
+
+    if CLI_AGENT_TYPE == "codex":
+        # Build Codex command
+        if use_mock:
+            # Mock mode not yet supported for Codex
+            raise RuntimeError("Mock mode not supported for Codex")
+
+        if RESUME_SESSION_ID:
+            # Codex resume uses subcommand: codex exec resume <session_id> <prompt>
+            log_info(f"Resuming session: {RESUME_SESSION_ID}")
+            codex_args = [
+                "exec",
+                "--json",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "-C", WORKING_DIR,
+            ]
+            if OPENAI_MODEL:
+                codex_args.extend(["-m", OPENAI_MODEL])
+            codex_args.extend(["resume", RESUME_SESSION_ID, PROMPT])
+            cmd = ["codex"] + codex_args
+        else:
+            log_info("Starting new session")
+            codex_args = [
+                "exec",
+                "--json",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "-C", WORKING_DIR,
+            ]
+            if OPENAI_MODEL:
+                log_info(f"Using model: {OPENAI_MODEL}")
+                codex_args.extend(["-m", OPENAI_MODEL])
+            cmd = ["codex"] + codex_args + [PROMPT]
     else:
-        claude_bin = "claude"
+        # Build Claude command - unified for both new and resume sessions
+        claude_args = [
+            "--print", "--verbose",
+            "--output-format", "stream-json",
+            "--dangerously-skip-permissions"
+        ]
 
-    # Build full command
-    cmd = [claude_bin] + claude_args + [PROMPT]
+        if RESUME_SESSION_ID:
+            log_info(f"Resuming session: {RESUME_SESSION_ID}")
+            claude_args.extend(["--resume", RESUME_SESSION_ID])
+        else:
+            log_info("Starting new session")
 
-    # Execute Claude and process output stream
+        # Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
+        if use_mock:
+            claude_bin = "/usr/local/bin/vm0-agent/lib/mock_claude.py"
+            log_info("Using mock-claude for testing")
+        else:
+            claude_bin = "claude"
+
+        # Build full command
+        cmd = [claude_bin] + claude_args + [PROMPT]
+
+    # Execute CLI agent and process output stream
     # Capture both stdout and stderr, write to log file, keep stderr in memory for error extraction
-    claude_exit_code = 0
+    agent_exit_code = 0
     stderr_lines = []  # Keep stderr in memory for error message extraction
     log_file = None
 
@@ -250,11 +312,11 @@ def _run() -> tuple[int, str]:
         proc.wait()
         # Wait for stderr thread to finish (with timeout to avoid hanging)
         stderr_thread.join(timeout=10)
-        claude_exit_code = proc.returncode
+        agent_exit_code = proc.returncode
 
     except Exception as e:
-        log_error(f"Failed to execute Claude: {e}")
-        claude_exit_code = 1
+        log_error(f"Failed to execute {CLI_AGENT_TYPE}: {e}")
+        agent_exit_code = 1
     finally:
         if log_file and not log_file.closed:
             log_file.close()
@@ -263,7 +325,7 @@ def _run() -> tuple[int, str]:
     print()
 
     # Track final exit code for complete API
-    final_exit_code = claude_exit_code
+    final_exit_code = agent_exit_code
     error_message = ""
 
     # Check if any events failed to send
@@ -274,14 +336,14 @@ def _run() -> tuple[int, str]:
 
     # Log execution result
     exec_duration = int(time.time() - exec_start_time)
-    if claude_exit_code == 0 and final_exit_code == 0:
+    if agent_exit_code == 0 and final_exit_code == 0:
         log_info(f"✓ Execution complete ({exec_duration}s)")
     else:
         log_info(f"✗ Execution failed ({exec_duration}s)")
 
     # Handle completion
-    if claude_exit_code == 0 and final_exit_code == 0:
-        log_info("Claude Code completed successfully")
+    if agent_exit_code == 0 and final_exit_code == 0:
+        log_info(f"{CLI_AGENT_TYPE} completed successfully")
 
         # Lifecycle: Checkpoint
         log_info("▷ Checkpoint")
@@ -301,15 +363,15 @@ def _run() -> tuple[int, str]:
             final_exit_code = 1
             error_message = "Checkpoint creation failed"
     else:
-        if claude_exit_code != 0:
-            log_info(f"Claude Code failed with exit code {claude_exit_code}")
+        if agent_exit_code != 0:
+            log_info(f"{CLI_AGENT_TYPE} failed with exit code {agent_exit_code}")
 
             # Get detailed error from captured stderr lines in memory
             if stderr_lines:
                 error_message = " ".join(line.strip() for line in stderr_lines)
                 log_info(f"Captured stderr: {error_message}")
             else:
-                error_message = f"Agent exited with code {claude_exit_code}"
+                error_message = f"Agent exited with code {agent_exit_code}"
 
     # Note: Keep all temp files for debugging (SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG)
 

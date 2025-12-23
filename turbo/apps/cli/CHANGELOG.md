@@ -1,5 +1,40 @@
 # Changelog
 
+## [4.21.0](https://github.com/vm0-ai/vm0/compare/cli-v4.20.0...cli-v4.21.0) (2025-12-23)
+
+
+### Features
+
+* add codex support alongside claude code ([#637](https://github.com/vm0-ai/vm0/issues/637)) ([db42ad7](https://github.com/vm0-ai/vm0/commit/db42ad79db60a026e97257c4c752fcec35afbbd8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.0
+
+## [4.20.0](https://github.com/vm0-ai/vm0/compare/cli-v4.19.0...cli-v4.20.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** promote beta features to stable and add image auto-config ([#689](https://github.com/vm0-ai/vm0/issues/689)) ([76161b2](https://github.com/vm0-ai/vm0/commit/76161b2d6a982fafc9eb6fdf731d9b485f263b21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.2.0
+
+## [4.19.0](https://github.com/vm0-ai/vm0/compare/cli-v4.18.0...cli-v4.19.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** add Dockerfile pre-validation in vm0 image build ([#683](https://github.com/vm0-ai/vm0/issues/683)) ([1e25a37](https://github.com/vm0-ai/vm0/commit/1e25a3798f5abfca1a4754fded91d062e027a766))
+
 ## [4.18.0](https://github.com/vm0-ai/vm0/compare/cli-v4.17.0...cli-v4.18.0) (2025-12-22)
 
 

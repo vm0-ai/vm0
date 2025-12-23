@@ -7,55 +7,50 @@ import type {
   VolumeError,
   StorageDriver,
 } from "./types";
-import { expandVariablesInString } from "@vm0/core";
+import {
+  expandVariablesInString,
+  getInstructionsStorageName,
+  getSkillStorageName,
+  parseGitHubTreeUrl,
+  getValidatedProvider,
+} from "@vm0/core";
 
 /**
- * Fixed mount paths for system volumes
+ * Get the mount path for instructions based on provider
+ *
+ * Each provider expects instructions at a specific location:
+ * - claude-code: ~/.claude/
+ * - codex: ~/.codex/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The mount path for instructions
+ * @throws Error if provider is defined but not supported
  */
-const SYSTEM_PROMPT_MOUNT_PATH = "/home/user/.claude";
-const SYSTEM_SKILLS_BASE_PATH = "/home/user/.claude/skills";
-
-/**
- * Parse GitHub tree URL to extract skill name (last path segment)
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- */
-function parseGitHubTreeUrl(
-  url: string,
-): { owner: string; repo: string; branch: string; path: string } | null {
-  const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
-  if (!match) return null;
-
-  const [, owner, repo, branch, pathPart] = match;
-  return {
-    owner: owner!,
-    repo: repo!,
-    branch: branch!,
-    path: pathPart!,
-  };
+export function getInstructionsMountPath(provider?: string): string {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
+    return "/home/user/.codex";
+  }
+  return "/home/user/.claude";
 }
 
 /**
- * Get storage name for system prompt
+ * Get the base path for skills based on provider
+ *
+ * Each provider expects skills at a specific location:
+ * - claude-code: ~/.claude/skills/
+ * - codex: ~/.codex/skills/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The base path for skills
+ * @throws Error if provider is defined but not supported
  */
-function getSystemPromptStorageName(agentName: string): string {
-  return `system-prompt@${agentName}`;
-}
-
-/**
- * Get storage name for system skill
- */
-function getSystemSkillStorageName(fullPath: string): string {
-  return `system-skill@${fullPath}`;
-}
-
-/**
- * Get skill name from path (last segment)
- */
-function getSkillName(path: string): string {
-  const segments = path.split("/");
-  return segments[segments.length - 1]!;
+export function getSkillsBasePath(provider?: string): string {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
+    return "/home/user/.codex/skills";
+  }
+  return "/home/user/.claude/skills";
 }
 
 /**
@@ -262,36 +257,39 @@ export function resolveVolumes(
     }
   }
 
-  // Process beta_system_prompt if specified
-  if (agent?.beta_system_prompt) {
+  // Get provider for mount path resolution
+  const provider = agent?.provider as string | undefined;
+
+  // Process instructions if specified
+  if (agent?.instructions) {
     // Get the agent name (key in agents dictionary)
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
-      const storageName = getSystemPromptStorageName(agentName);
+      const storageName = getInstructionsStorageName(agentName);
+      const instructionsMountPath = getInstructionsMountPath(provider);
       volumes.push({
         name: storageName,
         driver: "vas",
-        mountPath: SYSTEM_PROMPT_MOUNT_PATH,
+        mountPath: instructionsMountPath,
         vasStorageName: storageName,
-        vasVersion: "latest", // System prompt uses latest version
+        vasVersion: "latest", // Instructions uses latest version
       });
     }
   }
 
-  // Process beta_system_skills if specified
-  if (agent?.beta_system_skills && agent.beta_system_skills.length > 0) {
-    for (const skillUrl of agent.beta_system_skills) {
+  // Process skills if specified
+  if (agent?.skills && agent.skills.length > 0) {
+    const skillsBasePath = getSkillsBasePath(provider);
+    for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
-        const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
-        const storageName = getSystemSkillStorageName(fullPath);
-        const skillName = getSkillName(parsed.path);
+        const storageName = getSkillStorageName(parsed.fullPath);
         volumes.push({
           name: storageName,
           driver: "vas",
-          mountPath: `${SYSTEM_SKILLS_BASE_PATH}/${skillName}`,
+          mountPath: `${skillsBasePath}/${parsed.skillName}`,
           vasStorageName: storageName,
-          vasVersion: "latest", // System skills use latest version
+          vasVersion: "latest", // Skills use latest version
         });
       }
     }

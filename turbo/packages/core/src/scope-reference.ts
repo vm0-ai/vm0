@@ -13,6 +13,11 @@
  */
 export const SYSTEM_SCOPE_SLUG = "vm0";
 export const SYSTEM_IMAGE_CLAUDE_CODE = "claude-code";
+export const SYSTEM_IMAGE_CODEX = "codex";
+export const SYSTEM_IMAGES = [
+  SYSTEM_IMAGE_CLAUDE_CODE,
+  SYSTEM_IMAGE_CODEX,
+] as const;
 export const SYSTEM_VALID_TAGS = ["latest", "dev"] as const;
 
 export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
@@ -40,6 +45,9 @@ export function isValidSystemTag(
  * - vm0/claude-code → vm0-claude-code
  * - vm0/claude-code:latest → vm0-claude-code
  * - vm0/claude-code:dev → vm0-claude-code-dev
+ * - vm0/codex → vm0-codex
+ * - vm0/codex:latest → vm0-codex
+ * - vm0/codex:dev → vm0-codex-dev
  *
  * @throws Error if image name is unknown or tag is not supported
  */
@@ -47,10 +55,10 @@ export function resolveSystemImageToE2b(
   name: string,
   tag?: string,
 ): { e2bTemplate: string; deprecationWarning?: string } {
-  // Only claude-code is supported
-  if (name !== SYSTEM_IMAGE_CLAUDE_CODE) {
+  // Validate system image name
+  if (!SYSTEM_IMAGES.includes(name as (typeof SYSTEM_IMAGES)[number])) {
     throw new Error(
-      `Unknown system image: ${SYSTEM_SCOPE_SLUG}/${name}. Available: ${SYSTEM_SCOPE_SLUG}/${SYSTEM_IMAGE_CLAUDE_CODE}`,
+      `Unknown system image: ${SYSTEM_SCOPE_SLUG}/${name}. Available: ${SYSTEM_IMAGES.map((img) => `${SYSTEM_SCOPE_SLUG}/${img}`).join(", ")}`,
     );
   }
 
@@ -66,7 +74,7 @@ export function resolveSystemImageToE2b(
     return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}-dev` };
   }
 
-  // Default (undefined or 'latest') → vm0-claude-code
+  // Default (undefined or 'latest') → vm0-{name}
   return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}` };
 }
 
@@ -86,6 +94,12 @@ export function getLegacySystemTemplateWarning(
   }
   if (legacyFormat === "vm0-claude-code-dev") {
     return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code:dev" instead.`;
+  }
+  if (legacyFormat === "vm0-codex") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex" instead.`;
+  }
+  if (legacyFormat === "vm0-codex-dev") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex:dev" instead.`;
   }
   if (legacyFormat.startsWith("vm0-github-cli")) {
     return `Warning: "${legacyFormat}" is deprecated and will be removed. No replacement available.`;

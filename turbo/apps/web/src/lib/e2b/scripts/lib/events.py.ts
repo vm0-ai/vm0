@@ -11,7 +11,7 @@ import os
 from typing import Dict, Any
 
 from common import (
-    RUN_ID, WORKING_DIR, WEBHOOK_URL,
+    RUN_ID, WORKING_DIR, WEBHOOK_URL, CLI_AGENT_TYPE,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE, EVENT_ERROR_FLAG
 )
 from log import log_info, log_error
@@ -28,32 +28,46 @@ def send_event(event: Dict[str, Any]) -> bool:
     Returns:
         True on success, False on failure
     """
-    # Extract session ID from init event
+    # Extract session ID from init event based on CLI agent type
     event_type = event.get("type", "")
     event_subtype = event.get("subtype", "")
 
-    if event_type == "system" and event_subtype == "init":
-        if not os.path.exists(SESSION_ID_FILE):
+    # Claude Code: session_id from system/init event
+    # Codex: thread_id from thread.started event
+    session_id = None
+    if CLI_AGENT_TYPE == "codex":
+        if event_type == "thread.started":
+            session_id = event.get("thread_id", "")
+    else:
+        if event_type == "system" and event_subtype == "init":
             session_id = event.get("session_id", "")
-            if session_id:
-                log_info(f"Captured session ID: {session_id}")
 
-                # Save to temp file to persist across subprocesses
-                with open(SESSION_ID_FILE, "w") as f:
-                    f.write(session_id)
+    if session_id and not os.path.exists(SESSION_ID_FILE):
+        log_info(f"Captured session ID: {session_id}")
 
-                # Calculate session history path
-                # Claude Code uses hyphen-separated path encoding
-                # e.g., /home/user/workspace -> -home-user-workspace
-                # Agent runs as E2B default user ('user'), so HOME is /home/user
-                project_name = WORKING_DIR.lstrip("/").replace("/", "-")
-                home_dir = os.environ.get("HOME", "/home/user")
-                session_history_path = f"{home_dir}/.claude/projects/-{project_name}/{session_id}.jsonl"
+        # Save to temp file to persist across subprocesses
+        with open(SESSION_ID_FILE, "w") as f:
+            f.write(session_id)
 
-                with open(SESSION_HISTORY_PATH_FILE, "w") as f:
-                    f.write(session_history_path)
+        # Calculate session history path based on CLI agent type
+        home_dir = os.environ.get("HOME", "/home/user")
 
-                log_info(f"Session history will be at: {session_history_path}")
+        if CLI_AGENT_TYPE == "codex":
+            # Codex stores sessions in ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+            # We'll store a marker path here; checkpoint.py will search for the actual file
+            codex_home = os.environ.get("CODEX_HOME", f"{home_dir}/.codex")
+            # Use special marker format that checkpoint.py will recognize
+            session_history_path = f"CODEX_SEARCH:{codex_home}/sessions:{session_id}"
+        else:
+            # Claude Code uses ~/.claude (default, no CLAUDE_CONFIG_DIR override)
+            # Path encoding: e.g., /home/user/workspace -> -home-user-workspace
+            project_name = WORKING_DIR.lstrip("/").replace("/", "-")
+            session_history_path = f"{home_dir}/.claude/projects/-{project_name}/{session_id}.jsonl"
+
+        with open(SESSION_HISTORY_PATH_FILE, "w") as f:
+            f.write(session_history_path)
+
+        log_info(f"Session history will be at: {session_history_path}")
 
     # Build payload
     payload = {

@@ -1,5 +1,62 @@
 # Changelog
 
+## [6.3.1](https://github.com/vm0-ai/vm0/compare/web-v6.3.0...web-v6.3.1) (2025-12-23)
+
+
+### Performance Improvements
+
+* **web:** optimize images and enhance seo ([#693](https://github.com/vm0-ai/vm0/issues/693)) ([769dc3a](https://github.com/vm0-ai/vm0/commit/769dc3a4af24d72d6c7e5839b2c8d560dda34a0d))
+
+## [6.3.0](https://github.com/vm0-ai/vm0/compare/web-v6.2.0...web-v6.3.0) (2025-12-23)
+
+
+### Features
+
+* add codex support alongside claude code ([#637](https://github.com/vm0-ai/vm0/issues/637)) ([db42ad7](https://github.com/vm0-ai/vm0/commit/db42ad79db60a026e97257c4c752fcec35afbbd8))
+* **web:** replace clerk signup with waitlist component ([#690](https://github.com/vm0-ai/vm0/issues/690)) ([ba477cc](https://github.com/vm0-ai/vm0/commit/ba477cc341563ece8194c3d9cf4d461f771174de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.0
+
+## [6.2.0](https://github.com/vm0-ai/vm0/compare/web-v6.1.4...web-v6.2.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** promote beta features to stable and add image auto-config ([#689](https://github.com/vm0-ai/vm0/issues/689)) ([76161b2](https://github.com/vm0-ai/vm0/commit/76161b2d6a982fafc9eb6fdf731d9b485f263b21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.2.0
+
+## [6.1.4](https://github.com/vm0-ai/vm0/compare/web-v6.1.3...web-v6.1.4) (2025-12-22)
+
+
+### Bug Fixes
+
+* update skills page and fix mobile language switcher ([#682](https://github.com/vm0-ai/vm0/issues/682)) ([83de928](https://github.com/vm0-ai/vm0/commit/83de9283e853b20b666c3aa3731d65a89b2ff162))
+
+## [6.1.3](https://github.com/vm0-ai/vm0/compare/web-v6.1.2...web-v6.1.3) (2025-12-22)
+
+
+### Bug Fixes
+
+* use direct API import instead of HTTP fetch in server component ([#676](https://github.com/vm0-ai/vm0/issues/676)) ([99d57e4](https://github.com/vm0-ai/vm0/commit/99d57e414561760e4227b841898bdeaf14fca7f2))
+
+## [6.1.2](https://github.com/vm0-ai/vm0/compare/web-v6.1.1...web-v6.1.2) (2025-12-22)
+
+
+### Bug Fixes
+
+* **image:** support scoped references and version tags in validateImageAccess ([#674](https://github.com/vm0-ai/vm0/issues/674)) ([3f6d715](https://github.com/vm0-ai/vm0/commit/3f6d7156b7903cfc46518abaab9fcdc12ffacf5c))
+
 ## [6.1.1](https://github.com/vm0-ai/vm0/compare/web-v6.1.0...web-v6.1.1) (2025-12-22)
 
 

@@ -440,29 +440,12 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should reject config without image even when provider is claude-code", () => {
+    it("should accept config without image when provider is claude-code (auto-configurable)", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             provider: "claude-code",
-          },
-        },
-      };
-
-      const result = validateAgentCompose(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.image");
-    });
-
-    it("should accept config with beta_system_prompt", () => {
-      const config = {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            provider: "claude-code",
-            image: "vm0/claude-code:dev",
-            beta_system_prompt: "AGENTS.md",
           },
         },
       };
@@ -471,16 +454,14 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should accept config with beta_system_skills", () => {
+    it("should accept config with instructions", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             provider: "claude-code",
             image: "vm0/claude-code:dev",
-            beta_system_skills: [
-              "https://github.com/vm0-ai/vm0-skills/tree/main/github",
-            ],
+            instructions: "AGENTS.md",
           },
         },
       };
@@ -489,14 +470,30 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should reject empty beta_system_prompt", () => {
+    it("should accept config with skills", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             provider: "claude-code",
             image: "vm0/claude-code:dev",
-            beta_system_prompt: "",
+            skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/github"],
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it("should reject empty instructions", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            image: "vm0/claude-code:dev",
+            instructions: "",
           },
         },
       };
@@ -506,21 +503,21 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("cannot be empty");
     });
 
-    it("should reject invalid beta_system_skills URL", () => {
+    it("should reject invalid skill URL", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             provider: "claude-code",
             image: "vm0/claude-code:dev",
-            beta_system_skills: ["https://example.com/not-github"],
+            skills: ["https://example.com/not-github"],
           },
         },
       };
 
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid beta_system_skill URL");
+      expect(result.error).toContain("Invalid skill URL");
     });
   });
 });

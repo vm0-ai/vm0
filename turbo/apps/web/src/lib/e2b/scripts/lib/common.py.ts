@@ -17,6 +17,12 @@ PROMPT = os.environ.get("VM0_PROMPT", "")
 VERCEL_BYPASS = os.environ.get("VERCEL_PROTECTION_BYPASS", "")
 RESUME_SESSION_ID = os.environ.get("VM0_RESUME_SESSION_ID", "")
 
+# CLI agent type - determines which CLI to invoke (claude-code or codex)
+CLI_AGENT_TYPE = os.environ.get("CLI_AGENT_TYPE", "claude-code")
+
+# OpenAI model override - used for OpenRouter/custom endpoints with Codex
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "")
+
 # Working directory is required - no fallback allowed
 WORKING_DIR = os.environ.get("VM0_WORKING_DIR", "")
 
