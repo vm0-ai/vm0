@@ -41,7 +41,7 @@ export class CheckpointService {
       .limit(1);
 
     if (!run) {
-      throw new NotFoundError("Agent run");
+      throw new NotFoundError("Agent run not found");
     }
 
     // Fetch agent compose version to get composeId for session
@@ -52,7 +52,7 @@ export class CheckpointService {
       .limit(1);
 
     if (!version) {
-      throw new NotFoundError("Agent compose version");
+      throw new NotFoundError("Agent compose version not found");
     }
 
     log.debug(

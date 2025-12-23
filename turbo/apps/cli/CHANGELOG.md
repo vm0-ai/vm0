@@ -1,5 +1,40 @@
 # Changelog
 
+## [4.19.0](https://github.com/vm0-ai/vm0/compare/cli-v4.18.0...cli-v4.19.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** add Dockerfile pre-validation in vm0 image build ([#683](https://github.com/vm0-ai/vm0/issues/683)) ([1e25a37](https://github.com/vm0-ai/vm0/commit/1e25a3798f5abfca1a4754fded91d062e027a766))
+
+## [4.18.0](https://github.com/vm0-ai/vm0/compare/cli-v4.17.0...cli-v4.18.0) (2025-12-22)
+
+
+### Features
+
+* **image:** enforce lowercase image names for Docker compatibility ([#662](https://github.com/vm0-ai/vm0/issues/662)) ([7a6f5ff](https://github.com/vm0-ai/vm0/commit/7a6f5fffb0d517d853e2bd272534a868b0875837))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.1.0
+
+## [4.17.0](https://github.com/vm0-ai/vm0/compare/cli-v4.16.1...cli-v4.17.0) (2025-12-22)
+
+
+### Features
+
+* **image:** support @vm0/claude-code format for system images ([#655](https://github.com/vm0-ai/vm0/issues/655)) ([1ddd99f](https://github.com/vm0-ai/vm0/commit/1ddd99fa1b640956244dfd463e6eda6a942e8416))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.0.0
+
 ## [4.16.1](https://github.com/vm0-ai/vm0/compare/cli-v4.16.0...cli-v4.16.1) (2025-12-21)
 
 

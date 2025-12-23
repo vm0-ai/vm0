@@ -7,6 +7,7 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   generatePresignedPutUrl,
   downloadManifest,
+  verifyS3FilesExist,
 } from "../../../../src/lib/s3/s3-client";
 import {
   computeContentHashFromHashes,
@@ -222,6 +223,16 @@ export async function POST(request: NextRequest) {
     const versionId = computeContentHashFromHashes(storage.id, mergedFiles);
     log.debug(`Computed version ID: ${versionId}`);
 
+    // Get bucket name (needed for S3 verification)
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+    if (!bucketName) {
+      return errorResponse(
+        "R2_USER_STORAGES_BUCKET_NAME not configured",
+        "INTERNAL_ERROR",
+        500,
+      );
+    }
+
     // Check if version already exists (deduplication) - skip if force is true
     if (!force) {
       const [existingVersion] = await globalThis.services.db
@@ -236,25 +247,32 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (existingVersion) {
-        log.debug(`Version ${versionId} already exists, returning existing`);
-        return NextResponse.json({
-          versionId,
-          existing: true,
-        } satisfies PrepareResponse);
+        // Verify S3 files actually exist before returning existing: true
+        // This handles the case where DB record exists but S3 files were deleted
+        const s3Exists = await verifyS3FilesExist(
+          bucketName,
+          existingVersion.s3Key,
+          existingVersion.fileCount,
+        );
+
+        if (s3Exists) {
+          log.debug(
+            `Version ${versionId} exists with S3 files, returning existing`,
+          );
+          return NextResponse.json({
+            versionId,
+            existing: true,
+          } satisfies PrepareResponse);
+        }
+
+        // S3 files missing - treat as new version, will trigger re-upload
+        log.warn(
+          `Version ${versionId} exists in DB but S3 files missing, treating as new`,
+        );
       }
     } else {
       log.debug(
         `Force flag set, skipping deduplication check for ${versionId}`,
-      );
-    }
-
-    // Get bucket name
-    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    if (!bucketName) {
-      return errorResponse(
-        "R2_USER_STORAGES_BUCKET_NAME not configured",
-        "INTERNAL_ERROR",
-        500,
       );
     }
 

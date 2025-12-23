@@ -64,10 +64,10 @@ describe("scope set command", () => {
         displayName: undefined,
       });
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Scope created: @testslug"),
+        expect.stringContaining("Scope created: testslug"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("@testslug/<image-name>"),
+        expect.stringContaining("testslug/<image-name>"),
       );
     });
 
@@ -113,7 +113,7 @@ describe("scope set command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("already have a scope: @oldslug"),
+        expect.stringContaining("already have a scope: oldslug"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("--force"),
@@ -146,7 +146,7 @@ describe("scope set command", () => {
         force: true,
       });
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Scope updated to @newslug"),
+        expect.stringContaining("Scope updated to newslug"),
       );
     });
   });

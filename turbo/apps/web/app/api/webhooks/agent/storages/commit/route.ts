@@ -7,7 +7,10 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { s3ObjectExists } from "../../../../../../src/lib/s3/s3-client";
+import {
+  s3ObjectExists,
+  verifyS3FilesExist,
+} from "../../../../../../src/lib/s3/s3-client";
 import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
@@ -169,7 +172,36 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (existingVersion) {
-      // Version already exists, update HEAD pointer if needed
+      // Get bucket name for S3 verification
+      const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+      if (!bucketName) {
+        return errorResponse(
+          "R2_USER_STORAGES_BUCKET_NAME not configured",
+          "INTERNAL_ERROR",
+          500,
+        );
+      }
+
+      // Defense-in-depth: verify S3 files exist before updating HEAD
+      // This catches edge cases where S3 files were deleted between prepare and commit
+      const s3Exists = await verifyS3FilesExist(
+        bucketName,
+        existingVersion.s3Key,
+        existingVersion.fileCount,
+      );
+
+      if (!s3Exists) {
+        log.error(
+          `Version ${versionId} exists in DB but S3 files missing - cannot commit`,
+        );
+        return errorResponse(
+          "S3 files missing for existing version - please retry upload",
+          "S3_FILES_MISSING",
+          409,
+        );
+      }
+
+      // Version already exists with valid S3 files, update HEAD pointer if needed
       if (storage.headVersionId !== versionId) {
         await globalThis.services.db
           .update(storages)

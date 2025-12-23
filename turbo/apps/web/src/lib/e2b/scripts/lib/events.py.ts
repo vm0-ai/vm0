@@ -59,10 +59,10 @@ def send_event(event: Dict[str, Any]) -> bool:
             # Use special marker format that checkpoint.py will recognize
             session_history_path = f"CODEX_SEARCH:{codex_home}/sessions:{session_id}"
         else:
-            # Claude Code uses hyphen-separated path encoding
-            # e.g., /home/user/workspace -> -home-user-workspace
+            # Claude Code uses ~/.claude (default, no CLAUDE_CONFIG_DIR override)
+            # Path encoding: e.g., /home/user/workspace -> -home-user-workspace
             project_name = WORKING_DIR.lstrip("/").replace("/", "-")
-            session_history_path = f"{home_dir}/.config/claude/projects/-{project_name}/{session_id}.jsonl"
+            session_history_path = f"{home_dir}/.claude/projects/-{project_name}/{session_id}.jsonl"
 
         with open(SESSION_HISTORY_PATH_FILE, "w") as f:
             f.write(session_history_path)

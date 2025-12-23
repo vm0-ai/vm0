@@ -147,10 +147,10 @@ def _run() -> tuple[int, str]:
     except OSError as e:
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
 
-    # Set config directories based on CLI agent type
-    # Agent runs as E2B default user ('user'), so HOME is /home/user
-    home_dir = os.environ.get("HOME", "/home/user")
+    # Set up Codex configuration if using Codex CLI
+    # Claude Code uses ~/.claude by default (no configuration needed)
     if CLI_AGENT_TYPE == "codex":
+        home_dir = os.environ.get("HOME", "/home/user")
         # Codex uses ~/.codex for configuration and session storage
         codex_home = f"{home_dir}/.codex"
         os.makedirs(codex_home, exist_ok=True)
@@ -172,11 +172,6 @@ def _run() -> tuple[int, str]:
                 log_error(f"Codex login failed: {result.stderr}")
         else:
             log_error("OPENAI_API_KEY not set")
-    else:
-        # Claude Code uses ~/.config/claude for configuration
-        claude_config_dir = f"{home_dir}/.config/claude"
-        os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
-        log_info(f"Claude config directory: {claude_config_dir}")
 
     init_duration = int(time.time() - init_start_time)
     log_info(f"✓ Initialization complete ({init_duration}s)")

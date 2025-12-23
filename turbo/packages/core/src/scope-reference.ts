@@ -2,10 +2,98 @@
  * Scope Reference Parser and Formatter
  *
  * Handles parsing and formatting of scoped resource references:
- * - @scope/name - explicit scope reference
+ * - scope/name - explicit scope reference
+ * - vm0/name - system scope (special handling)
  * - name - implicit (uses user's default scope)
- * - vm0-* - legacy system template passthrough
+ * - vm0-* - legacy system template passthrough (deprecated)
  */
+
+/**
+ * System scope constants
+ */
+export const SYSTEM_SCOPE_SLUG = "vm0";
+export const SYSTEM_IMAGE_CLAUDE_CODE = "claude-code";
+export const SYSTEM_VALID_TAGS = ["latest", "dev"] as const;
+
+export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
+
+/**
+ * Check if a scope is the system scope
+ */
+export function isSystemScope(scope: string): boolean {
+  return scope === SYSTEM_SCOPE_SLUG;
+}
+
+/**
+ * Check if a tag is valid for system images
+ */
+export function isValidSystemTag(
+  tag: string | undefined,
+): tag is SystemValidTag | undefined {
+  return tag === undefined || SYSTEM_VALID_TAGS.includes(tag as SystemValidTag);
+}
+
+/**
+ * Resolve a system image reference to E2B template name
+ *
+ * Conversion rules:
+ * - vm0/claude-code → vm0-claude-code
+ * - vm0/claude-code:latest → vm0-claude-code
+ * - vm0/claude-code:dev → vm0-claude-code-dev
+ *
+ * @throws Error if image name is unknown or tag is not supported
+ */
+export function resolveSystemImageToE2b(
+  name: string,
+  tag?: string,
+): { e2bTemplate: string; deprecationWarning?: string } {
+  // Only claude-code is supported
+  if (name !== SYSTEM_IMAGE_CLAUDE_CODE) {
+    throw new Error(
+      `Unknown system image: ${SYSTEM_SCOPE_SLUG}/${name}. Available: ${SYSTEM_SCOPE_SLUG}/${SYSTEM_IMAGE_CLAUDE_CODE}`,
+    );
+  }
+
+  // Validate tag
+  if (!isValidSystemTag(tag)) {
+    throw new Error(
+      `Invalid tag ":${tag}" for system image. System images only support: :latest, :dev (hash versions not supported)`,
+    );
+  }
+
+  // Convert to E2B template name
+  if (tag === "dev") {
+    return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}-dev` };
+  }
+
+  // Default (undefined or 'latest') → vm0-claude-code
+  return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}` };
+}
+
+/**
+ * Get deprecation warning for legacy system template format
+ */
+export function getLegacySystemTemplateWarning(
+  legacyFormat: string,
+): string | undefined {
+  if (!isLegacySystemTemplate(legacyFormat)) {
+    return undefined;
+  }
+
+  // Map legacy format to new format
+  if (legacyFormat === "vm0-claude-code") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code" instead.`;
+  }
+  if (legacyFormat === "vm0-claude-code-dev") {
+    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code:dev" instead.`;
+  }
+  if (legacyFormat.startsWith("vm0-github-cli")) {
+    return `Warning: "${legacyFormat}" is deprecated and will be removed. No replacement available.`;
+  }
+
+  // Generic warning for other vm0-* formats
+  return `Warning: "${legacyFormat}" format is deprecated.`;
+}
 
 export interface ScopedReference {
   scope: string;
@@ -29,18 +117,11 @@ export interface VersionedImageReference {
 }
 
 /**
- * Parse a scoped reference string (@scope/name format)
+ * Parse a scoped reference string (scope/name format)
  * @throws Error if format is invalid
  */
 export function parseScopedReference(reference: string): ScopedReference {
-  if (!reference.startsWith("@")) {
-    throw new Error(
-      `Invalid scoped reference: must start with @ (got "${reference}")`,
-    );
-  }
-
-  const withoutAt = reference.slice(1);
-  const slashIndex = withoutAt.indexOf("/");
+  const slashIndex = reference.indexOf("/");
 
   if (slashIndex === -1) {
     throw new Error(
@@ -48,8 +129,8 @@ export function parseScopedReference(reference: string): ScopedReference {
     );
   }
 
-  const scope = withoutAt.slice(0, slashIndex);
-  const name = withoutAt.slice(slashIndex + 1);
+  const scope = reference.slice(0, slashIndex);
+  const name = reference.slice(slashIndex + 1);
 
   if (!scope) {
     throw new Error(
@@ -70,7 +151,7 @@ export function parseScopedReference(reference: string): ScopedReference {
  * Format a scope and name into a scoped reference string
  */
 export function formatScopedReference(scope: string, name: string): string {
-  return `@${scope}/${name}`;
+  return `${scope}/${name}`;
 }
 
 /**
@@ -85,7 +166,7 @@ export function isLegacySystemTemplate(reference: string): boolean {
  *
  * Resolution order:
  * 1. Legacy vm0-* prefix: passthrough without scope resolution
- * 2. Explicit @scope/name format: parse scope and name
+ * 2. Explicit scope/name format: parse scope and name
  * 3. Implicit format: use user's default scope
  *
  * @param input - The image reference string
@@ -105,12 +186,12 @@ export function resolveImageReference(
     };
   }
 
-  // 2. Explicit @scope/name format
-  if (input.startsWith("@")) {
+  // 2. Explicit scope/name format (contains "/" which is not allowed in image names)
+  if (input.includes("/")) {
     const { scope, name } = parseScopedReference(input);
     return {
-      scope,
-      name,
+      scope: scope.toLowerCase(),
+      name: name.toLowerCase(),
       isLegacy: false,
     };
   }
@@ -124,7 +205,7 @@ export function resolveImageReference(
 
   return {
     scope: userScopeSlug,
-    name: input,
+    name: input.toLowerCase(),
     isLegacy: false,
   };
 }
@@ -133,9 +214,9 @@ export function resolveImageReference(
  * Parse image reference with optional tag
  *
  * Supports these formats:
- *   @scope/name         → { scope, name, tag: undefined }
- *   @scope/name:latest  → { scope, name, tag: 'latest' }
- *   @scope/name:a1b2    → { scope, name, tag: 'a1b2' }
+ *   scope/name         → { scope, name, tag: undefined }
+ *   scope/name:latest  → { scope, name, tag: 'latest' }
+ *   scope/name:a1b2    → { scope, name, tag: 'a1b2' }
  *   name                → { name, tag: undefined } (implicit scope)
  *   name:tag            → { name, tag } (implicit scope with tag)
  *   vm0-*               → { name, isLegacy: true } (legacy system template)
@@ -157,15 +238,10 @@ export function parseImageReferenceWithTag(
     };
   }
 
-  // 2. Explicit @scope/name format (potentially with tag)
-  if (input.startsWith("@")) {
+  // 2. Explicit scope/name format (contains "/" which is not allowed in image names)
+  if (input.includes("/")) {
     // Find the colon for tag, but only after the slash
     const slashIndex = input.indexOf("/");
-    if (slashIndex === -1) {
-      throw new Error(
-        `Invalid scoped reference: missing / separator (got "${input}")`,
-      );
-    }
 
     const afterSlash = input.slice(slashIndex + 1);
     const colonIndex = afterSlash.indexOf(":");
@@ -183,7 +259,7 @@ export function parseImageReferenceWithTag(
       name = afterSlash;
     }
 
-    const scope = input.slice(1, slashIndex);
+    const scope = input.slice(0, slashIndex);
     if (!scope) {
       throw new Error(`Invalid scoped reference: empty scope (got "${input}")`);
     }
@@ -192,8 +268,8 @@ export function parseImageReferenceWithTag(
     }
 
     return {
-      scope,
-      name,
+      scope: scope.toLowerCase(),
+      name: name.toLowerCase(),
       tag,
       isLegacy: false,
     };
@@ -226,7 +302,7 @@ export function parseImageReferenceWithTag(
 
   return {
     scope: userScopeSlug,
-    name,
+    name: name.toLowerCase(),
     tag,
     isLegacy: false,
   };

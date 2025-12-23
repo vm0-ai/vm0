@@ -11,6 +11,7 @@ import {
   getImageByScopeAliasAndVersion,
   isImageResolutionError,
   listImageVersions,
+  validateImageAccess,
 } from "../image-service";
 import { initServices } from "../../init-services";
 import { createUserScope } from "../../scope/scope-service";
@@ -62,7 +63,7 @@ describe("Image Service", () => {
     });
   });
 
-  describe("resolveImageAlias with @scope/name and tags", () => {
+  describe("resolveImageAlias with scope/name and tags", () => {
     const testUserId = "test-image-resolve-user";
     const testScopeSlug = `img-test-${Date.now()}`;
     let testScopeId: string;
@@ -125,10 +126,10 @@ describe("Image Service", () => {
         .where(eq(scopes.ownerId, testUserId));
     });
 
-    it("should resolve @scope/name to latest version", async () => {
+    it("should resolve scope/name to latest version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image`,
+        `${testScopeSlug}/test-image`,
       );
       // Should resolve to the newer version (v2)
       expect(result.templateName).toContain(testVersionId2);
@@ -136,19 +137,19 @@ describe("Image Service", () => {
       expect(result.versionId).toBe(testVersionId2);
     });
 
-    it("should resolve @scope/name:latest to latest version", async () => {
+    it("should resolve scope/name:latest to latest version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image:latest`,
+        `${testScopeSlug}/test-image:latest`,
       );
       expect(result.templateName).toContain(testVersionId2);
       expect(result.versionId).toBe(testVersionId2);
     });
 
-    it("should resolve @scope/name:versionId to specific version", async () => {
+    it("should resolve scope/name:versionId to specific version", async () => {
       const result = await resolveImageAlias(
         testUserId,
-        `@${testScopeSlug}/test-image:${testVersionId1}`,
+        `${testScopeSlug}/test-image:${testVersionId1}`,
       );
       expect(result.templateName).toContain(testVersionId1);
       expect(result.versionId).toBe(testVersionId1);
@@ -156,13 +157,13 @@ describe("Image Service", () => {
 
     it("should throw NotFoundError for non-existent scope", async () => {
       await expect(
-        resolveImageAlias(testUserId, "@nonexistent-scope/test-image"),
-      ).rejects.toThrow('Scope "@nonexistent-scope" not found');
+        resolveImageAlias(testUserId, "nonexistent-scope/test-image"),
+      ).rejects.toThrow('Scope "nonexistent-scope" not found');
     });
 
     it("should throw NotFoundError for non-existent image in scope", async () => {
       await expect(
-        resolveImageAlias(testUserId, `@${testScopeSlug}/nonexistent`),
+        resolveImageAlias(testUserId, `${testScopeSlug}/nonexistent`),
       ).rejects.toThrow(`not found`);
     });
 
@@ -170,7 +171,7 @@ describe("Image Service", () => {
       await expect(
         resolveImageAlias(
           testUserId,
-          `@${testScopeSlug}/test-image:nonexistent`,
+          `${testScopeSlug}/test-image:nonexistent`,
         ),
       ).rejects.toThrow("not found");
     });
@@ -179,7 +180,7 @@ describe("Image Service", () => {
       await expect(
         resolveImageAlias(
           testUserId,
-          `@${testScopeSlug}/building-image:build001`,
+          `${testScopeSlug}/building-image:build001`,
         ),
       ).rejects.toThrow("not ready");
     });
@@ -417,6 +418,114 @@ describe("Image Service", () => {
         const versions = await listImageVersions(testScopeId, "nonexistent");
         expect(versions).toHaveLength(0);
       });
+    });
+  });
+
+  describe("validateImageAccess", () => {
+    const testUserId = "test-validate-access-user";
+    const testScopeSlug = `validate-test-${Date.now()}`;
+    let testScopeId: string;
+    const testVersionId = "abc12345";
+
+    beforeAll(async () => {
+      initServices();
+
+      // Create test scope for the user
+      const scope = await createUserScope(testUserId, testScopeSlug);
+      testScopeId = scope.id;
+
+      // Create ready image
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "ready-image",
+        versionId: testVersionId,
+        e2bAlias: `scope-${testScopeId}-image-ready-image-version-${testVersionId}`,
+        e2bTemplateId: "template-id",
+        e2bBuildId: "build-id",
+        status: "ready",
+      });
+
+      // Create building image
+      await globalThis.services.db.insert(images).values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        alias: "building-image",
+        versionId: "build001",
+        e2bAlias: `scope-${testScopeId}-image-building-image-version-build001`,
+        e2bTemplateId: "template-id",
+        e2bBuildId: "build-id",
+        status: "building",
+      });
+    });
+
+    afterAll(async () => {
+      await globalThis.services.db
+        .delete(images)
+        .where(eq(images.userId, testUserId));
+      await globalThis.services.db
+        .delete(scopes)
+        .where(eq(scopes.ownerId, testUserId));
+    });
+
+    it("should allow system templates", async () => {
+      const result = await validateImageAccess(testUserId, "vm0-claude-code");
+      expect(result).toBeNull();
+    });
+
+    it("should allow valid image with plain alias", async () => {
+      const result = await validateImageAccess(testUserId, "ready-image");
+      expect(result).toBeNull();
+    });
+
+    it("should allow valid image with scope/name format", async () => {
+      const result = await validateImageAccess(
+        testUserId,
+        `${testScopeSlug}/ready-image`,
+      );
+      expect(result).toBeNull();
+    });
+
+    it("should allow valid image with :latest tag", async () => {
+      const result = await validateImageAccess(
+        testUserId,
+        `${testScopeSlug}/ready-image:latest`,
+      );
+      expect(result).toBeNull();
+    });
+
+    it("should allow valid image with specific version tag", async () => {
+      const result = await validateImageAccess(
+        testUserId,
+        `${testScopeSlug}/ready-image:${testVersionId}`,
+      );
+      expect(result).toBeNull();
+    });
+
+    it("should return 404 for non-existent image", async () => {
+      const result = await validateImageAccess(testUserId, "nonexistent");
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe(404);
+      expect(result!.error).toContain("not found");
+    });
+
+    it("should return 404 for non-existent scope", async () => {
+      const result = await validateImageAccess(
+        testUserId,
+        "nonexistent-scope/image",
+      );
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe(404);
+    });
+
+    it("should return 400 for image not ready", async () => {
+      const result = await validateImageAccess(
+        testUserId,
+        `${testScopeSlug}/building-image:build001`,
+      );
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe(400);
+      expect(result!.error).toContain("not ready");
     });
   });
 });

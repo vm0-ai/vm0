@@ -33,11 +33,11 @@ def json_escape(s: str) -> str:
 def create_session_history(session_id: str, cwd: str) -> str:
     """
     Create session history file for checkpoint compatibility.
-    Claude Code stores session history at: ~/.config/claude/projects/-{path}/{session_id}.jsonl
+    Claude Code stores session history at: ~/.claude/projects/-{path}/{session_id}.jsonl
     """
     project_name = cwd.lstrip("/").replace("/", "-")
     home_dir = os.environ.get("HOME", "/home/user")
-    session_dir = f"{home_dir}/.config/claude/projects/-{project_name}"
+    session_dir = f"{home_dir}/.claude/projects/-{project_name}"
     os.makedirs(session_dir, exist_ok=True)
     return f"{session_dir}/{session_id}.jsonl"
 

@@ -1,5 +1,83 @@
 # Changelog
 
+## [6.1.4](https://github.com/vm0-ai/vm0/compare/web-v6.1.3...web-v6.1.4) (2025-12-22)
+
+
+### Bug Fixes
+
+* update skills page and fix mobile language switcher ([#682](https://github.com/vm0-ai/vm0/issues/682)) ([83de928](https://github.com/vm0-ai/vm0/commit/83de9283e853b20b666c3aa3731d65a89b2ff162))
+
+## [6.1.3](https://github.com/vm0-ai/vm0/compare/web-v6.1.2...web-v6.1.3) (2025-12-22)
+
+
+### Bug Fixes
+
+* use direct API import instead of HTTP fetch in server component ([#676](https://github.com/vm0-ai/vm0/issues/676)) ([99d57e4](https://github.com/vm0-ai/vm0/commit/99d57e414561760e4227b841898bdeaf14fca7f2))
+
+## [6.1.2](https://github.com/vm0-ai/vm0/compare/web-v6.1.1...web-v6.1.2) (2025-12-22)
+
+
+### Bug Fixes
+
+* **image:** support scoped references and version tags in validateImageAccess ([#674](https://github.com/vm0-ai/vm0/issues/674)) ([3f6d715](https://github.com/vm0-ai/vm0/commit/3f6d7156b7903cfc46518abaab9fcdc12ffacf5c))
+
+## [6.1.1](https://github.com/vm0-ai/vm0/compare/web-v6.1.0...web-v6.1.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* use correct base URL for skills API in server-side fetch ([#671](https://github.com/vm0-ai/vm0/issues/671)) ([4cd2723](https://github.com/vm0-ai/vm0/commit/4cd2723ce696ff11d9b02215a7f6d9311186cd5d))
+
+## [6.1.0](https://github.com/vm0-ai/vm0/compare/web-v6.0.1...web-v6.1.0) (2025-12-22)
+
+
+### Features
+
+* add dynamic skills page with local logo assets ([#667](https://github.com/vm0-ai/vm0/issues/667)) ([a0112e8](https://github.com/vm0-ai/vm0/commit/a0112e89c87aa6f24e437d74444f1b7d62c4a8d9))
+* **image:** enforce lowercase image names for Docker compatibility ([#662](https://github.com/vm0-ai/vm0/issues/662)) ([7a6f5ff](https://github.com/vm0-ai/vm0/commit/7a6f5fffb0d517d853e2bd272534a868b0875837))
+
+
+### Bug Fixes
+
+* prevent duplicate "not found" in error messages ([#666](https://github.com/vm0-ai/vm0/issues/666)) ([cd472af](https://github.com/vm0-ai/vm0/commit/cd472af752f28a055682e337918a354e2c9b6502))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.1.0
+
+## [6.0.1](https://github.com/vm0-ai/vm0/compare/web-v6.0.0...web-v6.0.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* verify S3 files exist during deduplication to prevent 404 errors ([#659](https://github.com/vm0-ai/vm0/issues/659)) ([25288d7](https://github.com/vm0-ai/vm0/commit/25288d79091744ad828b8d435170673688d54b6c))
+
+## [6.0.0](https://github.com/vm0-ai/vm0/compare/web-v5.19.0...web-v6.0.0) (2025-12-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* Users must update volume mounts from /home/user/.config/claude to /home/user/.claude in their vm0.yaml files.
+
+### Features
+
+* **image:** support @vm0/claude-code format for system images ([#655](https://github.com/vm0-ai/vm0/issues/655)) ([1ddd99f](https://github.com/vm0-ai/vm0/commit/1ddd99fa1b640956244dfd463e6eda6a942e8416))
+
+
+### Code Refactoring
+
+* remove CLAUDE_CONFIG_DIR override and use ~/.claude default ([#656](https://github.com/vm0-ai/vm0/issues/656)) ([bb009a0](https://github.com/vm0-ai/vm0/commit/bb009a0edbda1a8064a396991ee51f3ea9f38a1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.0.0
+
 ## [5.19.0](https://github.com/vm0-ai/vm0/compare/web-v5.18.1...web-v5.19.0) (2025-12-22)
 
 

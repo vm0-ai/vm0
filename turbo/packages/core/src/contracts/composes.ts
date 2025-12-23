@@ -46,12 +46,12 @@ const agentDefinitionSchema = z.object({
   beta_network_security: z.boolean().optional().default(false),
   /**
    * Path to system prompt file (e.g., AGENTS.md).
-   * Auto-uploaded as volume and mounted at /home/user/.config/claude/CLAUDE.md
+   * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */
   beta_system_prompt: z.string().optional(),
   /**
    * Array of GitHub tree URLs for system skills.
-   * Each skill is auto-downloaded and mounted at /home/user/.config/claude/skills/{skillName}/
+   * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
    */
   beta_system_skills: z.array(z.string()).optional(),
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   validateAgentName,
+  normalizeAgentName,
   validateAgentCompose,
   validateGitHubTreeUrl,
 } from "../yaml-validator";
@@ -76,6 +77,31 @@ describe("validateAgentName", () => {
   });
 });
 
+describe("normalizeAgentName", () => {
+  it("should normalize valid name to lowercase", () => {
+    expect(normalizeAgentName("My-Agent")).toBe("my-agent");
+  });
+
+  it("should normalize uppercase name to lowercase", () => {
+    expect(normalizeAgentName("MY-AGENT")).toBe("my-agent");
+  });
+
+  it("should keep lowercase name unchanged", () => {
+    expect(normalizeAgentName("my-agent")).toBe("my-agent");
+  });
+
+  it("should normalize mixed case with numbers", () => {
+    expect(normalizeAgentName("My-Agent-123")).toBe("my-agent-123");
+  });
+
+  it("should return null for invalid name format", () => {
+    expect(normalizeAgentName("ab")).toBeNull(); // too short
+    expect(normalizeAgentName("-agent")).toBeNull(); // starts with hyphen
+    expect(normalizeAgentName("agent-")).toBeNull(); // ends with hyphen
+    expect(normalizeAgentName("my_agent")).toBeNull(); // invalid character
+  });
+});
+
 describe("validateAgentCompose", () => {
   describe("valid configs", () => {
     it("should accept minimal valid config", () => {
@@ -83,7 +109,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -101,7 +127,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             description: "Test description",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["claude-files:/home/user/.config/claude"],
@@ -124,7 +150,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "My-Test-Agent-123": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -159,7 +185,7 @@ describe("validateAgentCompose", () => {
       const config = {
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -208,12 +234,12 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "agent-1": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/workspace",
           },
           "agent-2": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/workspace",
           },
@@ -233,7 +259,7 @@ describe("validateAgentCompose", () => {
         agents: {
           ab: {
             // Too short
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -250,7 +276,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "-invalid": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -267,7 +293,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           my_agent: {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
           },
@@ -316,7 +342,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             working_dir: "/home/user/workspace",
           },
         },
@@ -332,7 +358,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["missing-vol:/path"],
@@ -356,7 +382,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
@@ -379,7 +405,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             provider: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
@@ -405,7 +431,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
           },
         },
       };
@@ -435,7 +461,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             beta_system_prompt: "AGENTS.md",
           },
         },
@@ -451,7 +477,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             beta_system_skills: [
               "https://github.com/vm0-ai/vm0-skills/tree/main/github",
             ],
@@ -469,7 +495,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             beta_system_prompt: "",
           },
         },
@@ -486,7 +512,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             provider: "claude-code",
-            image: "vm0-claude-code-dev",
+            image: "vm0/claude-code:dev",
             beta_system_skills: ["https://example.com/not-github"],
           },
         },
