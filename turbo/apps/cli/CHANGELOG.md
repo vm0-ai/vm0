@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.19.0](https://github.com/vm0-ai/vm0/compare/cli-v4.18.0...cli-v4.19.0) (2025-12-23)
+
+
+### Features
+
+* **cli:** add Dockerfile pre-validation in vm0 image build ([#683](https://github.com/vm0-ai/vm0/issues/683)) ([1e25a37](https://github.com/vm0-ai/vm0/commit/1e25a3798f5abfca1a4754fded91d062e027a766))
+
 ## [4.18.0](https://github.com/vm0-ai/vm0/compare/cli-v4.17.0...cli-v4.18.0) (2025-12-22)
 
 
