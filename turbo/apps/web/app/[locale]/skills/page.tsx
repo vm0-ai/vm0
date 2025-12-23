@@ -4,11 +4,11 @@ import SkillsClient from "./SkillsClient";
 export const metadata: Metadata = {
   title: "VM0 Agent Skills - Pre-built Integrations",
   description:
-    "Explore our comprehensive collection of pre-built skills for AI agents. Connect to 50+ services including Slack, GitHub, Notion, and more.",
+    "Explore our comprehensive collection of 54+ pre-built skills for AI agents. Connect to services including Slack, GitHub, Notion, Discord, Linear, and more.",
   openGraph: {
     title: "VM0 Agent Skills - Pre-built Integrations",
     description:
-      "Explore our comprehensive collection of pre-built skills for AI agents.",
+      "Explore our comprehensive collection of 54+ pre-built skills for AI agents.",
     type: "website",
   },
 };

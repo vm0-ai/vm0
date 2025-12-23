@@ -42,6 +42,18 @@ const SKILL_CATEGORIES: Record<
     description:
       "Integrate with Lark (Feishu) for team collaboration, messaging, and workflow automation",
   },
+  discord: {
+    category: "Communication",
+    logo: "https://cdn.simpleicons.org/discord",
+    description:
+      "Manage Discord servers, channels, and messages for community engagement and automation",
+  },
+  "discord-webhook": {
+    category: "Communication",
+    logo: "https://cdn.simpleicons.org/discord",
+    description:
+      "Send messages to Discord channels using webhooks for simple notifications and alerts",
+  },
   zeptomail: {
     category: "Communication",
     logo: "https://cdn.simpleicons.org/zoho",
@@ -178,6 +190,18 @@ const SKILL_CATEGORIES: Record<
     description:
       "Fast and scalable AI image generation with Stable Diffusion and other models",
   },
+  "fal.ai": {
+    category: "AI & Media",
+    logo: "/skills/fal-image.svg",
+    description:
+      "Serverless AI infrastructure for running ML models with low latency and high scalability",
+  },
+  openai: {
+    category: "AI & Media",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/e/ef/ChatGPT-Logo.svg",
+    description:
+      "Access GPT models, DALL-E, Whisper, and other OpenAI APIs for advanced AI capabilities",
+  },
   runway: {
     category: "AI & Media",
     logo: "/skills/runway.svg",
@@ -197,6 +221,18 @@ const SKILL_CATEGORIES: Record<
     logo: "/skills/notion.svg",
     description:
       "Create, read, and update pages in your Notion workspace for knowledge management",
+  },
+  "google-sheets": {
+    category: "Productivity",
+    logo: "https://cdn.simpleicons.org/googlesheets",
+    description:
+      "Read, write, and manage data in Google Sheets for collaborative spreadsheet automation",
+  },
+  linear: {
+    category: "Productivity",
+    logo: "https://cdn.simpleicons.org/linear",
+    description:
+      "Modern issue tracking and project management for software development teams",
   },
   monday: {
     category: "Productivity",
@@ -357,70 +393,219 @@ async function fetchSkillsList(): Promise<string[]> {
     .map((item) => item.name);
 }
 
+// Auto-detect category based on skill name and description keywords
+function detectCategory(skillName: string, description: string): string {
+  const text = `${skillName} ${description}`.toLowerCase();
+
+  const categoryKeywords: Record<string, string[]> = {
+    Communication: [
+      "slack",
+      "discord",
+      "chat",
+      "message",
+      "email",
+      "notification",
+      "webhook",
+      "lark",
+      "feishu",
+    ],
+    Search: ["search", "scrape", "crawl", "rss", "feed", "index"],
+    "Web Scraping": [
+      "scrape",
+      "crawl",
+      "browser",
+      "proxy",
+      "spider",
+      "extract",
+    ],
+    Development: [
+      "github",
+      "git",
+      "code",
+      "repository",
+      "copilot",
+      "dev",
+      "ci/cd",
+    ],
+    "Cloud Storage": [
+      "storage",
+      "s3",
+      "bucket",
+      "database",
+      "vector",
+      "minio",
+      "cloudinary",
+    ],
+    "AI & Media": [
+      "ai",
+      "gpt",
+      "llm",
+      "image",
+      "video",
+      "audio",
+      "speech",
+      "generation",
+      "openai",
+      "model",
+    ],
+    Productivity: [
+      "notion",
+      "project",
+      "task",
+      "crm",
+      "sheet",
+      "spreadsheet",
+      "workflow",
+      "linear",
+      "issue",
+    ],
+    Documents: ["pdf", "document", "sign", "signature", "convert"],
+    Analytics: ["analytics", "monitoring", "tracking", "metrics", "stats"],
+    Content: ["publish", "blog", "post", "instagram", "social", "content"],
+  };
+
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some((keyword) => text.includes(keyword))) {
+      return category;
+    }
+  }
+
+  return "Other";
+}
+
+// Generate logo URL based on skill name
+function generateLogoUrl(skillName: string): string {
+  // Try simpleicons first (convert skill-name to skillname)
+  const iconName = skillName.replace(/-/g, "").replace(/_/g, "");
+  return `https://cdn.simpleicons.org/${iconName}`;
+}
+
+// Parse SKILL.md content intelligently
+function parseSkillMarkdown(content: string): {
+  description: string;
+  setupRequired?: string[];
+} {
+  const lines = content.split("\n");
+  let description = "";
+  const setupRequired: string[] = [];
+
+  // Extract description - look for first substantial paragraph
+  let inDescription = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]?.trim();
+
+    // Skip title
+    if (line?.startsWith("#")) {
+      inDescription = false;
+      continue;
+    }
+
+    // Skip empty lines
+    if (!line) {
+      if (description) break; // Stop after first paragraph
+      continue;
+    }
+
+    // Skip bullets and metadata
+    if (line.startsWith("-") || line.startsWith("*") || line.startsWith(">")) {
+      continue;
+    }
+
+    // Skip bold metadata lines
+    if (line.startsWith("**") && line.includes(":**")) {
+      continue;
+    }
+
+    // Found description text
+    if (line.length > 20 && !description) {
+      description = line;
+      inDescription = true;
+      continue;
+    }
+
+    // Continue multi-line description
+    if (inDescription && line.length > 20) {
+      description += " " + line;
+    }
+  }
+
+  // Extract environment variables
+  const envVarMatch = content.match(/`([A-Z_]+_(API_)?KEY|[A-Z_]+_TOKEN)`/g);
+  if (envVarMatch) {
+    setupRequired.push(
+      ...envVarMatch.map((match) => match.replace(/`/g, "").trim()),
+    );
+  }
+
+  // Clean up description
+  description = description
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .trim();
+
+  // Limit to reasonable length
+  if (description.length > 150) {
+    description = description.substring(0, 147) + "...";
+  }
+
+  return { description, setupRequired: setupRequired.slice(0, 3) };
+}
+
 async function fetchSkillMetadata(
   skillName: string,
 ): Promise<SkillMetadata | null> {
   try {
-    const categoryInfo = SKILL_CATEGORIES[skillName] || { category: "Other" };
-
-    // Use curated description if available, otherwise fetch from SKILL.md
-    if (categoryInfo.description) {
+    // 1. Check for curated metadata first (highest priority)
+    const curatedInfo = SKILL_CATEGORIES[skillName];
+    if (curatedInfo?.description) {
       return {
         name: skillName,
-        description: categoryInfo.description,
-        category: categoryInfo.category,
-        logo: categoryInfo.logo,
+        description: curatedInfo.description,
+        category: curatedInfo.category,
+        logo: curatedInfo.logo,
         docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
       };
     }
 
-    // Fallback: fetch from SKILL.md if no curated description
-    const response = await fetch(
+    // 2. Try to fetch and parse SKILL.md
+    const skillMdResponse = await fetch(
       `https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/${skillName}/SKILL.md`,
       {
-        headers: {
-          "User-Agent": "VM0-Website",
-        },
+        headers: { "User-Agent": "VM0-Website" },
         next: { revalidate: 3600 },
       },
     );
 
-    if (!response.ok) {
+    if (!skillMdResponse.ok) {
+      // 3. Ultimate fallback
       return {
         name: skillName,
-        description: `${skillName} integration for VM0`,
-        category: categoryInfo.category,
-        logo: categoryInfo.logo,
+        description: `${skillName.replace(/-/g, " ")} integration for VM0 agents`,
+        category: curatedInfo?.category || "Other",
+        logo: curatedInfo?.logo || generateLogoUrl(skillName),
         docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
       };
     }
 
-    const content = await response.text();
+    const content = await skillMdResponse.text();
+    const parsed = parseSkillMarkdown(content);
 
-    // Parse the markdown content to extract description
-    const lines = content.split("\n");
-    let description = "";
-
-    // Look for the first paragraph after the title
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]?.trim();
-      if (
-        line &&
-        !line.startsWith("#") &&
-        !line.startsWith("-") &&
-        !line.startsWith("*")
-      ) {
-        description = line;
-        break;
-      }
-    }
+    // Use parsed data with smart fallbacks
+    const description =
+      parsed.description ||
+      `${skillName.replace(/-/g, " ")} integration for VM0 agents`;
+    const category =
+      curatedInfo?.category || detectCategory(skillName, description);
+    const logo = curatedInfo?.logo || generateLogoUrl(skillName);
 
     return {
       name: skillName,
-      description: description || `${skillName} integration for VM0`,
-      category: categoryInfo.category,
-      logo: categoryInfo.logo,
+      description,
+      category,
+      logo,
       docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
+      setupRequired: parsed.setupRequired,
     };
   } catch (error) {
     console.error(`Failed to fetch metadata for ${skillName}:`, error);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "../cookbooks/Particles";
@@ -18,6 +19,7 @@ interface SkillsClientProps {
 }
 
 export default function SkillsClient({ initialSkills }: SkillsClientProps) {
+  const t = useTranslations("skills");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -66,11 +68,8 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
       <section className="hero-section" style={{ paddingBottom: "80px" }}>
         <div className="container">
           <div>
-            <h1 className="hero-title">VM0 Agent Skills</h1>
-            <p className="hero-description">
-              Pre-built integrations for AI agents. Connect to popular services
-              with zero configuration.
-            </p>
+            <h1 className="hero-title">{t("hero.title")}</h1>
+            <p className="hero-description">{t("hero.description")}</p>
 
             {/* Stats */}
             <div
@@ -97,7 +96,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                     background: "var(--primary)",
                   }}
                 />
-                <span>{skillsData.total} Skills</span>
+                <span>
+                  {skillsData.total} {t("search.results")}
+                </span>
               </div>
               <div
                 style={{ display: "flex", alignItems: "center", gap: "8px" }}
@@ -110,7 +111,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                     background: "var(--primary)",
                   }}
                 />
-                <span>{skillsData.categories} Categories</span>
+                <span>
+                  {skillsData.categories} {t("search.allCategories")}
+                </span>
               </div>
             </div>
 
@@ -131,7 +134,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 <div style={{ position: "relative" }}>
                   <input
                     type="text"
-                    placeholder="Search skills..."
+                    placeholder={t("search.placeholder")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="skills-search-input"
@@ -192,7 +195,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                   >
                     {categories.map((category) => (
                       <option key={category} value={category}>
-                        {category === "all" ? "All Categories" : category}
+                        {category === "all"
+                          ? t("search.allCategories")
+                          : t(`categories.${category}` as never)}
                       </option>
                     ))}
                   </select>
@@ -230,9 +235,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 fontSize: "14px",
               }}
             >
-              {filteredSkills.length === skillsData.total
-                ? `Showing all ${filteredSkills.length} skills`
-                : `Found ${filteredSkills.length} skills`}
+              {filteredSkills.length} {t("search.results")}
             </p>
           </div>
         </div>
@@ -251,7 +254,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 fontSize: "16px",
               }}
             >
-              <p>No skills found matching your criteria</p>
+              <p>{t("search.noResults")}</p>
             </div>
           ) : (
             <div
@@ -352,7 +355,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                         borderRadius: "4px",
                       }}
                     >
-                      {skill.category}
+                      {t(`categories.${skill.category}` as never)}
                     </span>
                   </div>
 
@@ -407,7 +410,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                         fontWeight: 500,
                       }}
                     >
-                      View documentation
+                      {t("viewDocs")}
                       <svg
                         width="16"
                         height="16"
@@ -433,10 +436,8 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">Can&apos;t find what you need?</h2>
-            <p className="cta-subtitle">
-              Request a new skill or contribute to our open-source collection
-            </p>
+            <h2 className="cta-title">{t("cta.title")}</h2>
+            <p className="cta-subtitle">{t("cta.subtitle")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               <a
                 href="https://github.com/vm0-ai/vm0-skills/issues/new"
@@ -444,7 +445,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 rel="noopener noreferrer"
                 className="btn-primary-large"
               >
-                Request a Skill
+                {t("cta.requestSkill")}
               </a>
               <a
                 href="https://github.com/vm0-ai/vm0-skills"
@@ -452,7 +453,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 rel="noopener noreferrer"
                 className="btn-secondary-large"
               >
-                Contribute on GitHub
+                {t("cta.contribute")}
               </a>
             </div>
           </div>
