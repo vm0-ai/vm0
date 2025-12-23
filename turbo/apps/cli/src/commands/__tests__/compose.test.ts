@@ -14,10 +14,11 @@ vi.mock("../../lib/api-client");
 vi.mock("../../lib/yaml-validator");
 vi.mock("../../lib/provider-config", () => ({
   getProviderDefaults: vi.fn().mockReturnValue(undefined),
+  getDefaultImage: vi.fn().mockReturnValue(undefined),
 }));
 vi.mock("../../lib/system-storage", () => ({
-  uploadSystemPrompt: vi.fn(),
-  uploadSystemSkill: vi.fn(),
+  uploadInstructions: vi.fn(),
+  uploadSkill: vi.fn(),
 }));
 
 describe("compose command", () => {

@@ -24,7 +24,7 @@ export function normalizeAgentName(name: string): string | null {
 }
 
 /**
- * Validates GitHub tree URL format for beta_system_skills
+ * Validates GitHub tree URL format for skills
  * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
  */
 export function validateGitHubTreeUrl(url: string): boolean {
@@ -133,11 +133,18 @@ export function validateAgentCompose(config: unknown): {
 
   const providerIsSupported = isProviderSupported(agent.provider as string);
 
-  // Check agent.image (always required)
-  if (!agent.image || typeof agent.image !== "string") {
+  // Check agent.image (optional when provider supports auto-config)
+  if (agent.image !== undefined && typeof agent.image !== "string") {
     return {
       valid: false,
-      error: "Missing or invalid agent.image (must be a string)",
+      error: "agent.image must be a string if provided",
+    };
+  }
+  if (!agent.image && !providerIsSupported) {
+    return {
+      valid: false,
+      error:
+        "Missing agent.image (required when provider is not auto-configured)",
     };
   }
 
@@ -159,42 +166,42 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Validate beta_system_prompt if present (must be a relative file path)
-  if (agent.beta_system_prompt !== undefined) {
-    if (typeof agent.beta_system_prompt !== "string") {
+  // Validate instructions if present (must be a relative file path)
+  if (agent.instructions !== undefined) {
+    if (typeof agent.instructions !== "string") {
       return {
         valid: false,
         error:
-          "agent.beta_system_prompt must be a string (path to AGENTS.md file)",
+          "agent.instructions must be a string (path to instructions file)",
       };
     }
-    if (agent.beta_system_prompt.length === 0) {
+    if (agent.instructions.length === 0) {
       return {
         valid: false,
-        error: "agent.beta_system_prompt cannot be empty",
+        error: "agent.instructions cannot be empty",
       };
     }
   }
 
-  // Validate beta_system_skills if present (must be array of GitHub tree URLs)
-  if (agent.beta_system_skills !== undefined) {
-    if (!Array.isArray(agent.beta_system_skills)) {
+  // Validate skills if present (must be array of GitHub tree URLs)
+  if (agent.skills !== undefined) {
+    if (!Array.isArray(agent.skills)) {
       return {
         valid: false,
-        error: "agent.beta_system_skills must be an array of GitHub tree URLs",
+        error: "agent.skills must be an array of GitHub tree URLs",
       };
     }
-    for (const skillUrl of agent.beta_system_skills as unknown[]) {
+    for (const skillUrl of agent.skills as unknown[]) {
       if (typeof skillUrl !== "string") {
         return {
           valid: false,
-          error: "Each beta_system_skill must be a string URL",
+          error: "Each skill must be a string URL",
         };
       }
       if (!validateGitHubTreeUrl(skillUrl)) {
         return {
           valid: false,
-          error: `Invalid beta_system_skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
+          error: `Invalid skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
         };
       }
     }

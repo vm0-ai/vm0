@@ -7,13 +7,17 @@ import type {
   VolumeError,
   StorageDriver,
 } from "./types";
-import { expandVariablesInString } from "@vm0/core";
+import {
+  expandVariablesInString,
+  getInstructionsStorageName,
+  getSkillStorageName,
+} from "@vm0/core";
 
 /**
- * Fixed mount paths for system volumes
+ * Fixed mount paths for instructions and skills volumes
  */
-const SYSTEM_PROMPT_MOUNT_PATH = "/home/user/.claude";
-const SYSTEM_SKILLS_BASE_PATH = "/home/user/.claude/skills";
+const INSTRUCTIONS_MOUNT_PATH = "/home/user/.claude";
+const SKILLS_BASE_PATH = "/home/user/.claude/skills";
 
 /**
  * Parse GitHub tree URL to extract skill name (last path segment)
@@ -34,20 +38,6 @@ function parseGitHubTreeUrl(
     branch: branch!,
     path: pathPart!,
   };
-}
-
-/**
- * Get storage name for system prompt
- */
-function getSystemPromptStorageName(agentName: string): string {
-  return `system-prompt@${agentName}`;
-}
-
-/**
- * Get storage name for system skill
- */
-function getSystemSkillStorageName(fullPath: string): string {
-  return `system-skill@${fullPath}`;
 }
 
 /**
@@ -262,36 +252,36 @@ export function resolveVolumes(
     }
   }
 
-  // Process beta_system_prompt if specified
-  if (agent?.beta_system_prompt) {
+  // Process instructions if specified
+  if (agent?.instructions) {
     // Get the agent name (key in agents dictionary)
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
-      const storageName = getSystemPromptStorageName(agentName);
+      const storageName = getInstructionsStorageName(agentName);
       volumes.push({
         name: storageName,
         driver: "vas",
-        mountPath: SYSTEM_PROMPT_MOUNT_PATH,
+        mountPath: INSTRUCTIONS_MOUNT_PATH,
         vasStorageName: storageName,
-        vasVersion: "latest", // System prompt uses latest version
+        vasVersion: "latest", // Instructions uses latest version
       });
     }
   }
 
-  // Process beta_system_skills if specified
-  if (agent?.beta_system_skills && agent.beta_system_skills.length > 0) {
-    for (const skillUrl of agent.beta_system_skills) {
+  // Process skills if specified
+  if (agent?.skills && agent.skills.length > 0) {
+    for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
         const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
-        const storageName = getSystemSkillStorageName(fullPath);
+        const storageName = getSkillStorageName(fullPath);
         const skillName = getSkillName(parsed.path);
         volumes.push({
           name: storageName,
           driver: "vas",
-          mountPath: `${SYSTEM_SKILLS_BASE_PATH}/${skillName}`,
+          mountPath: `${SKILLS_BASE_PATH}/${skillName}`,
           vasStorageName: storageName,
-          vasVersion: "latest", // System skills use latest version
+          vasVersion: "latest", // Skills use latest version
         });
       }
     }

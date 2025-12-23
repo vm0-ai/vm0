@@ -3,8 +3,15 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  getInstructionsStorageName,
+  getSkillStorageName as getCoreSkillStorageName,
+} from "@vm0/core";
 
 const execAsync = promisify(exec);
+
+// Re-export from @vm0/core for convenience
+export { getInstructionsStorageName };
 
 /**
  * Parsed GitHub tree URL components
@@ -65,25 +72,14 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubUrl {
 }
 
 /**
- * Generate the storage name for a system skill
- * Format: system-skill@{fullPath}
+ * Generate the storage name for an agent skill
+ * Format: agent-skills@{fullPath}
  *
  * @param parsed - Parsed GitHub URL
  * @returns Storage name for the skill
  */
 export function getSkillStorageName(parsed: ParsedGitHubUrl): string {
-  return `system-skill@${parsed.fullPath}`;
-}
-
-/**
- * Generate the storage name for a system prompt
- * Format: system-prompt@{composeName}
- *
- * @param composeName - Name of the compose (agent name)
- * @returns Storage name for the system prompt
- */
-export function getSystemPromptStorageName(composeName: string): string {
-  return `system-prompt@${composeName}`;
+  return getCoreSkillStorageName(parsed.fullPath);
 }
 
 /**
