@@ -4,6 +4,7 @@ import { runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
+import { agentComposeVersions } from "../../../../../../../src/db/schema/agent-compose";
 import { eq, gt, and, asc } from "drizzle-orm";
 import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
 
@@ -21,14 +22,22 @@ const router = tsr.router(runAgentEventsContract, {
       };
     }
 
-    // Verify run exists and belongs to user
-    const [run] = await globalThis.services.db
-      .select()
+    // Verify run exists and belongs to user, join with compose version to get provider
+    const [runWithCompose] = await globalThis.services.db
+      .select({
+        id: agentRuns.id,
+        userId: agentRuns.userId,
+        composeContent: agentComposeVersions.content,
+      })
       .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
       .where(eq(agentRuns.id, params.id))
       .limit(1);
 
-    if (!run || run.userId !== userId) {
+    if (!runWithCompose || runWithCompose.userId !== userId) {
       return {
         status: 404 as const,
         body: {
@@ -36,6 +45,12 @@ const router = tsr.router(runAgentEventsContract, {
         },
       };
     }
+
+    // Extract provider from compose content
+    const composeContent = runWithCompose.composeContent as {
+      agent?: { provider?: string };
+    } | null;
+    const provider = composeContent?.agent?.provider ?? "claude-code";
 
     const { since, limit } = query;
 
@@ -67,6 +82,7 @@ const router = tsr.router(runAgentEventsContract, {
           createdAt: e.createdAt.toISOString(),
         })),
         hasMore,
+        provider,
       },
     };
   },

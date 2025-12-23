@@ -9,6 +9,7 @@ import {
 import { parseTime } from "../../lib/time-parser";
 import { ClaudeEventParser } from "../../lib/claude-event-parser";
 import { EventRenderer } from "../../lib/event-renderer";
+import { CodexEventRenderer } from "../../lib/codex-event-renderer";
 
 /**
  * Log type for mutually exclusive options
@@ -68,14 +69,20 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
 /**
  * Render an agent event with timestamp for historical log viewing
  */
-function renderAgentEvent(event: RunEvent): void {
-  const parsed = ClaudeEventParser.parse(
-    event.eventData as Record<string, unknown>,
-  );
-  if (parsed) {
-    // Set timestamp from event
-    parsed.timestamp = new Date(event.createdAt);
-    EventRenderer.render(parsed, { showTimestamp: true });
+function renderAgentEvent(event: RunEvent, provider: string): void {
+  const eventData = event.eventData as Record<string, unknown>;
+
+  if (provider === "codex") {
+    // Use Codex renderer for Codex provider
+    CodexEventRenderer.render(eventData);
+  } else {
+    // Use Claude Code renderer (default)
+    const parsed = ClaudeEventParser.parse(eventData);
+    if (parsed) {
+      // Set timestamp from event
+      parsed.timestamp = new Date(event.createdAt);
+      EventRenderer.render(parsed, { showTimestamp: true });
+    }
   }
 }
 
@@ -190,7 +197,7 @@ async function showAgentEvents(
   }
 
   for (const event of response.events) {
-    renderAgentEvent(event);
+    renderAgentEvent(event, response.provider);
   }
 
   if (response.hasMore) {

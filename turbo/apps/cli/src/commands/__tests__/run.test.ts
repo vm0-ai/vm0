@@ -85,6 +85,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "completed" },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -151,6 +152,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "completed" },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -245,6 +247,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "completed" },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -310,6 +313,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "completed" },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -398,6 +402,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "completed" },
+        provider: "claude-code",
       });
     });
 
@@ -568,6 +573,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 1,
         run: { status: "running" },
+        provider: "claude-code",
       });
     });
 
@@ -594,6 +600,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -637,6 +644,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -676,6 +684,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -851,6 +860,7 @@ describe("run command", () => {
           hasMore: false,
           nextSequence: 1,
           run: { status: "running" },
+          provider: "claude-code",
         })
         .mockResolvedValueOnce({
           events: [
@@ -888,6 +898,7 @@ describe("run command", () => {
               artifact: {},
             },
           },
+          provider: "claude-code",
         });
 
       await runCommand.parseAsync([
@@ -953,6 +964,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -1019,6 +1031,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -1098,6 +1111,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
@@ -1137,6 +1151,7 @@ describe("run command", () => {
           hasMore: false,
           nextSequence: 1,
           run: { status: "running" },
+          provider: "claude-code",
         })
         .mockRejectedValueOnce(new Error("Network error"));
 
@@ -1174,6 +1189,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 0,
         run: { status: "failed", error: "Agent crashed" },
+        provider: "claude-code",
       });
 
       await expect(async () => {
@@ -1210,6 +1226,7 @@ describe("run command", () => {
         hasMore: false,
         nextSequence: 0,
         run: { status: "timeout" },
+        provider: "claude-code",
       });
 
       await expect(async () => {
@@ -1252,6 +1269,7 @@ describe("run command", () => {
             artifact: {},
           },
         },
+        provider: "claude-code",
       });
 
       await runCommand.parseAsync([
