@@ -27,7 +27,7 @@ interface CookbookMetadata {
 async function getCookbooks(): Promise<CookbookMetadata[]> {
   try {
     // Import the API handler directly for server-side rendering
-    const { GET } = await import("../../api/cookbooks/route");
+    const { GET } = await import("../../api/web/cookbooks/route");
     const response = await GET();
     const data = await response.json();
     return data.cookbooks || [];
