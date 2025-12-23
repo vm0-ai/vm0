@@ -180,7 +180,9 @@ export class EventRenderer {
       prefix + chalk.cyan("[init]") + suffix + ` Starting ${provider} agent`,
     );
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
-    console.log(`  Model: ${chalk.gray(String(event.data.model || ""))}`);
+    if (event.data.model) {
+      console.log(`  Model: ${chalk.gray(String(event.data.model))}`);
+    }
     console.log(
       `  Tools: ${chalk.gray(
         Array.isArray(event.data.tools)

@@ -128,7 +128,6 @@ export class CodexEventParser {
       data: {
         provider: "codex",
         sessionId: event.thread_id,
-        model: "unknown", // Codex thread.started doesn't include model; actual model set via OPENAI_MODEL env var
         tools: [],
       },
     };

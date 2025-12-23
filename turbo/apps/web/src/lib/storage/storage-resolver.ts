@@ -11,6 +11,7 @@ import {
   expandVariablesInString,
   getInstructionsStorageName,
   getSkillStorageName,
+  parseGitHubTreeUrl,
 } from "@vm0/core";
 
 /**
@@ -47,35 +48,6 @@ export function getSkillsBasePath(provider?: string): string {
   }
   // Default to ~/.claude/skills for claude-code and other providers
   return "/home/user/.claude/skills";
-}
-
-/**
- * Parse GitHub tree URL to extract skill name (last path segment)
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- */
-function parseGitHubTreeUrl(
-  url: string,
-): { owner: string; repo: string; branch: string; path: string } | null {
-  const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
-  if (!match) return null;
-
-  const [, owner, repo, branch, pathPart] = match;
-  return {
-    owner: owner!,
-    repo: repo!,
-    branch: branch!,
-    path: pathPart!,
-  };
-}
-
-/**
- * Get skill name from path (last segment)
- */
-function getSkillName(path: string): string {
-  const segments = path.split("/");
-  return segments[segments.length - 1]!;
 }
 
 /**
@@ -308,13 +280,11 @@ export function resolveVolumes(
     for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
-        const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
-        const storageName = getSkillStorageName(fullPath);
-        const skillName = getSkillName(parsed.path);
+        const storageName = getSkillStorageName(parsed.fullPath);
         volumes.push({
           name: storageName,
           driver: "vas",
-          mountPath: `${skillsBasePath}/${skillName}`,
+          mountPath: `${skillsBasePath}/${parsed.skillName}`,
           vasStorageName: storageName,
           vasVersion: "latest", // Skills use latest version
         });

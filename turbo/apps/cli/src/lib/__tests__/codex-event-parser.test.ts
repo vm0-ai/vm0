@@ -16,7 +16,7 @@ describe("CodexEventParser", () => {
       expect(parsed?.data.sessionId).toBe(
         "0199a213-81c0-7800-8aa1-bbab2a035a53",
       );
-      expect(parsed?.data.model).toBe("unknown");
+      expect(parsed?.data.model).toBeUndefined();
     });
   });
 
