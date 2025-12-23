@@ -165,6 +165,8 @@
     "search": {
       "placeholder": "Search skills...",
       "allCategories": "All Categories",
+      "showing": "Showing all",
+      "found": "Found",
       "results": "skills",
       "noResults": "No skills found matching your criteria"
     },

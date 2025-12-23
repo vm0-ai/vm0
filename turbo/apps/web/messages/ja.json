@@ -165,6 +165,8 @@
     "search": {
       "placeholder": "スキルを検索...",
       "allCategories": "すべてのカテゴリー",
+      "showing": "すべて表示",
+      "found": "見つかりました",
       "results": "スキル",
       "noResults": "条件に一致するスキルが見つかりませんでした"
     },
