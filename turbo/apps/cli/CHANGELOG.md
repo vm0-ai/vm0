@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.21.0](https://github.com/vm0-ai/vm0/compare/cli-v4.20.0...cli-v4.21.0) (2025-12-23)
+
+
+### Features
+
+* add codex support alongside claude code ([#637](https://github.com/vm0-ai/vm0/issues/637)) ([db42ad7](https://github.com/vm0-ai/vm0/commit/db42ad79db60a026e97257c4c752fcec35afbbd8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.0
+
 ## [4.20.0](https://github.com/vm0-ai/vm0/compare/cli-v4.19.0...cli-v4.20.0) (2025-12-23)
 
 
