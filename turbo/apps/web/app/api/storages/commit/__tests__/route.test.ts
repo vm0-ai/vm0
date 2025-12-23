@@ -26,6 +26,7 @@ vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
 
 vi.mock("../../../../../src/lib/s3/s3-client", () => ({
   s3ObjectExists: vi.fn().mockResolvedValue(true),
+  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
 }));
 
 // Set required environment variables
@@ -430,5 +431,71 @@ describe("POST /api/storages/commit", () => {
     const json = await response.json();
     expect(json.success).toBe(true);
     expect(json.deduplicated).toBe(true);
+  });
+
+  it("should return 409 when version exists but S3 files are missing", async () => {
+    // This test verifies the fix for issue #658:
+    // Commit should fail with 409 if S3 files are missing for existing version
+    const s3Mock = await import("../../../../../src/lib/s3/s3-client");
+    const verifyS3FilesMock = vi.mocked(s3Mock.verifyS3FilesExist);
+
+    // Mock S3 files as missing for existing version
+    verifyS3FilesMock.mockResolvedValueOnce(false);
+
+    const { POST } = await import("../route");
+    const storageName = `${TEST_PREFIX}s3missing`;
+
+    // Create storage
+    const [storage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: TEST_USER_ID,
+        name: storageName,
+        type: "volume",
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
+        size: 100,
+        fileCount: 1,
+      })
+      .returning();
+
+    const files = [
+      {
+        path: "test.txt",
+        hash: "s3missing_hash_abcdef1234567890abcdef",
+        size: 100,
+      },
+    ];
+    const versionId = computeContentHashFromHashes(storage!.id, files);
+
+    // Create version record (simulating DB has record but S3 files deleted)
+    await globalThis.services.db.insert(storageVersions).values({
+      id: versionId,
+      storageId: storage!.id,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
+      size: 100,
+      fileCount: 1,
+      createdBy: TEST_USER_ID,
+    });
+
+    // Commit should fail because S3 files are missing
+    const request = new Request("http://localhost:3000/api/storages/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storageName,
+        storageType: "volume",
+        versionId,
+        files,
+      }),
+    });
+
+    const response = await POST(
+      request as unknown as import("next/server").NextRequest,
+    );
+    expect(response.status).toBe(409);
+
+    const json = await response.json();
+    expect(json.error.code).toBe("S3_FILES_MISSING");
+    expect(json.error.message).toContain("S3 files missing");
   });
 });

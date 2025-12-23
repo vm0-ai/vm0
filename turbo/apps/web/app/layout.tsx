@@ -8,6 +8,8 @@ import { isCommunityEdition } from "../src/lib/edition";
 import "./globals.css";
 import "./landing.css";
 
+const bypassAuth = process.env.BYPASS_AUTH === "true";
+
 const notoSans = Noto_Sans({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -225,8 +227,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Community Edition: no Clerk provider
-  if (isCommunityEdition()) {
+  // Community Edition or bypassAuth: no Clerk provider
+  if (isCommunityEdition() || bypassAuth) {
     return <LayoutContent>{children}</LayoutContent>;
   }
 

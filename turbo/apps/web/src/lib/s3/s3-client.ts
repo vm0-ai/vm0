@@ -754,3 +754,33 @@ export async function s3ObjectExists(
     throw error;
   }
 }
+
+/**
+ * Verify that S3 files exist for a storage version.
+ * Checks manifest.json and archive.tar.gz (if fileCount > 0).
+ *
+ * Used to validate that a version in the database has corresponding S3 files,
+ * particularly important for deduplication scenarios where we need to ensure
+ * the files weren't deleted.
+ *
+ * @param bucket - S3 bucket name
+ * @param s3Key - Base S3 key for the version (e.g., "userId/artifact/name/versionId")
+ * @param fileCount - Number of files in the version (0 means empty artifact, no archive needed)
+ * @returns true if all required files exist, false otherwise
+ */
+export async function verifyS3FilesExist(
+  bucket: string,
+  s3Key: string,
+  fileCount: number,
+): Promise<boolean> {
+  const manifestKey = `${s3Key}/manifest.json`;
+  const archiveKey = `${s3Key}/archive.tar.gz`;
+
+  const [manifestExists, archiveExists] = await Promise.all([
+    s3ObjectExists(bucket, manifestKey),
+    // Empty artifacts (fileCount === 0) don't have an archive file
+    fileCount > 0 ? s3ObjectExists(bucket, archiveKey) : Promise.resolve(true),
+  ]);
+
+  return manifestExists && archiveExists;
+}

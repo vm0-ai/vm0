@@ -54,7 +54,7 @@ teardown() {
     if [[ $status -eq 0 ]]; then
         # User has a scope configured
         assert_output --partial "Scope Information"
-        assert_output --partial "@"
+        assert_output --partial "Slug:"
     else
         # User has no scope configured
         assert_output --partial "No scope configured"
@@ -94,11 +94,11 @@ teardown() {
 }
 
 # ============================================
-# @scope/name Image Reference Tests
+# scope/name Image Reference Tests
 # ============================================
 
-@test "vm0 compose with @scope/name validates format" {
-    # Create a test config with @scope/name format
+@test "vm0 compose with scope/name validates format" {
+    # Create a test config with scope/name format
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -106,7 +106,7 @@ version: "1.0"
 agents:
   test-agent:
     provider: claude-code
-    image: "@invalid/missing-image"
+    image: "invalid/missing-image"
 EOF
 
     # Should fail because the scope or image doesn't exist, not because of format
@@ -118,7 +118,7 @@ EOF
     rm -rf "$TEST_DIR"
 }
 
-@test "vm0 compose with invalid @scope format fails" {
+@test "vm0 compose with plain image name that does not exist fails" {
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -126,17 +126,17 @@ version: "1.0"
 agents:
   test-agent:
     provider: claude-code
-    image: "@no-slash-here"
+    image: "no-slash-here"
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_failure
-    # Should fail due to invalid scoped reference format
+    # Should fail due to image not found (plain name without slash is a user image lookup)
 
     rm -rf "$TEST_DIR"
 }
 
-@test "vm0 run with @scope/name shows appropriate error for missing scope" {
+@test "vm0 run with scope/name shows appropriate error for missing scope" {
     TEST_DIR="$(mktemp -d)"
     mkdir -p "$TEST_DIR/artifact"
     cd "$TEST_DIR/artifact"
@@ -144,7 +144,7 @@ EOF
     $CLI_COMMAND artifact push >/dev/null 2>&1 || true
 
     # Try to run with a non-existent scope
-    run $CLI_COMMAND run "@nonexistent-scope/test-image" \
+    run $CLI_COMMAND run "nonexistent-scope/test-image" \
         --artifact-name "e2e-scope-test-$(date +%s)" \
         "echo hello"
 
@@ -172,7 +172,7 @@ EOF
     fi
 
     assert_success
-    assert_output --partial "@$TEST_SLUG"
+    assert_output --partial "$TEST_SLUG"
 }
 
 @test "vm0 scope status shows newly created scope" {
@@ -185,7 +185,7 @@ EOF
     run $CLI_COMMAND scope status
     assert_success
     assert_output --partial "Scope Information"
-    assert_output --partial "@"
+    assert_output --partial "Slug:"
 }
 
 @test "vm0 scope set requires --force to update existing scope" {
@@ -213,7 +213,7 @@ EOF
     NEW_SLUG="e2e-force-$(date +%s)"
     run $CLI_COMMAND scope set "$NEW_SLUG" --force
     assert_success
-    assert_output --partial "@$NEW_SLUG"
+    assert_output --partial "$NEW_SLUG"
 }
 
 @test "vm0 scope set with --display-name sets custom name" {
@@ -221,7 +221,7 @@ EOF
     NEW_SLUG="e2e-display-$(date +%s)"
     run $CLI_COMMAND scope set "$NEW_SLUG" --display-name "My Test Scope" --force
     assert_success
-    assert_output --partial "@$NEW_SLUG"
+    assert_output --partial "$NEW_SLUG"
 }
 
 # ============================================

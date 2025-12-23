@@ -6,45 +6,46 @@ import {
   resolveImageReference,
   parseImageReferenceWithTag,
   generateScopedE2bAlias,
+  isSystemScope,
+  isValidSystemTag,
+  resolveSystemImageToE2b,
+  getLegacySystemTemplateWarning,
+  SYSTEM_SCOPE_SLUG,
+  SYSTEM_IMAGE_CLAUDE_CODE,
+  SYSTEM_VALID_TAGS,
 } from "../scope-reference";
 
 describe("parseScopedReference", () => {
-  it("parses valid @scope/name format", () => {
-    const result = parseScopedReference("@myorg/my-image");
+  it("parses valid scope/name format", () => {
+    const result = parseScopedReference("myorg/my-image");
     expect(result).toEqual({ scope: "myorg", name: "my-image" });
   });
 
   it("parses scope with numbers", () => {
-    const result = parseScopedReference("@user123/image-v2");
+    const result = parseScopedReference("user123/image-v2");
     expect(result).toEqual({ scope: "user123", name: "image-v2" });
   });
 
-  it("throws for missing @ prefix", () => {
-    expect(() => parseScopedReference("myorg/my-image")).toThrow(
-      "must start with @",
-    );
-  });
-
   it("throws for missing / separator", () => {
-    expect(() => parseScopedReference("@myorg")).toThrow("missing / separator");
+    expect(() => parseScopedReference("myorg")).toThrow("missing / separator");
   });
 
   it("throws for empty scope", () => {
-    expect(() => parseScopedReference("@/my-image")).toThrow("empty scope");
+    expect(() => parseScopedReference("/my-image")).toThrow("empty scope");
   });
 
   it("throws for empty name", () => {
-    expect(() => parseScopedReference("@myorg/")).toThrow("empty name");
+    expect(() => parseScopedReference("myorg/")).toThrow("empty name");
   });
 });
 
 describe("formatScopedReference", () => {
   it("formats scope and name correctly", () => {
-    expect(formatScopedReference("myorg", "my-image")).toBe("@myorg/my-image");
+    expect(formatScopedReference("myorg", "my-image")).toBe("myorg/my-image");
   });
 
   it("handles special characters in name", () => {
-    expect(formatScopedReference("user", "image-v2")).toBe("@user/image-v2");
+    expect(formatScopedReference("user", "image-v2")).toBe("user/image-v2");
   });
 });
 
@@ -56,7 +57,7 @@ describe("isLegacySystemTemplate", () => {
 
   it("returns false for non-vm0 prefix", () => {
     expect(isLegacySystemTemplate("my-image")).toBe(false);
-    expect(isLegacySystemTemplate("@scope/vm0-image")).toBe(false);
+    expect(isLegacySystemTemplate("scope/vm0-image")).toBe(false);
     expect(isLegacySystemTemplate("vm1-image")).toBe(false);
   });
 });
@@ -75,8 +76,8 @@ describe("resolveImageReference", () => {
     expect(result.isLegacy).toBe(true);
   });
 
-  it("parses explicit @scope/name format", () => {
-    const result = resolveImageReference("@myorg/my-image");
+  it("parses explicit scope/name format", () => {
+    const result = resolveImageReference("myorg/my-image");
     expect(result).toEqual({
       scope: "myorg",
       name: "my-image",
@@ -85,7 +86,7 @@ describe("resolveImageReference", () => {
   });
 
   it("explicit scope doesn't require userScopeSlug", () => {
-    const result = resolveImageReference("@other/image");
+    const result = resolveImageReference("other/image");
     expect(result.scope).toBe("other");
   });
 
@@ -102,6 +103,41 @@ describe("resolveImageReference", () => {
     expect(() => resolveImageReference("my-image")).toThrow(
       "Please set up your scope first",
     );
+  });
+
+  describe("case normalization", () => {
+    it("normalizes explicit scope and name to lowercase", () => {
+      const result = resolveImageReference("MyOrg/My-Image");
+      expect(result).toEqual({
+        scope: "myorg",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes uppercase scope and name to lowercase", () => {
+      const result = resolveImageReference("LANCY/MY-IMAGE");
+      expect(result).toEqual({
+        scope: "lancy",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes implicit name to lowercase", () => {
+      const result = resolveImageReference("My-Image", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        isLegacy: false,
+      });
+    });
+
+    it("does not normalize legacy templates", () => {
+      // Legacy templates are passed through as-is
+      const result = resolveImageReference("vm0-claude-code");
+      expect(result.name).toBe("vm0-claude-code");
+    });
   });
 });
 
@@ -121,9 +157,9 @@ describe("parseImageReferenceWithTag", () => {
     });
   });
 
-  describe("explicit @scope/name format", () => {
-    it("parses @scope/name without tag", () => {
-      const result = parseImageReferenceWithTag("@myorg/my-image");
+  describe("explicit scope/name format", () => {
+    it("parses scope/name without tag", () => {
+      const result = parseImageReferenceWithTag("myorg/my-image");
       expect(result).toEqual({
         scope: "myorg",
         name: "my-image",
@@ -132,8 +168,8 @@ describe("parseImageReferenceWithTag", () => {
       });
     });
 
-    it("parses @scope/name:latest", () => {
-      const result = parseImageReferenceWithTag("@myorg/my-image:latest");
+    it("parses scope/name:latest", () => {
+      const result = parseImageReferenceWithTag("myorg/my-image:latest");
       expect(result).toEqual({
         scope: "myorg",
         name: "my-image",
@@ -142,8 +178,8 @@ describe("parseImageReferenceWithTag", () => {
       });
     });
 
-    it("parses @scope/name with version ID", () => {
-      const result = parseImageReferenceWithTag("@myorg/my-image:a1b2c3d4");
+    it("parses scope/name with version ID", () => {
+      const result = parseImageReferenceWithTag("myorg/my-image:a1b2c3d4");
       expect(result).toEqual({
         scope: "myorg",
         name: "my-image",
@@ -153,35 +189,29 @@ describe("parseImageReferenceWithTag", () => {
     });
 
     it("does not require userScopeSlug for explicit scope", () => {
-      const result = parseImageReferenceWithTag("@other/image:v1");
+      const result = parseImageReferenceWithTag("other/image:v1");
       expect(result.scope).toBe("other");
       expect(result.tag).toBe("v1");
     });
 
     it("throws for empty tag after colon", () => {
-      expect(() => parseImageReferenceWithTag("@myorg/my-image:")).toThrow(
+      expect(() => parseImageReferenceWithTag("myorg/my-image:")).toThrow(
         "empty tag after colon",
       );
     });
 
-    it("throws for missing / separator", () => {
-      expect(() => parseImageReferenceWithTag("@myorg")).toThrow(
-        "missing / separator",
-      );
-    });
-
     it("throws for empty scope", () => {
-      expect(() => parseImageReferenceWithTag("@/my-image")).toThrow(
+      expect(() => parseImageReferenceWithTag("/my-image")).toThrow(
         "empty scope",
       );
     });
 
     it("throws for empty name", () => {
-      expect(() => parseImageReferenceWithTag("@myorg/")).toThrow("empty name");
+      expect(() => parseImageReferenceWithTag("myorg/")).toThrow("empty name");
     });
 
     it("throws for empty name with tag", () => {
-      expect(() => parseImageReferenceWithTag("@myorg/:latest")).toThrow(
+      expect(() => parseImageReferenceWithTag("myorg/:latest")).toThrow(
         "empty name",
       );
     });
@@ -242,6 +272,49 @@ describe("parseImageReferenceWithTag", () => {
       );
     });
   });
+
+  describe("case normalization", () => {
+    it("normalizes explicit scope and name to lowercase", () => {
+      const result = parseImageReferenceWithTag("VM0/Claude-Code:dev");
+      expect(result).toEqual({
+        scope: "vm0",
+        name: "claude-code",
+        tag: "dev",
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes uppercase scope and name to lowercase", () => {
+      const result = parseImageReferenceWithTag("LANCY/MY-IMAGE");
+      expect(result).toEqual({
+        scope: "lancy",
+        name: "my-image",
+        tag: undefined,
+        isLegacy: false,
+      });
+    });
+
+    it("normalizes implicit name to lowercase", () => {
+      const result = parseImageReferenceWithTag("My-Image:latest", "myuser");
+      expect(result).toEqual({
+        scope: "myuser",
+        name: "my-image",
+        tag: "latest",
+        isLegacy: false,
+      });
+    });
+
+    it("preserves tag case", () => {
+      // Tags should preserve original case (version hashes, etc.)
+      const result = parseImageReferenceWithTag("myorg/my-image:DeadBeef");
+      expect(result.tag).toBe("DeadBeef");
+    });
+
+    it("does not normalize legacy templates", () => {
+      const result = parseImageReferenceWithTag("vm0-claude-code");
+      expect(result.name).toBe("vm0-claude-code");
+    });
+  });
 });
 
 describe("generateScopedE2bAlias", () => {
@@ -268,5 +341,125 @@ describe("generateScopedE2bAlias", () => {
       "abcd1234",
     );
     expect(result).toBe("scope-12345678-image-my-image-v1-version-abcd1234");
+  });
+});
+
+describe("system scope constants", () => {
+  it("has correct system scope slug", () => {
+    expect(SYSTEM_SCOPE_SLUG).toBe("vm0");
+  });
+
+  it("has correct system image name", () => {
+    expect(SYSTEM_IMAGE_CLAUDE_CODE).toBe("claude-code");
+  });
+
+  it("has correct valid tags", () => {
+    expect(SYSTEM_VALID_TAGS).toEqual(["latest", "dev"]);
+  });
+});
+
+describe("isSystemScope", () => {
+  it("returns true for vm0 scope", () => {
+    expect(isSystemScope("vm0")).toBe(true);
+  });
+
+  it("returns false for other scopes", () => {
+    expect(isSystemScope("myuser")).toBe(false);
+    expect(isSystemScope("vm0-extra")).toBe(false);
+    expect(isSystemScope("VM0")).toBe(false);
+  });
+});
+
+describe("isValidSystemTag", () => {
+  it("returns true for undefined (default)", () => {
+    expect(isValidSystemTag(undefined)).toBe(true);
+  });
+
+  it("returns true for latest", () => {
+    expect(isValidSystemTag("latest")).toBe(true);
+  });
+
+  it("returns true for dev", () => {
+    expect(isValidSystemTag("dev")).toBe(true);
+  });
+
+  it("returns false for hash versions", () => {
+    expect(isValidSystemTag("a1b2c3d4")).toBe(false);
+    expect(isValidSystemTag("abc123")).toBe(false);
+  });
+
+  it("returns false for other tags", () => {
+    expect(isValidSystemTag("v1.0")).toBe(false);
+    expect(isValidSystemTag("production")).toBe(false);
+  });
+});
+
+describe("resolveSystemImageToE2b", () => {
+  describe("successful conversions", () => {
+    it("converts vm0/claude-code to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
+    });
+
+    it("converts vm0/claude-code:latest to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code", "latest");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
+    });
+
+    it("converts vm0/claude-code:dev to vm0-claude-code-dev", () => {
+      const result = resolveSystemImageToE2b("claude-code", "dev");
+      expect(result.e2bTemplate).toBe("vm0-claude-code-dev");
+    });
+  });
+
+  describe("error cases", () => {
+    it("throws for unknown system image", () => {
+      expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
+        "Unknown system image: vm0/unknown-image",
+      );
+    });
+
+    it("throws for hash version tag", () => {
+      expect(() => resolveSystemImageToE2b("claude-code", "a1b2c3d4")).toThrow(
+        'Invalid tag ":a1b2c3d4" for system image',
+      );
+    });
+
+    it("throws for arbitrary tag", () => {
+      expect(() => resolveSystemImageToE2b("claude-code", "v1.0")).toThrow(
+        'Invalid tag ":v1.0" for system image',
+      );
+    });
+  });
+});
+
+describe("getLegacySystemTemplateWarning", () => {
+  it("returns warning for vm0-claude-code", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-claude-code");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("vm0/claude-code");
+  });
+
+  it("returns warning for vm0-claude-code-dev", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-claude-code-dev");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("vm0/claude-code:dev");
+  });
+
+  it("returns warning for vm0-github-cli", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-github-cli");
+    expect(warning).toContain("deprecated");
+    expect(warning).toContain("will be removed");
+  });
+
+  it("returns generic warning for other vm0-* formats", () => {
+    const warning = getLegacySystemTemplateWarning("vm0-other-template");
+    expect(warning).toContain("deprecated");
+  });
+
+  it("returns undefined for non-legacy formats", () => {
+    expect(getLegacySystemTemplateWarning("vm0/claude-code")).toBeUndefined();
+    expect(getLegacySystemTemplateWarning("my-image")).toBeUndefined();
+    expect(getLegacySystemTemplateWarning("myorg/image")).toBeUndefined();
   });
 });

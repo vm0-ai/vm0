@@ -147,13 +147,6 @@ def _run() -> tuple[int, str]:
     except OSError as e:
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
 
-    # Set Claude config directory to ensure consistent session history location
-    # Agent runs as E2B default user ('user'), so HOME is /home/user
-    home_dir = os.environ.get("HOME", "/home/user")
-    claude_config_dir = f"{home_dir}/.config/claude"
-    os.environ["CLAUDE_CONFIG_DIR"] = claude_config_dir
-    log_info(f"Claude config directory: {claude_config_dir}")
-
     init_duration = int(time.time() - init_start_time)
     log_info(f"✓ Initialization complete ({init_duration}s)")
 

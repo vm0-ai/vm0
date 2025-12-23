@@ -81,7 +81,7 @@ describe("scope status command", () => {
         expect.stringContaining("Scope Information"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("@testuser"),
+        expect.stringContaining("testuser"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("personal"),
@@ -104,7 +104,7 @@ describe("scope status command", () => {
       await statusCommand.parseAsync(["node", "cli"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("@testuser"),
+        expect.stringContaining("testuser"),
       );
     });
   });

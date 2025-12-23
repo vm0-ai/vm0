@@ -76,6 +76,7 @@
   "nav": {
     "blog": "Blog",
     "cookbooks": "Cookbooks",
+    "skills": "Skills",
     "github": "GitHub",
     "contact": "Contact us",
     "joinWaitlist": "Join waitlist"

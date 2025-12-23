@@ -13,6 +13,17 @@ export function validateAgentName(name: string): boolean {
 }
 
 /**
+ * Normalizes agent name to lowercase
+ * Returns null if the name format is invalid
+ */
+export function normalizeAgentName(name: string): string | null {
+  if (!validateAgentName(name)) {
+    return null;
+  }
+  return name.toLowerCase();
+}
+
+/**
  * Validates GitHub tree URL format for beta_system_skills
  * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
  */

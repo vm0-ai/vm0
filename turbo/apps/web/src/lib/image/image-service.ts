@@ -13,6 +13,8 @@ import {
   generateScopedE2bAlias,
   MIN_VERSION_PREFIX_LENGTH,
   isValidVersionPrefix,
+  isSystemScope,
+  resolveSystemImageToE2b,
 } from "@vm0/core";
 
 const log = logger("service:image");
@@ -53,10 +55,19 @@ export function generateE2bAlias(userId: string, alias: string): string {
 }
 
 /**
- * Check if an image alias is a system template (starts with vm0-)
+ * Check if an image alias is a system template
+ * Supports both legacy (vm0-*) and new (vm0/...) formats
  */
 export function isSystemTemplate(alias: string): boolean {
-  return isLegacySystemTemplate(alias);
+  // Legacy vm0-* format
+  if (isLegacySystemTemplate(alias)) {
+    return true;
+  }
+  // New vm0/... format (system scope)
+  if (alias.startsWith("vm0/")) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -443,16 +454,18 @@ export async function getImageByBuildId(buildId: string) {
 /**
  * Resolve an image alias to E2B template name
  * Supports multiple formats with optional tag:
- * - Legacy vm0-* prefix: passthrough directly (system templates)
- * - @scope/name[:tag] format: explicit scope resolution with optional tag
+ * - Legacy vm0-* prefix: passthrough directly (system templates, deprecated)
+ * - vm0/name[:tag] format: system scope with special handling
+ * - scope/name[:tag] format: explicit scope resolution with optional tag
  * - name[:tag]: implicit scope (user's scope) with optional tag
  *
  * Tag resolution:
  * - No tag or :latest → most recently built ready version
  * - Specific tag (e.g., :a1b2c3d4) → exact version by versionId
+ * - For system scope: only :latest and :dev are supported
  *
  * @throws NotFoundError if user image not found
- * @throws BadRequestError if user image is not ready
+ * @throws BadRequestError if user image is not ready or invalid system tag
  */
 export async function resolveImageAlias(
   userId: string,
@@ -470,16 +483,29 @@ export async function resolveImageAlias(
     return { templateName: ref.name, isUserImage: false };
   }
 
-  // 2. Resolve scope
+  // 2. System scope (vm0/...) - special handling
+  if (ref.scope && isSystemScope(ref.scope)) {
+    try {
+      const { e2bTemplate } = resolveSystemImageToE2b(ref.name, ref.tag);
+      return { templateName: e2bTemplate, isUserImage: false };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new BadRequestError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  // 3. Resolve user scope
   const scope = ref.scope ? await getScopeBySlug(ref.scope) : userScope;
 
   if (!scope) {
-    throw new NotFoundError(`Scope "@${ref.scope}" not found`);
+    throw new NotFoundError(`Scope "${ref.scope}" not found`);
   }
 
-  // 3. Resolve version based on tag
+  // 4. Resolve version based on tag
   let image;
-  const refDisplay = ref.scope ? `@${ref.scope}/${ref.name}` : ref.name;
+  const refDisplay = ref.scope ? `${ref.scope}/${ref.name}` : ref.name;
 
   if (!ref.tag || ref.tag === "latest") {
     // Resolve :latest or no tag to most recent ready version
@@ -523,39 +549,34 @@ export async function resolveImageAlias(
 /**
  * Validate that a user has access to an image
  * Returns null if access is granted, or an error message if denied
+ *
+ * Supports all image reference formats:
+ * - Plain alias: "my-image"
+ * - Scoped reference: "scope/my-image"
+ * - Version tags: "my-image:latest", "my-image:abc123", "scope/my-image:v1"
  */
 export async function validateImageAccess(
   userId: string,
   imageAlias: string,
 ): Promise<{ error: string; status: number } | null> {
-  // System templates are always allowed
+  // System templates (vm0-* prefix) are always allowed
   if (isSystemTemplate(imageAlias)) {
     return null;
   }
 
-  // Check if image exists for this user
-  // Each user has their own namespace of images, so we query by userId + alias
-  const existingImage = await globalThis.services.db
-    .select()
-    .from(images)
-    .where(and(eq(images.userId, userId), eq(images.alias, imageAlias)))
-    .limit(1);
-
-  if (existingImage.length === 0) {
-    return { error: `Image "${imageAlias}" not found`, status: 404 };
+  try {
+    // Use the same resolution logic as runtime - handles scope/name:tag format
+    await resolveImageAlias(userId, imageAlias);
+    return null;
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return { error: error.message, status: 404 };
+    }
+    if (error instanceof BadRequestError) {
+      return { error: error.message, status: 400 };
+    }
+    throw error;
   }
-
-  const image = existingImage[0]!;
-
-  // Check if image is ready
-  if (image.status !== "ready") {
-    return {
-      error: `Image "${imageAlias}" is not ready (status: ${image.status})`,
-      status: 400,
-    };
-  }
-
-  return null;
 }
 
 /**

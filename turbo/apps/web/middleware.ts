@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/:locale",
   "/:locale/cookbooks",
+  "/:locale/skills",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/cli/auth/device",

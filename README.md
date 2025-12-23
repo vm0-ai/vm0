@@ -117,7 +117,7 @@ version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     working_dir: /home/user/workspace
     volumes:
       - claude-files:/home/user/.config/claude
@@ -273,7 +273,7 @@ agents:
   my-agent:
     description: "Agent description"
     provider: claude-code
-    image: vm0-claude-code-dev
+    image: "@vm0/claude-code:dev"
     working_dir: /home/user/workspace
     volumes:
       - my-volume:/home/user/data
