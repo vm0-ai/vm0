@@ -1,5 +1,20 @@
 # Changelog
 
+## [6.3.0](https://github.com/vm0-ai/vm0/compare/web-v6.2.0...web-v6.3.0) (2025-12-23)
+
+
+### Features
+
+* add codex support alongside claude code ([#637](https://github.com/vm0-ai/vm0/issues/637)) ([db42ad7](https://github.com/vm0-ai/vm0/commit/db42ad79db60a026e97257c4c752fcec35afbbd8))
+* **web:** replace clerk signup with waitlist component ([#690](https://github.com/vm0-ai/vm0/issues/690)) ([ba477cc](https://github.com/vm0-ai/vm0/commit/ba477cc341563ece8194c3d9cf4d461f771174de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.0
+
 ## [6.2.0](https://github.com/vm0-ai/vm0/compare/web-v6.1.4...web-v6.2.0) (2025-12-23)
 
 

@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runCommand } from "../run";
 import { apiClient } from "../../lib/api-client";
-import { ClaudeEventParser } from "../../lib/event-parser";
+import { parseEvent } from "../../lib/event-parser-factory";
 import { EventRenderer } from "../../lib/event-renderer";
 import chalk from "chalk";
 
 // Mock dependencies
 vi.mock("../../lib/api-client");
-vi.mock("../../lib/event-parser");
+vi.mock("../../lib/event-parser-factory");
 vi.mock("../../lib/event-renderer");
 
 describe("run command", () => {
@@ -34,9 +34,9 @@ describe("run command", () => {
       updatedAt: "2025-01-01T00:00:00Z",
     });
 
-    // Default mock for ClaudeEventParser - returns null since completion
+    // Default mock for parseEvent - returns null since completion
     // is now detected via run.status, not events
-    vi.mocked(ClaudeEventParser.parse).mockImplementation(() => null);
+    vi.mocked(parseEvent).mockImplementation(() => null);
 
     // Default mock for EventRenderer
     vi.mocked(EventRenderer.render).mockImplementation(() => {});
@@ -799,9 +799,9 @@ describe("run command", () => {
       vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
       vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
 
-      // Mock ClaudeEventParser to return parsed events
+      // Mock parseEvent to return parsed events
       // Note: Completion is now detected via run.status, not events
-      vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
+      vi.mocked(parseEvent).mockImplementation((raw) => {
         if (raw.type === "init") {
           return {
             type: "init",
@@ -813,7 +813,7 @@ describe("run command", () => {
           return {
             type: "text",
             timestamp: new Date(),
-            data: { text: raw.text },
+            data: { text: raw.text as string },
           };
         }
         if (raw.type === "result") {
@@ -964,12 +964,12 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(ClaudeEventParser.parse).toHaveBeenCalledWith({
+      expect(parseEvent).toHaveBeenCalledWith({
         type: "init",
         sessionId: "session-123",
       });
-      // ClaudeEventParser.parse receives the raw eventData from the API
-      expect(ClaudeEventParser.parse).toHaveBeenCalledWith(
+      // parseEvent receives the raw eventData from the API
+      expect(parseEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "result",
           subtype: "success",
@@ -1048,7 +1048,7 @@ describe("run command", () => {
       });
 
       // Mock parser to return null for unknown event
-      vi.mocked(ClaudeEventParser.parse).mockImplementation((raw) => {
+      vi.mocked(parseEvent).mockImplementation((raw) => {
         if (raw.type === "unknown") {
           return null;
         }

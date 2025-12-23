@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/vm0-ai/vm0/compare/core-v1.2.0...core-v1.3.0) (2025-12-23)
+
+
+### Features
+
+* add codex support alongside claude code ([#637](https://github.com/vm0-ai/vm0/issues/637)) ([db42ad7](https://github.com/vm0-ai/vm0/commit/db42ad79db60a026e97257c4c752fcec35afbbd8))
+
 ## [1.2.0](https://github.com/vm0-ai/vm0/compare/core-v1.1.0...core-v1.2.0) (2025-12-23)
 
 

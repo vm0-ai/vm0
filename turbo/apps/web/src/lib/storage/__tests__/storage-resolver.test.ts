@@ -3,6 +3,8 @@ import {
   parseMountPath,
   replaceTemplateVars,
   resolveVolumes,
+  getInstructionsMountPath,
+  getSkillsBasePath,
 } from "../storage-resolver";
 import type { AgentVolumeConfig, VolumeConfig } from "../types";
 
@@ -364,5 +366,161 @@ describe("resolveVolumes", () => {
     expect(result.volumes).toHaveLength(0);
     expect(result.artifact).toBeNull();
     expect(result.errors).toHaveLength(0);
+  });
+
+  describe("instructions resolution", () => {
+    test("mounts instructions to ~/.claude for claude-code provider", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            working_dir: "/workspace",
+            instructions: "AGENTS.md",
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const instructionsVol = result.volumes.find((v) =>
+        v.name.includes("instructions"),
+      );
+      expect(instructionsVol).toBeDefined();
+      expect(instructionsVol?.mountPath).toBe("/home/user/.claude");
+    });
+
+    test("mounts instructions to ~/.codex for codex provider", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            provider: "codex",
+            working_dir: "/workspace",
+            instructions: "AGENTS.md",
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const instructionsVol = result.volumes.find((v) =>
+        v.name.includes("instructions"),
+      );
+      expect(instructionsVol).toBeDefined();
+      expect(instructionsVol?.mountPath).toBe("/home/user/.codex");
+    });
+
+    test("defaults to ~/.claude when provider is not specified", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            working_dir: "/workspace",
+            instructions: "AGENTS.md",
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const instructionsVol = result.volumes.find((v) =>
+        v.name.includes("instructions"),
+      );
+      expect(instructionsVol).toBeDefined();
+      expect(instructionsVol?.mountPath).toBe("/home/user/.claude");
+    });
+  });
+
+  describe("skills resolution", () => {
+    test("mounts skills to ~/.claude/skills for claude-code provider", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            working_dir: "/workspace",
+            skills: ["https://github.com/owner/repo/tree/main/skills/my-skill"],
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const skillVol = result.volumes.find((v) => v.name.includes("skills"));
+      expect(skillVol).toBeDefined();
+      expect(skillVol?.mountPath).toBe("/home/user/.claude/skills/my-skill");
+    });
+
+    test("mounts skills to ~/.codex/skills for codex provider", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            provider: "codex",
+            working_dir: "/workspace",
+            skills: ["https://github.com/owner/repo/tree/main/skills/my-skill"],
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const skillVol = result.volumes.find((v) => v.name.includes("skills"));
+      expect(skillVol).toBeDefined();
+      expect(skillVol?.mountPath).toBe("/home/user/.codex/skills/my-skill");
+    });
+
+    test("defaults skills to ~/.claude/skills when provider is not specified", () => {
+      const config: AgentVolumeConfig = {
+        agents: {
+          "test-agent": {
+            working_dir: "/workspace",
+            skills: ["https://github.com/owner/repo/tree/main/skills/my-skill"],
+          },
+        },
+      };
+
+      const result = resolveVolumes(config, {}, "artifact-1", "v1");
+
+      const skillVol = result.volumes.find((v) => v.name.includes("skills"));
+      expect(skillVol).toBeDefined();
+      expect(skillVol?.mountPath).toBe("/home/user/.claude/skills/my-skill");
+    });
+  });
+});
+
+describe("getInstructionsMountPath", () => {
+  test("returns ~/.claude for claude-code provider", () => {
+    expect(getInstructionsMountPath("claude-code")).toBe("/home/user/.claude");
+  });
+
+  test("returns ~/.codex for codex provider", () => {
+    expect(getInstructionsMountPath("codex")).toBe("/home/user/.codex");
+  });
+
+  test("returns ~/.claude for undefined provider", () => {
+    expect(getInstructionsMountPath(undefined)).toBe("/home/user/.claude");
+  });
+
+  test("throws for unknown provider", () => {
+    expect(() => getInstructionsMountPath("unknown")).toThrow(
+      'Unsupported provider "unknown"',
+    );
+  });
+});
+
+describe("getSkillsBasePath", () => {
+  test("returns ~/.claude/skills for claude-code provider", () => {
+    expect(getSkillsBasePath("claude-code")).toBe("/home/user/.claude/skills");
+  });
+
+  test("returns ~/.codex/skills for codex provider", () => {
+    expect(getSkillsBasePath("codex")).toBe("/home/user/.codex/skills");
+  });
+
+  test("returns ~/.claude/skills for undefined provider", () => {
+    expect(getSkillsBasePath(undefined)).toBe("/home/user/.claude/skills");
+  });
+
+  test("throws for unknown provider", () => {
+    expect(() => getSkillsBasePath("unknown")).toThrow(
+      'Unsupported provider "unknown"',
+    );
   });
 });

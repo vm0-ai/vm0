@@ -10,6 +10,7 @@ Creates checkpoints with conversation history and optional artifact snapshot (VA
 Uses direct S3 upload exclusively (no fallback to legacy methods).
 """
 import os
+import glob
 from typing import Optional, Dict, Any
 
 from common import (
@@ -20,6 +21,48 @@ from common import (
 from log import log_info, log_error
 from http_client import http_post_json
 from direct_upload import create_direct_upload_snapshot
+
+
+def find_codex_session_file(sessions_dir: str, session_id: str) -> Optional[str]:
+    """
+    Find Codex session file by searching in date-organized directories.
+    Codex stores sessions in: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+
+    Args:
+        sessions_dir: Base sessions directory (e.g., ~/.codex/sessions)
+        session_id: Session ID to find (e.g., 019b3aca-2df2-7573-8f88-4240b7bc350a)
+
+    Returns:
+        Full path to session file, or None if not found
+    """
+    # Search for session file containing the session ID
+    # Pattern: sessions/YYYY/MM/DD/rollout-*-{session_id_parts}.jsonl
+    # The session ID parts may be separated by dashes in the filename
+
+    # First, try searching all JSONL files recursively
+    search_pattern = os.path.join(sessions_dir, "**", "*.jsonl")
+    files = glob.glob(search_pattern, recursive=True)
+
+    log_info(f"Searching for Codex session {session_id} in {len(files)} files")
+
+    # The session ID in Codex filenames uses the format with dashes
+    # e.g., rollout-2025-12-20T08-04-44-019b3aca-2df2-7573-8f88-4240b7bc350a.jsonl
+    for filepath in files:
+        filename = os.path.basename(filepath)
+        # Check if session ID is in the filename
+        if session_id in filename or session_id.replace("-", "") in filename.replace("-", ""):
+            log_info(f"Found Codex session file: {filepath}")
+            return filepath
+
+    # If not found by ID match, get the most recent file (fallback)
+    if files:
+        # Sort by modification time, newest first
+        files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        most_recent = files[0]
+        log_info(f"Session ID not found in filenames, using most recent: {most_recent}")
+        return most_recent
+
+    return None
 
 
 def create_checkpoint() -> bool:
@@ -45,7 +88,23 @@ def create_checkpoint() -> bool:
         return False
 
     with open(SESSION_HISTORY_PATH_FILE) as f:
-        session_history_path = f.read().strip()
+        session_history_path_raw = f.read().strip()
+
+    # Handle Codex session search marker format: CODEX_SEARCH:{sessions_dir}:{session_id}
+    if session_history_path_raw.startswith("CODEX_SEARCH:"):
+        parts = session_history_path_raw.split(":", 2)
+        if len(parts) != 3:
+            log_error(f"Invalid Codex search marker format: {session_history_path_raw}")
+            return False
+        sessions_dir = parts[1]
+        codex_session_id = parts[2]
+        log_info(f"Searching for Codex session in {sessions_dir}")
+        session_history_path = find_codex_session_file(sessions_dir, codex_session_id)
+        if not session_history_path:
+            log_error(f"Could not find Codex session file for {codex_session_id} in {sessions_dir}")
+            return False
+    else:
+        session_history_path = session_history_path_raw
 
     # Check if session history file exists
     if not os.path.exists(session_history_path):

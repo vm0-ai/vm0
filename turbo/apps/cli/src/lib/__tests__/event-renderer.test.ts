@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventRenderer, type RenderOptions } from "../event-renderer";
-import type { ParsedEvent } from "../event-parser";
+import type { ParsedEvent } from "../claude-event-parser";
 
 describe("EventRenderer", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;

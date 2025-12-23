@@ -142,6 +142,49 @@ describe("run-service", () => {
       const result = calculateSessionHistoryPath("/workspace", sessionId);
       expect(result).toContain(sessionId);
     });
+
+    test("returns claude-code path by default", () => {
+      const result = calculateSessionHistoryPath("/workspace", "session-123");
+      expect(result).toBe(
+        "/home/user/.claude/projects/-workspace/session-123.jsonl",
+      );
+    });
+
+    test("returns claude-code path when agent type is claude-code", () => {
+      const result = calculateSessionHistoryPath(
+        "/workspace",
+        "session-123",
+        "claude-code",
+      );
+      expect(result).toBe(
+        "/home/user/.claude/projects/-workspace/session-123.jsonl",
+      );
+    });
+
+    test("returns codex path when agent type is codex", () => {
+      const result = calculateSessionHistoryPath(
+        "/workspace",
+        "thread-abc123",
+        "codex",
+      );
+      expect(result).toBe("/home/user/.codex/sessions/thread-abc123.jsonl");
+    });
+
+    test("codex path ignores working directory", () => {
+      const result1 = calculateSessionHistoryPath(
+        "/workspace",
+        "thread-123",
+        "codex",
+      );
+      const result2 = calculateSessionHistoryPath(
+        "/home/user/projects/myapp",
+        "thread-123",
+        "codex",
+      );
+      // Codex uses same path regardless of working directory
+      expect(result1).toBe(result2);
+      expect(result1).toBe("/home/user/.codex/sessions/thread-123.jsonl");
+    });
   });
 
   describe("RunService", () => {

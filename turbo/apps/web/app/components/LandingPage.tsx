@@ -249,6 +249,7 @@ export default function LandingPage() {
                       alt="n8n workflow automation tool"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                   <div className="tool-logo">
@@ -261,6 +262,7 @@ export default function LandingPage() {
                       alt="Dify AI application platform"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                   <div className="tool-logo">
@@ -273,6 +275,7 @@ export default function LandingPage() {
                       alt="Modal cloud computing platform"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                   <div className="tool-logo">
@@ -285,6 +288,7 @@ export default function LandingPage() {
                       alt="E2B code interpreter sandbox"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                   <div className="tool-logo">
@@ -297,6 +301,7 @@ export default function LandingPage() {
                       alt="LangGraph agent framework"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                   <div className="tool-logo">
@@ -309,6 +314,7 @@ export default function LandingPage() {
                       alt="Langfuse LLM observability platform"
                       width={80}
                       height={40}
+                      loading="lazy"
                     />
                   </div>
                 </div>
@@ -325,6 +331,7 @@ export default function LandingPage() {
                     alt="VM0"
                     width={180}
                     height={60}
+                    loading="lazy"
                   />
                 </div>
                 <p className="vm0-tagline">{tBuild("vm0Tagline")}</p>
@@ -353,6 +360,7 @@ export default function LandingPage() {
                     alt="Claude Code - AI coding assistant"
                     width={40}
                     height={40}
+                    loading="lazy"
                     className="cli-icon-img"
                   />
                 </div>
@@ -369,6 +377,7 @@ export default function LandingPage() {
                     alt="OpenAI Codex - AI code generation"
                     width={40}
                     height={40}
+                    loading="lazy"
                     className="cli-icon-img"
                   />
                 </div>
@@ -385,6 +394,7 @@ export default function LandingPage() {
                     alt="Google Gemini CLI agent"
                     width={40}
                     height={40}
+                    loading="lazy"
                     className="cli-icon-img full-height"
                   />
                 </div>
@@ -401,6 +411,7 @@ export default function LandingPage() {
                     alt="Cursor CLI - AI code editor"
                     width={40}
                     height={40}
+                    loading="lazy"
                     className="cli-icon-img"
                   />
                 </div>
@@ -417,6 +428,7 @@ export default function LandingPage() {
                     alt="Other CLI agents and tools"
                     width={40}
                     height={40}
+                    loading="lazy"
                     className="cli-icon-img"
                   />
                 </div>
@@ -432,6 +444,7 @@ export default function LandingPage() {
                     alt="Marketing agent automation icon"
                     width={24}
                     height={24}
+                    loading="lazy"
                   />
                 </div>
                 <h3 className="use-case-title">
@@ -448,6 +461,7 @@ export default function LandingPage() {
                     alt="Productivity agent automation icon"
                     width={24}
                     height={24}
+                    loading="lazy"
                   />
                 </div>
                 <h3 className="use-case-title">
@@ -464,6 +478,7 @@ export default function LandingPage() {
                     alt="Research agent icon"
                     width={24}
                     height={24}
+                    loading="lazy"
                   />
                 </div>
                 <h3 className="use-case-title">
@@ -480,6 +495,7 @@ export default function LandingPage() {
                     alt="Coding agent icon"
                     width={24}
                     height={24}
+                    loading="lazy"
                   />
                 </div>
                 <h3 className="use-case-title">
@@ -515,6 +531,7 @@ export default function LandingPage() {
                   alt="Simple prompt-based agent configuration"
                   width={400}
                   height={300}
+                  loading="lazy"
                   className="code-illustration"
                 />
               </div>
@@ -535,6 +552,7 @@ export default function LandingPage() {
                   alt="Purpose-built agent runtime with session preservation"
                   width={400}
                   height={300}
+                  loading="lazy"
                   className="agent-illustration"
                 />
               </div>
@@ -555,6 +573,7 @@ export default function LandingPage() {
                   alt="Real-time agent observability and debugging"
                   width={400}
                   height={300}
+                  loading="lazy"
                   className="observable-illustration"
                 />
               </div>
@@ -575,6 +594,7 @@ export default function LandingPage() {
                   alt="Reproducible agent checkpoints and persistence"
                   width={400}
                   height={300}
+                  loading="lazy"
                   className="persistent-illustration"
                 />
               </div>

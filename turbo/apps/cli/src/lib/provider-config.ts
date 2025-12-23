@@ -22,6 +22,13 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
       development: "vm0/claude-code:dev",
     },
   },
+  codex: {
+    workingDir: "/home/user/workspace",
+    image: {
+      production: "vm0/codex:latest",
+      development: "vm0/codex:dev",
+    },
+  },
 };
 
 /**

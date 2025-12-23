@@ -1,4 +1,4 @@
-import { SignUp } from "@clerk/nextjs";
+import { Waitlist } from "@clerk/nextjs";
 
 export default function SignUpPage() {
   return (
@@ -11,7 +11,7 @@ export default function SignUpPage() {
         background: "linear-gradient(to bottom, #f3f4f6, #ffffff)",
       }}
     >
-      <SignUp />
+      <Waitlist />
     </div>
   );
 }

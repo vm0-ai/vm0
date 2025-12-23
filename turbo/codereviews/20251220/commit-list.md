@@ -17,4 +17,4 @@
 
 See [review-pr636.md](./review-pr636.md) for the detailed review.
 
-**Result: ✅ APPROVE**
+**Result: APPROVE**

@@ -9,6 +9,7 @@ import {
   validateSkillDirectory,
 } from "./github-skills";
 import { directUpload } from "./direct-upload";
+import { getValidatedProvider } from "@vm0/core";
 
 export interface StorageUploadResult {
   name: string;
@@ -17,17 +18,38 @@ export interface StorageUploadResult {
 }
 
 /**
+ * Get the canonical instructions filename for a provider
+ *
+ * Each provider expects instructions at a specific filename:
+ * - claude-code: CLAUDE.md (read from ~/.claude/)
+ * - codex: AGENTS.md (read from ~/.codex/)
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The canonical filename for instructions
+ * @throws Error if provider is defined but not supported
+ */
+export function getInstructionsFilename(provider?: string): string {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
+    return "AGENTS.md";
+  }
+  return "CLAUDE.md";
+}
+
+/**
  * Upload instructions file as a volume
  *
  * @param agentName - Name of the agent (used for storage name)
  * @param instructionsFilePath - Path to the instructions file (e.g., AGENTS.md)
  * @param basePath - Base path for resolving relative paths
+ * @param provider - Provider name for determining canonical filename
  * @returns Upload result with storage name and version
  */
 export async function uploadInstructions(
   agentName: string,
   instructionsFilePath: string,
   basePath: string,
+  provider?: string,
 ): Promise<StorageUploadResult> {
   const storageName = getInstructionsStorageName(agentName);
 
@@ -44,8 +66,9 @@ export async function uploadInstructions(
   const instructionsDir = path.join(tmpDir, "instructions");
   await fs.mkdir(instructionsDir);
 
-  // Write file as CLAUDE.md (the canonical name for Claude Code instructions)
-  await fs.writeFile(path.join(instructionsDir, "CLAUDE.md"), content);
+  // Write file with provider-specific name (CLAUDE.md for claude-code, AGENTS.md for codex)
+  const filename = getInstructionsFilename(provider);
+  await fs.writeFile(path.join(instructionsDir, filename), content);
 
   try {
     // Use direct upload (bypasses Vercel 4.5MB limit)

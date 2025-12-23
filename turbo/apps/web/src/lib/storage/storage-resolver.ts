@@ -11,41 +11,46 @@ import {
   expandVariablesInString,
   getInstructionsStorageName,
   getSkillStorageName,
+  parseGitHubTreeUrl,
+  getValidatedProvider,
 } from "@vm0/core";
 
 /**
- * Fixed mount paths for instructions and skills volumes
+ * Get the mount path for instructions based on provider
+ *
+ * Each provider expects instructions at a specific location:
+ * - claude-code: ~/.claude/
+ * - codex: ~/.codex/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The mount path for instructions
+ * @throws Error if provider is defined but not supported
  */
-const INSTRUCTIONS_MOUNT_PATH = "/home/user/.claude";
-const SKILLS_BASE_PATH = "/home/user/.claude/skills";
-
-/**
- * Parse GitHub tree URL to extract skill name (last path segment)
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- */
-function parseGitHubTreeUrl(
-  url: string,
-): { owner: string; repo: string; branch: string; path: string } | null {
-  const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
-  if (!match) return null;
-
-  const [, owner, repo, branch, pathPart] = match;
-  return {
-    owner: owner!,
-    repo: repo!,
-    branch: branch!,
-    path: pathPart!,
-  };
+export function getInstructionsMountPath(provider?: string): string {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
+    return "/home/user/.codex";
+  }
+  return "/home/user/.claude";
 }
 
 /**
- * Get skill name from path (last segment)
+ * Get the base path for skills based on provider
+ *
+ * Each provider expects skills at a specific location:
+ * - claude-code: ~/.claude/skills/
+ * - codex: ~/.codex/skills/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The base path for skills
+ * @throws Error if provider is defined but not supported
  */
-function getSkillName(path: string): string {
-  const segments = path.split("/");
-  return segments[segments.length - 1]!;
+export function getSkillsBasePath(provider?: string): string {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
+    return "/home/user/.codex/skills";
+  }
+  return "/home/user/.claude/skills";
 }
 
 /**
@@ -252,16 +257,20 @@ export function resolveVolumes(
     }
   }
 
+  // Get provider for mount path resolution
+  const provider = agent?.provider as string | undefined;
+
   // Process instructions if specified
   if (agent?.instructions) {
     // Get the agent name (key in agents dictionary)
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
       const storageName = getInstructionsStorageName(agentName);
+      const instructionsMountPath = getInstructionsMountPath(provider);
       volumes.push({
         name: storageName,
         driver: "vas",
-        mountPath: INSTRUCTIONS_MOUNT_PATH,
+        mountPath: instructionsMountPath,
         vasStorageName: storageName,
         vasVersion: "latest", // Instructions uses latest version
       });
@@ -270,16 +279,15 @@ export function resolveVolumes(
 
   // Process skills if specified
   if (agent?.skills && agent.skills.length > 0) {
+    const skillsBasePath = getSkillsBasePath(provider);
     for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
-        const fullPath = `${parsed.owner}/${parsed.repo}/tree/${parsed.branch}/${parsed.path}`;
-        const storageName = getSkillStorageName(fullPath);
-        const skillName = getSkillName(parsed.path);
+        const storageName = getSkillStorageName(parsed.fullPath);
         volumes.push({
           name: storageName,
           driver: "vas",
-          mountPath: `${SKILLS_BASE_PATH}/${skillName}`,
+          mountPath: `${skillsBasePath}/${parsed.skillName}`,
           vasStorageName: storageName,
           vasVersion: "latest", // Skills use latest version
         });

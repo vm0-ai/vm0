@@ -47,7 +47,7 @@ describe("github-skills", () => {
 
     it("should throw error for invalid URL format", () => {
       expect(() => parseGitHubTreeUrl("https://example.com/foo")).toThrow(
-        "Invalid GitHub URL",
+        "Invalid GitHub tree URL",
       );
     });
 

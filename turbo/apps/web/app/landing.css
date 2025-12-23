@@ -1822,7 +1822,7 @@ section {
 }
 
 .prompt-visual {
-  background: url("/assets/bg_1.png") !important;
+  background: url("/assets/bg_1.webp") !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1859,7 +1859,7 @@ section {
 }
 
 .agent-visual {
-  background: url("/assets/bg_1.png") !important;
+  background: url("/assets/bg_1.webp") !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1870,7 +1870,7 @@ section {
 }
 
 .observable-visual {
-  background: url("/assets/bg_2.png") !important;
+  background: url("/assets/bg_2.webp") !important;
   background-size: cover !important;
   background-position: center !important;
   border: none;
@@ -1881,7 +1881,7 @@ section {
 }
 
 .persistent-visual {
-  background: url("/assets/bg_4.png?v=2");
+  background: url("/assets/bg_4.webp");
   background-size: cover;
   background-position: center;
   border: none;
@@ -2005,7 +2005,7 @@ section {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(79.758deg);
-  background-image: url("/assets/cta-ellipse.png");
+  background-image: url("/assets/cta-ellipse.webp");
   background-size: cover;
   opacity: 0.3;
   filter: blur(60px);

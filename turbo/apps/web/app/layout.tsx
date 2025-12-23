@@ -163,10 +163,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               email: "contact@vm0.ai",
               foundingDate: "2025",
               sameAs: [
-                // Add social media links if available
-                // "https://twitter.com/vm0_ai",
-                // "https://github.com/vm0",
-                // "https://linkedin.com/company/vm0",
+                "https://twitter.com/vm0_ai",
+                "https://github.com/vm0-ai",
+                "https://github.com/vm0-ai/vm0",
               ],
               contactPoint: {
                 "@type": "ContactPoint",
@@ -186,11 +185,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               name: "VM0",
               url: "https://vm0.ai",
               description: "The modern runtime for agent-native development",
-              potentialAction: {
-                "@type": "SearchAction",
-                target: "https://vm0.ai/search?q={search_term_string}",
-                "query-input": "required name=search_term_string",
-              },
             }),
           }}
         />

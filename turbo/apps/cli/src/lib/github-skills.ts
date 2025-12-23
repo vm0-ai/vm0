@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import {
   getInstructionsStorageName,
   getSkillStorageName as getCoreSkillStorageName,
+  parseGitHubTreeUrl as parseGitHubTreeUrlCore,
+  type ParsedGitHubTreeUrl,
 } from "@vm0/core";
 
 const execAsync = promisify(exec);
@@ -13,17 +15,8 @@ const execAsync = promisify(exec);
 // Re-export from @vm0/core for convenience
 export { getInstructionsStorageName };
 
-/**
- * Parsed GitHub tree URL components
- */
-export interface ParsedGitHubUrl {
-  owner: string;
-  repo: string;
-  branch: string;
-  path: string;
-  skillName: string; // Last segment of path (used for mount directory name)
-  fullPath: string; // Full path after github.com/ (unique identifier)
-}
+// Re-export the type with the local name for backwards compatibility
+export type ParsedGitHubUrl = ParsedGitHubTreeUrl;
 
 /**
  * Parse a GitHub tree URL into its components
@@ -37,38 +30,13 @@ export interface ParsedGitHubUrl {
  * @throws Error if URL format is invalid
  */
 export function parseGitHubTreeUrl(url: string): ParsedGitHubUrl {
-  // First, extract the full path after github.com/ (always correct)
-  const fullPathMatch = url.match(/^https:\/\/github\.com\/(.+)$/);
-  if (!fullPathMatch) {
-    throw new Error(
-      `Invalid GitHub URL: ${url}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
-    );
-  }
-  const fullPath = fullPathMatch[1]!;
-
-  // Parse components (may be incorrect for branches with slashes)
-  const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
-
-  if (!match) {
+  const parsed = parseGitHubTreeUrlCore(url);
+  if (!parsed) {
     throw new Error(
       `Invalid GitHub tree URL: ${url}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
     );
   }
-
-  const [, owner, repo, branch, pathPart] = match;
-  const pathSegments = pathPart!.split("/");
-  const skillName = pathSegments[pathSegments.length - 1]!;
-
-  return {
-    owner: owner!,
-    repo: repo!,
-    branch: branch!,
-    path: pathPart!,
-    skillName,
-    fullPath,
-  };
+  return parsed;
 }
 
 /**
