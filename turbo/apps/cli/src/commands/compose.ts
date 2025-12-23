@@ -92,12 +92,14 @@ export const composeCommand = new Command()
       // Upload instructions if specified
       if (agent.instructions) {
         const instructionsPath = agent.instructions as string;
+        const provider = agent.provider as string | undefined;
         console.log(chalk.blue(`Uploading instructions: ${instructionsPath}`));
         try {
           const result = await uploadInstructions(
             agentName,
             instructionsPath,
             basePath,
+            provider,
           );
           console.log(
             chalk.green(

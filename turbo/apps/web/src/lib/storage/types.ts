@@ -65,6 +65,7 @@ export interface AgentVolumeConfig {
   agents?: Record<
     string,
     {
+      provider?: string; // Provider name (e.g., "claude-code", "codex") for mount path resolution
       volumes?: string[];
       working_dir?: string; // Optional when provider supports auto-config
       instructions?: string; // Path to instructions file (stored as agent-instructions@{name} volume)

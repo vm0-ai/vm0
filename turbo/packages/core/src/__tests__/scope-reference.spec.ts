@@ -12,6 +12,8 @@ import {
   getLegacySystemTemplateWarning,
   SYSTEM_SCOPE_SLUG,
   SYSTEM_IMAGE_CLAUDE_CODE,
+  SYSTEM_IMAGE_CODEX,
+  SYSTEM_IMAGES,
   SYSTEM_VALID_TAGS,
 } from "../scope-reference";
 
@@ -349,8 +351,13 @@ describe("system scope constants", () => {
     expect(SYSTEM_SCOPE_SLUG).toBe("vm0");
   });
 
-  it("has correct system image name", () => {
+  it("has correct system image names", () => {
     expect(SYSTEM_IMAGE_CLAUDE_CODE).toBe("claude-code");
+    expect(SYSTEM_IMAGE_CODEX).toBe("codex");
+  });
+
+  it("has correct system images array", () => {
+    expect(SYSTEM_IMAGES).toEqual(["claude-code", "codex"]);
   });
 
   it("has correct valid tags", () => {
@@ -395,7 +402,7 @@ describe("isValidSystemTag", () => {
 });
 
 describe("resolveSystemImageToE2b", () => {
-  describe("successful conversions", () => {
+  describe("claude-code conversions", () => {
     it("converts vm0/claude-code to vm0-claude-code", () => {
       const result = resolveSystemImageToE2b("claude-code");
       expect(result.e2bTemplate).toBe("vm0-claude-code");
@@ -412,10 +419,33 @@ describe("resolveSystemImageToE2b", () => {
     });
   });
 
+  describe("codex conversions", () => {
+    it("converts vm0/codex to vm0-codex", () => {
+      const result = resolveSystemImageToE2b("codex");
+      expect(result.e2bTemplate).toBe("vm0-codex");
+    });
+
+    it("converts vm0/codex:latest to vm0-codex", () => {
+      const result = resolveSystemImageToE2b("codex", "latest");
+      expect(result.e2bTemplate).toBe("vm0-codex");
+    });
+
+    it("converts vm0/codex:dev to vm0-codex-dev", () => {
+      const result = resolveSystemImageToE2b("codex", "dev");
+      expect(result.e2bTemplate).toBe("vm0-codex-dev");
+    });
+  });
+
   describe("error cases", () => {
     it("throws for unknown system image", () => {
       expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
         "Unknown system image: vm0/unknown-image",
+      );
+    });
+
+    it("error message lists available images", () => {
+      expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
+        "vm0/claude-code, vm0/codex",
       );
     });
 
@@ -434,31 +464,50 @@ describe("resolveSystemImageToE2b", () => {
 });
 
 describe("getLegacySystemTemplateWarning", () => {
-  it("returns warning for vm0-claude-code", () => {
-    const warning = getLegacySystemTemplateWarning("vm0-claude-code");
-    expect(warning).toContain("deprecated");
-    expect(warning).toContain("vm0/claude-code");
+  describe("claude-code legacy formats", () => {
+    it("returns warning for vm0-claude-code", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-claude-code");
+      expect(warning).toContain("deprecated");
+      expect(warning).toContain("vm0/claude-code");
+    });
+
+    it("returns warning for vm0-claude-code-dev", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-claude-code-dev");
+      expect(warning).toContain("deprecated");
+      expect(warning).toContain("vm0/claude-code:dev");
+    });
   });
 
-  it("returns warning for vm0-claude-code-dev", () => {
-    const warning = getLegacySystemTemplateWarning("vm0-claude-code-dev");
-    expect(warning).toContain("deprecated");
-    expect(warning).toContain("vm0/claude-code:dev");
+  describe("codex legacy formats", () => {
+    it("returns warning for vm0-codex", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-codex");
+      expect(warning).toContain("deprecated");
+      expect(warning).toContain("vm0/codex");
+    });
+
+    it("returns warning for vm0-codex-dev", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-codex-dev");
+      expect(warning).toContain("deprecated");
+      expect(warning).toContain("vm0/codex:dev");
+    });
   });
 
-  it("returns warning for vm0-github-cli", () => {
-    const warning = getLegacySystemTemplateWarning("vm0-github-cli");
-    expect(warning).toContain("deprecated");
-    expect(warning).toContain("will be removed");
-  });
+  describe("other legacy formats", () => {
+    it("returns warning for vm0-github-cli", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-github-cli");
+      expect(warning).toContain("deprecated");
+      expect(warning).toContain("will be removed");
+    });
 
-  it("returns generic warning for other vm0-* formats", () => {
-    const warning = getLegacySystemTemplateWarning("vm0-other-template");
-    expect(warning).toContain("deprecated");
+    it("returns generic warning for other vm0-* formats", () => {
+      const warning = getLegacySystemTemplateWarning("vm0-other-template");
+      expect(warning).toContain("deprecated");
+    });
   });
 
   it("returns undefined for non-legacy formats", () => {
     expect(getLegacySystemTemplateWarning("vm0/claude-code")).toBeUndefined();
+    expect(getLegacySystemTemplateWarning("vm0/codex")).toBeUndefined();
     expect(getLegacySystemTemplateWarning("my-image")).toBeUndefined();
     expect(getLegacySystemTemplateWarning("myorg/image")).toBeUndefined();
   });

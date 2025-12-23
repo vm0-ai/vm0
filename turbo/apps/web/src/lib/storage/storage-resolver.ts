@@ -14,10 +14,40 @@ import {
 } from "@vm0/core";
 
 /**
- * Fixed mount paths for instructions and skills volumes
+ * Get the mount path for instructions based on provider
+ *
+ * Each provider expects instructions at a specific location:
+ * - claude-code: ~/.claude/
+ * - codex: ~/.codex/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The mount path for instructions
  */
-const INSTRUCTIONS_MOUNT_PATH = "/home/user/.claude";
-const SKILLS_BASE_PATH = "/home/user/.claude/skills";
+export function getInstructionsMountPath(provider?: string): string {
+  if (provider === "codex") {
+    return "/home/user/.codex";
+  }
+  // Default to ~/.claude for claude-code and other providers
+  return "/home/user/.claude";
+}
+
+/**
+ * Get the base path for skills based on provider
+ *
+ * Each provider expects skills at a specific location:
+ * - claude-code: ~/.claude/skills/
+ * - codex: ~/.codex/skills/
+ *
+ * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @returns The base path for skills
+ */
+export function getSkillsBasePath(provider?: string): string {
+  if (provider === "codex") {
+    return "/home/user/.codex/skills";
+  }
+  // Default to ~/.claude/skills for claude-code and other providers
+  return "/home/user/.claude/skills";
+}
 
 /**
  * Parse GitHub tree URL to extract skill name (last path segment)
@@ -252,16 +282,20 @@ export function resolveVolumes(
     }
   }
 
+  // Get provider for mount path resolution
+  const provider = agent?.provider as string | undefined;
+
   // Process instructions if specified
   if (agent?.instructions) {
     // Get the agent name (key in agents dictionary)
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
       const storageName = getInstructionsStorageName(agentName);
+      const instructionsMountPath = getInstructionsMountPath(provider);
       volumes.push({
         name: storageName,
         driver: "vas",
-        mountPath: INSTRUCTIONS_MOUNT_PATH,
+        mountPath: instructionsMountPath,
         vasStorageName: storageName,
         vasVersion: "latest", // Instructions uses latest version
       });
@@ -270,6 +304,7 @@ export function resolveVolumes(
 
   // Process skills if specified
   if (agent?.skills && agent.skills.length > 0) {
+    const skillsBasePath = getSkillsBasePath(provider);
     for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {
@@ -279,7 +314,7 @@ export function resolveVolumes(
         volumes.push({
           name: storageName,
           driver: "vas",
-          mountPath: `${SKILLS_BASE_PATH}/${skillName}`,
+          mountPath: `${skillsBasePath}/${skillName}`,
           vasStorageName: storageName,
           vasVersion: "latest", // Skills use latest version
         });

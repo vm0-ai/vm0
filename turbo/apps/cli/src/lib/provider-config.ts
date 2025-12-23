@@ -5,7 +5,7 @@
 
 export interface ProviderDefaults {
   workingDir: string;
-  image?: {
+  image: {
     production: string;
     development: string;
   };
@@ -24,6 +24,10 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
   },
   codex: {
     workingDir: "/home/user/workspace",
+    image: {
+      production: "vm0/codex:latest",
+      development: "vm0/codex:dev",
+    },
   },
 };
 
@@ -62,7 +66,7 @@ export function getSupportedProviders(): string[] {
  */
 export function getDefaultImage(provider: string): string | undefined {
   const defaults = PROVIDER_DEFAULTS[provider];
-  if (!defaults?.image) return undefined;
+  if (!defaults) return undefined;
 
   // Only use production image when NODE_ENV is explicitly "production"
   // All other cases (development, test, undefined) use dev image
