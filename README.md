@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0%2Ftree%2Fcommunity-vercel-deploy&project-name=vm0-community&repository-name=vm0-community&root-directory=turbo%2Fapps%2Fweb&env=VM0_EDITION,E2B_API_KEY&envDefaults=%7B%22VM0_EDITION%22%3A%22community%22%7D&envDescription=VM0_EDITION%20is%20pre-filled.%20E2B_API_KEY%20required%20for%20sandbox.&integration-ids=oac_3sK3gnG06emjIEVL09jjntDD&skippable-integrations=1">
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvm0-ai%2Fvm0%2Ftree%2Fcommunity-vercel-deploy&project-name=vm0-community&repository-name=vm0-community&root-directory=turbo%2Fapps%2Fweb&env=VM0_EDITION,E2B_API_KEY,R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_USER_STORAGES_BUCKET_NAME,VM0_COMMUNITY_AUTH_TOKEN&envDefaults=%7B%22VM0_EDITION%22%3A%22community%22%7D&envDescription=All%20environment%20variables%20are%20required.%20VM0_EDITION%20is%20pre-filled.&integration-ids=oac_3sK3gnG06emjIEVL09jjntDD&skippable-integrations=1">
     <img src="https://vercel.com/button" alt="Deploy with Vercel" />
   </a>
 </p>
