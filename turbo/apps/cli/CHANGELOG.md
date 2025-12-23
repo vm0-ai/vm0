@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.21.1](https://github.com/vm0-ai/vm0/compare/cli-v4.21.0...cli-v4.21.1) (2025-12-23)
+
+
+### Bug Fixes
+
+* return provider in events APIs for correct rendering ([#697](https://github.com/vm0-ai/vm0/issues/697)) ([c72c9d7](https://github.com/vm0-ai/vm0/commit/c72c9d7d90792ffffde7f92737dfdbe022052a99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.1
+
 ## [4.21.0](https://github.com/vm0-ai/vm0/compare/cli-v4.20.0...cli-v4.21.0) (2025-12-23)
 
 

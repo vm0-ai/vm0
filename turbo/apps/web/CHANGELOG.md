@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.3.2](https://github.com/vm0-ai/vm0/compare/web-v6.3.1...web-v6.3.2) (2025-12-23)
+
+
+### Bug Fixes
+
+* return provider in events APIs for correct rendering ([#697](https://github.com/vm0-ai/vm0/issues/697)) ([c72c9d7](https://github.com/vm0-ai/vm0/commit/c72c9d7d90792ffffde7f92737dfdbe022052a99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.3.1
+
 ## [6.3.1](https://github.com/vm0-ai/vm0/compare/web-v6.3.0...web-v6.3.1) (2025-12-23)
 
 
