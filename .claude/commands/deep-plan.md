@@ -63,7 +63,13 @@ Apply these thinking approaches during planning:
    - Dependencies on other tasks
    - Acceptance criteria
 
-3. **Identify risks and blockers:**
+3. **Define test requirements:**
+   - **Unit tests**: Test individual functions, components, or modules in isolation
+   - **E2E tests**: Test user-facing workflows and critical paths through the system
+   - Specify which type of test is needed for each task
+   - Include test file locations and key test scenarios
+
+4. **Identify risks and blockers:**
    - Technical challenges
    - External dependencies
    - Areas requiring further investigation
@@ -74,6 +80,7 @@ Apply these thinking approaches during planning:
 2. **Structure the document:**
    - Chosen approach summary
    - Task breakdown with details
+   - Test strategy (unit tests and e2e tests)
    - Dependency graph (if complex)
    - Risk assessment
    - Definition of done
