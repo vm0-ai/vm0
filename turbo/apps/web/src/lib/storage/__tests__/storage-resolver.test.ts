@@ -498,8 +498,10 @@ describe("getInstructionsMountPath", () => {
     expect(getInstructionsMountPath(undefined)).toBe("/home/user/.claude");
   });
 
-  test("returns ~/.claude for unknown provider", () => {
-    expect(getInstructionsMountPath("unknown")).toBe("/home/user/.claude");
+  test("throws for unknown provider", () => {
+    expect(() => getInstructionsMountPath("unknown")).toThrow(
+      'Unsupported provider "unknown"',
+    );
   });
 });
 
@@ -516,7 +518,9 @@ describe("getSkillsBasePath", () => {
     expect(getSkillsBasePath(undefined)).toBe("/home/user/.claude/skills");
   });
 
-  test("returns ~/.claude/skills for unknown provider", () => {
-    expect(getSkillsBasePath("unknown")).toBe("/home/user/.claude/skills");
+  test("throws for unknown provider", () => {
+    expect(() => getSkillsBasePath("unknown")).toThrow(
+      'Unsupported provider "unknown"',
+    );
   });
 });

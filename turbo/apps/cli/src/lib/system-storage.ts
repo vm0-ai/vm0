@@ -9,6 +9,7 @@ import {
   validateSkillDirectory,
 } from "./github-skills";
 import { directUpload } from "./direct-upload";
+import { getValidatedProvider } from "@vm0/core";
 
 export interface StorageUploadResult {
   name: string;
@@ -25,12 +26,13 @@ export interface StorageUploadResult {
  *
  * @param provider - The provider name (e.g., "claude-code", "codex")
  * @returns The canonical filename for instructions
+ * @throws Error if provider is defined but not supported
  */
 export function getInstructionsFilename(provider?: string): string {
-  if (provider === "codex") {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
     return "AGENTS.md";
   }
-  // Default to CLAUDE.md for claude-code and other providers
   return "CLAUDE.md";
 }
 

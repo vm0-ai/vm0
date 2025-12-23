@@ -14,7 +14,9 @@ describe("getInstructionsFilename", () => {
     expect(getInstructionsFilename(undefined)).toBe("CLAUDE.md");
   });
 
-  it("returns CLAUDE.md for unknown provider", () => {
-    expect(getInstructionsFilename("unknown-provider")).toBe("CLAUDE.md");
+  it("throws for unknown provider", () => {
+    expect(() => getInstructionsFilename("unknown-provider")).toThrow(
+      'Unsupported provider "unknown-provider"',
+    );
   });
 });

@@ -7,7 +7,7 @@ import {
   NetworkLogEntry,
 } from "../../lib/api-client";
 import { parseTime } from "../../lib/time-parser";
-import { ClaudeEventParser } from "../../lib/event-parser";
+import { ClaudeEventParser } from "../../lib/claude-event-parser";
 import { EventRenderer } from "../../lib/event-renderer";
 
 /**

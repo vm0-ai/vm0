@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ClaudeEventParser } from "../event-parser";
+import { ClaudeEventParser } from "../claude-event-parser";
 
 describe("ClaudeEventParser", () => {
   // ============================================

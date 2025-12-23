@@ -9,8 +9,9 @@
  */
 
 import chalk from "chalk";
-import type { ParsedEvent } from "./event-parser";
+import type { ParsedEvent } from "./claude-event-parser";
 import type { RunResult } from "./api-client";
+import { getProviderDisplayName, isSupportedProvider } from "@vm0/core";
 
 /**
  * Info about a started run
@@ -175,9 +176,12 @@ export class EventRenderer {
     prefix: string,
     suffix: string,
   ): void {
-    const provider = event.data.provider === "codex" ? "Codex" : "Claude Code";
+    const providerStr = String(event.data.provider || "claude-code");
+    const displayName = isSupportedProvider(providerStr)
+      ? getProviderDisplayName(providerStr)
+      : providerStr;
     console.log(
-      prefix + chalk.cyan("[init]") + suffix + ` Starting ${provider} agent`,
+      prefix + chalk.cyan("[init]") + suffix + ` Starting ${displayName} agent`,
     );
     console.log(`  Session: ${chalk.gray(String(event.data.sessionId || ""))}`);
     if (event.data.model) {

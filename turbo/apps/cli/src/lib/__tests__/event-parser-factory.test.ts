@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getEventParser, parseEvent } from "../event-parser-factory";
-import { ClaudeEventParser } from "../event-parser";
+import { ClaudeEventParser } from "../claude-event-parser";
 import { CodexEventParser } from "../codex-event-parser";
 
 describe("event-parser-factory", () => {
@@ -14,10 +14,14 @@ describe("event-parser-factory", () => {
       const parser = getEventParser("codex");
       expect(parser).toBe(CodexEventParser);
     });
+  });
 
-    test("returns ClaudeEventParser for unknown provider", () => {
-      const parser = getEventParser("unknown");
-      expect(parser).toBe(ClaudeEventParser);
+  describe("parseEvent with invalid provider", () => {
+    test("throws for unknown provider", () => {
+      const rawEvent = { type: "system", subtype: "init" };
+      expect(() => parseEvent(rawEvent, "unknown")).toThrow(
+        'Unsupported provider "unknown"',
+      );
     });
   });
 

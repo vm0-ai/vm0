@@ -3,8 +3,9 @@
  * Also supports auto-detection from event format
  */
 
-import { ClaudeEventParser, type ParsedEvent } from "./event-parser";
+import { ClaudeEventParser, type ParsedEvent } from "./claude-event-parser";
 import { CodexEventParser } from "./codex-event-parser";
+import { getValidatedProvider, type SupportedProvider } from "@vm0/core";
 
 export type EventParserType =
   | typeof ClaudeEventParser
@@ -50,12 +51,12 @@ function detectProviderFromEvent(
  * Get the appropriate event parser for a given provider
  * @param provider The CLI provider type (claude-code or codex)
  * @returns The event parser class for that provider
+ * @throws Error if provider is not supported
  */
-export function getEventParser(provider: string): EventParserType {
+export function getEventParser(provider: SupportedProvider): EventParserType {
   if (provider === "codex") {
     return CodexEventParser;
   }
-  // Default to Claude Code parser
   return ClaudeEventParser;
 }
 
@@ -64,14 +65,18 @@ export function getEventParser(provider: string): EventParserType {
  * @param rawEvent The raw event data from the API
  * @param provider The CLI provider type (optional - will auto-detect if not provided)
  * @returns Parsed event or null if not parseable
+ * @throws Error if provider is explicitly provided but not supported
  */
 export function parseEvent(
   rawEvent: Record<string, unknown>,
   provider?: string,
 ): ParsedEvent | null {
   // Use provided provider or auto-detect from event
-  const effectiveProvider =
-    provider || detectProviderFromEvent(rawEvent) || "claude-code";
+  // Validate explicitly provided provider; auto-detected providers are always valid
+  const effectiveProvider: SupportedProvider = provider
+    ? getValidatedProvider(provider)
+    : ((detectProviderFromEvent(rawEvent) ||
+        "claude-code") as SupportedProvider);
   const Parser = getEventParser(effectiveProvider);
   return Parser.parse(rawEvent);
 }

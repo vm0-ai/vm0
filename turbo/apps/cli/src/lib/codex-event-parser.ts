@@ -9,7 +9,7 @@
  * - error: Unrecoverable errors
  */
 
-import type { ParsedEvent } from "./event-parser";
+import type { ParsedEvent } from "./claude-event-parser";
 
 interface ThreadStartedEvent {
   type: "thread.started";

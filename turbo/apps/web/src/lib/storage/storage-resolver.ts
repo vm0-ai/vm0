@@ -12,6 +12,7 @@ import {
   getInstructionsStorageName,
   getSkillStorageName,
   parseGitHubTreeUrl,
+  getValidatedProvider,
 } from "@vm0/core";
 
 /**
@@ -23,12 +24,13 @@ import {
  *
  * @param provider - The provider name (e.g., "claude-code", "codex")
  * @returns The mount path for instructions
+ * @throws Error if provider is defined but not supported
  */
 export function getInstructionsMountPath(provider?: string): string {
-  if (provider === "codex") {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
     return "/home/user/.codex";
   }
-  // Default to ~/.claude for claude-code and other providers
   return "/home/user/.claude";
 }
 
@@ -41,12 +43,13 @@ export function getInstructionsMountPath(provider?: string): string {
  *
  * @param provider - The provider name (e.g., "claude-code", "codex")
  * @returns The base path for skills
+ * @throws Error if provider is defined but not supported
  */
 export function getSkillsBasePath(provider?: string): string {
-  if (provider === "codex") {
+  const validatedProvider = getValidatedProvider(provider);
+  if (validatedProvider === "codex") {
     return "/home/user/.codex/skills";
   }
-  // Default to ~/.claude/skills for claude-code and other providers
   return "/home/user/.claude/skills";
 }
 
