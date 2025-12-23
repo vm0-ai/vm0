@@ -2,6 +2,7 @@ import { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://vm0.ai";
+  const blogUrl = "https://blog.vm0.ai";
   const locales = ["en", "de", "es", "ja"];
 
   const routes = [
@@ -34,6 +35,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const urls: MetadataRoute.Sitemap = [];
 
+  // Add main site URLs with locales
   routes.forEach((route) => {
     locales.forEach((locale) => {
       urls.push({
@@ -42,6 +44,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
         changeFrequency: route.changeFrequency,
         priority: route.priority,
       });
+    });
+  });
+
+  // Add blog URLs with locales
+  locales.forEach((locale) => {
+    urls.push({
+      url: `${blogUrl}/${locale}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.8,
     });
   });
 
