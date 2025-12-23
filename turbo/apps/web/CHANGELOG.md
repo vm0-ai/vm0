@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.3.1](https://github.com/vm0-ai/vm0/compare/web-v6.3.0...web-v6.3.1) (2025-12-23)
+
+
+### Performance Improvements
+
+* **web:** optimize images and enhance seo ([#693](https://github.com/vm0-ai/vm0/issues/693)) ([769dc3a](https://github.com/vm0-ai/vm0/commit/769dc3a4af24d72d6c7e5839b2c8d560dda34a0d))
+
 ## [6.3.0](https://github.com/vm0-ai/vm0/compare/web-v6.2.0...web-v6.3.0) (2025-12-23)
 
 
