@@ -19,24 +19,6 @@ export interface CreateRunResponse {
   createdAt: string;
 }
 
-export interface AgentSessionResponse {
-  session: {
-    id: string;
-    userId: string;
-    agentComposeId: string;
-    conversationId: string | null;
-    artifactName: string;
-    createdAt: string;
-    updatedAt: string;
-    conversation?: {
-      id: string;
-      cliAgentType: string;
-      cliAgentSessionId: string;
-      cliAgentSessionHistory: string;
-    } | null;
-  };
-}
-
 export interface GetComposeResponse {
   id: string;
   name: string;
@@ -347,23 +329,6 @@ class ApiClient {
     }
 
     return (await response.json()) as GetEventsResponse;
-  }
-
-  async getAgentSession(id: string): Promise<AgentSessionResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const response = await fetch(`${baseUrl}/api/agent/sessions/${id}`, {
-      method: "GET",
-      headers,
-    });
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to get agent session");
-    }
-
-    return (await response.json()) as AgentSessionResponse;
   }
 
   async getTelemetry(runId: string): Promise<GetTelemetryResponse> {
