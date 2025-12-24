@@ -173,14 +173,17 @@ export class CheckpointService {
 
     log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
-    // Find or create agent session using compose ID (not version ID)
-    // Sessions track the mutable compose, not a specific version
+    // Find or create agent session
+    // Sessions now store compose version ID for reproducibility
     // artifactSnapshot may be undefined for runs without artifact
     const artifactSnapshot = request.artifactSnapshot as
       | ArtifactSnapshot
       | undefined;
     const vars = (run.vars as Record<string, string>) || undefined;
     const secrets = (run.secrets as Record<string, string>) || undefined;
+    const volumeSnapshot = request.volumeVersionsSnapshot as
+      | VolumeVersionsSnapshot
+      | undefined;
     const { session: agentSession } = await agentSessionService.findOrCreate(
       run.userId,
       version.composeId,
@@ -188,14 +191,13 @@ export class CheckpointService {
       conversation.id,
       vars,
       secrets,
+      run.agentComposeVersionId, // Pass version ID to fix at session creation
+      volumeSnapshot?.versions, // Pass volume versions to fix at session creation
     );
 
     log.debug(`Agent session updated/created: ${agentSession.id}`);
 
-    // Extract volume versions from snapshot
-    const volumeSnapshot = request.volumeVersionsSnapshot as
-      | VolumeVersionsSnapshot
-      | undefined;
+    // Use volume versions from snapshot for return value
     const volumes = volumeSnapshot?.versions;
 
     return {

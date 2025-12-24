@@ -393,4 +393,101 @@ describe("AgentSessionService", () => {
       expect(deleted).toBe(false);
     });
   });
+
+  describe("agentComposeVersionId and volumeVersions", () => {
+    it("should create session with agentComposeVersionId", async () => {
+      const session = await service.create({
+        userId: testUserId,
+        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
+        artifactName: "test-artifact-with-version",
+      });
+
+      expect(session).toBeDefined();
+      expect(session.agentComposeVersionId).toBe(testVersionId);
+    });
+
+    it("should create session with volumeVersions", async () => {
+      const volumeVersions = {
+        "test-volume": "v1.0.0",
+        "another-volume": "v2.0.0",
+      };
+
+      const session = await service.create({
+        userId: testUserId,
+        agentComposeId: testComposeId,
+        artifactName: "test-artifact-with-volumes",
+        volumeVersions,
+      });
+
+      expect(session).toBeDefined();
+      expect(session.volumeVersions).toEqual(volumeVersions);
+    });
+
+    it("should store agentComposeVersionId on findOrCreate for new session", async () => {
+      const result = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        "new-artifact-with-version",
+        testConversationId,
+        undefined, // vars
+        undefined, // secrets
+        testVersionId, // agentComposeVersionId
+        { "test-vol": "v1" }, // volumeVersions
+      );
+
+      expect(result.created).toBe(true);
+      expect(result.session.agentComposeVersionId).toBe(testVersionId);
+      expect(result.session.volumeVersions).toEqual({ "test-vol": "v1" });
+    });
+
+    it("should NOT update agentComposeVersionId on findOrCreate for existing session", async () => {
+      // Create initial session with version ID
+      const initial = await service.create({
+        userId: testUserId,
+        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
+        artifactName: "existing-artifact-with-version",
+        volumeVersions: { "old-vol": "v1" },
+      });
+
+      expect(initial.agentComposeVersionId).toBe(testVersionId);
+
+      // Find or create should NOT update version ID (it's fixed at creation)
+      const result = await service.findOrCreate(
+        testUserId,
+        testComposeId,
+        "existing-artifact-with-version",
+        testConversationId,
+        undefined,
+        undefined,
+        "different-version-id", // Try to update version
+        { "new-vol": "v2" }, // Try to update volume versions
+      );
+
+      expect(result.created).toBe(false);
+      expect(result.session.id).toBe(initial.id);
+      // Version ID should remain unchanged
+      expect(result.session.agentComposeVersionId).toBe(testVersionId);
+      // Volume versions should remain unchanged
+      expect(result.session.volumeVersions).toEqual({ "old-vol": "v1" });
+    });
+
+    it("should return agentComposeVersionId in getByIdWithConversation", async () => {
+      const created = await service.create({
+        userId: testUserId,
+        agentComposeId: testComposeId,
+        agentComposeVersionId: testVersionId,
+        artifactName: "test-artifact-get-with-conv",
+        conversationId: testConversationId,
+        volumeVersions: { "test-vol": "v1.0" },
+      });
+
+      const found = await service.getByIdWithConversation(created.id);
+
+      expect(found).toBeDefined();
+      expect(found?.agentComposeVersionId).toBe(testVersionId);
+      expect(found?.volumeVersions).toEqual({ "test-vol": "v1.0" });
+    });
+  });
 });

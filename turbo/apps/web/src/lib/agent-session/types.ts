@@ -10,10 +10,15 @@ export interface AgentSessionData {
   id: string;
   userId: string;
   agentComposeId: string;
+  // Immutable compose version ID (SHA-256) fixed at session creation
+  // Null for legacy sessions - resolveSession falls back to HEAD
+  agentComposeVersionId: string | null;
   conversationId: string | null;
   artifactName: string | null;
   vars: Record<string, string> | null;
   secrets: Record<string, string> | null;
+  // Volume versions snapshot at session creation
+  volumeVersions: Record<string, string> | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,10 +29,14 @@ export interface AgentSessionData {
 export interface CreateAgentSessionInput {
   userId: string;
   agentComposeId: string;
+  // Compose version ID to fix at session creation (for reproducibility)
+  agentComposeVersionId?: string;
   artifactName?: string;
   conversationId?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
+  // Volume versions to fix at session creation
+  volumeVersions?: Record<string, string>;
 }
 
 /**
