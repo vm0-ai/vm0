@@ -37,6 +37,26 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock session history service to avoid R2 dependency
+vi.mock("../../../../../../src/lib/session-history", () => ({
+  sessionHistoryService: {
+    store: vi.fn().mockImplementation(async (content: string) => {
+      // Return a deterministic hash based on content for testing
+      const crypto = await import("crypto");
+      return crypto.createHash("sha256").update(content).digest("hex");
+    }),
+    retrieve: vi.fn().mockResolvedValue("{}"),
+    resolve: vi
+      .fn()
+      .mockImplementation(
+        async (hash: string | null, legacyText: string | null) => {
+          if (hash) return "{}";
+          return legacyText;
+        },
+      ),
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 
@@ -494,7 +514,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const conversation = savedConversations[0];
       expect(conversation?.cliAgentType).toBe("claude-code");
       expect(conversation?.cliAgentSessionId).toBe("test-session-456");
-      expect(conversation?.cliAgentSessionHistory).toBe(sessionHistory);
+      // Session history is now stored in R2, referenced by hash
+      expect(conversation?.cliAgentSessionHistoryHash).toBeDefined();
+      expect(conversation?.cliAgentSessionHistoryHash).toHaveLength(64); // SHA-256 hex
+      // Legacy TEXT field should be null for new records
+      expect(conversation?.cliAgentSessionHistory).toBeNull();
 
       // Verify agentComposeSnapshot contains vars
       const configSnapshot = checkpoint?.agentComposeSnapshot as {
