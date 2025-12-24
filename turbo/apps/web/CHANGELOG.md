@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.0](https://github.com/vm0-ai/vm0/compare/web-v6.6.0...web-v6.7.0) (2025-12-24)
+
+
+### Features
+
+* migrate sandbox telemetry metrics and network logs to axiom ([#710](https://github.com/vm0-ai/vm0/issues/710)) ([acb2cd5](https://github.com/vm0-ai/vm0/commit/acb2cd5730c2aa69e5e4dc9d501147a3813fafe3))
+
 ## [6.6.0](https://github.com/vm0-ai/vm0/compare/web-v6.5.0...web-v6.6.0) (2025-12-24)
 
 
