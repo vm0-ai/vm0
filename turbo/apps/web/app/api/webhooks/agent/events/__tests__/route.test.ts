@@ -15,7 +15,6 @@ import { POST as createCompose } from "../../../../agent/composes/route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -35,11 +34,22 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock Axiom module
+vi.mock("../../../../../../src/lib/axiom", () => ({
+  ingestToAxiom: vi.fn().mockResolvedValue(true),
+  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
+  DATASETS: {
+    AGENT_RUN_EVENTS: "agent-run-events",
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
+import { ingestToAxiom } from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockIngestToAxiom = vi.mocked(ingestToAxiom);
 
 describe("POST /api/webhooks/agent/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
@@ -71,10 +81,6 @@ describe("POST /api/webhooks/agent/events", () => {
     } as unknown as Headers);
 
     // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -110,10 +116,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   afterEach(async () => {
     // Clean up test data after each test
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -357,7 +359,7 @@ describe("POST /api/webhooks/agent/events", () => {
   // ============================================
 
   describe("Success", () => {
-    it("should accept valid webhook with authentication", async () => {
+    it("should accept valid webhook and ingest to Axiom", async () => {
       // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -409,108 +411,24 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(data.firstSequence).toBe(1);
       expect(data.lastSequence).toBe(2);
 
-      // Verify database
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId))
-        .orderBy(agentRunEvents.sequenceNumber);
-
-      expect(events).toHaveLength(2);
-      expect(events[0]?.sequenceNumber).toBe(1);
-      expect(events[0]?.eventType).toBe("tool_use");
-      expect(events[1]?.sequenceNumber).toBe(2);
-      expect(events[1]?.eventType).toBe("tool_result");
-    });
-  });
-
-  // ============================================
-  // P1 Tests: Sequence Management (1 test)
-  // ============================================
-
-  describe("Sequence Management", () => {
-    it("should increment sequence numbers across multiple calls", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
-      // Setup
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      // First webhook - 2 events
-      const request1 = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
+      // Verify Axiom was called
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-agent-run-events-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
             runId: testRunId,
-            events: [
-              { type: "event1", timestamp: Date.now(), data: {} },
-              { type: "event2", timestamp: Date.now(), data: {} },
-            ],
+            userId: testUserId,
+            sequenceNumber: 1,
+            eventType: "tool_use",
           }),
-        },
-      );
-
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
-
-      const data1 = await response1.json();
-      expect(data1.firstSequence).toBe(1);
-      expect(data1.lastSequence).toBe(2);
-
-      // Second webhook - 3 events
-      const request2 = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
+          expect.objectContaining({
             runId: testRunId,
-            events: [
-              { type: "event3", timestamp: Date.now(), data: {} },
-              { type: "event4", timestamp: Date.now(), data: {} },
-              { type: "event5", timestamp: Date.now(), data: {} },
-            ],
+            userId: testUserId,
+            sequenceNumber: 2,
+            eventType: "tool_result",
           }),
-        },
+        ]),
       );
-
-      const response2 = await POST(request2);
-      expect(response2.status).toBe(200);
-
-      const data2 = await response2.json();
-      expect(data2.firstSequence).toBe(3); // continues from 3
-      expect(data2.lastSequence).toBe(5);
-
-      // Verify all events in database
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId))
-        .orderBy(agentRunEvents.sequenceNumber);
-
-      expect(events).toHaveLength(5);
-      expect(events[0]?.sequenceNumber).toBe(1);
-      expect(events[1]?.sequenceNumber).toBe(2);
-      expect(events[2]?.sequenceNumber).toBe(3);
-      expect(events[3]?.sequenceNumber).toBe(4);
-      expect(events[4]?.sequenceNumber).toBe(5);
     });
   });
 
@@ -519,7 +437,7 @@ describe("POST /api/webhooks/agent/events", () => {
   // ============================================
 
   describe("Data Integrity", () => {
-    it("should store event data correctly", async () => {
+    it("should store event data correctly in Axiom", async () => {
       // Mock headers() to return the test token (JWT)
       mockHeaders.mockResolvedValue({
         get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
@@ -579,24 +497,24 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Verify database
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId))
-        .orderBy(agentRunEvents.sequenceNumber);
-
-      expect(events).toHaveLength(3);
-
-      // Verify eventType matches event.type
-      expect(events[0]?.eventType).toBe("thinking");
-      expect(events[1]?.eventType).toBe("tool_use");
-      expect(events[2]?.eventType).toBe("tool_result");
-
-      // Verify eventData contains complete event object
-      expect(events[0]?.eventData).toEqual(testEvents[0]);
-      expect(events[1]?.eventData).toEqual(testEvents[1]);
-      expect(events[2]?.eventData).toEqual(testEvents[2]);
+      // Verify Axiom was called with correct event types
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-agent-run-events-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "thinking",
+            eventData: testEvents[0],
+          }),
+          expect.objectContaining({
+            eventType: "tool_use",
+            eventData: testEvents[1],
+          }),
+          expect.objectContaining({
+            eventType: "tool_result",
+            eventData: testEvents[2],
+          }),
+        ]),
+      );
     });
   });
 
@@ -651,20 +569,18 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(data.firstSequence).toBe(1);
       expect(data.lastSequence).toBe(15);
 
-      // Verify all events stored
-      const storedEvents = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId))
-        .orderBy(agentRunEvents.sequenceNumber);
-
-      expect(storedEvents).toHaveLength(15);
-
-      // Verify sequence numbers are consecutive
-      storedEvents.forEach((event, index) => {
-        expect(event.sequenceNumber).toBe(index + 1);
-        expect(event.eventType).toBe(`event_${index + 1}`);
-      });
+      // Verify Axiom was called with all 15 events
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-agent-run-events-dev",
+        expect.arrayContaining(
+          events.map((_, i) =>
+            expect.objectContaining({
+              sequenceNumber: i + 1,
+              eventType: `event_${i + 1}`,
+            }),
+          ),
+        ),
+      );
     });
   });
 });

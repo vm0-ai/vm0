@@ -14,7 +14,6 @@ import { GET } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../../src/db/schema/agent-run";
-import { agentRunEvents } from "../../../../../../../../src/db/schema/agent-run-event";
 import {
   agentComposes,
   agentComposeVersions,
@@ -32,17 +31,56 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock Axiom module
+vi.mock("../../../../../../../../src/lib/axiom", () => ({
+  queryAxiom: vi.fn(),
+  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
+  DATASETS: {
+    AGENT_RUN_EVENTS: "agent-run-events",
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
+import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockQueryAxiom = vi.mocked(queryAxiom);
 
 /**
  * Helper to create a NextRequest for testing.
  */
 function createTestRequest(url: string): NextRequest {
   return new NextRequest(url, { method: "GET" });
+}
+
+/**
+ * Create a test Axiom agent event
+ */
+function createAxiomAgentEvent(
+  timestamp: string,
+  sequenceNumber: number,
+  eventType: string,
+  eventData: Record<string, unknown>,
+  runId: string,
+  userId: string,
+): {
+  _time: string;
+  runId: string;
+  userId: string;
+  sequenceNumber: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+} {
+  return {
+    _time: timestamp,
+    runId,
+    userId,
+    sequenceNumber,
+    eventType,
+    eventData,
+  };
 }
 
 describe("GET /api/agent/runs/:id/telemetry/agent", () => {
@@ -64,11 +102,10 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
+    // Default: Axiom returns empty array
+    mockQueryAxiom.mockResolvedValue([]);
 
+    // Clean up any existing test data
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -120,10 +157,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   });
 
   afterEach(async () => {
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -240,7 +273,9 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   });
 
   describe("Success - Basic Retrieval", () => {
-    it("should return empty events when no events exist", async () => {
+    it("should return empty events when Axiom returns empty", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
       );
@@ -253,15 +288,32 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.hasMore).toBe(false);
     });
 
-    it("should return agent events", async () => {
-      await globalThis.services.db.insert(agentRunEvents).values({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: 1,
-        eventType: "init",
-        eventData: { type: "init", model: "claude-3" },
-        createdAt: new Date(),
-      });
+    it("should return empty events when Axiom is not configured", async () => {
+      mockQueryAxiom.mockResolvedValue(null);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toEqual([]);
+      expect(data.hasMore).toBe(false);
+    });
+
+    it("should return agent events from Axiom", async () => {
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:00Z",
+          1,
+          "init",
+          { type: "init", model: "claude-3" },
+          testRunId,
+          testUserId,
+        ),
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -278,47 +330,51 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         type: "init",
         model: "claude-3",
       });
+      expect(data.events[0].createdAt).toBe("2024-01-01T00:00:00Z");
       expect(data.hasMore).toBe(false);
+
+      // Verify Axiom was queried with correct APL
+      expect(mockQueryAxiom).toHaveBeenCalledWith(
+        expect.stringContaining(`where runId == "${testRunId}"`),
+      );
     });
   });
 
   describe("Multiple Events", () => {
     it("should return events in chronological order", async () => {
-      const now = Date.now();
-
-      await globalThis.services.db.insert(agentRunEvents).values([
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "init",
-          eventData: { type: "init" },
-          createdAt: new Date(now - 3000),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 2,
-          eventType: "text",
-          eventData: { type: "text", content: "Hello" },
-          createdAt: new Date(now - 2000),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 3,
-          eventType: "tool_use",
-          eventData: { type: "tool_use", name: "bash" },
-          createdAt: new Date(now - 1000),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 4,
-          eventType: "result",
-          eventData: { type: "result", success: true },
-          createdAt: new Date(now),
-        },
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:00Z",
+          1,
+          "init",
+          { type: "init" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:01Z",
+          2,
+          "text",
+          { type: "text", content: "Hello" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:02Z",
+          3,
+          "tool_use",
+          { type: "tool_use", name: "bash" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:03Z",
+          4,
+          "result",
+          { type: "result", success: true },
+          testRunId,
+          testUserId,
+        ),
       ]);
 
       const request = createTestRequest(
@@ -339,22 +395,43 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   });
 
   describe("Pagination", () => {
-    it("should respect limit parameter", async () => {
-      const now = Date.now();
+    it("should respect limit parameter and indicate hasMore", async () => {
+      // Mock Axiom returning limit+1 records (indicating more data exists)
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:00Z",
+          1,
+          "event1",
+          { type: "event1" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:01Z",
+          2,
+          "event2",
+          { type: "event2" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:02Z",
+          3,
+          "event3",
+          { type: "event3" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:03Z",
+          4,
+          "event4",
+          { type: "event4" },
+          testRunId,
+          testUserId,
+        ), // Extra record
+      ]);
 
-      // Insert 5 events
-      await globalThis.services.db.insert(agentRunEvents).values(
-        [1, 2, 3, 4, 5].map((seq) => ({
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: seq,
-          eventType: `event${seq}`,
-          eventData: { type: `event${seq}` },
-          createdAt: new Date(now - (6 - seq) * 1000),
-        })),
-      );
-
-      // Request with limit=3
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?limit=3`,
       );
@@ -368,34 +445,26 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.events[1].sequenceNumber).toBe(2);
       expect(data.events[2].sequenceNumber).toBe(3);
       expect(data.hasMore).toBe(true);
+
+      // Verify limit+1 was requested
+      expect(mockQueryAxiom).toHaveBeenCalledWith(
+        expect.stringContaining("limit 4"),
+      );
     });
 
-    it("should filter by since parameter", async () => {
-      const now = Date.now();
-      const oldTime = new Date(now - 10000);
-      const recentTime = new Date(now - 1000);
-
-      await globalThis.services.db.insert(agentRunEvents).values([
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "old_event",
-          eventData: { type: "old" },
-          createdAt: oldTime,
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 2,
-          eventType: "recent_event",
-          eventData: { type: "recent" },
-          createdAt: recentTime,
-        },
+    it("should include since filter in Axiom query", async () => {
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:10Z",
+          2,
+          "recent_event",
+          { type: "recent" },
+          testRunId,
+          testUserId,
+        ),
       ]);
 
-      // Request with since parameter that excludes the old event
-      const sinceTimestamp = now - 5000;
+      const sinceTimestamp = Date.now() - 5000;
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?since=${sinceTimestamp}&limit=10`,
       );
@@ -406,21 +475,26 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       const data = await response.json();
       expect(data.events).toHaveLength(1);
       expect(data.events[0].eventType).toBe("recent_event");
+
+      // Verify since filter was included in APL query
+      expect(mockQueryAxiom).toHaveBeenCalledWith(
+        expect.stringContaining("where _time > datetime"),
+      );
     });
   });
 
   describe("Event Data", () => {
     it("should include createdAt as ISO string", async () => {
-      const testTime = new Date("2024-01-15T10:30:00.000Z");
-
-      await globalThis.services.db.insert(agentRunEvents).values({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: 1,
-        eventType: "test",
-        eventData: { type: "test" },
-        createdAt: testTime,
-      });
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-15T10:30:00.000Z",
+          1,
+          "test",
+          { type: "test" },
+          testRunId,
+          testUserId,
+        ),
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -448,14 +522,16 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         },
       };
 
-      await globalThis.services.db.insert(agentRunEvents).values({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: 1,
-        eventType: "tool_result",
-        eventData: complexEventData,
-        createdAt: new Date(),
-      });
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:00Z",
+          1,
+          "tool_result",
+          complexEventData,
+          testRunId,
+          testUserId,
+        ),
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,

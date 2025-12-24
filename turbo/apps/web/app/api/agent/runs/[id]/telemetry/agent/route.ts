@@ -3,10 +3,23 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import { runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
 import { agentComposeVersions } from "../../../../../../../src/db/schema/agent-compose";
-import { eq, gt, and, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../../../src/lib/axiom";
+
+interface AxiomAgentEvent {
+  _time: string;
+  runId: string;
+  userId: string;
+  sequenceNumber: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+}
 
 const router = tsr.router(runAgentEventsContract, {
   getAgentEvents: async ({ params, query }) => {
@@ -54,19 +67,31 @@ const router = tsr.router(runAgentEventsContract, {
 
     const { since, limit } = query;
 
-    // Build query conditions - since is a timestamp (ms), filter by createdAt
-    const conditions = [eq(agentRunEvents.runId, params.id)];
-    if (since !== undefined) {
-      conditions.push(gt(agentRunEvents.createdAt, new Date(since)));
-    }
+    // Build APL query for Axiom
+    const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+    const sinceFilter = since
+      ? `| where _time > datetime("${new Date(since).toISOString()}")`
+      : "";
+    const apl = `['${dataset}']
+| where runId == "${params.id}"
+${sinceFilter}
+| order by _time asc
+| limit ${limit + 1}`;
 
-    // Query events with pagination
-    const events = await globalThis.services.db
-      .select()
-      .from(agentRunEvents)
-      .where(and(...conditions))
-      .orderBy(asc(agentRunEvents.createdAt))
-      .limit(limit + 1);
+    // Query Axiom for agent events
+    const events = await queryAxiom<AxiomAgentEvent>(apl);
+
+    // If Axiom is not configured or query failed, return empty
+    if (events === null) {
+      return {
+        status: 200 as const,
+        body: {
+          events: [],
+          hasMore: false,
+          provider,
+        },
+      };
+    }
 
     // Check if there are more events
     const hasMore = events.length > limit;
@@ -79,7 +104,7 @@ const router = tsr.router(runAgentEventsContract, {
           sequenceNumber: e.sequenceNumber,
           eventType: e.eventType,
           eventData: e.eventData,
-          createdAt: e.createdAt.toISOString(),
+          createdAt: e._time,
         })),
         hasMore,
         provider,
