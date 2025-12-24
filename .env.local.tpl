@@ -8,3 +8,6 @@ R2_ACCOUNT_ID=op://Development/vm0-env-local/r2_account_id
 R2_ACCESS_KEY_ID=op://Development/vm0-env-local/r2_access_key_id
 R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/r2_secret_access_key
 R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_bucket_name
+
+# Axiom Observability
+AXIOM_TOKEN=op://Development/vm0-env-local/axiom_token

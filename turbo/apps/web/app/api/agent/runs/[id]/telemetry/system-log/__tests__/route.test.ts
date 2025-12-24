@@ -14,7 +14,6 @@ import { GET } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../../src/db/schema/agent-run";
-import { sandboxTelemetry } from "../../../../../../../../src/db/schema/sandbox-telemetry";
 import {
   agentComposes,
   agentComposeVersions,
@@ -32,11 +31,22 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock Axiom module
+vi.mock("../../../../../../../../src/lib/axiom", () => ({
+  queryAxiom: vi.fn(),
+  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
+  DATASETS: {
+    SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
+import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockQueryAxiom = vi.mocked(queryAxiom);
 
 /**
  * Helper to create a NextRequest for testing.
@@ -64,11 +74,10 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(sandboxTelemetry)
-      .where(eq(sandboxTelemetry.runId, testRunId));
+    // Default: queryAxiom returns empty array (no logs)
+    mockQueryAxiom.mockResolvedValue([]);
 
+    // Clean up any existing test data
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -120,10 +129,6 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   });
 
   afterEach(async () => {
-    await globalThis.services.db
-      .delete(sandboxTelemetry)
-      .where(eq(sandboxTelemetry.runId, testRunId));
-
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -241,6 +246,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty system log when no telemetry exists", async () => {
+      // Default mockQueryAxiom returns empty array
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
       );
@@ -253,16 +259,15 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.hasMore).toBe(false);
     });
 
-    it("should return system log from telemetry record", async () => {
-      await globalThis.services.db.insert(sandboxTelemetry).values({
-        id: randomUUID(),
-        runId: testRunId,
-        data: {
-          systemLog: "[INFO] Test log entry\n",
-          metrics: [],
+    it("should return system log from Axiom", async () => {
+      mockQueryAxiom.mockResolvedValue([
+        {
+          _time: new Date().toISOString(),
+          runId: testRunId,
+          userId: testUserId,
+          log: "[INFO] Test log entry\n",
         },
-        createdAt: new Date(),
-      });
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
@@ -279,30 +284,24 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Aggregation", () => {
     it("should aggregate system logs from multiple records", async () => {
-      await globalThis.services.db.insert(sandboxTelemetry).values([
+      mockQueryAxiom.mockResolvedValue([
         {
-          id: randomUUID(),
+          _time: new Date(Date.now() - 2000).toISOString(),
           runId: testRunId,
-          data: {
-            systemLog: "[INFO] First entry\n",
-          },
-          createdAt: new Date(Date.now() - 2000),
+          userId: testUserId,
+          log: "[INFO] First entry\n",
         },
         {
-          id: randomUUID(),
+          _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
-          data: {
-            systemLog: "[INFO] Second entry\n",
-          },
-          createdAt: new Date(Date.now() - 1000),
+          userId: testUserId,
+          log: "[INFO] Second entry\n",
         },
         {
-          id: randomUUID(),
+          _time: new Date().toISOString(),
           runId: testRunId,
-          data: {
-            systemLog: "[INFO] Third entry\n",
-          },
-          createdAt: new Date(),
+          userId: testUserId,
+          log: "[INFO] Third entry\n",
         },
       ]);
 
@@ -320,34 +319,8 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.hasMore).toBe(false);
     });
 
-    it("should skip records without systemLog", async () => {
-      await globalThis.services.db.insert(sandboxTelemetry).values([
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          data: {
-            systemLog: "[INFO] Log entry\n",
-          },
-          createdAt: new Date(Date.now() - 1000),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          data: {
-            metrics: [
-              {
-                ts: "2024-01-01T00:00:00Z",
-                cpu: 50,
-                mem_used: 1000,
-                mem_total: 2000,
-                disk_used: 5000,
-                disk_total: 10000,
-              },
-            ],
-          },
-          createdAt: new Date(),
-        },
-      ]);
+    it("should handle Axiom returning null (not configured)", async () => {
+      mockQueryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log?limit=10`,
@@ -357,24 +330,34 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.systemLog).toBe("[INFO] Log entry\n");
+      expect(data.systemLog).toBe("");
+      expect(data.hasMore).toBe(false);
     });
   });
 
   describe("Pagination", () => {
     it("should respect limit parameter", async () => {
-      // Insert 5 records
-      const ids = [randomUUID(), randomUUID(), randomUUID()];
-      await globalThis.services.db.insert(sandboxTelemetry).values(
-        ids.map((id, i) => ({
-          id,
+      // Mock Axiom returning 3 records (more than limit of 2)
+      mockQueryAxiom.mockResolvedValue([
+        {
+          _time: new Date(Date.now() - 3000).toISOString(),
           runId: testRunId,
-          data: {
-            systemLog: `[INFO] Entry ${i + 1}\n`,
-          },
-          createdAt: new Date(Date.now() - (ids.length - i) * 1000),
-        })),
-      );
+          userId: testUserId,
+          log: "[INFO] Entry 1\n",
+        },
+        {
+          _time: new Date(Date.now() - 2000).toISOString(),
+          runId: testRunId,
+          userId: testUserId,
+          log: "[INFO] Entry 2\n",
+        },
+        {
+          _time: new Date(Date.now() - 1000).toISOString(),
+          runId: testRunId,
+          userId: testUserId,
+          log: "[INFO] Entry 3\n",
+        },
+      ]);
 
       // Request with limit=2
       const request = createTestRequest(
@@ -390,28 +373,18 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.hasMore).toBe(true);
     });
 
-    it("should filter by since parameter", async () => {
-      const now = Date.now();
-      const oldTime = new Date(now - 10000);
-      const recentTime = new Date(now - 1000);
-
-      await globalThis.services.db.insert(sandboxTelemetry).values([
+    it("should pass since parameter to Axiom query", async () => {
+      // Mock Axiom returning only recent entry (since filter applied by Axiom)
+      mockQueryAxiom.mockResolvedValue([
         {
-          id: randomUUID(),
+          _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
-          data: { systemLog: "[INFO] Old entry\n" },
-          createdAt: oldTime,
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          data: { systemLog: "[INFO] Recent entry\n" },
-          createdAt: recentTime,
+          userId: testUserId,
+          log: "[INFO] Recent entry\n",
         },
       ]);
 
-      // Request with since parameter that excludes the old entry
-      const sinceTimestamp = now - 5000;
+      const sinceTimestamp = Date.now() - 5000;
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log?since=${sinceTimestamp}&limit=10`,
       );
@@ -421,6 +394,11 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.systemLog).toBe("[INFO] Recent entry\n");
+
+      // Verify queryAxiom was called with a query containing the since filter
+      expect(mockQueryAxiom).toHaveBeenCalledWith(
+        expect.stringContaining("where _time >"),
+      );
     });
   });
 });

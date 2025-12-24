@@ -148,6 +148,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: pnpm test
 
   # Deploy web application with database
@@ -203,6 +204,7 @@ jobs:
             R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
             R2_USER_STORAGES_BUCKET_NAME=${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
+            AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             USE_MOCK_CLAUDE=true
             DEBUG=*
             CRON_SECRET=${{ secrets.CRON_SECRET }}

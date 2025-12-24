@@ -3,15 +3,19 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import { runSystemLogContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { sandboxTelemetry } from "../../../../../../../src/db/schema/sandbox-telemetry";
-import { eq, gt, and, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../../../src/lib/axiom";
 
-/**
- * Telemetry data structure stored in JSONB
- */
-interface TelemetryData {
-  systemLog?: string;
+interface AxiomSystemLogEvent {
+  _time: string;
+  runId: string;
+  userId: string;
+  log: string;
 }
 
 const router = tsr.router(runSystemLogContract, {
@@ -46,34 +50,37 @@ const router = tsr.router(runSystemLogContract, {
 
     const { since, limit } = query;
 
-    // Build query conditions
-    const conditions = [eq(sandboxTelemetry.runId, params.id)];
-    if (since !== undefined) {
-      conditions.push(gt(sandboxTelemetry.createdAt, new Date(since)));
-    }
+    // Build APL query for Axiom
+    const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
+    const sinceFilter = since
+      ? `| where _time > datetime("${new Date(since).toISOString()}")`
+      : "";
+    const apl = `['${dataset}']
+| where runId == "${params.id}"
+${sinceFilter}
+| order by _time asc
+| limit ${limit + 1}`;
 
-    // Query telemetry records with pagination
-    const telemetryRecords = await globalThis.services.db
-      .select()
-      .from(sandboxTelemetry)
-      .where(and(...conditions))
-      .orderBy(asc(sandboxTelemetry.createdAt))
-      .limit(limit + 1);
+    // Query Axiom for system logs
+    const events = await queryAxiom<AxiomSystemLogEvent>(apl);
+
+    // If Axiom is not configured or query failed, return empty
+    if (events === null) {
+      return {
+        status: 200 as const,
+        body: {
+          systemLog: "",
+          hasMore: false,
+        },
+      };
+    }
 
     // Check if there are more records
-    const hasMore = telemetryRecords.length > limit;
-    const records = hasMore
-      ? telemetryRecords.slice(0, limit)
-      : telemetryRecords;
+    const hasMore = events.length > limit;
+    const records = hasMore ? events.slice(0, limit) : events;
 
     // Aggregate system logs from records
-    let aggregatedSystemLog = "";
-    for (const record of records) {
-      const data = record.data as TelemetryData;
-      if (data.systemLog) {
-        aggregatedSystemLog += data.systemLog;
-      }
-    }
+    const aggregatedSystemLog = records.map((r) => r.log).join("");
 
     return {
       status: 200 as const,

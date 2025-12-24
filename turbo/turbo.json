@@ -25,7 +25,8 @@
     "R2_USER_STORAGES_BUCKET_NAME",
     "SECRETS_ENCRYPTION_KEY",
     "USE_MOCK_CLAUDE",
-    "CRON_SECRET"
+    "CRON_SECRET",
+    "AXIOM_TOKEN"
   ],
   "tasks": {
     "build": {

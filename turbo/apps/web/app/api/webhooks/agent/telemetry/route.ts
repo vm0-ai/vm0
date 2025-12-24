@@ -11,6 +11,11 @@ import {
   createSecretMasker,
   decryptSecrets,
 } from "../../../../../src/lib/crypto";
+import {
+  ingestToAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../src/lib/axiom";
 
 const log = logger("webhooks:telemetry");
 
@@ -67,32 +72,43 @@ const router = tsr.router(webhookTelemetryContract, {
     }
     const masker = createSecretMasker(secretValues);
 
-    // Store telemetry data with secrets masked
-    const insertStart = Date.now();
-    const result = await globalThis.services.db
-      .insert(sandboxTelemetry)
-      .values({
+    // Ingest system log to Axiom (fire-and-forget - don't fail webhook if Axiom fails)
+    if (body.systemLog) {
+      const axiomStart = Date.now();
+      const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
+      const axiomEvent = {
+        _time: new Date().toISOString(),
         runId: body.runId,
-        data: {
-          systemLog: masker.mask(body.systemLog ?? "") as string,
-          metrics: body.metrics ?? [],
-          networkLogs: masker.mask(body.networkLogs ?? []),
-        },
-      })
-      .returning({ id: sandboxTelemetry.id });
-    log.debug(`[telemetry] INSERT took ${Date.now() - insertStart}ms`);
-
-    const inserted = result[0];
-    if (!inserted) {
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            message: "Failed to insert telemetry record",
-            code: "INTERNAL_ERROR",
-          },
-        },
+        userId: auth.userId,
+        log: masker.mask(body.systemLog) as string,
       };
+      ingestToAxiom(axiomDataset, [axiomEvent]).catch((err) => {
+        log.error("Axiom system log ingest failed:", err);
+      });
+      log.debug(
+        `[telemetry] Axiom ingest queued in ${Date.now() - axiomStart}ms`,
+      );
+    }
+
+    // Store metrics and network logs in PostgreSQL (system logs now go to Axiom)
+    const hasMetrics = body.metrics && body.metrics.length > 0;
+    const hasNetworkLogs = body.networkLogs && body.networkLogs.length > 0;
+
+    let insertedId: string | undefined;
+    if (hasMetrics || hasNetworkLogs) {
+      const insertStart = Date.now();
+      const result = await globalThis.services.db
+        .insert(sandboxTelemetry)
+        .values({
+          runId: body.runId,
+          data: {
+            metrics: body.metrics ?? [],
+            networkLogs: masker.mask(body.networkLogs ?? []),
+          },
+        })
+        .returning({ id: sandboxTelemetry.id });
+      log.debug(`[telemetry] INSERT took ${Date.now() - insertStart}ms`);
+      insertedId = result[0]?.id;
     }
 
     log.debug(
@@ -103,7 +119,7 @@ const router = tsr.router(webhookTelemetryContract, {
       status: 200 as const,
       body: {
         success: true,
-        id: inserted.id,
+        id: insertedId ?? body.runId,
       },
     };
   },

@@ -26,11 +26,22 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock Axiom module
+vi.mock("../../../../../../src/lib/axiom", () => ({
+  ingestToAxiom: vi.fn().mockResolvedValue(true),
+  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
+  DATASETS: {
+    SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
+import { ingestToAxiom } from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockIngestToAxiom = vi.mocked(ingestToAxiom);
 
 describe("POST /api/webhooks/agent/telemetry", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -265,7 +276,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       });
     });
 
-    it("should store telemetry with systemLog only", async () => {
+    it("should send systemLog to Axiom (not PostgreSQL)", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -286,27 +297,28 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.id).toBeDefined();
 
-      // Verify database entry
-      const [telemetry] = await globalThis.services.db
+      // Verify Axiom was called with the systemLog
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-sandbox-telemetry-system-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId: testRunId,
+            log: "[2025-12-09T10:00:00Z] [INFO] Test log message",
+          }),
+        ]),
+      );
+
+      // No PostgreSQL entry should be created for systemLog-only requests
+      const telemetries = await globalThis.services.db
         .select()
         .from(sandboxTelemetry)
-        .where(eq(sandboxTelemetry.id, data.id));
+        .where(eq(sandboxTelemetry.runId, testRunId));
 
-      expect(telemetry).toBeDefined();
-      expect(telemetry?.runId).toBe(testRunId);
-      const telemetryData = telemetry?.data as {
-        systemLog: string;
-        metrics: unknown[];
-      };
-      expect(telemetryData.systemLog).toBe(
-        "[2025-12-09T10:00:00Z] [INFO] Test log message",
-      );
-      expect(telemetryData.metrics).toEqual([]);
+      expect(telemetries.length).toBe(0);
     });
 
-    it("should store telemetry with metrics only", async () => {
+    it("should store telemetry with metrics only in PostgreSQL", async () => {
       const testMetrics = [
         {
           ts: "2025-12-09T10:00:00Z",
@@ -339,7 +351,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify database entry
+      // Verify database entry (metrics only, no systemLog)
       const [telemetry] = await globalThis.services.db
         .select()
         .from(sandboxTelemetry)
@@ -347,14 +359,15 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(telemetry).toBeDefined();
       const telemetryData = telemetry?.data as {
-        systemLog: string;
         metrics: unknown[];
       };
-      expect(telemetryData.systemLog).toBe("");
       expect(telemetryData.metrics).toEqual(testMetrics);
+
+      // Axiom should not be called (no systemLog)
+      expect(mockIngestToAxiom).not.toHaveBeenCalled();
     });
 
-    it("should store telemetry with both systemLog and metrics", async () => {
+    it("should send systemLog to Axiom and metrics to PostgreSQL", async () => {
       const testMetrics = [
         {
           ts: "2025-12-09T10:00:00Z",
@@ -396,7 +409,18 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify database entry
+      // Verify Axiom was called with systemLog
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-sandbox-telemetry-system-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId: testRunId,
+            log: "[2025-12-09T10:00:00Z] [INFO] Agent started\n",
+          }),
+        ]),
+      );
+
+      // Verify PostgreSQL entry has metrics (but no systemLog)
       const [telemetry] = await globalThis.services.db
         .select()
         .from(sandboxTelemetry)
@@ -404,17 +428,13 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(telemetry).toBeDefined();
       const telemetryData = telemetry?.data as {
-        systemLog: string;
         metrics: unknown[];
       };
-      expect(telemetryData.systemLog).toBe(
-        "[2025-12-09T10:00:00Z] [INFO] Agent started\n",
-      );
       expect(telemetryData.metrics).toEqual(testMetrics);
     });
 
     it("should allow multiple telemetry uploads for the same run", async () => {
-      // First upload
+      // First upload with systemLog
       const request1 = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -433,7 +453,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response1 = await POST(request1);
       expect(response1.status).toBe(200);
 
-      // Second upload
+      // Second upload with systemLog
       const request2 = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -452,13 +472,8 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response2 = await POST(request2);
       expect(response2.status).toBe(200);
 
-      // Verify both entries exist
-      const telemetries = await globalThis.services.db
-        .select()
-        .from(sandboxTelemetry)
-        .where(eq(sandboxTelemetry.runId, testRunId));
-
-      expect(telemetries.length).toBe(2);
+      // Verify Axiom was called twice (systemLog goes to Axiom)
+      expect(mockIngestToAxiom).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -484,7 +499,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       });
     });
 
-    it("should mask secrets in systemLog", async () => {
+    it("should mask secrets in systemLog before sending to Axiom", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -503,21 +518,16 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
 
-      // Verify database entry has masked secret
-      const [telemetry] = await globalThis.services.db
-        .select()
-        .from(sandboxTelemetry)
-        .where(eq(sandboxTelemetry.id, data.id));
-
-      const telemetryData = telemetry?.data as { systemLog: string };
-
-      // Secret should be masked with ***
-      expect(telemetryData.systemLog).not.toContain(secretValue);
-      expect(telemetryData.systemLog).toContain("***");
-      expect(telemetryData.systemLog).toBe(
-        "[INFO] Using API key: *** for authentication",
+      // Verify Axiom was called with masked secret
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-sandbox-telemetry-system-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId: testRunId,
+            log: "[INFO] Using API key: *** for authentication",
+          }),
+        ]),
       );
     });
 
@@ -607,18 +617,16 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
 
-      const [telemetry] = await globalThis.services.db
-        .select()
-        .from(sandboxTelemetry)
-        .where(eq(sandboxTelemetry.id, data.id));
-
-      const telemetryData = telemetry?.data as { systemLog: string };
-
-      // Content should be unchanged
-      expect(telemetryData.systemLog).toBe(
-        "No secrets here, just regular text",
+      // Verify Axiom was called with unchanged content
+      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+        "vm0-sandbox-telemetry-system-dev",
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId: testRunId,
+            log: "No secrets here, just regular text",
+          }),
+        ]),
       );
     });
   });
