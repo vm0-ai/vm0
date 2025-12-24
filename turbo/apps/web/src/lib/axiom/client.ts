@@ -63,7 +63,11 @@ export async function queryAxiom<T = Record<string, unknown>>(
 
   try {
     const result = await client.query(apl);
-    return result.matches?.map((m: Entry) => m.data as T) ?? [];
+    // Axiom stores _time separately from data, merge them for the response
+    return (
+      result.matches?.map((m: Entry) => ({ _time: m._time, ...m.data }) as T) ??
+      []
+    );
   } catch (error) {
     log.error("Axiom query failed:", error);
     return null;
