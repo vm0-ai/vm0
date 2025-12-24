@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.7.1](https://github.com/vm0-ai/vm0/compare/web-v6.7.0...web-v6.7.1) (2025-12-24)
+
+
+### Bug Fixes
+
+* include _time field in axiom query results ([#714](https://github.com/vm0-ai/vm0/issues/714)) ([94d8e5e](https://github.com/vm0-ai/vm0/commit/94d8e5ed29b332d4322cfb0980fc3c7b12bfcf17))
+* inherit vars/secrets and compose version in continue/resume runs ([#713](https://github.com/vm0-ai/vm0/issues/713)) ([44b2212](https://github.com/vm0-ai/vm0/commit/44b22124c569371ea812be2155b89d9417b7b471))
+
 ## [6.7.0](https://github.com/vm0-ai/vm0/compare/web-v6.6.0...web-v6.7.0) (2025-12-24)
 
 
