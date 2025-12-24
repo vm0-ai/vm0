@@ -83,8 +83,9 @@ const router = tsr.router(webhookEventsContract, {
     await ingestToAxiom(axiomDataset, axiomEvents);
 
     // Get first and last sequence numbers from the events
-    const firstSequence = body.events[0].sequenceNumber;
-    const lastSequence = body.events[body.events.length - 1].sequenceNumber;
+    // Note: events array is validated as non-empty by the contract
+    const firstSequence = body.events[0]!.sequenceNumber;
+    const lastSequence = body.events[body.events.length - 1]!.sequenceNumber;
 
     log.debug(
       `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
