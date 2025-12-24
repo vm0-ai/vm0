@@ -14,7 +14,6 @@ import { GET } from "../route";
 import { POST as createCompose } from "../../../../composes/route";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { agentRunEvents } from "../../../../../../../src/db/schema/agent-run-event";
 import {
   agentComposes,
   agentComposeVersions,
@@ -37,11 +36,42 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock Axiom module
+vi.mock("../../../../../../../src/lib/axiom", () => ({
+  queryAxiom: vi.fn(),
+  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
+  DATASETS: {
+    AGENT_RUN_EVENTS: "agent-run-events",
+  },
+}));
+
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
+import { queryAxiom } from "../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockQueryAxiom = vi.mocked(queryAxiom);
+
+/**
+ * Helper to create mock Axiom agent event
+ */
+function createAxiomAgentEvent(overrides: {
+  runId: string;
+  sequenceNumber: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+  _time?: string;
+}) {
+  return {
+    _time: overrides._time ?? new Date().toISOString(),
+    runId: overrides.runId,
+    userId: "test-user",
+    sequenceNumber: overrides.sequenceNumber,
+    eventType: overrides.eventType,
+    eventData: overrides.eventData,
+  };
+}
 
 describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
@@ -67,6 +97,9 @@ describe("GET /api/agent/runs/:id/events", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
+
+    // Default: return empty events
+    mockQueryAxiom.mockResolvedValue([]);
 
     // Clean up any existing test data
     // Delete agent_runs first - CASCADE will delete related events
@@ -252,6 +285,8 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty events list when no events exist", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
@@ -268,11 +303,24 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.run.status).toBe("running");
     });
 
+    it("should return empty events when Axiom is not configured", async () => {
+      mockQueryAxiom.mockResolvedValue(null);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toEqual([]);
+      expect(data.hasMore).toBe(false);
+    });
+
     it("should return all events when they exist", async () => {
-      // Insert test events
       const testEvents = [
-        {
-          id: randomUUID(),
+        createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 1,
           eventType: "system",
@@ -281,10 +329,8 @@ describe("GET /api/agent/runs/:id/events", () => {
             subtype: "init",
             sessionId: "session-123",
           },
-          createdAt: new Date(),
-        },
-        {
-          id: randomUUID(),
+        }),
+        createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 2,
           eventType: "assistant",
@@ -295,10 +341,8 @@ describe("GET /api/agent/runs/:id/events", () => {
               content: [{ type: "text", text: "Hello" }],
             },
           },
-          createdAt: new Date(),
-        },
-        {
-          id: randomUUID(),
+        }),
+        createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 3,
           eventType: "result",
@@ -307,11 +351,10 @@ describe("GET /api/agent/runs/:id/events", () => {
             subtype: "success",
             is_error: false,
           },
-          createdAt: new Date(),
-        },
+        }),
       ];
 
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
+      mockQueryAxiom.mockResolvedValue(testEvents);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -335,50 +378,49 @@ describe("GET /api/agent/runs/:id/events", () => {
   // ============================================
 
   describe("Pagination", () => {
-    it("should filter events by 'since' parameter", async () => {
-      // Insert 5 test events
-      const testEvents = Array.from({ length: 5 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}`, data: { index: i + 1 } },
-        createdAt: new Date(),
-      }));
+    it("should verify APL query includes 'since' parameter", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
 
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
-
-      // Request events since sequence 2
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
       );
 
-      const response = await GET(request);
+      await GET(request);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.events).toHaveLength(3); // Only events 3, 4, 5
-      expect(data.events[0].sequenceNumber).toBe(3);
-      expect(data.events[1].sequenceNumber).toBe(4);
-      expect(data.events[2].sequenceNumber).toBe(5);
-      expect(data.hasMore).toBe(false);
-      expect(data.nextSequence).toBe(5);
+      // Verify the APL query includes the since filter
+      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
+      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("sequenceNumber > 2");
     });
 
-    it("should respect 'limit' parameter", async () => {
-      // Insert 10 test events
-      const testEvents = Array.from({ length: 10 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}`, data: { index: i + 1 } },
-        createdAt: new Date(),
-      }));
+    it("should verify APL query includes 'limit' parameter", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
 
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=3`,
+      );
 
-      // Request with limit=3
+      await GET(request);
+
+      // Verify the APL query includes the limit
+      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
+      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("limit 3");
+    });
+
+    it("should set hasMore to true when results equal limit", async () => {
+      // Return exactly 3 events (equal to limit)
+      const testEvents = Array.from({ length: 3 }, (_, i) =>
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: i + 1,
+          eventType: `event_${i + 1}`,
+          eventData: { type: `event_${i + 1}` },
+        }),
+      );
+
+      mockQueryAxiom.mockResolvedValue(testEvents);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=3`,
       );
@@ -388,56 +430,23 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.events).toHaveLength(3);
-      expect(data.events[0].sequenceNumber).toBe(1);
-      expect(data.events[1].sequenceNumber).toBe(2);
-      expect(data.events[2].sequenceNumber).toBe(3);
       expect(data.hasMore).toBe(true);
       expect(data.nextSequence).toBe(3);
     });
 
-    it("should combine 'since' and 'limit' parameters", async () => {
-      // Insert 10 test events
-      const testEvents = Array.from({ length: 10 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}`, data: { index: i + 1 } },
-        createdAt: new Date(),
-      }));
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
-
-      // Request events since=3 with limit=2
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/events?since=3&limit=2`,
+    it("should set hasMore to false when results less than limit", async () => {
+      // Return only 2 events (less than limit of 10)
+      const testEvents = Array.from({ length: 2 }, (_, i) =>
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: i + 1,
+          eventType: `event_${i + 1}`,
+          eventData: { type: `event_${i + 1}` },
+        }),
       );
 
-      const response = await GET(request);
+      mockQueryAxiom.mockResolvedValue(testEvents);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.events).toHaveLength(2); // Events 4 and 5
-      expect(data.events[0].sequenceNumber).toBe(4);
-      expect(data.events[1].sequenceNumber).toBe(5);
-      expect(data.hasMore).toBe(true);
-      expect(data.nextSequence).toBe(5);
-    });
-
-    it("should set hasMore to false when no more events exist", async () => {
-      // Insert 5 events
-      const testEvents = Array.from({ length: 5 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}`, data: { index: i + 1 } },
-        createdAt: new Date(),
-      }));
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
-
-      // Request with limit=10 (more than available)
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=10`,
       );
@@ -446,9 +455,9 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.events).toHaveLength(5);
+      expect(data.events).toHaveLength(2);
       expect(data.hasMore).toBe(false);
-      expect(data.nextSequence).toBe(5);
+      expect(data.nextSequence).toBe(2);
     });
   });
 
@@ -457,52 +466,6 @@ describe("GET /api/agent/runs/:id/events", () => {
   // ============================================
 
   describe("Data Integrity", () => {
-    it("should return events in correct order (by sequenceNumber)", async () => {
-      // Insert events in random order
-      const testEvents = [
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 3,
-          eventType: "event_3",
-          eventData: { type: "event_3" },
-          createdAt: new Date(),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 1,
-          eventType: "event_1",
-          eventData: { type: "event_1" },
-          createdAt: new Date(),
-        },
-        {
-          id: randomUUID(),
-          runId: testRunId,
-          sequenceNumber: 2,
-          eventType: "event_2",
-          eventData: { type: "event_2" },
-          createdAt: new Date(),
-        },
-      ];
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.events).toHaveLength(3);
-      // Should be returned in order: 1, 2, 3
-      expect(data.events[0].sequenceNumber).toBe(1);
-      expect(data.events[1].sequenceNumber).toBe(2);
-      expect(data.events[2].sequenceNumber).toBe(3);
-    });
-
     it("should preserve complete event data (eventData field)", async () => {
       const complexEventData = {
         type: "assistant",
@@ -528,14 +491,14 @@ describe("GET /api/agent/runs/:id/events", () => {
         session_id: "session-abc-123",
       };
 
-      await globalThis.services.db.insert(agentRunEvents).values({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: 1,
-        eventType: "assistant",
-        eventData: complexEventData,
-        createdAt: new Date(),
-      });
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: complexEventData,
+        }),
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -549,17 +512,18 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.events[0].eventData).toEqual(complexEventData);
     });
 
-    it("should return createdAt as ISO string", async () => {
-      const now = new Date();
+    it("should return createdAt from Axiom _time", async () => {
+      const timestamp = "2024-12-24T10:30:00.000Z";
 
-      await globalThis.services.db.insert(agentRunEvents).values({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: 1,
-        eventType: "test",
-        eventData: { type: "test" },
-        createdAt: now,
-      });
+      mockQueryAxiom.mockResolvedValue([
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: 1,
+          eventType: "test",
+          eventData: { type: "test" },
+          _time: timestamp,
+        }),
+      ]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -570,11 +534,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.events).toHaveLength(1);
-      expect(typeof data.events[0].createdAt).toBe("string");
-      // Verify it's a valid ISO string
-      expect(new Date(data.events[0].createdAt).toISOString()).toBe(
-        now.toISOString(),
-      );
+      expect(data.events[0].createdAt).toBe(timestamp);
     });
   });
 
@@ -584,41 +544,22 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Edge Cases", () => {
     it("should handle since parameter with value 0", async () => {
-      // Insert 3 events
-      const testEvents = Array.from({ length: 3 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}` },
-        createdAt: new Date(),
-      }));
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
+      mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=0`,
       );
 
-      const response = await GET(request);
+      await GET(request);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.events).toHaveLength(3); // All events
+      // Verify the APL query uses since=0
+      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
+      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("sequenceNumber > 0");
     });
 
-    it("should return empty list when since is greater than max sequence", async () => {
-      // Insert 3 events
-      const testEvents = Array.from({ length: 3 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}` },
-        createdAt: new Date(),
-      }));
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
+    it("should return nextSequence as 'since' value when no events returned", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=100`,
@@ -630,33 +571,22 @@ describe("GET /api/agent/runs/:id/events", () => {
       const data = await response.json();
       expect(data.events).toEqual([]);
       expect(data.hasMore).toBe(false);
-      expect(data.nextSequence).toBe(100); // Should return the 'since' value when no events
+      expect(data.nextSequence).toBe(100);
     });
 
     it("should use default limit of 100 when not specified", async () => {
-      // Insert 150 events
-      const testEvents = Array.from({ length: 150 }, (_, i) => ({
-        id: randomUUID(),
-        runId: testRunId,
-        sequenceNumber: i + 1,
-        eventType: `event_${i + 1}`,
-        eventData: { type: `event_${i + 1}` },
-        createdAt: new Date(),
-      }));
-
-      await globalThis.services.db.insert(agentRunEvents).values(testEvents);
+      mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
 
-      const response = await GET(request);
+      await GET(request);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.events).toHaveLength(100); // Default limit
-      expect(data.hasMore).toBe(true);
-      expect(data.nextSequence).toBe(100);
+      // Verify the APL query uses default limit of 100
+      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
+      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(apl).toContain("limit 100");
     });
   });
 
@@ -666,6 +596,8 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Run State", () => {
     it("should return run state with status 'running' for running run", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
@@ -699,6 +631,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         })
         .where(eq(agentRuns.id, testRunId));
 
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
@@ -726,6 +660,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         })
         .where(eq(agentRuns.id, testRunId));
 
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
@@ -747,6 +683,8 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Provider Field", () => {
     it("should return default provider 'claude-code' for compose without provider", async () => {
+      mockQueryAxiom.mockResolvedValue([]);
+
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
       );
@@ -795,6 +733,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         prompt: "Test prompt",
         createdAt: new Date(),
       });
+
+      mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${codexRunId}/events`,
@@ -855,6 +795,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         prompt: "Test prompt",
         createdAt: new Date(),
       });
+
+      mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${explicitRunId}/events`,

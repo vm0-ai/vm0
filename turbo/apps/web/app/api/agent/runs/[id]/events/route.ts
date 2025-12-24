@@ -3,15 +3,28 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import { runEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
-import { eq, gt, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../../src/lib/axiom";
 import type {
   RunStatus,
   RunResult,
   RunState,
 } from "../../../../../../src/lib/run/types";
+
+interface AxiomAgentEvent {
+  _time: string;
+  runId: string;
+  userId: string;
+  sequenceNumber: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+}
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query }) => {
@@ -62,18 +75,19 @@ const router = tsr.router(runEventsContract, {
     } | null;
     const provider = composeContent?.agent?.provider ?? "claude-code";
 
-    // Query events from database (only agent events, no vm0_* events)
-    const events = await globalThis.services.db
-      .select()
-      .from(agentRunEvents)
-      .where(
-        and(
-          eq(agentRunEvents.runId, params.id),
-          gt(agentRunEvents.sequenceNumber, since),
-        ),
-      )
-      .orderBy(agentRunEvents.sequenceNumber)
-      .limit(limit);
+    // Build APL query for Axiom
+    const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+    const apl = `['${dataset}']
+| where runId == "${params.id}"
+| where sequenceNumber > ${since}
+| order by sequenceNumber asc
+| limit ${limit}`;
+
+    // Query Axiom for agent events
+    const axiomEvents = await queryAxiom<AxiomAgentEvent>(apl);
+
+    // If Axiom is not configured or query failed, return empty
+    const events = axiomEvents ?? [];
 
     // Calculate nextSequence and hasMore
     const hasMore = events.length === limit;
@@ -102,7 +116,7 @@ const router = tsr.router(runEventsContract, {
           sequenceNumber: e.sequenceNumber,
           eventType: e.eventType,
           eventData: e.eventData,
-          createdAt: e.createdAt.toISOString(),
+          createdAt: e._time,
         })),
         hasMore,
         nextSequence,
