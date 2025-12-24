@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.0](https://github.com/vm0-ai/vm0/compare/web-v6.5.0...web-v6.6.0) (2025-12-24)
+
+
+### Features
+
+* migrate sandbox system logs to axiom ([#706](https://github.com/vm0-ai/vm0/issues/706)) ([bf34716](https://github.com/vm0-ai/vm0/commit/bf34716cc2367ec15a0f335b10fd790959623f00))
+
 ## [6.5.0](https://github.com/vm0-ai/vm0/compare/web-v6.4.0...web-v6.5.0) (2025-12-23)
 
 
