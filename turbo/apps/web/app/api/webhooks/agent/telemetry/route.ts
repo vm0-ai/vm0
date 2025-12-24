@@ -3,7 +3,6 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import { webhookTelemetryContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { sandboxTelemetry } from "../../../../../src/db/schema/sandbox-telemetry";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
@@ -74,7 +73,6 @@ const router = tsr.router(webhookTelemetryContract, {
 
     // Ingest system log to Axiom (fire-and-forget - don't fail webhook if Axiom fails)
     if (body.systemLog) {
-      const axiomStart = Date.now();
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
       const axiomEvent = {
         _time: new Date().toISOString(),
@@ -85,30 +83,46 @@ const router = tsr.router(webhookTelemetryContract, {
       ingestToAxiom(axiomDataset, [axiomEvent]).catch((err) => {
         log.error("Axiom system log ingest failed:", err);
       });
-      log.debug(
-        `[telemetry] Axiom ingest queued in ${Date.now() - axiomStart}ms`,
-      );
     }
 
-    // Store metrics and network logs in PostgreSQL (system logs now go to Axiom)
-    const hasMetrics = body.metrics && body.metrics.length > 0;
-    const hasNetworkLogs = body.networkLogs && body.networkLogs.length > 0;
+    // Ingest metrics to Axiom (fire-and-forget)
+    if (body.metrics && body.metrics.length > 0) {
+      const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_METRICS);
+      const axiomEvents = body.metrics.map((metric) => ({
+        _time: metric.ts,
+        runId: body.runId,
+        userId: auth.userId,
+        cpu: metric.cpu,
+        mem_used: metric.mem_used,
+        mem_total: metric.mem_total,
+        disk_used: metric.disk_used,
+        disk_total: metric.disk_total,
+      }));
+      ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
+        log.error("Axiom metrics ingest failed:", err);
+      });
+    }
 
-    let insertedId: string | undefined;
-    if (hasMetrics || hasNetworkLogs) {
-      const insertStart = Date.now();
-      const result = await globalThis.services.db
-        .insert(sandboxTelemetry)
-        .values({
-          runId: body.runId,
-          data: {
-            metrics: body.metrics ?? [],
-            networkLogs: masker.mask(body.networkLogs ?? []),
-          },
-        })
-        .returning({ id: sandboxTelemetry.id });
-      log.debug(`[telemetry] INSERT took ${Date.now() - insertStart}ms`);
-      insertedId = result[0]?.id;
+    // Ingest network logs to Axiom (fire-and-forget)
+    if (body.networkLogs && body.networkLogs.length > 0) {
+      const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+      const maskedNetworkLogs = masker.mask(
+        body.networkLogs,
+      ) as typeof body.networkLogs;
+      const axiomEvents = maskedNetworkLogs.map((netLog) => ({
+        _time: netLog.timestamp,
+        runId: body.runId,
+        userId: auth.userId,
+        method: netLog.method,
+        url: netLog.url,
+        status: netLog.status,
+        latency_ms: netLog.latency_ms,
+        request_size: netLog.request_size,
+        response_size: netLog.response_size,
+      }));
+      ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
+        log.error("Axiom network logs ingest failed:", err);
+      });
     }
 
     log.debug(
@@ -119,7 +133,7 @@ const router = tsr.router(webhookTelemetryContract, {
       status: 200 as const,
       body: {
         success: true,
-        id: insertedId ?? body.runId,
+        id: body.runId,
       },
     };
   },

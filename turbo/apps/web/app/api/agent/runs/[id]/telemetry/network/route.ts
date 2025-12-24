@@ -3,28 +3,24 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import { runNetworkLogsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { sandboxTelemetry } from "../../../../../../../src/db/schema/sandbox-telemetry";
-import { eq, gt, and, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../../../src/lib/axiom";
 
-/**
- * Network log entry structure
- */
-interface NetworkLogEntry {
-  timestamp: string;
+interface AxiomNetworkEvent {
+  _time: string;
+  runId: string;
+  userId: string;
   method: string;
   url: string;
   status: number;
   latency_ms: number;
   request_size: number;
   response_size: number;
-}
-
-/**
- * Telemetry data structure stored in JSONB
- */
-interface TelemetryData {
-  networkLogs?: NetworkLogEntry[];
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -59,33 +55,45 @@ const router = tsr.router(runNetworkLogsContract, {
 
     const { since, limit } = query;
 
-    // Build query conditions
-    const conditions = [eq(sandboxTelemetry.runId, params.id)];
-    if (since !== undefined) {
-      conditions.push(gt(sandboxTelemetry.createdAt, new Date(since)));
+    // Build APL query for Axiom
+    const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+    const sinceFilter = since
+      ? `| where _time > datetime("${new Date(since).toISOString()}")`
+      : "";
+    const apl = `['${dataset}']
+| where runId == "${params.id}"
+${sinceFilter}
+| order by _time asc
+| limit ${limit + 1}`;
+
+    // Query Axiom for network logs
+    const events = await queryAxiom<AxiomNetworkEvent>(apl);
+
+    // If Axiom is not configured or query failed, return empty
+    if (events === null) {
+      return {
+        status: 200 as const,
+        body: {
+          networkLogs: [],
+          hasMore: false,
+        },
+      };
     }
 
-    // Query all telemetry records (we need to extract networkLogs from them)
-    const telemetryRecords = await globalThis.services.db
-      .select()
-      .from(sandboxTelemetry)
-      .where(and(...conditions))
-      .orderBy(asc(sandboxTelemetry.createdAt));
+    // Check if there are more records
+    const hasMore = events.length > limit;
+    const records = hasMore ? events.slice(0, limit) : events;
 
-    // Collect all network log entries
-    const allNetworkLogs: NetworkLogEntry[] = [];
-    for (const record of telemetryRecords) {
-      const data = record.data as TelemetryData;
-      if (data.networkLogs) {
-        allNetworkLogs.push(...data.networkLogs);
-      }
-    }
-
-    // Apply limit to network logs
-    const hasMore = allNetworkLogs.length > limit;
-    const networkLogs = hasMore
-      ? allNetworkLogs.slice(0, limit)
-      : allNetworkLogs;
+    // Transform to API response format
+    const networkLogs = records.map((e) => ({
+      timestamp: e._time,
+      method: e.method,
+      url: e.url,
+      status: e.status,
+      latency_ms: e.latency_ms,
+      request_size: e.request_size,
+      response_size: e.response_size,
+    }));
 
     return {
       status: 200 as const,

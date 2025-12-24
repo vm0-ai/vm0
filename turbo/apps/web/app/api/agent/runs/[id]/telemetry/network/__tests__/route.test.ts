@@ -36,7 +36,7 @@ vi.mock("../../../../../../../../src/lib/axiom", () => ({
   queryAxiom: vi.fn(),
   getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
   DATASETS: {
-    SANDBOX_TELEMETRY_METRICS: "sandbox-telemetry-metrics",
+    SANDBOX_TELEMETRY_NETWORK: "sandbox-telemetry-network",
   },
 }));
 
@@ -56,36 +56,40 @@ function createTestRequest(url: string): NextRequest {
 }
 
 /**
- * Create a test Axiom metric event
+ * Create a test Axiom network event
  */
-function createAxiomMetricEvent(
-  ts: string,
-  cpu: number,
+function createAxiomNetworkEvent(
+  timestamp: string,
+  method: string,
+  url: string,
+  status: number,
   runId: string,
   userId: string,
 ): {
   _time: string;
   runId: string;
   userId: string;
-  cpu: number;
-  mem_used: number;
-  mem_total: number;
-  disk_used: number;
-  disk_total: number;
+  method: string;
+  url: string;
+  status: number;
+  latency_ms: number;
+  request_size: number;
+  response_size: number;
 } {
   return {
-    _time: ts,
+    _time: timestamp,
     runId,
     userId,
-    cpu,
-    mem_used: 1000000000,
-    mem_total: 2000000000,
-    disk_used: 5000000000,
-    disk_total: 10000000000,
+    method,
+    url,
+    status,
+    latency_ms: 150,
+    request_size: 100,
+    response_size: 1024,
   };
 }
 
-describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
+describe("GET /api/agent/runs/:id/telemetry/network", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testRunId = randomUUID();
   const testComposeId = randomUUID();
@@ -183,7 +187,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
@@ -200,7 +204,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       const nonExistentRunId = randomUUID();
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${nonExistentRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${nonExistentRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
@@ -252,7 +256,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       });
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${otherRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${otherRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
@@ -275,58 +279,61 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
   });
 
   describe("Success - Basic Retrieval", () => {
-    it("should return empty metrics when Axiom returns empty", async () => {
+    it("should return empty network logs when Axiom returns empty", async () => {
       mockQueryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toEqual([]);
+      expect(data.networkLogs).toEqual([]);
       expect(data.hasMore).toBe(false);
     });
 
-    it("should return empty metrics when Axiom is not configured", async () => {
+    it("should return empty network logs when Axiom is not configured", async () => {
       mockQueryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toEqual([]);
+      expect(data.networkLogs).toEqual([]);
       expect(data.hasMore).toBe(false);
     });
 
-    it("should return metrics from Axiom", async () => {
+    it("should return network logs from Axiom", async () => {
       mockQueryAxiom.mockResolvedValue([
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
-          50,
+          "GET",
+          "https://api.example.com/data",
+          200,
           testRunId,
           testUserId,
         ),
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toHaveLength(1);
-      expect(data.metrics[0].cpu).toBe(50);
-      expect(data.metrics[0].mem_used).toBe(1000000000);
-      expect(data.metrics[0].ts).toBe("2024-01-01T00:00:00Z");
+      expect(data.networkLogs).toHaveLength(1);
+      expect(data.networkLogs[0].method).toBe("GET");
+      expect(data.networkLogs[0].url).toBe("https://api.example.com/data");
+      expect(data.networkLogs[0].status).toBe(200);
+      expect(data.networkLogs[0].timestamp).toBe("2024-01-01T00:00:00Z");
       expect(data.hasMore).toBe(false);
 
       // Verify Axiom was queried with correct APL
@@ -337,47 +344,56 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
   });
 
   describe("Retrieval from Axiom", () => {
-    it("should return multiple metrics in order", async () => {
+    it("should return multiple network logs in order", async () => {
       mockQueryAxiom.mockResolvedValue([
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
-          10,
+          "GET",
+          "https://api.example.com/users",
+          200,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:05Z",
-          15,
+          "POST",
+          "https://api.example.com/data",
+          201,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:10Z",
-          20,
+          "PUT",
+          "https://api.example.com/users/1",
+          200,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:15Z",
-          25,
+          "DELETE",
+          "https://api.example.com/users/2",
+          404,
           testRunId,
           testUserId,
         ),
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics?limit=10`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network?limit=10`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toHaveLength(4);
-      expect(data.metrics[0].cpu).toBe(10);
-      expect(data.metrics[1].cpu).toBe(15);
-      expect(data.metrics[2].cpu).toBe(20);
-      expect(data.metrics[3].cpu).toBe(25);
+      expect(data.networkLogs).toHaveLength(4);
+      expect(data.networkLogs[0].method).toBe("GET");
+      expect(data.networkLogs[1].method).toBe("POST");
+      expect(data.networkLogs[2].method).toBe("PUT");
+      expect(data.networkLogs[3].method).toBe("DELETE");
+      expect(data.networkLogs[3].status).toBe(404);
       expect(data.hasMore).toBe(false);
     });
   });
@@ -386,44 +402,52 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
     it("should respect limit parameter and indicate hasMore", async () => {
       // Mock Axiom returning limit+1 records (indicating more data exists)
       mockQueryAxiom.mockResolvedValue([
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
-          10,
+          "GET",
+          "https://api.example.com/1",
+          200,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:05Z",
-          20,
+          "GET",
+          "https://api.example.com/2",
+          200,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:10Z",
-          30,
+          "GET",
+          "https://api.example.com/3",
+          200,
           testRunId,
           testUserId,
         ),
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:15Z",
-          40,
+          "GET",
+          "https://api.example.com/4",
+          200,
           testRunId,
           testUserId,
         ), // Extra record
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics?limit=3`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network?limit=3`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toHaveLength(3);
-      expect(data.metrics[0].cpu).toBe(10);
-      expect(data.metrics[1].cpu).toBe(20);
-      expect(data.metrics[2].cpu).toBe(30);
+      expect(data.networkLogs).toHaveLength(3);
+      expect(data.networkLogs[0].url).toBe("https://api.example.com/1");
+      expect(data.networkLogs[1].url).toBe("https://api.example.com/2");
+      expect(data.networkLogs[2].url).toBe("https://api.example.com/3");
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
@@ -434,9 +458,11 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
 
     it("should include since filter in Axiom query", async () => {
       mockQueryAxiom.mockResolvedValue([
-        createAxiomMetricEvent(
+        createAxiomNetworkEvent(
           "2024-01-01T00:00:10Z",
-          50,
+          "GET",
+          "https://api.example.com/recent",
+          200,
           testRunId,
           testUserId,
         ),
@@ -444,15 +470,15 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
 
       const sinceTimestamp = Date.now() - 5000;
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics?since=${sinceTimestamp}&limit=10`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network?since=${sinceTimestamp}&limit=10`,
       );
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.metrics).toHaveLength(1);
-      expect(data.metrics[0].cpu).toBe(50);
+      expect(data.networkLogs).toHaveLength(1);
+      expect(data.networkLogs[0].url).toBe("https://api.example.com/recent");
 
       // Verify since filter was included in APL query
       expect(mockQueryAxiom).toHaveBeenCalledWith(
