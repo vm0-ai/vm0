@@ -80,7 +80,8 @@ const router = tsr.router(runsMainContract, {
     let agentComposeVersionId: string;
     let agentComposeName: string | undefined;
     let composeContent: AgentComposeYaml | undefined;
-    // For continue/resume, secrets may come from session/checkpoint (already encrypted)
+    // For continue/resume, vars and secrets may come from session/checkpoint
+    let varsFromSource: Record<string, string> | null = null;
     let encryptedSecretsFromSource: Record<string, string> | null = null;
 
     if (isNewRun) {
@@ -220,7 +221,8 @@ const router = tsr.router(runsMainContract, {
         }
       }
     } else if (isCheckpointResume) {
-      // Validate checkpoint first to get agentComposeVersionId and secrets
+      // Validate checkpoint first to get agentComposeVersionId, vars, and secrets
+      let checkpointVars: Record<string, string> | null = null;
       let checkpointSecrets: Record<string, string> | null = null;
       try {
         const checkpointData = await runService.validateCheckpoint(
@@ -228,6 +230,7 @@ const router = tsr.router(runsMainContract, {
           userId,
         );
         agentComposeVersionId = checkpointData.agentComposeVersionId;
+        checkpointVars = checkpointData.vars;
         checkpointSecrets = checkpointData.secrets;
       } catch (error) {
         return {
@@ -242,7 +245,11 @@ const router = tsr.router(runsMainContract, {
         };
       }
 
-      // Use secrets from checkpoint if not provided in request (already encrypted)
+      // Inherit vars and secrets from checkpoint if not provided in request
+      // This ensures the new run record has vars/secrets for subsequent checkpoints
+      if (!body.vars && checkpointVars) {
+        varsFromSource = checkpointVars;
+      }
       if (!body.secrets && checkpointSecrets) {
         // Store encrypted secrets directly - they're already encrypted per-value
         encryptedSecretsFromSource = checkpointSecrets;
@@ -264,7 +271,7 @@ const router = tsr.router(runsMainContract, {
         agentComposeName = compose?.name || undefined;
       }
     } else {
-      // Session continue - resolve to HEAD version of session's compose
+      // Session continue - use session's compose version if available, otherwise HEAD
       let sessionData;
       try {
         sessionData = await runService.validateAgentSession(
@@ -284,7 +291,7 @@ const router = tsr.router(runsMainContract, {
         };
       }
 
-      // Get compose and resolve to HEAD version
+      // Get compose to resolve version
       const [compose] = await globalThis.services.db
         .select()
         .from(agentComposes)
@@ -315,16 +322,28 @@ const router = tsr.router(runsMainContract, {
         };
       }
 
-      agentComposeVersionId = compose.headVersionId;
+      // Use session's fixed compose version if available, fall back to HEAD for backwards compatibility
+      agentComposeVersionId =
+        sessionData.agentComposeVersionId || compose.headVersionId;
       agentComposeName = compose.name || undefined;
 
-      // Use secrets from session if not provided in request (already encrypted)
+      // Inherit vars and secrets from session if not provided in request
+      // This ensures the new run record has vars/secrets for subsequent checkpoints
+      if (!body.vars && sessionData.vars) {
+        varsFromSource = sessionData.vars;
+      }
       if (!body.secrets && sessionData.secrets) {
         encryptedSecretsFromSource = sessionData.secrets;
       }
     }
 
     log.debug(`Resolved agentComposeVersionId: ${agentComposeVersionId}`);
+
+    // Determine vars to store:
+    // 1. If body.vars is provided, use it (new run or override)
+    // 2. If varsFromSource is set, use it (continue/resume without override)
+    // 3. Otherwise, no vars
+    const varsToStore = body.vars || varsFromSource || null;
 
     // Determine secrets to store:
     // 1. If body.secrets is provided, encrypt and use it (new run or override)
@@ -335,6 +354,8 @@ const router = tsr.router(runsMainContract, {
       : encryptedSecretsFromSource;
 
     // Create run record in database
+    // Note: vars and secrets are inherited from session/checkpoint if not provided
+    // This ensures subsequent checkpoints have the full context
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
@@ -342,7 +363,7 @@ const router = tsr.router(runsMainContract, {
         agentComposeVersionId,
         status: "pending",
         prompt: body.prompt,
-        vars: body.vars || null,
+        vars: varsToStore,
         secrets: encryptedSecrets,
         resumedFromCheckpointId: body.checkpointId || null,
       })

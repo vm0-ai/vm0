@@ -340,6 +340,7 @@ export class RunService {
 
   /**
    * Resolve session to ConversationResolution
+   * Uses session's fixed compose version if available, falls back to HEAD for backwards compatibility
    */
   private async resolveSession(
     sessionId: string,
@@ -385,15 +386,19 @@ export class RunService {
       );
     }
 
-    // Get HEAD version content
+    // Use session's fixed compose version if available, fall back to HEAD for backwards compatibility
+    // This ensures reproducibility: continue uses the same compose version as the original run
+    const versionId = session.agentComposeVersionId || compose.headVersionId;
+
+    // Get compose version content
     const [version] = await globalThis.services.db
       .select()
       .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
+      .where(eq(agentComposeVersions.id, versionId))
       .limit(1);
 
     if (!version) {
-      throw new NotFoundError("Agent compose version not found");
+      throw new NotFoundError(`Agent compose version ${versionId} not found`);
     }
 
     // Decrypt secrets from session (stored encrypted per-value)
@@ -406,7 +411,7 @@ export class RunService {
 
     return {
       conversationId: session.conversationId,
-      agentComposeVersionId: compose.headVersionId,
+      agentComposeVersionId: versionId,
       agentCompose: version.content,
       workingDir: this.extractWorkingDir(version.content),
       conversationData: {
@@ -417,7 +422,8 @@ export class RunService {
       artifactVersion: session.artifactName ? "latest" : undefined, // Only set version if artifact exists
       vars: session.vars || {},
       secrets: decryptedSessionSecrets,
-      volumeVersions: undefined,
+      // Use session's volume versions if available for reproducibility
+      volumeVersions: session.volumeVersions || undefined,
       buildResumeArtifact: !!session.artifactName, // Only build resumeArtifact if session has artifact
     };
   }
@@ -530,7 +536,7 @@ export class RunService {
    *
    * @param checkpointId Checkpoint ID to validate
    * @param userId User ID for authorization check
-   * @returns Checkpoint data with agentComposeVersionId
+   * @returns Checkpoint data with agentComposeVersionId, vars, and secrets
    * @throws NotFoundError if checkpoint doesn't exist
    * @throws UnauthorizedError if checkpoint doesn't belong to user
    */
@@ -539,6 +545,7 @@ export class RunService {
     userId: string,
   ): Promise<{
     agentComposeVersionId: string;
+    vars: Record<string, string> | null;
     secrets: Record<string, string> | null;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
@@ -584,11 +591,13 @@ export class RunService {
       `Checkpoint validated: agentComposeVersionId=${agentComposeVersionId}`,
     );
 
-    // Get secrets from original run (encrypted per-value)
+    // Get vars and secrets from original run (encrypted per-value)
+    const vars = (originalRun.vars as Record<string, string>) ?? null;
     const secrets = (originalRun.secrets as Record<string, string>) ?? null;
 
     return {
       agentComposeVersionId,
+      vars,
       secrets,
     };
   }
@@ -608,8 +617,10 @@ export class RunService {
     userId: string,
   ): Promise<{
     agentComposeId: string;
+    agentComposeVersionId: string | null;
     vars: Record<string, string> | null;
     secrets: Record<string, string> | null;
+    volumeVersions: Record<string, string> | null;
   }> {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
@@ -635,12 +646,16 @@ export class RunService {
       );
     }
 
-    log.debug(`Session validated: agentComposeId=${session.agentComposeId}`);
+    log.debug(
+      `Session validated: agentComposeId=${session.agentComposeId}, agentComposeVersionId=${session.agentComposeVersionId}`,
+    );
 
     return {
       agentComposeId: session.agentComposeId,
+      agentComposeVersionId: session.agentComposeVersionId,
       vars: session.vars,
       secrets: session.secrets,
+      volumeVersions: session.volumeVersions,
     };
   }
 

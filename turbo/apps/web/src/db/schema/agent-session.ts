@@ -13,6 +13,11 @@ import { conversations } from "./conversation";
  * Agent Sessions table
  * VM0's concept of a persistent running context across multiple runs
  * Unlike checkpoints (immutable snapshots), sessions track the latest state
+ *
+ * Key fields for execution context:
+ * - agentComposeVersionId: Immutable compose version (SHA-256) fixed at session creation
+ * - volumeVersions: Volume versions snapshot at session creation
+ * - vars/secrets: Template variables and secrets for compose expansion
  */
 export const agentSessions = pgTable("agent_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -20,12 +25,17 @@ export const agentSessions = pgTable("agent_sessions", {
   agentComposeId: uuid("agent_compose_id")
     .references(() => agentComposes.id, { onDelete: "cascade" })
     .notNull(),
+  // Immutable compose version ID (SHA-256 hash) fixed at session creation
+  // If null (legacy sessions), resolveSession falls back to HEAD version
+  agentComposeVersionId: varchar("agent_compose_version_id", { length: 255 }),
   conversationId: uuid("conversation_id").references(() => conversations.id, {
     onDelete: "set null",
   }),
   artifactName: varchar("artifact_name", { length: 255 }),
   vars: jsonb("vars").$type<Record<string, string>>(),
   secrets: jsonb("secrets").$type<Record<string, string>>(),
+  // Volume versions snapshot at session creation for reproducibility
+  volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

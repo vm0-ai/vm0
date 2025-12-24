@@ -23,10 +23,12 @@ export class AgentSessionService {
       .values({
         userId: input.userId,
         agentComposeId: input.agentComposeId,
+        agentComposeVersionId: input.agentComposeVersionId,
         artifactName: input.artifactName,
         conversationId: input.conversationId,
         vars: input.vars,
         secrets: input.secrets,
+        volumeVersions: input.volumeVersions,
       })
       .returning();
 
@@ -141,6 +143,7 @@ export class AgentSessionService {
    * Find existing session or create a new one
    * Used when checkpoint is created to ensure session exists
    * Note: artifactName is optional - sessions without artifact use (userId, composeId) as key
+   * Note: agentComposeVersionId and volumeVersions are only set on creation, not updated
    */
   async findOrCreate(
     userId: string,
@@ -149,6 +152,8 @@ export class AgentSessionService {
     conversationId?: string,
     vars?: Record<string, string>,
     secrets?: Record<string, string>,
+    agentComposeVersionId?: string,
+    volumeVersions?: Record<string, string>,
   ): Promise<{ session: AgentSessionData; created: boolean }> {
     // Build query conditions - handle null artifactName for sessions without artifact
     // For sessions with artifact: match (userId, composeId, artifactName)
@@ -174,6 +179,7 @@ export class AgentSessionService {
 
     if (existing) {
       // Update conversation, vars, and secrets if provided
+      // Note: agentComposeVersionId and volumeVersions are NOT updated - they are fixed at creation
       if (conversationId) {
         const updated = await this.update(existing.id, {
           conversationId,
@@ -185,14 +191,16 @@ export class AgentSessionService {
       return { session: this.mapToAgentSessionData(existing), created: false };
     }
 
-    // Create new session
+    // Create new session with version ID and volume versions fixed at creation
     const session = await this.create({
       userId,
       agentComposeId,
+      agentComposeVersionId,
       artifactName,
       conversationId,
       vars,
       secrets,
+      volumeVersions,
     });
 
     return { session, created: true };
@@ -217,10 +225,12 @@ export class AgentSessionService {
       id: session.id,
       userId: session.userId,
       agentComposeId: session.agentComposeId,
+      agentComposeVersionId: session.agentComposeVersionId,
       conversationId: session.conversationId,
       artifactName: session.artifactName,
       vars: session.vars,
       secrets: session.secrets,
+      volumeVersions: session.volumeVersions,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };
