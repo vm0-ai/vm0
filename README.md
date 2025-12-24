@@ -53,7 +53,7 @@ No drag-and-drop. No pipelines.
 VM0 supports the new wave of developer-native agent CLIs:
 
 - Claude Code
-- OpenAI Codex (Coming soon)
+- OpenAI Codex
 - Gemini CLI (Coming soon)
 - Cursor CLI (Coming soon)
 - Any custom CLI agent (Coming soon)
@@ -111,7 +111,6 @@ version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-    image: vm0/claude-code:latest
     working_dir: /home/user/workspace
     volumes:
       - claude-files:/home/user/.config/claude
