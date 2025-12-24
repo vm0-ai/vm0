@@ -8,11 +8,12 @@ const c = initContract();
  * Agent event schema for webhook events
  * Note: Claude Code JSONL events have varying structures with different fields
  * depending on the event type (system, assistant, user, result, etc.)
- * We only require `type` and allow any other fields to pass through
+ * We require `type` and `sequenceNumber`, and allow any other fields to pass through
  */
 const agentEventSchema = z
   .object({
     type: z.string(),
+    sequenceNumber: z.number().int().positive(),
   })
   .passthrough();
 

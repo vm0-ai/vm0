@@ -278,6 +278,9 @@ def _run() -> tuple[int, str]:
         stderr_thread = threading.Thread(target=read_stderr, daemon=True)
         stderr_thread.start()
 
+        # Sequence counter for events (1-based)
+        event_sequence = 0
+
         # Process JSONL output line by line from stdout
         for line in proc.stdout:
             # Write raw line to log file
@@ -295,8 +298,9 @@ def _run() -> tuple[int, str]:
             try:
                 event = json.loads(stripped)
 
-                # Valid JSONL - send immediately
-                send_event(event)
+                # Valid JSONL - send immediately with sequence number
+                event_sequence += 1
+                send_event(event, event_sequence)
 
                 # Extract result from "result" event for stdout
                 if event.get("type") == "result":

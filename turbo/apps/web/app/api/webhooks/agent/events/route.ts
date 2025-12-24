@@ -69,10 +69,11 @@ const router = tsr.router(webhookEventsContract, {
     const masker = createSecretMasker(secretValues);
 
     // Prepare events for Axiom ingest with secrets masked
-    const axiomEvents = body.events.map((event, index) => ({
+    // Use client-provided sequenceNumber from each event
+    const axiomEvents = body.events.map((event) => ({
       runId: body.runId,
       userId,
-      sequenceNumber: index + 1,
+      sequenceNumber: event.sequenceNumber,
       eventType: event.type,
       eventData: masker.mask(event),
     }));
@@ -81,16 +82,20 @@ const router = tsr.router(webhookEventsContract, {
     const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
     await ingestToAxiom(axiomDataset, axiomEvents);
 
+    // Get first and last sequence numbers from the events
+    const firstSequence = body.events[0].sequenceNumber;
+    const lastSequence = body.events[body.events.length - 1].sequenceNumber;
+
     log.debug(
-      `Ingested ${body.events.length} events to Axiom for run ${body.runId}`,
+      `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
     );
 
     return {
       status: 200 as const,
       body: {
         received: body.events.length,
-        firstSequence: 1,
-        lastSequence: body.events.length,
+        firstSequence,
+        lastSequence,
       },
     };
   },

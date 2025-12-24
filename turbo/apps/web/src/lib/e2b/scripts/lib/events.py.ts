@@ -18,12 +18,13 @@ from log import log_info, log_error
 from http_client import http_post_json
 
 
-def send_event(event: Dict[str, Any]) -> bool:
+def send_event(event: Dict[str, Any], sequence_number: int) -> bool:
     """
     Send single event immediately to webhook.
 
     Args:
         event: Event dictionary to send
+        sequence_number: Sequence number for this event (1-based, maintained by caller)
 
     Returns:
         True on success, False on failure
@@ -68,6 +69,9 @@ def send_event(event: Dict[str, Any]) -> bool:
             f.write(session_history_path)
 
         log_info(f"Session history will be at: {session_history_path}")
+
+    # Add sequence number to event
+    event["sequenceNumber"] = sequence_number
 
     # Build payload
     payload = {
