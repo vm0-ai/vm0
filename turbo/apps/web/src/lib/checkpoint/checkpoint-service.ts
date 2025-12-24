@@ -5,6 +5,7 @@ import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
 import { agentSessionService } from "../agent-session";
+import { sessionHistoryService } from "../session-history";
 import { logger } from "../logger";
 import type {
   CheckpointRequest,
@@ -59,6 +60,12 @@ export class CheckpointService {
       `Creating conversation record for CLI agent: ${request.cliAgentType}`,
     );
 
+    // Store session history in R2 blob storage
+    const historyHash = await sessionHistoryService.store(
+      request.cliAgentSessionHistory,
+    );
+    log.debug(`Session history stored in R2, hash=${historyHash}`);
+
     // Check if conversation already exists for this run (e.g., from a retry)
     const [existingConversation] = await globalThis.services.db
       .select()
@@ -75,7 +82,7 @@ export class CheckpointService {
         .set({
           cliAgentType: request.cliAgentType,
           cliAgentSessionId: request.cliAgentSessionId,
-          cliAgentSessionHistory: request.cliAgentSessionHistory,
+          cliAgentSessionHistoryHash: historyHash,
         })
         .where(eq(conversations.runId, request.runId))
         .returning();
@@ -88,7 +95,7 @@ export class CheckpointService {
           runId: request.runId,
           cliAgentType: request.cliAgentType,
           cliAgentSessionId: request.cliAgentSessionId,
-          cliAgentSessionHistory: request.cliAgentSessionHistory,
+          cliAgentSessionHistoryHash: historyHash,
         })
         .returning();
       conversation = inserted;

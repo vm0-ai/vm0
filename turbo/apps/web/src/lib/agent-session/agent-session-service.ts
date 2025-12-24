@@ -122,6 +122,8 @@ export class AgentSessionService {
             cliAgentType: result.conversation.cliAgentType,
             cliAgentSessionId: result.conversation.cliAgentSessionId,
             cliAgentSessionHistory: result.conversation.cliAgentSessionHistory,
+            cliAgentSessionHistoryHash:
+              result.conversation.cliAgentSessionHistoryHash,
           }
         : null,
     };

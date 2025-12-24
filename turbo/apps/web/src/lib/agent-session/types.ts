@@ -56,6 +56,9 @@ export interface AgentSessionWithConversation extends AgentSessionData {
     id: string;
     cliAgentType: string;
     cliAgentSessionId: string;
-    cliAgentSessionHistory: string;
+    /** @deprecated Legacy TEXT storage - use cliAgentSessionHistoryHash instead */
+    cliAgentSessionHistory: string | null;
+    /** SHA-256 hash reference to R2 blob storage */
+    cliAgentSessionHistoryHash: string | null;
   } | null;
 }

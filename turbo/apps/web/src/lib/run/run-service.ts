@@ -15,6 +15,7 @@ import type {
   VolumeVersionsSnapshot,
 } from "../checkpoint/types";
 import { agentSessionService } from "../agent-session";
+import { sessionHistoryService } from "../session-history";
 import { e2bService } from "../e2b";
 import type { RunResult } from "../e2b/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -320,6 +321,16 @@ export class RunService {
       ? decryptSecrets(encryptedSecrets)
       : {};
 
+    // Resolve session history from R2 hash or legacy TEXT field
+    const sessionHistory = await sessionHistoryService.resolve(
+      conversation.cliAgentSessionHistoryHash,
+      conversation.cliAgentSessionHistory,
+    );
+
+    if (!sessionHistory) {
+      throw new NotFoundError("Session history not found for conversation");
+    }
+
     return {
       conversationId: checkpoint.conversationId,
       agentComposeVersionId,
@@ -327,7 +338,7 @@ export class RunService {
       workingDir: this.extractWorkingDir(agentCompose),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
-        cliAgentSessionHistory: conversation.cliAgentSessionHistory,
+        cliAgentSessionHistory: sessionHistory,
       },
       artifactName: checkpointArtifact?.artifactName,
       artifactVersion: checkpointArtifact?.artifactVersion,
@@ -409,6 +420,16 @@ export class RunService {
       ? decryptSecrets(encryptedSessionSecrets)
       : {};
 
+    // Resolve session history from R2 hash or legacy TEXT field
+    const sessionHistory = await sessionHistoryService.resolve(
+      session.conversation.cliAgentSessionHistoryHash,
+      session.conversation.cliAgentSessionHistory,
+    );
+
+    if (!sessionHistory) {
+      throw new NotFoundError("Session history not found for conversation");
+    }
+
     return {
       conversationId: session.conversationId,
       agentComposeVersionId: versionId,
@@ -416,7 +437,7 @@ export class RunService {
       workingDir: this.extractWorkingDir(version.content),
       conversationData: {
         cliAgentSessionId: session.conversation.cliAgentSessionId,
-        cliAgentSessionHistory: session.conversation.cliAgentSessionHistory,
+        cliAgentSessionHistory: sessionHistory,
       },
       artifactName: session.artifactName ?? undefined, // Convert null to undefined
       artifactVersion: session.artifactName ? "latest" : undefined, // Only set version if artifact exists
@@ -473,6 +494,16 @@ export class RunService {
       throw new NotFoundError("Agent compose version not found");
     }
 
+    // Resolve session history from R2 hash or legacy TEXT field
+    const sessionHistory = await sessionHistoryService.resolve(
+      conversation.cliAgentSessionHistoryHash,
+      conversation.cliAgentSessionHistory,
+    );
+
+    if (!sessionHistory) {
+      throw new NotFoundError("Session history not found for conversation");
+    }
+
     return {
       conversationId,
       agentComposeVersionId,
@@ -480,7 +511,7 @@ export class RunService {
       workingDir: this.extractWorkingDir(version.content),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
-        cliAgentSessionHistory: conversation.cliAgentSessionHistory,
+        cliAgentSessionHistory: sessionHistory,
       },
       // No defaults for artifact/vars/secrets/volumeVersions - use params directly
       buildResumeArtifact: false,
