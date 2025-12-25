@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/vm0-ai/vm0/compare/core-v1.3.1...core-v1.4.0) (2025-12-25)
+
+
+### Features
+
+* migrate agent run events to axiom ([#715](https://github.com/vm0-ai/vm0/issues/715)) ([4a68278](https://github.com/vm0-ai/vm0/commit/4a68278ff7dd5bd94915a873f8e69efdd42e3c7f))
+
 ## [1.3.1](https://github.com/vm0-ai/vm0/compare/core-v1.3.0...core-v1.3.1) (2025-12-23)
 
 

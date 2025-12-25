@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.21.2](https://github.com/vm0-ai/vm0/compare/cli-v4.21.1...cli-v4.21.2) (2025-12-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.4.0
+
 ## [4.21.1](https://github.com/vm0-ai/vm0/compare/cli-v4.21.0...cli-v4.21.1) (2025-12-23)
 
 

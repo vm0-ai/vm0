@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.8.0](https://github.com/vm0-ai/vm0/compare/web-v6.7.1...web-v6.8.0) (2025-12-25)
+
+
+### Features
+
+* migrate agent run events to axiom ([#715](https://github.com/vm0-ai/vm0/issues/715)) ([4a68278](https://github.com/vm0-ai/vm0/commit/4a68278ff7dd5bd94915a873f8e69efdd42e3c7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.4.0
+
 ## [6.7.1](https://github.com/vm0-ai/vm0/compare/web-v6.7.0...web-v6.7.1) (2025-12-24)
 
 
