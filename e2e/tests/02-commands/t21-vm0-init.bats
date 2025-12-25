@@ -21,6 +21,7 @@ teardown() {
     assert_success
     assert_output --partial "Initialize a new VM0 project"
     assert_output --partial "--force"
+    assert_output --partial "--name"
 }
 
 @test "vm0 init creates vm0.yaml and AGENTS.md with agent name via stdin" {
@@ -114,6 +115,45 @@ teardown() {
 
 @test "vm0 init rejects empty agent name" {
     run bash -c 'echo "" | '"$CLI_COMMAND"' init'
+    assert_failure
+    assert_output --partial "Invalid agent name"
+}
+
+@test "vm0 init --name creates files without interactive prompt" {
+    run $CLI_COMMAND init --name cli-agent
+    assert_success
+    assert_output --partial "Created vm0.yaml"
+    assert_output --partial "Created AGENTS.md"
+
+    # Verify file content
+    run cat vm0.yaml
+    assert_output --partial "cli-agent:"
+}
+
+@test "vm0 init -n short option works" {
+    run $CLI_COMMAND init -n short-name-agent
+    assert_success
+    assert_output --partial "Created vm0.yaml"
+
+    run cat vm0.yaml
+    assert_output --partial "short-name-agent:"
+}
+
+@test "vm0 init --name with --force overwrites existing files" {
+    # Create existing files
+    echo "old content" > vm0.yaml
+    echo "old content" > AGENTS.md
+
+    run $CLI_COMMAND init --name new-cli-agent --force
+    assert_success
+    assert_output --partial "(overwritten)"
+
+    run cat vm0.yaml
+    assert_output --partial "new-cli-agent:"
+}
+
+@test "vm0 init --name rejects invalid agent name" {
+    run $CLI_COMMAND init --name ab
     assert_failure
     assert_output --partial "Invalid agent name"
 }

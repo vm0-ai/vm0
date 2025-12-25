@@ -70,7 +70,8 @@ export const initCommand = new Command()
   .name("init")
   .description("Initialize a new VM0 project in the current directory")
   .option("-f, --force", "Overwrite existing files")
-  .action(async (options: { force?: boolean }) => {
+  .option("-n, --name <name>", "Agent name (skips interactive prompt)")
+  .action(async (options: { force?: boolean; name?: string }) => {
     // Check existing files
     const existingFiles = checkExistingFiles();
     if (existingFiles.length > 0 && !options.force) {
@@ -82,12 +83,16 @@ export const initCommand = new Command()
       process.exit(1);
     }
 
-    // Prompt for agent name
+    // Get agent name from option or prompt
     let agentName: string;
-    try {
-      agentName = await promptAgentName();
-    } catch {
-      process.exit(0);
+    if (options.name) {
+      agentName = options.name.trim();
+    } else {
+      try {
+        agentName = await promptAgentName();
+      } catch {
+        process.exit(0);
+      }
     }
 
     // Validate agent name

@@ -241,4 +241,64 @@ describe("init command", () => {
       expect(fs.writeFile).toHaveBeenCalled();
     });
   });
+
+  describe("--name option", () => {
+    beforeEach(() => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    });
+
+    it("should skip interactive prompt when --name is provided", async () => {
+      await initCommand.parseAsync(["node", "cli", "--name", "cli-agent"]);
+
+      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        "vm0.yaml",
+        expect.stringContaining("cli-agent"),
+      );
+    });
+
+    it("should work with -n short option", async () => {
+      await initCommand.parseAsync(["node", "cli", "-n", "short-agent"]);
+
+      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        "vm0.yaml",
+        expect.stringContaining("short-agent"),
+      );
+    });
+
+    it("should validate agent name from --name option", async () => {
+      vi.mocked(yamlValidator.validateAgentName).mockReturnValue(false);
+
+      await expect(async () => {
+        await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid agent name"),
+      );
+    });
+
+    it("should work with --name and --force together", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+
+      await initCommand.parseAsync([
+        "node",
+        "cli",
+        "--name",
+        "forced-agent",
+        "--force",
+      ]);
+
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        "vm0.yaml",
+        expect.stringContaining("forced-agent"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("(overwritten)"),
+      );
+    });
+  });
 });
