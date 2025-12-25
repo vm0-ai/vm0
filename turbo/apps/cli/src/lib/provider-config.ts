@@ -68,8 +68,9 @@ export function getDefaultImage(provider: string): string | undefined {
   const defaults = PROVIDER_DEFAULTS[provider];
   if (!defaults) return undefined;
 
-  // Only use production image when NODE_ENV is explicitly "production"
-  // All other cases (development, test, undefined) use dev image
-  const isProduction = process.env.NODE_ENV === "production";
-  return isProduction ? defaults.image.production : defaults.image.development;
+  // Use dev image only when NODE_ENV is explicitly "development" or "test"
+  // All other cases (production, undefined, etc.) use production image
+  const isDevelopment =
+    process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+  return isDevelopment ? defaults.image.development : defaults.image.production;
 }

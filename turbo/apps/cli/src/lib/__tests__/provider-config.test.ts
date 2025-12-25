@@ -96,5 +96,22 @@ describe("provider-config", () => {
     it("returns undefined for unknown provider", () => {
       expect(getDefaultImage("unknown")).toBeUndefined();
     });
+
+    describe("default behavior (NODE_ENV undefined or unrecognized)", () => {
+      it("returns production image for claude-code when NODE_ENV is undefined", () => {
+        delete process.env.NODE_ENV;
+        expect(getDefaultImage("claude-code")).toBe("vm0/claude-code:latest");
+      });
+
+      it("returns production image for codex when NODE_ENV is undefined", () => {
+        delete process.env.NODE_ENV;
+        expect(getDefaultImage("codex")).toBe("vm0/codex:latest");
+      });
+
+      it("returns production image for claude-code when NODE_ENV is unrecognized", () => {
+        process.env.NODE_ENV = "staging";
+        expect(getDefaultImage("claude-code")).toBe("vm0/claude-code:latest");
+      });
+    });
   });
 });
