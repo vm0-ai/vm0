@@ -43,9 +43,10 @@ export function initServices(): void {
         if (isVercel) {
           // Use Neon serverless driver for Vercel
           // This driver is optimized for Neon's connection pooler and serverless environments
+          // See: https://vercel.com/guides/connection-pooling-with-functions
           _pool = new NeonPool({
             connectionString: this.env.DATABASE_URL,
-            max: 1,
+            max: 10,
             idleTimeoutMillis: 10000,
             connectionTimeoutMillis: 10000,
           });
