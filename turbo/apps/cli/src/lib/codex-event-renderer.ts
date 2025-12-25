@@ -139,8 +139,7 @@ export class CodexEventRenderer {
               ? chalk.dim(` ... (${lines.length - 3} more lines)`)
               : "";
           console.log(
-            "[output]" +
-              (exitCode !== 0 ? chalk.red(` exit=${exitCode}`) : ""),
+            "[output]" + (exitCode !== 0 ? chalk.red(` exit=${exitCode}`) : ""),
           );
           if (preview) {
             console.log("  " + preview + more);

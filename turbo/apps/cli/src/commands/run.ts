@@ -448,9 +448,7 @@ const runCmd = new Command()
           );
           if (secrets) {
             console.log(
-              chalk.dim(
-                `  Loaded secrets: ${Object.keys(secrets).join(", ")}`,
-              ),
+              chalk.dim(`  Loaded secrets: ${Object.keys(secrets).join(", ")}`),
             );
           }
         }

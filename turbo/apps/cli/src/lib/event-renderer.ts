@@ -134,18 +134,14 @@ export class EventRenderer {
       if (result.artifact && Object.keys(result.artifact).length > 0) {
         console.log(`  Artifact:`);
         for (const [name, version] of Object.entries(result.artifact)) {
-          console.log(
-            `    ${name}: ${chalk.dim(this.formatVersion(version))}`,
-          );
+          console.log(`    ${name}: ${chalk.dim(this.formatVersion(version))}`);
         }
       }
 
       if (result.volumes && Object.keys(result.volumes).length > 0) {
         console.log(`  Volumes:`);
         for (const [name, version] of Object.entries(result.volumes)) {
-          console.log(
-            `    ${name}: ${chalk.dim(this.formatVersion(version))}`,
-          );
+          console.log(`    ${name}: ${chalk.dim(this.formatVersion(version))}`);
         }
       }
     }
@@ -180,9 +176,7 @@ export class EventRenderer {
     const displayName = isSupportedProvider(providerStr)
       ? getProviderDisplayName(providerStr)
       : providerStr;
-    console.log(
-      prefix + "[init]" + suffix + ` Starting ${displayName} agent`,
-    );
+    console.log(prefix + "[init]" + suffix + ` Starting ${displayName} agent`);
     console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
     if (event.data.model) {
       console.log(`  Model: ${chalk.dim(String(event.data.model))}`);
