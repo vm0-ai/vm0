@@ -29,300 +29,125 @@
 
 ## What is VM0?
 
-VM0 is born for agent building. AI development today is held back by two outdated models:
+VM0 is an agent runtime that provides:
+- **Cloud security sandbox** - Isolated execution environment for agents
+- **Versioned storage** - Volumes and artifacts are version-tracked and recoverable
+- **Persistent and reproducible** - Each run creates a checkpoint to resume, fork, and optimize agent performance
+- **Full observability** - Agent run logs, sandbox metrics, and network monitoring
 
-- 🧱 **Container runners**: traditional tech stack
-- 🔗 **Workflow builders**: rigid, brittle, not agent-native
+Build and extend agents with:
+- **Natural language workflows** - Define agent instructions in plain text, no more complex canvas or nodes to maintain
+- **Pluggable skills** - Extend capabilities with ready-to-use [agent skills](https://github.com/vm0-ai/vm0-skills)
 
-Agents require a fundamentally different environment.
-
-**VM0 is the runtime purpose-built for agents.**  
-No workflows. No black-box containers. Just a clean, persistent, observable place for agents to live, think, and evolve.
-
----
-
-## Build agents the modern way
-
-### Natural-language powered
-
-Write a prompt or a simple config file, and your agent is ready.  
-No drag-and-drop. No pipelines.
-
-### Works with all CLI-based agents
-
-VM0 supports the new wave of developer-native agent CLIs:
-
+**Supported agents:**
 - Claude Code
-- OpenAI Codex
-- Gemini CLI (Coming soon)
-- Cursor CLI (Coming soon)
-- Any custom CLI agent (Coming soon)
-
-VM0 integrates seamlessly into your development environment.
-
----
+- OpenAI Codex (in beta)
+- Gemini CLI (coming soon)
+- More coming soon...
 
 ## Installation
 
 ```bash
 npm install -g @vm0/cli
 ```
-> **VM0 waitlist sign-up required:** VM0 is currently in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to unlock VM0. Once approved, you can sign in and start building.
 
-## Quick start
+> VM0 is in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to get access.
 
-### Fastest way (with cookbooks)
-
-Try a ready-to-use example:
-
-```bash
-vm0 auth login
-
-# Clone examples
-git clone https://github.com/vm0-ai/vm0-cookbooks.git
-cd vm0-cookbooks/101-intro
-
-# Run with auto-setup
-vm0 cook "echo hello world to readme.md"
-```
-
-The `vm0 cook` command automatically handles volume and artifact setup.
-
-> **Authentication required:** Configure Claude Code and API secrets before running. Check each cookbook's `vm0.yaml` for specific requirements. [Setup guide](https://github.com/vm0-ai/vm0-cookbooks?tab=readme-ov-file#setup-secrets)
-
-> **More examples:** [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) has 9+ ready-to-run examples including writing agents, web scrapers, ML trainers, and more.
-
-### From scratch (build your own)
-
-Create your own agent from scratch:
+## Quick Start
 
 ```bash
 # 1. Login
 vm0 auth login
 
-# 2. Setup secrets (get token from: claude setup-token)
-cat > .env << 'EOF'
-CLAUDE_CODE_OAUTH_TOKEN=<your-token>
-EOF
+# 2. Create project directory
+mkdir my-agent && cd my-agent
 
-# 3. Create agent config
-cat > vm0.yaml << 'EOF'
-version: "1.0"
-agents:
-  my-agent:
-    provider: claude-code
-    working_dir: /home/user/workspace
-    volumes:
-      - claude-files:/home/user/.config/claude
-    environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-volumes:
-  claude-files:
-    name: claude-files
-    version: latest
-EOF
+# 3. Initialize project
+vm0 init
 
-# 4. Create volume with CLAUDE.md
-mkdir claude-files && cd claude-files
-cat > CLAUDE.md << 'EOF'
-You are a helpful coding assistant. Create clean, well-documented code.
-EOF
+# 4. Get Claude Code token and save to .env
+claude setup-token
+echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
 
-vm0 volume init
-vm0 volume push
-cd ..
-
-# 5. Compose agent
-vm0 compose vm0.yaml
-
-# 6. Setup workspace
-mkdir workspace && cd workspace
-vm0 artifact init
-vm0 artifact push
-
-# 7. Run agent
-vm0 run my-agent --artifact-name workspace "Create a Python hello world script"
-
-# 8. Get results
-vm0 artifact pull
-cat hello.py
+# 5. Run your agent
+vm0 cook "let's start working."
 ```
 
-> 📖 **Learn more:** See the [complete guide to creating agents](https://github.com/vm0-ai/vm0-cookbooks/blob/main/docs/vm0-guide.md) for advanced features like custom skills, secrets, and more.
+### What just happened?
 
-## CLI reference
+- `vm0 init` created `vm0.yaml` (agent config) and `AGENTS.md` (agent instructions)
+- `vm0 cook` initialized storage, composed the agent, and ran your prompt
+- Results are in the `artifact/` directory
+
+### Next steps
+
+- Edit `AGENTS.md` to customize agent instructions
+- Edit `vm0.yaml` to configure [agent skills](https://github.com/vm0-ai/vm0-skills)
+
+> For more examples, see [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks).
+
+## CLI Reference
+
+Use `vm0 --help` or `vm0 <command> --help` for detailed usage information.
 
 ### Authentication
 
-```bash
-vm0 auth login               # Login to VM0
-vm0 auth logout              # Logout
-vm0 auth status              # Check auth status
-```
+| Command | Description |
+|---------|-------------|
+| `vm0 auth login` | Login to VM0 |
+| `vm0 auth logout` | Logout from VM0 |
+| `vm0 auth status` | Check authentication status |
+| `vm0 auth setup-token` | Output auth token for CI/CD environments |
 
-### Agent management
+### Tutorial Commands
 
-```bash
-vm0 compose <config.yaml>    # Create/update agent compose from config
-vm0 cook "<prompt>"          # Auto-setup and run (volumes + artifacts)
-```
+| Command | Description |
+|---------|-------------|
+| `vm0 init` | Initialize a new project (creates vm0.yaml + AGENTS.md) |
+| `vm0 cook "<prompt>"` | One-click setup and run |
+| `vm0 cook continue "<prompt>"` | Continue from last session |
+| `vm0 cook resume "<prompt>"` | Resume from last checkpoint |
+| `vm0 cook logs` | View logs from last run |
 
-### Running agents
+### Agent Commands
 
-```bash
-# Basic run
-vm0 run <agent-name> --artifact-name <name> "<prompt>"
+| Command | Description |
+|---------|-------------|
+| `vm0 compose <config.yaml>` | Create/update agent from config |
+| `vm0 run <agent> "<prompt>"` | Run agent with prompt |
+| `vm0 run continue <session-id> "<prompt>"` | Continue from session |
+| `vm0 run resume <checkpoint-id> "<prompt>"` | Resume from checkpoint |
+| `vm0 logs <run-id>` | View run logs |
 
-# With variables and secrets
-vm0 run my-agent --artifact-name workspace \
-  --vars KEY=value \
-  --secrets API_KEY=xxx \
-  "Do something"
+### Storage Commands
 
-# With version pinning
-vm0 run my-agent --artifact-name workspace \
-  --artifact-version <hash> \
-  --volume-version myvolume=<hash> \
-  "Do something"
+| Command | Description |
+|---------|-------------|
+| `vm0 artifact init` | Initialize artifact in current directory |
+| `vm0 artifact push` | Upload artifact to cloud |
+| `vm0 artifact pull [version]` | Download artifact from cloud |
+| `vm0 volume init` | Initialize volume in current directory |
+| `vm0 volume push` | Upload volume to cloud |
+| `vm0 volume pull [version]` | Download volume from cloud |
 
-# Resume from checkpoint (full state snapshot)
-vm0 run resume <checkpoint-id> "<prompt>"
+## Concepts
 
-# Continue from session (latest artifact version)
-vm0 run continue <session-id> "<prompt>"
-```
-
-Options:
-- `--vars KEY=value` - Variables for `${{ vars.xxx }}` (repeatable)
-- `--secrets KEY=value` - Secrets for `${{ secrets.xxx }}` (repeatable)
-- `--artifact-version <hash>` - Use specific artifact version
-- `--volume-version <name=version>` - Override volume version
-- `--conversation <id>` - Resume from conversation ID
-- `-v, --verbose` - Show verbose output
-
-> Secrets and vars auto-load from environment variables and `.env` files.
-
-### Artifact management
-
-Artifacts are workspaces where agents read/write files.
-
-```bash
-mkdir my-workspace && cd my-workspace
-vm0 artifact init            # Initialize artifact
-vm0 artifact push            # Upload to cloud
-vm0 artifact pull            # Download from cloud
-vm0 artifact pull <version>  # Pull specific version
-```
-
-### Volume management
-
-Volumes are persistent data stores (datasets, configs, dependencies).
-
-```bash
-mkdir my-data && cd my-data
-vm0 volume init              # Initialize volume
-vm0 volume push              # Upload to cloud
-vm0 volume pull              # Download from cloud
-vm0 volume pull <version>    # Pull specific version
-```
-
-### Image management
-
-Build and manage custom images for your agents.
-
-```bash
-vm0 image build -f <dockerfile> -n <name>    # Build custom image
-vm0 image list                                # List your images
-vm0 image delete <name>                       # Delete an image
-```
-
-### Logs
-
-View logs for completed or running agent runs.
-
-```bash
-vm0 logs <runId>             # Show agent events (default)
-vm0 logs <runId> --system    # Show system log
-vm0 logs <runId> --metrics   # Show CPU/memory/disk metrics
-vm0 logs <runId> --network   # Show network traffic logs
-vm0 logs <runId> --limit 50  # Limit entries (default: 5)
-vm0 logs <runId> --since 5m  # Filter by time (5m, 2h, 1d)
-```
-
-### Other commands
-
-```bash
-vm0 info                     # Display environment information
-```
-
-## Agent configuration
-
-Create a `vm0.yaml` file to define your agent:
-
-```yaml
-version: "1.0"
-
-agents:
-  my-agent:
-    description: "Agent description"
-    provider: claude-code
-    image: vm0/claude-code:latest
-    working_dir: /home/user/workspace
-    volumes:
-      - my-volume:/home/user/data
-    environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-volumes:
-  my-volume:
-    name: my-data
-    version: latest
-```
-
-## Key concepts
-
-### Agents
-
-Your AI worker with persistent configuration and memory. Define its capabilities in `vm0.yaml` and give instructions in `CLAUDE.md`. It remembers everything from previous runs. Each agent runs in an isolated sandbox and can specialize in tasks like coding, research, or data processing.
-
-### Images
-
-Pre-configured runtime environments containing the OS, tools, and agent CLI (Claude Code, Codex, etc.). Similar to Docker images but tailored for AI agents, they ensure consistent execution and behavior across runs.
-
-### Artifacts
-
-Your versioned workspace where agents create and modify files. Each change is automatically versioned using SHA-256 content-addressing. Identical content produces the same version (deduplication). Sync bidirectionally between local and cloud, go back to any version, or share with other agents.
-
-### Volumes
-
-Persistent storage for datasets, configs, and dependencies that don't change often. Mounted into agent sandboxes at specific paths, volumes support version pinning for reproducibility. Control exactly which version each agent uses. Great for sharing data across multiple agents.
-
-### Checkpoints
-
-Complete snapshots capturing the full state: artifact files, conversation history, agent memory, and volume versions. Resume from any checkpoint to restore the exact execution state. Useful for debugging, trying different approaches, or recovering from errors.
-
-### Sessions
-
-Lightweight continuations where the agent remembers the conversation but uses your latest artifact version. Perfect for iterative workflows: edit code locally, run session, and the agent continues with your changes. Faster than checkpoints when you just need the agent to see your updates.
-
-## What you can build
-
-| Use case | Description | Example |
-|----------|-------------|---------|
-| **Code management agent** | Discovers trending repositories and manages issues, PRs, and repo tasks in Github.| [GitHub agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/109-github-agent) |
-| **Research agents** | Gather, analyze, and iterate in persistent workspaces | [Competitor research](https://github.com/vm0-ai/vm0-cookbooks/tree/main/108-competitor-research) |
-| **Data agents** | Process datasets, train models, generate reports with full state | [HuggingFace trainer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/105-hf-trainer) |
-| **Content agents** | Create, refine, and version content across multiple runs | [Content farm](https://github.com/vm0-ai/vm0-cookbooks/tree/main/104-content-farm), [TikTok influencer](https://github.com/vm0-ai/vm0-cookbooks/tree/main/106-tiktok-influencer) |
-| **Writing agents** | Generate and refine written content with context | [Writing agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/102-writing-agent) |
-
-> 📚 **More examples:** Check out [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) for complete, ready-to-run agent examples.
+| Concept | Description |
+|---------|-------------|
+| **Agent** | Your AI worker with persistent config and memory |
+| **Artifact** | Versioned workspace where agents read/write files |
+| **Volume** | Persistent storage for datasets and configs (read-only to agents) |
+| **Checkpoint** | Full state snapshot (files + conversation + memory) |
+| **Session** | Lightweight continuation with latest files |
 
 ## Resources
 
+- [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) - Ready-to-run examples
+- [vm0-skills](https://github.com/vm0-ai/vm0-skills) - Agent skills library
 - [Contributing guide](./CONTRIBUTING.md) - Development setup
-- [Website](https://www.vm0.ai) - Learn our official website
+- [Website](https://www.vm0.ai) - Official website
 - [Discord](https://discord.gg/WMpAmHFfp6) - Join our community
-- [Email](mailto:ethan@vm0.ai) - Email us for questions and support
+- [Email](mailto:ethan@vm0.ai) - Questions and support
 
 ## License
 
