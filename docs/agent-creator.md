@@ -246,7 +246,7 @@ Which would you prefer?
 
 ## Phase 7: Configuration Generation (vm0.yaml)
 
-Generate the `vm0.yaml` file based on the finalized workflow. **Merge the LLM backend environment variables from Phase 2 with skill-specific variables.**
+Generate the `vm0.yaml` file based on the finalized workflow. **Read each skill's `vm0_env` to determine required environment variables.**
 
 ```yaml
 version: "1.0"
@@ -260,9 +260,10 @@ agents:
     environment:
       # LLM backend variables (from Phase 2 selection)
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      # Skill-specific variables
-      SECRET_NAME: ${{ secrets.SECRET_NAME }}
-      VARIABLE_NAME: ${{ vars.variableName }}
+      # Skill secrets (API keys, tokens)
+      SKILL_API_KEY: ${{ secrets.SKILL_API_KEY }}
+      # Skill vars (config values)
+      SKILL_CLOUD_NAME: ${{ vars.skillCloudName }}
 ```
 
 ### Configuration Notes
@@ -270,15 +271,31 @@ agents:
 1. **Provider**: Always `claude-code` for Claude Code agents
 2. **Instructions**: Path to AGENTS.md file
 3. **Skills**: Use full GitHub URLs to vm0-ai/vm0-skills
-4. **Environment**: Merge LLM backend vars (Phase 2) + skill-specific vars
-5. **Secrets**: Use `${{ secrets.KEY }}` syntax - stored in VM0 account
-6. **Variables**: Use `${{ vars.key }}` syntax - passed at runtime
+4. **Environment**: Read each skill's `vm0_env` declaration
+
+### Classifying vm0_env Variables
+
+Determine if a variable is a **secret** or **var** by its name:
+
+**Secrets** (use `${{ secrets.XXX }}`):
+- Contains: `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`, `AUTH`
+- Examples: `NOTION_API_KEY`, `SLACK_WEBHOOK_URL`, `CLOUDINARY_API_SECRET`
+
+**Vars** (use `${{ vars.xxx }}`):
+- Configuration values, IDs, names
+- Examples: `CLOUDINARY_CLOUD_NAME`, `DATABASE_ID`, `WORKSPACE_NAME`
+
+### Runtime Parameters
+
+Parameters not in `vm0_env` (like repo names, usernames, topics) should NOT go in vm0.yaml:
+- **Hardcode in AGENTS.md** if they're fixed for this agent
+- **User provides at runtime** via `vm0 cook "do the job for repo owner/name"`
 
 ---
 
 ## Phase 8: Environment Setup
 
-Before running the agent, set up the environment file with all required secrets and variables.
+Before running the agent, set up the environment file with all required secrets and vars.
 
 ### Step 1: Update .gitignore
 
@@ -290,7 +307,7 @@ echo ".env" >> .gitignore
 
 ### Step 2: Extract keys from vm0.yaml
 
-Parse the generated vm0.yaml and extract all keys from:
+Parse the generated vm0.yaml and extract all keys:
 - `${{ secrets.XXX }}` → add `XXX=` to .env
 - `${{ vars.XXX }}` → add `XXX=` to .env
 
@@ -299,9 +316,9 @@ Parse the generated vm0.yaml and extract all keys from:
 Create `.env` with all extracted keys (empty values):
 
 ```
-KEY1=
-KEY2=
-KEY3=
+API_KEY=
+API_SECRET=
+CLOUD_NAME=
 ```
 
 ### Step 4: Provide instructions for each key
@@ -309,7 +326,7 @@ KEY3=
 For each key in the .env file, provide specific instructions on how to obtain it:
 
 1. **LLM backend keys**: Refer to Phase 2 documentation links
-2. **Skill keys**: Read the skill's README in https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name] - each skill documents how to obtain its required API keys
+2. **Skill keys**: Read the skill's README in https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name] - each skill documents how to obtain its required credentials and config values
 
 ### Step 5: Inform user
 
@@ -318,22 +335,22 @@ Tell the user to fill in all keys before running:
 ```
 I've created .env with the following keys (extracted from vm0.yaml):
 
-1. CLAUDE_CODE_OAUTH_TOKEN
+1. CLAUDE_CODE_OAUTH_TOKEN (secret)
    → Run: claude setup-token
    → Copy the token and paste it after the =
 
-2. NOTION_API_KEY
-   → Go to: https://www.notion.so/my-integrations
-   → Click "New integration", copy the "Internal Integration Secret"
+2. CLOUDINARY_API_KEY (secret)
+   → Go to: https://console.cloudinary.com/settings/api-keys
+   → Copy your API Key
 
-3. notionDatabaseId
-   → Open your Notion database
-   → Copy the ID from the URL: notion.so/xxx?v=yyy (xxx is the ID)
+3. CLOUDINARY_CLOUD_NAME (var)
+   → Go to: https://console.cloudinary.com/settings/api-keys
+   → Copy your Cloud Name
 
 [... list each key from .env ...]
 
 Once all keys are filled in, run:
-  vm0 cook
+  vm0 cook "do the job"
 ```
 
 ---
@@ -346,7 +363,7 @@ After the user has filled in all keys, provide testing instructions:
 Your agent is ready! Here's how to run and test it:
 
 ## Full Run
-vm0 cook
+vm0 cook "do the job"
 
 ## Step-by-Step Testing (Recommended)
 Test your workflow incrementally:
@@ -435,9 +452,9 @@ agents:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       ZEPTOMAIL_TOKEN: ${{ secrets.ZEPTOMAIL_TOKEN }}
-      NOTION_DATABASE_ID: ${{ vars.notionDatabaseId }}
-      RECIPIENT_EMAIL: ${{ vars.recipientEmail }}
 ```
+
+Note: Notion database ID and recipient email are hardcoded in AGENTS.md or provided at runtime.
 
 ---
 
@@ -498,9 +515,9 @@ agents:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      REPO_OWNER: ${{ vars.repoOwner }}
-      REPO_NAME: ${{ vars.repoName }}
 ```
+
+Note: Repo owner/name provided at runtime: `vm0 cook "analyze issues for owner/repo"`
 
 ---
 
@@ -623,8 +640,9 @@ agents:
       FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-      NOTION_DATABASE_ID: ${{ vars.notionDatabaseId }}
 ```
+
+Note: Notion database ID is hardcoded in AGENTS.md.
 
 ---
 
@@ -694,8 +712,9 @@ agents:
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.1"
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-      NOTION_PAGE_ID: ${{ vars.notionPageId }}
 ```
+
+Note: Research topic and Notion page ID provided at runtime: `vm0 cook "research AI agents, save to page xxx"`
 
 ---
 
