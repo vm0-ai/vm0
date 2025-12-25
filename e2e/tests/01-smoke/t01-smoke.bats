@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# Smoke tests for CLI basic functionality
 
 load '../../helpers/setup'
 
