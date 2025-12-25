@@ -270,20 +270,21 @@ function showNextSteps(result: PollResult): void {
   const { runId, sessionId, checkpointId } = result;
 
   console.log();
-  console.log("Next steps:");
 
   // Always show logs command since we always have runId
-  console.log("  View telemetry logs:");
+  console.log("  View agent logs:");
   console.log(chalk.cyan(`    vm0 logs ${runId}`));
 
   if (sessionId) {
-    console.log("  Continue with session (latest state):");
+    console.log("  Continue with session (latest conversation and artifact):");
     console.log(
       chalk.cyan(`    vm0 run continue ${sessionId} "your next prompt"`),
     );
   }
   if (checkpointId) {
-    console.log("  Resume from checkpoint (exact snapshot state):");
+    console.log(
+      "  Resume from checkpoint (snapshotted conversation and artifact):",
+    );
     console.log(
       chalk.cyan(`    vm0 run resume ${checkpointId} "your next prompt"`),
     );
