@@ -1,3 +1,4 @@
+import "server-only";
 import { Axiom, Entry } from "@axiomhq/js";
 import { logger } from "../logger";
 

@@ -1,234 +1,288 @@
+/**
+ * @vitest-environment node
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// Mock @axiomhq/logging
+const mockDebug = vi.fn();
+const mockInfo = vi.fn();
+const mockWarn = vi.fn();
+const mockError = vi.fn();
+
+vi.mock("@axiomhq/logging", () => ({
+  Logger: vi.fn().mockImplementation(() => ({
+    debug: mockDebug,
+    info: mockInfo,
+    warn: mockWarn,
+    error: mockError,
+  })),
+  AxiomJSTransport: vi.fn(),
+}));
+
+// Mock @axiomhq/js
+vi.mock("@axiomhq/js", () => ({
+  Axiom: vi.fn(),
+}));
+
+// Mock axiom/datasets
+vi.mock("../axiom/datasets", () => ({
+  getDatasetName: vi.fn().mockReturnValue("vm0-web-logs-dev"),
+  DATASETS: {
+    WEB_LOGS: "web-logs",
+  },
+}));
+
+// Import after mocks
 import { logger, clearLoggerCache } from "../logger";
 
-// Helper to set NODE_ENV (readonly in TypeScript)
-const setNodeEnv = (value: string) => {
-  (process.env as Record<string, string>).NODE_ENV = value;
-};
-
 describe("logger", () => {
-  const originalDebug = process.env.DEBUG;
-  const originalNodeEnv = process.env.NODE_ENV;
+  const originalEnv = { ...process.env };
+  const consoleSpy = {
+    log: vi.spyOn(console, "log").mockImplementation(() => {}),
+    info: vi.spyOn(console, "info").mockImplementation(() => {}),
+    warn: vi.spyOn(console, "warn").mockImplementation(() => {}),
+    error: vi.spyOn(console, "error").mockImplementation(() => {}),
+  };
 
   beforeEach(() => {
-    clearLoggerCache();
-    // Reset to production-like environment for consistent tests
+    // Reset environment
+    process.env = { ...originalEnv };
+    process.env.NODE_ENV = "test";
     delete process.env.DEBUG;
-    setNodeEnv("production");
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "info").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    delete process.env.AXIOM_TOKEN;
+
+    // Clear all mocks
+    vi.clearAllMocks();
+    clearLoggerCache();
   });
 
   afterEach(() => {
-    process.env.DEBUG = originalDebug;
-    if (originalNodeEnv) setNodeEnv(originalNodeEnv);
-    vi.restoreAllMocks();
+    process.env = originalEnv;
   });
 
-  describe("logger creation", () => {
-    it("creates a logger with the given name", () => {
-      const log = logger("test:module");
-      expect(log).toBeDefined();
-      expect(log.debug).toBeTypeOf("function");
-      expect(log.info).toBeTypeOf("function");
-      expect(log.warn).toBeTypeOf("function");
-      expect(log.error).toBeTypeOf("function");
+  describe("console output", () => {
+    it("should output info logs to console", () => {
+      const log = logger("test");
+      log.info("hello world");
+
+      expect(consoleSpy.info).toHaveBeenCalledWith("[INFO] [test] hello world");
     });
 
-    it("returns cached logger for same name", () => {
-      const log1 = logger("test:module");
-      const log2 = logger("test:module");
+    it("should output warn logs to console", () => {
+      const log = logger("test");
+      log.warn("warning message");
+
+      expect(consoleSpy.warn).toHaveBeenCalledWith(
+        "[WARN] [test] warning message",
+      );
+    });
+
+    it("should output error logs to console", () => {
+      const log = logger("test");
+      log.error("error message");
+
+      expect(consoleSpy.error).toHaveBeenCalledWith(
+        "[ERROR] [test] error message",
+      );
+    });
+
+    it("should include additional arguments in console output", () => {
+      const log = logger("test");
+      const data = { id: "123" };
+      log.info("created", data);
+
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        "[INFO] [test] created",
+        data,
+      );
+    });
+  });
+
+  describe("DEBUG filtering", () => {
+    it("should not output debug logs when DEBUG is not set", () => {
+      const log = logger("test");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).not.toHaveBeenCalled();
+    });
+
+    it("should output debug logs when DEBUG matches logger name", () => {
+      process.env.DEBUG = "test";
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[DEBUG] [test] debug message",
+      );
+    });
+
+    it("should output debug logs when DEBUG is wildcard (*)", () => {
+      process.env.DEBUG = "*";
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[DEBUG] [test] debug message",
+      );
+    });
+
+    it("should output debug logs when DEBUG matches prefix wildcard", () => {
+      process.env.DEBUG = "service:*";
+      clearLoggerCache();
+
+      const log = logger("service:e2b");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[DEBUG] [service:e2b] debug message",
+      );
+    });
+
+    it("should not output debug logs when DEBUG does not match", () => {
+      process.env.DEBUG = "other";
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).not.toHaveBeenCalled();
+    });
+
+    it("should auto-enable debug in development mode", () => {
+      process.env.NODE_ENV = "development";
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.debug("debug message");
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[DEBUG] [test] debug message",
+      );
+    });
+  });
+
+  describe("Axiom integration", () => {
+    beforeEach(() => {
+      process.env.AXIOM_TOKEN = "test-token";
+      clearLoggerCache();
+    });
+
+    it("should send info logs to Axiom when configured", () => {
+      const log = logger("test");
+      log.info("hello world");
+
+      expect(mockInfo).toHaveBeenCalledWith("hello world", { context: "test" });
+    });
+
+    it("should send warn logs to Axiom when configured", () => {
+      const log = logger("test");
+      log.warn("warning");
+
+      expect(mockWarn).toHaveBeenCalledWith("warning", { context: "test" });
+    });
+
+    it("should send error logs to Axiom when configured", () => {
+      const log = logger("test");
+      log.error("error");
+
+      expect(mockError).toHaveBeenCalledWith("error", { context: "test" });
+    });
+
+    it("should send debug logs to Axiom when DEBUG is enabled", () => {
+      process.env.DEBUG = "*";
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.debug("debug");
+
+      expect(mockDebug).toHaveBeenCalledWith("debug", { context: "test" });
+    });
+
+    it("should include structured fields in Axiom logs", () => {
+      const log = logger("test");
+      const fields = { userId: "123", action: "create" };
+      log.info("user action", fields);
+
+      expect(mockInfo).toHaveBeenCalledWith("user action", {
+        context: "test",
+        userId: "123",
+        action: "create",
+      });
+    });
+
+    it("should wrap multiple arguments in args field", () => {
+      const log = logger("test");
+      log.info("multiple", "arg1", "arg2");
+
+      expect(mockInfo).toHaveBeenCalledWith("multiple", {
+        context: "test",
+        args: ["arg1", "arg2"],
+      });
+    });
+  });
+
+  describe("Axiom not configured", () => {
+    it("should not send to Axiom when AXIOM_TOKEN is not set", () => {
+      delete process.env.AXIOM_TOKEN;
+      clearLoggerCache();
+
+      const log = logger("test");
+      log.info("hello");
+
+      // Console should still work
+      expect(consoleSpy.info).toHaveBeenCalled();
+      // But Axiom should not be called
+      expect(mockInfo).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("logger caching", () => {
+    it("should return cached logger for same name", () => {
+      const log1 = logger("test");
+      const log2 = logger("test");
+
       expect(log1).toBe(log2);
     });
 
-    it("returns different logger for different name", () => {
-      const log1 = logger("test:module1");
-      const log2 = logger("test:module2");
+    it("should return different loggers for different names", () => {
+      const log1 = logger("test1");
+      const log2 = logger("test2");
+
+      expect(log1).not.toBe(log2);
+    });
+
+    it("should create new logger after cache is cleared", () => {
+      const log1 = logger("test");
+      clearLoggerCache();
+      const log2 = logger("test");
+
       expect(log1).not.toBe(log2);
     });
   });
 
-  describe("output format", () => {
-    it("formats output as [LEVEL] [name] message", () => {
-      process.env.DEBUG = "*";
+  describe("formatMessage helper", () => {
+    it("should handle empty args", () => {
+      process.env.AXIOM_TOKEN = "test-token";
       clearLoggerCache();
-      const log = logger("service:e2b");
 
-      log.debug("test message");
-      expect(console.log).toHaveBeenCalledWith(
-        "[DEBUG] [service:e2b] test message",
-      );
+      const log = logger("test");
+      log.info();
 
-      log.warn("warning message");
-      expect(console.warn).toHaveBeenCalledWith(
-        "[WARN] [service:e2b] warning message",
-      );
-
-      log.error("error message");
-      expect(console.error).toHaveBeenCalledWith(
-        "[ERROR] [service:e2b] error message",
-      );
+      expect(mockInfo).toHaveBeenCalledWith("", { context: "test" });
     });
 
-    it("handles multiple arguments", () => {
-      process.env.DEBUG = "*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("message", { id: "123" });
-      expect(console.log).toHaveBeenCalledWith(
-        "[DEBUG] [service:e2b] message",
-        { id: "123" },
-      );
-    });
-
-    it("handles non-string first argument", () => {
-      process.env.DEBUG = "*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug({ id: "123" });
-      expect(console.log).toHaveBeenCalledWith("[DEBUG] [service:e2b]", {
-        id: "123",
-      });
-    });
-
-    it("handles no arguments", () => {
-      process.env.DEBUG = "*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug();
-      expect(console.log).toHaveBeenCalledWith("[DEBUG] [service:e2b]");
-    });
-  });
-
-  describe("DEBUG environment variable", () => {
-    it("suppresses debug when DEBUG is not set", () => {
-      delete process.env.DEBUG;
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should not appear");
-      expect(console.log).not.toHaveBeenCalled();
-    });
-
-    it("enables debug when DEBUG matches exactly", () => {
-      process.env.DEBUG = "service:e2b";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should appear");
-      expect(console.log).toHaveBeenCalled();
-    });
-
-    it("enables debug when DEBUG=*", () => {
-      process.env.DEBUG = "*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should appear");
-      expect(console.log).toHaveBeenCalled();
-    });
-
-    it("enables debug with wildcard prefix match", () => {
-      process.env.DEBUG = "service:*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should appear");
-      expect(console.log).toHaveBeenCalled();
-    });
-
-    it("does not match different prefix with wildcard", () => {
-      process.env.DEBUG = "api:*";
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should not appear");
-      expect(console.log).not.toHaveBeenCalled();
-    });
-
-    it("supports multiple patterns separated by comma", () => {
-      process.env.DEBUG = "api:runs,service:e2b";
+    it("should convert non-string first arg to string", () => {
+      process.env.AXIOM_TOKEN = "test-token";
       clearLoggerCache();
 
-      const log1 = logger("service:e2b");
-      const log2 = logger("api:runs");
-      const log3 = logger("service:other");
+      const log = logger("test");
+      log.info(123);
 
-      log1.debug("should appear");
-      log2.debug("should appear");
-      log3.debug("should not appear");
-
-      expect(console.log).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("warn and error always output", () => {
-    it("outputs warn regardless of DEBUG", () => {
-      delete process.env.DEBUG;
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.warn("warning");
-      expect(console.warn).toHaveBeenCalledWith("[WARN] [service:e2b] warning");
-    });
-
-    it("outputs error regardless of DEBUG", () => {
-      delete process.env.DEBUG;
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.error("error");
-      expect(console.error).toHaveBeenCalledWith("[ERROR] [service:e2b] error");
-    });
-  });
-
-  describe("info level", () => {
-    it("outputs info regardless of DEBUG", () => {
-      delete process.env.DEBUG;
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.info("info message");
-      expect(console.info).toHaveBeenCalledWith(
-        "[INFO] [service:e2b] info message",
-      );
-    });
-  });
-
-  describe("auto-enable debug", () => {
-    it("auto-enables debug in development environment", () => {
-      delete process.env.DEBUG;
-      setNodeEnv("development");
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should appear in dev");
-      expect(console.log).toHaveBeenCalled();
-    });
-
-    it("does not auto-enable debug in production", () => {
-      delete process.env.DEBUG;
-      setNodeEnv("production");
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should not appear in production");
-      expect(console.log).not.toHaveBeenCalled();
-    });
-
-    it("explicit DEBUG overrides auto-enable", () => {
-      process.env.DEBUG = "other:logger";
-      setNodeEnv("development");
-      clearLoggerCache();
-      const log = logger("service:e2b");
-
-      log.debug("should not appear - explicit DEBUG set");
-      expect(console.log).not.toHaveBeenCalled();
+      expect(mockInfo).toHaveBeenCalledWith("123", { context: "test" });
     });
   });
 });

@@ -5,6 +5,10 @@ import { config } from "dotenv";
 // Load environment variables from .env file
 config({ path: "./.env" });
 
+// Mock server-only package (no-op in tests)
+// This package throws when imported outside of a server component
+vi.mock("server-only", () => ({}));
+
 // Mock Clerk authentication
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
