@@ -1,5 +1,20 @@
 # Changelog
 
+## [6.9.0](https://github.com/vm0-ai/vm0/compare/web-v6.8.0...web-v6.9.0) (2025-12-25)
+
+
+### Features
+
+* remove unused sessions API and migrate session history to R2 ([#718](https://github.com/vm0-ai/vm0/issues/718)) ([a5cd85d](https://github.com/vm0-ai/vm0/commit/a5cd85d2f9f2c513ab88f90359dd21414a36e24b))
+* **web:** integrate axiom logging transport for web logs ([#726](https://github.com/vm0-ai/vm0/issues/726)) ([b7a1ec1](https://github.com/vm0-ai/vm0/commit/b7a1ec18609aaf43057d5e0b71eb416cfbf9170a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.5.0
+
 ## [6.8.0](https://github.com/vm0-ai/vm0/compare/web-v6.7.1...web-v6.8.0) (2025-12-25)
 
 

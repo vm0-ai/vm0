@@ -1,5 +1,24 @@
 # Changelog
 
+## [4.22.0](https://github.com/vm0-ai/vm0/compare/cli-v4.21.2...cli-v4.22.0) (2025-12-25)
+
+
+### Features
+
+* remove unused sessions API and migrate session history to R2 ([#718](https://github.com/vm0-ai/vm0/issues/718)) ([a5cd85d](https://github.com/vm0-ai/vm0/commit/a5cd85d2f9f2c513ab88f90359dd21414a36e24b))
+
+
+### Bug Fixes
+
+* **cli:** suppress dotenv promotional messages ([#722](https://github.com/vm0-ai/vm0/issues/722)) ([2ba6806](https://github.com/vm0-ai/vm0/commit/2ba680656b773972ece6680a68d7a50f9d5b7cbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 1.5.0
+
 ## [4.21.2](https://github.com/vm0-ai/vm0/compare/cli-v4.21.1...cli-v4.21.2) (2025-12-25)
 
 
