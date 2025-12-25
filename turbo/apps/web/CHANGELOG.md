@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.9.1](https://github.com/vm0-ai/vm0/compare/web-v6.9.0...web-v6.9.1) (2025-12-25)
+
+
+### Bug Fixes
+
+* **web:** add flushlogs to ensure axiom log delivery in serverless ([#728](https://github.com/vm0-ai/vm0/issues/728)) ([a390938](https://github.com/vm0-ai/vm0/commit/a3909383cec6a0931de57e02c4de710082612cb6))
+
 ## [6.9.0](https://github.com/vm0-ai/vm0/compare/web-v6.8.0...web-v6.9.0) (2025-12-25)
 
 
