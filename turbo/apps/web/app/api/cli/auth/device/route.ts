@@ -1,4 +1,4 @@
-import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { cliAuthDeviceContract } from "@vm0/core";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -61,9 +61,6 @@ const router = tsr.router(cliAuthDeviceContract, {
   },
 });
 
-const handler = createNextHandler(cliAuthDeviceContract, router, {
-  handlerType: "app-router",
-  jsonQuery: true,
-});
+const handler = createHandler(cliAuthDeviceContract, router);
 
 export { handler as POST };

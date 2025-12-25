@@ -49,7 +49,7 @@ describe("logger", () => {
   beforeEach(() => {
     // Reset environment
     process.env = { ...originalEnv };
-    process.env.NODE_ENV = "test";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "test";
     delete process.env.DEBUG;
     delete process.env.AXIOM_TOKEN;
 
@@ -155,7 +155,8 @@ describe("logger", () => {
     });
 
     it("should auto-enable debug in development mode", () => {
-      process.env.NODE_ENV = "development";
+      (process.env as Record<string, string | undefined>).NODE_ENV =
+        "development";
       clearLoggerCache();
 
       const log = logger("test");

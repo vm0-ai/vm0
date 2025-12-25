@@ -1,4 +1,4 @@
-import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
 import { headers } from "next/headers";
 import { initServices } from "../../../../src/lib/init-services";
@@ -152,9 +152,6 @@ const router = tsr.router(cronCleanupSandboxesContract, {
   },
 });
 
-const handler = createNextHandler(cronCleanupSandboxesContract, router, {
-  handlerType: "app-router",
-  jsonQuery: true,
-});
+const handler = createHandler(cronCleanupSandboxesContract, router);
 
 export { handler as GET };

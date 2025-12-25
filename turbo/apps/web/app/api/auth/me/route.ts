@@ -1,4 +1,4 @@
-import { createNextHandler, tsr } from "@ts-rest/serverless/next";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { authContract } from "@vm0/core";
 import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
@@ -55,9 +55,6 @@ const router = tsr.router(authContract, {
   },
 });
 
-const handler = createNextHandler(authContract, router, {
-  handlerType: "app-router",
-  jsonQuery: true,
-});
+const handler = createHandler(authContract, router);
 
 export { handler as GET };

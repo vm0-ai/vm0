@@ -1,5 +1,8 @@
-import { createNextHandler, tsr } from "@ts-rest/serverless/next";
-import { TsRestResponse } from "@ts-rest/serverless";
+import {
+  createHandler,
+  tsr,
+  TsRestResponse,
+} from "../../../../../src/lib/ts-rest-handler";
 import { composesByIdContract } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -92,9 +95,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createNextHandler(composesByIdContract, router, {
-  handlerType: "app-router",
-  jsonQuery: true,
+const handler = createHandler(composesByIdContract, router, {
   errorHandler,
 });
 

@@ -1,5 +1,8 @@
-import { createNextHandler, tsr } from "@ts-rest/serverless/next";
-import { TsRestResponse } from "@ts-rest/serverless";
+import {
+  createHandler,
+  tsr,
+  TsRestResponse,
+} from "../../../../../src/lib/ts-rest-handler";
 import { runsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
@@ -89,9 +92,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createNextHandler(runsByIdContract, router, {
-  handlerType: "app-router",
-  jsonQuery: true,
+const handler = createHandler(runsByIdContract, router, {
   errorHandler,
 });
 
