@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.23.0](https://github.com/vm0-ai/vm0/compare/cli-v4.22.0...cli-v4.23.0) (2025-12-25)
+
+
+### Features
+
+* **cli:** show tutorial-style manual commands in vm0 cook output ([#725](https://github.com/vm0-ai/vm0/issues/725)) ([57c65e4](https://github.com/vm0-ai/vm0/commit/57c65e4d6749c4476e38ec8fc093b330dfd0e7ef))
+
 ## [4.22.0](https://github.com/vm0-ai/vm0/compare/cli-v4.21.2...cli-v4.22.0) (2025-12-25)
 
 
