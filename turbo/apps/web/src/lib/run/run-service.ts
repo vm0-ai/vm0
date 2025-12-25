@@ -232,7 +232,10 @@ export class RunService {
     hash: string | null,
     legacyText: string | null,
   ): Promise<string> {
-    const sessionHistory = await sessionHistoryService.resolve(hash, legacyText);
+    const sessionHistory = await sessionHistoryService.resolve(
+      hash,
+      legacyText,
+    );
     if (!sessionHistory) {
       throw new NotFoundError("Session history not found for conversation");
     }
