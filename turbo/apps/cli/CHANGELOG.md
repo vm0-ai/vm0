@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.24.0](https://github.com/vm0-ai/vm0/compare/cli-v4.23.0...cli-v4.24.0) (2025-12-25)
+
+
+### Features
+
+* **cli:** implement vm0 cook continue/resume/logs subcommands ([#734](https://github.com/vm0-ai/vm0/issues/734)) ([85fb337](https://github.com/vm0-ai/vm0/commit/85fb337144e50aad4701ce3868a9405b92a310eb))
+
 ## [4.23.0](https://github.com/vm0-ai/vm0/compare/cli-v4.22.0...cli-v4.23.0) (2025-12-25)
 
 
