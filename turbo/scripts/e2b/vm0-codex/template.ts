@@ -6,9 +6,9 @@ import { Template } from "e2b";
  * This template includes:
  * - Node.js 24.x
  * - OpenAI Codex CLI (globally installed as "codex")
- * - curl, git, ripgrep for development
+ * - curl, git, ripgrep, jq, file for development
  */
 export const template = Template()
   .fromNodeImage("24")
-  .aptInstall(["curl", "git", "ripgrep"])
+  .aptInstall(["curl", "git", "ripgrep", "jq", "file"])
   .npmInstall("@openai/codex@latest", { g: true });

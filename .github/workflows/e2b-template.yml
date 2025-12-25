@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - "turbo/scripts/e2b/vm0-claude-code/**"
+      - "turbo/scripts/e2b/vm0-codex/**"
       - ".github/workflows/e2b-template.yml"
   pull_request:
     paths:
       - "turbo/scripts/e2b/vm0-claude-code/**"
+      - "turbo/scripts/e2b/vm0-codex/**"
       - ".github/workflows/e2b-template.yml"
 
 jobs:
@@ -34,26 +36,40 @@ jobs:
         working-directory: ./turbo
         run: pnpm install --frozen-lockfile
 
-      - name: Build E2B template (production)
+      - name: Build E2B claude-code template (production)
         if: github.ref == 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm e2b:build:prod
 
-      - name: Build E2B template (dev)
+      - name: Build E2B claude-code template (dev)
         if: github.ref != 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm e2b:build:dev
 
+      - name: Build E2B codex template (production)
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:codex:build:prod
+
+      - name: Build E2B codex template (dev)
+        if: github.ref != 'refs/heads/main'
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:codex:build:dev
+
       - name: Build summary
         if: success()
         run: |
-          echo "✅ E2B template built successfully"
+          echo "✅ E2B templates built successfully"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "Template: vm0-claude-code (production)"
+            echo "Templates: vm0-claude-code, vm0-codex (production)"
           else
-            echo "Template: vm0-claude-code-dev (dev)"
+            echo "Templates: vm0-claude-code-dev, vm0-codex-dev (dev)"
           fi

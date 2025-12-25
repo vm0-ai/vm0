@@ -18,8 +18,6 @@
     "check-certs": "node packages/proxy/scripts/check-certs.js",
     "e2b:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.prod.ts",
     "e2b:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.dev.ts",
-    "e2b:github-cli:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-github-cli/build.prod.ts",
-    "e2b:github-cli:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-github-cli/build.dev.ts",
     "e2b:codex:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.prod.ts",
     "e2b:codex:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.dev.ts"
   },
