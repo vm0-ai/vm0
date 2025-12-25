@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.26.1](https://github.com/vm0-ai/vm0/compare/cli-v4.26.0...cli-v4.26.1) (2025-12-25)
+
+
+### Bug Fixes
+
+* **cli:** default to production images when NODE_ENV is not set ([#748](https://github.com/vm0-ai/vm0/issues/748)) ([d50d873](https://github.com/vm0-ai/vm0/commit/d50d873ffa2d8b99c81f65d96ec27905e7e1ff10))
+
 ## [4.26.0](https://github.com/vm0-ai/vm0/compare/cli-v4.25.0...cli-v4.26.0) (2025-12-25)
 
 
