@@ -529,17 +529,64 @@ cookCmd
 cookCmd
   .command("logs")
   .description("View logs from the last cook run")
-  .action(async () => {
-    const state = await loadCookState();
-    if (!state.lastRunId) {
-      console.error(chalk.red("✗ No previous run found"));
-      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
-      process.exit(1);
-    }
+  .option("-a, --agent", "Show agent events (default)")
+  .option("-s, --system", "Show system log")
+  .option("-m, --metrics", "Show metrics")
+  .option("-n, --network", "Show network logs (proxy traffic)")
+  .option(
+    "--since <time>",
+    "Show logs since timestamp (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z)",
+  )
+  .option("--limit <n>", "Maximum number of entries to show (default: 5)")
+  .action(
+    async (options: {
+      agent?: boolean;
+      system?: boolean;
+      metrics?: boolean;
+      network?: boolean;
+      since?: string;
+      limit?: string;
+    }) => {
+      const state = await loadCookState();
+      if (!state.lastRunId) {
+        console.error(chalk.red("✗ No previous run found"));
+        console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+        process.exit(1);
+      }
 
-    printCommand(`vm0 logs ${state.lastRunId}`);
-    await execVm0Command(["logs", state.lastRunId]);
-  });
+      // Build command args
+      const args = ["logs", state.lastRunId];
+      const displayArgs = [`vm0 logs ${state.lastRunId}`];
+
+      if (options.agent) {
+        args.push("--agent");
+        displayArgs.push("--agent");
+      }
+      if (options.system) {
+        args.push("--system");
+        displayArgs.push("--system");
+      }
+      if (options.metrics) {
+        args.push("--metrics");
+        displayArgs.push("--metrics");
+      }
+      if (options.network) {
+        args.push("--network");
+        displayArgs.push("--network");
+      }
+      if (options.since) {
+        args.push("--since", options.since);
+        displayArgs.push(`--since ${options.since}`);
+      }
+      if (options.limit) {
+        args.push("--limit", options.limit);
+        displayArgs.push(`--limit ${options.limit}`);
+      }
+
+      printCommand(displayArgs.join(" "));
+      await execVm0Command(args);
+    },
+  );
 
 // Subcommand: vm0 cook continue <prompt>
 cookCmd

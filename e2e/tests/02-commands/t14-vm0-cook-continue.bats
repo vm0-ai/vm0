@@ -100,3 +100,14 @@ teardown() {
     assert_output --partial "Continue from the last session"
     assert_output --partial "Resume from the last checkpoint"
 }
+
+@test "cook logs supports vm0 logs options" {
+    run $CLI_COMMAND cook logs --help
+    assert_success
+    assert_output --partial "--agent"
+    assert_output --partial "--system"
+    assert_output --partial "--metrics"
+    assert_output --partial "--network"
+    assert_output --partial "--since"
+    assert_output --partial "--limit"
+}
