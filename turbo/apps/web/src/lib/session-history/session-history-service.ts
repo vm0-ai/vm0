@@ -54,6 +54,7 @@ export class SessionHistoryService {
   /**
    * Resolve session history from hash (R2) or legacy TEXT field
    * Prioritizes hash if available for new records
+   * Falls back to legacy TEXT if R2 retrieval fails
    *
    * @param hash SHA-256 hash reference (new records)
    * @param legacyText Legacy TEXT field content (old records)
@@ -65,7 +66,20 @@ export class SessionHistoryService {
   ): Promise<string | null> {
     if (hash) {
       log.debug(`Resolving session history from R2, hash=${hash}`);
-      return this.retrieve(hash);
+      try {
+        return await this.retrieve(hash);
+      } catch (error) {
+        // Fallback to legacy TEXT if R2 retrieval fails
+        if (legacyText) {
+          log.warn(
+            `R2 retrieval failed for hash=${hash}, falling back to legacy TEXT`,
+            { error },
+          );
+          return legacyText;
+        }
+        // No fallback available, re-throw the error
+        throw error;
+      }
     }
 
     if (legacyText) {

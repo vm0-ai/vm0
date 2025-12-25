@@ -149,5 +149,37 @@ describe("SessionHistoryService", () => {
 
       expect(result).toBeNull();
     });
+
+    it("should fallback to legacy text when R2 retrieval fails", async () => {
+      const hash =
+        "abc123def456789012345678901234567890123456789012345678901234abcd";
+      const legacyContent = '{"from":"legacy"}\n';
+
+      vi.mocked(blobServiceModule.blobService.downloadBlob).mockRejectedValue(
+        new Error("R2 connection failed"),
+      );
+
+      const result = await service.resolve(hash, legacyContent);
+
+      expect(blobServiceModule.blobService.downloadBlob).toHaveBeenCalledWith(
+        hash,
+      );
+      // Should fallback to legacy content instead of throwing
+      expect(result).toBe(legacyContent);
+    });
+
+    it("should throw error when R2 retrieval fails and no legacy text available", async () => {
+      const hash =
+        "abc123def456789012345678901234567890123456789012345678901234abcd";
+
+      vi.mocked(blobServiceModule.blobService.downloadBlob).mockRejectedValue(
+        new Error("R2 connection failed"),
+      );
+
+      // Should throw because no fallback available
+      await expect(service.resolve(hash, null)).rejects.toThrow(
+        "R2 connection failed",
+      );
+    });
   });
 });

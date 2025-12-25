@@ -220,6 +220,26 @@ export function calculateSessionHistoryPath(
  */
 export class RunService {
   /**
+   * Resolve session history from conversation record
+   * Uses R2 hash if available, falls back to legacy TEXT field
+   *
+   * @param hash SHA-256 hash reference (new records)
+   * @param legacyText Legacy TEXT field content (old records)
+   * @returns Session history content
+   * @throws NotFoundError if session history cannot be resolved
+   */
+  private async resolveSessionHistory(
+    hash: string | null,
+    legacyText: string | null,
+  ): Promise<string> {
+    const sessionHistory = await sessionHistoryService.resolve(hash, legacyText);
+    if (!sessionHistory) {
+      throw new NotFoundError("Session history not found for conversation");
+    }
+    return sessionHistory;
+  }
+
+  /**
    * Extract working directory from agent config
    * Throws BadRequestError if working_dir is not configured
    */
@@ -322,14 +342,10 @@ export class RunService {
       : {};
 
     // Resolve session history from R2 hash or legacy TEXT field
-    const sessionHistory = await sessionHistoryService.resolve(
+    const sessionHistory = await this.resolveSessionHistory(
       conversation.cliAgentSessionHistoryHash,
       conversation.cliAgentSessionHistory,
     );
-
-    if (!sessionHistory) {
-      throw new NotFoundError("Session history not found for conversation");
-    }
 
     return {
       conversationId: checkpoint.conversationId,
@@ -421,14 +437,10 @@ export class RunService {
       : {};
 
     // Resolve session history from R2 hash or legacy TEXT field
-    const sessionHistory = await sessionHistoryService.resolve(
+    const sessionHistory = await this.resolveSessionHistory(
       session.conversation.cliAgentSessionHistoryHash,
       session.conversation.cliAgentSessionHistory,
     );
-
-    if (!sessionHistory) {
-      throw new NotFoundError("Session history not found for conversation");
-    }
 
     return {
       conversationId: session.conversationId,
@@ -495,14 +507,10 @@ export class RunService {
     }
 
     // Resolve session history from R2 hash or legacy TEXT field
-    const sessionHistory = await sessionHistoryService.resolve(
+    const sessionHistory = await this.resolveSessionHistory(
       conversation.cliAgentSessionHistoryHash,
       conversation.cliAgentSessionHistory,
     );
-
-    if (!sessionHistory) {
-      throw new NotFoundError("Session history not found for conversation");
-    }
 
     return {
       conversationId,
