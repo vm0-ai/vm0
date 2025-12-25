@@ -37,6 +37,13 @@ const CONFIG_FILE = "vm0.yaml";
 const ARTIFACT_DIR = "artifact";
 
 /**
+ * Print a command hint for tutorial output
+ */
+function printCommand(cmd: string): void {
+  console.log(chalk.dim(`> ${cmd}`));
+}
+
+/**
  * Execute a vm0 command in a subprocess
  * Returns stdout on success, throws on failure with stderr
  */
@@ -300,42 +307,45 @@ export const cookCommand = new Command()
     // Step 2: Process volumes
     if (config.volumes && Object.keys(config.volumes).length > 0) {
       console.log();
-      console.log(chalk.blue("Processing volumes..."));
+      console.log(chalk.blue("Processing volumes:"));
 
       for (const volumeConfig of Object.values(config.volumes)) {
         const volumeDir = path.join(cwd, volumeConfig.name);
-        console.log(chalk.gray(`  ${volumeConfig.name}/`));
 
         if (!existsSync(volumeDir)) {
           console.error(
             chalk.red(
-              `    ✗ Directory not found. Create the directory and add files first.`,
+              `✗ Directory not found: ${volumeConfig.name}. Create the directory and add files first.`,
             ),
           );
           process.exit(1);
         }
 
         try {
+          printCommand(`cd ${volumeConfig.name}`);
+
           // Check if already initialized
           const existingConfig = await readStorageConfig(volumeDir);
           if (!existingConfig) {
+            printCommand("vm0 volume init");
             await execVm0Command(["volume", "init"], {
               cwd: volumeDir,
               silent: true,
             });
-            console.log(chalk.green(`    ✓ Initialized`));
           }
 
           // Push volume
+          printCommand("vm0 volume push");
           await execVm0Command(["volume", "push"], {
             cwd: volumeDir,
             silent: true,
           });
-          console.log(chalk.green(`    ✓ Pushed`));
+
+          printCommand("cd ..");
         } catch (error) {
-          console.error(chalk.red(`    ✗ Failed`));
+          console.error(chalk.red(`✗ Failed`));
           if (error instanceof Error) {
-            console.error(chalk.gray(`      ${error.message}`));
+            console.error(chalk.gray(`  ${error.message}`));
           }
           process.exit(1);
         }
@@ -344,52 +354,55 @@ export const cookCommand = new Command()
 
     // Step 3: Process artifact
     console.log();
-    console.log(chalk.blue("Processing artifact..."));
+    console.log(chalk.blue("Processing artifact:"));
 
     const artifactDir = path.join(cwd, ARTIFACT_DIR);
-    console.log(chalk.gray(`  ${ARTIFACT_DIR}/`));
 
     try {
       // Create directory if not exists
       if (!existsSync(artifactDir)) {
+        printCommand(`mkdir ${ARTIFACT_DIR}`);
         await mkdir(artifactDir, { recursive: true });
-        console.log(chalk.green(`    ✓ Created directory`));
       }
+
+      printCommand(`cd ${ARTIFACT_DIR}`);
 
       // Check if already initialized
       const existingConfig = await readStorageConfig(artifactDir);
       if (!existingConfig) {
+        printCommand("vm0 artifact init");
         await execVm0Command(["artifact", "init"], {
           cwd: artifactDir,
           silent: true,
         });
-        console.log(chalk.green(`    ✓ Initialized`));
       }
 
       // Push artifact
+      printCommand("vm0 artifact push");
       await execVm0Command(["artifact", "push"], {
         cwd: artifactDir,
         silent: true,
       });
-      console.log(chalk.green(`    ✓ Pushed`));
+
+      printCommand("cd ..");
     } catch (error) {
-      console.error(chalk.red(`    ✗ Failed`));
+      console.error(chalk.red(`✗ Failed`));
       if (error instanceof Error) {
-        console.error(chalk.gray(`      ${error.message}`));
+        console.error(chalk.gray(`  ${error.message}`));
       }
       process.exit(1);
     }
 
-    // Step 4: Upload compose
+    // Step 4: Compose agent
     console.log();
-    console.log(chalk.blue("Uploading compose..."));
+    console.log(chalk.blue("Composing agent:"));
+    printCommand(`vm0 compose ${CONFIG_FILE}`);
 
     try {
       await execVm0Command(["compose", CONFIG_FILE], {
         cwd,
         silent: true,
       });
-      console.log(chalk.green(`✓ Compose uploaded: ${agentName}`));
     } catch (error) {
       console.error(chalk.red(`✗ Compose failed`));
       if (error instanceof Error) {
@@ -401,7 +414,10 @@ export const cookCommand = new Command()
     // Step 5: Run agent (if prompt provided)
     if (prompt) {
       console.log();
-      console.log(chalk.blue(`Running agent: ${agentName}`));
+      console.log(chalk.blue("Running agent:"));
+      printCommand(
+        `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "${prompt}"`,
+      );
       console.log();
 
       let runOutput: string;
@@ -428,14 +444,16 @@ export const cookCommand = new Command()
 
       if (serverVersion) {
         console.log();
-        console.log(chalk.blue("Pulling updated artifact..."));
+        console.log(chalk.blue("Pulling updated artifact:"));
+        printCommand(`cd ${ARTIFACT_DIR}`);
+        printCommand(`vm0 artifact pull ${serverVersion}`);
 
         try {
           await execVm0Command(["artifact", "pull", serverVersion], {
             cwd: artifactDir,
             silent: true,
           });
-          console.log(chalk.green(`✓ Artifact pulled (${serverVersion})`));
+          printCommand("cd ..");
         } catch (error) {
           console.error(chalk.red(`✗ Artifact pull failed`));
           if (error instanceof Error) {
@@ -446,11 +464,9 @@ export const cookCommand = new Command()
       }
     } else {
       console.log();
-      console.log("  Run your agent:");
-      console.log(
-        chalk.cyan(
-          `    vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "your prompt"`,
-        ),
+      console.log("To run your agent:");
+      printCommand(
+        `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "your prompt"`,
       );
     }
   });
