@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.25.0](https://github.com/vm0-ai/vm0/compare/cli-v4.24.0...cli-v4.25.0) (2025-12-25)
+
+
+### Features
+
+* **cli:** add vm0 init command to initialize project files ([#737](https://github.com/vm0-ai/vm0/issues/737)) ([3fbc4a3](https://github.com/vm0-ai/vm0/commit/3fbc4a32f91c85db6d1670cd9603c689004f8188))
+
 ## [4.24.0](https://github.com/vm0-ai/vm0/compare/cli-v4.23.0...cli-v4.24.0) (2025-12-25)
 
 
