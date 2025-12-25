@@ -71,6 +71,7 @@ echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
 
 # 5. Run your agent
 vm0 cook "let's start working."
+# Agent follows AGENTS.md: curates AI news from HackerNews and writes to content.md
 ```
 
 ### What just happened?
