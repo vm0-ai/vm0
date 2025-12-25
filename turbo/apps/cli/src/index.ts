@@ -10,6 +10,7 @@ import { cookCommand } from "./commands/cook";
 import { imageCommand } from "./commands/image";
 import { logsCommand } from "./commands/logs";
 import { scopeCommand } from "./commands/scope";
+import { initCommand } from "./commands/init";
 
 const program = new Command();
 
@@ -73,6 +74,7 @@ program.addCommand(cookCommand);
 program.addCommand(imageCommand);
 program.addCommand(logsCommand);
 program.addCommand(scopeCommand);
+program.addCommand(initCommand);
 
 export { program };
 
