@@ -55,7 +55,7 @@ teardown() {
     assert_output --partial "Run completed successfully"
 
     # Verify "vm0 logs" command hint is shown in next steps
-    assert_output --partial "View telemetry logs:"
+    assert_output --partial "View agent logs:"
     assert_output --partial "vm0 logs"
 
     # Step 3: Extract Run ID from output
