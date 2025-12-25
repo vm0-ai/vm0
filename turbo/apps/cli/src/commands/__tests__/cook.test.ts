@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import { existsSync, readFileSync } from "fs";
 import * as dotenv from "dotenv";
 import * as core from "@vm0/core";
+import { parseRunIdsFromOutput } from "../cook";
 
 // Mock dependencies
 vi.mock("fs/promises");
@@ -207,5 +208,79 @@ describe("cook command - environment variable check", () => {
 
       expect(mockAppendFile).toHaveBeenCalledWith(".env", "\nNEW_VAR=\n");
     });
+  });
+});
+
+describe("parseRunIdsFromOutput", () => {
+  it("extracts all three IDs from successful output", () => {
+    const output = `
+✓ Run completed successfully
+  Checkpoint:    3933f2c8-f907-480f-8829-760eb7ebb0d5
+  Session:       74989172-42ff-4156-85aa-ec9bdcbf3564
+  Conversation:  67f6d240-90f3-4ab4-9dae-14f8105cb872
+  Artifact:
+    artifact: e5215be8
+
+  View agent logs:
+    vm0 logs ae715364-657c-462f-88ad-3c8d4ec7edf2
+  Continue with session (latest conversation and artifact):
+    vm0 run continue 74989172-42ff-4156-85aa-ec9bdcbf3564 "your next prompt"
+  Resume from checkpoint (snapshotted conversation and artifact):
+    vm0 run resume 3933f2c8-f907-480f-8829-760eb7ebb0d5 "your next prompt"
+`;
+
+    const result = parseRunIdsFromOutput(output);
+
+    expect(result.runId).toBe("ae715364-657c-462f-88ad-3c8d4ec7edf2");
+    expect(result.sessionId).toBe("74989172-42ff-4156-85aa-ec9bdcbf3564");
+    expect(result.checkpointId).toBe("3933f2c8-f907-480f-8829-760eb7ebb0d5");
+  });
+
+  it("handles output with ANSI color codes", () => {
+    const output = `
+\x1b[32m✓ Run completed successfully\x1b[0m
+  Checkpoint:    \x1b[90m3933f2c8-f907-480f-8829-760eb7ebb0d5\x1b[0m
+  Session:       \x1b[90m74989172-42ff-4156-85aa-ec9bdcbf3564\x1b[0m
+
+  View agent logs:
+    \x1b[36mvm0 logs ae715364-657c-462f-88ad-3c8d4ec7edf2\x1b[0m
+  Continue with session (latest conversation and artifact):
+    \x1b[36mvm0 run continue 74989172-42ff-4156-85aa-ec9bdcbf3564 "your next prompt"\x1b[0m
+  Resume from checkpoint (snapshotted conversation and artifact):
+    \x1b[36mvm0 run resume 3933f2c8-f907-480f-8829-760eb7ebb0d5 "your next prompt"\x1b[0m
+`;
+
+    const result = parseRunIdsFromOutput(output);
+
+    expect(result.runId).toBe("ae715364-657c-462f-88ad-3c8d4ec7edf2");
+    expect(result.sessionId).toBe("74989172-42ff-4156-85aa-ec9bdcbf3564");
+    expect(result.checkpointId).toBe("3933f2c8-f907-480f-8829-760eb7ebb0d5");
+  });
+
+  it("returns empty object when no completion marker", () => {
+    const output = `
+Some random output
+without the completion marker
+`;
+
+    const result = parseRunIdsFromOutput(output);
+
+    expect(result).toEqual({});
+  });
+
+  it("handles partial output (missing some IDs)", () => {
+    const output = `
+✓ Run completed successfully
+  Checkpoint:    3933f2c8-f907-480f-8829-760eb7ebb0d5
+
+  View agent logs:
+    vm0 logs ae715364-657c-462f-88ad-3c8d4ec7edf2
+`;
+
+    const result = parseRunIdsFromOutput(output);
+
+    expect(result.runId).toBe("ae715364-657c-462f-88ad-3c8d4ec7edf2");
+    expect(result.sessionId).toBeUndefined();
+    expect(result.checkpointId).toBeUndefined();
   });
 });

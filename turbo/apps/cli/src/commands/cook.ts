@@ -10,6 +10,7 @@ import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { readStorageConfig } from "../lib/storage-utils";
 import { checkAndUpgrade } from "../lib/update-checker";
+import { loadCookState, saveCookState } from "../lib/cook-state";
 
 declare const __CLI_VERSION__: string;
 
@@ -168,6 +169,36 @@ function escapeRegExp(str: string): string {
 }
 
 /**
+ * Parse run IDs from vm0 run completion output
+ * Extracts runId, sessionId, and checkpointId from the "Next steps" section
+ */
+interface ParsedRunIds {
+  runId?: string;
+  sessionId?: string;
+  checkpointId?: string;
+}
+
+export function parseRunIdsFromOutput(output: string): ParsedRunIds {
+  const completionMarker = "Run completed successfully";
+  const completionIndex = output.indexOf(completionMarker);
+  if (completionIndex === -1) return {};
+
+  const section = output.slice(completionIndex);
+
+  // Strip ANSI codes for reliable matching
+  // ESC character (0x1B) followed by [ and ANSI sequence
+  const ESC = String.fromCharCode(0x1b);
+  const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*m`, "g");
+  const stripped = section.replace(ansiPattern, "");
+
+  return {
+    runId: stripped.match(/vm0 logs ([0-9a-f-]{36})/)?.[1],
+    sessionId: stripped.match(/vm0 run continue ([0-9a-f-]{36})/)?.[1],
+    checkpointId: stripped.match(/vm0 run resume ([0-9a-f-]{36})/)?.[1],
+  };
+}
+
+/**
  * Extract all required variable names from compose config
  * Returns unique names from both vars and secrets references
  */
@@ -236,9 +267,47 @@ async function generateEnvPlaceholders(
   }
 }
 
-export const cookCommand = new Command()
+/**
+ * Auto-pull artifact after a successful run
+ */
+async function autoPullArtifact(
+  runOutput: string,
+  artifactDir: string,
+): Promise<void> {
+  const serverVersion = parseArtifactVersionFromCompletion(
+    runOutput,
+    ARTIFACT_DIR,
+  );
+
+  if (serverVersion && existsSync(artifactDir)) {
+    console.log();
+    console.log(chalk.blue("Pulling updated artifact:"));
+    printCommand(`cd ${ARTIFACT_DIR}`);
+    printCommand(`vm0 artifact pull ${serverVersion}`);
+
+    try {
+      await execVm0Command(["artifact", "pull", serverVersion], {
+        cwd: artifactDir,
+        silent: true,
+      });
+      printCommand("cd ..");
+    } catch (error) {
+      console.error(chalk.red(`✗ Artifact pull failed`));
+      if (error instanceof Error) {
+        console.error(chalk.gray(`  ${error.message}`));
+      }
+      // Don't exit - the run succeeded, pull is optional
+    }
+  }
+}
+
+// Create the cook command with subcommands
+const cookCmd = new Command()
   .name("cook")
-  .description("One-click agent preparation and execution from vm0.yaml")
+  .description("One-click agent preparation and execution from vm0.yaml");
+
+// Default action for "vm0 cook [prompt]"
+cookCmd
   .argument("[prompt]", "Prompt for the agent")
   .action(async (prompt: string | undefined) => {
     // Step 0: Check for updates and auto-upgrade if needed
@@ -435,33 +504,18 @@ export const cookCommand = new Command()
         process.exit(1);
       }
 
-      // Step 6: Auto-pull artifact if run completed with artifact changes
-      // Check if completion output shows an artifact version
-      const serverVersion = parseArtifactVersionFromCompletion(
-        runOutput,
-        ARTIFACT_DIR,
-      );
-
-      if (serverVersion) {
-        console.log();
-        console.log(chalk.blue("Pulling updated artifact:"));
-        printCommand(`cd ${ARTIFACT_DIR}`);
-        printCommand(`vm0 artifact pull ${serverVersion}`);
-
-        try {
-          await execVm0Command(["artifact", "pull", serverVersion], {
-            cwd: artifactDir,
-            silent: true,
-          });
-          printCommand("cd ..");
-        } catch (error) {
-          console.error(chalk.red(`✗ Artifact pull failed`));
-          if (error instanceof Error) {
-            console.error(chalk.gray(`  ${error.message}`));
-          }
-          // Don't exit - the run succeeded, pull is optional
-        }
+      // Save session state for continue/resume commands
+      const runIds = parseRunIdsFromOutput(runOutput);
+      if (runIds.runId || runIds.sessionId || runIds.checkpointId) {
+        await saveCookState({
+          lastRunId: runIds.runId,
+          lastSessionId: runIds.sessionId,
+          lastCheckpointId: runIds.checkpointId,
+        });
       }
+
+      // Step 6: Auto-pull artifact if run completed with artifact changes
+      await autoPullArtifact(runOutput, artifactDir);
     } else {
       console.log();
       console.log("To run your agent:");
@@ -470,3 +524,113 @@ export const cookCommand = new Command()
       );
     }
   });
+
+// Subcommand: vm0 cook logs
+cookCmd
+  .command("logs")
+  .description("View logs from the last cook run")
+  .action(async () => {
+    const state = await loadCookState();
+    if (!state.lastRunId) {
+      console.error(chalk.red("✗ No previous run found"));
+      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+      process.exit(1);
+    }
+
+    printCommand(`vm0 logs ${state.lastRunId}`);
+    await execVm0Command(["logs", state.lastRunId]);
+  });
+
+// Subcommand: vm0 cook continue <prompt>
+cookCmd
+  .command("continue")
+  .description(
+    "Continue from the last session (latest conversation and artifact)",
+  )
+  .argument("<prompt>", "Prompt for the continued agent")
+  .action(async (prompt: string) => {
+    const state = await loadCookState();
+    if (!state.lastSessionId) {
+      console.error(chalk.red("✗ No previous session found"));
+      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+      process.exit(1);
+    }
+
+    const cwd = process.cwd();
+    const artifactDir = path.join(cwd, ARTIFACT_DIR);
+
+    printCommand(`vm0 run continue ${state.lastSessionId} "${prompt}"`);
+    console.log();
+
+    let runOutput: string;
+    try {
+      runOutput = await execVm0RunWithCapture(
+        ["run", "continue", state.lastSessionId, prompt],
+        { cwd },
+      );
+    } catch {
+      // Error already displayed by vm0 run
+      process.exit(1);
+    }
+
+    // Update state with new IDs
+    const newIds = parseRunIdsFromOutput(runOutput);
+    if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
+      await saveCookState({
+        lastRunId: newIds.runId,
+        lastSessionId: newIds.sessionId,
+        lastCheckpointId: newIds.checkpointId,
+      });
+    }
+
+    // Auto-pull artifact
+    await autoPullArtifact(runOutput, artifactDir);
+  });
+
+// Subcommand: vm0 cook resume <prompt>
+cookCmd
+  .command("resume")
+  .description(
+    "Resume from the last checkpoint (snapshotted conversation and artifact)",
+  )
+  .argument("<prompt>", "Prompt for the resumed agent")
+  .action(async (prompt: string) => {
+    const state = await loadCookState();
+    if (!state.lastCheckpointId) {
+      console.error(chalk.red("✗ No previous checkpoint found"));
+      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+      process.exit(1);
+    }
+
+    const cwd = process.cwd();
+    const artifactDir = path.join(cwd, ARTIFACT_DIR);
+
+    printCommand(`vm0 run resume ${state.lastCheckpointId} "${prompt}"`);
+    console.log();
+
+    let runOutput: string;
+    try {
+      runOutput = await execVm0RunWithCapture(
+        ["run", "resume", state.lastCheckpointId, prompt],
+        { cwd },
+      );
+    } catch {
+      // Error already displayed by vm0 run
+      process.exit(1);
+    }
+
+    // Update state with new IDs
+    const newIds = parseRunIdsFromOutput(runOutput);
+    if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
+      await saveCookState({
+        lastRunId: newIds.runId,
+        lastSessionId: newIds.sessionId,
+        lastCheckpointId: newIds.checkpointId,
+      });
+    }
+
+    // Auto-pull artifact
+    await autoPullArtifact(runOutput, artifactDir);
+  });
+
+export const cookCommand = cookCmd;
