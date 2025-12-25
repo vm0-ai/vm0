@@ -36,9 +36,3 @@ export async function saveCookState(state: CookState): Promise<void> {
   // Write state file
   await writeFile(COOK_STATE_FILE, JSON.stringify(merged, null, 2), "utf8");
 }
-
-export async function clearCookState(): Promise<void> {
-  if (existsSync(COOK_STATE_FILE)) {
-    await writeFile(COOK_STATE_FILE, "{}", "utf8");
-  }
-}

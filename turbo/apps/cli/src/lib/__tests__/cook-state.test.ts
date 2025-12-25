@@ -135,29 +135,4 @@ describe("cook-state", () => {
       );
     });
   });
-
-  describe("clearCookState", () => {
-    it("clears state file if it exists", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.writeFile).mockResolvedValue();
-
-      const { clearCookState } = await import("../cook-state");
-      await clearCookState();
-
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "/home/testuser/.vm0/cook.json",
-        "{}",
-        "utf8",
-      );
-    });
-
-    it("does nothing if file doesn't exist", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
-      const { clearCookState } = await import("../cook-state");
-      await clearCookState();
-
-      expect(fs.writeFile).not.toHaveBeenCalled();
-    });
-  });
 });
