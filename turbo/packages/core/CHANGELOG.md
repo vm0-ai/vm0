@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/vm0-ai/vm0/compare/core-v1.4.0...core-v1.5.0) (2025-12-25)
+
+
+### Features
+
+* remove unused sessions API and migrate session history to R2 ([#718](https://github.com/vm0-ai/vm0/issues/718)) ([a5cd85d](https://github.com/vm0-ai/vm0/commit/a5cd85d2f9f2c513ab88f90359dd21414a36e24b))
+
 ## [1.4.0](https://github.com/vm0-ai/vm0/compare/core-v1.3.1...core-v1.4.0) (2025-12-25)
 
 

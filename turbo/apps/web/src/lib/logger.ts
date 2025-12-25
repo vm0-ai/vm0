@@ -19,7 +19,16 @@
  * Production/Preview:
  *   - DEBUG must be explicitly set via environment variables
  *   - Preview deployments: DEBUG=* is set via GitHub Actions workflow
+ *
+ * Axiom Integration:
+ *   - When AXIOM_TOKEN is configured, logs are also sent to Axiom
+ *   - Logs are sent as structured JSON with context and fields
+ *   - Console output is preserved for Vercel logs (dual-write)
  */
+import "server-only";
+import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import { Axiom } from "@axiomhq/js";
+import { getDatasetName, DATASETS } from "./axiom/datasets";
 
 type LogMethod = (...args: unknown[]) => void;
 
@@ -31,6 +40,64 @@ interface Logger {
 }
 
 const loggerCache: Map<string, Logger> = new Map();
+
+// Axiom logger singleton (separate from axiom/client.ts to avoid circular dependency)
+let axiomLogger: AxiomLogger | null = null;
+let axiomInitialized = false;
+
+/**
+ * Get or create the Axiom logger for web logs.
+ * Uses a separate Axiom client instance to avoid circular dependency with axiom/client.ts.
+ * Returns null if AXIOM_TOKEN is not configured.
+ */
+function getAxiomLogger(): AxiomLogger | null {
+  if (axiomInitialized) return axiomLogger;
+  axiomInitialized = true;
+
+  const token = process.env.AXIOM_TOKEN;
+  if (!token) {
+    return null;
+  }
+
+  const axiom = new Axiom({ token });
+  axiomLogger = new AxiomLogger({
+    transports: [
+      new AxiomJSTransport({
+        axiom,
+        dataset: getDatasetName(DATASETS.WEB_LOGS),
+      }),
+    ],
+  });
+
+  return axiomLogger;
+}
+
+/**
+ * Extract message string from log arguments.
+ */
+function formatMessage(args: unknown[]): string {
+  if (args.length === 0) return "";
+  if (typeof args[0] === "string") return args[0];
+  return String(args[0]);
+}
+
+/**
+ * Extract structured fields from log arguments.
+ * If second argument is an object, use it as fields.
+ * Otherwise, wrap remaining arguments in an 'args' field.
+ */
+function extractFields(args: unknown[]): Record<string, unknown> {
+  if (args.length <= 1) return {};
+  const fields = args.slice(1);
+  if (
+    fields.length === 1 &&
+    typeof fields[0] === "object" &&
+    fields[0] !== null
+  ) {
+    return fields[0] as Record<string, unknown>;
+  }
+  return { args: fields };
+}
 
 function isAutoDebugEnabled(): boolean {
   // Auto-enable debug in local development
@@ -89,15 +156,32 @@ function createLogger(name: string): Logger {
     debug: (...args: unknown[]) => {
       if (!isDebugEnabled) return;
       console.log(...formatArgs("DEBUG", name, args));
+      // Also send to Axiom (if configured)
+      getAxiomLogger()?.debug(formatMessage(args), {
+        context: name,
+        ...extractFields(args),
+      });
     },
     info: (...args: unknown[]) => {
       console.info(...formatArgs("INFO", name, args));
+      getAxiomLogger()?.info(formatMessage(args), {
+        context: name,
+        ...extractFields(args),
+      });
     },
     warn: (...args: unknown[]) => {
       console.warn(...formatArgs("WARN", name, args));
+      getAxiomLogger()?.warn(formatMessage(args), {
+        context: name,
+        ...extractFields(args),
+      });
     },
     error: (...args: unknown[]) => {
       console.error(...formatArgs("ERROR", name, args));
+      getAxiomLogger()?.error(formatMessage(args), {
+        context: name,
+        ...extractFields(args),
+      });
     },
   };
 }
@@ -113,4 +197,7 @@ export function logger(name: string): Logger {
 
 export function clearLoggerCache(): void {
   loggerCache.clear();
+  // Also reset Axiom logger state to allow re-initialization
+  axiomLogger = null;
+  axiomInitialized = false;
 }
