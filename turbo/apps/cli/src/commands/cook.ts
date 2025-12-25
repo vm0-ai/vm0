@@ -186,7 +186,7 @@ function checkMissingVariables(
   // Load .env file if it exists
   let dotenvValues: Record<string, string> = {};
   if (existsSync(envFilePath)) {
-    const result = dotenvConfig({ path: envFilePath });
+    const result = dotenvConfig({ path: envFilePath, quiet: true });
     if (result.parsed) {
       dotenvValues = result.parsed;
     }

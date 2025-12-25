@@ -96,7 +96,7 @@ function loadValues(
     let dotenvValues: Record<string, string> = {};
 
     if (fs.existsSync(envFilePath)) {
-      const dotenvResult = dotenvConfig({ path: envFilePath });
+      const dotenvResult = dotenvConfig({ path: envFilePath, quiet: true });
       if (dotenvResult.parsed) {
         // Only include keys that are missing
         dotenvValues = Object.fromEntries(
