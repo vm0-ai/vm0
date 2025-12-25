@@ -46,7 +46,7 @@ teardown() {
 # Version Listing
 # ============================================
 
-@test "vm0 image list shows versions with (latest) marker" {
+@test "vm0 image list shows versions with latest marker" {
     # First build an image to ensure we have at least one
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
     assert_success
@@ -56,8 +56,8 @@ teardown() {
     assert_success
     # Should show the image name
     assert_output --partial "$TEST_IMAGE_NAME"
-    # Ready images should have (latest) marker
-    assert_output --partial "(latest)"
+    # Ready images should have latest marker (cyan colored, no parentheses)
+    assert_output --partial "latest"
 }
 
 @test "vm0 image versions lists versions for specific image" {
@@ -70,8 +70,8 @@ teardown() {
     assert_success
     # Should show the image name
     assert_output --partial "$TEST_IMAGE_NAME"
-    # Should show (latest) marker
-    assert_output --partial "(latest)"
+    # Should show latest marker (cyan colored, no parentheses)
+    assert_output --partial "latest"
     # Should show usage hints
     assert_output --partial "pin to specific version"
 }
