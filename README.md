@@ -135,11 +135,11 @@ Use `vm0 --help` or `vm0 <command> --help` for detailed usage information.
 
 | Concept | Description |
 |---------|-------------|
-| **Agent** | Your AI worker with persistent config and memory |
+| **Agent** | Runs in sandbox with filesystem, mounts volumes and artifact |
+| **Volume** | Mounts agent instructions, skills, and datasets (read-only) |
 | **Artifact** | Versioned workspace where agents read/write files |
-| **Volume** | Persistent storage for datasets and configs (read-only to agents) |
-| **Checkpoint** | Full state snapshot (files + conversation + memory) |
-| **Session** | Lightweight continuation with latest files |
+| **Checkpoint** | Immutable snapshot of run state (artifact, volumes, conversation) |
+| **Session** | Continue conversation with latest artifact version |
 
 ## Resources
 
