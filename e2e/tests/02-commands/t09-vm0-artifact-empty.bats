@@ -7,22 +7,45 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t09"
+
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-empty-artifact-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for empty artifact testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
+    fi
 }
 
 @test "Build VM0 empty artifact test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 run with empty artifact completes successfully" {
@@ -37,7 +60,7 @@ teardown() {
 
     # Run agent with operation that doesn't create any files
     # This tests the storage webhook handling of empty zip uploads
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello world'"
 
@@ -63,7 +86,7 @@ teardown() {
 
     # Run agent that only reads files (no modifications)
     # The storage webhook should handle unchanged artifact content correctly
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "cat data.txt && cat subdir/nested.txt"
 
@@ -192,7 +215,7 @@ EOF
 
     # Run agent that deletes all files
     # This creates a checkpoint with empty artifact
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "rm -rf delete-me.txt subdir"
 
@@ -228,7 +251,7 @@ EOF
 
     # Step 2: Run agent that only reads files (no modifications)
     # This creates a checkpoint where artifact content is unchanged
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "cat data.txt"
     assert_success
@@ -240,7 +263,7 @@ EOF
     # Step 3: Run agent again - this triggers sandbox deduplication
     # The artifact content is the same, so sandbox gets existing=true from prepare
     # Bug #649: sandbox returned early without calling commit, HEAD was not updated
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "cat data.txt"
     assert_success
@@ -270,7 +293,7 @@ EOF
     assert_success
 
     # Run 1: read-only operation
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "cat file.txt"
     assert_success
@@ -282,7 +305,7 @@ EOF
     [ -f "file.txt" ]
 
     # Run 2: another read-only operation (deduplication in sandbox)
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "wc -l file.txt"
     assert_success

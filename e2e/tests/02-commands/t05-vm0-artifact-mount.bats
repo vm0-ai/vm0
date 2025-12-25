@@ -8,22 +8,45 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t05"
+
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-mount-test-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for artifact mount testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
+    fi
 }
 
 @test "Build VM0 artifact mount test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 artifact files are visible in sandbox working directory" {
@@ -42,7 +65,7 @@ teardown() {
 
     # Step 2: Run agent with artifact, list files
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
@@ -72,7 +95,7 @@ teardown() {
 
     # Simple run that should complete
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo done"
 

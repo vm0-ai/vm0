@@ -10,12 +10,31 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t06"
+
 setup() {
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
     export ARTIFACT_NAME="e2e-session-art-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for session testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
@@ -23,12 +42,16 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
+    fi
 }
 
 @test "Build VM0 agent session test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 agent session: continue uses latest artifact version" {
@@ -50,7 +73,7 @@ teardown() {
     # Step 2: Run agent to modify artifact
     echo "# Step 2: Running agent to create session..."
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
@@ -121,7 +144,7 @@ teardown() {
     # Step 2: First run - creates new session
     echo "# Step 2: First run (creates session)..."
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'first run'"
 
@@ -135,7 +158,7 @@ teardown() {
     # Step 3: Second run with same config and artifact - should return same session
     echo "# Step 3: Second run (should return same session)..."
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'second run'"
 
@@ -162,7 +185,7 @@ teardown() {
     # had template variables set via -e flag. The templateVars are stored in
     # the session and should be inherited when continuing.
     #
-    # Note: We use vm0-standard (without template vars in config) to test the
+    # Note: We use this agent (without template vars in config) to test the
     # basic templateVars storage and retrieval mechanism. The actual template
     # expansion in volumes is tested separately.
 
@@ -180,7 +203,7 @@ teardown() {
     # This tests that templateVars are properly stored in the session
     echo "# Step 2: Running agent with --vars testKey=testValue..."
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'initial run' && cat testfile.txt"

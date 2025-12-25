@@ -9,12 +9,31 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t04"
+
 setup() {
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
     export ARTIFACT_NAME="e2e-checkpoint-art-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for checkpoint testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
@@ -22,12 +41,16 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
+    fi
 }
 
 @test "Build VM0 artifact checkpoint test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 artifact checkpoint: agent changes preserved on resume, not HEAD" {
@@ -53,7 +76,7 @@ teardown() {
     # - Modify counter.txt from 100 to 101
     echo "# Step 2: Running agent to modify artifact..."
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 

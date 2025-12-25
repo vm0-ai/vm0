@@ -11,14 +11,40 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t19"
+
 setup() {
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for optional artifact testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
+}
+
+teardown() {
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
+    fi
 }
 
 @test "Build VM0 optional artifact test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-standard"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 run without artifact: basic run succeeds" {
@@ -26,7 +52,7 @@ setup() {
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
-    run $CLI_COMMAND run vm0-standard "echo 'hello world' && pwd"
+    run $CLI_COMMAND run "$AGENT_NAME" "echo 'hello world' && pwd"
 
     assert_success
     assert_output --partial "[tool_use] Bash"
@@ -44,7 +70,7 @@ setup() {
 
     # Step 1: First run without artifact - creates new session
     echo "# Step 1: First run without artifact..."
-    run $CLI_COMMAND run vm0-standard "echo 'first run'"
+    run $CLI_COMMAND run "$AGENT_NAME" "echo 'first run'"
 
     assert_success
     assert_output --partial "Session:"
@@ -60,7 +86,7 @@ setup() {
     # Step 2: Second run without artifact with same config
     # Should return the same session (findOrCreate behavior)
     echo "# Step 2: Second run without artifact..."
-    run $CLI_COMMAND run vm0-standard "echo 'second run'"
+    run $CLI_COMMAND run "$AGENT_NAME" "echo 'second run'"
 
     assert_success
     assert_output --partial "Session:"
@@ -90,7 +116,7 @@ setup() {
 
     # Step 1: Initial run without artifact
     echo "# Step 1: Initial run without artifact..."
-    run $CLI_COMMAND run vm0-standard "echo 'initial context'"
+    run $CLI_COMMAND run "$AGENT_NAME" "echo 'initial context'"
 
     assert_success
     assert_output --partial "Session:"

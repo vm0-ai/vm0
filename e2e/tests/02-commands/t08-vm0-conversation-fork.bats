@@ -10,18 +10,41 @@
 
 load '../../helpers/setup'
 
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t08"
+
 setup() {
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
     export ARTIFACT_NAME="e2e-conversation-$(date +%s)"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-standard.yaml"
+    # Create inline config with unique agent name
+    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "E2E test agent for conversation fork testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
     # Clean up temporary directory
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
+    fi
+    # Clean up config file
+    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
+        rm -f "$TEST_CONFIG"
     fi
 }
 
@@ -40,7 +63,7 @@ teardown() {
 
     # Step 2: Run agent
     echo "# Step 2: Running agent..."
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello world'"
 
@@ -83,7 +106,7 @@ teardown() {
 
     # Step 2: Run agent to create initial conversation
     echo "# Step 2: Running agent to create conversation..."
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'original run' && cat version.txt && echo 200 > counter.txt"
 
@@ -113,7 +136,7 @@ teardown() {
     # This is the key test: --conversation lets us continue conversation history
     # but with a different (newer) artifact version
     echo "# Step 4: Forking from conversation with new artifact..."
-    run $CLI_COMMAND run vm0-standard \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --conversation "$CONVERSATION_ID" \
         "cat version.txt && cat counter.txt && ls"
