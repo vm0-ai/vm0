@@ -23,21 +23,34 @@ export { tsr };
 // Re-export TsRestResponse for error handlers
 export { TsRestResponse } from "@ts-rest/serverless";
 
-interface HandlerOptions {
+/**
+ * Type alias for ts-rest router implementation.
+ * This is the return type of `tsr.router(contract, { ... })`.
+ */
+type TsRestRouter<T extends AppRouter> = ReturnType<typeof tsr.router<T>>;
+
+/**
+ * Options for createHandler.
+ */
+interface CreateHandlerOptions {
+  /** Custom error handler for validation and other errors */
   errorHandler?: (err: unknown) => TsRestResponse | void;
 }
 
 /**
  * Create a Next.js route handler with automatic log flushing.
  *
- * @param contract - The ts-rest contract
- * @param router - The ts-rest router implementation
+ * This wrapper ensures all logs are flushed to Axiom before the
+ * serverless function terminates, preventing log loss.
+ *
+ * @param contract - The ts-rest contract definition
+ * @param router - The ts-rest router implementation (from tsr.router)
  * @param options - Additional options (errorHandler, etc.)
  */
 export function createHandler<T extends AppRouter>(
   contract: T,
-  router: ReturnType<typeof tsr.router<T>>,
-  options?: HandlerOptions,
+  router: TsRestRouter<T>,
+  options?: CreateHandlerOptions,
 ) {
   return createNextHandler(contract, router, {
     handlerType: "app-router",

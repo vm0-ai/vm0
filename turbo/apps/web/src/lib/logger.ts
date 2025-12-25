@@ -211,5 +211,11 @@ export function clearLoggerCache(): void {
  *   return Response.json(data);
  */
 export async function flushLogs(): Promise<void> {
-  await axiomLogger?.flush();
+  try {
+    await axiomLogger?.flush();
+  } catch (e) {
+    // Log to console as fallback if Axiom flush fails
+    // Don't throw - we don't want flush failures to break the response
+    console.error("[logger] Failed to flush logs to Axiom:", e);
+  }
 }
