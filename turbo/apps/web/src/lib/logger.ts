@@ -201,3 +201,15 @@ export function clearLoggerCache(): void {
   axiomLogger = null;
   axiomInitialized = false;
 }
+
+/**
+ * Flush all pending logs to Axiom.
+ * MUST be called before serverless function terminates to ensure log delivery.
+ *
+ * Usage in API routes:
+ *   await flushLogs();
+ *   return Response.json(data);
+ */
+export async function flushLogs(): Promise<void> {
+  await axiomLogger?.flush();
+}
