@@ -123,7 +123,7 @@ export const deleteCommand = new Command()
           });
 
           if (answer.toLowerCase() !== "y" && answer.toLowerCase() !== "yes") {
-            console.log(chalk.gray("Cancelled."));
+            console.log(chalk.dim("Cancelled."));
             return;
           }
         }

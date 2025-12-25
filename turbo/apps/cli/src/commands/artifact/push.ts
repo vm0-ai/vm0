@@ -29,7 +29,7 @@ export const pushCommand = new Command()
       const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No artifact initialized in this directory"));
-        console.error(chalk.gray("  Run: vm0 artifact init"));
+        console.error(chalk.dim("  Run: vm0 artifact init"));
         process.exit(1);
       }
 
@@ -39,16 +39,16 @@ export const pushCommand = new Command()
             `✗ This directory is initialized as a volume, not an artifact`,
           ),
         );
-        console.error(chalk.gray("  Use: vm0 volume push"));
+        console.error(chalk.dim("  Use: vm0 volume push"));
         process.exit(1);
       }
 
-      console.log(chalk.cyan(`Pushing artifact: ${config.name}`));
+      console.log(`Pushing artifact: ${config.name}`);
 
       // Perform direct S3 upload
       const result = await directUpload(config.name, "artifact", cwd, {
         onProgress: (message) => {
-          console.log(chalk.gray(message));
+          console.log(chalk.dim(message));
         },
         force: options.force,
       });
@@ -63,13 +63,13 @@ export const pushCommand = new Command()
       } else {
         console.log(chalk.green("✓ Upload complete"));
       }
-      console.log(chalk.gray(`  Version: ${shortVersion}`));
-      console.log(chalk.gray(`  Files: ${result.fileCount.toLocaleString()}`));
-      console.log(chalk.gray(`  Size: ${formatBytes(result.size)}`));
+      console.log(chalk.dim(`  Version: ${shortVersion}`));
+      console.log(chalk.dim(`  Files: ${result.fileCount.toLocaleString()}`));
+      console.log(chalk.dim(`  Size: ${formatBytes(result.size)}`));
     } catch (error) {
       console.error(chalk.red("✗ Push failed"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

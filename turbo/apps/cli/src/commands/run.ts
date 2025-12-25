@@ -231,7 +231,7 @@ async function pollEvents(
       complete = true;
       console.error(chalk.red("\n✗ Run timed out"));
       console.error(
-        chalk.gray(`  (use "vm0 logs ${runId} --system" to view system logs)`),
+        chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
       );
       result = { succeeded: false, runId };
     }
@@ -252,14 +252,14 @@ function logVerbosePreFlight(
   action: string,
   details: Array<{ label: string; value: string | undefined }>,
 ): void {
-  console.log(chalk.blue(`\n${action}...`));
+  console.log(`\n${action}...`);
   for (const { label, value } of details) {
     if (value !== undefined) {
-      console.log(chalk.gray(`  ${label}: ${value}`));
+      console.log(chalk.dim(`  ${label}: ${value}`));
     }
   }
   console.log();
-  console.log(chalk.blue("Executing in sandbox..."));
+  console.log("Executing in sandbox...");
   console.log();
 }
 
@@ -356,7 +356,7 @@ const runCmd = new Command()
         if (isUUID(name)) {
           // It's a UUID compose ID - fetch compose to get content
           if (verbose) {
-            console.log(chalk.gray(`  Using compose ID: ${identifier}`));
+            console.log(chalk.dim(`  Using compose ID: ${identifier}`));
           }
           try {
             const compose = await apiClient.getComposeById(name);
@@ -371,20 +371,20 @@ const runCmd = new Command()
         } else {
           // It's an agent name - resolve to compose ID
           if (verbose) {
-            console.log(chalk.gray(`  Resolving agent name: ${name}`));
+            console.log(chalk.dim(`  Resolving agent name: ${name}`));
           }
           try {
             const compose = await apiClient.getComposeByName(name);
             composeId = compose.id;
             composeContent = compose.content;
             if (verbose) {
-              console.log(chalk.gray(`  Resolved to compose ID: ${composeId}`));
+              console.log(chalk.dim(`  Resolved to compose ID: ${composeId}`));
             }
           } catch (error) {
             if (error instanceof Error) {
               console.error(chalk.red(`✗ Agent not found: ${name}`));
               console.error(
-                chalk.gray(
+                chalk.dim(
                   "  Make sure you've composed the agent with: vm0 compose",
                 ),
               );
@@ -399,7 +399,7 @@ const runCmd = new Command()
         if (version && version !== "latest") {
           // Resolve version hash to full version ID
           if (verbose) {
-            console.log(chalk.gray(`  Resolving version: ${version}`));
+            console.log(chalk.dim(`  Resolving version: ${version}`));
           }
           try {
             const versionInfo = await apiClient.getComposeVersion(
@@ -409,7 +409,7 @@ const runCmd = new Command()
             agentComposeVersionId = versionInfo.versionId;
             if (verbose) {
               console.log(
-                chalk.gray(
+                chalk.dim(
                   `  Resolved to version ID: ${agentComposeVersionId.slice(0, 8)}...`,
                 ),
               );
@@ -418,7 +418,7 @@ const runCmd = new Command()
             if (error instanceof Error) {
               console.error(chalk.red(`✗ Version not found: ${version}`));
               console.error(
-                chalk.gray("  Make sure the version hash is correct."),
+                chalk.dim("  Make sure the version hash is correct."),
               );
             }
             process.exit(1);
@@ -434,21 +434,21 @@ const runCmd = new Command()
         const secrets = loadValues(options.secrets, secretNames);
 
         if (verbose && varNames.length > 0) {
-          console.log(chalk.gray(`  Required vars: ${varNames.join(", ")}`));
+          console.log(chalk.dim(`  Required vars: ${varNames.join(", ")}`));
           if (vars) {
             console.log(
-              chalk.gray(`  Loaded vars: ${Object.keys(vars).join(", ")}`),
+              chalk.dim(`  Loaded vars: ${Object.keys(vars).join(", ")}`),
             );
           }
         }
 
         if (verbose && secretNames.length > 0) {
           console.log(
-            chalk.gray(`  Required secrets: ${secretNames.join(", ")}`),
+            chalk.dim(`  Required secrets: ${secretNames.join(", ")}`),
           );
           if (secrets) {
             console.log(
-              chalk.gray(
+              chalk.dim(
                 `  Loaded secrets: ${Object.keys(secrets).join(", ")}`,
               ),
             );
@@ -509,7 +509,7 @@ const runCmd = new Command()
         if (response.status === "failed") {
           console.error(chalk.red("✗ Run preparation failed"));
           if (response.error) {
-            console.error(chalk.gray(`  ${response.error}`));
+            console.error(chalk.dim(`  ${response.error}`));
           }
           process.exit(1);
         }
@@ -538,13 +538,13 @@ const runCmd = new Command()
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));
             console.error(
-              chalk.gray(
+              chalk.dim(
                 "  Make sure you've composed the agent with: vm0 compose",
               ),
             );
           } else {
             console.error(chalk.red("✗ Run failed"));
-            console.error(chalk.gray(`  ${error.message}`));
+            console.error(chalk.dim(`  ${error.message}`));
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));
@@ -591,7 +591,7 @@ runCmd
           console.error(
             chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
           );
-          console.error(chalk.gray("  Checkpoint ID must be a valid UUID"));
+          console.error(chalk.dim("  Checkpoint ID must be a valid UUID"));
           process.exit(1);
         }
 
@@ -624,7 +624,7 @@ runCmd
         if (response.status === "failed") {
           console.error(chalk.red("✗ Run preparation failed"));
           if (response.error) {
-            console.error(chalk.gray(`  ${response.error}`));
+            console.error(chalk.dim(`  ${response.error}`));
           }
           process.exit(1);
         }
@@ -654,7 +654,7 @@ runCmd
             console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
           } else {
             console.error(chalk.red("✗ Resume failed"));
-            console.error(chalk.gray(`  ${error.message}`));
+            console.error(chalk.dim(`  ${error.message}`));
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));
@@ -703,7 +703,7 @@ runCmd
           console.error(
             chalk.red(`✗ Invalid agent session ID format: ${agentSessionId}`),
           );
-          console.error(chalk.gray("  Agent session ID must be a valid UUID"));
+          console.error(chalk.dim("  Agent session ID must be a valid UUID"));
           process.exit(1);
         }
 
@@ -737,7 +737,7 @@ runCmd
         if (response.status === "failed") {
           console.error(chalk.red("✗ Run preparation failed"));
           if (response.error) {
-            console.error(chalk.gray(`  ${response.error}`));
+            console.error(chalk.dim(`  ${response.error}`));
           }
           process.exit(1);
         }
@@ -769,7 +769,7 @@ runCmd
             );
           } else {
             console.error(chalk.red("✗ Continue failed"));
-            console.error(chalk.gray(`  ${error.message}`));
+            console.error(chalk.dim(`  ${error.message}`));
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));

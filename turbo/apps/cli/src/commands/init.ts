@@ -99,9 +99,9 @@ export const initCommand = new Command()
     if (!agentName || !validateAgentName(agentName)) {
       console.log(chalk.red("✗ Invalid agent name"));
       console.log(
-        chalk.gray("  Must be 3-64 characters, alphanumeric and hyphens only"),
+        chalk.dim("  Must be 3-64 characters, alphanumeric and hyphens only"),
       );
-      console.log(chalk.gray("  Must start and end with letter or number"));
+      console.log(chalk.dim("  Must start and end with letter or number"));
       process.exit(1);
     }
 
@@ -126,6 +126,6 @@ export const initCommand = new Command()
       `  1. Get your Claude Code token: ${chalk.cyan("claude setup-token")}`,
     );
     console.log(`  2. Set the environment variable (or add to .env file):`);
-    console.log(chalk.gray(`     export CLAUDE_CODE_OAUTH_TOKEN=<your-token>`));
+    console.log(chalk.dim(`     export CLAUDE_CODE_OAUTH_TOKEN=<your-token>`));
     console.log(`  3. Run your agent: ${chalk.cyan('vm0 cook "your prompt"')}`);
   });

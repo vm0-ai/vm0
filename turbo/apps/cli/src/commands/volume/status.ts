@@ -36,7 +36,7 @@ export const statusCommand = new Command()
       const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No volume initialized in this directory"));
-        console.error(chalk.gray("  Run: vm0 volume init"));
+        console.error(chalk.dim("  Run: vm0 volume init"));
         process.exit(1);
       }
 
@@ -46,12 +46,12 @@ export const statusCommand = new Command()
             "✗ This directory is initialized as an artifact, not a volume",
           ),
         );
-        console.error(chalk.gray("  Use: vm0 artifact status"));
+        console.error(chalk.dim("  Use: vm0 artifact status"));
         process.exit(1);
       }
 
       // Start message
-      console.log(chalk.cyan(`Checking volume: ${config.name}`));
+      console.log(`Checking volume: ${config.name}`);
 
       // Call API
       const url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=volume`;
@@ -60,7 +60,7 @@ export const statusCommand = new Command()
       if (!response.ok) {
         if (response.status === 404) {
           console.error(chalk.red("✗ Not found on remote"));
-          console.error(chalk.gray("  Run: vm0 volume push"));
+          console.error(chalk.dim("  Run: vm0 volume push"));
         } else {
           const error = (await response.json()) as ApiError;
           throw new Error(error.error?.message || "Status check failed");
@@ -73,17 +73,17 @@ export const statusCommand = new Command()
 
       if (info.empty) {
         console.log(chalk.green("✓ Found (empty)"));
-        console.log(chalk.gray(`  Version: ${shortVersion}`));
+        console.log(chalk.dim(`  Version: ${shortVersion}`));
       } else {
         console.log(chalk.green("✓ Found"));
-        console.log(chalk.gray(`  Version: ${shortVersion}`));
-        console.log(chalk.gray(`  Files: ${info.fileCount.toLocaleString()}`));
-        console.log(chalk.gray(`  Size: ${formatBytes(info.size)}`));
+        console.log(chalk.dim(`  Version: ${shortVersion}`));
+        console.log(chalk.dim(`  Files: ${info.fileCount.toLocaleString()}`));
+        console.log(chalk.dim(`  Size: ${formatBytes(info.size)}`));
       }
     } catch (error) {
       console.error(chalk.red("✗ Status check failed"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

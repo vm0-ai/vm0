@@ -31,13 +31,13 @@ export const initCommand = new Command()
             ),
           );
           console.log(
-            chalk.gray(
+            chalk.dim(
               "  To change type, delete .vm0/storage.yaml and reinitialize",
             ),
           );
         }
         console.log(
-          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
+          chalk.dim(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
         );
         return;
       }
@@ -49,12 +49,12 @@ export const initCommand = new Command()
       if (!isValidStorageName(artifactName)) {
         console.error(chalk.red(`✗ Invalid artifact name: "${dirName}"`));
         console.error(
-          chalk.gray(
+          chalk.dim(
             "  Artifact names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
         );
         console.error(
-          chalk.gray("  Example: my-project, user-workspace, code-artifact"),
+          chalk.dim("  Example: my-project, user-workspace, code-artifact"),
         );
         process.exit(1);
       }
@@ -64,14 +64,14 @@ export const initCommand = new Command()
 
       console.log(chalk.green(`✓ Initialized artifact: ${artifactName}`));
       console.log(
-        chalk.gray(
+        chalk.dim(
           `✓ Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
     } catch (error) {
       console.error(chalk.red("✗ Failed to initialize artifact"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

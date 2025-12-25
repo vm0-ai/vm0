@@ -158,7 +158,7 @@ export async function checkAndUpgrade(
   console.log();
   console.log(chalk.red("Upgrade failed. Please run manually:"));
   console.log(chalk.cyan(`  npm install -g ${PACKAGE_NAME}@latest`));
-  console.log(chalk.gray("  # or"));
+  console.log(chalk.dim("  # or"));
   console.log(chalk.cyan(`  pnpm add -g ${PACKAGE_NAME}@latest`));
   console.log();
   console.log("Then re-run:");

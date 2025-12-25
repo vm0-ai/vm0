@@ -63,7 +63,7 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
     latencyColor = chalk.red;
   }
 
-  return `[${entry.timestamp}] ${chalk.cyan(entry.method.padEnd(6))} ${statusColor(entry.status)} ${latencyColor(entry.latency_ms + "ms")} ${formatBytes(entry.request_size)}/${formatBytes(entry.response_size)} ${chalk.gray(entry.url)}`;
+  return `[${entry.timestamp}] ${entry.method.padEnd(6)} ${statusColor(entry.status)} ${latencyColor(entry.latency_ms + "ms")} ${formatBytes(entry.request_size)}/${formatBytes(entry.response_size)} ${chalk.dim(entry.url)}`;
 }
 
 /**
@@ -203,7 +203,7 @@ async function showAgentEvents(
   if (response.hasMore) {
     console.log();
     console.log(
-      chalk.gray(
+      chalk.dim(
         `Showing ${response.events.length} events. Use --limit to see more.`,
       ),
     );
@@ -229,7 +229,7 @@ async function showSystemLog(
   if (response.hasMore) {
     console.log();
     console.log(
-      chalk.gray("More log entries available. Use --limit to see more."),
+      chalk.dim("More log entries available. Use --limit to see more."),
     );
   }
 }
@@ -255,7 +255,7 @@ async function showMetrics(
   if (response.hasMore) {
     console.log();
     console.log(
-      chalk.gray(
+      chalk.dim(
         `Showing ${response.metrics.length} metrics. Use --limit to see more.`,
       ),
     );
@@ -287,7 +287,7 @@ async function showNetworkLogs(
   if (response.hasMore) {
     console.log();
     console.log(
-      chalk.gray(
+      chalk.dim(
         `Showing ${response.networkLogs.length} network logs. Use --limit to see more.`,
       ),
     );
@@ -307,7 +307,7 @@ function handleError(error: unknown, runId: string): void {
       console.error(chalk.red(error.message));
     } else {
       console.error(chalk.red("Failed to fetch logs"));
-      console.error(chalk.gray(`  ${error.message}`));
+      console.error(chalk.dim(`  ${error.message}`));
     }
   } else {
     console.error(chalk.red("An unexpected error occurred"));

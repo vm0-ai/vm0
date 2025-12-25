@@ -43,20 +43,18 @@ export const pullCommand = new Command()
       const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No volume initialized in this directory"));
-        console.error(chalk.gray("  Run: vm0 volume init"));
+        console.error(chalk.dim("  Run: vm0 volume init"));
         process.exit(1);
       }
 
       if (versionId) {
-        console.log(
-          chalk.cyan(`Pulling volume: ${config.name} (version: ${versionId})`),
-        );
+        console.log(`Pulling volume: ${config.name} (version: ${versionId})`);
       } else {
-        console.log(chalk.cyan(`Pulling volume: ${config.name}`));
+        console.log(`Pulling volume: ${config.name}`);
       }
 
       // Get download URL from API
-      console.log(chalk.gray("Getting download URL..."));
+      console.log(chalk.dim("Getting download URL..."));
 
       let url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=volume`;
       if (versionId) {
@@ -69,12 +67,12 @@ export const pullCommand = new Command()
         if (response.status === 404) {
           console.error(chalk.red(`✗ Volume "${config.name}" not found`));
           console.error(
-            chalk.gray(
+            chalk.dim(
               "  Make sure the volume name is correct in .vm0/storage.yaml",
             ),
           );
           console.error(
-            chalk.gray("  Or push the volume first with: vm0 volume push"),
+            chalk.dim("  Or push the volume first with: vm0 volume push"),
           );
         } else {
           const error = (await response.json()) as ApiError;
@@ -96,7 +94,7 @@ export const pullCommand = new Command()
       }
 
       // Download directly from S3
-      console.log(chalk.gray("Downloading from S3..."));
+      console.log(chalk.dim("Downloading from S3..."));
       const s3Response = await fetch(downloadInfo.url);
 
       if (!s3Response.ok) {
@@ -115,7 +113,7 @@ export const pullCommand = new Command()
       await fs.promises.writeFile(tarPath, tarBuffer);
 
       // Get remote files list for sync
-      console.log(chalk.gray("Syncing local files..."));
+      console.log(chalk.dim("Syncing local files..."));
       const remoteFiles = await listTarFiles(tarPath);
       const remoteFilesSet = new Set(
         remoteFiles.map((f) => f.replace(/\\/g, "/")),
@@ -130,7 +128,7 @@ export const pullCommand = new Command()
       }
 
       // Extract tar.gz
-      console.log(chalk.gray("Extracting files..."));
+      console.log(chalk.dim("Extracting files..."));
       await tar.extract({
         file: tarPath,
         cwd: cwd,
@@ -145,7 +143,7 @@ export const pullCommand = new Command()
     } catch (error) {
       console.error(chalk.red("✗ Pull failed"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

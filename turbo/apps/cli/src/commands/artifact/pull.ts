@@ -43,7 +43,7 @@ export const pullCommand = new Command()
       const config = await readStorageConfig(cwd);
       if (!config) {
         console.error(chalk.red("✗ No artifact initialized in this directory"));
-        console.error(chalk.gray("  Run: vm0 artifact init"));
+        console.error(chalk.dim("  Run: vm0 artifact init"));
         process.exit(1);
       }
 
@@ -53,22 +53,18 @@ export const pullCommand = new Command()
             `✗ This directory is initialized as a volume, not an artifact`,
           ),
         );
-        console.error(chalk.gray("  Use: vm0 volume pull"));
+        console.error(chalk.dim("  Use: vm0 volume pull"));
         process.exit(1);
       }
 
       if (versionId) {
-        console.log(
-          chalk.cyan(
-            `Pulling artifact: ${config.name} (version: ${versionId})`,
-          ),
-        );
+        console.log(`Pulling artifact: ${config.name} (version: ${versionId})`);
       } else {
-        console.log(chalk.cyan(`Pulling artifact: ${config.name}`));
+        console.log(`Pulling artifact: ${config.name}`);
       }
 
       // Get download URL from API
-      console.log(chalk.gray("Getting download URL..."));
+      console.log(chalk.dim("Getting download URL..."));
 
       let url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=artifact`;
       if (versionId) {
@@ -81,12 +77,12 @@ export const pullCommand = new Command()
         if (response.status === 404) {
           console.error(chalk.red(`✗ Artifact "${config.name}" not found`));
           console.error(
-            chalk.gray(
+            chalk.dim(
               "  Make sure the artifact name is correct in .vm0/storage.yaml",
             ),
           );
           console.error(
-            chalk.gray("  Or push the artifact first with: vm0 artifact push"),
+            chalk.dim("  Or push the artifact first with: vm0 artifact push"),
           );
         } else {
           const error = (await response.json()) as ApiError;
@@ -108,7 +104,7 @@ export const pullCommand = new Command()
       }
 
       // Download directly from S3
-      console.log(chalk.gray("Downloading from S3..."));
+      console.log(chalk.dim("Downloading from S3..."));
       const s3Response = await fetch(downloadInfo.url);
 
       if (!s3Response.ok) {
@@ -127,7 +123,7 @@ export const pullCommand = new Command()
       await fs.promises.writeFile(tarPath, tarBuffer);
 
       // Get remote files list for sync
-      console.log(chalk.gray("Syncing local files..."));
+      console.log(chalk.dim("Syncing local files..."));
       const remoteFiles = await listTarFiles(tarPath);
       const remoteFilesSet = new Set(
         remoteFiles.map((f) => f.replace(/\\/g, "/")),
@@ -142,7 +138,7 @@ export const pullCommand = new Command()
       }
 
       // Extract tar.gz
-      console.log(chalk.gray("Extracting files..."));
+      console.log(chalk.dim("Extracting files..."));
       await tar.extract({
         file: tarPath,
         cwd: cwd,
@@ -157,7 +153,7 @@ export const pullCommand = new Command()
     } catch (error) {
       console.error(chalk.red("✗ Pull failed"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

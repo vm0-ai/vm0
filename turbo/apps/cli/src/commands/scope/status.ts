@@ -9,7 +9,7 @@ export const statusCommand = new Command()
     try {
       const scope = await apiClient.getScope();
 
-      console.log(chalk.cyan("Scope Information:"));
+      console.log(chalk.bold("Scope Information:"));
       console.log(`  Slug: ${chalk.green(scope.slug)}`);
       console.log(`  Type: ${scope.type}`);
       if (scope.displayName) {
@@ -29,7 +29,7 @@ export const statusCommand = new Command()
           console.log(chalk.cyan("  vm0 scope set <slug>"));
           console.log();
           console.log("Example:");
-          console.log(chalk.gray("  vm0 scope set myusername"));
+          console.log(chalk.dim("  vm0 scope set myusername"));
         } else {
           console.error(chalk.red(`✗ ${error.message}`));
         }

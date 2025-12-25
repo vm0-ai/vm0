@@ -52,11 +52,11 @@ export const versionsCommand = new Command()
 
       // Table header
       console.log(
-        chalk.gray(
+        chalk.dim(
           `${"VERSION".padEnd(20)} ${"STATUS".padEnd(12)} ${"CREATED".padEnd(24)}`,
         ),
       );
-      console.log(chalk.gray("-".repeat(56)));
+      console.log(chalk.dim("-".repeat(56)));
 
       for (const version of versions) {
         const statusColor =
@@ -76,7 +76,7 @@ export const versionsCommand = new Command()
           version.status === "ready" &&
           version.versionId === latestVersionId
         ) {
-          versionDisplay = `${versionDisplay} ${chalk.cyan("(latest)")}`;
+          versionDisplay = `${versionDisplay} ${chalk.cyan("latest")}`;
         }
 
         console.log(
@@ -89,14 +89,14 @@ export const versionsCommand = new Command()
       }
 
       console.log();
-      console.log(chalk.gray(`Total: ${versions.length} version(s)`));
+      console.log(chalk.dim(`Total: ${versions.length} version(s)`));
       console.log();
-      console.log(chalk.gray("Usage:"));
-      console.log(chalk.gray(`  image: "${name}"              # uses latest`));
+      console.log(chalk.dim("Usage:"));
+      console.log(chalk.dim(`  image: "${name}"              # uses latest`));
       if (latestVersionId) {
         const shortVersion = formatVersionIdForDisplay(latestVersionId);
         console.log(
-          chalk.gray(
+          chalk.dim(
             `  image: "${name}:${shortVersion}"   # pin to specific version`,
           ),
         );

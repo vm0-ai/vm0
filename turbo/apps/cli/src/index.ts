@@ -25,7 +25,7 @@ program
   .command("info")
   .description("Display environment information")
   .action(async () => {
-    console.log(chalk.cyan("System Information:"));
+    console.log(chalk.bold("System Information:"));
     console.log(`Node Version: ${process.version}`);
     console.log(`Platform: ${process.platform}`);
     console.log(`Architecture: ${process.arch}`);

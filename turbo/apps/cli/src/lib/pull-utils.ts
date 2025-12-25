@@ -18,7 +18,7 @@ export interface EmptyStorageResult {
 export async function handleEmptyStorageResponse(
   cwd: string,
 ): Promise<EmptyStorageResult> {
-  console.log(chalk.gray("Syncing local files..."));
+  console.log(chalk.dim("Syncing local files..."));
 
   // Sync to empty state - remove all local files
   const removedCount = await removeExtraFiles(cwd, new Set());

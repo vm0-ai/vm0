@@ -83,7 +83,7 @@ export class CodexEventRenderer {
   }
 
   private static renderThreadStarted(event: CodexEvent): void {
-    console.log(chalk.cyan("[thread.started]") + ` ${event.thread_id}`);
+    console.log("[thread.started]" + ` ${event.thread_id}`);
   }
 
   private static renderTurnCompleted(event: CodexEvent): void {
@@ -93,8 +93,8 @@ export class CodexEventRenderer {
       const cached = event.usage.cached_input_tokens || 0;
       const cachedStr = cached ? ` (${cached} cached)` : "";
       console.log(
-        chalk.cyan("[turn.completed]") +
-          chalk.gray(` ${input} in / ${output} out${cachedStr}`),
+        "[turn.completed]" +
+          chalk.dim(` ${input} in / ${output} out${cachedStr}`),
       );
     }
   }
@@ -114,20 +114,20 @@ export class CodexEventRenderer {
 
     // Reasoning (thinking)
     if (itemType === "reasoning" && item.text) {
-      console.log(chalk.magenta("[reasoning]") + ` ${item.text}`);
+      console.log("[reasoning]" + ` ${item.text}`);
       return;
     }
 
     // Agent message
     if (itemType === "agent_message" && item.text) {
-      console.log(chalk.blue("[message]") + ` ${item.text}`);
+      console.log("[message]" + ` ${item.text}`);
       return;
     }
 
     // Command execution
     if (itemType === "command_execution") {
       if (eventType === "item.started" && item.command) {
-        console.log(chalk.yellow("[exec]") + ` ${item.command}`);
+        console.log("[exec]" + ` ${item.command}`);
       } else if (eventType === "item.completed") {
         const output = item.aggregated_output || "";
         const exitCode = item.exit_code ?? 0;
@@ -136,10 +136,10 @@ export class CodexEventRenderer {
           const preview = lines.slice(0, 3).join("\n  ");
           const more =
             lines.length > 3
-              ? chalk.gray(` ... (${lines.length - 3} more lines)`)
+              ? chalk.dim(` ... (${lines.length - 3} more lines)`)
               : "";
           console.log(
-            chalk.gray("[output]") +
+            "[output]" +
               (exitCode !== 0 ? chalk.red(` exit=${exitCode}`) : ""),
           );
           if (preview) {
@@ -172,7 +172,7 @@ export class CodexEventRenderer {
     ) {
       const action = itemType.replace("file_", "");
       if (eventType === "item.started" && item.path) {
-        console.log(chalk.blue(`[${action}]`) + ` ${item.path}`);
+        console.log(`[${action}]` + ` ${item.path}`);
       }
       return;
     }

@@ -22,7 +22,7 @@ export const initCommand = new Command()
           chalk.yellow(`Volume already initialized: ${existingConfig.name}`),
         );
         console.log(
-          chalk.gray(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
+          chalk.dim(`Config file: ${path.join(cwd, ".vm0", "storage.yaml")}`),
         );
         return;
       }
@@ -34,12 +34,12 @@ export const initCommand = new Command()
       if (!isValidStorageName(volumeName)) {
         console.error(chalk.red(`✗ Invalid volume name: "${dirName}"`));
         console.error(
-          chalk.gray(
+          chalk.dim(
             "  Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
         );
         console.error(
-          chalk.gray("  Example: my-dataset, user-data-v2, training-set-2024"),
+          chalk.dim("  Example: my-dataset, user-data-v2, training-set-2024"),
         );
         process.exit(1);
       }
@@ -49,14 +49,14 @@ export const initCommand = new Command()
 
       console.log(chalk.green(`✓ Initialized volume: ${volumeName}`));
       console.log(
-        chalk.gray(
+        chalk.dim(
           `✓ Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
     } catch (error) {
       console.error(chalk.red("✗ Failed to initialize volume"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }

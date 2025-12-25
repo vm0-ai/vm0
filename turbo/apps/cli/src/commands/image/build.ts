@@ -84,7 +84,7 @@ export const buildCommand = new Command()
           process.exit(1);
         }
 
-        console.log(chalk.blue(`Building image: ${scope.slug}/${name}`));
+        console.log(chalk.bold(`Building image: ${scope.slug}/${name}`));
         console.log();
 
         // Start build
@@ -95,7 +95,7 @@ export const buildCommand = new Command()
         });
         const { imageId, buildId, versionId } = buildInfo;
 
-        console.log(chalk.gray(`  Build ID: ${buildId}`));
+        console.log(chalk.dim(`  Build ID: ${buildId}`));
         console.log();
 
         // Poll for status
@@ -120,7 +120,7 @@ export const buildCommand = new Command()
 
           // Print new logs
           for (const log of statusData.logs) {
-            console.log(chalk.gray(`  ${log}`));
+            console.log(chalk.dim(`  ${log}`));
           }
 
           logsOffset = statusData.logsOffset;

@@ -281,7 +281,7 @@ async function autoPullArtifact(
 
   if (serverVersion && existsSync(artifactDir)) {
     console.log();
-    console.log(chalk.blue("Pulling updated artifact:"));
+    console.log(chalk.bold("Pulling updated artifact:"));
     printCommand(`cd ${ARTIFACT_DIR}`);
     printCommand(`vm0 artifact pull ${serverVersion}`);
 
@@ -294,7 +294,7 @@ async function autoPullArtifact(
     } catch (error) {
       console.error(chalk.red(`✗ Artifact pull failed`));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       // Don't exit - the run succeeded, pull is optional
     }
@@ -319,7 +319,7 @@ cookCmd
     const cwd = process.cwd();
 
     // Step 1: Read and parse config
-    console.log(chalk.blue(`Reading config: ${CONFIG_FILE}`));
+    console.log(chalk.bold(`Reading config: ${CONFIG_FILE}`));
 
     if (!existsSync(CONFIG_FILE)) {
       console.error(chalk.red(`✗ Config file not found: ${CONFIG_FILE}`));
@@ -333,7 +333,7 @@ cookCmd
     } catch (error) {
       console.error(chalk.red("✗ Invalid YAML format"));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }
@@ -376,7 +376,7 @@ cookCmd
     // Step 2: Process volumes
     if (config.volumes && Object.keys(config.volumes).length > 0) {
       console.log();
-      console.log(chalk.blue("Processing volumes:"));
+      console.log(chalk.bold("Processing volumes:"));
 
       for (const volumeConfig of Object.values(config.volumes)) {
         const volumeDir = path.join(cwd, volumeConfig.name);
@@ -414,7 +414,7 @@ cookCmd
         } catch (error) {
           console.error(chalk.red(`✗ Failed`));
           if (error instanceof Error) {
-            console.error(chalk.gray(`  ${error.message}`));
+            console.error(chalk.dim(`  ${error.message}`));
           }
           process.exit(1);
         }
@@ -423,7 +423,7 @@ cookCmd
 
     // Step 3: Process artifact
     console.log();
-    console.log(chalk.blue("Processing artifact:"));
+    console.log(chalk.bold("Processing artifact:"));
 
     const artifactDir = path.join(cwd, ARTIFACT_DIR);
 
@@ -457,14 +457,14 @@ cookCmd
     } catch (error) {
       console.error(chalk.red(`✗ Failed`));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }
 
     // Step 4: Compose agent
     console.log();
-    console.log(chalk.blue("Composing agent:"));
+    console.log(chalk.bold("Composing agent:"));
     printCommand(`vm0 compose ${CONFIG_FILE}`);
 
     try {
@@ -475,7 +475,7 @@ cookCmd
     } catch (error) {
       console.error(chalk.red(`✗ Compose failed`));
       if (error instanceof Error) {
-        console.error(chalk.gray(`  ${error.message}`));
+        console.error(chalk.dim(`  ${error.message}`));
       }
       process.exit(1);
     }
@@ -483,7 +483,7 @@ cookCmd
     // Step 5: Run agent (if prompt provided)
     if (prompt) {
       console.log();
-      console.log(chalk.blue("Running agent:"));
+      console.log(chalk.bold("Running agent:"));
       printCommand(
         `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "${prompt}"`,
       );
@@ -550,7 +550,7 @@ cookCmd
       const state = await loadCookState();
       if (!state.lastRunId) {
         console.error(chalk.red("✗ No previous run found"));
-        console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+        console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
         process.exit(1);
       }
 
@@ -599,7 +599,7 @@ cookCmd
     const state = await loadCookState();
     if (!state.lastSessionId) {
       console.error(chalk.red("✗ No previous session found"));
-      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+      console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
       process.exit(1);
     }
 
@@ -645,7 +645,7 @@ cookCmd
     const state = await loadCookState();
     if (!state.lastCheckpointId) {
       console.error(chalk.red("✗ No previous checkpoint found"));
-      console.error(chalk.gray("  Run 'vm0 cook <prompt>' first"));
+      console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
       process.exit(1);
     }
 

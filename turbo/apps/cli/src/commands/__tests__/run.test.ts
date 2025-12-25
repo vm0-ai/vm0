@@ -1169,7 +1169,7 @@ describe("run command", () => {
       // Errors bubble up to main command handler which displays generic "Run failed" message
       expect(mockConsoleError).toHaveBeenCalledWith(chalk.red("✗ Run failed"));
       expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.gray("  Network error"),
+        chalk.dim("  Network error"),
       );
     });
 

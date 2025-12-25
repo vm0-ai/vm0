@@ -37,7 +37,7 @@ export const listCommand = new Command()
       const { images } = data;
 
       if (images.length === 0) {
-        console.log(chalk.gray("No images found."));
+        console.log(chalk.dim("No images found."));
         console.log();
         console.log("Build your first image:");
         console.log(
@@ -67,11 +67,11 @@ export const listCommand = new Command()
 
       // Table header
       console.log(
-        chalk.gray(
+        chalk.dim(
           `${"NAME".padEnd(40)} ${"STATUS".padEnd(12)} ${"CREATED".padEnd(20)}`,
         ),
       );
-      console.log(chalk.gray("-".repeat(72)));
+      console.log(chalk.dim("-".repeat(72)));
 
       for (const image of images) {
         const statusColor =
@@ -93,7 +93,7 @@ export const listCommand = new Command()
             image.status === "ready" &&
             latestVersions.get(image.alias) === image.versionId
           ) {
-            displayName = `${displayName} ${chalk.cyan("(latest)")}`;
+            displayName = `${displayName} ${chalk.cyan("latest")}`;
           }
         }
 
@@ -107,7 +107,7 @@ export const listCommand = new Command()
       }
 
       console.log();
-      console.log(chalk.gray(`Total: ${images.length} version(s)`));
+      console.log(chalk.dim(`Total: ${images.length} version(s)`));
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {

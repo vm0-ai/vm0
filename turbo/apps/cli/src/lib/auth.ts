@@ -85,7 +85,7 @@ function delay(ms: number): Promise<void> {
 export async function authenticate(apiUrl?: string): Promise<void> {
   // Use provided apiUrl or get from config/env (with fallback to production)
   const targetApiUrl = apiUrl ?? (await getApiUrl());
-  console.log(chalk.blue("Initiating authentication..."));
+  console.log("Initiating authentication...");
 
   // Request device code
   const deviceAuth = await requestDeviceCode(targetApiUrl);
@@ -100,7 +100,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
     `\nThe code expires in ${Math.floor(deviceAuth.expires_in / 60)} minutes.`,
   );
 
-  console.log(chalk.blue("\nWaiting for authentication..."));
+  console.log("\nWaiting for authentication...");
 
   // Poll for token
   const startTime = Date.now();
@@ -135,7 +135,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
     if (tokenResult.error === "authorization_pending") {
       // Still waiting for user to authenticate
-      process.stdout.write(chalk.gray("."));
+      process.stdout.write(chalk.dim("."));
       continue;
     }
 
@@ -181,7 +181,7 @@ export async function checkAuthStatus(): Promise<void> {
 
   // Also check for environment variable
   if (process.env.VM0_TOKEN) {
-    console.log(chalk.blue("Using token from VM0_TOKEN environment variable"));
+    console.log("Using token from VM0_TOKEN environment variable");
   }
 }
 

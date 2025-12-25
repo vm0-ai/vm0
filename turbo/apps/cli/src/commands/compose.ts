@@ -31,7 +31,7 @@ export const composeCommand = new Command()
       } catch (error) {
         console.error(chalk.red("✗ Invalid YAML format"));
         if (error instanceof Error) {
-          console.error(chalk.gray(`  ${error.message}`));
+          console.error(chalk.dim(`  ${error.message}`));
         }
         process.exit(1);
       }
@@ -74,14 +74,14 @@ export const composeCommand = new Command()
             if (defaultImage) {
               agent.image = defaultImage;
               console.log(
-                chalk.gray(`  Auto-configured image: ${defaultImage}`),
+                chalk.dim(`  Auto-configured image: ${defaultImage}`),
               );
             }
           }
           if (!agent.working_dir) {
             agent.working_dir = defaults.workingDir;
             console.log(
-              chalk.gray(
+              chalk.dim(
                 `  Auto-configured working_dir: ${defaults.workingDir}`,
               ),
             );
@@ -93,7 +93,7 @@ export const composeCommand = new Command()
       if (agent.instructions) {
         const instructionsPath = agent.instructions as string;
         const provider = agent.provider as string | undefined;
-        console.log(chalk.blue(`Uploading instructions: ${instructionsPath}`));
+        console.log(`Uploading instructions: ${instructionsPath}`);
         try {
           const result = await uploadInstructions(
             agentName,
@@ -109,7 +109,7 @@ export const composeCommand = new Command()
         } catch (error) {
           console.error(chalk.red(`✗ Failed to upload instructions`));
           if (error instanceof Error) {
-            console.error(chalk.gray(`  ${error.message}`));
+            console.error(chalk.dim(`  ${error.message}`));
           }
           process.exit(1);
         }
@@ -118,10 +118,10 @@ export const composeCommand = new Command()
       // Upload skills if specified
       if (agent.skills && Array.isArray(agent.skills)) {
         const skillUrls = agent.skills as string[];
-        console.log(chalk.blue(`Uploading ${skillUrls.length} skill(s)...`));
+        console.log(`Uploading ${skillUrls.length} skill(s)...`);
         for (const skillUrl of skillUrls) {
           try {
-            console.log(chalk.gray(`  Downloading: ${skillUrl}`));
+            console.log(chalk.dim(`  Downloading: ${skillUrl}`));
             const result = await uploadSkill(skillUrl);
             console.log(
               chalk.green(
@@ -131,7 +131,7 @@ export const composeCommand = new Command()
           } catch (error) {
             console.error(chalk.red(`✗ Failed to upload skill: ${skillUrl}`));
             if (error instanceof Error) {
-              console.error(chalk.gray(`  ${error.message}`));
+              console.error(chalk.dim(`  ${error.message}`));
             }
             process.exit(1);
           }
@@ -139,7 +139,7 @@ export const composeCommand = new Command()
       }
 
       // 5. Call API
-      console.log(chalk.blue("Uploading compose..."));
+      console.log("Uploading compose...");
 
       const response = await apiClient.createOrUpdateCompose({
         content: config,
@@ -153,8 +153,8 @@ export const composeCommand = new Command()
         console.log(chalk.green(`✓ Compose version exists: ${response.name}`));
       }
 
-      console.log(chalk.gray(`  Compose ID: ${response.composeId}`));
-      console.log(chalk.gray(`  Version:    ${shortVersionId}`));
+      console.log(chalk.dim(`  Compose ID: ${response.composeId}`));
+      console.log(chalk.dim(`  Version:    ${shortVersionId}`));
       console.log();
       console.log("  Run your agent:");
       console.log(
@@ -168,10 +168,10 @@ export const composeCommand = new Command()
           console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
         } else if (error.message.includes("Failed to create compose")) {
           console.error(chalk.red("✗ Failed to create compose"));
-          console.error(chalk.gray(`  ${error.message}`));
+          console.error(chalk.dim(`  ${error.message}`));
         } else {
           console.error(chalk.red("✗ Failed to create compose"));
-          console.error(chalk.gray(`  ${error.message}`));
+          console.error(chalk.dim(`  ${error.message}`));
         }
       } else {
         console.error(chalk.red("✗ An unexpected error occurred"));
