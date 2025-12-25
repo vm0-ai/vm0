@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.26.0](https://github.com/vm0-ai/vm0/compare/cli-v4.25.0...cli-v4.26.0) (2025-12-25)
+
+
+### Features
+
+* **cli:** forward vm0 logs options in vm0 cook logs ([#739](https://github.com/vm0-ai/vm0/issues/739)) ([7e71450](https://github.com/vm0-ai/vm0/commit/7e7145045fc6a2e4fe852fe1f7f69e692c98baaa))
+
+
+### Bug Fixes
+
+* **cli:** use ppid to isolate cook state per terminal ([#743](https://github.com/vm0-ai/vm0/issues/743)) ([a52b7d3](https://github.com/vm0-ai/vm0/commit/a52b7d3f71d2395df293cd4912b0776f7d3da21e))
+
 ## [4.25.0](https://github.com/vm0-ai/vm0/compare/cli-v4.24.0...cli-v4.25.0) (2025-12-25)
 
 

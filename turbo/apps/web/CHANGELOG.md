@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.9.2](https://github.com/vm0-ai/vm0/compare/web-v6.9.1...web-v6.9.2) (2025-12-25)
+
+
+### Performance Improvements
+
+* **ci:** increase cli e2e test parallelism from 4 to 20 ([#740](https://github.com/vm0-ai/vm0/issues/740)) ([5ded433](https://github.com/vm0-ai/vm0/commit/5ded43356445829748dfb7c0d8ad85b3505a4c88))
+
 ## [6.9.1](https://github.com/vm0-ai/vm0/compare/web-v6.9.0...web-v6.9.1) (2025-12-25)
 
 
