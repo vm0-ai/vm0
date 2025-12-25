@@ -48,6 +48,12 @@ teardown() {
     fi
 }
 
+@test "Build VM0 conversation fork test agent configuration" {
+    run $CLI_COMMAND compose "$TEST_CONFIG"
+    assert_success
+    assert_output --partial "$AGENT_NAME"
+}
+
 @test "VM0 conversation: output includes conversationId" {
     # This test verifies that run completion output includes conversationId
 
