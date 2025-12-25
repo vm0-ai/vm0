@@ -55,11 +55,11 @@ EOF
     assert_output --partial "Reading config: vm0.yaml"
     assert_output --partial "Config validated"
     assert_output --partial "Processing volumes"
-    assert_output --partial "test-volume"
-    assert_output --partial "Pushed"
+    assert_output --partial "cd test-volume"
+    assert_output --partial "vm0 volume push"
     assert_output --partial "Processing artifact"
-    assert_output --partial "Uploading compose"
-    assert_output --partial "Compose uploaded"
+    assert_output --partial "Composing agent"
+    assert_output --partial "vm0 compose vm0.yaml"
 
     echo "# Step 5: Verify volume was initialized..."
     [ -f "test-volume/.vm0/storage.yaml" ]
@@ -81,7 +81,7 @@ EOF
     # Check for "Run completed successfully" which indicates run finished
     if echo "$output" | grep -q "Run completed successfully"; then
         if echo "$output" | grep -q "Pulling updated artifact"; then
-            assert_output --partial "Artifact pulled"
+            assert_output --partial "vm0 artifact pull"
             echo "# Auto-pull triggered successfully"
         else
             echo "# Artifact version unchanged - no pull needed"
@@ -169,7 +169,8 @@ EOF
 
     echo "# Step 4: Verify normal cook output..."
     assert_output --partial "Config validated"
-    assert_output --partial "Compose uploaded"
+    assert_output --partial "Composing agent"
+    assert_output --partial "vm0 compose vm0.yaml"
 }
 
 @test "cook command appends to existing .env file without overwriting" {
