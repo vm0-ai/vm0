@@ -16,6 +16,7 @@ import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -61,6 +62,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testAgentName = `test-agent-runs-${Date.now()}`;
+  const testScopeId = randomUUID();
   let testComposeId: string;
 
   beforeEach(async () => {
@@ -89,6 +91,18 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
 
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
+
     // Create test compose via API endpoint
     const config = createDefaultComposeConfig(testAgentName);
     const request = createTestRequest(
@@ -114,6 +128,10 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   afterAll(async () => {});
