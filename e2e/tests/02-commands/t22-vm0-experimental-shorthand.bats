@@ -89,7 +89,6 @@ EOF
         --vars "CLOUD_NAME=${CLOUD_NAME_VALUE}" \
         --vars "REGION=${REGION_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo API_KEY=\$API_KEY && echo DB_URL=\$DB_URL && echo CLOUD_NAME=\$CLOUD_NAME && echo REGION=\$REGION"
     assert_success
 
@@ -138,7 +137,6 @@ EOF
         --vars "CLOUD_NAME=${CLOUD_NAME_VALUE}" \
         --vars "REGION=${REGION_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo CLOUD_NAME=\$CLOUD_NAME && echo REGION=\$REGION"
     assert_success
 
@@ -180,7 +178,6 @@ EOF
         --vars "CLOUD_NAME=cloud" \
         --vars "REGION=region" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_failure
 
@@ -218,7 +215,6 @@ EOF
         --secrets "API_KEY=secret1" \
         --secrets "DB_URL=secret2" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo hello"
     assert_failure
 
@@ -266,7 +262,6 @@ EOF
         --secrets "DIFFERENT_SECRET=${DIFFERENT_SECRET_VALUE}" \
         --vars "CLOUD_NAME=${CLOUD_NAME_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
-        --timeout 120 \
         "echo API_KEY=\$API_KEY && echo OVERRIDE_SECRET=\$OVERRIDE_SECRET && echo EXPLICIT_VAR=\$EXPLICIT_VAR"
     assert_success
 
