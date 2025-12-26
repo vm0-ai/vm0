@@ -9,6 +9,15 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
+import {
+  getUserScopeByClerkId,
+  createUserScope,
+  generateDefaultScopeSlug,
+} from "../../../../../src/lib/scope/scope-service";
+import { BadRequestError } from "../../../../../src/lib/errors";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("api:cli:auth:token");
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -71,6 +80,36 @@ const router = tsr.router(cliAuthTokenContract, {
       }
 
       case "authenticated": {
+        const userId = session.userId as string;
+
+        // Auto-create scope if user doesn't have one
+        const existingScope = await getUserScopeByClerkId(userId);
+        if (!existingScope) {
+          const defaultSlug = generateDefaultScopeSlug(userId);
+          try {
+            await createUserScope(userId, defaultSlug);
+            log.debug("auto-created default scope for user", {
+              userId,
+              slug: defaultSlug,
+            });
+          } catch (error) {
+            // Handle rare slug collision - retry with random suffix
+            if (
+              error instanceof BadRequestError &&
+              error.message.includes("already exists")
+            ) {
+              const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;
+              await createUserScope(userId, fallbackSlug);
+              log.debug("auto-created fallback scope for user", {
+                userId,
+                slug: fallbackSlug,
+              });
+            } else {
+              throw error;
+            }
+          }
+        }
+
         // Generate CLI token
         const randomBytes = crypto.randomBytes(32);
         const cliToken = `vm0_live_${randomBytes.toString("base64url")}`;
@@ -79,7 +118,7 @@ const router = tsr.router(cliAuthTokenContract, {
 
         await globalThis.services.db.insert(cliTokens).values({
           token: cliToken,
-          userId: session.userId as string,
+          userId,
           name: "CLI Device Flow Authentication",
           expiresAt,
           createdAt: now,

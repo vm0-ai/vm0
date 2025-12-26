@@ -18,6 +18,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -57,6 +58,7 @@ function createTestRequest(url: string): NextRequest {
 
 describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
   const testRunId = randomUUID();
   const testComposeId = randomUUID();
   const testVersionId =
@@ -90,10 +92,23 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
+
     // Create test agent compose
     await globalThis.services.db.insert(agentComposes).values({
       id: testComposeId,
       userId: testUserId,
+      scopeId: testScopeId,
       name: "test-agent",
       headVersionId: testVersionId,
       createdAt: new Date(),
@@ -182,14 +197,23 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
     it("should reject request for run owned by different user", async () => {
       const otherUserId = `other-user-${Date.now()}-${process.pid}`;
+      const otherScopeId = randomUUID();
       const otherRunId = randomUUID();
       const otherComposeId = randomUUID();
       const otherVersionId =
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
 
+      await globalThis.services.db.insert(scopes).values({
+        id: otherScopeId,
+        slug: `test-${otherScopeId.slice(0, 8)}`,
+        type: "personal",
+        ownerId: otherUserId,
+      });
+
       await globalThis.services.db.insert(agentComposes).values({
         id: otherComposeId,
         userId: otherUserId,
+        scopeId: otherScopeId,
         name: "other-agent",
         headVersionId: otherVersionId,
         createdAt: new Date(),
@@ -241,6 +265,9 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       await globalThis.services.db
         .delete(agentComposes)
         .where(eq(agentComposes.id, otherComposeId));
+      await globalThis.services.db
+        .delete(scopes)
+        .where(eq(scopes.id, otherScopeId));
     });
   });
 

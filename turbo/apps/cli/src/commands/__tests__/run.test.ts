@@ -164,7 +164,10 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+        "my-agent",
+        undefined,
+      );
       expect(apiClient.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
@@ -259,7 +262,10 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+        "my-agent",
+        undefined,
+      );
       expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
         "550e8400-e29b-41d4-a716-446655440000",
         "abc12345",
@@ -325,7 +331,10 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith("my-agent");
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+        "my-agent",
+        undefined,
+      );
       // Should NOT call getComposeVersion for :latest
       expect(apiClient.getComposeVersion).not.toHaveBeenCalled();
       // Should use agentComposeId (not agentComposeVersionId)
@@ -365,6 +374,125 @@ describe("run command", () => {
         expect.stringContaining("Version not found: deadbeef"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should parse scope/name format", async () => {
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        headVersionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        content: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "Success",
+        executionTimeMs: 1000,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
+        provider: "claude-code",
+      });
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "user-abc123/my-agent",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+        "my-agent",
+        "user-abc123",
+      );
+      expect(apiClient.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
+        }),
+      );
+    });
+
+    it("should parse scope/name:version format", async () => {
+      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "my-agent",
+        headVersionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        content: {},
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
+        versionId:
+          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+      });
+      vi.mocked(apiClient.createRun).mockResolvedValue({
+        runId: "run-123",
+        status: "running",
+        sandboxId: "sbx-456",
+        output: "Success",
+        executionTimeMs: 1000,
+        createdAt: "2025-01-01T00:00:00Z",
+      });
+
+      vi.mocked(apiClient.getEvents).mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "completed",
+          result: {
+            checkpointId: "cp-1",
+            agentSessionId: "s-1",
+            conversationId: "c-1",
+            artifact: {},
+          },
+        },
+        provider: "claude-code",
+      });
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        "user-abc123/my-agent:abc12345",
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+        "my-agent",
+        "user-abc123",
+      );
+      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
+        "550e8400-e29b-41d4-a716-446655440000",
+        "abc12345",
+      );
+      expect(apiClient.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentComposeVersionId:
+            "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+        }),
+      );
     });
   });
 

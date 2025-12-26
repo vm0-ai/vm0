@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { scopes } from "./scope";
 
 /**
  * Agent Composes table
@@ -18,16 +19,20 @@ export const agentComposes = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID
+    scopeId: uuid("scope_id")
+      .notNull()
+      .references(() => scopes.id), // Scope reference
     name: varchar("name", { length: 64 }).notNull(), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userNameIdx: uniqueIndex("idx_agent_composes_user_name").on(
-      table.userId,
+    scopeNameIdx: uniqueIndex("idx_agent_composes_scope_name").on(
+      table.scopeId,
       table.name,
     ),
+    scopeIdx: index("idx_agent_composes_scope").on(table.scopeId),
   }),
 );
 

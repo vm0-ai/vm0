@@ -13,6 +13,10 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
+import {
+  getUserScopeByClerkId,
+  getScopeBySlug,
+} from "../../../../src/lib/scope/scope-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
@@ -29,12 +33,45 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
+    // Resolve scope: use provided scope or fall back to user's default scope
+    let scopeId: string;
+    if (query.scope) {
+      const scope = await getScopeBySlug(query.scope);
+      if (!scope) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: `Scope not found: ${query.scope}`,
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+      scopeId = scope.id;
+    } else {
+      const userScope = await getUserScopeByClerkId(userId);
+      if (!userScope) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message:
+                "Please set up your scope first. Login again with: vm0 login",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+      scopeId = userScope.id;
+    }
+
     const composes = await globalThis.services.db
       .select()
       .from(agentComposes)
       .where(
         and(
-          eq(agentComposes.userId, userId),
+          eq(agentComposes.scopeId, scopeId),
           eq(agentComposes.name, query.name),
         ),
       )
@@ -190,13 +227,28 @@ const router = tsr.router(composesMainContract, {
     // Compute content-addressable version ID
     const versionId = computeComposeVersionId(content);
 
-    // Check if compose exists for this user + name
+    // Get user's scope (required for compose creation)
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message:
+              "Please set up your scope first. Login again with: vm0 login",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    // Check if compose exists for this scope + name
     const existing = await globalThis.services.db
       .select()
       .from(agentComposes)
       .where(
         and(
-          eq(agentComposes.userId, userId),
+          eq(agentComposes.scopeId, userScope.id),
           eq(agentComposes.name, normalizedAgentName),
         ),
       )
@@ -213,6 +265,7 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
+          scopeId: userScope.id,
           name: normalizedAgentName,
         })
         .returning({ id: agentComposes.id });

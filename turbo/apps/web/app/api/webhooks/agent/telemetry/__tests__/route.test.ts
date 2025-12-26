@@ -10,6 +10,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createTestSandboxToken } from "../../../../../../src/test/api-test-helpers";
@@ -46,6 +47,7 @@ const mockIngestToAxiom = vi.mocked(ingestToAxiom);
 
 describe("POST /api/webhooks/agent/telemetry", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
   const testRunId = randomUUID();
   const testComposeId = randomUUID();
   const testVersionId =
@@ -80,10 +82,23 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       .delete(agentComposes)
       .where(eq(agentComposes.id, testComposeId));
 
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
+
     // Create test agent compose
     await globalThis.services.db.insert(agentComposes).values({
       id: testComposeId,
       userId: testUserId,
+      scopeId: testScopeId,
       name: "test-agent",
       headVersionId: testVersionId,
       createdAt: new Date(),

@@ -213,7 +213,7 @@ describe("compose command", () => {
         expect.stringContaining("Compose created: test-agent"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose ID: cmp-123"),
+        expect.stringContaining("Version: a1b2c3d4"),
       );
     });
 

@@ -124,29 +124,46 @@ function loadValues(
 }
 
 /**
- * Parse identifier with optional version specifier
- * Format: name:version or just name
- * Examples: "demo:d084948d", "demo:latest", "demo"
+ * Parse identifier with optional scope and version specifier
+ * Format: [scope/]name[:version]
+ * Examples:
+ *   "demo:d084948d"      → { name: "demo", version: "d084948d" }
+ *   "demo:latest"        → { name: "demo", version: "latest" }
+ *   "demo"               → { name: "demo" }
+ *   "lancy/demo"         → { scope: "lancy", name: "demo" }
+ *   "lancy/demo:abc123"  → { scope: "lancy", name: "demo", version: "abc123" }
  */
 function parseIdentifier(identifier: string): {
+  scope?: string;
   name: string;
   version?: string;
 } {
-  // UUIDs don't contain colons, so check first
+  // UUIDs don't contain colons or slashes, so check first
   if (isUUID(identifier)) {
     return { name: identifier };
   }
 
-  // Parse name:version format using lastIndexOf to handle edge cases
-  const colonIndex = identifier.lastIndexOf(":");
-  if (colonIndex > 0 && colonIndex < identifier.length - 1) {
+  let scope: string | undefined;
+  let rest = identifier;
+
+  // Check for scope (contains "/")
+  const slashIndex = identifier.indexOf("/");
+  if (slashIndex > 0) {
+    scope = identifier.slice(0, slashIndex);
+    rest = identifier.slice(slashIndex + 1);
+  }
+
+  // Parse name:version format using indexOf (version comes after name)
+  const colonIndex = rest.indexOf(":");
+  if (colonIndex > 0 && colonIndex < rest.length - 1) {
     return {
-      name: identifier.slice(0, colonIndex),
-      version: identifier.slice(colonIndex + 1),
+      scope,
+      name: rest.slice(0, colonIndex),
+      version: rest.slice(colonIndex + 1),
     };
   }
 
-  return { name: identifier };
+  return { scope, name: rest };
 }
 
 interface PollOptions {
@@ -296,7 +313,7 @@ const runCmd = new Command()
   .description("Execute an agent")
   .argument(
     "<identifier>",
-    "Agent name, config ID, or name:version (e.g., 'my-agent', 'my-agent:abc123', 'my-agent:latest')",
+    "Agent reference: [scope/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
@@ -346,8 +363,8 @@ const runCmd = new Command()
       const verbose = options.verbose;
 
       try {
-        // 1. Parse identifier for optional version specifier
-        const { name, version } = parseIdentifier(identifier);
+        // 1. Parse identifier for optional scope and version specifier
+        const { scope, name, version } = parseIdentifier(identifier);
 
         // 2. Resolve name to composeId and get compose content
         let composeId: string;
@@ -371,10 +388,11 @@ const runCmd = new Command()
         } else {
           // It's an agent name - resolve to compose ID
           if (verbose) {
-            console.log(chalk.dim(`  Resolving agent name: ${name}`));
+            const displayRef = scope ? `${scope}/${name}` : name;
+            console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
           try {
-            const compose = await apiClient.getComposeByName(name);
+            const compose = await apiClient.getComposeByName(name, scope);
             composeId = compose.id;
             composeContent = compose.content;
             if (verbose) {
@@ -382,7 +400,8 @@ const runCmd = new Command()
             }
           } catch (error) {
             if (error instanceof Error) {
-              console.error(chalk.red(`✗ Agent not found: ${name}`));
+              const displayRef = scope ? `${scope}/${name}` : name;
+              console.error(chalk.red(`✗ Agent not found: ${displayRef}`));
               console.error(
                 chalk.dim(
                   "  Make sure you've composed the agent with: vm0 compose",

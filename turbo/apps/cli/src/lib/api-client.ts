@@ -182,12 +182,20 @@ class ApiClient {
     return apiUrl;
   }
 
-  async getComposeByName(name: string): Promise<GetComposeResponse> {
+  async getComposeByName(
+    name: string,
+    scope?: string,
+  ): Promise<GetComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
+    const params = new URLSearchParams({ name });
+    if (scope) {
+      params.append("scope", scope);
+    }
+
     const response = await fetch(
-      `${baseUrl}/api/agent/composes?name=${encodeURIComponent(name)}`,
+      `${baseUrl}/api/agent/composes?${params.toString()}`,
       {
         method: "GET",
         headers,

@@ -94,14 +94,16 @@ const createComposeResponseSchema = z.object({
  */
 export const composesMainContract = c.router({
   /**
-   * GET /api/agent/composes?name={name}
+   * GET /api/agent/composes?name={name}&scope={scope}
    * Get agent compose by name with HEAD version content
+   * If scope is not provided, uses the authenticated user's default scope
    */
   getByName: {
     method: "GET",
     path: "/api/agent/composes",
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
+      scope: z.string().optional(),
     }),
     responses: {
       200: composeResponseSchema,

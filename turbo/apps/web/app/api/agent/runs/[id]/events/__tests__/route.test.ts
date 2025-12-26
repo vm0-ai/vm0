@@ -19,6 +19,7 @@ import {
   agentComposeVersions,
 } from "../../../../../../../src/db/schema/agent-compose";
 import { cliTokens } from "../../../../../../../src/db/schema/cli-tokens";
+import { scopes } from "../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -76,6 +77,7 @@ function createAxiomAgentEvent(overrides: {
 describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
   const testAgentName = `test-agent-run-events-${Date.now()}`;
   const testRunId = randomUUID(); // UUID for agent run
   let testVersionId: string;
@@ -118,6 +120,16 @@ describe("GET /api/agent/runs/:id/events", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db.delete(scopes).where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
 
     // Create test compose via API endpoint
     const config = createDefaultComposeConfig(testAgentName);
@@ -216,13 +228,23 @@ describe("GET /api/agent/runs/:id/events", () => {
       const otherUserId = `other-user-${Date.now()}-${process.pid}`;
       const otherRunId = randomUUID();
       const otherComposeId = randomUUID();
+      const otherScopeId = randomUUID();
       const otherVersionId =
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+
+      // Create scope for other user
+      await globalThis.services.db.insert(scopes).values({
+        id: otherScopeId,
+        slug: `test-${otherScopeId.slice(0, 8)}`,
+        type: "personal",
+        ownerId: otherUserId,
+      });
 
       // Create config for other user
       await globalThis.services.db.insert(agentComposes).values({
         id: otherComposeId,
         userId: otherUserId,
+        scopeId: otherScopeId,
         name: "other-agent",
         headVersionId: otherVersionId,
         createdAt: new Date(),
@@ -706,6 +728,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentComposes).values({
         id: codexComposeId,
         userId: testUserId,
+        scopeId: testScopeId,
         name: "codex-agent",
         headVersionId: codexVersionId,
         createdAt: new Date(),
@@ -768,6 +791,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       await globalThis.services.db.insert(agentComposes).values({
         id: explicitComposeId,
         userId: testUserId,
+        scopeId: testScopeId,
         name: "explicit-agent",
         headVersionId: explicitVersionId,
         createdAt: new Date(),

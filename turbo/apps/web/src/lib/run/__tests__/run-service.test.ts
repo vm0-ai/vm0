@@ -19,6 +19,8 @@ import {
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
+import { scopes } from "../../../db/schema/scope";
+import { randomUUID } from "crypto";
 
 // Mock e2b-service to prevent env() access during module load
 vi.mock("../../e2b", () => ({
@@ -41,8 +43,9 @@ let NotFoundError: typeof import("../../errors").NotFoundError;
 let UnauthorizedError: typeof import("../../errors").UnauthorizedError;
 let agentSessionService: typeof import("../../agent-session").agentSessionService;
 
-// Test user ID for isolation
+// Test user ID and scope for isolation
 const TEST_USER_ID = "test-user-run-service";
+const TEST_SCOPE_ID = randomUUID();
 
 describe("run-service", () => {
   beforeAll(async () => {
@@ -57,6 +60,15 @@ describe("run-service", () => {
 
     const agentSessionModule = await import("../../agent-session");
     agentSessionService = agentSessionModule.agentSessionService;
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.delete(scopes).where(eq(scopes.id, TEST_SCOPE_ID));
+    await globalThis.services.db.insert(scopes).values({
+      id: TEST_SCOPE_ID,
+      slug: `test-${TEST_SCOPE_ID.slice(0, 8)}`,
+      type: "personal",
+      ownerId: TEST_USER_ID,
+    });
   });
 
   beforeEach(async () => {
@@ -244,6 +256,7 @@ describe("run-service", () => {
             .insert(agentComposes)
             .values({
               userId: TEST_USER_ID,
+              scopeId: TEST_SCOPE_ID,
               name: "test-compose-run-service",
             })
             .returning();

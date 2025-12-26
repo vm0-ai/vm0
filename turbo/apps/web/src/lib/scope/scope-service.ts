@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { users } from "../../db/schema/user";
@@ -20,6 +21,18 @@ const RESERVED_SLUGS = ["vm0", "system", "admin", "api", "app", "www"];
  * - must start and end with alphanumeric
  */
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/;
+
+/**
+ * Generate a deterministic default scope slug from Clerk user ID.
+ * Format: user-{8 hex chars from SHA-256 hash}
+ *
+ * @param clerkUserId - The Clerk user ID to hash
+ * @returns A slug in format "user-xxxxxxxx" (13 chars total)
+ */
+export function generateDefaultScopeSlug(clerkUserId: string): string {
+  const hash = createHash("sha256").update(clerkUserId).digest("hex");
+  return `user-${hash.slice(0, 8)}`;
+}
 
 /**
  * Validate scope slug format

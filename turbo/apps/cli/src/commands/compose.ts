@@ -198,21 +198,33 @@ export const composeCommand = new Command()
         content: config,
       });
 
-      // 6. Display result
-      const shortVersionId = response.versionId.slice(0, 8);
-      if (response.action === "created") {
-        console.log(chalk.green(`✓ Compose created: ${response.name}`));
-      } else {
-        console.log(chalk.green(`✓ Compose version exists: ${response.name}`));
+      // Get user's scope for display
+      let scopeSlug: string | undefined;
+      try {
+        const scopeResponse = await apiClient.getScope();
+        scopeSlug = scopeResponse.slug;
+      } catch {
+        // Scope might not be available, continue without it
       }
 
-      console.log(chalk.dim(`  Compose ID: ${response.composeId}`));
-      console.log(chalk.dim(`  Version:    ${shortVersionId}`));
+      // 6. Display result
+      const shortVersionId = response.versionId.slice(0, 8);
+      const displayName = scopeSlug
+        ? `${scopeSlug}/${response.name}`
+        : response.name;
+
+      if (response.action === "created") {
+        console.log(chalk.green(`✓ Compose created: ${displayName}`));
+      } else {
+        console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
+      }
+
+      console.log(chalk.dim(`  Version: ${shortVersionId}`));
       console.log();
       console.log("  Run your agent:");
       console.log(
         chalk.cyan(
-          `    vm0 run ${response.name} --artifact-name <artifact> "your prompt"`,
+          `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
         ),
       );
     } catch (error) {
