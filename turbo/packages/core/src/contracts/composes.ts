@@ -43,7 +43,7 @@ const agentDefinitionSchema = z.object({
    * is routed through mitmproxy -> VM0 Proxy for decryption.
    * Default: false (plaintext secrets in env vars)
    */
-  beta_network_security: z.boolean().optional().default(false),
+  experimental_network_security: z.boolean().optional().default(false),
   /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md

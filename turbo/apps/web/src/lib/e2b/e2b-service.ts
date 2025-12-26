@@ -174,7 +174,7 @@ export class E2BService {
       // Enable proxy mode for network security
       // When true, mitmproxy will be set up to intercept traffic
       // and decrypt vm0_enc_ tokens before forwarding to APIs
-      if (context.betaNetworkSecurity) {
+      if (context.experimentalNetworkSecurity) {
         sandboxEnvVars.VM0_PROXY_ENABLED = "true";
         // Set SSL certificate environment variables for mitmproxy CA
         // These ensure Python's requests/urllib and other libraries trust the proxy CA
@@ -265,7 +265,7 @@ export class E2BService {
       await this.startAgentExecution(
         sandbox,
         context.runId,
-        context.betaNetworkSecurity || false,
+        context.experimentalNetworkSecurity || false,
       );
       log.debug(`[${context.runId}] Agent execution command sent`);
 

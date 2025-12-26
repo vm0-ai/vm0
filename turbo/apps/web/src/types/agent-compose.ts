@@ -28,7 +28,7 @@ export interface AgentDefinition {
    * is routed through mitmproxy -> VM0 Proxy for decryption.
    * Default: false (plaintext secrets in env vars)
    */
-  beta_network_security?: boolean;
+  experimental_network_security?: boolean;
   /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md

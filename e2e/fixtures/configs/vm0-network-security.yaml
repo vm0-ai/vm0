@@ -5,5 +5,5 @@ agents:
     description: "Test agent with network security (proxy mode)"
     provider: claude-code
     image: "vm0/claude-code:dev"
-    beta_network_security: true
+    experimental_network_security: true
     working_dir: /home/user/workspace

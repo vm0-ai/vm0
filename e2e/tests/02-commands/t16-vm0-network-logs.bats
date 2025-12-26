@@ -2,7 +2,7 @@
 
 # Test VM0 network logs with network security mode
 # This test verifies that:
-# 1. Agent runs with beta_network_security enabled capture network traffic
+# 1. Agent runs with experimental_network_security enabled capture network traffic
 # 2. The vm0 logs --network command retrieves network logs
 # 3. Network logs contain expected fields (method, url, status, latency)
 #

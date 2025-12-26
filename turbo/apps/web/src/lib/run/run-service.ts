@@ -34,16 +34,16 @@ const log = logger("service:run");
  */
 interface ExpandedEnvironmentResult {
   environment?: Record<string, string>;
-  betaNetworkSecurity: boolean;
+  experimentalNetworkSecurity: boolean;
 }
 
 /**
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
- * When beta_network_security is enabled:
+ * When experimental_network_security is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
- * - The betaNetworkSecurity flag is set to true for e2b-service
+ * - The experimentalNetworkSecurity flag is set to true for e2b-service
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
@@ -61,7 +61,7 @@ function expandEnvironmentFromCompose(
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    return { environment: undefined, betaNetworkSecurity: false };
+    return { environment: undefined, experimentalNetworkSecurity: false };
   }
 
   // Get first agent's environment (currently only one agent supported)
@@ -70,12 +70,14 @@ function expandEnvironmentFromCompose(
   if (!firstAgent?.environment) {
     return {
       environment: undefined,
-      betaNetworkSecurity: firstAgent?.beta_network_security ?? false,
+      experimentalNetworkSecurity:
+        firstAgent?.experimental_network_security ?? false,
     };
   }
 
   const environment = firstAgent.environment;
-  const betaNetworkSecurity = firstAgent.beta_network_security ?? false;
+  const experimentalNetworkSecurity =
+    firstAgent.experimental_network_security ?? false;
 
   // Extract all variable references to determine what we need
   const refs = extractVariableReferences(environment);
@@ -106,7 +108,7 @@ function expandEnvironmentFromCompose(
     }
 
     // If network security is enabled, encrypt secrets into proxy tokens
-    if (betaNetworkSecurity) {
+    if (experimentalNetworkSecurity) {
       log.debug(
         `Network security enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
       );
@@ -161,7 +163,7 @@ function expandEnvironmentFromCompose(
     );
   }
 
-  return { environment: result, betaNetworkSecurity };
+  return { environment: result, experimentalNetworkSecurity };
 }
 
 /**
@@ -830,14 +832,15 @@ export class RunService {
     }
 
     // Step 4: Expand environment variables from compose config using vars and secrets
-    // When beta_network_security is enabled, secrets are encrypted into proxy tokens
-    const { environment, betaNetworkSecurity } = expandEnvironmentFromCompose(
-      agentCompose,
-      vars,
-      secrets,
-      params.userId,
-      params.runId,
-    );
+    // When experimental_network_security is enabled, secrets are encrypted into proxy tokens
+    const { environment, experimentalNetworkSecurity } =
+      expandEnvironmentFromCompose(
+        agentCompose,
+        vars,
+        secrets,
+        params.userId,
+        params.runId,
+      );
 
     // Build final execution context
     return {
@@ -853,7 +856,7 @@ export class RunService {
       artifactVersion,
       volumeVersions,
       environment,
-      betaNetworkSecurity,
+      experimentalNetworkSecurity,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

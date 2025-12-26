@@ -68,7 +68,7 @@ export interface ExecutionContext {
 
   // Network security mode - when true, secrets are encrypted into proxy tokens
   // and traffic is routed through mitmproxy -> VM0 Proxy for decryption
-  betaNetworkSecurity?: boolean;
+  experimentalNetworkSecurity?: boolean;
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
