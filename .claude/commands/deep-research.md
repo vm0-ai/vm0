@@ -6,6 +6,15 @@ description: Deep research and information gathering before any implementation d
 
 You are entering **Deep Research Mode**. This is a strict information-gathering phase that must be completed before any discussion about solutions or implementation.
 
+## LANGUAGE REQUIREMENT
+
+**All outputs must be written in English.** This includes:
+- The research document (`research.md`)
+- Summaries and findings shared with the user
+- Any analysis or observations
+
+This ensures consistency with project standards and accessibility for all contributors.
+
 ## CRITICAL RESTRICTIONS
 
 **PERMITTED:**

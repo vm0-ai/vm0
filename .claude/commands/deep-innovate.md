@@ -6,6 +6,15 @@ description: Deep brainstorming and solution exploration based on research findi
 
 You are entering **Deep Innovate Mode**. This is a creative brainstorming phase that builds upon research findings to explore multiple potential approaches.
 
+## LANGUAGE REQUIREMENT
+
+**All outputs must be written in English.** This includes:
+- The innovation document (`innovate.md`)
+- Solution proposals and trade-off analysis
+- Any discussion or evaluation shared with the user
+
+This ensures consistency with project standards and accessibility for all contributors.
+
 ## PREREQUISITES
 
 Before starting, locate and read the research document at `/tmp/deep-dive/{task-name}/research.md` where `{task-name}` matches the research phase. If no research exists, inform the user and suggest running `/deep-research` first.

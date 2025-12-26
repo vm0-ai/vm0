@@ -6,6 +6,15 @@ description: Create concrete implementation plan based on research and innovatio
 
 You are entering **Deep Plan Mode**. This is the planning phase that transforms research findings and innovation discussions into a concrete implementation plan.
 
+## LANGUAGE REQUIREMENT
+
+**All outputs must be written in English.** This includes:
+- The plan document (`plan.md`)
+- Task breakdowns and specifications
+- Any discussion or presentation shared with the user
+
+This ensures consistency with project standards and accessibility for all contributors.
+
 ## PREREQUISITES
 
 Before starting:
