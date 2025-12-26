@@ -77,23 +77,7 @@ EOF
 # ============================================
 
 @test "vm0 run with scope/name format resolves agent correctly" {
-    echo "# Step 1: Get user's scope..."
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        echo "# No scope found, skipping test"
-        skip "User has no scope configured"
-    fi
-
-    # Extract scope slug from output
-    USER_SCOPE=$(echo "$output" | grep -oP 'Slug:\s+\K[a-z0-9-]+' | head -1)
-    echo "# User scope: $USER_SCOPE"
-
-    [ -n "$USER_SCOPE" ] || {
-        echo "# Failed to extract user scope"
-        skip "Could not extract user scope"
-    }
-
-    echo "# Step 2: Creating agent config..."
+    echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -105,18 +89,29 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Step 3: Composing agent..."
+    echo "# Step 2: Composing agent..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 4: Setting up artifact..."
+    # Extract scope from compose output (format: "Compose created: scope/agent-name")
+    # This ensures we use the same scope that compose actually used, avoiding race conditions
+    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
+    echo "# Scope from compose output: $USER_SCOPE"
+
+    [ -n "$USER_SCOPE" ] || {
+        echo "# Failed to extract scope from compose output"
+        echo "# Output was: $output"
+        return 1
+    }
+
+    echo "# Step 3: Setting up artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init >/dev/null
     run $CLI_COMMAND artifact push
     assert_success
 
-    echo "# Step 5: Running with scope/name format..."
+    echo "# Step 4: Running with scope/name format..."
     run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from scope test"
@@ -124,17 +119,7 @@ EOF
 }
 
 @test "vm0 run with scope/name:version format works correctly" {
-    echo "# Step 1: Get user's scope..."
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        skip "User has no scope configured"
-    fi
-
-    USER_SCOPE=$(echo "$output" | grep -oP 'Slug:\s+\K[a-z0-9-]+' | head -1)
-    [ -n "$USER_SCOPE" ] || skip "Could not extract user scope"
-    echo "# User scope: $USER_SCOPE"
-
-    echo "# Step 2: Creating agent config..."
+    echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -146,13 +131,23 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Step 3: Composing agent..."
+    echo "# Step 2: Composing agent..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
+
+    # Extract scope from compose output (avoids race condition with parallel tests)
+    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
+    echo "# Scope from compose output: $USER_SCOPE"
 
     # Extract version ID from compose output
     VERSION_ID=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version ID: $VERSION_ID"
+
+    [ -n "$USER_SCOPE" ] || {
+        echo "# Failed to extract scope from compose output"
+        echo "# Output was: $output"
+        return 1
+    }
 
     [ -n "$VERSION_ID" ] || {
         echo "# Failed to extract version ID from output:"
@@ -160,14 +155,14 @@ EOF
         return 1
     }
 
-    echo "# Step 4: Setting up artifact..."
+    echo "# Step 3: Setting up artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init >/dev/null
     run $CLI_COMMAND artifact push
     assert_success
 
-    echo "# Step 5: Running with scope/name:version format..."
+    echo "# Step 4: Running with scope/name:version format..."
     run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:$VERSION_ID" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from versioned scope test"
@@ -175,17 +170,7 @@ EOF
 }
 
 @test "vm0 run with scope/name:latest works correctly" {
-    echo "# Step 1: Get user's scope..."
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        skip "User has no scope configured"
-    fi
-
-    USER_SCOPE=$(echo "$output" | grep -oP 'Slug:\s+\K[a-z0-9-]+' | head -1)
-    [ -n "$USER_SCOPE" ] || skip "Could not extract user scope"
-    echo "# User scope: $USER_SCOPE"
-
-    echo "# Step 2: Creating agent config..."
+    echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -197,18 +182,28 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Step 3: Composing agent..."
+    echo "# Step 2: Composing agent..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 4: Setting up artifact..."
+    # Extract scope from compose output (avoids race condition with parallel tests)
+    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
+    echo "# Scope from compose output: $USER_SCOPE"
+
+    [ -n "$USER_SCOPE" ] || {
+        echo "# Failed to extract scope from compose output"
+        echo "# Output was: $output"
+        return 1
+    }
+
+    echo "# Step 3: Setting up artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init >/dev/null
     run $CLI_COMMAND artifact push
     assert_success
 
-    echo "# Step 5: Running with scope/name:latest format..."
+    echo "# Step 4: Running with scope/name:latest format..."
     run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:latest" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from latest scope test"
@@ -252,17 +247,7 @@ EOF
 }
 
 @test "vm0 run with scope/name:nonexistent-version shows error" {
-    echo "# Step 1: Get user's scope..."
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        skip "User has no scope configured"
-    fi
-
-    USER_SCOPE=$(echo "$output" | grep -oP 'Slug:\s+\K[a-z0-9-]+' | head -1)
-    [ -n "$USER_SCOPE" ] || skip "Could not extract user scope"
-    echo "# User scope: $USER_SCOPE"
-
-    echo "# Step 2: Creating agent config..."
+    echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -274,11 +259,21 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    echo "# Step 3: Composing agent..."
+    echo "# Step 2: Composing agent..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 4: Trying to run with non-existent version..."
+    # Extract scope from compose output (avoids race condition with parallel tests)
+    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
+    echo "# Scope from compose output: $USER_SCOPE"
+
+    [ -n "$USER_SCOPE" ] || {
+        echo "# Failed to extract scope from compose output"
+        echo "# Output was: $output"
+        return 1
+    }
+
+    echo "# Step 3: Trying to run with non-existent version..."
     run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:deadbeef" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
