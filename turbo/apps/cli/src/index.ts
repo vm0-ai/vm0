@@ -11,6 +11,7 @@ import { imageCommand } from "./commands/image";
 import { logsCommand } from "./commands/logs";
 import { scopeCommand } from "./commands/scope";
 import { initCommand } from "./commands/init";
+import { setupGithubCommand } from "./commands/setup-github";
 
 const program = new Command();
 
@@ -75,6 +76,7 @@ program.addCommand(imageCommand);
 program.addCommand(logsCommand);
 program.addCommand(scopeCommand);
 program.addCommand(initCommand);
+program.addCommand(setupGithubCommand);
 
 export { program };
 
