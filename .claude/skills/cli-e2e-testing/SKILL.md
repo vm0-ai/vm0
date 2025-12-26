@@ -68,7 +68,33 @@ export VOLUME_NAME="e2e-volume-$(date +%s)"
 export ARTIFACT_NAME="e2e-artifact-$(date +%s)"
 ```
 
-### 2. Extended Timeouts for CI
+### 2. Inline Config Files (Important!)
+
+**Always create config files inline within tests** instead of using shared fixture files. This avoids conflicts when multiple test suites run in parallel (each test suite may compose the same config simultaneously).
+
+```bash
+@test "vm0 compose with custom config" {
+    echo "# Create config inline"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    description: "Test agent"
+EOF
+
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+}
+```
+
+**Why inline configs:**
+- Each test file gets its own isolated `$TEST_DIR` (created in `setup()`)
+- Parallel test execution won't conflict on shared config files
+- Test is self-contained and easier to understand
+
+### 3. Extended Timeouts for CI
 
 ```bash
 # CI environments are slower - use 120s timeout
@@ -78,7 +104,7 @@ run $CLI_COMMAND run agent-name \
     "echo hello"
 ```
 
-### 3. Debug Output with Echo Comments
+### 4. Debug Output with Echo Comments
 
 ```bash
 @test "multi-step test" {
@@ -93,7 +119,7 @@ run $CLI_COMMAND run agent-name \
 }
 ```
 
-### 4. Extract IDs from Output
+### 5. Extract IDs from Output
 
 ```bash
 # Extract UUID patterns
@@ -108,7 +134,7 @@ SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
 }
 ```
 
-### 5. Test Both Success and Failure
+### 6. Test Both Success and Failure
 
 ```bash
 @test "valid input succeeds" {
@@ -123,7 +149,7 @@ SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
 }
 ```
 
-### 6. Suppress Output for Setup Commands
+### 7. Suppress Output for Setup Commands
 
 ```bash
 # Use >/dev/null for setup commands that must succeed
@@ -146,11 +172,11 @@ e2e/
 │       ├── t01-validation.bats
 │       ├── t03-volumes.bats
 │       └── t04-vm0-artifact-checkpoint.bats
-├── fixtures/
-│   └── configs/           # Test agent configurations
 └── helpers/
     └── setup.bash         # Shared setup (loads bats-assert)
 ```
+
+**Note:** Config files should be created inline within each test (see "Inline Config Files" pattern above), not stored in a shared fixtures directory.
 
 ## Naming Convention
 
@@ -172,6 +198,7 @@ bats -j 4 --no-parallelize-within-files tests/**/*.bats
 Before submitting:
 
 - [ ] Uses unique resource names with timestamp
+- [ ] Creates config files inline (not in shared fixtures)
 - [ ] Has `setup()` and `teardown()` for cleanup
 - [ ] Uses `--timeout 120` for `vm0 run` commands
 - [ ] Tests both success and failure cases
