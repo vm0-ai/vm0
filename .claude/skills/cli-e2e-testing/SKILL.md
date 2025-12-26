@@ -14,7 +14,7 @@ Tests use BATS (Bash Automated Testing System) located in `e2e/`.
 ./e2e/run.sh
 
 # Run specific test file
-./e2e/test/libs/bats/bin/bats e2e/tests/02-commands/t03-volumes.bats
+./e2e/test/libs/bats/bin/bats e2e/tests/02-parallel/t03-volumes.bats
 ```
 
 ## Test File Template
@@ -166,9 +166,10 @@ assert_success
 ```
 e2e/
 ├── tests/
-│   ├── 01-smoke/          # Basic CLI availability tests
-│   │   └── t01-smoke.bats
-│   └── 02-commands/       # Feature-specific tests
+│   ├── 01-serial/         # Tests that must run sequentially (before parallel tests)
+│   │   ├── ser-t01-smoke.bats
+│   │   └── ser-t02-vm0-scope.bats
+│   └── 02-parallel/       # Feature-specific tests (run in parallel with -j 10)
 │       ├── t01-validation.bats
 │       ├── t03-volumes.bats
 │       └── t04-vm0-artifact-checkpoint.bats
@@ -176,21 +177,38 @@ e2e/
     └── setup.bash         # Shared setup (loads bats-assert)
 ```
 
+### Serial vs Parallel Tests
+
+**Default:** Place tests in `02-parallel/`. Tests run in parallel with `-j 10`.
+
+**Use `01-serial/` when:**
+- Test modifies shared user state (e.g., `scope set --force`)
+- Test sets up state that parallel tests depend on
+- Race conditions could occur with parallel execution
+
+**Serial test naming:** Use `ser-tXX-name.bats` prefix for files in `01-serial/`.
+
 **Note:** Config files should be created inline within each test (see "Inline Config Files" pattern above), not stored in a shared fixtures directory.
 
 ## Naming Convention
 
-- Test files: `tXX-feature-name.bats`
+- Serial test files: `ser-tXX-feature-name.bats` (in `01-serial/`)
+- Parallel test files: `tXX-feature-name.bats` (in `02-parallel/`)
 - Test resources: `e2e-{type}-$(date +%s)`
 
 ## CI Integration
 
-Tests run with parallel file execution:
+Tests run in two steps:
 ```bash
-bats -j 4 --no-parallelize-within-files tests/**/*.bats
+# Step 1: Run serial tests sequentially (establishes shared state like scope)
+bats ./e2e/tests/01-serial/*.bats
+
+# Step 2: Run parallel tests with -j 10
+bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
 ```
 
-- `-j 4`: Run up to 4 test files in parallel
+- Serial tests run first to establish stable shared state
+- `-j 10`: Run up to 10 test files in parallel
 - `--no-parallelize-within-files`: Tests within a file run sequentially
 
 ## Checklist
@@ -203,4 +221,5 @@ Before submitting:
 - [ ] Uses `--timeout 120` for `vm0 run` commands
 - [ ] Tests both success and failure cases
 - [ ] Includes debug echo comments for multi-step tests
-- [ ] Runs successfully: `./e2e/run.sh tests/02-commands/your-test.bats`
+- [ ] Placed in correct directory (01-serial for shared state, 02-parallel for most tests)
+- [ ] Runs successfully: `./e2e/run.sh tests/02-parallel/your-test.bats`

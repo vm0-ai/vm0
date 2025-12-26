@@ -19,7 +19,7 @@ teardown() {
 
 teardown_file() {
     # Set a stable scope at the end for subsequent parallel tests to use
-    # This ensures all tests in 02-parallelize have a consistent scope
+    # This ensures all tests in 02-parallel have a consistent scope
     $CLI_COMMAND scope set "e2e-stable" --force >/dev/null 2>&1 || true
 }
 
@@ -230,34 +230,3 @@ EOF
     assert_output --partial "$NEW_SLUG"
 }
 
-# ============================================
-# Full Image Build + @scope/name Workflow Tests
-# ============================================
-
-@test "vm0 image build creates image with scope association" {
-    # Ensure user has a scope
-    SCOPE_SLUG="e2e-img-$(date +%s)"
-    run $CLI_COMMAND scope set "$SCOPE_SLUG" --force
-    assert_success
-
-    # Build an image using E2B base image (has required packages pre-installed)
-    TEST_DIR="$(mktemp -d)"
-    cat > "$TEST_DIR/Dockerfile" <<EOF
-FROM e2bdev/code-interpreter:latest
-RUN echo "scope-test-marker" > /tmp/scope-test.txt
-EOF
-
-    IMAGE_NAME="scope-test-img"
-    run $CLI_COMMAND image build --file "$TEST_DIR/Dockerfile" --name "$IMAGE_NAME" --delete-existing
-    assert_success
-    assert_output --partial "Building image"
-    assert_output --partial "Build ID"
-
-    rm -rf "$TEST_DIR"
-}
-
-@test "vm0 image list shows images after build" {
-    run $CLI_COMMAND image list
-    assert_success
-    # Should show at least one image (from previous test or existing)
-}

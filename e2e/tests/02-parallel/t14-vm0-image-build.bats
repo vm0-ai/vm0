@@ -69,7 +69,7 @@ teardown() {
 # ============================================
 
 @test "vm0 image build submits build request successfully" {
-    # Scope is already set by 01-no-parallelize/t19-vm0-scope.bats (teardown_file sets "e2e-stable")
+    # Scope is already set by 01-serial/ser-t02-vm0-scope.bats (teardown_file sets "e2e-stable")
 
     # Submit build request with --delete-existing to test delete functionality
     run $CLI_COMMAND image build --file "$TEST_DOCKERFILE" --name "$TEST_IMAGE_NAME" --delete-existing
@@ -78,4 +78,27 @@ teardown() {
     assert_success
     assert_output --partial "Building image"
     assert_output --partial "Build ID"
+}
+
+@test "vm0 image build creates image with scope association" {
+    # Scope is already set by 01-serial/ser-t02-vm0-scope.bats (teardown_file sets "e2e-stable")
+    # This test verifies that image build correctly associates with user's scope
+
+    # Build an image using E2B base image (has required packages pre-installed)
+    cat > "$TEST_TMP_DIR/Dockerfile.scope" <<EOF
+FROM e2bdev/code-interpreter:latest
+RUN echo "scope-test-marker" > /tmp/scope-test.txt
+EOF
+
+    IMAGE_NAME="scope-test-img"
+    run $CLI_COMMAND image build --file "$TEST_TMP_DIR/Dockerfile.scope" --name "$IMAGE_NAME" --delete-existing
+    assert_success
+    assert_output --partial "Building image"
+    assert_output --partial "Build ID"
+}
+
+@test "vm0 image list shows images after build" {
+    run $CLI_COMMAND image list
+    assert_success
+    # Should show at least one image (from previous test or existing)
 }

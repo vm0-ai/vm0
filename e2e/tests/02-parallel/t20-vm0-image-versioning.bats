@@ -7,7 +7,7 @@
 
 load '../../helpers/setup'
 
-# Note: Scope is already set by 01-no-parallelize/t19-vm0-scope.bats (teardown_file sets "e2e-stable")
+# Note: Scope is already set by 01-serial/ser-t02-vm0-scope.bats (teardown_file sets "e2e-stable")
 
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
