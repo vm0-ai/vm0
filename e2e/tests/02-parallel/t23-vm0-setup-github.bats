@@ -17,9 +17,19 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
+# Helper to check if GitHub CLI is installed
+check_gh_installed() {
+    command -v gh >/dev/null 2>&1
+}
+
 # Helper to check if VM0 is authenticated
 check_vm0_auth() {
     $CLI_COMMAND auth status 2>/dev/null | grep -q "Authenticated"
+}
+
+# Combined helper for tests that need both gh and VM0 auth
+check_setup_github_prereqs() {
+    check_gh_installed && check_vm0_auth
 }
 
 @test "vm0 setup-github --help shows command description" {
@@ -32,6 +42,8 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github checks prerequisites in order" {
+    check_gh_installed || skip "GitHub CLI (gh) not installed"
+
     # Without vm0.yaml, the command should fail at some prerequisite check
     run $CLI_COMMAND setup-github --skip-secrets
     assert_failure
@@ -40,7 +52,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github creates workflow files with --skip-secrets" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     # First create a vm0.yaml
     $CLI_COMMAND init --name test-setup-agent
@@ -58,7 +70,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github generates correct publish.yml content" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name my-publish-agent
 
@@ -76,7 +88,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github generates correct run.yml content with agent name" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name my-run-agent
 
@@ -93,7 +105,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github warns about existing workflow files" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name test-agent
 
@@ -109,7 +121,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github --force overwrites existing workflow files" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name test-agent
 
@@ -129,7 +141,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github -f short option works" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name test-agent
 
@@ -143,7 +155,7 @@ check_vm0_auth() {
 }
 
 @test "vm0 setup-github includes secrets from experimental_secrets" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     # Create vm0.yaml with experimental_secrets
     cat > vm0.yaml << 'EOF'
@@ -168,7 +180,7 @@ EOF
 }
 
 @test "vm0 setup-github includes vars from experimental_vars" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     # Create vm0.yaml with experimental_vars
     cat > vm0.yaml << 'EOF'
@@ -193,7 +205,7 @@ EOF
 }
 
 @test "vm0 setup-github --yes auto-confirms overwrite prompt" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name test-agent
 
@@ -208,7 +220,7 @@ EOF
 }
 
 @test "vm0 setup-github -y short option works" {
-    check_vm0_auth || skip "VM0 not authenticated"
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
     $CLI_COMMAND init --name test-agent
 
