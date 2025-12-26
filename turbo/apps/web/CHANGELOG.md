@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.10.0](https://github.com/vm0-ai/vm0/compare/web-v6.9.2...web-v6.10.0) (2025-12-26)
+
+
+### Features
+
+* **skills:** add missing skill descriptions and fix github description ([#754](https://github.com/vm0-ai/vm0/issues/754)) ([159fc7c](https://github.com/vm0-ai/vm0/commit/159fc7cbd2afdae93a61bb90198e559494398ba4))
+
 ## [6.9.2](https://github.com/vm0-ai/vm0/compare/web-v6.9.1...web-v6.9.2) (2025-12-25)
 
 
