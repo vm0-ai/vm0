@@ -232,6 +232,54 @@ export function validateAgentCompose(config: unknown): {
     }
   }
 
+  // Validate experimental_secrets if present
+  if (agent.experimental_secrets !== undefined) {
+    if (!Array.isArray(agent.experimental_secrets)) {
+      return {
+        valid: false,
+        error: "agent.experimental_secrets must be an array of strings",
+      };
+    }
+    for (const item of agent.experimental_secrets as unknown[]) {
+      if (typeof item !== "string") {
+        return {
+          valid: false,
+          error: "Each entry in experimental_secrets must be a string",
+        };
+      }
+      if (item.length === 0) {
+        return {
+          valid: false,
+          error: "experimental_secrets entries cannot be empty strings",
+        };
+      }
+    }
+  }
+
+  // Validate experimental_vars if present
+  if (agent.experimental_vars !== undefined) {
+    if (!Array.isArray(agent.experimental_vars)) {
+      return {
+        valid: false,
+        error: "agent.experimental_vars must be an array of strings",
+      };
+    }
+    for (const item of agent.experimental_vars as unknown[]) {
+      if (typeof item !== "string") {
+        return {
+          valid: false,
+          error: "Each entry in experimental_vars must be a string",
+        };
+      }
+      if (item.length === 0) {
+        return {
+          valid: false,
+          error: "experimental_vars entries cannot be empty strings",
+        };
+      }
+    }
+  }
+
   // Validate volumes section if agent uses volumes
   const agentVolumes = agent.volumes as string[] | undefined;
   if (agentVolumes && Array.isArray(agentVolumes) && agentVolumes.length > 0) {

@@ -10,6 +10,54 @@ import { validateAgentCompose } from "../lib/yaml-validator";
 import { getProviderDefaults, getDefaultImage } from "../lib/provider-config";
 import { uploadInstructions, uploadSkill } from "../lib/system-storage";
 
+/**
+ * Transform experimental_secrets and experimental_vars shorthand to environment entries.
+ * - experimental_secrets: ["KEY"] → environment: { KEY: "${{ secrets.KEY }}" }
+ * - experimental_vars: ["KEY"] → environment: { KEY: "${{ vars.KEY }}" }
+ * - Explicit environment entries take precedence over shorthand
+ * - Shorthand fields are removed after transformation
+ */
+export function transformExperimentalShorthand(
+  agent: Record<string, unknown>,
+): void {
+  const experimentalSecrets = agent.experimental_secrets as
+    | string[]
+    | undefined;
+  const experimentalVars = agent.experimental_vars as string[] | undefined;
+
+  if (!experimentalSecrets && !experimentalVars) {
+    return;
+  }
+
+  // Initialize environment if not exists
+  const environment = (agent.environment as Record<string, string>) || {};
+
+  // Transform experimental_secrets
+  if (experimentalSecrets) {
+    for (const secretName of experimentalSecrets) {
+      if (!(secretName in environment)) {
+        environment[secretName] = "${{ secrets." + secretName + " }}";
+      }
+    }
+    delete agent.experimental_secrets;
+  }
+
+  // Transform experimental_vars
+  if (experimentalVars) {
+    for (const varName of experimentalVars) {
+      if (!(varName in environment)) {
+        environment[varName] = "${{ vars." + varName + " }}";
+      }
+    }
+    delete agent.experimental_vars;
+  }
+
+  // Only set environment if we added entries
+  if (Object.keys(environment).length > 0) {
+    agent.environment = environment;
+  }
+}
+
 export const composeCommand = new Command()
   .name("compose")
   .description("Create or update agent compose")
@@ -43,12 +91,17 @@ export const composeCommand = new Command()
         process.exit(1);
       }
 
-      // 3.5 Check for legacy image format and show deprecation warning
+      // 3.5 Transform experimental shorthand to environment entries
       const cfg = config as Record<string, unknown>;
       const agentsConfig = cfg.agents as Record<
         string,
         Record<string, unknown>
       >;
+      for (const agentConfig of Object.values(agentsConfig)) {
+        transformExperimentalShorthand(agentConfig);
+      }
+
+      // 3.6 Check for legacy image format and show deprecation warning
       for (const [name, agentConfig] of Object.entries(agentsConfig)) {
         const image = agentConfig.image as string | undefined;
         if (image) {
