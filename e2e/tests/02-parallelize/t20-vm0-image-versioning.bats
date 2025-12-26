@@ -7,11 +7,7 @@
 
 load '../../helpers/setup'
 
-# Run once before all tests in this file
-setup_file() {
-    # Ensure scope is set up for versioning tests
-    $CLI_COMMAND scope set "e2e-versioning" --force >/dev/null 2>&1 || true
-}
+# Note: Scope is already set by 01-no-parallelize/t19-vm0-scope.bats (teardown_file sets "e2e-stable")
 
 setup() {
     export TEST_DOCKERFILE="${TEST_ROOT}/fixtures/dockerfiles/Dockerfile.simple"
