@@ -498,4 +498,93 @@ describe("POST /api/storages/commit", () => {
     expect(json.error.code).toBe("S3_FILES_MISSING");
     expect(json.error.message).toContain("S3 files missing");
   });
+
+  it("should handle concurrent commit race condition gracefully", async () => {
+    // This test verifies the fix for issue #766:
+    // When onConflictDoNothing skips the insert (due to concurrent transaction),
+    // the code verifies the version exists before updating HEAD pointer.
+    // If the version doesn't exist (concurrent transaction hasn't committed),
+    // the commit should fail with a clear error message instead of FK violation.
+    const { POST } = await import("../route");
+    const storageName = `${TEST_PREFIX}race-condition`;
+
+    // Create storage
+    const [storage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: TEST_USER_ID,
+        name: storageName,
+        type: "artifact",
+        s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
+        size: 0,
+        fileCount: 0,
+      })
+      .returning();
+
+    const files = [
+      {
+        path: "race.txt",
+        hash: "race_hash_abcdef1234567890abcdef1234567890",
+        size: 50,
+      },
+    ];
+    const versionId = computeContentHashFromHashes(storage!.id, files);
+
+    // Mock the transaction to simulate a race condition:
+    // - onConflictDoNothing skips the insert (as if another transaction holds the lock)
+    // - The SELECT inside transaction returns empty (version doesn't exist yet)
+    const originalTransaction = globalThis.services.db.transaction;
+    globalThis.services.db.transaction = vi
+      .fn()
+      .mockImplementationOnce(
+        async (callback: (tx: unknown) => Promise<void>) => {
+          // Create a mock transaction context that simulates the race condition
+          const mockTx = {
+            insert: () => ({
+              values: () => ({
+                onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+              }),
+            }),
+            select: () => ({
+              from: () => ({
+                where: () => ({
+                  limit: vi.fn().mockResolvedValue([]), // Version not found - simulates race
+                }),
+              }),
+            }),
+            update: () => ({
+              set: () => ({
+                where: vi.fn().mockResolvedValue(undefined),
+              }),
+            }),
+          };
+
+          return callback(mockTx);
+        },
+      ) as typeof originalTransaction;
+
+    const request = new Request("http://localhost:3000/api/storages/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storageName,
+        storageType: "artifact",
+        versionId,
+        files,
+      }),
+    });
+
+    const response = await POST(
+      request as unknown as import("next/server").NextRequest,
+    );
+
+    // Should return 500 with clear error message about concurrent transaction
+    expect(response.status).toBe(500);
+    const json = await response.json();
+    expect(json.error.message).toContain("not found after insert");
+    expect(json.error.message).toContain("concurrent transaction");
+
+    // Restore original transaction
+    globalThis.services.db.transaction = originalTransaction;
+  });
 });

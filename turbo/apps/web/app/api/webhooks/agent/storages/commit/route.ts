@@ -279,6 +279,20 @@ export async function POST(request: NextRequest) {
         })
         .onConflictDoNothing();
 
+      // Verify version exists (either we inserted it or another transaction did and committed)
+      // This prevents FK violation when concurrent transactions race on the same versionId
+      const [version] = await tx
+        .select({ id: storageVersions.id })
+        .from(storageVersions)
+        .where(eq(storageVersions.id, versionId))
+        .limit(1);
+
+      if (!version) {
+        throw new Error(
+          `Version ${versionId} not found after insert - concurrent transaction may not have committed yet`,
+        );
+      }
+
       // Update storage HEAD pointer and metadata
       await tx
         .update(storages)
