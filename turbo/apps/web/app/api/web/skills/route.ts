@@ -36,6 +36,18 @@ const SKILL_CATEGORIES: Record<
     description:
       "Manage customer conversations and support tickets with open-source live chat platform",
   },
+  intercom: {
+    category: "Communication",
+    logo: "https://cdn.simpleicons.org/intercom",
+    description:
+      "Manage customer conversations, contacts, messages, and support tickets via Intercom REST API",
+  },
+  zendesk: {
+    category: "Communication",
+    logo: "https://cdn.simpleicons.org/zendesk",
+    description:
+      "Manage support tickets, users, organizations, and automate customer support workflows",
+  },
   lark: {
     category: "Communication",
     logo: "/skills/lark.png",
@@ -130,7 +142,13 @@ const SKILL_CATEGORIES: Record<
     category: "Development",
     logo: "/skills/github.svg",
     description:
-      "Manage repositories, issues, pull requests, and automate your GitHub workflows",
+      "Automate GitHub operations using gh CLI - manage repositories, issues, pull requests, releases, and workflows",
+  },
+  gitlab: {
+    category: "Development",
+    logo: "https://cdn.simpleicons.org/gitlab",
+    description:
+      "Manage projects, issues, merge requests, and CI/CD pipelines in GitLab via REST API",
   },
   "github-copilot": {
     category: "Development",
@@ -222,6 +240,18 @@ const SKILL_CATEGORIES: Record<
     description:
       "Create, read, and update pages in your Notion workspace for knowledge management",
   },
+  figma: {
+    category: "Productivity",
+    logo: "https://cdn.simpleicons.org/figma",
+    description:
+      "Access design files, comments, components, and projects in Figma workspaces via REST API",
+  },
+  jira: {
+    category: "Productivity",
+    logo: "https://cdn.simpleicons.org/jira",
+    description:
+      "Create, update, search, and manage issues, projects, and workflows in Jira Cloud",
+  },
   "google-sheets": {
     category: "Productivity",
     logo: "https://cdn.simpleicons.org/googlesheets",
@@ -268,6 +298,18 @@ const SKILL_CATEGORIES: Record<
   },
 
   // Analytics & Monitoring
+  axiom: {
+    category: "Analytics",
+    logo: "https://cdn.simpleicons.org/axiom",
+    description:
+      "Cloud-native observability platform for storing, querying, and analyzing logs and events at scale",
+  },
+  sentry: {
+    category: "Analytics",
+    logo: "https://cdn.simpleicons.org/sentry",
+    description:
+      "Error tracking and monitoring platform to manage issues, resolve errors, and monitor releases",
+  },
   plausible: {
     category: "Analytics",
     logo: "/skills/plausible.svg",
@@ -287,6 +329,12 @@ const SKILL_CATEGORIES: Record<
     logo: "/skills/qiita.svg",
     description:
       "Share technical knowledge on Japan's largest programming community platform",
+  },
+  youtube: {
+    category: "Content",
+    logo: "https://cdn.simpleicons.org/youtube",
+    description:
+      "Search videos, get video/channel information, list playlists, and fetch comments via YouTube Data API",
   },
   instagram: {
     category: "Content",
