@@ -220,12 +220,8 @@ describe("GET /api/agent/composes?name=<name>", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, user2Id));
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, scope1Id));
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, scope2Id));
+    await globalThis.services.db.delete(scopes).where(eq(scopes.id, scope1Id));
+    await globalThis.services.db.delete(scopes).where(eq(scopes.id, scope2Id));
 
     // Reset mockUserId
     mockUserId = "test-user-get-by-name";

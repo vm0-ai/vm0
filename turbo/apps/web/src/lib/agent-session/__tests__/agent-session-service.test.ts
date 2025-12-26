@@ -7,6 +7,7 @@ import { agentSessions } from "../../../db/schema/agent-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { conversations } from "../../../db/schema/conversation";
+import { scopes } from "../../../db/schema/scope";
 import { AgentSessionService } from "../agent-session-service";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -36,6 +37,7 @@ describe("AgentSessionService", () => {
   let service: AgentSessionService;
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testAgentName = `test-agent-session-${Date.now()}`;
+  const testScopeId = randomUUID();
   let testComposeId: string;
   let testVersionId: string;
   const testRunId = randomUUID();
@@ -63,6 +65,18 @@ describe("AgentSessionService", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
 
     // Create test compose via API endpoint
     const config = createDefaultComposeConfig(testAgentName);
@@ -114,6 +128,10 @@ describe("AgentSessionService", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   describe("create", () => {
