@@ -1,0 +1,24 @@
+version: "1.0"
+
+agents:
+  vm0-exp-shorthand-prec:
+    description: "Test agent for shorthand precedence (environment wins)"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    experimental_secrets:
+      - API_KEY
+      - OVERRIDE_SECRET
+    experimental_vars:
+      - CLOUD_NAME
+    environment:
+      # Explicit environment should override the shorthand for OVERRIDE_SECRET
+      OVERRIDE_SECRET: "${{ secrets.DIFFERENT_SECRET }}"
+      EXPLICIT_VAR: "hardcoded-value"
+    volumes:
+      - claude-files:/home/user/.claude
+
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
