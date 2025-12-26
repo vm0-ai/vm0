@@ -71,6 +71,14 @@ describe("compose command", () => {
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
+      vi.mocked(apiClient.getScope).mockResolvedValue({
+        id: "scope-123",
+        slug: "user-abc12345",
+        type: "personal",
+        displayName: null,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -114,6 +122,14 @@ describe("compose command", () => {
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
+      });
+      vi.mocked(apiClient.getScope).mockResolvedValue({
+        id: "scope-123",
+        slug: "user-abc12345",
+        type: "personal",
+        displayName: null,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
       });
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
@@ -162,6 +178,14 @@ describe("compose command", () => {
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
+      vi.mocked(apiClient.getScope).mockResolvedValue({
+        id: "scope-123",
+        slug: "user-abc12345",
+        type: "personal",
+        displayName: null,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -179,6 +203,14 @@ describe("compose command", () => {
       });
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
+      });
+      vi.mocked(apiClient.getScope).mockResolvedValue({
+        id: "scope-123",
+        slug: "user-abc12345",
+        type: "personal",
+        displayName: null,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
       });
     });
 
@@ -210,7 +242,7 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose created: test-agent"),
+        expect.stringContaining("Compose created: user-abc12345/test-agent"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Version: a1b2c3d4"),
@@ -229,7 +261,9 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose version exists: test-agent"),
+        expect.stringContaining(
+          "Compose version exists: user-abc12345/test-agent",
+        ),
       );
     });
 
@@ -245,7 +279,7 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 run test"),
+        expect.stringContaining("vm0 run user-abc12345/test"),
       );
     });
   });

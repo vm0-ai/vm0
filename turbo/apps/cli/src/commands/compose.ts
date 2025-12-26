@@ -198,20 +198,12 @@ export const composeCommand = new Command()
         content: config,
       });
 
-      // Get user's scope for display
-      let scopeSlug: string | undefined;
-      try {
-        const scopeResponse = await apiClient.getScope();
-        scopeSlug = scopeResponse.slug;
-      } catch {
-        // Scope might not be available, continue without it
-      }
+      // Get user's scope for display (must exist if compose succeeded)
+      const scopeResponse = await apiClient.getScope();
 
       // 6. Display result
       const shortVersionId = response.versionId.slice(0, 8);
-      const displayName = scopeSlug
-        ? `${scopeSlug}/${response.name}`
-        : response.name;
+      const displayName = `${scopeResponse.slug}/${response.name}`;
 
       if (response.action === "created") {
         console.log(chalk.green(`✓ Compose created: ${displayName}`));
