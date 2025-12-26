@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.1.0](https://github.com/vm0-ai/vm0/compare/web-v7.0.0...web-v7.1.0) (2025-12-26)
+
+
+### Features
+
+* add scope support to agent compose ([#764](https://github.com/vm0-ai/vm0/issues/764)) ([79e8103](https://github.com/vm0-ai/vm0/commit/79e8103327dde0db6562d13dcaab0c36bb070ee6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.1.0
+
 ## [7.0.0](https://github.com/vm0-ai/vm0/compare/web-v6.10.0...web-v7.0.0) (2025-12-26)
 
 

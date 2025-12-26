@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/vm0-ai/vm0/compare/core-v2.0.0...core-v2.1.0) (2025-12-26)
+
+
+### Features
+
+* add scope support to agent compose ([#764](https://github.com/vm0-ai/vm0/issues/764)) ([79e8103](https://github.com/vm0-ai/vm0/commit/79e8103327dde0db6562d13dcaab0c36bb070ee6))
+
 ## [2.0.0](https://github.com/vm0-ai/vm0/compare/core-v1.5.0...core-v2.0.0) (2025-12-26)
 
 
