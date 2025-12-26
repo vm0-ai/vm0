@@ -84,16 +84,14 @@ const router = tsr.router(composesVersionsContract, {
     }
 
     // Try exact match first (full 64-char hash)
+    // Note: We don't filter by composeId here because version hashes are content-addressable.
+    // If compose B's HEAD points to version V (created by compose A with identical content),
+    // that's valid - the content is the same. Compose ownership is already verified above.
     if (version.length === 64) {
       const [exactMatch] = await globalThis.services.db
         .select()
         .from(agentComposeVersions)
-        .where(
-          and(
-            eq(agentComposeVersions.id, version),
-            eq(agentComposeVersions.composeId, composeId),
-          ),
-        )
+        .where(eq(agentComposeVersions.id, version))
         .limit(1);
 
       if (!exactMatch) {
@@ -117,15 +115,11 @@ const router = tsr.router(composesVersionsContract, {
     }
 
     // Prefix match for shorter hashes
+    // Note: We don't filter by composeId - see comment above for exact match.
     const prefixMatches = await globalThis.services.db
       .select()
       .from(agentComposeVersions)
-      .where(
-        and(
-          like(agentComposeVersions.id, `${version}%`),
-          eq(agentComposeVersions.composeId, composeId),
-        ),
-      )
+      .where(like(agentComposeVersions.id, `${version}%`))
       .limit(2); // Get 2 to detect ambiguous matches
 
     if (prefixMatches.length === 0) {

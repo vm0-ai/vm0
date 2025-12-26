@@ -261,4 +261,129 @@ describe("GET /api/agent/composes/versions", () => {
         .where(eq(agentComposeVersions.id, ambiguousVersionId));
     }
   });
+
+  it("should resolve version created by another compose with identical content (cross-compose deduplication)", async () => {
+    // This tests the fix for issue #762:
+    // When two composes have identical content, the version deduplication creates
+    // only one version record (linked to the first compose). The second compose's
+    // HEAD points to this shared version. Version lookup should still succeed
+    // for the second compose because version hashes are content-addressable.
+
+    // Create a second compose with different name but we'll manually set up
+    // a scenario where its HEAD points to a version created by a different compose
+    const secondComposeConfig = {
+      version: "1.0",
+      agents: {
+        "test-version-agent-b": {
+          description: "Second agent for cross-compose test",
+          image: "vm0/claude-code:dev",
+          provider: "claude-code",
+          working_dir: "/home/user/workspace",
+        },
+      },
+    };
+
+    // Create second compose
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: secondComposeConfig }),
+      },
+    );
+
+    const createResponse = await POST(createRequest);
+    const createData = await createResponse.json();
+    const secondComposeId = createData.composeId;
+    const secondVersionId = createData.versionId;
+
+    try {
+      // Now manually update the second compose's headVersionId to point to
+      // the first compose's version (simulating the deduplication scenario)
+      await globalThis.services.db
+        .update(agentComposes)
+        .set({ headVersionId: testVersionId })
+        .where(eq(agentComposes.id, secondComposeId));
+
+      // The key test: resolve testVersionId using secondComposeId
+      // This should succeed even though testVersionId was created by testComposeId
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/versions?composeId=${secondComposeId}&version=${testVersionId.slice(0, 8)}`,
+        { method: "GET" },
+      );
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Should succeed - version lookup doesn't require composeId match
+      expect(response.status).toBe(200);
+      expect(data.versionId).toBe(testVersionId);
+    } finally {
+      // Cleanup: Delete second compose and its version
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, secondVersionId));
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, secondComposeId));
+    }
+  });
+
+  it("should resolve version with full hash for cross-compose scenario", async () => {
+    // Similar to above but tests exact match (64-char hash) instead of prefix match
+
+    const secondComposeConfig = {
+      version: "1.0",
+      agents: {
+        "test-version-agent-c": {
+          description: "Third agent for cross-compose exact match test",
+          image: "vm0/claude-code:dev",
+          provider: "claude-code",
+          working_dir: "/home/user/workspace",
+        },
+      },
+    };
+
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: secondComposeConfig }),
+      },
+    );
+
+    const createResponse = await POST(createRequest);
+    const createData = await createResponse.json();
+    const thirdComposeId = createData.composeId;
+    const thirdVersionId = createData.versionId;
+
+    try {
+      // Update HEAD to point to first compose's version
+      await globalThis.services.db
+        .update(agentComposes)
+        .set({ headVersionId: testVersionId })
+        .where(eq(agentComposes.id, thirdComposeId));
+
+      // Test with full 64-char hash
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/versions?composeId=${thirdComposeId}&version=${testVersionId}`,
+        { method: "GET" },
+      );
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.versionId).toBe(testVersionId);
+    } finally {
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, thirdVersionId));
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, thirdComposeId));
+    }
+  });
 });
