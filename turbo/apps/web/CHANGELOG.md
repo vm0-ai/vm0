@@ -1,5 +1,28 @@
 # Changelog
 
+## [7.0.0](https://github.com/vm0-ai/vm0/compare/web-v6.10.0...web-v7.0.0) (2025-12-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* Users must update their agent.yaml files to use experimental_network_security instead of beta_network_security.
+
+### Bug Fixes
+
+* remove composeId filter from version lookup to fix cross-compose deduplication ([#765](https://github.com/vm0-ai/vm0/issues/765)) ([46a4682](https://github.com/vm0-ai/vm0/commit/46a46825c6e0ff584c9c9a831b47d089181eb000))
+
+
+### Code Refactoring
+
+* rename beta_network_security to experimental_network_security ([#760](https://github.com/vm0-ai/vm0/issues/760)) ([c1cd01a](https://github.com/vm0-ai/vm0/commit/c1cd01a8160858214304168ffdc0b784cc272a02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.0.0
+
 ## [6.10.0](https://github.com/vm0-ai/vm0/compare/web-v6.9.2...web-v6.10.0) (2025-12-26)
 
 

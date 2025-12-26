@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.27.0](https://github.com/vm0-ai/vm0/compare/cli-v4.26.1...cli-v4.27.0) (2025-12-26)
+
+
+### Features
+
+* **cli:** add experimental_secrets and experimental_vars shorthand ([#759](https://github.com/vm0-ai/vm0/issues/759)) ([c4b864e](https://github.com/vm0-ai/vm0/commit/c4b864edfdd03f7b106a9968483be662ca785ec5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.0.0
+
 ## [4.26.1](https://github.com/vm0-ai/vm0/compare/cli-v4.26.0...cli-v4.26.1) (2025-12-25)
 
 

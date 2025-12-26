@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/vm0-ai/vm0/compare/core-v1.5.0...core-v2.0.0) (2025-12-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* Users must update their agent.yaml files to use experimental_network_security instead of beta_network_security.
+
+### Code Refactoring
+
+* rename beta_network_security to experimental_network_security ([#760](https://github.com/vm0-ai/vm0/issues/760)) ([c1cd01a](https://github.com/vm0-ai/vm0/commit/c1cd01a8160858214304168ffdc0b784cc272a02))
+
 ## [1.5.0](https://github.com/vm0-ai/vm0/compare/core-v1.4.0...core-v1.5.0) (2025-12-25)
 
 
