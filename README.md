@@ -29,16 +29,18 @@
 
 ## What is VM0?
 
-VM0 is an agent runtime that provides:
-- **Cloud security sandbox** - Isolated execution environment for agents
-- **Versioned storage** - Volumes and artifacts are version-tracked and recoverable
-- **Persistent and reproducible** - Each run creates a checkpoint to resume, fork, and optimize agent performance
-- **Full observability** - Agent run logs, sandbox metrics, and network monitoring
+VM0 helps you build agents and automated workflows using natural language.
 
-Build and extend agents with:
-- **Natural language workflows** - Define agent instructions in plain text, no more complex canvas or nodes to maintain
-- **Pluggable skills** - Extend capabilities with ready-to-use [agent skills](https://github.com/vm0-ai/vm0-skills)
+It also provides a full agent runtime with:
+- Secure cloud sandbox: isolated execution environments for running agents safely
+- Versioned storage: track, reproduce, and roll back agent state and artifacts
+- Persistent execution: resume, fork, and iterate on agent runs with full history
+- Complete observability: logs, metrics, and network visibility for every run
 
+You can build and extend agents using:
+- Natural language workflows: define agent behavior in plain text, without complex graphs or pipelines
+- Pluggable skills: add capabilities through reusable [agent skills](https://github.com/vm0-ai/vm0-skills)
+  
 **Supported agents:**
 - Claude Code
 - OpenAI Codex (in beta)
