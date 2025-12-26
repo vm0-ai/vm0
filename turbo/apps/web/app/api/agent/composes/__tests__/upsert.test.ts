@@ -7,7 +7,9 @@ import { POST } from "../route";
 import { GET } from "../[id]/route";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -36,9 +38,27 @@ vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
 
 describe("Agent Compose Upsert Behavior", () => {
   const testUserId = "test-user-123";
+  const testScopeId = randomUUID();
 
-  beforeAll(() => {
+  beforeAll(async () => {
     initServices();
+
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
   });
 
   afterAll(async () => {
@@ -46,6 +66,10 @@ describe("Agent Compose Upsert Behavior", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   describe("POST /api/agent/composes", () => {
@@ -155,6 +179,26 @@ describe("Agent Compose Upsert Behavior", () => {
     });
 
     it("should maintain unique constraint on (userId, name)", async () => {
+      // Create scopes for user-1 and user-2
+      const scope1Id = randomUUID();
+      const scope2Id = randomUUID();
+
+      // Create scope for user-1
+      await globalThis.services.db.insert(scopes).values({
+        id: scope1Id,
+        slug: `test-${scope1Id.slice(0, 8)}`,
+        type: "personal",
+        ownerId: "user-1",
+      });
+
+      // Create scope for user-2
+      await globalThis.services.db.insert(scopes).values({
+        id: scope2Id,
+        slug: `test-${scope2Id.slice(0, 8)}`,
+        type: "personal",
+        ownerId: "user-2",
+      });
+
       const config = {
         version: "1.0",
         agents: {
@@ -206,6 +250,12 @@ describe("Agent Compose Upsert Behavior", () => {
       await globalThis.services.db
         .delete(agentComposes)
         .where(eq(agentComposes.userId, "user-2"));
+      await globalThis.services.db
+        .delete(scopes)
+        .where(eq(scopes.id, scope1Id));
+      await globalThis.services.db
+        .delete(scopes)
+        .where(eq(scopes.id, scope2Id));
 
       // Reset mockUserId
       mockUserId = "test-user-123";

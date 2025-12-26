@@ -10,7 +10,9 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -39,11 +41,29 @@ vi.mock("../../../../../../src/lib/auth/get-user-id", () => ({
 
 describe("GET /api/agent/composes/versions", () => {
   const testUserId = "test-user-versions";
+  const testScopeId = randomUUID();
   let testComposeId: string;
   let testVersionId: string;
 
   beforeAll(async () => {
     initServices();
+
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
 
     // Create a test compose with a version
     const config = {
@@ -83,6 +103,10 @@ describe("GET /api/agent/composes/versions", () => {
         .delete(agentComposes)
         .where(eq(agentComposes.id, testComposeId));
     }
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   it("should resolve 'latest' to HEAD version", async () => {

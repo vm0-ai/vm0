@@ -121,7 +121,9 @@ describe("GET /api/agent/runs/:id/events", () => {
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
 
-    await globalThis.services.db.delete(scopes).where(eq(scopes.id, testScopeId));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
 
     // Create test scope for the user (required for compose creation)
     await globalThis.services.db.insert(scopes).values({

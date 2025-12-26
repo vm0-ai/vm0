@@ -6,7 +6,9 @@ import { NextRequest } from "next/server";
 import { GET, POST } from "../route";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -35,9 +37,27 @@ vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
 
 describe("GET /api/agent/composes?name=<name>", () => {
   const testUserId = "test-user-get-by-name";
+  const testScopeId = randomUUID();
 
-  beforeAll(() => {
+  beforeAll(async () => {
     initServices();
+
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
   });
 
   afterAll(async () => {
@@ -45,6 +65,10 @@ describe("GET /api/agent/composes?name=<name>", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   it("should return compose when name exists", async () => {
@@ -128,8 +152,30 @@ describe("GET /api/agent/composes?name=<name>", () => {
   });
 
   it("should only return compose for authenticated user", async () => {
+    // Create scopes for isolated users
+    const user1Id = "user-1-isolation";
+    const user2Id = "user-2-isolation";
+    const scope1Id = randomUUID();
+    const scope2Id = randomUUID();
+
+    // Create scope for user 1
+    await globalThis.services.db.insert(scopes).values({
+      id: scope1Id,
+      slug: `test-${scope1Id.slice(0, 8)}`,
+      type: "personal",
+      ownerId: user1Id,
+    });
+
+    // Create scope for user 2
+    await globalThis.services.db.insert(scopes).values({
+      id: scope2Id,
+      slug: `test-${scope2Id.slice(0, 8)}`,
+      type: "personal",
+      ownerId: user2Id,
+    });
+
     // Create compose as user 1
-    mockUserId = "user-1-isolation";
+    mockUserId = user1Id;
     const config = {
       version: "1.0",
       agents: {
@@ -155,7 +201,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(createResponse.status).toBe(201);
 
     // Try to get it as user 2
-    mockUserId = "user-2-isolation";
+    mockUserId = user2Id;
     const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=test-user-isolation",
       { method: "GET" },
@@ -168,13 +214,18 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Agent compose not found");
 
     // Cleanup
-    mockUserId = "user-1-isolation";
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.userId, "user-1-isolation"));
+      .where(eq(agentComposes.userId, user1Id));
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.userId, "user-2-isolation"));
+      .where(eq(agentComposes.userId, user2Id));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, scope1Id));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, scope2Id));
 
     // Reset mockUserId
     mockUserId = "test-user-get-by-name";

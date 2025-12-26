@@ -19,6 +19,7 @@ import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -66,6 +67,7 @@ const mockAuth = vi.mocked(auth);
 describe("POST /api/webhooks/agent/checkpoints", () => {
   // Generate unique IDs for this test run
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
   const testAgentName = `test-agent-checkpoints-${Date.now()}`;
   const testRunId = randomUUID();
   let testComposeId: string;
@@ -105,6 +107,18 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope for the user (required for compose creation)
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
 
     // Create test compose via API endpoint
     const config = createDefaultComposeConfig(testAgentName);
@@ -147,6 +161,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
 
   afterAll(async () => {});

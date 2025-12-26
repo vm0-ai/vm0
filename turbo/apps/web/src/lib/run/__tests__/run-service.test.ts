@@ -62,7 +62,9 @@ describe("run-service", () => {
     agentSessionService = agentSessionModule.agentSessionService;
 
     // Create test scope for the user (required for compose creation)
-    await globalThis.services.db.delete(scopes).where(eq(scopes.id, TEST_SCOPE_ID));
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, TEST_SCOPE_ID));
     await globalThis.services.db.insert(scopes).values({
       id: TEST_SCOPE_ID,
       slug: `test-${TEST_SCOPE_ID.slice(0, 8)}`,
