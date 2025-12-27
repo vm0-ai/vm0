@@ -146,7 +146,8 @@ const router = tsr.router(webhookStoragesCommitContract, {
           status: 409 as const,
           body: {
             error: {
-              message: "S3 files missing for existing version - please retry upload",
+              message:
+                "S3 files missing for existing version - please retry upload",
               code: "S3_FILES_MISSING",
             },
           },

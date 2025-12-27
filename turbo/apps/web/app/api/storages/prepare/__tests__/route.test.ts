@@ -100,15 +100,18 @@ describe("POST /api/storages/prepare", () => {
 
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: "test",
-        storageType: "volume",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName: "test",
+          storageType: "volume",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(401);
@@ -117,14 +120,17 @@ describe("POST /api/storages/prepare", () => {
   it("should return 400 when storageName is missing", async () => {
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageType: "volume",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageType: "volume",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(400);
@@ -135,15 +141,18 @@ describe("POST /api/storages/prepare", () => {
   it("should return 400 when storageType is invalid", async () => {
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: "test",
-        storageType: "invalid",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName: "test",
+          storageType: "invalid",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(400);
@@ -155,15 +164,18 @@ describe("POST /api/storages/prepare", () => {
     const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}new-storage`;
 
-    const request = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "volume",
-        files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "volume",
+          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -203,11 +215,14 @@ describe("POST /api/storages/prepare", () => {
 
     // Prepare with same files to get the version ID
     const files = [{ path: "test.txt", hash: "b".repeat(64), size: 100 }];
-    const request1 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "volume", files }),
-    });
+    const request1 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "volume", files }),
+      },
+    );
 
     const response1 = await POST(request1);
     const json1 = await response1.json();
@@ -224,11 +239,14 @@ describe("POST /api/storages/prepare", () => {
     });
 
     // Prepare again with same files
-    const request2 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "volume", files }),
-    });
+    const request2 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "volume", files }),
+      },
+    );
 
     const response2 = await POST(request2);
     expect(response2.status).toBe(200);
@@ -259,17 +277,23 @@ describe("POST /api/storages/prepare", () => {
     ];
 
     // Make two requests with same files
-    const request1 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "artifact", files }),
-    });
+    const request1 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "artifact", files }),
+      },
+    );
 
-    const request2 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "artifact", files }),
-    });
+    const request2 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "artifact", files }),
+      },
+    );
 
     const response1 = await POST(request1);
     const response2 = await POST(request2);
@@ -305,11 +329,14 @@ describe("POST /api/storages/prepare", () => {
 
     // Prepare with files to get the version ID
     const files = [{ path: "test.txt", hash: "e".repeat(64), size: 100 }];
-    const request1 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "volume", files }),
-    });
+    const request1 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "volume", files }),
+      },
+    );
 
     const response1 = await POST(request1);
     const json1 = await response1.json();
@@ -329,11 +356,14 @@ describe("POST /api/storages/prepare", () => {
     verifyS3FilesMock.mockResolvedValueOnce(false);
 
     // Prepare again with same files - should get upload URLs since S3 missing
-    const request2 = new NextRequest("http://localhost:3000/api/storages/prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storageName, storageType: "volume", files }),
-    });
+    const request2 = new NextRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "volume", files }),
+      },
+    );
 
     const response2 = await POST(request2);
     expect(response2.status).toBe(200);

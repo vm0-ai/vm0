@@ -107,7 +107,10 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       return {
         status: 500 as const,
         body: {
-          error: { message: "Failed to create storage", code: "INTERNAL_ERROR" },
+          error: {
+            message: "Failed to create storage",
+            code: "INTERNAL_ERROR",
+          },
         },
       };
     }

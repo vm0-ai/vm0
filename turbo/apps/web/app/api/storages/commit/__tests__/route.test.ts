@@ -98,16 +98,19 @@ describe("POST /api/storages/commit", () => {
 
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: "test",
-        storageType: "volume",
-        versionId: "abc123",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName: "test",
+          storageType: "volume",
+          versionId: "abc123",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(401);
@@ -116,15 +119,18 @@ describe("POST /api/storages/commit", () => {
   it("should return 400 when storageName is missing", async () => {
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageType: "volume",
-        versionId: "abc123",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageType: "volume",
+          versionId: "abc123",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(400);
@@ -133,16 +139,19 @@ describe("POST /api/storages/commit", () => {
   it("should return 404 when storage does not exist", async () => {
     const { POST } = await import("../route");
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: "nonexistent-storage",
-        storageType: "volume",
-        versionId: "abc123",
-        files: [],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName: "nonexistent-storage",
+          storageType: "volume",
+          versionId: "abc123",
+          files: [],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(404);
@@ -162,16 +171,19 @@ describe("POST /api/storages/commit", () => {
       fileCount: 0,
     });
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "volume",
-        versionId: "wrong_version_id",
-        files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "volume",
+          versionId: "wrong_version_id",
+          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(400);
@@ -204,16 +216,19 @@ describe("POST /api/storages/commit", () => {
     const files = [{ path: "test.txt", hash: "b".repeat(64), size: 100 }];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "volume",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "volume",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(400);
@@ -252,16 +267,19 @@ describe("POST /api/storages/commit", () => {
     ];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "artifact",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -325,16 +343,19 @@ describe("POST /api/storages/commit", () => {
     const files: { path: string; hash: string; size: number }[] = [];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "artifact",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -399,16 +420,19 @@ describe("POST /api/storages/commit", () => {
       .where(eq(storages.id, storage!.id));
 
     // Commit again
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "volume",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "volume",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -463,16 +487,19 @@ describe("POST /api/storages/commit", () => {
     });
 
     // Commit should fail because S3 files are missing
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "volume",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "volume",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
     expect(response.status).toBe(409);
@@ -546,16 +573,19 @@ describe("POST /api/storages/commit", () => {
         },
       ) as typeof originalTransaction;
 
-    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName,
-        storageType: "artifact",
-        versionId,
-        files,
-      }),
-    });
+    const request = new NextRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          versionId,
+          files,
+        }),
+      },
+    );
 
     const response = await POST(request);
 
