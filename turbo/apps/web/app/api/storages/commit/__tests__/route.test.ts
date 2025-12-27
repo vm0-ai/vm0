@@ -10,6 +10,7 @@ import {
   beforeAll,
   afterAll,
 } from "vitest";
+import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -97,7 +98,7 @@ describe("POST /api/storages/commit", () => {
 
     const { POST } = await import("../route");
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -108,16 +109,14 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(401);
   });
 
   it("should return 400 when storageName is missing", async () => {
     const { POST } = await import("../route");
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -127,16 +126,14 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(400);
   });
 
   it("should return 404 when storage does not exist", async () => {
     const { POST } = await import("../route");
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -147,9 +144,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(404);
   });
 
@@ -167,20 +162,18 @@ describe("POST /api/storages/commit", () => {
       fileCount: 0,
     });
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         storageName,
         storageType: "volume",
         versionId: "wrong_version_id",
-        files: [{ path: "test.txt", hash: "abc123", size: 100 }],
+        files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error.message).toContain("mismatch");
@@ -208,10 +201,10 @@ describe("POST /api/storages/commit", () => {
       })
       .returning();
 
-    const files = [{ path: "test.txt", hash: "abc123", size: 100 }];
+    const files = [{ path: "test.txt", hash: "b".repeat(64), size: 100 }];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -222,9 +215,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error.message).toContain("not uploaded");
@@ -250,18 +241,18 @@ describe("POST /api/storages/commit", () => {
     const files = [
       {
         path: "file1.txt",
-        hash: "hash1_abcdef1234567890abcdef1234567890abcdef1234",
+        hash: "e".repeat(64),
         size: 100,
       },
       {
         path: "file2.txt",
-        hash: "hash2_abcdef1234567890abcdef1234567890abcdef1234",
+        hash: "f".repeat(64),
         size: 200,
       },
     ];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -272,9 +263,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -301,10 +290,10 @@ describe("POST /api/storages/commit", () => {
     // Clean up blobs created
     await globalThis.services.db
       .delete(blobs)
-      .where(eq(blobs.hash, files[0]!.hash));
+      .where(eq(blobs.hash, "e".repeat(64)));
     await globalThis.services.db
       .delete(blobs)
-      .where(eq(blobs.hash, files[1]!.hash));
+      .where(eq(blobs.hash, "f".repeat(64)));
   });
 
   it("should commit empty artifact without requiring archive in S3", async () => {
@@ -336,7 +325,7 @@ describe("POST /api/storages/commit", () => {
     const files: { path: string; hash: string; size: number }[] = [];
     const versionId = computeContentHashFromHashes(storage!.id, files);
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -347,9 +336,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -389,7 +376,7 @@ describe("POST /api/storages/commit", () => {
     const files = [
       {
         path: "test.txt",
-        hash: "idempotent_hash_abcdef1234567890abcdef",
+        hash: "d".repeat(64),
         size: 100,
       },
     ];
@@ -412,7 +399,7 @@ describe("POST /api/storages/commit", () => {
       .where(eq(storages.id, storage!.id));
 
     // Commit again
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -423,9 +410,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -461,7 +446,7 @@ describe("POST /api/storages/commit", () => {
     const files = [
       {
         path: "test.txt",
-        hash: "s3missing_hash_abcdef1234567890abcdef",
+        hash: "c".repeat(64),
         size: 100,
       },
     ];
@@ -478,7 +463,7 @@ describe("POST /api/storages/commit", () => {
     });
 
     // Commit should fail because S3 files are missing
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -489,9 +474,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
     expect(response.status).toBe(409);
 
     const json = await response.json();
@@ -524,7 +507,7 @@ describe("POST /api/storages/commit", () => {
     const files = [
       {
         path: "race.txt",
-        hash: "race_hash_abcdef1234567890abcdef1234567890",
+        hash: "f".repeat(64),
         size: 50,
       },
     ];
@@ -563,7 +546,7 @@ describe("POST /api/storages/commit", () => {
         },
       ) as typeof originalTransaction;
 
-    const request = new Request("http://localhost:3000/api/storages/commit", {
+    const request = new NextRequest("http://localhost:3000/api/storages/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -574,9 +557,7 @@ describe("POST /api/storages/commit", () => {
       }),
     });
 
-    const response = await POST(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await POST(request);
 
     // Should return 500 with clear error message about concurrent transaction
     expect(response.status).toBe(500);

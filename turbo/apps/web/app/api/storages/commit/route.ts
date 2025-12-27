@@ -1,4 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  createHandler,
+  tsr,
+  TsRestResponse,
+} from "../../../../src/lib/ts-rest-handler";
+import { storagesCommitContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
@@ -8,100 +13,28 @@ import {
   s3ObjectExists,
   verifyS3FilesExist,
 } from "../../../../src/lib/s3/s3-client";
-import {
-  computeContentHashFromHashes,
-  type FileEntryWithHash,
-} from "../../../../src/lib/storage/content-hash";
+import { computeContentHashFromHashes } from "../../../../src/lib/storage/content-hash";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:commit");
 
-/**
- * Standard error response format
- */
-function errorResponse(
-  message: string,
-  code: string,
-  status: number,
-): NextResponse {
-  return NextResponse.json({ error: { message, code } }, { status });
-}
-
-/**
- * Request body schema for commit endpoint
- */
-interface CommitRequest {
-  storageName: string;
-  storageType: "volume" | "artifact";
-  versionId: string;
-  files: FileEntryWithHash[];
-  // Sandbox-specific fields (optional)
-  runId?: string;
-  message?: string;
-}
-
-/**
- * Response schema for commit endpoint
- */
-interface CommitResponse {
-  success: boolean;
-  versionId: string;
-  storageName: string;
-  size: number;
-  fileCount: number;
-  deduplicated?: boolean;
-}
-
-/**
- * POST /api/storages/commit
- *
- * Commits a direct S3 upload by:
- * 1. Verifying uploaded files exist in S3 (using HeadObject)
- * 2. Creating blob records in database (with ref counts)
- * 3. Creating storage version record
- * 4. Updating storage HEAD pointer
- *
- * This endpoint is called after the client has uploaded files directly to S3
- * using presigned URLs from the prepare endpoint.
- */
-export async function POST(request: NextRequest) {
-  try {
+const router = tsr.router(storagesCommitContract, {
+  commit: async ({ body }) => {
     initServices();
 
     // Authenticate user
     const userId = await getUserId();
     if (!userId) {
-      return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
     }
 
-    // Parse JSON body
-    const body = (await request.json()) as CommitRequest;
     const { storageName, storageType, versionId, files, runId, message } = body;
-
-    // Validate required fields
-    if (!storageName) {
-      return errorResponse("storageName is required", "BAD_REQUEST", 400);
-    }
-
-    if (
-      !storageType ||
-      (storageType !== "volume" && storageType !== "artifact")
-    ) {
-      return errorResponse(
-        "storageType must be 'volume' or 'artifact'",
-        "BAD_REQUEST",
-        400,
-      );
-    }
-
-    if (!versionId) {
-      return errorResponse("versionId is required", "BAD_REQUEST", 400);
-    }
-
-    if (!files || !Array.isArray(files)) {
-      return errorResponse("files array is required", "BAD_REQUEST", 400);
-    }
 
     log.debug(
       `Committing version ${versionId} for "${storageName}" (type: ${storageType}), ${files.length} files`,
@@ -116,7 +49,12 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (!run) {
-        return errorResponse("Agent run not found", "NOT_FOUND", 404);
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
       }
     }
 
@@ -134,21 +72,29 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!storage) {
-      return errorResponse(
-        `Storage "${storageName}" not found`,
-        "NOT_FOUND",
-        404,
-      );
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Storage "${storageName}" not found`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
     }
 
     // Verify version ID matches computed hash
     const computedVersionId = computeContentHashFromHashes(storage.id, files);
     if (computedVersionId !== versionId) {
-      return errorResponse(
-        "Version ID mismatch - files may have changed",
-        "BAD_REQUEST",
-        400,
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Version ID mismatch - files may have changed",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
     // Check if version already exists (idempotency)
@@ -167,11 +113,15 @@ export async function POST(request: NextRequest) {
       // Get bucket name for S3 verification
       const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
       if (!bucketName) {
-        return errorResponse(
-          "R2_USER_STORAGES_BUCKET_NAME not configured",
-          "INTERNAL_ERROR",
-          500,
-        );
+        return {
+          status: 500 as const,
+          body: {
+            error: {
+              message: "R2_USER_STORAGES_BUCKET_NAME not configured",
+              code: "INTERNAL_ERROR",
+            },
+          },
+        };
       }
 
       // Defense-in-depth: verify S3 files exist before updating HEAD
@@ -186,11 +136,15 @@ export async function POST(request: NextRequest) {
         log.error(
           `Version ${versionId} exists in DB but S3 files missing - cannot commit`,
         );
-        return errorResponse(
-          "S3 files missing for existing version - please retry upload",
-          "S3_FILES_MISSING",
-          409,
-        );
+        return {
+          status: 409 as const,
+          body: {
+            error: {
+              message: "S3 files missing for existing version - please retry upload",
+              code: "S3_FILES_MISSING",
+            },
+          },
+        };
       }
 
       // Version already exists with valid S3 files, update HEAD pointer if needed
@@ -205,24 +159,31 @@ export async function POST(request: NextRequest) {
       }
 
       log.debug(`Version ${versionId} already committed, returning success`);
-      return NextResponse.json({
-        success: true,
-        versionId,
-        storageName,
-        size: Number(existingVersion.size),
-        fileCount: existingVersion.fileCount,
-        deduplicated: true,
-      } satisfies CommitResponse);
+      return {
+        status: 200 as const,
+        body: {
+          success: true as const,
+          versionId,
+          storageName,
+          size: Number(existingVersion.size),
+          fileCount: existingVersion.fileCount,
+          deduplicated: true,
+        },
+      };
     }
 
     // Get bucket name
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      return errorResponse(
-        "R2_USER_STORAGES_BUCKET_NAME not configured",
-        "INTERNAL_ERROR",
-        500,
-      );
+      return {
+        status: 500 as const,
+        body: {
+          error: {
+            message: "R2_USER_STORAGES_BUCKET_NAME not configured",
+            code: "INTERNAL_ERROR",
+          },
+        },
+      };
     }
 
     // Verify required S3 objects exist
@@ -241,19 +202,27 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (!manifestExists) {
-      return errorResponse(
-        "Manifest not uploaded - upload failed or incomplete",
-        "BAD_REQUEST",
-        400,
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Manifest not uploaded - upload failed or incomplete",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
     if (fileCount > 0 && !archiveExists) {
-      return errorResponse(
-        "Archive not uploaded - upload failed or incomplete",
-        "BAD_REQUEST",
-        400,
-      );
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Archive not uploaded - upload failed or incomplete",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
     }
 
     // Calculate totals
@@ -305,19 +274,62 @@ export async function POST(request: NextRequest) {
       `Committed version ${versionId}: ${fileCount} files, ${totalSize} bytes`,
     );
 
-    return NextResponse.json({
-      success: true,
-      versionId,
-      storageName,
-      size: totalSize,
-      fileCount,
-    } satisfies CommitResponse);
-  } catch (error) {
-    log.error("Commit error:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Commit failed",
-      "INTERNAL_ERROR",
-      500,
-    );
+    return {
+      status: 200 as const,
+      body: {
+        success: true as const,
+        versionId,
+        storageName,
+        size: totalSize,
+        fileCount,
+      },
+    };
+  },
+});
+
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (
+    err &&
+    typeof err === "object" &&
+    "bodyError" in err &&
+    "queryError" in err
+  ) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  // Log unexpected errors
+  log.error("Commit error:", err);
+  return TsRestResponse.fromJson(
+    {
+      error: {
+        message: err instanceof Error ? err.message : "Commit failed",
+        code: "INTERNAL_ERROR",
+      },
+    },
+    { status: 500 },
+  );
 }
+
+const handler = createHandler(storagesCommitContract, router, {
+  errorHandler,
+});
+
+export { handler as POST };

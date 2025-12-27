@@ -10,6 +10,7 @@ import {
   beforeAll,
   afterAll,
 } from "vitest";
+import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -96,26 +97,22 @@ describe("GET /api/storages/download", () => {
 
     const { GET } = await import("../route");
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test&type=volume",
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(401);
   });
 
   it("should return 400 when name parameter is missing", async () => {
     const { GET } = await import("../route");
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/storages/download?type=volume",
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(400);
 
     const json = await response.json();
@@ -125,13 +122,11 @@ describe("GET /api/storages/download", () => {
   it("should return 400 when type parameter is missing", async () => {
     const { GET } = await import("../route");
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test",
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(400);
 
     const json = await response.json();
@@ -141,29 +136,25 @@ describe("GET /api/storages/download", () => {
   it("should return 400 when type is invalid", async () => {
     const { GET } = await import("../route");
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test&type=invalid",
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(400);
 
     const json = await response.json();
-    expect(json.error.message).toContain("volume");
+    expect(json.error.message).toContain("type");
   });
 
   it("should return 404 when storage does not exist", async () => {
     const { GET } = await import("../route");
 
-    const request = new Request(
+    const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=nonexistent&type=volume",
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(404);
   });
 
@@ -182,13 +173,11 @@ describe("GET /api/storages/download", () => {
       headVersionId: null,
     });
 
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/storages/download?name=${storageName}&type=volume`,
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(404);
 
     const json = await response.json();
@@ -227,13 +216,11 @@ describe("GET /api/storages/download", () => {
       .set({ headVersionId: versionId })
       .where(eq(storages.id, storage!.id));
 
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/storages/download?name=${storageName}&type=volume`,
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -275,13 +262,11 @@ describe("GET /api/storages/download", () => {
       .set({ headVersionId: versionId })
       .where(eq(storages.id, storage!.id));
 
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/storages/download?name=${storageName}&type=volume`,
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -336,13 +321,11 @@ describe("GET /api/storages/download", () => {
       .where(eq(storages.id, storage!.id));
 
     // Request specific older version
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${version1Id}`,
     );
 
-    const response = await GET(
-      request as unknown as import("next/server").NextRequest,
-    );
+    const response = await GET(request);
     expect(response.status).toBe(200);
 
     const json = await response.json();

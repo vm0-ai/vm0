@@ -1,4 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  createHandler,
+  tsr,
+  TsRestResponse,
+} from "../../../../../../src/lib/ts-rest-handler";
+import { webhookStoragesPrepareContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {
@@ -12,69 +17,16 @@ import {
   downloadManifest,
   verifyS3FilesExist,
 } from "../../../../../../src/lib/s3/s3-client";
-import {
-  computeContentHashFromHashes,
-  type FileEntryWithHash,
-} from "../../../../../../src/lib/storage/content-hash";
+import { computeContentHashFromHashes } from "../../../../../../src/lib/storage/content-hash";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("webhook:storages:prepare");
 
-/**
- * Standard error response format
- */
-function errorResponse(
-  message: string,
-  code: string,
-  status: number,
-): NextResponse {
-  return NextResponse.json({ error: { message, code } }, { status });
-}
-
-/**
- * Request body schema for prepare endpoint
- */
-interface PrepareRequest {
-  runId: string; // Required for webhook - verified against JWT token
-  storageName: string;
-  storageType: "volume" | "artifact";
-  files: FileEntryWithHash[];
-  force?: boolean;
-  baseVersion?: string;
-  changes?: {
-    added: string[];
-    modified: string[];
-    deleted: string[];
-  };
-}
-
-/**
- * Response schema for prepare endpoint
- */
-interface PrepareResponse {
-  versionId: string;
-  existing: boolean;
-  uploads?: {
-    archive: { key: string; presignedUrl: string };
-    manifest: { key: string; presignedUrl: string };
-  };
-}
-
-/**
- * POST /api/webhooks/agent/storages/prepare
- *
- * Webhook version of storage prepare endpoint for sandbox use.
- * Uses JWT sandbox token authentication and verifies runId matches token.
- *
- * This endpoint is used by sandbox clients for direct S3 uploads.
- */
-export async function POST(request: NextRequest) {
-  try {
+const router = tsr.router(webhookStoragesPrepareContract, {
+  prepare: async ({ body }) => {
     initServices();
 
-    // Parse JSON body first to get runId for auth verification
-    const body = (await request.json()) as PrepareRequest;
     const {
       runId,
       storageName,
@@ -85,42 +37,21 @@ export async function POST(request: NextRequest) {
       changes,
     } = body;
 
-    // Validate runId is provided
-    if (!runId) {
-      return errorResponse("runId is required", "BAD_REQUEST", 400);
-    }
-
     // Authenticate with sandbox JWT and verify runId matches
     const auth = await getSandboxAuthForRun(runId);
     if (!auth) {
-      return errorResponse(
-        "Not authenticated or runId mismatch",
-        "UNAUTHORIZED",
-        401,
-      );
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            message: "Not authenticated or runId mismatch",
+            code: "UNAUTHORIZED",
+          },
+        },
+      };
     }
 
     const { userId } = auth;
-
-    // Validate required fields
-    if (!storageName) {
-      return errorResponse("storageName is required", "BAD_REQUEST", 400);
-    }
-
-    if (
-      !storageType ||
-      (storageType !== "volume" && storageType !== "artifact")
-    ) {
-      return errorResponse(
-        "storageType must be 'volume' or 'artifact'",
-        "BAD_REQUEST",
-        400,
-      );
-    }
-
-    if (!files || !Array.isArray(files)) {
-      return errorResponse("files array is required", "BAD_REQUEST", 400);
-    }
 
     log.debug(
       `Preparing upload for "${storageName}" (type: ${storageType}), ${files.length} files, run: ${runId}`,
@@ -134,7 +65,12 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!run) {
-      return errorResponse("Agent run not found", "NOT_FOUND", 404);
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Find or create storage
@@ -168,7 +104,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!storage) {
-      return errorResponse("Failed to create storage", "INTERNAL_ERROR", 500);
+      return {
+        status: 500 as const,
+        body: {
+          error: { message: "Failed to create storage", code: "INTERNAL_ERROR" },
+        },
+      };
     }
 
     // Handle incremental upload - merge files with base version
@@ -204,7 +145,10 @@ export async function POST(request: NextRequest) {
 
           // Start with base manifest files, excluding deleted ones
           const deletedSet = new Set(changes.deleted || []);
-          const baseFilesMap = new Map<string, FileEntryWithHash>();
+          const baseFilesMap = new Map<
+            string,
+            { path: string; hash: string; size: number }
+          >();
 
           for (const file of baseManifest.files) {
             if (!deletedSet.has(file.path) && !currentFilesMap.has(file.path)) {
@@ -233,11 +177,15 @@ export async function POST(request: NextRequest) {
     // Get bucket name (needed for S3 verification)
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     if (!bucketName) {
-      return errorResponse(
-        "R2_USER_STORAGES_BUCKET_NAME not configured",
-        "INTERNAL_ERROR",
-        500,
-      );
+      return {
+        status: 500 as const,
+        body: {
+          error: {
+            message: "R2_USER_STORAGES_BUCKET_NAME not configured",
+            code: "INTERNAL_ERROR",
+          },
+        },
+      };
     }
 
     // Check if version already exists (deduplication) - skip if force is true
@@ -266,10 +214,13 @@ export async function POST(request: NextRequest) {
           log.debug(
             `Version ${versionId} exists with S3 files, returning existing`,
           );
-          return NextResponse.json({
-            versionId,
-            existing: true,
-          } satisfies PrepareResponse);
+          return {
+            status: 200 as const,
+            body: {
+              versionId,
+              existing: true,
+            },
+          };
         }
 
         // S3 files missing - treat as new version, will trigger re-upload
@@ -298,23 +249,64 @@ export async function POST(request: NextRequest) {
       ),
     ]);
 
-    const response: PrepareResponse = {
-      versionId,
-      existing: false,
-      uploads: {
-        archive: { key: archiveKey, presignedUrl: archiveUrl },
-        manifest: { key: manifestKey, presignedUrl: manifestUrl },
+    log.debug(`Prepared upload for version ${versionId}`);
+    return {
+      status: 200 as const,
+      body: {
+        versionId,
+        existing: false,
+        uploads: {
+          archive: { key: archiveKey, presignedUrl: archiveUrl },
+          manifest: { key: manifestKey, presignedUrl: manifestUrl },
+        },
       },
     };
+  },
+});
 
-    log.debug(`Prepared upload for version ${versionId}`);
-    return NextResponse.json(response);
-  } catch (error) {
-    log.error("Prepare error:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Prepare failed",
-      "INTERNAL_ERROR",
-      500,
-    );
+/**
+ * Custom error handler to convert Zod validation errors to API error format
+ */
+function errorHandler(err: unknown): TsRestResponse | void {
+  if (
+    err &&
+    typeof err === "object" &&
+    "bodyError" in err &&
+    "queryError" in err
+  ) {
+    const validationError = err as {
+      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
+    };
+
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
+      if (issue) {
+        const path = issue.path.join(".");
+        const message = path ? `${path}: ${issue.message}` : issue.message;
+        return TsRestResponse.fromJson(
+          { error: { message, code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+    }
   }
+
+  // Log unexpected errors
+  log.error("Prepare error:", err);
+  return TsRestResponse.fromJson(
+    {
+      error: {
+        message: err instanceof Error ? err.message : "Prepare failed",
+        code: "INTERNAL_ERROR",
+      },
+    },
+    { status: 500 },
+  );
 }
+
+const handler = createHandler(webhookStoragesPrepareContract, router, {
+  errorHandler,
+});
+
+export { handler as POST };
