@@ -19,7 +19,6 @@ export {
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";
-export { secretsContract, type SecretsContract } from "./secrets";
 export {
   composesMainContract,
   composesByIdContract,
