@@ -68,7 +68,18 @@ export {
   storagesContract,
   storageTypeSchema,
   uploadStorageResponseSchema,
+  // Direct upload schemas (shared with webhooks)
+  fileEntryWithHashSchema,
+  storageChangesSchema,
+  presignedUploadSchema,
+  // Direct upload contracts (CLI endpoints)
+  storagesPrepareContract,
+  storagesCommitContract,
+  storagesDownloadContract,
   type StoragesContract,
+  type StoragesPrepareContract,
+  type StoragesCommitContract,
+  type StoragesDownloadContract,
 } from "./storages";
 export {
   webhookEventsContract,
@@ -78,6 +89,9 @@ export {
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
   webhookTelemetryContract,
+  // Direct upload contracts (Webhook endpoints for sandbox)
+  webhookStoragesPrepareContract,
+  webhookStoragesCommitContract,
   type WebhookEventsContract,
   type WebhookCompleteContract,
   type WebhookCheckpointsContract,
@@ -85,6 +99,8 @@ export {
   type WebhookStoragesContract,
   type WebhookStoragesIncrementalContract,
   type WebhookTelemetryContract,
+  type WebhookStoragesPrepareContract,
+  type WebhookStoragesCommitContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,

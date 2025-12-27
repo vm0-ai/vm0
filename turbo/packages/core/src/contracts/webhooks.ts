@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import {
+  storageTypeSchema,
+  fileEntryWithHashSchema,
+  storageChangesSchema,
+  presignedUploadSchema,
+} from "./storages";
 
 const c = initContract();
 
@@ -297,6 +303,86 @@ export const webhookTelemetryContract = c.router({
   },
 });
 
+// ============================================================================
+// Direct Upload Contracts (Webhook endpoints for sandbox)
+// ============================================================================
+
+/**
+ * Webhook storage prepare contract for /api/webhooks/agent/storages/prepare
+ *
+ * Sandbox version of storage prepare endpoint.
+ * Uses JWT sandbox token authentication and verifies runId matches token.
+ */
+export const webhookStoragesPrepareContract = c.router({
+  prepare: {
+    method: "POST",
+    path: "/api/webhooks/agent/storages/prepare",
+    body: z.object({
+      runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      storageName: z.string().min(1, "Storage name is required"),
+      storageType: storageTypeSchema,
+      files: z.array(fileEntryWithHashSchema),
+      force: z.boolean().optional(),
+      baseVersion: z.string().optional(),
+      changes: storageChangesSchema.optional(),
+    }),
+    responses: {
+      200: z.object({
+        versionId: z.string(),
+        existing: z.boolean(),
+        uploads: z
+          .object({
+            archive: presignedUploadSchema,
+            manifest: presignedUploadSchema,
+          })
+          .optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Prepare for direct S3 upload from sandbox",
+  },
+});
+
+/**
+ * Webhook storage commit contract for /api/webhooks/agent/storages/commit
+ *
+ * Sandbox version of storage commit endpoint.
+ * Uses JWT sandbox token authentication and verifies runId matches token.
+ */
+export const webhookStoragesCommitContract = c.router({
+  commit: {
+    method: "POST",
+    path: "/api/webhooks/agent/storages/commit",
+    body: z.object({
+      runId: z.string().min(1, "runId is required"), // Required for webhook auth
+      storageName: z.string().min(1, "Storage name is required"),
+      storageType: storageTypeSchema,
+      versionId: z.string().min(1, "Version ID is required"),
+      files: z.array(fileEntryWithHashSchema),
+      message: z.string().optional(),
+    }),
+    responses: {
+      200: z.object({
+        success: z.literal(true),
+        versionId: z.string(),
+        storageName: z.string(),
+        size: z.number(),
+        fileCount: z.number(),
+        deduplicated: z.boolean().optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema, // S3 files missing
+      500: apiErrorSchema,
+    },
+    summary: "Commit uploaded storage from sandbox",
+  },
+});
+
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
@@ -305,3 +391,7 @@ export type WebhookStoragesContract = typeof webhookStoragesContract;
 export type WebhookStoragesIncrementalContract =
   typeof webhookStoragesIncrementalContract;
 export type WebhookTelemetryContract = typeof webhookTelemetryContract;
+export type WebhookStoragesPrepareContract =
+  typeof webhookStoragesPrepareContract;
+export type WebhookStoragesCommitContract =
+  typeof webhookStoragesCommitContract;
