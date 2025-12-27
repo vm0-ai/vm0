@@ -94,17 +94,7 @@ EOF
 - Parallel test execution won't conflict on shared config files
 - Test is self-contained and easier to understand
 
-### 3. Extended Timeouts for CI
-
-```bash
-# CI environments are slower - use 120s timeout
-run $CLI_COMMAND run agent-name \
-    --artifact-name "$ARTIFACT_NAME" \
-    --timeout 120 \
-    "echo hello"
-```
-
-### 4. Debug Output with Echo Comments
+### 3. Debug Output with Echo Comments
 
 ```bash
 @test "multi-step test" {
@@ -119,7 +109,7 @@ run $CLI_COMMAND run agent-name \
 }
 ```
 
-### 5. Extract IDs from Output
+### 4. Extract IDs from Output
 
 ```bash
 # Extract UUID patterns
@@ -134,7 +124,7 @@ SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
 }
 ```
 
-### 6. Test Both Success and Failure
+### 5. Test Both Success and Failure
 
 ```bash
 @test "valid input succeeds" {
@@ -149,7 +139,7 @@ SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
 }
 ```
 
-### 7. Suppress Output for Setup Commands
+### 6. Suppress Output for Setup Commands
 
 ```bash
 # Use >/dev/null for setup commands that must succeed
@@ -218,7 +208,6 @@ Before submitting:
 - [ ] Uses unique resource names with timestamp
 - [ ] Creates config files inline (not in shared fixtures)
 - [ ] Has `setup()` and `teardown()` for cleanup
-- [ ] Uses `--timeout 120` for `vm0 run` commands
 - [ ] Tests both success and failure cases
 - [ ] Includes debug echo comments for multi-step tests
 - [ ] Placed in correct directory (01-serial for shared state, 02-parallel for most tests)
