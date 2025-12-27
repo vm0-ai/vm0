@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.29.0](https://github.com/vm0-ai/vm0/compare/cli-v4.28.0...cli-v4.29.0) (2025-12-27)
+
+
+### Features
+
+* **cli:** add setup-github command for github actions workflow initialization ([#773](https://github.com/vm0-ai/vm0/issues/773)) ([8357e72](https://github.com/vm0-ai/vm0/commit/8357e721b6ef06d172c37267e80fa643b05c5f46))
+
 ## [4.28.0](https://github.com/vm0-ai/vm0/compare/cli-v4.27.0...cli-v4.28.0) (2025-12-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.1.1](https://github.com/vm0-ai/vm0/compare/web-v7.1.0...web-v7.1.1) (2025-12-27)
+
+
+### Bug Fixes
+
+* prevent FK violation in concurrent storage commit transactions ([#768](https://github.com/vm0-ai/vm0/issues/768)) ([524ebd7](https://github.com/vm0-ai/vm0/commit/524ebd727a298c1f054eeccee659afa5812ae16e))
+
 ## [7.1.0](https://github.com/vm0-ai/vm0/compare/web-v7.0.0...web-v7.1.0) (2025-12-26)
 
 
