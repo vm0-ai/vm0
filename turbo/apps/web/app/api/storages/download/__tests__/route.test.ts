@@ -32,6 +32,10 @@ vi.mock("../../../../../src/lib/s3/s3-client", () => ({
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
+// Static imports - mocks are already in place due to hoisting
+import { GET } from "../route";
+import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+
 // Test constants
 const TEST_USER_ID = "test-user-download";
 const TEST_PREFIX = "test-download-";
@@ -90,12 +94,7 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    const { getUserId } = await import(
-      "../../../../../src/lib/auth/get-user-id"
-    );
     vi.mocked(getUserId).mockResolvedValueOnce(null);
-
-    const { GET } = await import("../route");
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test&type=volume",
@@ -106,8 +105,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 400 when name parameter is missing", async () => {
-    const { GET } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?type=volume",
     );
@@ -120,8 +117,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 400 when type parameter is missing", async () => {
-    const { GET } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test",
     );
@@ -134,8 +129,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 400 when type is invalid", async () => {
-    const { GET } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test&type=invalid",
     );
@@ -148,8 +141,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 404 when storage does not exist", async () => {
-    const { GET } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=nonexistent&type=volume",
     );
@@ -159,7 +150,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 404 when storage has no versions", async () => {
-    const { GET } = await import("../route");
     const storageName = `${TEST_PREFIX}no-versions`;
 
     // Create storage without versions
@@ -185,7 +175,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return empty=true for empty storage", async () => {
-    const { GET } = await import("../route");
     const storageName = `${TEST_PREFIX}empty`;
     const versionId = "a".repeat(64);
 
@@ -231,7 +220,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return presigned URL for non-empty storage", async () => {
-    const { GET } = await import("../route");
     const storageName = `${TEST_PREFIX}with-files`;
     const versionId = "b".repeat(64);
 
@@ -278,7 +266,6 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return presigned URL for specific version", async () => {
-    const { GET } = await import("../route");
     const storageName = `${TEST_PREFIX}specific-version`;
     const version1Id = "c".repeat(64);
     const version2Id = "d".repeat(64);

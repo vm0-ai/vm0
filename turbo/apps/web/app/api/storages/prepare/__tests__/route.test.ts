@@ -18,7 +18,7 @@ import {
   storageVersions,
 } from "../../../../../src/db/schema/storage";
 
-// Mock external dependencies
+// Mock external dependencies - vi.mock() is hoisted, so mocks are ready before imports
 vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
   getUserId: vi.fn().mockResolvedValue("test-user-prepare"),
 }));
@@ -33,6 +33,11 @@ vi.mock("../../../../../src/lib/s3/s3-client", () => ({
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+
+// Static imports - mocks are already in place due to hoisting
+import { POST } from "../route";
+import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { verifyS3FilesExist } from "../../../../../src/lib/s3/s3-client";
 
 // Test constants
 const TEST_USER_ID = "test-user-prepare";
@@ -92,13 +97,8 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    // Override mock to return null
-    const { getUserId } = await import(
-      "../../../../../src/lib/auth/get-user-id"
-    );
+    // Override mock to return null for this test
     vi.mocked(getUserId).mockResolvedValueOnce(null);
-
-    const { POST } = await import("../route");
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
@@ -118,8 +118,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return 400 when storageName is missing", async () => {
-    const { POST } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
       {
@@ -139,8 +137,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return 400 when storageType is invalid", async () => {
-    const { POST } = await import("../route");
-
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
       {
@@ -161,7 +157,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should create new storage when it does not exist", async () => {
-    const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}new-storage`;
 
     const request = new NextRequest(
@@ -197,7 +192,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return existing=true when version already exists", async () => {
-    const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}existing-version`;
 
     // Create storage first
@@ -258,7 +252,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should compute deterministic version ID from files", async () => {
-    const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}deterministic`;
 
     // Create storage
@@ -307,11 +300,6 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return upload URLs when version exists but S3 files are missing", async () => {
-    // Import mock to control verifyS3FilesExist behavior
-    const s3Mock = await import("../../../../../src/lib/s3/s3-client");
-    const verifyS3FilesMock = vi.mocked(s3Mock.verifyS3FilesExist);
-
-    const { POST } = await import("../route");
     const storageName = `${TEST_PREFIX}s3missing`;
 
     // Create storage
@@ -353,7 +341,7 @@ describe("POST /api/storages/prepare", () => {
     });
 
     // Mock S3 files as missing
-    verifyS3FilesMock.mockResolvedValueOnce(false);
+    vi.mocked(verifyS3FilesExist).mockResolvedValueOnce(false);
 
     // Prepare again with same files - should get upload URLs since S3 missing
     const request2 = new NextRequest(
