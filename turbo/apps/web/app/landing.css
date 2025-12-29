@@ -2181,6 +2181,32 @@ section {
   margin: 0;
 }
 
+.footer-legal-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.footer-legal-link {
+  font-family: "Noto Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-legal-link:hover {
+  color: var(--primary);
+}
+
+.footer-legal-separator {
+  color: var(--text-secondary);
+  font-size: 13px;
+  opacity: 0.5;
+}
+
 .footer-legal {
   display: flex;
   gap: 24px;

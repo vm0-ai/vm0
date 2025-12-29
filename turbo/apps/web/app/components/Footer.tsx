@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
 import ThemeToggle from "./ThemeToggle";
@@ -33,6 +34,15 @@ export default function Footer() {
         <div className="footer-bottom">
           <div className="footer-left">
             <p className="footer-copyright">{t("copyright")}</p>
+            <div className="footer-legal-links">
+              <Link href="/terms-of-use" className="footer-legal-link">
+                {t("termsOfUse")}
+              </Link>
+              <span className="footer-legal-separator">•</span>
+              <Link href="/privacy-policy" className="footer-legal-link">
+                {t("privacyPolicy")}
+              </Link>
+            </div>
           </div>
           <div className="footer-right">
             <div className="footer-links">

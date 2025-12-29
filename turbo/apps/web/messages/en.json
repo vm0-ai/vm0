@@ -88,7 +88,9 @@
   "footer": {
     "tagline": "Build agents and automate workflows with natural language",
     "copyright": "© 2025 VM0.ai All rights reserved.",
-    "language": "Language"
+    "language": "Language",
+    "termsOfUse": "Terms of Use",
+    "privacyPolicy": "Privacy Policy"
   },
   "cookbooks": {
     "hero": {
