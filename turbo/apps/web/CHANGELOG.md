@@ -1,5 +1,20 @@
 # Changelog
 
+## [7.2.0](https://github.com/vm0-ai/vm0/compare/web-v7.1.1...web-v7.2.0) (2025-12-29)
+
+
+### Features
+
+* **core:** add ts-rest contracts for storage direct upload endpoints ([#779](https://github.com/vm0-ai/vm0/issues/779)) ([18b7e89](https://github.com/vm0-ai/vm0/commit/18b7e89008a852d6cd5ba8dda363b8878256792b))
+* restore 3d cube hero and update cta to schedule demo ([#787](https://github.com/vm0-ai/vm0/issues/787)) ([7052c30](https://github.com/vm0-ai/vm0/commit/7052c305371864ea85ef1ecca1507a3d6d58a37f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.2.0
+
 ## [7.1.1](https://github.com/vm0-ai/vm0/compare/web-v7.1.0...web-v7.1.1) (2025-12-27)
 
 

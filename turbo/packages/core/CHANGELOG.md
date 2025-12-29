@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/vm0-ai/vm0/compare/core-v2.1.0...core-v2.2.0) (2025-12-29)
+
+
+### Features
+
+* **core:** add ts-rest contracts for storage direct upload endpoints ([#779](https://github.com/vm0-ai/vm0/issues/779)) ([18b7e89](https://github.com/vm0-ai/vm0/commit/18b7e89008a852d6cd5ba8dda363b8878256792b))
+
 ## [2.1.0](https://github.com/vm0-ai/vm0/compare/core-v2.0.0...core-v2.1.0) (2025-12-26)
 
 
