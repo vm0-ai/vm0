@@ -17,8 +17,8 @@ echo "✓ Locale configured"
 
 # Setup directories - fix ownership for all mounted volumes
 # This is the key difference - vm0 fixes all directories at once
-sudo mkdir -p /home/vscode/.local/bin
-sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local
+sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki/nssdb
+sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki
 
 # Add local development domains to /etc/hosts
 echo "📝 Adding local domains to /etc/hosts..."
