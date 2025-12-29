@@ -88,7 +88,9 @@
   "footer": {
     "tagline": "El tiempo de ejecución moderno para desarrollo nativo de agentes",
     "copyright": "© 2025 VM0.ai Todos los derechos reservados.",
-    "language": "Idioma"
+    "language": "Idioma",
+    "termsOfUse": "Términos de Uso",
+    "privacyPolicy": "Política de Privacidad"
   },
   "cookbooks": {
     "hero": {

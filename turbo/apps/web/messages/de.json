@@ -88,7 +88,9 @@
   "footer": {
     "tagline": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
     "copyright": "© 2025 VM0.ai Alle Rechte vorbehalten.",
-    "language": "Sprache"
+    "language": "Sprache",
+    "termsOfUse": "Nutzungsbedingungen",
+    "privacyPolicy": "Datenschutzrichtlinie"
   },
   "cookbooks": {
     "hero": {

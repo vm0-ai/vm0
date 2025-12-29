@@ -88,7 +88,9 @@
   "footer": {
     "tagline": "エージェントネイティブ開発のための最新ランタイム",
     "copyright": "© 2025 VM0.ai 無断転載禁止",
-    "language": "言語"
+    "language": "言語",
+    "termsOfUse": "利用規約",
+    "privacyPolicy": "プライバシーポリシー"
   },
   "cookbooks": {
     "hero": {
