@@ -36,7 +36,7 @@ export default function TermsOfUsePage() {
       style={{ padding: "40px 20px", minHeight: "600px" }}
     >
       <div
-        name="termly-embed"
+        {...({ name: "termly-embed" } as React.HTMLAttributes<HTMLDivElement>)}
         data-id="2d4a38d0-0baf-410c-a39d-86976b13052d"
         data-type="iframe"
       />

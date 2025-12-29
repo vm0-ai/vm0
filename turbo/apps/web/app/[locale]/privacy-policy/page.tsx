@@ -36,7 +36,7 @@ export default function PrivacyPolicyPage() {
       style={{ padding: "40px 20px", minHeight: "600px" }}
     >
       <div
-        name="termly-embed"
+        {...({ name: "termly-embed" } as React.HTMLAttributes<HTMLDivElement>)}
         data-id="e2483c7f-905a-4618-b026-94f823ff2332"
         data-type="iframe"
       />
