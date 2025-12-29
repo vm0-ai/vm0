@@ -1,18 +1,18 @@
 {
   "hero": {
-    "title": "The modern runtime for agent-native development",
+    "title": "Build agents and automate workflows with natural language",
     "subtitle": "From workflows to real agents. VM0 makes agent building accessible through natural language, backed by agent-native infrastructure.",
     "joinWaitlist": "Join waitlist",
     "github": "GitHub"
   },
   "build": {
-    "title": "Build agents the human way",
-    "description": "Today's options fall into two buckets: tools that only run containers, and workflow builders that are too rigid for real agent behavior. Developers still lack an environment built for agent-native execution. VM0 bridges this gap with an end to end agent-native runtime.",
+    "title": "Create agents the human way",
+    "description": "Workflow builders are too rigid. Container platforms are too basic. VM0 lets you build real agents with natural language, backed by agent-native infrastructure.",
     "vm0Tagline": "Build and evolve AI agents, just natural language."
   },
   "cliAgents": {
     "title": "Riding the LLM wave, VM0 also acts as an agent router",
-    "description": "Use Claude Code, Codex, Gemini, and other CLI agents to build your own. VM0 fits into any agent development and provides the infrastructure you need to create your own agent or smart workflows.",
+    "description": "Express your intent in natural language. Pick your AI: Claude, GPT, Gemini, or your own. Your workflow is ready. No canvas editing, no heavy configuration, no prompt management.",
     "marketingAgent": {
       "title": "Marketing agent",
       "description": "A protected space for marketing agents to run tasks and refine campaigns risk-free"
@@ -28,12 +28,16 @@
     "codingAgent": {
       "title": "Coding management agent",
       "description": "Discovers trending repos and manages issues, PRs, and repo tasks"
+    },
+    "personalizedAgent": {
+      "title": "Your personalized workflow",
+      "description": "Build custom agents tailored to your unique needs with natural language instructions"
     }
   },
   "features": {
-    "title": "A better agent development experience, built on solid infrastructure",
+    "title": "Everything you need to build agents, backed by solid infrastructure",
     "noWorkflows": {
-      "title": "No more workflows. It can be simple as just one prompt.",
+      "title": "Skip the node editor and workflow canvas, just write your intent",
       "description": "No drag-and-drop needed — write a prompt or any type of configure files, connect it to VM0, and your agent's core logic is ready."
     },
     "purposeBuilt": {
@@ -78,11 +82,11 @@
     "cookbooks": "Cookbooks",
     "skills": "Skills",
     "github": "GitHub",
-    "contact": "Contact us",
+    "contact": "Schedule a demo",
     "joinWaitlist": "Join waitlist"
   },
   "footer": {
-    "tagline": "The modern runtime for agent-native development",
+    "tagline": "Build agents and automate workflows with natural language",
     "copyright": "© 2025 VM0.ai All rights reserved.",
     "language": "Language"
   },

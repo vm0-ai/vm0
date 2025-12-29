@@ -505,6 +505,23 @@ export default function LandingPage() {
                   {tCliAgents("codingAgent.description")}
                 </p>
               </div>
+              <div className="use-case-item">
+                <div className="use-case-icon-wrapper">
+                  <Image
+                    src="/assets/circle-five-line.svg"
+                    alt="Personalized agentic workflow icon"
+                    width={24}
+                    height={24}
+                    loading="lazy"
+                  />
+                </div>
+                <h3 className="use-case-title">
+                  {tCliAgents("personalizedAgent.title")}
+                </h3>
+                <p className="use-case-desc">
+                  {tCliAgents("personalizedAgent.description")}
+                </p>
+              </div>
             </div>
           </div>
         </div>

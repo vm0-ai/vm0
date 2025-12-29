@@ -1,18 +1,18 @@
 {
   "hero": {
-    "title": "El tiempo de ejecución moderno para desarrollo nativo de agentes",
+    "title": "Construye agentes y automatiza flujos de trabajo con lenguaje natural",
     "subtitle": "De flujos de trabajo a agentes reales. VM0 hace que la construcción de agentes sea accesible a través del lenguaje natural, respaldado por infraestructura nativa de agentes.",
     "joinWaitlist": "Unirse a lista de espera",
     "github": "GitHub"
   },
   "build": {
-    "title": "Construye agentes de forma humana",
-    "description": "Las opciones actuales se dividen en dos categorías: herramientas que solo ejecutan contenedores y constructores de flujos de trabajo que son demasiado rígidos para el comportamiento real de los agentes. Los desarrolladores aún carecen de un entorno construido para la ejecución nativa de agentes. VM0 cierra esta brecha con un tiempo de ejecución nativo de agentes de extremo a extremo.",
+    "title": "Crea agentes de forma humana",
+    "description": "Los constructores de flujos de trabajo son demasiado rígidos. Las plataformas de contenedores son demasiado básicas. VM0 te permite construir agentes reales con lenguaje natural, respaldado por infraestructura nativa de agentes.",
     "vm0Tagline": "Construye y evoluciona agentes de IA, solo con lenguaje natural."
   },
   "cliAgents": {
     "title": "Aprovechando la ola de LLM, VM0 también actúa como un enrutador de agentes",
-    "description": "Usa Claude Code, Codex, Gemini y otros agentes CLI para construir el tuyo propio. VM0 se adapta a cualquier desarrollo de agentes y proporciona la infraestructura que necesitas para crear tu propio agente o flujos de trabajo inteligentes.",
+    "description": "Expresa tu intención en lenguaje natural. Elige tu IA: Claude, GPT, Gemini o la tuya propia. Tu flujo de trabajo está listo. Sin edición de canvas, sin configuración compleja, sin gestión de prompts.",
     "marketingAgent": {
       "title": "Agente de marketing",
       "description": "Un espacio protegido para que los agentes de marketing ejecuten tareas y refinen campañas sin riesgo"
@@ -28,12 +28,16 @@
     "codingAgent": {
       "title": "Agente de gestión de código",
       "description": "Descubre repositorios en tendencia y gestiona issues, PRs y tareas del repositorio"
+    },
+    "personalizedAgent": {
+      "title": "Tu flujo de trabajo personalizado",
+      "description": "Construye agentes personalizados adaptados a tus necesidades únicas con instrucciones en lenguaje natural"
     }
   },
   "features": {
-    "title": "Una mejor experiencia de desarrollo de agentes, construida sobre infraestructura sólida",
+    "title": "Todo lo que necesitas para construir agentes, respaldado por infraestructura sólida",
     "noWorkflows": {
-      "title": "Se acabaron los flujos de trabajo. Puede ser tan simple como un solo prompt.",
+      "title": "Omite el editor de nodos y el canvas de flujos de trabajo, solo escribe tu intención",
       "description": "No se necesita arrastrar y soltar: escribe un prompt o cualquier tipo de archivo de configuración, conéctalo a VM0 y la lógica central de tu agente está lista."
     },
     "purposeBuilt": {
@@ -78,7 +82,7 @@
     "cookbooks": "Recetas",
     "skills": "Skills",
     "github": "GitHub",
-    "contact": "Contacto",
+    "contact": "Agendar demo",
     "joinWaitlist": "Unirse a lista de espera"
   },
   "footer": {

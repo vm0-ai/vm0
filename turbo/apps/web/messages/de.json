@@ -1,18 +1,18 @@
 {
   "hero": {
-    "title": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
+    "title": "Erstellen Sie Agenten und automatisieren Sie Workflows mit natürlicher Sprache",
     "subtitle": "Von Workflows zu echten Agenten. VM0 macht die Entwicklung von Agenten durch natürliche Sprache zugänglich, unterstützt durch agentenbasierte Infrastruktur.",
     "joinWaitlist": "Warteliste beitreten",
     "github": "GitHub"
   },
   "build": {
     "title": "Erstellen Sie Agenten auf menschliche Weise",
-    "description": "Die heutigen Optionen fallen in zwei Kategorien: Tools, die nur Container ausführen, und Workflow-Builder, die zu starr für echtes Agentenverhalten sind. Entwickler fehlt immer noch eine Umgebung, die für agentenbasierte Ausführung gebaut wurde. VM0 schließt diese Lücke mit einer End-to-End-Laufzeitumgebung für Agenten.",
+    "description": "Workflow-Builder sind zu starr. Container-Plattformen sind zu einfach. VM0 ermöglicht es Ihnen, echte Agenten mit natürlicher Sprache zu erstellen, unterstützt durch agentenbasierte Infrastruktur.",
     "vm0Tagline": "Erstellen und entwickeln Sie KI-Agenten, nur mit natürlicher Sprache."
   },
   "cliAgents": {
     "title": "Auf der LLM-Welle reitend, fungiert VM0 auch als Agenten-Router",
-    "description": "Nutzen Sie Claude Code, Codex, Gemini und andere CLI-Agenten, um Ihre eigenen zu erstellen. VM0 passt in jede Agentenentwicklung und bietet die Infrastruktur, die Sie benötigen, um Ihren eigenen Agenten oder intelligente Workflows zu erstellen.",
+    "description": "Drücken Sie Ihre Absicht in natürlicher Sprache aus. Wählen Sie Ihre KI: Claude, GPT, Gemini oder Ihre eigene. Ihr Workflow ist bereit. Keine Canvas-Bearbeitung, keine aufwändige Konfiguration, kein Prompt-Management.",
     "marketingAgent": {
       "title": "Marketing-Agent",
       "description": "Ein geschützter Raum für Marketing-Agenten, um Aufgaben auszuführen und Kampagnen risikofrei zu verfeinern"
@@ -28,12 +28,16 @@
     "codingAgent": {
       "title": "Code-Management-Agent",
       "description": "Entdeckt angesagte Repositories und verwaltet Issues, PRs und Repository-Aufgaben"
+    },
+    "personalizedAgent": {
+      "title": "Ihr personalisierter Workflow",
+      "description": "Erstellen Sie maßgeschneiderte Agenten für Ihre individuellen Bedürfnisse mit Anweisungen in natürlicher Sprache"
     }
   },
   "features": {
-    "title": "Eine bessere Agentenentwicklungserfahrung, basierend auf solider Infrastruktur",
+    "title": "Alles, was Sie zum Erstellen von Agenten benötigen, unterstützt durch solide Infrastruktur",
     "noWorkflows": {
-      "title": "Keine Workflows mehr. Es kann so einfach wie nur ein Prompt sein.",
+      "title": "Überspringen Sie den Node-Editor und das Workflow-Canvas, schreiben Sie einfach Ihre Absicht",
       "description": "Kein Drag-and-Drop erforderlich – schreiben Sie einen Prompt oder beliebige Konfigurationsdateien, verbinden Sie diese mit VM0 und die Kernlogik Ihres Agenten ist fertig."
     },
     "purposeBuilt": {
@@ -78,7 +82,7 @@
     "cookbooks": "Kochbücher",
     "skills": "Skills",
     "github": "GitHub",
-    "contact": "Kontakt",
+    "contact": "Demo vereinbaren",
     "joinWaitlist": "Warteliste beitreten"
   },
   "footer": {

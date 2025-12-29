@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <strong>The modern runtime for agent-native development</strong>
+  <strong>Build agents and automate workflows with natural language</strong>
 </p>
 
 <p align="center">

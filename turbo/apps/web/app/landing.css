@@ -1626,7 +1626,7 @@ section {
 /* ===== USE CASES ROW ===== */
 .use-cases-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   position: relative;
   z-index: 1;
 }

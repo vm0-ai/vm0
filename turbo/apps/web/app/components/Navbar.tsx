@@ -87,7 +87,9 @@ export default function Navbar() {
           <div className="nav-right">
             {/* Desktop buttons */}
             <a
-              href="mailto:contact@vm0.ai"
+              href="https://calendar.app.google/csdygPrHHyNgxpTPA"
+              target="_blank"
+              rel="noopener noreferrer"
               className="btn-try-demo nav-desktop"
             >
               {t("contact")}
@@ -155,7 +157,9 @@ export default function Navbar() {
               {t("github")}
             </a>
             <a
-              href="mailto:contact@vm0.ai"
+              href="https://calendar.app.google/csdygPrHHyNgxpTPA"
+              target="_blank"
+              rel="noopener noreferrer"
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
