@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.3.0](https://github.com/vm0-ai/vm0/compare/web-v7.2.0...web-v7.3.0) (2025-12-29)
+
+
+### Features
+
+* add terms of use and privacy policy pages ([#789](https://github.com/vm0-ai/vm0/issues/789)) ([e352cce](https://github.com/vm0-ai/vm0/commit/e352ccea6bee935a46cde1e76820e02876b06a6c))
+
 ## [7.2.0](https://github.com/vm0-ai/vm0/compare/web-v7.1.1...web-v7.2.0) (2025-12-29)
 
 
