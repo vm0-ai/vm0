@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/docs-v0.2.0...docs-v0.3.0) (2025-12-30)
+
+
+### Features
+
+* **docs:** restructure documentation with hierarchical navigation ([#811](https://github.com/vm0-ai/vm0/issues/811)) ([5ae6926](https://github.com/vm0-ai/vm0/commit/5ae69267c07d94c3b191be2c95cc8c94fc6a4f75))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/docs-v0.1.4...docs-v0.2.0) (2025-12-30)
 
 
