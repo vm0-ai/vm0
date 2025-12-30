@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.31.1](https://github.com/vm0-ai/vm0/compare/cli-v4.31.0...cli-v4.31.1) (2025-12-30)
+
+
+### Bug Fixes
+
+* **cli:** inherit TTY for compose command in cook workflow ([#809](https://github.com/vm0-ai/vm0/issues/809)) ([0b46ac9](https://github.com/vm0-ai/vm0/commit/0b46ac9acd1d874ab3add859451602ab1b7c4508))
+
 ## [4.31.0](https://github.com/vm0-ai/vm0/compare/cli-v4.30.0...cli-v4.31.0) (2025-12-30)
 
 
