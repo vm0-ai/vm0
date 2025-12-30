@@ -47,15 +47,22 @@ function printCommand(cmd: string): void {
 /**
  * Execute a vm0 command in a subprocess
  * Returns stdout on success, throws on failure with stderr
+ *
+ * @param options.silent - If true, capture stdout/stderr (no output to terminal)
  */
 function execVm0Command(
   args: string[],
   options: { cwd?: string; silent?: boolean } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Determine stdio configuration:
+    // - silent: pipe all (capture output, no terminal interaction)
+    // - default: inherit all (full terminal passthrough, allows prompts)
+    const stdio: "pipe" | "inherit" = options.silent ? "pipe" : "inherit";
+
     const proc = spawn("vm0", args, {
       cwd: options.cwd,
-      stdio: options.silent ? "pipe" : ["inherit", "inherit", "inherit"],
+      stdio,
       shell: process.platform === "win32",
     });
 
@@ -468,9 +475,9 @@ cookCmd
     printCommand(`vm0 compose ${CONFIG_FILE}`);
 
     try {
+      // Use inherit to show compose output and allow confirmation prompts
       await execVm0Command(["compose", CONFIG_FILE], {
         cwd,
-        silent: true,
       });
     } catch (error) {
       console.error(chalk.red(`✗ Compose failed`));
