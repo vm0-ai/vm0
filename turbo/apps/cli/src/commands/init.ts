@@ -4,7 +4,7 @@ import path from "path";
 import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { validateAgentName } from "../lib/yaml-validator";
-import { promptText } from "../lib/prompt-utils";
+import { promptText, isInteractive } from "../lib/prompt-utils";
 
 const VM0_YAML_FILE = "vm0.yaml";
 const AGENTS_MD_FILE = "AGENTS.md";
@@ -51,7 +51,7 @@ export const initCommand = new Command()
   .name("init")
   .description("Initialize a new VM0 project in the current directory")
   .option("-f, --force", "Overwrite existing files")
-  .option("-n, --name <name>", "Agent name (skips interactive prompt)")
+  .option("-n, --name <name>", "Agent name (required in non-interactive mode)")
   .action(async (options: { force?: boolean; name?: string }) => {
     // Check existing files
     const existingFiles = checkExistingFiles();
@@ -68,6 +68,13 @@ export const initCommand = new Command()
     let agentName: string;
     if (options.name) {
       agentName = options.name.trim();
+    } else if (!isInteractive()) {
+      // Non-interactive mode without --name flag
+      console.error(
+        chalk.red("✗ --name flag is required in non-interactive mode"),
+      );
+      console.error(chalk.dim("  Usage: vm0 init --name <agent-name>"));
+      process.exit(1);
     } else {
       // Use directory name as default suggestion
       const dirName = path.basename(process.cwd());

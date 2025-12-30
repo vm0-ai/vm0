@@ -24,9 +24,9 @@ teardown() {
     assert_output --partial "--name"
 }
 
-@test "vm0 init creates vm0.yaml and AGENTS.md with agent name via stdin" {
-    # Provide agent name via stdin using echo pipe
-    run bash -c 'echo "test-agent" | '"$CLI_COMMAND"' init'
+@test "vm0 init creates vm0.yaml and AGENTS.md with --name flag" {
+    # Use --name flag for non-interactive mode (CI-friendly)
+    run $CLI_COMMAND init --name test-agent
     assert_success
     assert_output --partial "Created vm0.yaml"
     assert_output --partial "Created AGENTS.md"
@@ -38,7 +38,7 @@ teardown() {
 }
 
 @test "vm0 init generates correct vm0.yaml content" {
-    run bash -c 'echo "my-agent" | '"$CLI_COMMAND"' init'
+    run $CLI_COMMAND init --name my-agent
     assert_success
 
     # Verify vm0.yaml content
@@ -52,7 +52,7 @@ teardown() {
 }
 
 @test "vm0 init generates correct AGENTS.md content" {
-    run bash -c 'echo "my-agent" | '"$CLI_COMMAND"' init'
+    run $CLI_COMMAND init --name my-agent
     assert_success
 
     # Verify AGENTS.md content
@@ -66,7 +66,7 @@ teardown() {
     # Create existing vm0.yaml
     echo "existing content" > vm0.yaml
 
-    run bash -c 'echo "test-agent" | '"$CLI_COMMAND"' init'
+    run $CLI_COMMAND init --name test-agent
     assert_failure
     assert_output --partial "vm0.yaml already exists"
     assert_output --partial "vm0 init --force"
@@ -76,7 +76,7 @@ teardown() {
     # Create existing AGENTS.md
     echo "existing content" > AGENTS.md
 
-    run bash -c 'echo "test-agent" | '"$CLI_COMMAND"' init'
+    run $CLI_COMMAND init --name test-agent
     assert_failure
     assert_output --partial "AGENTS.md already exists"
     assert_output --partial "vm0 init --force"
@@ -87,7 +87,7 @@ teardown() {
     echo "old vm0 content" > vm0.yaml
     echo "old agents content" > AGENTS.md
 
-    run bash -c 'echo "new-agent" | '"$CLI_COMMAND"' init --force'
+    run $CLI_COMMAND init --name new-agent --force
     assert_success
     assert_output --partial "Created vm0.yaml"
     assert_output --partial "(overwritten)"
@@ -102,21 +102,22 @@ teardown() {
     echo "old content" > vm0.yaml
     echo "old content" > AGENTS.md
 
-    run bash -c 'echo "short-flag-agent" | '"$CLI_COMMAND"' init -f'
+    run $CLI_COMMAND init --name short-flag-agent -f
     assert_success
     assert_output --partial "Created vm0.yaml"
 }
 
 @test "vm0 init rejects invalid agent name (too short)" {
-    run bash -c 'echo "ab" | '"$CLI_COMMAND"' init'
+    run $CLI_COMMAND init --name ab
     assert_failure
     assert_output --partial "Invalid agent name"
 }
 
-@test "vm0 init rejects empty agent name" {
-    run bash -c 'echo "" | '"$CLI_COMMAND"' init'
+@test "vm0 init requires --name in non-interactive mode" {
+    # In non-TTY environment without --name, should fail with clear message
+    run $CLI_COMMAND init
     assert_failure
-    assert_output --partial "Invalid agent name"
+    assert_output --partial "--name flag is required"
 }
 
 @test "vm0 init --name creates files without interactive prompt" {
