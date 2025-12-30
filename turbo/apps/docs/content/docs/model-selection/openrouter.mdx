@@ -1,0 +1,42 @@
+---
+title: OpenRouter
+description: Use multiple model providers through OpenRouter
+---
+
+[OpenRouter](https://openrouter.ai/docs/guides/guides/claude-code-integration) provides access to multiple model providers through a unified API, allowing you to use models from OpenAI, Anthropic, Google, and others.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.OPENROUTER_API_KEY }}" # [!code highlight]
+      ANTHROPIC_API_KEY: "" # [!code highlight]
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "anthropic/claude-sonnet-4" # [!code highlight]
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "anthropic/claude-opus-4" # [!code highlight]
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "anthropic/claude-haiku-3.5" # [!code highlight]
+```
+
+`ANTHROPIC_API_KEY` must be explicitly set to an empty string to prevent conflicts.
+
+## Run
+
+```bash
+vm0 run my-agent "build a todo app" --secrets OPENROUTER_API_KEY=sk-xxx
+```
+
+## Popular Models
+
+| Model                       | Description     |
+| --------------------------- | --------------- |
+| `anthropic/claude-sonnet-4` | Claude Sonnet 4 |
+| `anthropic/claude-opus-4`   | Claude Opus 4   |
+| `openai/gpt-4o`             | GPT-4o          |
+| `google/gemini-2.5-pro`     | Gemini 2.5 Pro  |
+
+Browse all available models at [OpenRouter Models](https://openrouter.ai/models).

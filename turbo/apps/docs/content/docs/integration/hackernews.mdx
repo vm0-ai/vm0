@@ -1,0 +1,64 @@
+---
+title: Hacker News
+description: Read stories and comments from Hacker News
+---
+
+[Hacker News](https://news.ycombinator.com/) is a social news website focusing on technology and startups. This skill enables your agent to read top stories, comments, and user data.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "fetch top stories"
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Tech News Digest Agent
+
+You use Hacker News to create daily tech news digests.
+
+## Workflow
+
+1. Fetch top 30 stories from Hacker News
+2. Summarize each story in 2-3 sentences
+3. Group by topic (AI, startups, programming, etc.)
+4. Format as newsletter
+
+## Output
+
+- Daily digest markdown file
+- Includes links to discussions
+- Highlights stories with 100+ points
+```
+
+```markdown title="AGENTS.md"
+# Trend Analysis Agent
+
+You use Hacker News to analyze tech trends.
+
+## Workflow
+
+1. Collect top stories over the past week
+2. Identify recurring topics and keywords
+3. Track companies and products mentioned
+4. Generate trend report
+
+## Metrics
+
+- Story frequency by topic
+- Average points by category
+- Comment sentiment analysis
+```

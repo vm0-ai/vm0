@@ -1,0 +1,10 @@
+{
+  "title": "Core Concept",
+  "pages": [
+    "instruction",
+    "skill",
+    "artifact",
+    "environment-variable",
+    "container-image"
+  ]
+}

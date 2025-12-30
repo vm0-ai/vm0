@@ -1,5 +1,5 @@
 ---
-title: Artifact Management
+title: Artifact
 description: Persistent storage for agent working directories
 ---
 
@@ -9,8 +9,8 @@ Artifacts provide persistent storage that maps to the CLI agent's working direct
 
 When you run an agent with `--artifact-name`:
 
-1. **Before running** - vm0 loads the artifact into the agent's working directory
-2. **After running** - vm0 persists any changes back to the artifact
+1. **Before running** - VM0 loads the artifact into the agent's working directory
+2. **After running** - VM0 persists any changes back to the artifact
 
 This allows your agent to maintain state across multiple runs, building on previous work.
 
@@ -30,7 +30,7 @@ Initialize an artifact in the current directory:
 vm0 artifact init
 ```
 
-This creates a `.vm0/storage.yaml` config file. The directory name becomes the artifact name.
+This creates a `.vm0/storage.yaml` config file. The current directory name becomes the artifact name.
 
 ### Push
 

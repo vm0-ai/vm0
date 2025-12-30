@@ -1,0 +1,87 @@
+---
+title: Gmail
+description: Send and manage emails with Gmail API
+---
+
+[Gmail](https://gmail.com/) is Google's email service. This skill enables your agent to send emails, read messages, and manage your inbox.
+
+## Required Secrets
+
+| Secret                | Description         |
+| --------------------- | ------------------- |
+| `GMAIL_CLIENT_ID`     | OAuth client ID     |
+| `GMAIL_CLIENT_SECRET` | OAuth client secret |
+| `GMAIL_REFRESH_TOKEN` | Refresh token       |
+
+See [Google Cloud Console](/docs/integration/google-cloud-console) for how to obtain these credentials. Select the minimum scope required for your use case:
+
+| Scope                                            | Description                   |
+| ------------------------------------------------ | ----------------------------- |
+| `https://www.googleapis.com/auth/gmail.readonly` | Read emails only              |
+| `https://www.googleapis.com/auth/gmail.send`     | Send emails only              |
+| `https://www.googleapis.com/auth/gmail.compose`  | Create and send drafts        |
+| `https://www.googleapis.com/auth/gmail.modify`   | Read, send, and delete emails |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/gmail # [!code highlight]
+    environment:
+      GMAIL_CLIENT_ID: "${{ secrets.GMAIL_CLIENT_ID }}" # [!code highlight]
+      GMAIL_CLIENT_SECRET: "${{ secrets.GMAIL_CLIENT_SECRET }}" # [!code highlight]
+      GMAIL_REFRESH_TOKEN: "${{ secrets.GMAIL_REFRESH_TOKEN }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "check my inbox" \
+  --secrets GMAIL_CLIENT_ID=xxx --secrets GMAIL_CLIENT_SECRET=xxx --secrets GMAIL_REFRESH_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Email Digest Agent
+
+You use Gmail to create daily email digests.
+
+## Workflow
+
+1. Fetch unread emails from the past 24 hours
+2. Categorize by sender and topic
+3. Create a summary digest
+4. Send the digest to the user
+
+## Categories
+
+- Urgent: from VIP senders
+- Newsletters: from subscribed lists
+- Notifications: automated emails
+- Personal: everything else
+```
+
+```markdown title="AGENTS.md"
+# Customer Response Agent
+
+You use Gmail to draft customer email responses.
+
+## Workflow
+
+1. Read incoming customer emails
+2. Analyze the question or issue
+3. Draft a professional response
+4. Save as draft for review
+
+## Tone
+
+- Professional and friendly
+- Clear and concise
+- Include next steps when applicable
+```

@@ -1,0 +1,84 @@
+---
+title: Google Sheets
+description: Read and write data in Google Sheets
+---
+
+[Google Sheets](https://sheets.google.com/) is a spreadsheet application. This skill enables your agent to read data, update cells, and manage spreadsheets.
+
+## Required Secrets
+
+| Secret                        | Description         |
+| ----------------------------- | ------------------- |
+| `GOOGLE_SHEETS_CLIENT_ID`     | OAuth client ID     |
+| `GOOGLE_SHEETS_CLIENT_SECRET` | OAuth client secret |
+| `GOOGLE_SHEETS_REFRESH_TOKEN` | Refresh token       |
+
+See [Google Cloud Console](/docs/integration/google-cloud-console) for how to obtain these credentials. Select the minimum scope required for your use case:
+
+| Scope                                                   | Description                  |
+| ------------------------------------------------------- | ---------------------------- |
+| `https://www.googleapis.com/auth/spreadsheets.readonly` | Read spreadsheets only       |
+| `https://www.googleapis.com/auth/spreadsheets`          | Full access (read and write) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/google-sheets # [!code highlight]
+    environment:
+      GOOGLE_SHEETS_CLIENT_ID: "${{ secrets.GOOGLE_SHEETS_CLIENT_ID }}" # [!code highlight]
+      GOOGLE_SHEETS_CLIENT_SECRET: "${{ secrets.GOOGLE_SHEETS_CLIENT_SECRET }}" # [!code highlight]
+      GOOGLE_SHEETS_REFRESH_TOKEN: "${{ secrets.GOOGLE_SHEETS_REFRESH_TOKEN }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "update the spreadsheet" \
+  --secrets GOOGLE_SHEETS_CLIENT_ID=xxx --secrets GOOGLE_SHEETS_CLIENT_SECRET=xxx --secrets GOOGLE_SHEETS_REFRESH_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Report Generator
+
+You use Google Sheets to create weekly reports.
+
+## Workflow
+
+1. Fetch data from various sources
+2. Create new sheet for the week
+3. Populate with formatted data
+4. Add charts and summaries
+
+## Sheet Structure
+
+- Summary tab with KPIs
+- Raw data tabs by category
+- Charts for visualization
+```
+
+```markdown title="AGENTS.md"
+# Data Sync Agent
+
+You use Google Sheets to keep spreadsheets synchronized with databases.
+
+## Workflow
+
+1. Read data from the source spreadsheet
+2. Compare with database records
+3. Update changed rows
+4. Log sync results
+
+## Sync Rules
+
+- Only sync rows with changes
+- Preserve formatting
+- Add timestamp to synced rows
+```

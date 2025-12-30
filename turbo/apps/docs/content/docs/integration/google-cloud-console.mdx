@@ -1,0 +1,68 @@
+---
+title: Google Cloud Console
+description: Set up OAuth credentials for Google APIs
+---
+
+This guide explains how to obtain OAuth credentials for Google APIs (Gmail, Google Sheets, etc.) for personal testing.
+
+## Create Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click **Select a project** > **New Project**
+3. Enter a project name and click **Create**
+
+## Enable APIs
+
+1. Go to **APIs & Services** > **Library**
+2. Search and enable the APIs you need, like Gmail API / Google Sheets API
+
+## Configure OAuth Consent Screen
+
+1. Go to **APIs & Services** > **OAuth consent screen**
+2. Select **External** and click **Create**
+3. Fill in the required fields:
+   - App name
+   - User support email
+   - Developer contact email
+4. Click **Save and Continue**
+5. Skip **Scopes** for now, click **Save and Continue**
+6. Add your Google account as a **Test user**
+7. Click **Save and Continue**
+
+## Create OAuth Client
+
+1. Go to **APIs & Services** > **Credentials**
+2. Click **Create Credentials** > **OAuth client ID**
+3. Select **Web application** as Application type
+4. Enter a name for the client
+5. Add Authorized redirect URIs:
+   ```
+   https://developers.google.com/oauthplayground
+   ```
+6. Click **Create**
+7. Copy the **Client ID** and **Client Secret**
+
+## Get Refresh Token
+
+1. Go to [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
+2. Click the **gear icon** (Settings) in the top right
+3. Check **Use your own OAuth credentials**
+4. Enter your **Client ID** and **Client Secret**
+5. Close the settings panel
+6. In the left panel, select the scopes you need (see [Gmail](/docs/integration/gmail#oauth-scopes) or [Google Sheets](/docs/integration/google-sheets#oauth-scopes) for scope options)
+7. Click **Authorize APIs**
+8. Sign in with your test account and grant permissions
+9. Click **Exchange authorization code for tokens**
+10. Copy the **Refresh token**
+
+## Use the Credentials
+
+You now have three values to use in your VM0 configuration:
+
+| Secret            | Value                                |
+| ----------------- | ------------------------------------ |
+| `*_CLIENT_ID`     | From step 7 of "Create OAuth Client" |
+| `*_CLIENT_SECRET` | From step 7 of "Create OAuth Client" |
+| `*_REFRESH_TOKEN` | From step 10 of "Get Refresh Token"  |
+
+See [Gmail](/docs/integration/gmail) or [Google Sheets](/docs/integration/google-sheets) for configuration examples.

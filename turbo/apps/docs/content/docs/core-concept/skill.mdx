@@ -1,5 +1,5 @@
 ---
-title: Skills
+title: Skill
 description: Add capabilities to your agent with skills
 ---
 
@@ -9,7 +9,7 @@ Skills are reusable capabilities that extend what your agent can do. You can add
 
 Use the `skills` field in your agent configuration to declare which skills to load:
 
-```yaml
+```yaml title="vm0.yaml"
 version: "1.0"
 
 agents:
@@ -46,24 +46,23 @@ The `{ref}` can be:
 
 The URL must point to a valid skill directory that follows the [agentskills.io](https://agentskills.io) format.
 
-After adding skills, publish and run your agent. See [Custom Agent](/docs/custom-agent#publishing-your-agent) for details on `vm0 compose` and `vm0 run` commands.
+After adding skills, publish and run your agent. See [Instruction](/docs/core-concept/instruction#publishing-your-agent) for details on `vm0 compose` and `vm0 run` commands.
 
 ## Available Skills
 
-Common skills from [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills):
+See the [Integration](/docs/integration/firecrawl) section for detailed documentation on available skills, including:
 
-| Skill         | URL                                                            |
-| ------------- | -------------------------------------------------------------- |
-| Firecrawl     | `https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl`     |
-| Bright Data   | `https://github.com/vm0-ai/vm0-skills/tree/main/bright-data`   |
-| Discord       | `https://github.com/vm0-ai/vm0-skills/tree/main/discord`       |
-| DeepSeek      | `https://github.com/vm0-ai/vm0-skills/tree/main/deepseek`      |
-| fal.ai        | `https://github.com/vm0-ai/vm0-skills/tree/main/fal.ai`        |
-| GitHub        | `https://github.com/vm0-ai/vm0-skills/tree/main/github`        |
-| Gmail         | `https://github.com/vm0-ai/vm0-skills/tree/main/gmail`         |
-| Google Sheets | `https://github.com/vm0-ai/vm0-skills/tree/main/google-sheets` |
-| Hacker News   | `https://github.com/vm0-ai/vm0-skills/tree/main/hackernews`    |
-| Linear        | `https://github.com/vm0-ai/vm0-skills/tree/main/linear`        |
-| Notion        | `https://github.com/vm0-ai/vm0-skills/tree/main/notion`        |
-| OpenAI        | `https://github.com/vm0-ai/vm0-skills/tree/main/openai`        |
-| Runway        | `https://github.com/vm0-ai/vm0-skills/tree/main/runway`        |
+- [Firecrawl](/docs/integration/firecrawl) - Web scraping and crawling
+- [Slack](/docs/integration/slack) - Team communication
+- [Notion](/docs/integration/notion) - Documentation and notes
+- [Linear](/docs/integration/linear) - Project management
+- [GitHub](/docs/integration/github) - Code hosting and collaboration
+- [Gmail](/docs/integration/gmail) - Email automation
+- [OpenAI](/docs/integration/openai) - AI models
+- [Discord](/docs/integration/discord) - Community platform
+- [Bright Data](/docs/integration/bright-data) - Web scraping at scale
+- [Google Sheets](/docs/integration/google-sheets) - Spreadsheet automation
+- [Hacker News](/docs/integration/hackernews) - Tech news
+- [Runway](/docs/integration/runway) - Video generation
+
+Browse all 60+ skills at [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills).

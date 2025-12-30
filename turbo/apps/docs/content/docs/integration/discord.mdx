@@ -1,0 +1,73 @@
+---
+title: Discord
+description: Send messages and manage Discord servers
+---
+
+[Discord](https://discord.com/) is a communication platform for communities. This skill enables your agent to send messages, manage channels, and interact with Discord servers.
+
+## Required Secrets
+
+| Secret              | Description                                                                            |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `DISCORD_BOT_TOKEN` | Bot token from [Discord Developer Portal](https://discord.com/developers/applications) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/discord # [!code highlight]
+    environment:
+      DISCORD_BOT_TOKEN: "${{ secrets.DISCORD_BOT_TOKEN }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "post an announcement" \
+  --secrets DISCORD_BOT_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Community Announcement Agent
+
+You use Discord to post announcements.
+
+## Workflow
+
+1. Format announcement message
+2. Post to #announcements channel
+3. Add relevant reactions
+4. Pin important messages
+
+## Message Format
+
+- Use embeds for rich content
+- Include relevant links
+- Mention roles when appropriate
+```
+
+```markdown title="AGENTS.md"
+# Moderation Assistant
+
+You use Discord to moderate servers.
+
+## Workflow
+
+1. Monitor messages for violations
+2. Issue warnings to users
+3. Log moderation actions
+4. Report to moderators
+
+## Rules
+
+- No spam or self-promotion
+- Be respectful to others
+- Follow channel topics
+```

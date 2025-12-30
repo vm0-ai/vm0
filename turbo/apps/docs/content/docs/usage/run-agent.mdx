@@ -1,0 +1,86 @@
+---
+title: Run Agent
+description: Execute agents with vm0 run command
+---
+
+Use `vm0 run` to execute your agent.
+
+## Basic Usage
+
+```bash
+vm0 run <agent-name> "<prompt>"
+```
+
+**Examples:**
+
+```bash
+# Run latest version
+vm0 run my-agent "build a todo app"
+
+# Run specific version
+vm0 run my-agent:abc123 "build a todo app"
+```
+
+## Options
+
+| Option                      | Description                           |
+| --------------------------- | ------------------------------------- |
+| `--vars <KEY=value>`        | Pass variables for `${{ vars.xxx }}`  |
+| `--secrets <KEY=value>`     | Pass secrets for `${{ secrets.xxx }}` |
+| `--artifact-name <name>`    | Use persistent artifact storage       |
+| `--artifact-version <hash>` | Use specific artifact version         |
+
+### Passing Variables and Secrets
+
+```bash
+vm0 run my-agent "deploy to production" \
+  --vars ENV=production \
+  --secrets API_KEY=sk-xxx
+```
+
+See [Environment Variable](/docs/core-concept/environment-variable) for more details.
+
+### Using Artifacts
+
+```bash
+vm0 run my-agent "continue the project" --artifact-name my-project
+```
+
+See [Artifact](/docs/core-concept/artifact) for more details.
+
+## Continue a Session
+
+After each run, VM0 outputs a **Session ID** that references the latest conversation and artifact state. Use `vm0 run continue` to keep working:
+
+```bash
+vm0 run continue <session-id> "add user authentication"
+```
+
+- Uses latest conversation history
+- Uses latest artifact version
+- Best for ongoing iterative work
+
+## Scheduled Run
+
+For automated scheduled runs, use GitHub Actions with `vm0-ai/run-action`:
+
+```yaml title=".github/workflows/scheduled-run.yml"
+name: Scheduled Run
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Agent
+        uses: vm0-ai/run-action@v1
+        with:
+          agent: my-agent
+          prompt: "do the daily task"
+          vm0-token: ${{ secrets.VM0_TOKEN }}
+```
+
+See [GitHub Actions](/docs/usage/github-actions) for more details on setting up automated workflows.

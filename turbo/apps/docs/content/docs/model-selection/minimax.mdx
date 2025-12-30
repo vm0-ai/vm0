@@ -1,0 +1,45 @@
+---
+title: MiniMax
+description: Use MiniMax M2.1 model with VM0
+---
+
+[MiniMax](https://platform.minimax.io/docs/guides/text-ai-coding-tools) offers the M2.1 model with strong code understanding and multi-turn dialogue capabilities.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.MINIMAX_API_KEY }}" # [!code highlight]
+      API_TIMEOUT_MS: "3000000" # [!code highlight]
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # [!code highlight]
+      ANTHROPIC_MODEL: "MiniMax-M2.1" # [!code highlight]
+      ANTHROPIC_SMALL_FAST_MODEL: "MiniMax-M2.1" # [!code highlight]
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.1" # [!code highlight]
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.1" # [!code highlight]
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.1" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "build a todo app" --secrets MINIMAX_API_KEY=xxx
+```
+
+## Regional Endpoints
+
+| Region        | Endpoint                             |
+| ------------- | ------------------------------------ |
+| International | `https://api.minimax.io/anthropic`   |
+| China         | `https://api.minimaxi.com/anthropic` |
+
+## Available Models
+
+| Model          | Description                            |
+| -------------- | -------------------------------------- |
+| `MiniMax-M2.1` | Code understanding and reasoning model |

@@ -1,0 +1,74 @@
+---
+title: Bright Data
+description: Web scraping with proxies and data collection
+---
+
+[Bright Data](https://brightdata.com/) provides web scraping infrastructure with residential proxies and pre-built data collectors. This skill enables your agent to scrape websites at scale.
+
+## Required Secrets
+
+| Secret               | Description                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `BRIGHTDATA_API_KEY` | API key from [Bright Data Dashboard](https://brightdata.com/cp/setting/users) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/bright-data # [!code highlight]
+    environment:
+      BRIGHTDATA_API_KEY: "${{ secrets.BRIGHTDATA_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "scrape social media data" \
+  --secrets BRIGHTDATA_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Social Media Scraper
+
+You use Bright Data to collect data from social media platforms.
+
+## Workflow
+
+1. Define target profiles or hashtags
+2. Trigger data collection job
+3. Wait for results
+4. Process and format the data
+
+## Data Points
+
+- Posts and engagement metrics
+- Profile information
+- Follower counts
+- Recent activity
+```
+
+```markdown title="AGENTS.md"
+# E-commerce Price Monitor
+
+You use Bright Data to track prices across e-commerce sites.
+
+## Workflow
+
+1. Set up product URLs to monitor
+2. Trigger price scraping job
+3. Compare with historical data
+4. Alert on significant changes
+
+## Output
+
+- Price history charts
+- Competitor comparison
+- Deal alerts
+```

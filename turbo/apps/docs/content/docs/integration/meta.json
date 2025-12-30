@@ -1,0 +1,18 @@
+{
+  "title": "Integration",
+  "pages": [
+    "firecrawl",
+    "slack",
+    "notion",
+    "linear",
+    "github",
+    "gmail",
+    "google-sheets",
+    "google-cloud-console",
+    "openai",
+    "discord",
+    "bright-data",
+    "hackernews",
+    "runway"
+  ]
+}

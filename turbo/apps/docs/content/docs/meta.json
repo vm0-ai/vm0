@@ -1,13 +1,10 @@
 {
   "pages": [
     "index",
-    "custom-agent",
-    "skills",
-    "run-agent",
-    "artifact",
-    "github-actions",
+    "introduction",
+    "core-concept",
+    "usage",
     "model-selection",
-    "environment-variables",
-    "custom-images"
+    "integration"
   ]
 }

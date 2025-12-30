@@ -1,0 +1,74 @@
+---
+title: GitHub
+description: Interact with GitHub repositories, issues, and pull requests
+---
+
+[GitHub](https://github.com/) is a code hosting platform. This skill enables your agent to manage repositories, issues, pull requests, and more using the GitHub CLI.
+
+## Required Secrets
+
+| Secret         | Description                                                                      |
+| -------------- | -------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN` | Personal access token from [GitHub Settings](https://github.com/settings/tokens) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github # [!code highlight]
+    environment:
+      GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "list open PRs" \
+  --secrets GITHUB_TOKEN=ghp_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# PR Review Agent
+
+You use GitHub to review pull requests.
+
+## Workflow
+
+1. List open PRs in the repository
+2. Review code changes for issues
+3. Add comments with suggestions
+4. Approve or request changes
+
+## Review Criteria
+
+- Code style and consistency
+- Test coverage
+- Security vulnerabilities
+- Performance implications
+```
+
+```markdown title="AGENTS.md"
+# Issue Management Agent
+
+You use GitHub to manage issues.
+
+## Workflow
+
+1. Scan new issues for duplicates
+2. Add appropriate labels
+3. Assign to team members
+4. Link related issues and PRs
+
+## Labels
+
+- bug, feature, documentation
+- priority: high, medium, low
+- status: needs-triage, in-progress, blocked
+```

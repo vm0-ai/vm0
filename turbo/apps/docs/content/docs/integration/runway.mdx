@@ -1,0 +1,73 @@
+---
+title: Runway
+description: Generate videos with Runway AI
+---
+
+[Runway](https://runwayml.com/) is an AI-powered video generation platform. This skill enables your agent to create videos from text or images using Gen-3 and other Runway models.
+
+## Required Secrets
+
+| Secret           | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| `RUNWAY_API_KEY` | API key from [Runway Developer Portal](https://dev.runwayml.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/runway # [!code highlight]
+    environment:
+      RUNWAY_API_KEY: "${{ secrets.RUNWAY_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate a video" \
+  --secrets RUNWAY_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Video Content Creator
+
+You use Runway to generate video content for marketing.
+
+## Workflow
+
+1. Receive video concept or script
+2. Generate video using Runway
+3. Download and save to artifacts
+4. Provide video preview link
+
+## Guidelines
+
+- Keep prompts descriptive and specific
+- Specify camera movement and style
+- Generate multiple variations
+```
+
+```markdown title="AGENTS.md"
+# Product Demo Agent
+
+You use Runway to create product demo videos.
+
+## Workflow
+
+1. Take product screenshots as input
+2. Generate animated product showcases
+3. Add transitions between features
+4. Compile final demo video
+
+## Style
+
+- Clean, professional look
+- Smooth transitions
+- Focus on key features
+```

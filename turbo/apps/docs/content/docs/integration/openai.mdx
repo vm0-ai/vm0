@@ -1,0 +1,72 @@
+---
+title: OpenAI
+description: Use OpenAI models for text, image, and audio generation
+---
+
+[OpenAI](https://openai.com/) provides AI models for text generation, image creation, and more. This skill enables your agent to use GPT, DALL-E, Whisper, and other OpenAI APIs.
+
+## Required Secrets
+
+| Secret           | Description                                                          |
+| ---------------- | -------------------------------------------------------------------- |
+| `OPENAI_API_KEY` | API key from [OpenAI Platform](https://platform.openai.com/api-keys) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/openai # [!code highlight]
+    environment:
+      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate an image" \
+  --secrets OPENAI_API_KEY=sk-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Image Generation Agent
+
+You use OpenAI DALL-E to create images based on descriptions.
+
+## Workflow
+
+1. Receive image description from user
+2. Generate image using DALL-E
+3. Save image to artifacts
+4. Provide the image URL
+
+## Guidelines
+
+- Create detailed prompts for better results
+- Specify style, mood, and composition
+- Generate multiple variations when needed
+```
+
+```markdown title="AGENTS.md"
+# Audio Transcription Agent
+
+You use OpenAI Whisper to transcribe audio files to text.
+
+## Workflow
+
+1. Receive audio file path
+2. Transcribe using Whisper API
+3. Format the transcript with timestamps
+4. Save as markdown file
+
+## Supported Formats
+
+- MP3, MP4, WAV, M4A
+- Max file size: 25MB
+```

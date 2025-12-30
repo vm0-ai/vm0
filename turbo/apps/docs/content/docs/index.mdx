@@ -1,75 +1,89 @@
 ---
-title: Getting Started
-description: From zero to agent in 5 minutes
+title: VM0 Documentation
+description: Build and run AI agents in the cloud
 ---
 
-## Installation
-
-Install the vm0 CLI globally:
-
-```bash
-# npm
-npm install -g @vm0/cli
-
-# yarn
-yarn global add @vm0/cli
-
-# pnpm
-pnpm add -g @vm0/cli
-```
-
-## Login
-
-Authenticate with your vm0 account:
-
-```bash
-vm0 auth login
-```
-
-## Create Your First Agent
-
-Create a new directory and initialize a vm0 agent:
-
-```bash
-mkdir my-agent && cd my-agent
-vm0 init
-```
-
-This creates two files:
-
-- **vm0.yaml** - Agent configuration file that defines the agent's provider, image, and environment settings
-- **AGENTS.md** - Instructions file that describes what the agent should do and how it should behave
-
-## Initialize Token
-
-Set up your Claude Code OAuth token:
-
-```bash
-claude setup-token
-echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
-```
-
-You can also use other LLM providers instead of Claude, like Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/model-selection) for configuration options.
-
-## Run Your Agent
-
-Start the agent with a prompt:
-
-```bash
-vm0 cook "let's start working."
-```
-
-This command displays the agent's execution logs in real-time. When the agent finishes, any files it created or modified will be downloaded to the `artifact` directory in your project.
-
-## Next Steps
+Welcome to VM0 documentation. Get started with building AI agents.
 
 <Cards>
-  <Card title="Custom Agent" href="/docs/custom-agent" />
-  <Card title="Skills" href="/docs/skills" />
-  <Card title="Run & Debug Agent" href="/docs/run-agent" />
-  <Card title="Artifact Management" href="/docs/artifact" />
-  <Card title="GitHub Actions" href="/docs/github-actions" />
-  <Card title="Model Selection" href="/docs/model-selection" />
-  <Card title="Environment Variables" href="/docs/environment-variables" />
-  <Card title="Custom Images" href="/docs/custom-images" />
+  <Card
+    title="Quick Start"
+    href="/docs/introduction/quick-start"
+    description="From zero to agent in 5 minutes"
+  />
+</Cards>
+
+## Core Concepts
+
+<Cards>
+  <Card
+    title="Instruction"
+    href="/docs/core-concept/instruction"
+    description="Define workflows with natural language"
+  />
+  <Card
+    title="Skill"
+    href="/docs/core-concept/skill"
+    description="Add SaaS integrations to your agent"
+  />
+  <Card
+    title="Artifact"
+    href="/docs/core-concept/artifact"
+    description="Persistent storage for agent files"
+  />
+  <Card
+    title="Environment Variable"
+    href="/docs/core-concept/environment-variable"
+    description="Configure secrets and variables"
+  />
+  <Card
+    title="Container Image"
+    href="/docs/core-concept/container-image"
+    description="Custom Docker images"
+  />
+</Cards>
+
+## Usage
+
+<Cards>
+  <Card
+    title="Run & Debug Agent"
+    href="/docs/usage/run-agent"
+    description="Execute and debug agent sessions"
+  />
+  <Card
+    title="GitHub Actions"
+    href="/docs/usage/github-actions"
+    description="CI/CD integration"
+  />
+  <Card
+    title="Model Selection"
+    href="/docs/usage/model-selection"
+    description="Configure LLM providers"
+  />
+</Cards>
+
+## Integrations
+
+<Cards>
+  <Card
+    title="Firecrawl"
+    href="/docs/integration/firecrawl"
+    description="Web scraping"
+  />
+  <Card
+    title="Slack"
+    href="/docs/integration/slack"
+    description="Team communication"
+  />
+  <Card
+    title="Notion"
+    href="/docs/integration/notion"
+    description="Documentation"
+  />
+  <Card
+    title="GitHub"
+    href="/docs/integration/github"
+    description="Code hosting"
+  />
 </Cards>

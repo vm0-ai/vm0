@@ -1,5 +1,5 @@
 ---
-title: Custom Agent
+title: Instruction
 description: Define custom workflows with natural language instructions
 ---
 
@@ -9,7 +9,7 @@ You can customize your agent's behavior by providing instructions that define wh
 
 The `instructions` field in `vm0.yaml` specifies a file containing natural language instructions for your agent:
 
-```yaml
+```yaml title="vm0.yaml"
 version: "1.0"
 
 agents:
@@ -27,11 +27,11 @@ The instructions file becomes part of the agent's system prompt:
 
 Use natural language to define workflows, rules, and behaviors. Your agent will follow these instructions when executing tasks.
 
-Some workflows require specific SaaS API integrations. See [Skills](/docs/skills) for available integrations. If a SaaS API requires authentication tokens, see [Environment Variables](/docs/environment-variables) for how to pass secrets securely.
+Some workflows require specific SaaS API integrations. See [Skill](/docs/core-concept/skill) for available integrations. If a SaaS API requires authentication tokens, see [Environment Variable](/docs/core-concept/environment-variable) for how to pass secrets securely.
 
 **Example: Daily News Summary**
 
-```markdown
+```markdown title="AGENTS.md"
 # Daily News Agent
 
 You are a news summarization agent.
@@ -51,7 +51,7 @@ You are a news summarization agent.
 
 **Example: Team Communication Tracker**
 
-```markdown
+```markdown title="AGENTS.md"
 # Slack to Notion Agent
 
 You help track team communications.
@@ -77,7 +77,7 @@ After creating or updating your `vm0.yaml` and instructions file, publish a new 
 vm0 compose vm0.yaml
 ```
 
-This uploads the configuration, instructions, and any referenced skills to vm0.
+This uploads the configuration, instructions, and any referenced skills to VM0.
 
 ## Running Your Agent
 

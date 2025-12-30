@@ -1,9 +1,9 @@
 ---
-title: Custom Images
-description: Build and manage custom Docker images for vm0 agents
+title: Container Image
+description: Build and manage custom Docker images for VM0 agents
 ---
 
-This guide explains how to build custom Docker images with pre-installed dependencies for your vm0 agents.
+This guide explains how to build custom Docker images with pre-installed dependencies for your VM0 agents.
 
 ## Overview
 
@@ -26,9 +26,9 @@ vm0 image build -f Dockerfile -n my-image
 
 ### Dockerfile Restrictions
 
-vm0 only supports **FROM** and **RUN** instructions in Dockerfiles. This is intentional - the purpose is to pre-install environment dependencies, not to configure application behavior.
+VM0 only supports **FROM** and **RUN** instructions in Dockerfiles. This is intentional - the purpose is to pre-install environment dependencies, not to configure application behavior.
 
-```dockerfile
+```dockerfile title="Dockerfile"
 # Allowed
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y nodejs npm
@@ -70,7 +70,7 @@ Images are referenced using a scope/name format with optional version tags.
 
 ### Examples
 
-```yaml
+```yaml title="vm0.yaml"
 # Your own image (uses your scope)
 image: "my-image"
 
@@ -98,20 +98,20 @@ Your scope is a namespace for your images. After setting it, your images are ref
 
 When you reference an image **without** a scope:
 
-```yaml
+```yaml title="vm0.yaml"
 image: "my-image"
 ```
 
-vm0 automatically resolves it to your scope:
+VM0 automatically resolves it to your scope:
 
-```yaml
+```yaml title="vm0.yaml"
 # Internally resolved to:
 image: "myusername/my-image"
 ```
 
 When you reference an image **with** an explicit scope, it uses that scope directly:
 
-```yaml
+```yaml title="vm0.yaml"
 # Uses exactly as specified
 image: "otheruser/their-image"
 ```
@@ -120,7 +120,7 @@ image: "otheruser/their-image"
 
 Reference your custom image in the agent configuration:
 
-```yaml
+```yaml title="vm0.yaml"
 version: "1.0"
 
 agents:
@@ -132,7 +132,7 @@ agents:
 
 Or reference a system image explicitly:
 
-```yaml
+```yaml title="vm0.yaml"
 version: "1.0"
 
 agents:
@@ -187,7 +187,7 @@ vm0 image delete my-image --force
 
 ## System Images
 
-vm0 provides built-in system images under the `vm0` scope:
+VM0 provides built-in system images under the `vm0` scope:
 
 | Image             | Description                    |
 | ----------------- | ------------------------------ |

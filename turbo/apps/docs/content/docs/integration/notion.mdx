@@ -1,0 +1,74 @@
+---
+title: Notion
+description: Create and manage Notion pages and databases
+---
+
+[Notion](https://www.notion.so/) is a productivity and note-taking application. This skill enables your agent to create pages, update databases, and manage content in Notion.
+
+## Required Secrets
+
+| Secret           | Description                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `NOTION_API_KEY` | Integration token from [Notion Integrations](https://www.notion.so/profile/integrations) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/notion # [!code highlight]
+    environment:
+      NOTION_API_KEY: "${{ secrets.NOTION_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create a new page" \
+  --secrets NOTION_API_KEY=ntn_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Meeting Notes Agent
+
+You use Notion to organize and store meeting notes.
+
+## Workflow
+
+1. Create a new page in the Meetings database
+2. Add meeting title, date, and attendees
+3. Structure notes with headers and action items
+4. Tag relevant team members
+
+## Page Structure
+
+- Summary
+- Discussion Points
+- Action Items (with owners and due dates)
+- Next Steps
+```
+
+```markdown title="AGENTS.md"
+# Documentation Agent
+
+You use Notion to maintain project documentation.
+
+## Workflow
+
+1. Check for outdated documentation
+2. Update pages with new information
+3. Create new pages for undocumented features
+4. Link related pages together
+
+## Standards
+
+- Use consistent heading hierarchy
+- Include code blocks for examples
+- Add last updated date
+```

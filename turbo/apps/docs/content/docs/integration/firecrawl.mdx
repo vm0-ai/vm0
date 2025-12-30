@@ -1,0 +1,71 @@
+---
+title: Firecrawl
+description: Web scraping and crawling with Firecrawl API
+---
+
+[Firecrawl](https://www.firecrawl.dev/) is a web scraping API that helps you extract clean, structured data from any website.
+
+## Required Secrets
+
+| Secret              | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| `FIRECRAWL_API_KEY` | API key from [Firecrawl Dashboard](https://www.firecrawl.dev/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl # [!code highlight]
+    environment:
+      FIRECRAWL_API_KEY: "${{ secrets.FIRECRAWL_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "scrape the website" \
+  --secrets FIRECRAWL_API_KEY=fc-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Web Research Agent
+
+You use Firecrawl to gather and analyze web content.
+
+## Workflow
+
+1. Scrape the target website using Firecrawl
+2. Extract key information from the content
+3. Summarize findings in a structured format
+
+## Capabilities
+
+- Scrape single pages or entire websites
+- Extract clean markdown content
+- Handle JavaScript-rendered pages
+```
+
+```markdown title="AGENTS.md"
+# Competitor Analysis Agent
+
+You use Firecrawl to analyze competitor websites for market research.
+
+## Workflow
+
+1. Crawl competitor websites
+2. Extract pricing, features, and positioning
+3. Create comparison reports
+
+## Output
+
+- Feature comparison table
+- Pricing analysis
+- Key differentiators
+```

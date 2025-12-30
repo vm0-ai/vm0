@@ -1,0 +1,38 @@
+---
+title: Z.AI (GLM)
+description: Use GLM models with VM0
+---
+
+[Z.AI](https://docs.z.ai/devpack/tool/claude) provides access to GLM models with strong coding capabilities.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.ZAI_API_KEY }}" # [!code highlight]
+      API_TIMEOUT_MS: "3000000" # [!code highlight]
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "GLM-4.7" # [!code highlight]
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "GLM-4.7" # [!code highlight]
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "GLM-4.5-Air" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "build a todo app" --secrets ZAI_API_KEY=xxx
+```
+
+## Available Models
+
+| Model         | Description                   |
+| ------------- | ----------------------------- |
+| `GLM-4.7`     | High-performance coding model |
+| `GLM-4.5-Air` | Fast, lightweight model       |
+
+Get your API key at [Z.AI Open Platform](https://z.ai/model-api).

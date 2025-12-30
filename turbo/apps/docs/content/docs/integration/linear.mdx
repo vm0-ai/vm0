@@ -1,0 +1,74 @@
+---
+title: Linear
+description: Manage issues and projects in Linear
+---
+
+[Linear](https://linear.app/) is a project management tool for software teams. This skill enables your agent to create issues, update statuses, and manage projects.
+
+## Required Secrets
+
+| Secret           | Description                                                     |
+| ---------------- | --------------------------------------------------------------- |
+| `LINEAR_API_KEY` | API key from [Linear Settings](https://linear.app/settings/api) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/linear # [!code highlight]
+    environment:
+      LINEAR_API_KEY: "${{ secrets.LINEAR_API_KEY }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create an issue" \
+  --secrets LINEAR_API_KEY=lin_api_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Bug Triage Agent
+
+You use Linear to triage and organize bug reports.
+
+## Workflow
+
+1. Review new issues in the Triage queue
+2. Add appropriate labels and priority
+3. Assign to relevant team members
+4. Move to appropriate project board
+
+## Priority Guidelines
+
+- P0: Production down, data loss
+- P1: Major feature broken
+- P2: Minor bugs, workarounds exist
+- P3: Nice to have improvements
+```
+
+```markdown title="AGENTS.md"
+# Sprint Planning Agent
+
+You use Linear to prepare sprint planning.
+
+## Workflow
+
+1. List all issues in the backlog
+2. Calculate story points and capacity
+3. Suggest issues for the upcoming sprint
+4. Create sprint cycle if needed
+
+## Criteria
+
+- Balance bug fixes and features
+- Consider team velocity
+- Prioritize customer-reported issues
+```

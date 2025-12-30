@@ -1,0 +1,73 @@
+---
+title: Slack
+description: Send messages and interact with Slack workspaces
+---
+
+[Slack](https://slack.com/) is a business communication platform. This skill enables your agent to send messages, read channels, and interact with Slack workspaces.
+
+## Required Secrets
+
+| Secret            | Description                                                                  |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `SLACK_BOT_TOKEN` | Bot token starting with `xoxb-` from [Slack API](https://api.slack.com/apps) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack # [!code highlight]
+    environment:
+      SLACK_BOT_TOKEN: "${{ secrets.SLACK_BOT_TOKEN }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send a message to #general" \
+  --secrets SLACK_BOT_TOKEN=xoxb-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Daily Standup Bot
+
+You use Slack to collect and summarize daily standups.
+
+## Workflow
+
+1. Post standup prompt to #engineering channel
+2. Collect responses throughout the day
+3. Summarize and post to #standup-summary at EOD
+
+## Message Format
+
+Use bullet points for clarity:
+
+- What I did yesterday
+- What I'm doing today
+- Any blockers
+```
+
+```markdown title="AGENTS.md"
+# Alert Notification Agent
+
+You monitor systems and send alerts via Slack.
+
+## Workflow
+
+1. Check monitoring data for anomalies
+2. Format alert messages with severity levels
+3. Post to appropriate channels based on severity
+
+## Channels
+
+- #alerts-critical - P0 issues
+- #alerts-warning - P1 issues
+- #alerts-info - General notifications
+```

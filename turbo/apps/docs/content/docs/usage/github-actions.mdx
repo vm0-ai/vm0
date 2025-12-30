@@ -3,7 +3,7 @@ title: GitHub Actions
 description: Automate agent deployment with GitHub Actions
 ---
 
-Integrate vm0 agents with GitHub Actions for automated publishing and execution.
+Integrate VM0 agents with GitHub Actions for automated publishing and execution.
 
 ## Quick Setup
 
@@ -29,7 +29,7 @@ This command:
 
 ### compose-action
 
-Publishes your agent configuration to vm0.
+Publishes your agent configuration to VM0.
 
 ```yaml
 - name: Publish Agent
@@ -88,7 +88,7 @@ See [vm0-ai/artifact-pull-action](https://github.com/vm0-ai/artifact-pull-action
 
 ### Scheduled Agent Run
 
-```yaml
+```yaml title=".github/workflows/daily-report.yml"
 name: Daily Report
 
 on:
@@ -111,7 +111,7 @@ jobs:
 
 ### Build and Publish
 
-```yaml
+```yaml title=".github/workflows/publish.yml"
 name: Build and Publish
 
 on:

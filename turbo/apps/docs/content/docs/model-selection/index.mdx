@@ -1,0 +1,30 @@
+---
+title: Overview
+description: Configure different LLM providers for Claude Code
+---
+
+VM0 allows you to use various LLM providers that implement the Anthropic API. Changing models is done by setting Claude Code related environment variables in your `vm0.yaml` file.
+
+## Basic Structure
+
+Set the `environment` field to override Claude Code's default model configuration:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://api.example.com/anthropic" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]
+      ANTHROPIC_MODEL: "model-name" # [!code highlight]
+```
+
+## Supported Providers
+
+- [Moonshot (Kimi)](/docs/model-selection/moonshot)
+- [MiniMax](/docs/model-selection/minimax)
+- [DeepSeek](/docs/model-selection/deepseek)
+- [Z.AI (GLM)](/docs/model-selection/zai)
+- [OpenRouter](/docs/model-selection/openrouter)

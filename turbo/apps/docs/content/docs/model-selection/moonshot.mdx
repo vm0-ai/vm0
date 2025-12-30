@@ -1,0 +1,36 @@
+---
+title: Moonshot (Kimi)
+description: Use Kimi K2 model with VM0
+---
+
+[Moonshot](https://platform.moonshot.ai/docs/guide/agent-support) provides the Kimi K2 model with strong reasoning capabilities.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.MOONSHOT_API_KEY }}" # [!code highlight]
+      ANTHROPIC_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "build a todo app" --secrets MOONSHOT_API_KEY=sk-xxx
+```
+
+## Available Models
+
+| Model                    | Description          |
+| ------------------------ | -------------------- |
+| `kimi-k2-thinking-turbo` | Fast reasoning model |

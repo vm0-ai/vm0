@@ -1,13 +1,13 @@
 ---
 title: Environment Variables
-description: Configure secrets and variables for vm0 agents
+description: Configure secrets and variables for VM0 agents
 ---
 
 This guide explains how to use template variables in your `vm0.yaml` configuration and pass values when running agents.
 
 ## Template Variables
 
-vm0 supports two types of template variables in your configuration:
+VM0 supports two types of template variables in your configuration:
 
 | Type        | Syntax                | Purpose                                         |
 | ----------- | --------------------- | ----------------------------------------------- |
@@ -34,7 +34,7 @@ Both work identically in terms of syntax and value resolution. The distinction h
 
 Reference variables in your configuration using the template syntax:
 
-```yaml
+```yaml title="vm0.yaml"
 version: "1.0"
 
 agents:
@@ -52,7 +52,7 @@ agents:
 
 You can also use variables in volume names:
 
-```yaml
+```yaml title="vm0.yaml"
 volumes:
   data-volume:
     name: "data-${{ vars.ENV_NAME }}"
@@ -96,8 +96,7 @@ vm0 run my-agent "your prompt"
 
 You can also use a `.env` file in your project root:
 
-```bash
-# .env
+```bash title=".env"
 API_KEY=sk-xxx
 DB_PASSWORD=mypassword
 ENV_NAME=production
@@ -105,7 +104,7 @@ ENV_NAME=production
 
 ## Value Resolution Priority
 
-When the same variable is defined in multiple places, vm0 uses this priority order:
+When the same variable is defined in multiple places, VM0 uses this priority order:
 
 1. **CLI arguments** (highest priority)
 2. **Environment variables**
@@ -141,7 +140,7 @@ echo ".env" >> .gitignore
 
 Choose clear, descriptive names for your variables:
 
-```yaml
+```yaml title="vm0.yaml"
 # Good
 environment:
   ANTHROPIC_AUTH_TOKEN: "${{ secrets.ANTHROPIC_API_KEY }}"
@@ -155,7 +154,7 @@ environment:
 
 Organize your configuration logically:
 
-```yaml
+```yaml title="vm0.yaml"
 environment:
   # LLM Provider Configuration
   ANTHROPIC_BASE_URL: "${{ vars.LLM_BASE_URL }}"

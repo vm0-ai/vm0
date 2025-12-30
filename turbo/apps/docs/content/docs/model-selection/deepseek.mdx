@@ -1,0 +1,35 @@
+---
+title: DeepSeek
+description: Use DeepSeek models with VM0
+---
+
+[DeepSeek](https://api-docs.deepseek.com/guides/anthropic_api) provides cost-effective models with strong coding capabilities.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic" # [!code highlight]
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.DEEPSEEK_API_KEY }}" # [!code highlight]
+      API_TIMEOUT_MS: "600000" # [!code highlight]
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # [!code highlight]
+      ANTHROPIC_MODEL: "deepseek-chat" # [!code highlight]
+      ANTHROPIC_SMALL_FAST_MODEL: "deepseek-chat" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "build a todo app" --secrets DEEPSEEK_API_KEY=sk-xxx
+```
+
+## Available Models
+
+| Model           | Description                |
+| --------------- | -------------------------- |
+| `deepseek-chat` | General purpose chat model |

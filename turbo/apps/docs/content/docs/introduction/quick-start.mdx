@@ -1,0 +1,73 @@
+---
+title: Quick Start
+description: From zero to agent in 5 minutes
+---
+
+## Installation
+
+Install the VM0 CLI globally:
+
+<Tabs items={["npm", "pnpm", "yarn"]}>
+  <Tab value="npm">```bash npm install -g @vm0/cli ```</Tab>
+  <Tab value="pnpm">```bash pnpm add -g @vm0/cli ```</Tab>
+  <Tab value="yarn">```bash yarn global add @vm0/cli ```</Tab>
+</Tabs>
+
+## Login
+
+Authenticate with your VM0 account:
+
+```bash
+vm0 auth login
+```
+
+## Create Your First Agent
+
+Create a new directory and initialize a VM0 agent:
+
+```bash
+mkdir my-agent && cd my-agent
+vm0 init
+```
+
+This creates two files:
+
+- **vm0.yaml** - Agent configuration file that defines the agent's provider, image, and environment settings
+- **AGENTS.md** - Instructions file that describes what the agent should do and how it should behave
+
+## Initialize Token
+
+Set up your Claude Code OAuth token:
+
+```bash
+claude setup-token
+echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
+```
+
+You can also use other LLM providers instead of Claude, like Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/usage/model-selection) for configuration options.
+
+## Run Your Agent
+
+Start the agent with a prompt:
+
+```bash
+vm0 cook "let's start working."
+```
+
+This command displays the agent's execution logs in real-time. When the agent finishes, any files it created or modified will be downloaded to the `artifact` directory in your project.
+
+## Next Steps
+
+<Cards>
+  <Card title="Instruction" href="/docs/core-concept/instruction" />
+  <Card title="Skill" href="/docs/core-concept/skill" />
+  <Card title="Artifact" href="/docs/core-concept/artifact" />
+  <Card
+    title="Environment Variable"
+    href="/docs/core-concept/environment-variable"
+  />
+  <Card title="Container Image" href="/docs/core-concept/container-image" />
+  <Card title="Run & Debug Agent" href="/docs/usage/run-agent" />
+  <Card title="GitHub Actions" href="/docs/usage/github-actions" />
+  <Card title="Model Selection" href="/docs/usage/model-selection" />
+</Cards>
