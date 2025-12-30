@@ -8,10 +8,6 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import {
-  createSecretMasker,
-  decryptSecrets,
-} from "../../../../../src/lib/crypto";
 import { logger } from "../../../../../src/lib/logger";
 import {
   ingestToAxiom,
@@ -61,24 +57,14 @@ const router = tsr.router(webhookEventsContract, {
       };
     }
 
-    // Get secrets from run record and create masker for protecting sensitive data
-    // Secrets are stored encrypted per-value in the run record
-    let secretValues: string[] = [];
-    if (run.secrets && typeof run.secrets === "object") {
-      const encryptedSecrets = run.secrets as Record<string, string>;
-      const decrypted = decryptSecrets(encryptedSecrets);
-      secretValues = Object.values(decrypted);
-    }
-    const masker = createSecretMasker(secretValues);
-
-    // Prepare events for Axiom ingest with secrets masked
-    // Use client-provided sequenceNumber from each event
+    // Events are already masked client-side in the sandbox before sending
+    // No server-side masking needed - secrets values are never stored
     const axiomEvents = body.events.map((event) => ({
       runId: body.runId,
       userId,
       sequenceNumber: event.sequenceNumber,
       eventType: event.type,
-      eventData: masker.mask(event),
+      eventData: event, // Already masked by client
     }));
 
     // Ingest events to Axiom

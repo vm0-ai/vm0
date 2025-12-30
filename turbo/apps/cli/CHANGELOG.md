@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.30.0](https://github.com/vm0-ai/vm0/compare/cli-v4.29.1...cli-v4.30.0) (2025-12-30)
+
+
+### Features
+
+* **cli:** replace --limit with --tail and --head flags for logs command ([#797](https://github.com/vm0-ai/vm0/issues/797)) ([bc5aa0e](https://github.com/vm0-ai/vm0/commit/bc5aa0ebdb3e5d8195a76197ed79df099610a257))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.3.0
+
 ## [4.29.1](https://github.com/vm0-ai/vm0/compare/cli-v4.29.0...cli-v4.29.1) (2025-12-29)
 
 

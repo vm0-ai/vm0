@@ -23,7 +23,8 @@ export const agentRuns = pgTable("agent_runs", {
   status: varchar("status", { length: 20 }).notNull(),
   prompt: text("prompt").notNull(),
   vars: jsonb("vars"),
-  secrets: jsonb("secrets"),
+  // Secret names for validation (values never stored - must be provided at runtime)
+  secretNames: jsonb("secret_names").$type<string[]>(),
   sandboxId: varchar("sandbox_id", { length: 255 }),
   result: jsonb("result"),
   error: text("error"),

@@ -17,7 +17,6 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
-import { encryptSecrets } from "../../../../src/lib/crypto";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:runs");
@@ -83,9 +82,10 @@ const router = tsr.router(runsMainContract, {
     let agentComposeVersionId: string;
     let agentComposeName: string | undefined;
     let composeContent: AgentComposeYaml | undefined;
-    // For continue/resume, vars and secrets may come from session/checkpoint
+    // For continue/resume, vars and secretNames may come from session/checkpoint
+    // Note: secrets values are NEVER stored - only names for validation
     let varsFromSource: Record<string, string> | null = null;
-    let encryptedSecretsFromSource: Record<string, string> | null = null;
+    let secretNamesFromSource: string[] | null = null;
 
     if (isNewRun) {
       if (body.agentComposeVersionId) {
@@ -224,9 +224,10 @@ const router = tsr.router(runsMainContract, {
         }
       }
     } else if (isCheckpointResume) {
-      // Validate checkpoint first to get agentComposeVersionId, vars, and secrets
+      // Validate checkpoint first to get agentComposeVersionId, vars, and secretNames
+      // Note: secrets values are NEVER stored - only names for validation
       let checkpointVars: Record<string, string> | null = null;
-      let checkpointSecrets: Record<string, string> | null = null;
+      let checkpointSecretNames: string[] | null = null;
       try {
         const checkpointData = await runService.validateCheckpoint(
           body.checkpointId!,
@@ -234,7 +235,7 @@ const router = tsr.router(runsMainContract, {
         );
         agentComposeVersionId = checkpointData.agentComposeVersionId;
         checkpointVars = checkpointData.vars;
-        checkpointSecrets = checkpointData.secrets;
+        checkpointSecretNames = checkpointData.secretNames;
       } catch (error) {
         return {
           status: 404 as const,
@@ -248,14 +249,14 @@ const router = tsr.router(runsMainContract, {
         };
       }
 
-      // Inherit vars and secrets from checkpoint if not provided in request
-      // This ensures the new run record has vars/secrets for subsequent checkpoints
+      // Inherit vars and secretNames from checkpoint if not provided in request
+      // Note: secrets must be provided fresh each time - only names are inherited
       if (!body.vars && checkpointVars) {
         varsFromSource = checkpointVars;
       }
-      if (!body.secrets && checkpointSecrets) {
-        // Store encrypted secrets directly - they're already encrypted per-value
-        encryptedSecretsFromSource = checkpointSecrets;
+      if (!body.secrets && checkpointSecretNames) {
+        // Only inherit secret names for validation - values must be provided
+        secretNamesFromSource = checkpointSecretNames;
       }
 
       // Get compose name for metadata
@@ -330,13 +331,14 @@ const router = tsr.router(runsMainContract, {
         sessionData.agentComposeVersionId || compose.headVersionId;
       agentComposeName = compose.name || undefined;
 
-      // Inherit vars and secrets from session if not provided in request
-      // This ensures the new run record has vars/secrets for subsequent checkpoints
+      // Inherit vars and secretNames from session if not provided in request
+      // Note: secrets must be provided fresh each time - only names are inherited
       if (!body.vars && sessionData.vars) {
         varsFromSource = sessionData.vars;
       }
-      if (!body.secrets && sessionData.secrets) {
-        encryptedSecretsFromSource = sessionData.secrets;
+      if (!body.secrets && sessionData.secretNames) {
+        // Only inherit secret names for validation - values must be provided
+        secretNamesFromSource = sessionData.secretNames;
       }
     }
 
@@ -348,17 +350,18 @@ const router = tsr.router(runsMainContract, {
     // 3. Otherwise, no vars
     const varsToStore = body.vars || varsFromSource || null;
 
-    // Determine secrets to store:
-    // 1. If body.secrets is provided, encrypt and use it (new run or override)
-    // 2. If encryptedSecretsFromSource is set, use it (continue/resume without override)
-    // 3. Otherwise, no secrets
-    const encryptedSecrets = body.secrets
-      ? encryptSecrets(body.secrets)
-      : encryptedSecretsFromSource;
+    // Determine secretNames to store:
+    // Note: secrets values are NEVER stored - only names for validation
+    // 1. If body.secrets is provided, extract names (new run or override)
+    // 2. If secretNamesFromSource is set, use it (continue/resume without override)
+    // 3. Otherwise, no secretNames
+    const secretNamesToStore = body.secrets
+      ? Object.keys(body.secrets)
+      : secretNamesFromSource;
 
     // Create run record in database
-    // Note: vars and secrets are inherited from session/checkpoint if not provided
-    // This ensures subsequent checkpoints have the full context
+    // Note: vars and secretNames are inherited from session/checkpoint if not provided
+    // Secrets values are NEVER stored - they must be provided fresh each time
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
@@ -367,7 +370,7 @@ const router = tsr.router(runsMainContract, {
         status: "pending",
         prompt: body.prompt,
         vars: varsToStore,
-        secrets: encryptedSecrets,
+        secretNames: secretNamesToStore,
         resumedFromCheckpointId: body.checkpointId || null,
       })
       .returning();

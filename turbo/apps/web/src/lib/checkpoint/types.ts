@@ -6,11 +6,12 @@
  * Agent compose snapshot stored in checkpoint
  * Uses version ID for reproducibility (content-addressed versioning)
  * Note: Environment is re-expanded from vars/secrets on resume, not stored
+ * Note: Secrets values are never persisted - only names for validation
  */
 export interface AgentComposeSnapshot {
   agentComposeVersionId: string; // SHA-256 hash of compose content
   vars?: Record<string, string>;
-  secrets?: Record<string, string>; // Encrypted per-value with AES-256-GCM
+  secretNames?: string[]; // Secret names only (for validation), values never stored
 }
 
 /**

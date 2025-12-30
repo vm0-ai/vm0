@@ -330,6 +330,20 @@
       "when": 1767100000000,
       "tag": "0046_add_scope_id_to_agent_composes",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1767200000000,
+      "tag": "0047_add_secret_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1767300000000,
+      "tag": "0048_drop_secrets_column",
+      "breakpoints": true
     }
   ]
 }

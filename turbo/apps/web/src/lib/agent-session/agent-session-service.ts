@@ -16,6 +16,7 @@ import type {
 export class AgentSessionService {
   /**
    * Create a new agent session
+   * Note: secrets values are NEVER stored - only names for validation
    */
   async create(input: CreateAgentSessionInput): Promise<AgentSessionData> {
     const [session] = await globalThis.services.db
@@ -27,7 +28,8 @@ export class AgentSessionService {
         artifactName: input.artifactName,
         conversationId: input.conversationId,
         vars: input.vars,
-        secrets: input.secrets,
+        // Store only secret names, never values
+        secretNames: input.secretNames,
         volumeVersions: input.volumeVersions,
       })
       .returning();
@@ -40,7 +42,8 @@ export class AgentSessionService {
   }
 
   /**
-   * Update an existing agent session's conversation reference, vars and secrets
+   * Update an existing agent session's conversation reference, vars and secret names
+   * Note: secrets values are NEVER stored - only names for validation
    */
   async update(
     id: string,
@@ -50,7 +53,7 @@ export class AgentSessionService {
       conversationId: string;
       updatedAt: Date;
       vars?: Record<string, string>;
-      secrets?: Record<string, string>;
+      secretNames?: string[];
     } = {
       conversationId: input.conversationId,
       updatedAt: new Date(),
@@ -60,8 +63,9 @@ export class AgentSessionService {
       updateData.vars = input.vars;
     }
 
-    if (input.secrets !== undefined) {
-      updateData.secrets = input.secrets;
+    // Store only secret names, never values
+    if (input.secretNames !== undefined) {
+      updateData.secretNames = input.secretNames;
     }
 
     const [session] = await globalThis.services.db
@@ -146,6 +150,7 @@ export class AgentSessionService {
    * Used when checkpoint is created to ensure session exists
    * Note: artifactName is optional - sessions without artifact use (userId, composeId) as key
    * Note: agentComposeVersionId and volumeVersions are only set on creation, not updated
+   * Note: secrets values are NEVER stored - only names for validation
    */
   async findOrCreate(
     userId: string,
@@ -153,7 +158,7 @@ export class AgentSessionService {
     artifactName?: string,
     conversationId?: string,
     vars?: Record<string, string>,
-    secrets?: Record<string, string>,
+    secretNames?: string[],
     agentComposeVersionId?: string,
     volumeVersions?: Record<string, string>,
   ): Promise<{ session: AgentSessionData; created: boolean }> {
@@ -180,13 +185,13 @@ export class AgentSessionService {
       .limit(1);
 
     if (existing) {
-      // Update conversation, vars, and secrets if provided
+      // Update conversation, vars, and secret names if provided
       // Note: agentComposeVersionId and volumeVersions are NOT updated - they are fixed at creation
       if (conversationId) {
         const updated = await this.update(existing.id, {
           conversationId,
           vars,
-          secrets,
+          secretNames,
         });
         return { session: updated, created: false };
       }
@@ -201,7 +206,7 @@ export class AgentSessionService {
       artifactName,
       conversationId,
       vars,
-      secrets,
+      secretNames,
       volumeVersions,
     });
 
@@ -231,7 +236,7 @@ export class AgentSessionService {
       conversationId: session.conversationId,
       artifactName: session.artifactName,
       vars: session.vars,
-      secrets: session.secrets,
+      secretNames: session.secretNames ?? null,
       volumeVersions: session.volumeVersions,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,

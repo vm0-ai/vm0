@@ -1,0 +1,94 @@
+---
+title: Custom Agent
+description: Define custom workflows with natural language instructions
+---
+
+You can customize your agent's behavior by providing instructions that define what it should do and how it should work.
+
+## Instructions
+
+The `instructions` field in `vm0.yaml` specifies a file containing natural language instructions for your agent:
+
+```yaml
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    instructions: AGENTS.md
+```
+
+The instructions file becomes part of the agent's system prompt:
+
+- **Claude Code** - Loaded as `~/.claude/CLAUDE.md`
+- **Codex** - Loaded as `~/.codex/AGENTS.md`
+
+## Writing Instructions
+
+Use natural language to define workflows, rules, and behaviors. Your agent will follow these instructions when executing tasks.
+
+Some workflows require specific SaaS API integrations. See [Skills](/docs/skills) for available integrations. If a SaaS API requires authentication tokens, see [Environment Variables](/docs/environment-variables) for how to pass secrets securely.
+
+**Example: Daily News Summary**
+
+```markdown
+# Daily News Agent
+
+You are a news summarization agent.
+
+## Workflow
+
+1. Fetch today's top stories from Hacker News
+2. Summarize the key points of each story
+3. Send a digest email to the user
+
+## Rules
+
+- Focus on technology and startup news
+- Keep summaries concise (2-3 sentences each)
+- Include links to original articles
+```
+
+**Example: Team Communication Tracker**
+
+```markdown
+# Slack to Notion Agent
+
+You help track team communications.
+
+## Workflow
+
+1. Collect today's messages from Slack channels
+2. Identify key discussions and decisions
+3. Create a summary in Notion
+
+## Output Format
+
+- Group by channel
+- Highlight action items
+- Tag relevant team members
+```
+
+## Publishing Your Agent
+
+After creating or updating your `vm0.yaml` and instructions file, publish a new version:
+
+```bash
+vm0 compose vm0.yaml
+```
+
+This uploads the configuration, instructions, and any referenced skills to vm0.
+
+## Running Your Agent
+
+Run the latest version of your agent:
+
+```bash
+vm0 run my-agent "your prompt here"
+```
+
+You can also run a specific version:
+
+```bash
+vm0 run my-agent:abc123 "your prompt here"
+```

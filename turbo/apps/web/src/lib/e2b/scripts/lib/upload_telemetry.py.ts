@@ -7,6 +7,7 @@ export const UPLOAD_TELEMETRY_SCRIPT = `#!/usr/bin/env python3
 Telemetry upload module for VM0 sandbox.
 Reads system log and metrics files, tracks position to avoid duplicates,
 and uploads to the telemetry webhook endpoint.
+Masks secrets before sending using client-side masking.
 """
 import json
 import os
@@ -20,6 +21,7 @@ from common import (
 )
 from log import log_info, log_error, log_debug, log_warn
 from http_client import http_post_json
+from secret_masker import mask_data
 
 
 def read_file_from_position(file_path: str, pos_file: str) -> tuple[str, int]:
@@ -139,12 +141,17 @@ def upload_telemetry() -> bool:
         log_debug("No new telemetry data to upload")
         return True
 
+    # Mask secrets in telemetry data before sending
+    # System log and network logs may contain sensitive information
+    masked_system_log = mask_data(system_log) if system_log else ""
+    masked_network_logs = mask_data(network_logs) if network_logs else []
+
     # Upload to API
     payload = {
         "runId": RUN_ID,
-        "systemLog": system_log,
-        "metrics": metrics,
-        "networkLogs": network_logs
+        "systemLog": masked_system_log,
+        "metrics": metrics,  # Metrics don't contain secrets (just numbers)
+        "networkLogs": masked_network_logs
     }
 
     log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs")

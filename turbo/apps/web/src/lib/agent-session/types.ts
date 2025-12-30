@@ -16,7 +16,8 @@ export interface AgentSessionData {
   conversationId: string | null;
   artifactName: string | null;
   vars: Record<string, string> | null;
-  secrets: Record<string, string> | null;
+  // Secret names for validation (values never stored - must be provided at runtime)
+  secretNames: string[] | null;
   // Volume versions snapshot at session creation
   volumeVersions: Record<string, string> | null;
   createdAt: Date;
@@ -34,7 +35,8 @@ export interface CreateAgentSessionInput {
   artifactName?: string;
   conversationId?: string;
   vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  // Secret names for validation (values never stored - must be provided at runtime)
+  secretNames?: string[];
   // Volume versions to fix at session creation
   volumeVersions?: Record<string, string>;
 }
@@ -45,7 +47,8 @@ export interface CreateAgentSessionInput {
 export interface UpdateAgentSessionInput {
   conversationId: string;
   vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  // Secret names for validation (values never stored - must be provided at runtime)
+  secretNames?: string[];
 }
 
 /**

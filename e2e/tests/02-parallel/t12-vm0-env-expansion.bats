@@ -244,7 +244,7 @@ EOF
     rm -f "$MULTI_SECRET_CONFIG"
 }
 
-@test "vm0 run continue preserves secrets from session" {
+@test "vm0 run continue requires secrets to be re-provided" {
     echo "# Step 1: Create and push artifact"
     setup_artifact
 
@@ -271,17 +271,24 @@ EOF
     }
     echo "# Extracted session ID: $SESSION_ID"
 
-    echo "# Step 5: Continue session WITHOUT passing --secrets again"
-    # Secrets should be retrieved from session storage
+    echo "# Step 5: Continue WITHOUT secrets fails with helpful message"
+    # Secrets are never persisted - must be provided on every run
     run $CLI_COMMAND run continue "$SESSION_ID" \
+        "echo CONTINUED"
+    assert_failure
+    assert_output --partial "Missing required secrets: TEST_SECRET"
+    assert_output --partial "--secrets TEST_SECRET=<value>"
+
+    echo "# Step 6: Continue WITH secrets succeeds"
+    run $CLI_COMMAND run continue "$SESSION_ID" \
+        --secrets "TEST_SECRET=${SECRET_VALUE}" \
         "echo CONTINUED && echo SECRET=\$TEST_SECRET"
     assert_success
     assert_output --partial "CONTINUED"
-    # Secret should still work (retrieved from session)
     assert_output --partial "SECRET=***"
 }
 
-@test "vm0 run resume preserves secrets from checkpoint" {
+@test "vm0 run resume requires secrets to be re-provided" {
     echo "# Step 1: Create and push artifact"
     setup_artifact
 
@@ -306,12 +313,19 @@ EOF
     }
     echo "# Extracted checkpoint ID: $CHECKPOINT_ID"
 
-    echo "# Step 5: Resume from checkpoint WITHOUT passing --secrets again"
-    # Secrets should be retrieved from checkpoint storage
+    echo "# Step 5: Resume WITHOUT secrets fails with helpful message"
+    # Secrets are never persisted - must be provided on every run
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        "echo RESUMED"
+    assert_failure
+    assert_output --partial "Missing required secrets: TEST_SECRET"
+    assert_output --partial "--secrets TEST_SECRET=<value>"
+
+    echo "# Step 6: Resume WITH secrets succeeds"
+    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        --secrets "TEST_SECRET=${SECRET_VALUE}" \
         "echo RESUMED && echo SECRET=\$TEST_SECRET"
     assert_success
     assert_output --partial "RESUMED"
-    # Secret should still work (retrieved from checkpoint)
     assert_output --partial "SECRET=***"
 }

@@ -578,6 +578,18 @@ runCmd
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
   .option(
+    "--vars <KEY=value>",
+    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
+    collectKeyValue,
+    {},
+  )
+  .option(
+    "--secrets <KEY=value>",
+    "Secrets for ${{ secrets.xxx }} (repeatable, required for resume)",
+    collectKeyValue,
+    {},
+  )
+  .option(
     "--volume-version <name=version>",
     "Volume version override (repeatable)",
     collectVolumeVersions,
@@ -588,7 +600,11 @@ runCmd
     async (
       checkpointId: string,
       prompt: string,
-      options: { verbose?: boolean },
+      options: {
+        vars: Record<string, string>;
+        secrets: Record<string, string>;
+        verbose?: boolean;
+      },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
@@ -596,11 +612,17 @@ runCmd
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
+        vars: Record<string, string>;
+        secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
       };
 
       const verbose = options.verbose || allOpts.verbose;
+
+      // Merge vars and secrets from command options
+      const vars = { ...allOpts.vars, ...options.vars };
+      const secrets = { ...allOpts.secrets, ...options.secrets };
 
       try {
         // 1. Validate checkpoint ID format
@@ -612,11 +634,29 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Display starting message (verbose only)
+        // 2. Load secrets from environment if not provided via CLI
+        // Note: secrets are required for resume since they're never stored
+        const secretNames = Object.keys(secrets);
+        const loadedSecrets =
+          secretNames.length > 0 ? secrets : loadValues({}, []);
+
+        // 3. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Resuming agent run from checkpoint", [
             { label: "Checkpoint ID", value: checkpointId },
             { label: "Prompt", value: prompt },
+            {
+              label: "Variables",
+              value:
+                Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined,
+            },
+            {
+              label: "Secrets",
+              value:
+                loadedSecrets && Object.keys(loadedSecrets).length > 0
+                  ? `${Object.keys(loadedSecrets).length} loaded`
+                  : undefined,
+            },
             {
               label: "Volume overrides",
               value:
@@ -627,10 +667,12 @@ runCmd
           ]);
         }
 
-        // 3. Call unified API with checkpointId
+        // 4. Call unified API with checkpointId
         const response = await apiClient.createRun({
           checkpointId,
           prompt,
+          vars: Object.keys(vars).length > 0 ? vars : undefined,
+          secrets: loadedSecrets,
           volumeVersions:
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion
@@ -690,6 +732,18 @@ runCmd
   .argument("<agentSessionId>", "Agent session ID to continue from")
   .argument("<prompt>", "Prompt for the continued agent")
   .option(
+    "--vars <KEY=value>",
+    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
+    collectKeyValue,
+    {},
+  )
+  .option(
+    "--secrets <KEY=value>",
+    "Secrets for ${{ secrets.xxx }} (repeatable, required for continue)",
+    collectKeyValue,
+    {},
+  )
+  .option(
     "--volume-version <name=version>",
     "Volume version override (repeatable)",
     collectVolumeVersions,
@@ -700,7 +754,11 @@ runCmd
     async (
       agentSessionId: string,
       prompt: string,
-      options: { verbose?: boolean },
+      options: {
+        vars: Record<string, string>;
+        secrets: Record<string, string>;
+        verbose?: boolean;
+      },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
@@ -708,11 +766,17 @@ runCmd
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
+        vars: Record<string, string>;
+        secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
       };
 
       const verbose = options.verbose || allOpts.verbose;
+
+      // Merge vars and secrets from command options
+      const vars = { ...allOpts.vars, ...options.vars };
+      const secrets = { ...allOpts.secrets, ...options.secrets };
 
       try {
         // 1. Validate session ID format
@@ -724,12 +788,30 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Display starting message (verbose only)
+        // 2. Load secrets from environment if not provided via CLI
+        // Note: secrets are required for continue since they're never stored
+        const secretNames = Object.keys(secrets);
+        const loadedSecrets =
+          secretNames.length > 0 ? secrets : loadValues({}, []);
+
+        // 3. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Continuing agent run from session", [
             { label: "Session ID", value: agentSessionId },
             { label: "Prompt", value: prompt },
             { label: "Note", value: "Using latest artifact version" },
+            {
+              label: "Variables",
+              value:
+                Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined,
+            },
+            {
+              label: "Secrets",
+              value:
+                loadedSecrets && Object.keys(loadedSecrets).length > 0
+                  ? `${Object.keys(loadedSecrets).length} loaded`
+                  : undefined,
+            },
             {
               label: "Volume overrides",
               value:
@@ -740,10 +822,12 @@ runCmd
           ]);
         }
 
-        // 3. Call unified API with sessionId
+        // 4. Call unified API with sessionId
         const response = await apiClient.createRun({
           sessionId: agentSessionId,
           prompt,
+          vars: Object.keys(vars).length > 0 ? vars : undefined,
+          secrets: loadedSecrets,
           volumeVersions:
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion

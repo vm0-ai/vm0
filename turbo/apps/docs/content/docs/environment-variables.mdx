@@ -1,0 +1,169 @@
+---
+title: Environment Variables
+description: Configure secrets and variables for vm0 agents
+---
+
+This guide explains how to use template variables in your `vm0.yaml` configuration and pass values when running agents.
+
+## Template Variables
+
+vm0 supports two types of template variables in your configuration:
+
+| Type        | Syntax                | Purpose                                         |
+| ----------- | --------------------- | ----------------------------------------------- |
+| **Secrets** | `${{ secrets.NAME }}` | Sensitive data like API keys, tokens, passwords |
+| **Vars**    | `${{ vars.NAME }}`    | Non-sensitive configuration values              |
+
+### Secrets vs Vars
+
+**Secrets** are for sensitive information:
+
+- API keys and tokens
+- Passwords and credentials
+- Private keys
+
+**Vars** are for general configuration:
+
+- Feature flags
+- Environment names
+- Non-sensitive settings
+
+Both work identically in terms of syntax and value resolution. The distinction helps you organize sensitive vs non-sensitive data.
+
+## Using Variables in vm0.yaml
+
+Reference variables in your configuration using the template syntax:
+
+```yaml
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      # Secrets for sensitive data
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}"
+      DATABASE_PASSWORD: "${{ secrets.DB_PASSWORD }}"
+
+      # Vars for configuration
+      ENVIRONMENT: "${{ vars.ENV_NAME }}"
+      DEBUG_MODE: "${{ vars.DEBUG }}"
+```
+
+You can also use variables in volume names:
+
+```yaml
+volumes:
+  data-volume:
+    name: "data-${{ vars.ENV_NAME }}"
+    version: latest
+```
+
+## Passing Values
+
+There are two ways to pass variable values when running an agent:
+
+### Method 1: Command Line Arguments
+
+Pass values directly using `--secrets` and `--vars` flags:
+
+```bash
+# Pass secrets
+vm0 run my-agent "your prompt" --secrets API_KEY=sk-xxx --secrets DB_PASSWORD=mypassword
+
+# Pass vars
+vm0 run my-agent "your prompt" --vars ENV_NAME=production --vars DEBUG=true
+
+# Combine both
+vm0 run my-agent "your prompt" \
+  --secrets API_KEY=sk-xxx \
+  --vars ENV_NAME=production
+```
+
+### Method 2: Environment Variables
+
+Set values as environment variables before running:
+
+```bash
+# Export variables
+export API_KEY=sk-xxx
+export DB_PASSWORD=mypassword
+export ENV_NAME=production
+
+# Run the agent (values are automatically loaded)
+vm0 run my-agent "your prompt"
+```
+
+You can also use a `.env` file in your project root:
+
+```bash
+# .env
+API_KEY=sk-xxx
+DB_PASSWORD=mypassword
+ENV_NAME=production
+```
+
+## Value Resolution Priority
+
+When the same variable is defined in multiple places, vm0 uses this priority order:
+
+1. **CLI arguments** (highest priority)
+2. **Environment variables**
+3. **`.env` file** (lowest priority)
+
+Example:
+
+```bash
+# .env file contains: API_KEY=from-env-file
+export API_KEY=from-environment
+
+# CLI value wins
+vm0 run my-agent "prompt" --secrets API_KEY=from-cli
+# Result: API_KEY = "from-cli"
+
+# Without CLI flag, environment variable wins
+vm0 run my-agent "prompt"
+# Result: API_KEY = "from-environment"
+```
+
+## Best Practices
+
+### Keep Secrets Out of Version Control
+
+Never commit secret values to your repository:
+
+```bash
+# Add .env to .gitignore
+echo ".env" >> .gitignore
+```
+
+### Use Descriptive Names
+
+Choose clear, descriptive names for your variables:
+
+```yaml
+# Good
+environment:
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.ANTHROPIC_API_KEY }}"
+
+# Avoid
+environment:
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.KEY }}"
+```
+
+### Group Related Variables
+
+Organize your configuration logically:
+
+```yaml
+environment:
+  # LLM Provider Configuration
+  ANTHROPIC_BASE_URL: "${{ vars.LLM_BASE_URL }}"
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.LLM_API_KEY }}"
+
+  # Database Configuration
+  DATABASE_URL: "${{ secrets.DATABASE_URL }}"
+
+  # Application Settings
+  LOG_LEVEL: "${{ vars.LOG_LEVEL }}"
+```

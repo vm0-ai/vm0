@@ -25,7 +25,6 @@ import {
   groupVariablesBySource,
 } from "@vm0/core";
 import { createProxyToken } from "../proxy/token-service";
-import { decryptSecrets } from "../crypto";
 
 const log = logger("service:run");
 
@@ -170,6 +169,7 @@ function expandEnvironmentFromCompose(
  * Intermediate resolution result from checkpoint/session/conversation expansion
  * Contains all data needed to build resumeSession uniformly
  * Note: Environment is re-expanded server-side from compose + vars/secrets, not stored in checkpoint
+ * Note: Secrets values are NEVER stored - only names for validation. Fresh secrets must be provided at runtime.
  */
 interface ConversationResolution {
   conversationId: string;
@@ -183,7 +183,8 @@ interface ConversationResolution {
   artifactName?: string;
   artifactVersion?: string;
   vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  /** Secret names required for this run (values must be provided at runtime) */
+  secretNames?: string[];
   volumeVersions?: Record<string, string>;
   buildResumeArtifact: boolean;
 }
@@ -338,13 +339,10 @@ export class RunService {
     }
     const agentCompose = version.content as AgentComposeYaml;
 
-    // Decrypt secrets from snapshot (stored encrypted per-value)
-    const encryptedSecrets = agentComposeSnapshot.secrets as
-      | Record<string, string>
+    // Get secret names from snapshot (values are NEVER stored)
+    const secretNames = agentComposeSnapshot.secretNames as
+      | string[]
       | undefined;
-    const decryptedSecrets = encryptedSecrets
-      ? decryptSecrets(encryptedSecrets)
-      : {};
 
     // Resolve session history from R2 hash or legacy TEXT field
     const sessionHistory = await this.resolveSessionHistory(
@@ -364,7 +362,7 @@ export class RunService {
       artifactName: checkpointArtifact?.artifactName,
       artifactVersion: checkpointArtifact?.artifactVersion,
       vars: agentComposeSnapshot.vars || {},
-      secrets: decryptedSecrets,
+      secretNames,
       volumeVersions: checkpointVolumeVersions?.versions,
       buildResumeArtifact: !!checkpointArtifact, // Only build resumeArtifact if checkpoint has artifact
     };
@@ -433,13 +431,8 @@ export class RunService {
       throw new NotFoundError(`Agent compose version ${versionId} not found`);
     }
 
-    // Decrypt secrets from session (stored encrypted per-value)
-    const encryptedSessionSecrets = session.secrets as
-      | Record<string, string>
-      | undefined;
-    const decryptedSessionSecrets = encryptedSessionSecrets
-      ? decryptSecrets(encryptedSessionSecrets)
-      : {};
+    // Get secret names from session (values are NEVER stored)
+    const secretNames = session.secretNames ?? undefined;
 
     // Resolve session history from R2 hash or legacy TEXT field
     const sessionHistory = await this.resolveSessionHistory(
@@ -459,7 +452,7 @@ export class RunService {
       artifactName: session.artifactName ?? undefined, // Convert null to undefined
       artifactVersion: session.artifactName ? "latest" : undefined, // Only set version if artifact exists
       vars: session.vars || {},
-      secrets: decryptedSessionSecrets,
+      secretNames,
       // Use session's volume versions if available for reproducibility
       volumeVersions: session.volumeVersions || undefined,
       buildResumeArtifact: !!session.artifactName, // Only build resumeArtifact if session has artifact
@@ -577,10 +570,11 @@ export class RunService {
   /**
    * Validate a checkpoint for resume operation
    * Returns checkpoint data without creating full execution context
+   * Note: secrets values are NEVER stored - only names for validation
    *
    * @param checkpointId Checkpoint ID to validate
    * @param userId User ID for authorization check
-   * @returns Checkpoint data with agentComposeVersionId, vars, and secrets
+   * @returns Checkpoint data with agentComposeVersionId, vars, and secretNames
    * @throws NotFoundError if checkpoint doesn't exist
    * @throws UnauthorizedError if checkpoint doesn't belong to user
    */
@@ -590,7 +584,7 @@ export class RunService {
   ): Promise<{
     agentComposeVersionId: string;
     vars: Record<string, string> | null;
-    secrets: Record<string, string> | null;
+    secretNames: string[] | null;
   }> {
     log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
@@ -635,24 +629,25 @@ export class RunService {
       `Checkpoint validated: agentComposeVersionId=${agentComposeVersionId}`,
     );
 
-    // Get vars and secrets from original run (encrypted per-value)
+    // Get vars from original run, secretNames from run (values are NEVER stored)
     const vars = (originalRun.vars as Record<string, string>) ?? null;
-    const secrets = (originalRun.secrets as Record<string, string>) ?? null;
+    const secretNames = (originalRun.secretNames as string[]) ?? null;
 
     return {
       agentComposeVersionId,
       vars,
-      secrets,
+      secretNames,
     };
   }
 
   /**
    * Validate an agent session for continue operation
    * Returns session data without creating full execution context
+   * Note: secrets values are NEVER stored - only names for validation
    *
    * @param agentSessionId Agent session ID to validate
    * @param userId User ID for authorization check
-   * @returns Session data with agentComposeId and vars
+   * @returns Session data with agentComposeId, vars, and secretNames
    * @throws NotFoundError if session doesn't exist
    * @throws UnauthorizedError if session doesn't belong to user
    */
@@ -663,7 +658,7 @@ export class RunService {
     agentComposeId: string;
     agentComposeVersionId: string | null;
     vars: Record<string, string> | null;
-    secrets: Record<string, string> | null;
+    secretNames: string[] | null;
     volumeVersions: Record<string, string> | null;
   }> {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
@@ -698,7 +693,7 @@ export class RunService {
       agentComposeId: session.agentComposeId,
       agentComposeVersionId: session.agentComposeVersionId,
       vars: session.vars,
-      secrets: session.secrets,
+      secretNames: session.secretNames,
       volumeVersions: session.volumeVersions,
     };
   }
@@ -747,7 +742,8 @@ export class RunService {
     let artifactName: string | undefined = params.artifactName;
     let artifactVersion: string | undefined = params.artifactVersion;
     let vars: Record<string, string> | undefined = params.vars;
-    let secrets: Record<string, string> | undefined = params.secrets;
+    const secrets: Record<string, string> | undefined = params.secrets;
+    let secretNames: string[] | undefined;
     let volumeVersions: Record<string, string> | undefined =
       params.volumeVersions;
     let resumeSession: ResumeSession | undefined;
@@ -775,6 +771,7 @@ export class RunService {
     }
 
     // Step 2: Apply resolution defaults and build resumeSession (unified path)
+    // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
     if (resolution) {
       // Apply defaults (params override resolution values)
       agentComposeVersionId =
@@ -783,7 +780,9 @@ export class RunService {
       artifactName = artifactName || resolution.artifactName;
       artifactVersion = artifactVersion || resolution.artifactVersion;
       vars = vars || resolution.vars;
-      secrets = secrets || resolution.secrets;
+      // secrets from params only - resolution only has secretNames for validation
+      // Get secretNames from resolution (stored for validation/error messages)
+      secretNames = resolution.secretNames;
       volumeVersions = volumeVersions || resolution.volumeVersions;
 
       // Build resumeSession from resolution (single place!)
@@ -818,6 +817,11 @@ export class RunService {
       }
 
       agentCompose = version.content;
+
+      // For new runs, derive secretNames from provided secrets
+      if (secrets) {
+        secretNames = Object.keys(secrets);
+      }
     }
 
     // Validate required fields
@@ -851,6 +855,7 @@ export class RunService {
       prompt: params.prompt,
       vars,
       secrets,
+      secretNames,
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
