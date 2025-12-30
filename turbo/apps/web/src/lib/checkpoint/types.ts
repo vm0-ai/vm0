@@ -12,8 +12,6 @@ export interface AgentComposeSnapshot {
   agentComposeVersionId: string; // SHA-256 hash of compose content
   vars?: Record<string, string>;
   secretNames?: string[]; // Secret names only (for validation), values never stored
-  /** @deprecated Use secretNames instead - secrets values are no longer persisted */
-  secrets?: Record<string, string>;
 }
 
 /**
