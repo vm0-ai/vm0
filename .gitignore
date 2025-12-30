@@ -143,6 +143,11 @@ dist
 
 # End of https://www.toptal.com/developers/gitignore/api/node
 
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+
 settings.local.json
 
 .pnpm-store
