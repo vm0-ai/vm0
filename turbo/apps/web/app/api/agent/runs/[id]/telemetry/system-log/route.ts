@@ -51,7 +51,7 @@ const router = tsr.router(runSystemLogContract, {
       };
     }
 
-    const { since, limit } = query;
+    const { since, limit, order } = query;
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
@@ -61,7 +61,7 @@ const router = tsr.router(runSystemLogContract, {
     const apl = `['${dataset}']
 | where runId == "${params.id}"
 ${sinceFilter}
-| order by _time asc
+| order by _time ${order}
 | limit ${limit + 1}`;
 
     // Query Axiom for system logs

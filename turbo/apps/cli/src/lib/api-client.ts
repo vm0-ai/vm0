@@ -361,7 +361,7 @@ class ApiClient {
 
   async getSystemLog(
     runId: string,
-    options?: { since?: number; limit?: number },
+    options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetSystemLogResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -372,6 +372,9 @@ class ApiClient {
     }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit));
+    }
+    if (options?.order !== undefined) {
+      params.set("order", options.order);
     }
 
     const queryString = params.toString();
@@ -392,7 +395,7 @@ class ApiClient {
 
   async getMetrics(
     runId: string,
-    options?: { since?: number; limit?: number },
+    options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetMetricsResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -403,6 +406,9 @@ class ApiClient {
     }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit));
+    }
+    if (options?.order !== undefined) {
+      params.set("order", options.order);
     }
 
     const queryString = params.toString();
@@ -423,7 +429,7 @@ class ApiClient {
 
   async getAgentEvents(
     runId: string,
-    options?: { since?: number; limit?: number },
+    options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetAgentEventsResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -434,6 +440,9 @@ class ApiClient {
     }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit));
+    }
+    if (options?.order !== undefined) {
+      params.set("order", options.order);
     }
 
     const queryString = params.toString();
@@ -454,7 +463,7 @@ class ApiClient {
 
   async getNetworkLogs(
     runId: string,
-    options?: { since?: number; limit?: number },
+    options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetNetworkLogsResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -465,6 +474,9 @@ class ApiClient {
     }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit));
+    }
+    if (options?.order !== undefined) {
+      params.set("order", options.order);
     }
 
     const queryString = params.toString();

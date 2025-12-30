@@ -55,7 +55,7 @@ const router = tsr.router(runMetricsContract, {
       };
     }
 
-    const { since, limit } = query;
+    const { since, limit, order } = query;
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_METRICS);
@@ -65,7 +65,7 @@ const router = tsr.router(runMetricsContract, {
     const apl = `['${dataset}']
 | where runId == "${params.id}"
 ${sinceFilter}
-| order by _time asc
+| order by _time ${order}
 | limit ${limit + 1}`;
 
     // Query Axiom for metrics

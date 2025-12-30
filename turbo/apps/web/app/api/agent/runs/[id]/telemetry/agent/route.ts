@@ -68,7 +68,7 @@ const router = tsr.router(runAgentEventsContract, {
     } | null;
     const provider = composeContent?.agent?.provider ?? "claude-code";
 
-    const { since, limit } = query;
+    const { since, limit, order } = query;
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
@@ -78,7 +78,7 @@ const router = tsr.router(runAgentEventsContract, {
     const apl = `['${dataset}']
 | where runId == "${params.id}"
 ${sinceFilter}
-| order by _time asc
+| order by _time ${order}
 | limit ${limit + 1}`;
 
     // Query Axiom for agent events

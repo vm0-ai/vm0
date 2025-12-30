@@ -294,6 +294,7 @@ export const runSystemLogContract = c.router({
     query: z.object({
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(100).default(5),
+      order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: systemLogResponseSchema,
@@ -321,6 +322,7 @@ export const runMetricsContract = c.router({
     query: z.object({
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(100).default(5),
+      order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: metricsResponseSchema,
@@ -348,6 +350,7 @@ export const runAgentEventsContract = c.router({
     query: z.object({
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(100).default(5),
+      order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: agentEventsResponseSchema,
@@ -375,6 +378,7 @@ export const runNetworkLogsContract = c.router({
     query: z.object({
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(100).default(5),
+      order: z.enum(["asc", "desc"]).default("desc"),
     }),
     responses: {
       200: networkLogsResponseSchema,

@@ -129,11 +129,8 @@ export const logsCommand = new Command()
     "--since <time>",
     "Show logs since timestamp (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z, 1705312200)",
   )
-  .option(
-    "--limit <n>",
-    "Maximum number of entries to show (default: 5, max: 100)",
-    "5",
-  )
+  .option("--tail <n>", "Show last N entries (default: 5, max: 100)")
+  .option("--head <n>", "Show first N entries (max: 100)")
   .action(
     async (
       runId: string,
@@ -143,11 +140,20 @@ export const logsCommand = new Command()
         metrics?: boolean;
         network?: boolean;
         since?: string;
-        limit?: string;
+        tail?: string;
+        head?: string;
       },
     ) => {
       try {
         const logType = getLogType(options);
+
+        // Validate --tail and --head are mutually exclusive
+        if (options.tail !== undefined && options.head !== undefined) {
+          console.error(
+            chalk.red("Options --tail and --head are mutually exclusive"),
+          );
+          process.exit(1);
+        }
 
         // Parse since option
         let since: number | undefined;
@@ -155,24 +161,26 @@ export const logsCommand = new Command()
           since = parseTime(options.since);
         }
 
-        // Parse and validate limit
+        // Determine order and limit based on flags
+        const isHead = options.head !== undefined;
         const limit = Math.min(
-          Math.max(1, parseInt(options.limit || "5", 10)),
+          Math.max(1, parseInt(options.head || options.tail || "5", 10)),
           100,
         );
+        const order: "asc" | "desc" = isHead ? "asc" : "desc";
 
         switch (logType) {
           case "agent":
-            await showAgentEvents(runId, { since, limit });
+            await showAgentEvents(runId, { since, limit, order });
             break;
           case "system":
-            await showSystemLog(runId, { since, limit });
+            await showSystemLog(runId, { since, limit, order });
             break;
           case "metrics":
-            await showMetrics(runId, { since, limit });
+            await showMetrics(runId, { since, limit, order });
             break;
           case "network":
-            await showNetworkLogs(runId, { since, limit });
+            await showNetworkLogs(runId, { since, limit, order });
             break;
         }
       } catch (error) {
@@ -187,7 +195,7 @@ export const logsCommand = new Command()
  */
 async function showAgentEvents(
   runId: string,
-  options: { since?: number; limit: number },
+  options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
   const response = await apiClient.getAgentEvents(runId, options);
 
@@ -196,7 +204,11 @@ async function showAgentEvents(
     return;
   }
 
-  for (const event of response.events) {
+  // Reverse for chronological display when using tail (desc order)
+  const events =
+    options.order === "desc" ? [...response.events].reverse() : response.events;
+
+  for (const event of events) {
     renderAgentEvent(event, response.provider);
   }
 
@@ -204,7 +216,7 @@ async function showAgentEvents(
     console.log();
     console.log(
       chalk.dim(
-        `Showing ${response.events.length} events. Use --limit to see more.`,
+        `Showing ${response.events.length} events. Use --tail to see more.`,
       ),
     );
   }
@@ -215,7 +227,7 @@ async function showAgentEvents(
  */
 async function showSystemLog(
   runId: string,
-  options: { since?: number; limit: number },
+  options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
   const response = await apiClient.getSystemLog(runId, options);
 
@@ -229,7 +241,7 @@ async function showSystemLog(
   if (response.hasMore) {
     console.log();
     console.log(
-      chalk.dim("More log entries available. Use --limit to see more."),
+      chalk.dim("More log entries available. Use --tail to see more."),
     );
   }
 }
@@ -239,7 +251,7 @@ async function showSystemLog(
  */
 async function showMetrics(
   runId: string,
-  options: { since?: number; limit: number },
+  options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
   const response = await apiClient.getMetrics(runId, options);
 
@@ -248,7 +260,13 @@ async function showMetrics(
     return;
   }
 
-  for (const metric of response.metrics) {
+  // Reverse for chronological display when using tail (desc order)
+  const metrics =
+    options.order === "desc"
+      ? [...response.metrics].reverse()
+      : response.metrics;
+
+  for (const metric of metrics) {
     console.log(formatMetric(metric));
   }
 
@@ -256,7 +274,7 @@ async function showMetrics(
     console.log();
     console.log(
       chalk.dim(
-        `Showing ${response.metrics.length} metrics. Use --limit to see more.`,
+        `Showing ${response.metrics.length} metrics. Use --tail to see more.`,
       ),
     );
   }
@@ -267,7 +285,7 @@ async function showMetrics(
  */
 async function showNetworkLogs(
   runId: string,
-  options: { since?: number; limit: number },
+  options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
   const response = await apiClient.getNetworkLogs(runId, options);
 
@@ -280,7 +298,13 @@ async function showNetworkLogs(
     return;
   }
 
-  for (const entry of response.networkLogs) {
+  // Reverse for chronological display when using tail (desc order)
+  const networkLogs =
+    options.order === "desc"
+      ? [...response.networkLogs].reverse()
+      : response.networkLogs;
+
+  for (const entry of networkLogs) {
     console.log(formatNetworkLog(entry));
   }
 
@@ -288,7 +312,7 @@ async function showNetworkLogs(
     console.log();
     console.log(
       chalk.dim(
-        `Showing ${response.networkLogs.length} network logs. Use --limit to see more.`,
+        `Showing ${response.networkLogs.length} network logs. Use --tail to see more.`,
       ),
     );
   }
