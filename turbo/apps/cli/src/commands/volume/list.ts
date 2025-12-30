@@ -1,37 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api-client";
-
-/**
- * Format bytes to human-readable format
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
-
-/**
- * Format relative time from ISO date string
- */
-function formatRelativeTime(isoDate: string): string {
-  const date = new Date(isoDate);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-  const diffWeek = Math.floor(diffDay / 7);
-
-  if (diffSec < 60) return "just now";
-  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
-  if (diffHour < 24) return `${diffHour} hour${diffHour === 1 ? "" : "s"} ago`;
-  if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
-  return `${diffWeek} week${diffWeek === 1 ? "" : "s"} ago`;
-}
+import { formatBytes, formatRelativeTime } from "../../lib/file-utils";
 
 /**
  * List response from /api/storages/list

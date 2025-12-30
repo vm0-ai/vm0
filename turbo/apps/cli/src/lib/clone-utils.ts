@@ -5,18 +5,7 @@ import * as os from "os";
 import * as tar from "tar";
 import { writeStorageConfig, type StorageType } from "./storage-utils";
 import { apiClient, type ApiError } from "./api-client";
-import { listTarFiles } from "./file-utils";
-
-/**
- * Format bytes to human-readable format
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
+import { listTarFiles, formatBytes } from "./file-utils";
 
 /**
  * Download response from /api/storages/download
