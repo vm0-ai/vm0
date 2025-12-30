@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/vm0-ai/vm0/compare/docs-v0.1.4...docs-v0.2.0) (2025-12-30)
+
+
+### Features
+
+* **docs:** update getting started description ([#807](https://github.com/vm0-ai/vm0/issues/807)) ([42698fd](https://github.com/vm0-ai/vm0/commit/42698fd65eac91a451efe34e02055b3fb0183959))
+
 ## [0.1.4](https://github.com/vm0-ai/vm0/compare/docs-v0.1.3...docs-v0.1.4) (2025-12-13)
 
 

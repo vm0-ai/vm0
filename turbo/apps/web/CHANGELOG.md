@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.4.0](https://github.com/vm0-ai/vm0/compare/web-v7.3.1...web-v7.4.0) (2025-12-30)
+
+
+### Features
+
+* **cli:** replace --limit with --tail and --head flags for logs command ([#797](https://github.com/vm0-ai/vm0/issues/797)) ([bc5aa0e](https://github.com/vm0-ai/vm0/commit/bc5aa0ebdb3e5d8195a76197ed79df099610a257))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.3.0
+
 ## [7.3.1](https://github.com/vm0-ai/vm0/compare/web-v7.3.0...web-v7.3.1) (2025-12-30)
 
 
