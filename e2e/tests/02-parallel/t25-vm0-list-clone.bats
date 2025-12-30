@@ -202,8 +202,14 @@ teardown() {
     echo "# Step 2: Clone specific version"
     cd "$TEST_DIR"
     CLONE_DIR="${ARTIFACT_NAME}-v1"
+    echo "# Running: artifact clone $ARTIFACT_NAME $CLONE_DIR --version $VERSION1"
+    echo "# Current dir: $(pwd)"
     run $CLI_COMMAND artifact clone "$ARTIFACT_NAME" "$CLONE_DIR" --version "$VERSION1"
+    echo "# Clone exit code: $status"
+    echo "# Clone output:"
+    echo "$output"
     assert_success
+    assert_output --partial "Successfully cloned"
 
     # Debug: List cloned directory
     echo "# Contents of $CLONE_DIR:"
