@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/docs-v0.3.0...docs-v0.4.0) (2025-12-30)
+
+
+### Features
+
+* **docs:** flatten quick-start out of introduction folder ([#823](https://github.com/vm0-ai/vm0/issues/823)) ([eb91ce1](https://github.com/vm0-ai/vm0/commit/eb91ce1a68e211dbbcdca6a842a39fce2449c87e))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/docs-v0.2.0...docs-v0.3.0) (2025-12-30)
 
 
