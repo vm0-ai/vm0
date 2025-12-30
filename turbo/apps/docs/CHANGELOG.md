@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vm0-ai/vm0/compare/docs-v0.4.0...docs-v0.4.1) (2025-12-30)
+
+
+### Bug Fixes
+
+* **docs:** correct model selection link path ([#826](https://github.com/vm0-ai/vm0/issues/826)) ([b72c364](https://github.com/vm0-ai/vm0/commit/b72c364b76cc22a0b0441df8f4f6f608345d66f6))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/docs-v0.3.0...docs-v0.4.0) (2025-12-30)
 
 
