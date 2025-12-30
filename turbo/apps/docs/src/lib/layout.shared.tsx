@@ -14,14 +14,14 @@ export function baseOptions(): BaseLayoutProps {
       title: (
         <>
           <Image
-            src="/Logo_VM0_white_bg.png"
+            src="/vm0-logo.svg"
             alt="VM0"
             width={24}
             height={24}
             className="dark:hidden"
           />
           <Image
-            src="/Logo_VM0_black_bg.png"
+            src="/vm0-logo-dark.svg"
             alt="VM0"
             width={24}
             height={24}

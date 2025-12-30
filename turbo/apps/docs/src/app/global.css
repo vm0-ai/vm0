@@ -1,3 +1,68 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+
+@theme {
+  --color-fd-primary: hsl(19.6, 99.2%, 46.7%);
+  --color-fd-primary-foreground: hsl(0, 0%, 98%);
+  --color-fd-accent: hsla(19.6, 99.2%, 46.7%, 0.15);
+  --color-fd-accent-foreground: hsl(19.6, 99.2%, 46.7%);
+  --color-fd-ring: hsl(19.6, 99.2%, 46.7%);
+  --color-fd-background: hsl(40, 20%, 97%);
+  --color-fd-muted: hsl(40, 18%, 94%);
+  --color-fd-card: hsl(40, 22%, 95%);
+}
+
+.dark {
+  --color-fd-primary: hsl(19.6, 99.2%, 55%);
+  --color-fd-primary-foreground: hsl(0, 0%, 98%);
+  --color-fd-accent: hsla(19.6, 99.2%, 55%, 0.2);
+  --color-fd-accent-foreground: hsl(19.6, 99.2%, 65%);
+  --color-fd-ring: hsl(19.6, 99.2%, 55%);
+}
+
+/* Keep navigation links at primary color on hover */
+a:hover [data-active],
+a:hover,
+button:hover {
+  --color-fd-accent-foreground: hsl(19.6, 99.2%, 46.7%) !important;
+  color: hsl(19.6, 99.2%, 46.7%) !important;
+}
+
+.dark a:hover [data-active],
+.dark a:hover,
+.dark button:hover {
+  --color-fd-accent-foreground: hsl(19.6, 99.2%, 55%) !important;
+  color: hsl(19.6, 99.2%, 55%) !important;
+}
+
+/* Remove shadow from code blocks */
+pre,
+code,
+[data-rehype-pretty-code-figure],
+.shiki {
+  box-shadow: none !important;
+}
+
+/* Warm gray hover for cards instead of orange */
+[data-card]:hover,
+.card:hover,
+a[data-card]:hover {
+  background-color: hsl(40, 15%, 92%) !important;
+  --color-fd-accent: hsl(40, 15%, 92%) !important;
+}
+
+.dark [data-card]:hover,
+.dark .card:hover,
+.dark a[data-card]:hover {
+  background-color: hsl(40, 10%, 15%) !important;
+  --color-fd-accent: hsl(40, 10%, 15%) !important;
+}
+
+/* Callout without card styling */
+.callout-no-card {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-left: 0 !important;
+}
