@@ -212,7 +212,7 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
-      - https://github.com/vm0-ai/vm0-skills/tree/main/pr-review
+      - https://github.com/vm0-ai/vm0-skills/tree/main/axiom
 EOF
 
     echo "# Step 2: Compose with --yes"
@@ -222,5 +222,5 @@ EOF
     echo "# Step 3: Verify both skills were uploaded"
     assert_output --partial "2 skill"
     assert_output --partial "github"
-    assert_output --partial "pr-review"
+    assert_output --partial "axiom"
 }
