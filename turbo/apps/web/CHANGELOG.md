@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.7.0](https://github.com/vm0-ai/vm0/compare/web-v7.6.0...web-v7.7.0) (2025-12-30)
+
+
+### Features
+
+* add docs link to main website navigation ([#828](https://github.com/vm0-ai/vm0/issues/828)) ([a74a296](https://github.com/vm0-ai/vm0/commit/a74a296961ce70c20026150a7ccf57305be1effc))
+
 ## [7.6.0](https://github.com/vm0-ai/vm0/compare/web-v7.5.0...web-v7.6.0) (2025-12-30)
 
 
