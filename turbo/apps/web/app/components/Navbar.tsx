@@ -61,6 +61,14 @@ export default function Navbar() {
             style={{ display: "flex", gap: "32px" }}
           >
             <a
+              href="https://docs.vm0.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="nav-link"
+            >
+              {t("docs")}
+            </a>
+            <a
               href="https://blog.vm0.ai"
               target="_blank"
               rel="noopener noreferrer"
@@ -124,6 +132,15 @@ export default function Navbar() {
       <div className={`mobile-menu ${mobileMenuOpen ? "open" : ""}`}>
         <div className="mobile-menu-content">
           <div className="mobile-menu-links">
+            <a
+              href="https://docs.vm0.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mobile-menu-link"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {t("docs")}
+            </a>
             <a
               href="https://blog.vm0.ai"
               target="_blank"
