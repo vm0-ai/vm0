@@ -282,7 +282,7 @@ EOF
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     run $CLI_COMMAND artifact push
     assert_success
 
@@ -317,7 +317,7 @@ EOF
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     run $CLI_COMMAND artifact push
     assert_success
 

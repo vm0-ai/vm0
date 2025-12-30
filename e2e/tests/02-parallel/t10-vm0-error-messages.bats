@@ -60,7 +60,7 @@ teardown() {
     echo "# Step 1: Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "test content" > test.txt
     run $CLI_COMMAND artifact push

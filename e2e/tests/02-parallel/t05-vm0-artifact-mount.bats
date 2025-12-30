@@ -53,7 +53,7 @@ teardown() {
     # Step 1: Create artifact with known content
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Create test files with known content
     echo "hello from artifact" > test-file.txt
@@ -89,7 +89,7 @@ teardown() {
 
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > data.txt
     $CLI_COMMAND artifact push >/dev/null
 

@@ -16,11 +16,11 @@ teardown() {
     fi
 }
 
-@test "Initialize artifact in directory" {
+@test "Initialize artifact in directory with --name flag" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
 
-    run $CLI_COMMAND artifact init
+    run $CLI_COMMAND artifact init --name "$ARTIFACT_NAME"
     assert_success
     assert_output --partial "$ARTIFACT_NAME"
 
@@ -30,19 +30,19 @@ teardown() {
     assert_output --partial "type: artifact"
 }
 
-@test "Initialize artifact with auto-detected name" {
+@test "Initialize artifact with --name flag using custom name" {
     mkdir -p "$TEST_ARTIFACT_DIR/my-project"
     cd "$TEST_ARTIFACT_DIR/my-project"
-    run $CLI_COMMAND artifact init
+    run $CLI_COMMAND artifact init --name "my-project"
     assert_success
     assert_output --partial "my-project"
 }
 
-@test "artifact init rejects invalid artifact name" {
-    mkdir -p "$TEST_ARTIFACT_DIR/INVALID_NAME"
-    cd "$TEST_ARTIFACT_DIR/INVALID_NAME"
+@test "artifact init rejects invalid artifact name with --name flag" {
+    mkdir -p "$TEST_ARTIFACT_DIR/test-dir"
+    cd "$TEST_ARTIFACT_DIR/test-dir"
 
-    run $CLI_COMMAND artifact init
+    run $CLI_COMMAND artifact init --name "INVALID_NAME"
     assert_failure
     assert_output --partial "Invalid artifact name"
 }
@@ -50,7 +50,7 @@ teardown() {
 @test "Push empty artifact to cloud succeeds" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Push without any files (empty artifact)
     run $CLI_COMMAND artifact push
@@ -64,7 +64,7 @@ teardown() {
 @test "Push artifact to cloud and returns versionId" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "Hello from E2E test" > test-file.txt
     mkdir -p src
@@ -82,7 +82,7 @@ teardown() {
 @test "Multiple pushes create different versions" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # First push
     echo "version 1" > data.txt
@@ -104,7 +104,7 @@ teardown() {
     # First push multiple versions
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "version 1" > data.txt
     $CLI_COMMAND artifact push >/dev/null
@@ -143,7 +143,7 @@ EOF
     # Push multiple versions and capture their IDs
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Push version 1
     echo "content from version 1" > data.txt
@@ -185,7 +185,7 @@ EOF
 @test "Pull non-existent version fails with error" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "some content" > data.txt
     $CLI_COMMAND artifact push >/dev/null
@@ -222,7 +222,7 @@ EOF
 @test "artifact status fails when not pushed to remote" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Init but no push - remote doesn't exist
     run $CLI_COMMAND artifact status
@@ -235,7 +235,7 @@ EOF
 @test "artifact status shows version info after push" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "# Step 1: Push artifact..."
     echo "test content" > test-file.txt
@@ -255,7 +255,7 @@ EOF
 @test "artifact status shows empty indicator for empty artifact" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "# Step 1: Push empty artifact..."
     $CLI_COMMAND artifact push >/dev/null

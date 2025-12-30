@@ -146,7 +146,7 @@ EOF
     TEST_DIR="$(mktemp -d)"
     mkdir -p "$TEST_DIR/artifact"
     cd "$TEST_DIR/artifact"
-    $CLI_COMMAND artifact init >/dev/null 2>&1 || true
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1 || true
     $CLI_COMMAND artifact push >/dev/null 2>&1 || true
 
     # Try to run with a non-existent scope

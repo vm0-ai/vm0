@@ -66,7 +66,7 @@ EOF
     echo "# Step 1: Creating test volume with version 1..."
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # Version 1: content = "version-1"
     echo "version-1" > data.txt
@@ -94,7 +94,7 @@ EOF
     echo "# Step 2: Creating artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
     run $CLI_COMMAND artifact push
     assert_success
@@ -126,7 +126,7 @@ EOF
     echo "# Step 1: Creating test volume..."
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "checkpoint-version" > data.txt
     run $CLI_COMMAND volume push
@@ -139,7 +139,7 @@ EOF
     echo "# Step 2: Creating artifact and running agent..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
     run $CLI_COMMAND artifact push
     assert_success
@@ -191,7 +191,7 @@ EOF
     echo "# Step 1: Creating test volume..."
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "initial-volume-content" > data.txt
     run $CLI_COMMAND volume push
@@ -204,7 +204,7 @@ EOF
     echo "# Step 2: Creating artifact and running agent..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
     run $CLI_COMMAND artifact push
     assert_success

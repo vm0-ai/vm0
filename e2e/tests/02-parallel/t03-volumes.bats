@@ -16,11 +16,11 @@ teardown() {
     fi
 }
 
-@test "Initialize volume in directory" {
+@test "Initialize volume in directory with --name flag" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
 
-    run $CLI_COMMAND volume init
+    run $CLI_COMMAND volume init --name "$VOLUME_NAME"
     assert_success
     assert_output --partial "$VOLUME_NAME"
 
@@ -28,19 +28,19 @@ teardown() {
     [ -f ".vm0/storage.yaml" ]
 }
 
-@test "Initialize volume with auto-detected name" {
+@test "Initialize volume with --name flag using custom name" {
     mkdir -p "$TEST_VOLUME_DIR/my-dataset"
     cd "$TEST_VOLUME_DIR/my-dataset"
-    run $CLI_COMMAND volume init
+    run $CLI_COMMAND volume init --name "my-dataset"
     assert_success
     assert_output --partial "my-dataset"
 }
 
-@test "volume init rejects invalid volume name" {
-    mkdir -p "$TEST_VOLUME_DIR/INVALID_NAME"
-    cd "$TEST_VOLUME_DIR/INVALID_NAME"
+@test "volume init rejects invalid volume name with --name flag" {
+    mkdir -p "$TEST_VOLUME_DIR/test-dir"
+    cd "$TEST_VOLUME_DIR/test-dir"
 
-    run $CLI_COMMAND volume init
+    run $CLI_COMMAND volume init --name "INVALID_NAME"
     assert_failure
     assert_output --partial "Invalid volume name"
 }
@@ -48,7 +48,7 @@ teardown() {
 @test "Push empty volume to cloud succeeds" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # Push without any files (empty volume)
     run $CLI_COMMAND volume push
@@ -62,7 +62,7 @@ teardown() {
 @test "Push volume to cloud and returns versionId" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "Hello from E2E test" > test-file.txt
     mkdir -p data
@@ -80,7 +80,7 @@ teardown() {
 @test "Multiple pushes create different versions" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # First push
     echo "version 1" > data.txt
@@ -102,7 +102,7 @@ teardown() {
     # First push multiple versions
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "version 1" > data.txt
     $CLI_COMMAND volume push >/dev/null
@@ -140,7 +140,7 @@ EOF
     # Push multiple versions and capture their IDs
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # Push version 1
     echo "content from version 1" > data.txt
@@ -181,7 +181,7 @@ EOF
 @test "Pull non-existent version fails with error" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "some content" > data.txt
     $CLI_COMMAND volume push >/dev/null
@@ -217,7 +217,7 @@ EOF
 @test "volume status fails when not pushed to remote" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # Init but no push - remote doesn't exist
     run $CLI_COMMAND volume status
@@ -230,7 +230,7 @@ EOF
 @test "volume status shows version info after push" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "# Step 1: Push volume..."
     echo "test content" > test-file.txt
@@ -250,7 +250,7 @@ EOF
 @test "volume status shows empty indicator for empty volume" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init >/dev/null
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "# Step 1: Push empty volume..."
     $CLI_COMMAND volume push >/dev/null

@@ -52,7 +52,7 @@ teardown() {
     # Create empty artifact (no files)
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Push empty artifact
     run $CLI_COMMAND artifact push
@@ -75,7 +75,7 @@ teardown() {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "existing content" > data.txt
     mkdir -p subdir
@@ -104,7 +104,7 @@ teardown() {
     # Push with files first, then push empty, and verify pull gets empty artifact
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # First push with files
     echo "version 1 with files" > data.txt
@@ -151,7 +151,7 @@ EOF
     # HEAD should still be updated to point to the empty version
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Step 1: Push with files
     echo "version 1 with files" > data.txt
@@ -204,7 +204,7 @@ EOF
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "file to be deleted" > delete-me.txt
     mkdir -p subdir
@@ -241,7 +241,7 @@ EOF
 
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Step 1: Create artifact with files
     echo "test content" > data.txt
@@ -285,7 +285,7 @@ EOF
     # Run multiple times without modifying artifact, verify pull works each time
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Create artifact with files
     echo "unchanged content" > file.txt
