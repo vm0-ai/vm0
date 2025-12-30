@@ -4,6 +4,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname } from "path";
 import { parse as parseYaml } from "yaml";
+import prompts from "prompts";
 import { getLegacySystemTemplateWarning } from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
@@ -13,7 +14,6 @@ import {
   uploadSkill,
   type SkillUploadResult,
 } from "../lib/system-storage";
-import { confirmPrompt, isInteractive } from "../lib/cli-prompt";
 
 /**
  * Transform experimental_secrets and experimental_vars shorthand to environment entries.
@@ -259,7 +259,7 @@ export const composeCommand = new Command()
 
         // Check for confirmation
         if (!options.yes) {
-          if (!isInteractive()) {
+          if (!process.stdin.isTTY) {
             console.error(
               chalk.red(
                 "✗ Non-interactive terminal. Use --yes flag to skip confirmation.",
@@ -268,8 +268,13 @@ export const composeCommand = new Command()
             process.exit(1);
           }
 
-          const confirmed = await confirmPrompt("? Proceed with compose?");
-          if (!confirmed) {
+          const response = await prompts({
+            type: "confirm",
+            name: "value",
+            message: "Proceed with compose?",
+            initial: true,
+          });
+          if (!response.value) {
             console.log(chalk.yellow("Compose cancelled."));
             process.exit(0);
           }
