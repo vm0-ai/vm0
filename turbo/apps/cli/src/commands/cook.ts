@@ -537,7 +537,8 @@ cookCmd
     "--since <time>",
     "Show logs since timestamp (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z)",
   )
-  .option("--limit <n>", "Maximum number of entries to show (default: 5)")
+  .option("--tail <n>", "Show last N entries (default: 5, max: 100)")
+  .option("--head <n>", "Show first N entries (max: 100)")
   .action(
     async (options: {
       agent?: boolean;
@@ -545,7 +546,8 @@ cookCmd
       metrics?: boolean;
       network?: boolean;
       since?: string;
-      limit?: string;
+      tail?: string;
+      head?: string;
     }) => {
       const state = await loadCookState();
       if (!state.lastRunId) {
@@ -578,9 +580,13 @@ cookCmd
         args.push("--since", options.since);
         displayArgs.push(`--since ${options.since}`);
       }
-      if (options.limit) {
-        args.push("--limit", options.limit);
-        displayArgs.push(`--limit ${options.limit}`);
+      if (options.tail) {
+        args.push("--tail", options.tail);
+        displayArgs.push(`--tail ${options.tail}`);
+      }
+      if (options.head) {
+        args.push("--head", options.head);
+        displayArgs.push(`--head ${options.head}`);
       }
 
       printCommand(displayArgs.join(" "));

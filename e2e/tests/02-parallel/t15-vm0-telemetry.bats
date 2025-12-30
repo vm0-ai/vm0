@@ -113,7 +113,7 @@ teardown() {
 
     # Step 6: Verify --system option shows system logs
     echo "# Step 6: Testing --system option..."
-    run $CLI_COMMAND logs "$RUN_ID" --system --limit 100
+    run $CLI_COMMAND logs "$RUN_ID" --system --tail 100
 
     assert_success
     # System log should contain sandbox log entries with INFO level
@@ -124,7 +124,7 @@ teardown() {
 
     # Step 7: Verify --metrics option shows resource metrics
     echo "# Step 7: Testing --metrics option..."
-    run $CLI_COMMAND logs "$RUN_ID" --metrics --limit 100
+    run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
 
     assert_success
     # Metrics should contain CPU, memory, and disk information
@@ -133,14 +133,14 @@ teardown() {
     assert_output --partial "Disk:"
     echo "# Metrics contain expected resource data"
 
-    # Step 8: Verify --limit option limits output
-    echo "# Step 8: Testing --limit option..."
-    run $CLI_COMMAND logs "$RUN_ID" --limit 2
+    # Step 8: Verify --tail option limits output
+    echo "# Step 8: Testing --tail option..."
+    run $CLI_COMMAND logs "$RUN_ID" --tail 2
 
     assert_success
-    # With limit=2, should see at most 2 events
-    # If more exist, should see "Use --limit to see more"
-    echo "# Limit option works correctly"
+    # With tail=2, should see at most 2 events
+    # If more exist, should see "Use --tail to see more"
+    echo "# Tail option works correctly"
 
     # Step 9: Verify mutually exclusive options are enforced
     echo "# Step 9: Testing mutually exclusive options..."

@@ -64,7 +64,7 @@ teardown() {
 
     # Step 4: Verify vm0 logs --network command retrieves network logs
     echo "# Step 4: Fetching network logs..."
-    run $CLI_COMMAND logs "$RUN_ID" --network --limit 100
+    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
 
     assert_success
 
@@ -112,7 +112,7 @@ teardown() {
 
     # Step 8: Verify -n short option works
     echo "# Step 8: Testing -n short option..."
-    run $CLI_COMMAND logs "$RUN_ID" -n --limit 10
+    run $CLI_COMMAND logs "$RUN_ID" -n --tail 10
 
     assert_success
     echo "# -n short option works correctly"

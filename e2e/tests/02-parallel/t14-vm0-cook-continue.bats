@@ -109,5 +109,6 @@ teardown() {
     assert_output --partial "--metrics"
     assert_output --partial "--network"
     assert_output --partial "--since"
-    assert_output --partial "--limit"
+    assert_output --partial "--tail"
+    assert_output --partial "--head"
 }
