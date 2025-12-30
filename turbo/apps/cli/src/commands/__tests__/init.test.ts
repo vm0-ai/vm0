@@ -12,6 +12,9 @@ vi.mock("../../lib/prompt-utils");
 
 import * as promptUtils from "../../lib/prompt-utils";
 
+// Mock isInteractive to return true for tests that test interactive mode
+vi.mocked(promptUtils.isInteractive).mockReturnValue(true);
+
 describe("init command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
