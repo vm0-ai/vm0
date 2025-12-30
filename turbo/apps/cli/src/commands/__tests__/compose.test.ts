@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { composeCommand, transformExperimentalShorthand } from "../compose";
+import {
+  composeCommand,
+  transformExperimentalShorthand,
+  getSecretsFromComposeContent,
+} from "../compose";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import * as yaml from "yaml";
@@ -472,5 +476,106 @@ describe("transformExperimentalShorthand", () => {
     transformExperimentalShorthand(agent);
 
     expect(agent.environment).toBeUndefined();
+  });
+});
+
+describe("getSecretsFromComposeContent", () => {
+  it("should extract secret names from compose environment", () => {
+    const content = {
+      version: "1.0",
+      agents: {
+        myAgent: {
+          provider: "claude-code",
+          environment: {
+            API_KEY: "${{ secrets.API_KEY }}",
+            DB_URL: "${{ secrets.DB_URL }}",
+            REGION: "${{ vars.REGION }}",
+          },
+        },
+      },
+    };
+    const secrets = getSecretsFromComposeContent(content);
+
+    expect(secrets.size).toBe(2);
+    expect(secrets.has("API_KEY")).toBe(true);
+    expect(secrets.has("DB_URL")).toBe(true);
+    expect(secrets.has("REGION")).toBe(false);
+  });
+
+  it("should return empty set when no secrets in compose", () => {
+    const content = {
+      version: "1.0",
+      agents: {
+        myAgent: {
+          provider: "claude-code",
+          environment: {
+            REGION: "${{ vars.REGION }}",
+            STATIC: "static-value",
+          },
+        },
+      },
+    };
+    const secrets = getSecretsFromComposeContent(content);
+
+    expect(secrets.size).toBe(0);
+  });
+
+  it("should return empty set for compose without environment", () => {
+    const content = {
+      version: "1.0",
+      agents: {
+        myAgent: {
+          provider: "claude-code",
+        },
+      },
+    };
+    const secrets = getSecretsFromComposeContent(content);
+
+    expect(secrets.size).toBe(0);
+  });
+
+  it("should handle nested objects with secrets", () => {
+    const content = {
+      version: "1.0",
+      agents: {
+        agent1: {
+          environment: {
+            KEY1: "${{ secrets.KEY1 }}",
+          },
+        },
+        agent2: {
+          environment: {
+            KEY2: "${{ secrets.KEY2 }}",
+          },
+        },
+      },
+    };
+    const secrets = getSecretsFromComposeContent(content);
+
+    expect(secrets.size).toBe(2);
+    expect(secrets.has("KEY1")).toBe(true);
+    expect(secrets.has("KEY2")).toBe(true);
+  });
+
+  it("should deduplicate secrets with same name", () => {
+    const content = {
+      version: "1.0",
+      agents: {
+        agent1: {
+          environment: {
+            API_KEY: "${{ secrets.API_KEY }}",
+          },
+        },
+        agent2: {
+          environment: {
+            API_KEY: "${{ secrets.API_KEY }}",
+          },
+        },
+      },
+    };
+    const secrets = getSecretsFromComposeContent(content);
+
+    expect(secrets.size).toBe(1);
+    expect(secrets.has("API_KEY")).toBe(true);
   });
 });

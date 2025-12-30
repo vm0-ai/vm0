@@ -5,7 +5,11 @@ import { existsSync } from "fs";
 import { dirname } from "path";
 import { parse as parseYaml } from "yaml";
 import prompts from "prompts";
-import { getLegacySystemTemplateWarning } from "@vm0/core";
+import {
+  getLegacySystemTemplateWarning,
+  extractVariableReferences,
+  groupVariablesBySource,
+} from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { getProviderDefaults, getDefaultImage } from "../lib/provider-config";
@@ -14,6 +18,16 @@ import {
   uploadSkill,
   type SkillUploadResult,
 } from "../lib/system-storage";
+
+/**
+ * Extract secret names from compose content using variable references.
+ * Looks for ${{ secrets.XXX }} patterns in the compose.
+ */
+export function getSecretsFromComposeContent(content: unknown): Set<string> {
+  const refs = extractVariableReferences(content);
+  const grouped = groupVariablesBySource(refs);
+  return new Set(grouped.secrets.map((r) => r.name));
+}
 
 /**
  * Transform experimental_secrets and experimental_vars shorthand to environment entries.
@@ -233,7 +247,23 @@ export const composeCommand = new Command()
         ([name]) => !(name in environment),
       );
 
-      // If there are new vars from skills, display and prompt for confirmation
+      // Fetch HEAD version to compare secrets (for smart confirmation)
+      let headSecrets = new Set<string>();
+      try {
+        const existingCompose = await apiClient.getComposeByName(agentName);
+        if (existingCompose.content) {
+          headSecrets = getSecretsFromComposeContent(existingCompose.content);
+        }
+      } catch {
+        // No existing compose - all secrets are new (first-time compose)
+      }
+
+      // Determine truly new secrets (not in HEAD version)
+      const trulyNewSecrets = newSecrets
+        .map(([name]) => name)
+        .filter((name) => !headSecrets.has(name));
+
+      // If there are secrets or vars from skills, display them
       if (newSecrets.length > 0 || newVars.length > 0) {
         console.log();
         console.log(
@@ -244,7 +274,11 @@ export const composeCommand = new Command()
         if (newSecrets.length > 0) {
           console.log(chalk.cyan("  Secrets:"));
           for (const [name, skills] of newSecrets) {
-            console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
+            const isNew = trulyNewSecrets.includes(name);
+            const newMarker = isNew ? chalk.yellow(" (new)") : "";
+            console.log(
+              `    ${name.padEnd(24)}${newMarker} <- ${skills.join(", ")}`,
+            );
           }
         }
 
@@ -257,26 +291,33 @@ export const composeCommand = new Command()
 
         console.log();
 
-        // Check for confirmation
-        if (!options.yes) {
-          if (!process.stdin.isTTY) {
-            console.error(
-              chalk.red(
-                "✗ Non-interactive terminal. Use --yes flag to skip confirmation.",
-              ),
-            );
-            process.exit(1);
-          }
+        // Only require confirmation if there are TRULY NEW secrets
+        if (trulyNewSecrets.length > 0) {
+          if (!options.yes) {
+            if (!process.stdin.isTTY) {
+              console.error(
+                chalk.red(
+                  `✗ New secrets detected: ${trulyNewSecrets.join(", ")}`,
+                ),
+              );
+              console.error(
+                chalk.dim(
+                  "  Use --yes flag to approve new secrets in non-interactive mode.",
+                ),
+              );
+              process.exit(1);
+            }
 
-          const response = await prompts({
-            type: "confirm",
-            name: "value",
-            message: "Proceed with compose?",
-            initial: true,
-          });
-          if (!response.value) {
-            console.log(chalk.yellow("Compose cancelled."));
-            process.exit(0);
+            const response = await prompts({
+              type: "confirm",
+              name: "value",
+              message: `Approve ${trulyNewSecrets.length} new secret(s)?`,
+              initial: true,
+            });
+            if (!response.value) {
+              console.log(chalk.yellow("Compose cancelled."));
+              process.exit(0);
+            }
           }
         }
 
