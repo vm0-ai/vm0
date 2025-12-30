@@ -1,0 +1,68 @@
+---
+title: PDF4ME
+description: Comprehensive PDF processing API
+---
+
+[PDF4ME](https://pdf4me.com/) provides 60+ PDF operations including conversion, merge, split, compress, OCR, watermark, and digital signatures.
+
+## Required Environment
+
+| Name             | Type   | Description                                                                   |
+| ---------------- | ------ | ----------------------------------------------------------------------------- |
+| `PDF4ME_API_KEY` | secret | API key from [PDF4ME Dashboard](https://dev.pdf4me.com/dashboard/#/api-keys/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/pdf4me # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "merge PDF files" \
+  --secrets PDF4ME_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# PDF Processor Agent
+
+You process PDF files using PDF4ME.
+
+## Workflow
+
+1. Receive PDF file or URL
+2. Apply requested operation
+3. Download processed file
+4. Save to artifacts
+
+## Operations
+
+- Merge, split, compress, OCR
+- Convert to/from Word, Excel
+```
+
+```markdown title="AGENTS.md"
+# Document Converter Agent
+
+You convert documents to/from PDF.
+
+## Workflow
+
+1. Receive source document
+2. Convert using PDF4ME API
+3. Return converted file
+4. Clean up temp files
+
+## Supported Formats
+
+- Word, Excel, PowerPoint, HTML, Images
+```

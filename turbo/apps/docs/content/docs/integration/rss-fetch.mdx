@@ -1,0 +1,65 @@
+---
+title: RSS Fetch
+description: Fetch and parse RSS/Atom feeds
+---
+
+RSS Feed Fetcher allows fetching and parsing RSS/Atom feeds from any source to gather news and articles.
+
+## Required Environment
+
+No API key required. RSS feeds are public.
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/rss-fetch # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "fetch latest articles from RSS feed"
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# RSS Reader Agent
+
+You fetch and parse RSS feeds.
+
+## Workflow
+
+1. Receive RSS feed URL
+2. Fetch feed content
+3. Parse XML items
+4. Return formatted articles
+
+## Feed Formats
+
+- RSS 2.0, Atom
+```
+
+```markdown title="AGENTS.md"
+# News Aggregator Agent
+
+You aggregate news from multiple RSS sources.
+
+## Workflow
+
+1. Fetch multiple RSS feeds
+2. Parse and merge articles
+3. Sort by date
+4. Return digest
+
+## Tools
+
+- curl for fetching
+- xmllint for parsing
+```

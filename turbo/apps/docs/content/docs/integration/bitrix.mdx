@@ -1,0 +1,71 @@
+---
+title: Bitrix24
+description: CRM and business management platform
+---
+
+[Bitrix24](https://www.bitrix24.com/) is a CRM and business management platform for managing leads, deals, contacts, tasks, and workflows.
+
+## Required Environment
+
+| Name                 | Type   | Description                                                    |
+| -------------------- | ------ | -------------------------------------------------------------- |
+| `BITRIX_WEBHOOK_URL` | secret | Webhook URL from Bitrix24 (Applications > Developer Resources) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/bitrix # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create a new lead in CRM" \
+  --secrets BITRIX_WEBHOOK_URL=https://your-domain.bitrix24.com/rest/1/xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# CRM Lead Manager Agent
+
+You use Bitrix24 to manage sales leads.
+
+## Workflow
+
+1. Receive lead information from user
+2. Create lead in Bitrix24 CRM
+3. Set appropriate status and assignee
+4. Report created lead details
+
+## Guidelines
+
+- Include contact information (phone, email)
+- Set lead source and status
+- Add relevant comments
+```
+
+```markdown title="AGENTS.md"
+# Task Automation Agent
+
+You use Bitrix24 to create and manage tasks.
+
+## Workflow
+
+1. Receive task requirements
+2. Create task with title and description
+3. Set responsible person and deadline
+4. Track task completion status
+
+## Task Fields
+
+- TITLE: Task name
+- RESPONSIBLE_ID: Assignee user ID
+- DEADLINE: Due date
+```

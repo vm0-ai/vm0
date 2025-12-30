@@ -1,0 +1,68 @@
+---
+title: Streak
+description: Gmail-integrated CRM
+---
+
+[Streak](https://www.streak.com/) is a CRM built inside Gmail for managing pipelines, deals, contacts, and email threads.
+
+## Required Environment
+
+| Name             | Type   | Description                                             |
+| ---------------- | ------ | ------------------------------------------------------- |
+| `STREAK_API_KEY` | secret | API key from Gmail > Streak > Integrations > Streak API |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/streak # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create deal in Streak" \
+  --secrets STREAK_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# CRM Agent
+
+You manage Streak pipelines and deals.
+
+## Workflow
+
+1. List pipelines and boxes
+2. Create or update boxes
+3. Move through stages
+4. Associate emails
+
+## Entities
+
+- Pipelines, boxes, contacts
+```
+
+```markdown title="AGENTS.md"
+# Email Tracker Agent
+
+You track email conversations in Streak.
+
+## Workflow
+
+1. Find email threads
+2. Associate with boxes
+3. Add notes and tasks
+4. Track engagement
+
+## Features
+
+- Email thread linking
+- Task management
+```

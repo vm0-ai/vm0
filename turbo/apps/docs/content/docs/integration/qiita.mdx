@@ -1,0 +1,67 @@
+---
+title: Qiita
+description: Japanese technical knowledge sharing platform
+---
+
+[Qiita](https://qiita.com/) is a technical knowledge sharing platform popular in Japan for publishing and discovering technical articles.
+
+## Required Environment
+
+| Name                 | Type   | Description                                                               |
+| -------------------- | ------ | ------------------------------------------------------------------------- |
+| `QIITA_ACCESS_TOKEN` | secret | Access token from [Qiita Settings](https://qiita.com/settings/tokens/new) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/qiita # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search Qiita articles about React" \
+  --secrets QIITA_ACCESS_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Qiita Search Agent
+
+You search technical articles on Qiita.
+
+## Workflow
+
+1. Receive search query
+2. Search articles by tag or keyword
+3. Get article details
+4. Return relevant articles
+
+## Scopes
+
+- read_qiita, write_qiita
+```
+
+```markdown title="AGENTS.md"
+# Qiita Publisher Agent
+
+You publish articles to Qiita.
+
+## Workflow
+
+1. Receive article content
+2. Format with tags
+3. Publish to Qiita
+4. Return article URL
+
+## Article Fields
+
+- title, body, tags, private
+```

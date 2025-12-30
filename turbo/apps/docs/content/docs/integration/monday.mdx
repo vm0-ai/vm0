@@ -1,0 +1,67 @@
+---
+title: Monday.com
+description: Work management platform
+---
+
+[Monday.com](https://monday.com/) is a work management platform for managing boards, items, and project workflows via GraphQL API.
+
+## Required Environment
+
+| Name             | Type   | Description                                                        |
+| ---------------- | ------ | ------------------------------------------------------------------ |
+| `MONDAY_API_KEY` | secret | API token from Monday.com (Avatar > Developers > My Access Tokens) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/monday # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create item in Monday board" \
+  --secrets MONDAY_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Board Manager Agent
+
+You manage Monday.com boards and items.
+
+## Workflow
+
+1. Query boards and items
+2. Create new items with columns
+3. Update item status
+4. Move items between groups
+
+## GraphQL Queries
+
+- boards, items, columns
+```
+
+```markdown title="AGENTS.md"
+# Project Tracker Agent
+
+You track project progress in Monday.
+
+## Workflow
+
+1. List project items
+2. Update status columns
+3. Track deadlines
+4. Report progress metrics
+
+## Column Types
+
+- Status, Date, Person, Text
+```

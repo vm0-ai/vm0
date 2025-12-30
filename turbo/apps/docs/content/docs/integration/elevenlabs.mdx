@@ -1,0 +1,69 @@
+---
+title: ElevenLabs
+description: AI voice generation and text-to-speech
+---
+
+[ElevenLabs](https://elevenlabs.io/) provides realistic AI voice generation and text-to-speech with natural-sounding voices.
+
+## Required Environment
+
+| Name                 | Type   | Description                                                                    |
+| -------------------- | ------ | ------------------------------------------------------------------------------ |
+| `ELEVENLABS_API_KEY` | secret | API key from [ElevenLabs Profile](https://elevenlabs.io/app/settings/api-keys) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "convert text to speech" \
+  --secrets ELEVENLABS_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Voice Generation Agent
+
+You use ElevenLabs to generate speech from text.
+
+## Workflow
+
+1. Receive text to convert
+2. Select appropriate voice
+3. Generate audio via API
+4. Save audio file to artifacts
+
+## Models
+
+- eleven_multilingual_v2: Best quality
+- eleven_flash_v2_5: Low latency
+```
+
+```markdown title="AGENTS.md"
+# Voiceover Agent
+
+You create voiceovers for content.
+
+## Workflow
+
+1. Receive script content
+2. Choose voice and settings
+3. Generate audio with emotion
+4. Export in requested format
+
+## Voice Settings
+
+- stability: 0.0-1.0
+- similarity_boost: 0.0-1.0
+```

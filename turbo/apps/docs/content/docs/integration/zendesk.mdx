@@ -1,0 +1,69 @@
+---
+title: Zendesk
+description: Customer support ticketing platform
+---
+
+[Zendesk](https://www.zendesk.com/) is a customer support platform for managing tickets, users, organizations, and support workflows.
+
+## Required Environment
+
+| Name                | Type   | Description                                                        |
+| ------------------- | ------ | ------------------------------------------------------------------ |
+| `ZENDESK_API_TOKEN` | secret | API token from Zendesk Admin Center > Apps and Integrations > APIs |
+| `ZENDESK_EMAIL`     | var    | Email associated with your Zendesk account                         |
+| `ZENDESK_SUBDOMAIN` | var    | Your Zendesk subdomain (from `https://{subdomain}.zendesk.com`)    |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/zendesk # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create support ticket" \
+  --secrets ZENDESK_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Support Agent
+
+You manage Zendesk tickets.
+
+## Workflow
+
+1. List or search tickets
+2. Create new tickets
+3. Update ticket status
+4. Add comments/replies
+
+## Ticket Status
+
+- new, open, pending, solved, closed
+```
+
+```markdown title="AGENTS.md"
+# User Manager Agent
+
+You manage Zendesk users.
+
+## Workflow
+
+1. Search for users
+2. Create end-users or agents
+3. Update user profiles
+4. Manage organizations
+
+## User Types
+
+- End-user, agent, admin
+```

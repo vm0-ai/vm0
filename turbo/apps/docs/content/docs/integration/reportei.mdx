@@ -1,0 +1,67 @@
+---
+title: Reportei
+description: Marketing report generation platform
+---
+
+[Reportei](https://www.reportei.com/) is a marketing report generation platform with automated analytics for managing clients, reports, and integrations.
+
+## Required Environment
+
+| Name                 | Type   | Description                       |
+| -------------------- | ------ | --------------------------------- |
+| `REPORTEI_API_TOKEN` | secret | API token from Reportei Dashboard |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/reportei # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate marketing report" \
+  --secrets REPORTEI_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Report Generator Agent
+
+You generate marketing reports.
+
+## Workflow
+
+1. List available clients
+2. Select report template
+3. Generate report
+4. Return report link
+
+## Report Types
+
+- Google Analytics, Meta, etc.
+```
+
+```markdown title="AGENTS.md"
+# Client Manager Agent
+
+You manage Reportei clients.
+
+## Workflow
+
+1. List all clients
+2. Create new clients
+3. Manage integrations
+4. Configure report schedules
+
+## Integrations
+
+- Google Analytics, Meta, LinkedIn
+```

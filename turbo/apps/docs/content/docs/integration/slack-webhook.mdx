@@ -1,0 +1,67 @@
+---
+title: Slack Webhook
+description: Send messages to Slack via Incoming Webhooks
+---
+
+[Slack Incoming Webhooks](https://api.slack.com/messaging/webhooks) send messages to Slack channels without OAuth or bot setup.
+
+## Required Environment
+
+| Name                | Type   | Description                                    |
+| ------------------- | ------ | ---------------------------------------------- |
+| `SLACK_WEBHOOK_URL` | secret | Webhook URL from Slack App > Incoming Webhooks |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack-webhook # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send status update to Slack" \
+  --secrets SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Slack Notifier Agent
+
+You send notifications to Slack.
+
+## Workflow
+
+1. Receive notification content
+2. Format message with blocks
+3. Send to webhook URL
+4. Confirm delivery
+
+## Message Formats
+
+- Plain text, blocks, attachments
+```
+
+```markdown title="AGENTS.md"
+# CI/CD Alert Agent
+
+You send build alerts to Slack.
+
+## Workflow
+
+1. Receive build status
+2. Create formatted message
+3. Include commit details
+4. Send to channel
+
+## Block Elements
+
+- Section, context, divider
+```

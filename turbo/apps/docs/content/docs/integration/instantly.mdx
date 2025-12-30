@@ -1,0 +1,67 @@
+---
+title: Instantly
+description: Cold email outreach automation platform
+---
+
+[Instantly](https://instantly.ai/) is a cold email outreach platform for managing campaigns, leads, and email accounts.
+
+## Required Environment
+
+| Name                | Type   | Description                                                                           |
+| ------------------- | ------ | ------------------------------------------------------------------------------------- |
+| `INSTANTLY_API_KEY` | secret | API key from [Instantly Settings](https://app.instantly.ai/app/settings/integrations) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/instantly # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create email campaign" \
+  --secrets INSTANTLY_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Campaign Manager Agent
+
+You manage email outreach campaigns.
+
+## Workflow
+
+1. Create campaign with settings
+2. Add leads to campaign
+3. Launch or pause campaigns
+4. Monitor campaign performance
+
+## Campaign Actions
+
+- create, launch, pause, list
+```
+
+```markdown title="AGENTS.md"
+# Lead Manager Agent
+
+You manage leads for email campaigns.
+
+## Workflow
+
+1. Import leads with email and info
+2. Assign leads to campaigns
+3. Update lead status
+4. Track lead engagement
+
+## Lead Fields
+
+- email, first_name, company, custom fields
+```

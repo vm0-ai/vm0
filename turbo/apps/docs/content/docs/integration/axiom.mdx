@@ -1,0 +1,72 @@
+---
+title: Axiom
+description: Cloud-native observability platform for logs and analytics
+---
+
+[Axiom](https://axiom.co/) is a cloud-native observability platform for storing, querying, and analyzing log and event data at scale using APL (Axiom Processing Language).
+
+## Required Environment
+
+| Name                          | Type   | Description                                                               |
+| ----------------------------- | ------ | ------------------------------------------------------------------------- |
+| `AXIOM_API_TOKEN`             | secret | API token from [Axiom Settings](https://app.axiom.co/settings/api-tokens) |
+| `AXIOM_PERSONAL_ACCESS_TOKEN` | secret | Personal access token for full account access (optional)                  |
+| `AXIOM_ORG_ID`                | var    | Organization ID (required when using PAT)                                 |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/axiom # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "query error logs from last hour" \
+  --secrets AXIOM_API_TOKEN=xaat-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Log Analysis Agent
+
+You use Axiom to analyze application logs and events.
+
+## Workflow
+
+1. Receive log query requirements
+2. Construct APL query for the dataset
+3. Execute query and analyze results
+4. Summarize findings and anomalies
+
+## APL Query Examples
+
+- Filter by level: `["logs"] | where level == "error"`
+- Count by group: `["logs"] | summarize count() by service`
+```
+
+```markdown title="AGENTS.md"
+# Metrics Ingestion Agent
+
+You use Axiom to ingest metrics and events.
+
+## Workflow
+
+1. Collect metrics data from the application
+2. Format data as JSON array
+3. Ingest to the appropriate dataset
+4. Verify ingestion success
+
+## Guidelines
+
+- Batch events for better performance
+- Include timestamps in events
+- Use appropriate dataset names
+```

@@ -1,0 +1,69 @@
+---
+title: Dev.to
+description: Developer community platform for publishing articles
+---
+
+[Dev.to](https://dev.to/) is a developer community platform for publishing and sharing technical articles.
+
+## Required Environment
+
+| Name            | Type   | Description                                                        |
+| --------------- | ------ | ------------------------------------------------------------------ |
+| `DEVTO_API_KEY` | secret | API key from [Dev.to Settings](https://dev.to/settings/extensions) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/dev.to # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "publish article to Dev.to" \
+  --secrets DEVTO_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Article Publisher Agent
+
+You use Dev.to API to publish technical articles.
+
+## Workflow
+
+1. Receive article content in markdown
+2. Format with title and tags
+3. Publish as draft or live article
+4. Return article URL
+
+## Article Parameters
+
+- title, body_markdown, published
+- tags (max 4), main_image, series
+```
+
+```markdown title="AGENTS.md"
+# Content Manager Agent
+
+You use Dev.to API to manage articles.
+
+## Workflow
+
+1. List published and draft articles
+2. Update article content or status
+3. Publish drafts when ready
+4. Track article engagement
+
+## Guidelines
+
+- Use draft mode for review first
+- Max 4 tags per article
+```

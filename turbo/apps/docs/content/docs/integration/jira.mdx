@@ -1,0 +1,70 @@
+---
+title: Jira
+description: Project management and issue tracking
+---
+
+[Jira](https://www.atlassian.com/software/jira) is Atlassian's project management tool for tracking issues, sprints, and workflows.
+
+## Required Environment
+
+| Name             | Type   | Description                                                                                     |
+| ---------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| `JIRA_API_TOKEN` | secret | API token from [Atlassian Account](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| `JIRA_DOMAIN`    | var    | Your Jira domain (e.g., `mycompany.atlassian.net`)                                              |
+| `JIRA_EMAIL`     | var    | Email associated with your Atlassian account                                                    |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/jira # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create a bug ticket in Jira" \
+  --secrets JIRA_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Issue Tracker Agent
+
+You manage Jira issues.
+
+## Workflow
+
+1. Search issues using JQL
+2. Create issues with details
+3. Update issue status
+4. Add comments to issues
+
+## Issue Types
+
+- Bug, Story, Task, Epic
+```
+
+```markdown title="AGENTS.md"
+# Sprint Manager Agent
+
+You manage Jira sprints and boards.
+
+## Workflow
+
+1. List sprint issues
+2. Move issues between sprints
+3. Track sprint progress
+4. Report sprint metrics
+
+## JQL Examples
+
+- Sprint issues: `sprint = "Sprint 1"`
+- My tasks: `assignee = currentUser()`
+```

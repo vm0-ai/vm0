@@ -1,0 +1,69 @@
+---
+title: DeepSeek
+description: AI language model API for chat and code generation
+---
+
+[DeepSeek](https://platform.deepseek.com/) provides powerful AI language models for chat completion, reasoning, and code generation with OpenAI-compatible endpoints.
+
+## Required Environment
+
+| Name               | Type   | Description                                                              |
+| ------------------ | ------ | ------------------------------------------------------------------------ |
+| `DEEPSEEK_API_KEY` | secret | API key from [DeepSeek Platform](https://platform.deepseek.com/api_keys) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/deepseek # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate code using DeepSeek" \
+  --secrets DEEPSEEK_API_KEY=sk-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Code Assistant Agent
+
+You use DeepSeek API for code generation tasks.
+
+## Workflow
+
+1. Receive coding request from user
+2. Call DeepSeek chat completion API
+3. Process and format the response
+4. Return generated code
+
+## Models
+
+- deepseek-chat: General purpose
+- deepseek-reasoner: Complex reasoning
+```
+
+```markdown title="AGENTS.md"
+# Reasoning Agent
+
+You use DeepSeek reasoner for complex problem solving.
+
+## Workflow
+
+1. Receive complex problem
+2. Use deepseek-reasoner model
+3. Analyze step-by-step reasoning
+4. Present solution with explanation
+
+## Guidelines
+
+- Use reasoner for math and logic
+- Include temperature control for creativity
+```

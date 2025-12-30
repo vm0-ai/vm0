@@ -1,0 +1,68 @@
+---
+title: Figma
+description: Design file access and management
+---
+
+[Figma](https://www.figma.com/) is a collaborative design platform. Use the API to access design files, export images, and manage comments.
+
+## Required Environment
+
+| Name              | Type   | Description                                                                 |
+| ----------------- | ------ | --------------------------------------------------------------------------- |
+| `FIGMA_API_TOKEN` | secret | Personal access token from [Figma Settings](https://www.figma.com/settings) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/figma # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "export frames from Figma file" \
+  --secrets FIGMA_API_TOKEN=figd_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Design Export Agent
+
+You export assets from Figma design files.
+
+## Workflow
+
+1. Receive Figma file key
+2. Get file structure and frames
+3. Export specified nodes as images
+4. Save exported assets
+
+## Export Formats
+
+- PNG, JPG, SVG, PDF
+- Scale: 1x, 2x, 4x
+```
+
+```markdown title="AGENTS.md"
+# Design Token Extractor
+
+You extract design tokens from Figma.
+
+## Workflow
+
+1. Access Figma file
+2. Extract color and text styles
+3. Format as design tokens
+4. Output as JSON or CSS variables
+
+## Token Types
+
+- Colors, typography, spacing
+```

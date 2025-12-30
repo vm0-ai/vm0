@@ -1,0 +1,70 @@
+---
+title: Cronlytic
+description: Cron job scheduler for HTTP requests and webhooks
+---
+
+[Cronlytic](https://www.cronlytic.com/) is a cron job scheduler for scheduling and managing HTTP requests and webhook automation.
+
+## Required Environment
+
+| Name                | Type   | Description                                                             |
+| ------------------- | ------ | ----------------------------------------------------------------------- |
+| `CRONLYTIC_API_KEY` | secret | API key from [Cronlytic Dashboard](https://www.cronlytic.com/dashboard) |
+| `CRONLYTIC_USER_ID` | var    | User ID from Cronlytic Dashboard                                        |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/cronlytic # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create a daily backup job" \
+  --secrets CRONLYTIC_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Job Scheduler Agent
+
+You use Cronlytic to schedule recurring HTTP requests.
+
+## Workflow
+
+1. Receive job requirements (URL, schedule)
+2. Create cron job with appropriate expression
+3. Verify job creation
+4. Report job details and next run time
+
+## Cron Examples
+
+- Every 5 min: `*/5 * * * *`
+- Daily at 9 AM: `0 9 * * *`
+- Weekly on Monday: `0 0 * * 1`
+```
+
+```markdown title="AGENTS.md"
+# Job Manager Agent
+
+You use Cronlytic to manage scheduled jobs.
+
+## Workflow
+
+1. List all scheduled jobs
+2. Pause or resume jobs as needed
+3. Check job execution logs
+4. Delete obsolete jobs
+
+## Job States
+
+- pending, paused, success, failed
+```

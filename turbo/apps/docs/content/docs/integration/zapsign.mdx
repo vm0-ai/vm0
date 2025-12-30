@@ -1,0 +1,67 @@
+---
+title: ZapSign
+description: Electronic signature platform
+---
+
+[ZapSign](https://www.zapsign.com.br/) provides electronic signatures with legal validity for documents, contracts, and forms.
+
+## Required Environment
+
+| Name                | Type   | Description                                                  |
+| ------------------- | ------ | ------------------------------------------------------------ |
+| `ZAPSIGN_API_TOKEN` | secret | API token from ZapSign Settings > Integrations > ZAPSIGN API |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/zapsign # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create document for signature" \
+  --secrets ZAPSIGN_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# E-Signature Agent
+
+You create documents for electronic signature.
+
+## Workflow
+
+1. Upload document (PDF/DOCX)
+2. Add signers with auth method
+3. Send for signature
+4. Track signing status
+
+## Auth Methods
+
+- Email, SMS, selfie verification
+```
+
+```markdown title="AGENTS.md"
+# Contract Manager Agent
+
+You manage signed documents.
+
+## Workflow
+
+1. List documents by status
+2. Download signed files
+3. Track signer progress
+4. Send reminders
+
+## Document Status
+
+- pending, signed, refused
+```

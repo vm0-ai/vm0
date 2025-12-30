@@ -1,0 +1,71 @@
+---
+title: Supabase
+description: PostgreSQL database with REST API
+---
+
+[Supabase](https://supabase.com/) is an open-source Firebase alternative providing PostgreSQL database with auto-generated REST API.
+
+## Required Environment
+
+| Name                       | Type   | Description                                        |
+| -------------------------- | ------ | -------------------------------------------------- |
+| `SUPABASE_SECRET_KEY`      | secret | Service role key (secret) from Settings > API Keys |
+| `SUPABASE_URL`             | var    | Project URL from Supabase Dashboard                |
+| `SUPABASE_PUBLISHABLE_KEY` | var    | Anon key (public) from Settings > API Keys         |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/supabase # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "query database" \
+  --secrets SUPABASE_SECRET_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Database Agent
+
+You query and modify Supabase data.
+
+## Workflow
+
+1. Construct query with filters
+2. Execute via REST API
+3. Process results
+4. Return data
+
+## Operations
+
+- SELECT, INSERT, UPDATE, DELETE
+- PostgREST operators
+```
+
+```markdown title="AGENTS.md"
+# Data Migration Agent
+
+You manage data in Supabase.
+
+## Workflow
+
+1. Read source data
+2. Transform as needed
+3. Upsert to Supabase
+4. Verify migration
+
+## Features
+
+- Bulk insert, upsert
+- Complex filtering
+```

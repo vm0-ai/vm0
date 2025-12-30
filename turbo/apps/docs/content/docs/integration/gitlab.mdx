@@ -1,0 +1,68 @@
+---
+title: GitLab
+description: DevOps platform for managing projects, issues, and pipelines
+---
+
+[GitLab](https://gitlab.com/) is a complete DevOps platform for managing projects, issues, merge requests, and CI/CD pipelines.
+
+## Required Environment
+
+| Name           | Type   | Description                                                 |
+| -------------- | ------ | ----------------------------------------------------------- |
+| `GITLAB_TOKEN` | secret | Personal access token with `api` scope from GitLab Settings |
+| `GITLAB_HOST`  | var    | GitLab domain (e.g., `gitlab.com` or self-hosted)           |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/gitlab # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create an issue in GitLab" \
+  --secrets GITLAB_TOKEN=glpat-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Issue Manager Agent
+
+You manage GitLab issues and merge requests.
+
+## Workflow
+
+1. List issues by state or labels
+2. Create new issues with details
+3. Update issue status or assignees
+4. Close resolved issues
+
+## Issue States
+
+- opened, closed, all
+```
+
+```markdown title="AGENTS.md"
+# Pipeline Monitor Agent
+
+You monitor GitLab CI/CD pipelines.
+
+## Workflow
+
+1. List recent pipelines
+2. Check pipeline status
+3. View job details and logs
+4. Report failures
+
+## Pipeline States
+
+- pending, running, success, failed
+```

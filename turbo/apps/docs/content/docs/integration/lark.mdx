@@ -1,0 +1,68 @@
+---
+title: Lark
+description: Enterprise collaboration platform (Feishu)
+---
+
+[Lark](https://www.larksuite.com/) (also known as Feishu) is an enterprise collaboration platform for messaging, group management, contacts, and calendar.
+
+## Required Environment
+
+| Name              | Type   | Description                                                        |
+| ----------------- | ------ | ------------------------------------------------------------------ |
+| `LARK_APP_SECRET` | secret | App secret from [Lark Open Platform](https://open.larkoffice.com/) |
+| `LARK_APP_ID`     | var    | App ID from Lark Open Platform                                     |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/lark # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send message to Lark group" \
+  --secrets LARK_APP_SECRET=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Lark Messenger Agent
+
+You send messages via Lark.
+
+## Workflow
+
+1. Get access token
+2. Find user or chat ID
+3. Send message content
+4. Confirm delivery
+
+## Message Types
+
+- Text, rich text, cards
+```
+
+```markdown title="AGENTS.md"
+# Calendar Agent
+
+You manage Lark calendars.
+
+## Workflow
+
+1. List calendar events
+2. Create new events
+3. Update event details
+4. Send meeting invites
+
+## Event Fields
+
+- summary, start_time, end_time, attendees
+```

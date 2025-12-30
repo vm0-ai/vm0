@@ -1,0 +1,68 @@
+---
+title: Kommo
+description: CRM for managing leads and sales pipelines
+---
+
+[Kommo](https://www.kommo.com/) is a CRM platform for managing leads, contacts, companies, tasks, and sales pipelines.
+
+## Required Environment
+
+| Name              | Type   | Description                                                 |
+| ----------------- | ------ | ----------------------------------------------------------- |
+| `KOMMO_API_KEY`   | secret | Long-lived token from Kommo Settings > Integrations         |
+| `KOMMO_SUBDOMAIN` | var    | Your Kommo subdomain (from `https://{subdomain}.kommo.com`) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/kommo # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create a new lead" \
+  --secrets KOMMO_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Sales CRM Agent
+
+You manage Kommo leads and deals.
+
+## Workflow
+
+1. Create leads from inquiries
+2. Update lead pipeline stage
+3. Add notes and tasks
+4. Track deal progress
+
+## Pipeline Stages
+
+- New, Negotiation, Won, Lost
+```
+
+```markdown title="AGENTS.md"
+# Contact Manager Agent
+
+You manage Kommo contacts and companies.
+
+## Workflow
+
+1. Search for existing contacts
+2. Create or update contacts
+3. Link contacts to companies
+4. Associate with leads
+
+## Contact Fields
+
+- name, email, phone, company
+```

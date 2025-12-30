@@ -1,0 +1,67 @@
+---
+title: YouTube
+description: YouTube Data API for video and channel data
+---
+
+[YouTube Data API](https://developers.google.com/youtube/v3) allows searching videos, retrieving video details, channel information, playlists, and comments.
+
+## Required Environment
+
+| Name              | Type   | Description                                                            |
+| ----------------- | ------ | ---------------------------------------------------------------------- |
+| `YOUTUBE_API_KEY` | secret | API key from [Google Cloud Console](https://console.cloud.google.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/youtube # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search YouTube videos" \
+  --secrets YOUTUBE_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# YouTube Search Agent
+
+You search and analyze YouTube videos.
+
+## Workflow
+
+1. Search videos by keyword
+2. Get video details
+3. Extract statistics
+4. Return formatted results
+
+## Data Available
+
+- Title, description, views, likes
+```
+
+```markdown title="AGENTS.md"
+# Channel Analyzer Agent
+
+You analyze YouTube channels.
+
+## Workflow
+
+1. Get channel information
+2. List channel videos
+3. Analyze engagement
+4. Generate report
+
+## Metrics
+
+- Subscribers, video count, views
+```

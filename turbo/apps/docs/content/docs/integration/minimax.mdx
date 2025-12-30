@@ -1,0 +1,69 @@
+---
+title: MiniMax
+description: Chinese LLM for chat, TTS, and video generation
+---
+
+[MiniMax](https://platform.minimax.io/) provides AI models for chat completion, text-to-speech, and video generation optimized for Chinese language.
+
+## Required Environment
+
+| Name              | Type   | Description                                                   |
+| ----------------- | ------ | ------------------------------------------------------------- |
+| `MINIMAX_API_KEY` | secret | API key from [MiniMax Platform](https://platform.minimax.io/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/minimax # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate Chinese speech" \
+  --secrets MINIMAX_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Chinese TTS Agent
+
+You use MiniMax for text-to-speech.
+
+## Workflow
+
+1. Receive Chinese text
+2. Select voice and emotion
+3. Generate audio via API
+4. Save audio file
+
+## API Hosts
+
+- China: api.minimax.io
+- Global: api.minimaxi.chat
+```
+
+```markdown title="AGENTS.md"
+# Video Generation Agent
+
+You create videos from text prompts.
+
+## Workflow
+
+1. Receive video description
+2. Generate video via T2V API
+3. Poll for completion
+4. Return video URL
+
+## Features
+
+- Text-to-video (T2V)
+- Image-to-video (I2V)
+```

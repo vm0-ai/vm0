@@ -1,0 +1,70 @@
+---
+title: ScrapeNinja
+description: High-performance web scraping API
+---
+
+[ScrapeNinja](https://scrapeninja.net/) is a high-performance web scraping API with Chrome TLS fingerprint, rotating proxies, and optional JavaScript rendering.
+
+## Required Environment
+
+| Name                  | Type   | Description                                                            |
+| --------------------- | ------ | ---------------------------------------------------------------------- |
+| `SCRAPENINJA_API_KEY` | secret | API key from [RapidAPI](https://rapidapi.com/restyler/api/scrapeninja) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/scrapeninja # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "scrape website data" \
+  --secrets SCRAPENINJA_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Web Scraper Agent
+
+You scrape websites with ScrapeNinja.
+
+## Workflow
+
+1. Receive target URL
+2. Configure scrape options
+3. Execute scrape request
+4. Extract and return data
+
+## Endpoints
+
+- /scrape (fast, no JS)
+- /scrape-js (JS rendering)
+```
+
+```markdown title="AGENTS.md"
+# Anti-Bot Scraper Agent
+
+You scrape protected websites.
+
+## Workflow
+
+1. Set target URL
+2. Enable geo proxy
+3. Use Chrome TLS fingerprint
+4. Extract content
+
+## Features
+
+- Cloudflare bypass
+- Rotating proxies
+- Smart retries
+```

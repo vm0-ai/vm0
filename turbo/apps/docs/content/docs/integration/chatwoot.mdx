@@ -1,0 +1,72 @@
+---
+title: Chatwoot
+description: Customer support platform for multi-channel messaging
+---
+
+[Chatwoot](https://www.chatwoot.com/) is an open-source customer support platform for managing conversations across multiple channels including website, email, and WhatsApp.
+
+## Required Environment
+
+| Name                  | Type   | Description                                           |
+| --------------------- | ------ | ----------------------------------------------------- |
+| `CHATWOOT_API_TOKEN`  | secret | API access token from Chatwoot Profile Settings       |
+| `CHATWOOT_ACCOUNT_ID` | var    | Account ID from the URL (e.g., `/app/accounts/1/...`) |
+| `CHATWOOT_BASE_URL`   | var    | Base URL (e.g., `https://app.chatwoot.com`)           |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/chatwoot # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "list open conversations" \
+  --secrets CHATWOOT_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Support Agent
+
+You use Chatwoot to manage customer support conversations.
+
+## Workflow
+
+1. List open conversations
+2. Read conversation messages
+3. Send appropriate replies
+4. Update conversation status
+
+## Guidelines
+
+- Use private notes for internal communication
+- Assign conversations to appropriate agents
+```
+
+```markdown title="AGENTS.md"
+# Contact Manager Agent
+
+You use Chatwoot to manage customer contacts.
+
+## Workflow
+
+1. Search for existing contacts
+2. Create new contacts if needed
+3. Update contact information
+4. Link contacts to conversations
+
+## Contact Fields
+
+- name, email, phone_number
+- identifier (external system ID)
+- custom_attributes
+```

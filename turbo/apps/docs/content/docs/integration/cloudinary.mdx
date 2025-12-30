@@ -1,0 +1,72 @@
+---
+title: Cloudinary
+description: Media hosting with CDN delivery and transformations
+---
+
+[Cloudinary](https://cloudinary.com/) provides image and video hosting with CDN delivery, automatic optimization, and on-the-fly transformations.
+
+## Required Environment
+
+| Name                    | Type   | Description                                                                         |
+| ----------------------- | ------ | ----------------------------------------------------------------------------------- |
+| `CLOUDINARY_API_KEY`    | secret | API key from [Cloudinary Console](https://console.cloudinary.com/settings/api-keys) |
+| `CLOUDINARY_API_SECRET` | secret | API secret from Cloudinary Console                                                  |
+| `CLOUDINARY_CLOUD_NAME` | var    | Your cloud name from Cloudinary Console                                             |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/cloudinary # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "upload and optimize this image" \
+  --secrets CLOUDINARY_API_KEY=xxx CLOUDINARY_API_SECRET=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Image Upload Agent
+
+You use Cloudinary to host and optimize images.
+
+## Workflow
+
+1. Receive image file or URL
+2. Upload to Cloudinary with optimization
+3. Return CDN URL for the image
+4. Apply transformations if requested
+
+## URL Transformations
+
+- Resize: `w_300,h_200`
+- Auto format: `f_auto,q_auto`
+- Crop: `c_fill`
+```
+
+```markdown title="AGENTS.md"
+# Video Processing Agent
+
+You use Cloudinary for video hosting and processing.
+
+## Workflow
+
+1. Upload video to Cloudinary
+2. Apply requested transformations
+3. Generate thumbnail if needed
+4. Return video URLs
+
+## Guidelines
+
+- Use custom public_id for organization
+- Apply f_auto for automatic format selection
+```

@@ -1,0 +1,68 @@
+---
+title: GitHub Copilot
+description: Manage Copilot subscriptions and usage metrics
+---
+
+[GitHub Copilot](https://github.com/features/copilot) API allows managing Copilot subscriptions and retrieving usage metrics for organizations.
+
+## Required Environment
+
+| Name           | Type   | Description                                               |
+| -------------- | ------ | --------------------------------------------------------- |
+| `GITHUB_TOKEN` | secret | Personal access token with `manage_billing:copilot` scope |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github-copilot # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "get Copilot usage metrics" \
+  --secrets GITHUB_TOKEN=ghp_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Copilot Admin Agent
+
+You manage GitHub Copilot subscriptions.
+
+## Workflow
+
+1. Get current seat assignments
+2. Add or remove users from Copilot
+3. View billing information
+4. Report subscription status
+
+## Permissions Required
+
+- manage_billing:copilot
+- admin:org
+```
+
+```markdown title="AGENTS.md"
+# Usage Analytics Agent
+
+You analyze Copilot usage metrics.
+
+## Workflow
+
+1. Retrieve usage metrics
+2. Analyze active users
+3. Track code completion stats
+4. Generate usage reports
+
+## Metrics Available
+
+- Active users, completions, chat usage
+```

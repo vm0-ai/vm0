@@ -1,0 +1,67 @@
+---
+title: SerpApi
+description: Search engine results scraping API
+---
+
+[SerpApi](https://serpapi.com/) scrapes search engine results from Google, Bing, YouTube, and more for SEO analysis and research.
+
+## Required Environment
+
+| Name              | Type   | Description                                            |
+| ----------------- | ------ | ------------------------------------------------------ |
+| `SERPAPI_API_KEY` | secret | API key from [SerpApi Dashboard](https://serpapi.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/serpapi # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "get Google search results" \
+  --secrets SERPAPI_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# SERP Scraper Agent
+
+You scrape search engine results.
+
+## Workflow
+
+1. Receive search query
+2. Execute search via SerpApi
+3. Extract organic results
+4. Return structured data
+
+## Engines
+
+- Google, Bing, YouTube, DuckDuckGo
+```
+
+```markdown title="AGENTS.md"
+# SEO Research Agent
+
+You research SERP rankings.
+
+## Workflow
+
+1. Search for keywords
+2. Analyze ranking positions
+3. Extract featured snippets
+4. Generate SEO report
+
+## Data Points
+
+- Organic results, ads, knowledge graph
+```

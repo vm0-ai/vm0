@@ -1,0 +1,69 @@
+---
+title: MinIO
+description: S3-compatible object storage
+---
+
+[MinIO](https://min.io/) is an S3-compatible object storage system for file upload, download, and bucket management.
+
+## Required Environment
+
+| Name               | Type   | Description               |
+| ------------------ | ------ | ------------------------- |
+| `MINIO_ACCESS_KEY` | secret | MinIO access key          |
+| `MINIO_SECRET_KEY` | secret | MinIO secret key          |
+| `MINIO_ENDPOINT`   | var    | MinIO server endpoint URL |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/minio # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "upload file to MinIO" \
+  --secrets MINIO_ACCESS_KEY=xxx MINIO_SECRET_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Storage Agent
+
+You manage files in MinIO storage.
+
+## Workflow
+
+1. Upload files to buckets
+2. List objects in buckets
+3. Generate pre-signed URLs
+4. Download files when needed
+
+## Commands
+
+- mc cp, mc ls, mc share
+```
+
+```markdown title="AGENTS.md"
+# Backup Agent
+
+You manage backups in MinIO.
+
+## Workflow
+
+1. Create backup bucket if needed
+2. Upload backup files
+3. Set retention policies
+4. List and verify backups
+
+## Bucket Operations
+
+- Create, list, delete buckets
+```

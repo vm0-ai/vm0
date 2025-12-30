@@ -1,0 +1,69 @@
+---
+title: Plausible
+description: Privacy-friendly web analytics
+---
+
+[Plausible](https://plausible.io/) is a privacy-friendly web analytics platform for tracking visitors, pageviews, and traffic sources.
+
+## Required Environment
+
+| Name                | Type   | Description                                        |
+| ------------------- | ------ | -------------------------------------------------- |
+| `PLAUSIBLE_API_KEY` | secret | API key from Plausible Account Settings > API Keys |
+| `PLAUSIBLE_SITE_ID` | var    | Your site domain (e.g., `example.com`)             |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/plausible # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "get website analytics" \
+  --secrets PLAUSIBLE_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Analytics Agent
+
+You query Plausible analytics data.
+
+## Workflow
+
+1. Query visitor statistics
+2. Analyze traffic sources
+3. Get geographic breakdown
+4. Report key metrics
+
+## Metrics
+
+- visitors, pageviews, bounce_rate
+- visit_duration, events
+```
+
+```markdown title="AGENTS.md"
+# Traffic Reporter Agent
+
+You create traffic reports from Plausible.
+
+## Workflow
+
+1. Query data for time period
+2. Compare to previous period
+3. Identify trends
+4. Generate report
+
+## Dimensions
+
+- source, page, country, device
+```

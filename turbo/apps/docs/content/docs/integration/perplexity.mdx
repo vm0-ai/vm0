@@ -1,0 +1,70 @@
+---
+title: Perplexity
+description: AI search engine with real-time web grounding
+---
+
+[Perplexity](https://perplexity.ai/) is an AI search engine that provides real-time web-grounded answers with source citations.
+
+## Required Environment
+
+| Name                 | Type   | Description                                                           |
+| -------------------- | ------ | --------------------------------------------------------------------- |
+| `PERPLEXITY_API_KEY` | secret | API key from [Perplexity Settings](https://perplexity.ai/account/api) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/perplexity # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search for latest tech news" \
+  --secrets PERPLEXITY_API_KEY=pplx-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Research Agent
+
+You use Perplexity for web research.
+
+## Workflow
+
+1. Receive research query
+2. Search via Perplexity API
+3. Extract answers with citations
+4. Compile research report
+
+## Features
+
+- Real-time web data
+- Source citations
+- Multi-source synthesis
+```
+
+```markdown title="AGENTS.md"
+# Fact Checker Agent
+
+You verify facts using Perplexity.
+
+## Workflow
+
+1. Receive claim to verify
+2. Search for evidence
+3. Compare multiple sources
+4. Report verification status
+
+## Guidelines
+
+- Always include source citations
+- Note conflicting information
+```

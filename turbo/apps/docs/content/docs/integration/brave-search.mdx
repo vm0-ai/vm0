@@ -1,0 +1,70 @@
+---
+title: Brave Search
+description: Privacy-focused web search API
+---
+
+[Brave Search](https://brave.com/search/api/) is a privacy-focused search engine API with no user tracking, supporting web, image, video, and news search.
+
+## Required Environment
+
+| Name            | Type   | Description                                                              |
+| --------------- | ------ | ------------------------------------------------------------------------ |
+| `BRAVE_API_KEY` | secret | API key from [Brave Search API](https://api-dashboard.search.brave.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/brave-search # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search for latest AI news" \
+  --secrets BRAVE_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Web Research Agent
+
+You use Brave Search to find information on the web.
+
+## Workflow
+
+1. Receive search query from user
+2. Execute web search via Brave API
+3. Extract relevant results with titles and URLs
+4. Summarize findings for the user
+
+## Guidelines
+
+- Use freshness filters for time-sensitive queries
+- Include country/language params when relevant
+- Respect rate limits (1 query/sec on free tier)
+```
+
+```markdown title="AGENTS.md"
+# News Aggregator Agent
+
+You use Brave Search to gather news articles.
+
+## Workflow
+
+1. Receive topic or keywords
+2. Search news with freshness filter
+3. Compile articles with sources
+4. Format as news digest
+
+## Search Parameters
+
+- Use `freshness=pd` for past day
+- Use `freshness=pw` for past week
+```

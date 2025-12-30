@@ -1,0 +1,68 @@
+---
+title: Tavily
+description: AI search API for RAG applications
+---
+
+[Tavily](https://tavily.com/) is an AI search API designed for retrieval-augmented generation (RAG) with real-time web search and source citations.
+
+## Required Environment
+
+| Name             | Type   | Description                                          |
+| ---------------- | ------ | ---------------------------------------------------- |
+| `TAVILY_API_KEY` | secret | API key from [Tavily Dashboard](https://tavily.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/tavily # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search for latest news" \
+  --secrets TAVILY_API_KEY=tvly-xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# RAG Search Agent
+
+You search the web for RAG context.
+
+## Workflow
+
+1. Receive search query
+2. Execute Tavily search
+3. Extract relevant content
+4. Return with sources
+
+## Features
+
+- Real-time web data
+- Source citations
+```
+
+```markdown title="AGENTS.md"
+# Research Agent
+
+You conduct web research.
+
+## Workflow
+
+1. Receive research topic
+2. Search multiple queries
+3. Synthesize findings
+4. Generate report
+
+## Search Modes
+
+- Basic search, deep research
+```

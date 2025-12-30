@@ -1,0 +1,70 @@
+---
+title: Browserless
+description: Headless browser as a service for screenshots, PDFs, and scraping
+---
+
+[Browserless](https://www.browserless.io/) is a headless Chrome browser as a service for taking screenshots, generating PDFs, scraping JS-rendered pages, and running Puppeteer scripts.
+
+## Required Environment
+
+| Name                    | Type   | Description                                                           |
+| ----------------------- | ------ | --------------------------------------------------------------------- |
+| `BROWSERLESS_API_TOKEN` | secret | API token from [Browserless Account](https://account.browserless.io/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/browserless # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "take a screenshot of example.com" \
+  --secrets BROWSERLESS_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Screenshot Agent
+
+You use Browserless to capture web page screenshots.
+
+## Workflow
+
+1. Receive URL to screenshot
+2. Configure viewport and options
+3. Capture screenshot via Browserless API
+4. Save image to artifacts
+
+## Options
+
+- Full page or viewport only
+- PNG or JPEG format
+- Custom viewport dimensions
+```
+
+```markdown title="AGENTS.md"
+# Web Scraper Agent
+
+You use Browserless to scrape JavaScript-heavy pages.
+
+## Workflow
+
+1. Receive target URL and selectors
+2. Use scrape endpoint with CSS selectors
+3. Extract structured data
+4. Return formatted results
+
+## Guidelines
+
+- Use waitUntil for dynamic content
+- Enable stealth mode for protected sites
+```

@@ -1,0 +1,70 @@
+---
+title: Apify
+description: Web scraping and automation platform with pre-built Actors
+---
+
+[Apify](https://apify.com/) is a web scraping and automation platform offering pre-built Actors (scrapers) for common tasks with access to thousands of ready-to-use scrapers for popular websites.
+
+## Required Environment
+
+| Name              | Type   | Description                                                                     |
+| ----------------- | ------ | ------------------------------------------------------------------------------- |
+| `APIFY_API_TOKEN` | secret | API token from [Apify Console](https://console.apify.com/account#/integrations) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/apify # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "scrape product data from amazon" \
+  --secrets APIFY_API_TOKEN=apify_api_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Web Scraper Agent
+
+You use Apify Actors to extract data from websites.
+
+## Workflow
+
+1. Identify the target website and data to extract
+2. Find and run the appropriate Apify Actor
+3. Process and format the scraped data
+4. Save results to artifacts
+
+## Guidelines
+
+- Use synchronous runs for tasks under 5 minutes
+- Use asynchronous runs for long-running tasks
+- Check Actor documentation for input parameters
+```
+
+```markdown title="AGENTS.md"
+# Search Results Agent
+
+You use Apify to scrape search engine results.
+
+## Workflow
+
+1. Receive search query from user
+2. Run Google Search Actor with the query
+3. Extract titles, URLs, and descriptions
+4. Format results as structured data
+
+## Output Format
+
+- Return results as JSON array
+- Include title, URL, and snippet for each result
+```

@@ -1,0 +1,69 @@
+---
+title: Short.io
+description: URL shortener with branded domains
+---
+
+[Short.io](https://short.io/) creates and manages short links on branded domains with click tracking and analytics.
+
+## Required Environment
+
+| Name                | Type   | Description                                                                          |
+| ------------------- | ------ | ------------------------------------------------------------------------------------ |
+| `SHORTIO_API_KEY`   | secret | API key from [Short.io Settings](https://app.short.io/settings/integrations/api-key) |
+| `SHORTIO_DOMAIN`    | var    | Your branded domain (e.g., `link.example.com`)                                       |
+| `SHORTIO_DOMAIN_ID` | var    | Domain ID (needed for list and statistics operations, optional)                      |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/shortio # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create short link" \
+  --secrets SHORTIO_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Link Shortener Agent
+
+You create short links with Short.io.
+
+## Workflow
+
+1. Receive long URL
+2. Create short link
+3. Customize slug if needed
+4. Return short URL
+
+## Features
+
+- Custom slugs, TTL expiration
+```
+
+```markdown title="AGENTS.md"
+# Link Analytics Agent
+
+You track link performance.
+
+## Workflow
+
+1. List all links
+2. Get click statistics
+3. Analyze traffic sources
+4. Generate reports
+
+## Metrics
+
+- Clicks, unique visitors, referrers
+```

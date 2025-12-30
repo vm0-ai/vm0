@@ -1,0 +1,68 @@
+---
+title: Imgur
+description: Free image hosting service
+---
+
+[Imgur](https://imgur.com/) is a free image hosting service for uploading images and getting shareable URLs.
+
+## Required Environment
+
+| Name              | Type   | Description                                                        |
+| ----------------- | ------ | ------------------------------------------------------------------ |
+| `IMGUR_CLIENT_ID` | secret | Client ID from [Imgur API](https://api.imgur.com/oauth2/addclient) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/imgur # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "upload image to Imgur" \
+  --secrets IMGUR_CLIENT_ID=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Image Uploader Agent
+
+You upload images to Imgur for sharing.
+
+## Workflow
+
+1. Receive image file or URL
+2. Upload to Imgur API
+3. Return shareable link
+4. Save deletehash for management
+
+## Upload Methods
+
+- Local file, URL, or Base64
+```
+
+```markdown title="AGENTS.md"
+# Documentation Image Host
+
+You host images for documentation.
+
+## Workflow
+
+1. Receive screenshot or diagram
+2. Upload to Imgur
+3. Return markdown image link
+4. Track uploaded images
+
+## Guidelines
+
+- Save deletehash for later deletion
+- Supported: JPEG, PNG, GIF, WebP
+```

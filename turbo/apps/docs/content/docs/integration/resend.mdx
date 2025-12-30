@@ -1,0 +1,67 @@
+---
+title: Resend
+description: Transactional email API
+---
+
+[Resend](https://resend.com/) is a transactional email API for sending emails, managing contacts, and verifying domains.
+
+## Required Environment
+
+| Name             | Type   | Description                                                  |
+| ---------------- | ------ | ------------------------------------------------------------ |
+| `RESEND_API_KEY` | secret | API key from [Resend Dashboard](https://resend.com/api-keys) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/resend # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send welcome email" \
+  --secrets RESEND_API_KEY=re_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Email Sender Agent
+
+You send transactional emails via Resend.
+
+## Workflow
+
+1. Prepare email content
+2. Set recipients and subject
+3. Send via Resend API
+4. Confirm delivery
+
+## Email Fields
+
+- from, to, subject, html/text
+```
+
+```markdown title="AGENTS.md"
+# Batch Email Agent
+
+You send batch emails.
+
+## Workflow
+
+1. Prepare email list
+2. Create batch payload
+3. Send batch request
+4. Track delivery status
+
+## Limits
+
+- Up to 100 emails per batch
+```

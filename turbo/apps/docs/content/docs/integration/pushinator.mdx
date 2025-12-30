@@ -1,0 +1,67 @@
+---
+title: Pushinator
+description: Push notification API for mobile devices
+---
+
+[Pushinator](https://pushinator.com/) sends push notifications to mobile devices for alerts, deployments, and task completion notifications.
+
+## Required Environment
+
+| Name                 | Type   | Description                                                                |
+| -------------------- | ------ | -------------------------------------------------------------------------- |
+| `PUSHINATOR_API_KEY` | secret | API token from [Pushinator Console](https://console.pushinator.com/tokens) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/pushinator # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send push notification" \
+  --secrets PUSHINATOR_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Notification Agent
+
+You send push notifications via Pushinator.
+
+## Workflow
+
+1. Receive notification content
+2. Select target channel
+3. Send push notification
+4. Confirm delivery
+
+## Notification Fields
+
+- title, body, channel
+```
+
+```markdown title="AGENTS.md"
+# CI/CD Notifier Agent
+
+You notify on deployment events.
+
+## Workflow
+
+1. Receive deployment status
+2. Format notification message
+3. Send to mobile device
+4. Log notification
+
+## Use Cases
+
+- Build complete, deploy success/failure
+```

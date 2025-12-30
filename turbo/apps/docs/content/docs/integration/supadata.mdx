@@ -1,0 +1,68 @@
+---
+title: Supadata
+description: Video transcript extraction and web scraping
+---
+
+[Supadata](https://supadata.ai/) extracts video transcripts from YouTube, TikTok, Instagram, and scrapes web content to markdown for AI processing.
+
+## Required Environment
+
+| Name               | Type   | Description                                                  |
+| ------------------ | ------ | ------------------------------------------------------------ |
+| `SUPADATA_API_KEY` | secret | API key from [Supadata Dashboard](https://dash.supadata.ai/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/supadata # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "extract YouTube transcript" \
+  --secrets SUPADATA_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Transcript Agent
+
+You extract video transcripts.
+
+## Workflow
+
+1. Receive video URL
+2. Extract transcript via API
+3. Format with timestamps
+4. Return text content
+
+## Supported Platforms
+
+- YouTube, TikTok, Instagram, X
+```
+
+```markdown title="AGENTS.md"
+# Web Scraper Agent
+
+You scrape web pages to markdown.
+
+## Workflow
+
+1. Receive target URL
+2. Scrape page content
+3. Convert to markdown
+4. Return clean text
+
+## Features
+
+- AI-optimized output
+- Multi-page crawling
+```

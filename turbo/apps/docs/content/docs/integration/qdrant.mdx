@@ -1,0 +1,69 @@
+---
+title: Qdrant
+description: Vector database for semantic search and RAG
+---
+
+[Qdrant](https://qdrant.tech/) is a vector database for storing and searching vector embeddings for RAG, semantic search, and recommendations.
+
+## Required Environment
+
+| Name             | Type   | Description                                                   |
+| ---------------- | ------ | ------------------------------------------------------------- |
+| `QDRANT_API_KEY` | secret | API key from [Qdrant Cloud](https://cloud.qdrant.io/)         |
+| `QDRANT_URL`     | var    | Qdrant cluster URL (e.g., `https://xxx.cloud.qdrant.io:6333`) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/qdrant # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search similar documents" \
+  --secrets QDRANT_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Vector Search Agent
+
+You perform semantic search with Qdrant.
+
+## Workflow
+
+1. Receive search query
+2. Generate query embedding
+3. Search similar vectors
+4. Return ranked results
+
+## Distance Metrics
+
+- Cosine, Dot, Euclidean
+```
+
+```markdown title="AGENTS.md"
+# RAG Retrieval Agent
+
+You retrieve context for RAG.
+
+## Workflow
+
+1. Receive user question
+2. Search relevant documents
+3. Filter by metadata
+4. Return context chunks
+
+## Features
+
+- Payload filtering
+- Score thresholds
+```

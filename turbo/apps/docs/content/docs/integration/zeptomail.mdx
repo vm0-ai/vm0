@@ -1,0 +1,68 @@
+---
+title: ZeptoMail
+description: Zoho transactional email service
+---
+
+[ZeptoMail](https://www.zoho.com/zeptomail/) is Zoho's transactional email service for sending password resets, OTPs, welcome emails, and order confirmations.
+
+## Required Environment
+
+| Name                | Type   | Description                                                         |
+| ------------------- | ------ | ------------------------------------------------------------------- |
+| `ZEPTOMAIL_API_KEY` | secret | Send Mail Token from ZeptoMail Dashboard > Mail Agents > SMTP & API |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/zeptomail # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send transactional email" \
+  --secrets ZEPTOMAIL_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Email Sender Agent
+
+You send transactional emails via ZeptoMail.
+
+## Workflow
+
+1. Prepare email content
+2. Set sender and recipient
+3. Send via ZeptoMail API
+4. Track delivery status
+
+## Email Types
+
+- Password reset, OTP, notifications
+```
+
+```markdown title="AGENTS.md"
+# Template Email Agent
+
+You send templated emails.
+
+## Workflow
+
+1. Select email template
+2. Provide merge fields
+3. Send templated email
+4. Verify delivery
+
+## Features
+
+- Templates with merge tags
+- Batch sending (up to 500)
+```

@@ -1,0 +1,68 @@
+---
+title: Podchaser
+description: Podcast data and discovery API
+---
+
+[Podchaser](https://www.podchaser.com/) provides comprehensive podcast data including shows, episodes, creators, charts, and sponsorship information.
+
+## Required Environment
+
+| Name                      | Type   | Description                               |
+| ------------------------- | ------ | ----------------------------------------- |
+| `PODCHASER_CLIENT_SECRET` | secret | Client secret from Podchaser API Settings |
+| `PODCHASER_CLIENT_ID`     | var    | Client ID from Podchaser API Settings     |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/podchaser # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "search podcasts about technology" \
+  --secrets PODCHASER_CLIENT_SECRET=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Podcast Discovery Agent
+
+You search and discover podcasts.
+
+## Workflow
+
+1. Search by topic or keyword
+2. Filter by category/charts
+3. Get podcast details
+4. Return recommendations
+
+## Data Available
+
+- Shows, episodes, creators, networks
+```
+
+```markdown title="AGENTS.md"
+# Podcast Analytics Agent
+
+You analyze podcast data.
+
+## Workflow
+
+1. Get chart rankings
+2. Analyze sponsorship data
+3. Track creator networks
+4. Generate insights
+
+## Charts
+
+- Apple Podcasts, Spotify rankings
+```

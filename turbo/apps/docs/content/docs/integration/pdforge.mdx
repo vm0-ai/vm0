@@ -1,0 +1,67 @@
+---
+title: PDForge
+description: PDF generation from templates and HTML
+---
+
+[PDForge](https://pdfnoodle.com/) (formerly PDF Noodle) generates PDFs from reusable templates or raw HTML for invoices, reports, and documents.
+
+## Required Environment
+
+| Name              | Type   | Description                                                 |
+| ----------------- | ------ | ----------------------------------------------------------- |
+| `PDFORGE_API_KEY` | secret | API key from [PDF Noodle Dashboard](https://pdfnoodle.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/pdforge # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate PDF from template" \
+  --secrets PDFORGE_API_KEY=pdfnoodle_api_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# PDF Generator Agent
+
+You generate PDFs from templates.
+
+## Workflow
+
+1. Select or create template
+2. Provide dynamic data
+3. Generate PDF via API
+4. Return PDF URL or file
+
+## Output Formats
+
+- PDF, PNG image
+```
+
+```markdown title="AGENTS.md"
+# Invoice Generator Agent
+
+You create invoices as PDFs.
+
+## Workflow
+
+1. Receive invoice data
+2. Apply invoice template
+3. Generate PDF document
+4. Save to artifacts
+
+## Template Data
+
+- JSON object with dynamic fields
+```

@@ -1,0 +1,67 @@
+---
+title: Intercom
+description: Customer messaging and support platform
+---
+
+[Intercom](https://www.intercom.com/) is a customer messaging platform for managing conversations, contacts, and support operations.
+
+## Required Environment
+
+| Name                    | Type   | Description                              |
+| ----------------------- | ------ | ---------------------------------------- |
+| `INTERCOM_ACCESS_TOKEN` | secret | Access token from Intercom Developer Hub |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/intercom # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "list open conversations" \
+  --secrets INTERCOM_ACCESS_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Support Agent
+
+You manage Intercom conversations.
+
+## Workflow
+
+1. List conversations by status
+2. Read conversation messages
+3. Reply to customers
+4. Close or assign conversations
+
+## Conversation States
+
+- open, closed, snoozed
+```
+
+```markdown title="AGENTS.md"
+# Contact Manager Agent
+
+You manage Intercom contacts.
+
+## Workflow
+
+1. Search for contacts
+2. Create or update contact profiles
+3. Add notes and tags
+4. Track contact activity
+
+## Contact Fields
+
+- name, email, phone, custom attributes
+```

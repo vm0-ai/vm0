@@ -1,0 +1,69 @@
+---
+title: Instagram
+description: Instagram Graph API for media management
+---
+
+[Instagram Graph API](https://developers.facebook.com/docs/instagram-api) allows reading and publishing Instagram content for business accounts.
+
+## Required Environment
+
+| Name                            | Type   | Description                                      |
+| ------------------------------- | ------ | ------------------------------------------------ |
+| `INSTAGRAM_ACCESS_TOKEN`        | secret | Long-lived access token from Facebook Developers |
+| `INSTAGRAM_BUSINESS_ACCOUNT_ID` | var    | Instagram Business account ID                    |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/instagram # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "fetch recent Instagram posts" \
+  --secrets INSTAGRAM_ACCESS_TOKEN=EAAG... # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Instagram Content Agent
+
+You manage Instagram media content.
+
+## Workflow
+
+1. Fetch recent media from account
+2. Get media details and engagement
+3. Search by hashtag if needed
+4. Report content performance
+
+## Media Types
+
+- IMAGE, VIDEO, CAROUSEL_ALBUM
+```
+
+```markdown title="AGENTS.md"
+# Instagram Publisher Agent
+
+You publish content to Instagram.
+
+## Workflow
+
+1. Create media container with image URL
+2. Add caption and location
+3. Publish to feed
+4. Return post permalink
+
+## Requirements
+
+- Business/Creator account
+- Image must be publicly accessible URL
+```

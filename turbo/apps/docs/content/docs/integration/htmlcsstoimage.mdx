@@ -1,0 +1,71 @@
+---
+title: HTMLCSStoImage
+description: Generate images from HTML/CSS or capture screenshots
+---
+
+[HTMLCSStoImage](https://htmlcsstoimage.com/) generates images from HTML/CSS or captures screenshots of web pages for social cards, thumbnails, and certificates.
+
+## Required Environment
+
+| Name           | Type   | Description                                                         |
+| -------------- | ------ | ------------------------------------------------------------------- |
+| `HCTI_API_KEY` | secret | API key from [HCTI Dashboard](https://htmlcsstoimage.com/dashboard) |
+| `HCTI_USER_ID` | var    | User ID from HCTI Dashboard                                         |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/htmlcsstoimage # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate OG image from HTML" \
+  --secrets HCTI_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Social Card Generator
+
+You create social media cards from HTML.
+
+## Workflow
+
+1. Receive card content
+2. Create HTML with styling
+3. Generate image via HCTI
+4. Return permanent CDN URL
+
+## Features
+
+- Google Fonts support
+- Custom viewport sizes
+- Retina (2x/3x) output
+```
+
+```markdown title="AGENTS.md"
+# Screenshot Agent
+
+You capture screenshots of web pages.
+
+## Workflow
+
+1. Receive target URL
+2. Configure viewport and delay
+3. Capture screenshot
+4. Save image file
+
+## Options
+
+- Full page or element selector
+- JS delay for dynamic content
+```

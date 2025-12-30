@@ -1,0 +1,68 @@
+---
+title: Twenty
+description: Open-source CRM platform
+---
+
+[Twenty](https://twenty.com/) is an open-source modern CRM for managing people, companies, opportunities, notes, and tasks.
+
+## Required Environment
+
+| Name             | Type   | Description                                           |
+| ---------------- | ------ | ----------------------------------------------------- |
+| `TWENTY_API_KEY` | secret | API key from Twenty Settings > APIs & Webhooks        |
+| `TWENTY_API_URL` | var    | API URL (default: `https://api.twenty.com` for cloud) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/twenty # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "create contact in CRM" \
+  --secrets TWENTY_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# CRM Agent
+
+You manage Twenty CRM data.
+
+## Workflow
+
+1. Query people and companies
+2. Create or update records
+3. Track opportunities
+4. Add notes and tasks
+
+## Objects
+
+- People, companies, opportunities
+```
+
+```markdown title="AGENTS.md"
+# Sales Pipeline Agent
+
+You manage sales opportunities.
+
+## Workflow
+
+1. List opportunities
+2. Update pipeline stages
+3. Track deal progress
+4. Generate reports
+
+## Features
+
+- REST and GraphQL APIs
+```

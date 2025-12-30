@@ -1,0 +1,67 @@
+---
+title: PDF.co
+description: PDF processing and extraction API
+---
+
+[PDF.co](https://pdf.co/) provides PDF processing including extraction, conversion, merging, splitting, and OCR with AI parsing.
+
+## Required Environment
+
+| Name            | Type   | Description                                    |
+| --------------- | ------ | ---------------------------------------------- |
+| `PDFCO_API_KEY` | secret | API key from [PDF.co App](https://app.pdf.co/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/pdfco # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "extract text from PDF" \
+  --secrets PDFCO_API_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# PDF Extractor Agent
+
+You extract data from PDF files.
+
+## Workflow
+
+1. Upload PDF file
+2. Extract text or tables
+3. Parse with OCR if needed
+4. Return structured data
+
+## Extraction Types
+
+- Text, tables, forms, barcodes
+```
+
+```markdown title="AGENTS.md"
+# Invoice Parser Agent
+
+You parse invoices using PDF.co AI.
+
+## Workflow
+
+1. Upload invoice PDF
+2. Use AI document parser
+3. Extract invoice fields
+4. Return structured JSON
+
+## Parsed Fields
+
+- Vendor, date, amount, line items
+```

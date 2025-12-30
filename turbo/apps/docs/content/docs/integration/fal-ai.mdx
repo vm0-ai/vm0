@@ -1,0 +1,70 @@
+---
+title: fal.ai
+description: AI image generation from text prompts
+---
+
+[fal.ai](https://fal.ai/) provides AI image generation from text prompts using various models including Flux and Recraft.
+
+## Required Environment
+
+| Name      | Type   | Description                                      |
+| --------- | ------ | ------------------------------------------------ |
+| `FAL_KEY` | secret | API key from [fal.ai Dashboard](https://fal.ai/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/fal.ai # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "generate an image of a sunset" \
+  --secrets FAL_KEY=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Image Generator Agent
+
+You use fal.ai to generate images from text.
+
+## Workflow
+
+1. Receive image description
+2. Select appropriate model
+3. Generate image via fal.ai API
+4. Return image URL
+
+## Models
+
+- nano-banana-pro: Fast
+- flux/schnell: Fast generation
+- recraft-v3: High quality
+```
+
+```markdown title="AGENTS.md"
+# Thumbnail Creator Agent
+
+You create thumbnails and social media images.
+
+## Workflow
+
+1. Receive content topic
+2. Create descriptive prompt
+3. Generate image with correct size
+4. Download and save image
+
+## Image Sizes
+
+- square, landscape_16_9
+- portrait_4_3, square_hd
+```

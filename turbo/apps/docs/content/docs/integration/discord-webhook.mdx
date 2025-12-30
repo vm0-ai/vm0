@@ -1,0 +1,71 @@
+---
+title: Discord Webhook
+description: Send messages to Discord channels via webhooks
+---
+
+[Discord Webhooks](https://discord.com/developers/docs/resources/webhook) allow sending messages to Discord channels without setting up a bot.
+
+## Required Environment
+
+| Name                  | Type   | Description                                               |
+| --------------------- | ------ | --------------------------------------------------------- |
+| `DISCORD_WEBHOOK_URL` | secret | Webhook URL from Discord (Server Settings > Integrations) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/discord-webhook # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "send deployment notification to Discord" \
+  --secrets DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Notification Agent
+
+You use Discord webhooks to send notifications.
+
+## Workflow
+
+1. Receive notification content
+2. Format message with embeds
+3. Send to Discord channel
+4. Confirm delivery
+
+## Message Types
+
+- Simple text messages
+- Rich embeds with colors and fields
+- File attachments
+```
+
+```markdown title="AGENTS.md"
+# CI/CD Alert Agent
+
+You send pipeline alerts to Discord.
+
+## Workflow
+
+1. Receive pipeline status
+2. Create embed with status color
+3. Include commit info and links
+4. Send to Discord channel
+
+## Embed Colors
+
+- Green (success): 5763719
+- Red (failure): 15548997
+- Yellow (warning): 16776960
+```

@@ -1,0 +1,67 @@
+---
+title: Mercury
+description: Business banking API
+---
+
+[Mercury](https://mercury.com/) is a business banking platform with API access for managing accounts, transactions, and transfers.
+
+## Required Environment
+
+| Name                | Type   | Description                                               |
+| ------------------- | ------ | --------------------------------------------------------- |
+| `MERCURY_API_TOKEN` | secret | API token from Mercury Settings > Developers > API Tokens |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/mercury # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "check account balance" \
+  --secrets MERCURY_API_TOKEN=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Banking Agent
+
+You manage Mercury bank accounts.
+
+## Workflow
+
+1. List all accounts
+2. Check account balances
+3. View recent transactions
+4. Report financial status
+
+## Account Types
+
+- Checking, savings, treasury
+```
+
+```markdown title="AGENTS.md"
+# Transaction Monitor Agent
+
+You track Mercury transactions.
+
+## Workflow
+
+1. List recent transactions
+2. Filter by date range
+3. Categorize transactions
+4. Generate reports
+
+## Transaction Fields
+
+- amount, counterparty, date, status
+```

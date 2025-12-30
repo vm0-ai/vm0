@@ -1,0 +1,69 @@
+---
+title: Sentry
+description: Error tracking and monitoring platform
+---
+
+[Sentry](https://sentry.io/) is an error tracking platform for managing issues, projects, and releases.
+
+## Required Environment
+
+| Name           | Type   | Description                                                       |
+| -------------- | ------ | ----------------------------------------------------------------- |
+| `SENTRY_TOKEN` | secret | Auth token from Sentry Developer Settings > Internal Integrations |
+| `SENTRY_HOST`  | var    | Sentry host (e.g., `sentry.io` or self-hosted)                    |
+| `SENTRY_ORG`   | var    | Your Sentry organization slug                                     |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/sentry # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "list recent errors" \
+  --secrets SENTRY_TOKEN=sntrys_xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Error Tracker Agent
+
+You manage Sentry issues.
+
+## Workflow
+
+1. List recent issues
+2. Get issue details
+3. Resolve or ignore issues
+4. Track issue trends
+
+## Issue Actions
+
+- resolve, ignore, assign
+```
+
+```markdown title="AGENTS.md"
+# Release Monitor Agent
+
+You track Sentry releases.
+
+## Workflow
+
+1. List releases
+2. Check release health
+3. Track crash-free rate
+4. Report release metrics
+
+## Metrics
+
+- Crash-free sessions/users
+```
