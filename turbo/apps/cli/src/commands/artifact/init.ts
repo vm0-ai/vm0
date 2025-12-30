@@ -6,12 +6,15 @@ import {
   writeStorageConfig,
   readStorageConfig,
 } from "../../lib/storage-utils";
-import { promptText } from "../../lib/prompt-utils";
+import { promptText, isInteractive } from "../../lib/prompt-utils";
 
 export const initCommand = new Command()
   .name("init")
   .description("Initialize an artifact in the current directory")
-  .option("-n, --name <name>", "Artifact name (skip interactive prompt)")
+  .option(
+    "-n, --name <name>",
+    "Artifact name (required in non-interactive mode)",
+  )
   .action(async (options: { name?: string }) => {
     try {
       const cwd = process.cwd();
@@ -50,6 +53,15 @@ export const initCommand = new Command()
       if (options.name) {
         // Use provided name (non-interactive mode)
         artifactName = options.name;
+      } else if (!isInteractive()) {
+        // Non-interactive mode without --name flag
+        console.error(
+          chalk.red("✗ --name flag is required in non-interactive mode"),
+        );
+        console.error(
+          chalk.dim("  Usage: vm0 artifact init --name <artifact-name>"),
+        );
+        process.exit(1);
       } else {
         // Interactive prompt with directory name as default
         const defaultName = isValidStorageName(dirName) ? dirName : undefined;

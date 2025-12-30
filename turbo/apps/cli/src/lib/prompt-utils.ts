@@ -1,17 +1,30 @@
 import prompts from "prompts";
 
 /**
+ * Check if the current environment supports interactive prompts
+ * Returns true if stdout is a TTY (interactive terminal)
+ */
+export function isInteractive(): boolean {
+  return process.stdout.isTTY === true;
+}
+
+/**
  * Prompt for text input with optional default value
  * @param message - The prompt message
  * @param initial - Optional default value
  * @param validate - Optional validation function
- * @returns The user's input, or undefined if cancelled
+ * @returns The user's input, or undefined if cancelled or non-interactive
  */
 export async function promptText(
   message: string,
   initial?: string,
   validate?: (value: string) => boolean | string,
 ): Promise<string | undefined> {
+  // In non-interactive mode, return undefined immediately
+  if (!isInteractive()) {
+    return undefined;
+  }
+
   const response = await prompts(
     {
       type: "text",
@@ -35,12 +48,17 @@ export async function promptText(
  * Prompt for yes/no confirmation
  * @param message - The prompt message
  * @param initial - Default value (true = yes, false = no)
- * @returns true if confirmed, false if declined, undefined if cancelled
+ * @returns true if confirmed, false if declined, undefined if cancelled or non-interactive
  */
 export async function promptConfirm(
   message: string,
   initial = true,
 ): Promise<boolean | undefined> {
+  // In non-interactive mode, return undefined immediately
+  if (!isInteractive()) {
+    return undefined;
+  }
+
   const response = await prompts(
     {
       type: "confirm",

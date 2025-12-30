@@ -21,7 +21,7 @@ teardown() {
 setup_artifact() {
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init >/dev/null 2>&1
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content" > test.txt
     $CLI_COMMAND artifact push >/dev/null 2>&1
 }
