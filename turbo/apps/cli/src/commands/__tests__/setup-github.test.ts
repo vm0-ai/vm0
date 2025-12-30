@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setupGithubCommand } from "../setup-github";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
-import * as readline from "readline";
 import { execSync, spawnSync, SpawnSyncReturns } from "child_process";
 import * as config from "../../lib/config";
 import * as core from "@vm0/core";
@@ -10,10 +9,12 @@ import * as core from "@vm0/core";
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
-vi.mock("readline");
 vi.mock("child_process");
 vi.mock("../../lib/config");
 vi.mock("@vm0/core");
+vi.mock("../../lib/prompt-utils");
+
+import * as promptUtils from "../../lib/prompt-utils";
 
 describe("setup-github command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -21,19 +22,8 @@ describe("setup-github command", () => {
   }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
-  // Mock readline interface
-  const mockRlQuestion = vi.fn();
-  const mockRlClose = vi.fn();
-  const mockRlInterface = {
-    question: mockRlQuestion,
-    close: mockRlClose,
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readline.createInterface).mockReturnValue(
-      mockRlInterface as unknown as readline.Interface,
-    );
     // Default mocks for core functions
     vi.mocked(core.extractVariableReferences).mockReturnValue([]);
     vi.mocked(core.groupVariablesBySource).mockReturnValue({
@@ -157,9 +147,7 @@ agents:
     });
 
     it("should create publish.yml with correct content", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("n"); // Skip auto-setup
-      });
+      vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false); // Skip auto-setup
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
@@ -178,9 +166,7 @@ agents:
     });
 
     it("should create run.yml with agent name", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("n");
-      });
+      vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false);
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
@@ -300,13 +286,7 @@ agents:
         return false;
       });
 
-      mockRlQuestion.mockImplementation((question, callback) => {
-        if (question.includes("Overwrite")) {
-          callback("n"); // No, don't overwrite
-        } else {
-          callback("n");
-        }
-      });
+      vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false); // No, don't overwrite
 
       await expect(async () => {
         await setupGithubCommand.parseAsync(["node", "cli"]);
@@ -417,7 +397,7 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--yes"]);
 
       // Should not have prompted the user
-      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(promptUtils.promptConfirm).not.toHaveBeenCalled();
       // Should have proceeded with overwriting and setting secrets
       expect(fs.writeFile).toHaveBeenCalled();
     });
@@ -425,7 +405,7 @@ agents:
     it("should work with -y short option", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(promptUtils.promptConfirm).not.toHaveBeenCalled();
       expect(fs.writeFile).toHaveBeenCalled();
     });
   });
@@ -506,13 +486,7 @@ agents:
     });
 
     it("should show manual setup instructions when declining auto-setup", async () => {
-      mockRlQuestion.mockImplementation((question, callback) => {
-        if (question.includes("Set up GitHub secrets")) {
-          callback("n"); // No, don't auto-setup
-        } else {
-          callback("");
-        }
-      });
+      vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false); // No, don't auto-setup
 
       await setupGithubCommand.parseAsync(["node", "cli"]);
 

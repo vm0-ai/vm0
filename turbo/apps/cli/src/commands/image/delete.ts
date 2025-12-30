@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import * as readline from "readline";
 import { formatVersionIdForDisplay } from "@vm0/core";
 import { apiClient } from "../../lib/api-client";
+import { promptConfirm } from "../../lib/prompt-utils";
 
 interface Image {
   id: string;
@@ -110,19 +110,9 @@ export const deleteCommand = new Command()
 
         // Confirmation prompt (unless --force)
         if (!options.force) {
-          const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-          });
+          const confirmed = await promptConfirm(confirmMsg, false);
 
-          const answer = await new Promise<string>((resolve) => {
-            rl.question(chalk.yellow(`${confirmMsg} [y/N] `), (answer) => {
-              rl.close();
-              resolve(answer);
-            });
-          });
-
-          if (answer.toLowerCase() !== "y" && answer.toLowerCase() !== "yes") {
+          if (!confirmed) {
             console.log(chalk.dim("Cancelled."));
             return;
           }

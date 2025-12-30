@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import * as readline from "readline";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { execSync, spawnSync } from "child_process";
 import { parse as parseYaml } from "yaml";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { getToken } from "../lib/config";
+import { promptConfirm } from "../lib/prompt-utils";
 
 // ============================================================================
 // Prerequisite Checks
@@ -255,23 +255,9 @@ async function promptYesNo(
   question: string,
   defaultYes: boolean,
 ): Promise<boolean> {
-  const hint = defaultYes ? "(Y/n)" : "(y/N)";
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(chalk.cyan(`? ${question} ${hint} `), (answer) => {
-      rl.close();
-      const normalized = answer.trim().toLowerCase();
-      if (normalized === "") {
-        resolve(defaultYes);
-      } else {
-        resolve(normalized === "y" || normalized === "yes");
-      }
-    });
-  });
+  const result = await promptConfirm(question, defaultYes);
+  // If user cancelled, treat as no
+  return result ?? false;
 }
 
 // ============================================================================

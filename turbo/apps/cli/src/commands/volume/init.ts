@@ -6,11 +6,13 @@ import {
   writeStorageConfig,
   readStorageConfig,
 } from "../../lib/storage-utils";
+import { promptText } from "../../lib/prompt-utils";
 
 export const initCommand = new Command()
   .name("init")
   .description("Initialize a volume in the current directory")
-  .action(async () => {
+  .option("-n, --name <name>", "Volume name (skip interactive prompt)")
+  .action(async (options: { name?: string }) => {
     try {
       const cwd = process.cwd();
       const dirName = path.basename(cwd);
@@ -27,12 +29,38 @@ export const initCommand = new Command()
         return;
       }
 
-      // Use directory name as volume name
-      const volumeName = dirName;
+      // Determine volume name
+      let volumeName: string;
+
+      if (options.name) {
+        // Use provided name (non-interactive mode)
+        volumeName = options.name;
+      } else {
+        // Interactive prompt with directory name as default
+        const defaultName = isValidStorageName(dirName) ? dirName : undefined;
+        const name = await promptText(
+          "Enter volume name",
+          defaultName,
+          (value: string) => {
+            if (!isValidStorageName(value)) {
+              return "Must be 3-64 characters, lowercase alphanumeric with hyphens";
+            }
+            return true;
+          },
+        );
+
+        if (name === undefined) {
+          // User cancelled
+          console.log(chalk.dim("Cancelled"));
+          return;
+        }
+
+        volumeName = name;
+      }
 
       // Validate volume name
       if (!isValidStorageName(volumeName)) {
-        console.error(chalk.red(`✗ Invalid volume name: "${dirName}"`));
+        console.error(chalk.red(`✗ Invalid volume name: "${volumeName}"`));
         console.error(
           chalk.dim(
             "  Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",

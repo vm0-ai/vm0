@@ -1,9 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import * as readline from "readline";
+import path from "path";
 import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { validateAgentName } from "../lib/yaml-validator";
+import { promptText } from "../lib/prompt-utils";
 
 const VM0_YAML_FILE = "vm0.yaml";
 const AGENTS_MD_FILE = "AGENTS.md";
@@ -46,26 +47,6 @@ function checkExistingFiles(): string[] {
   return existingFiles;
 }
 
-async function promptAgentName(): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve, reject) => {
-    rl.question(chalk.cyan("? Enter agent name: "), (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-
-    rl.on("SIGINT", () => {
-      rl.close();
-      console.log();
-      reject(new Error("User cancelled"));
-    });
-  });
-}
-
 export const initCommand = new Command()
   .name("init")
   .description("Initialize a new VM0 project in the current directory")
@@ -88,11 +69,28 @@ export const initCommand = new Command()
     if (options.name) {
       agentName = options.name.trim();
     } else {
-      try {
-        agentName = await promptAgentName();
-      } catch {
-        process.exit(0);
+      // Use directory name as default suggestion
+      const dirName = path.basename(process.cwd());
+      const defaultName = validateAgentName(dirName) ? dirName : undefined;
+
+      const name = await promptText(
+        "Enter agent name",
+        defaultName,
+        (value: string) => {
+          if (!validateAgentName(value)) {
+            return "Must be 3-64 characters, alphanumeric and hyphens, start/end with letter or number";
+          }
+          return true;
+        },
+      );
+
+      if (name === undefined) {
+        // User cancelled
+        console.log(chalk.dim("Cancelled"));
+        return;
       }
+
+      agentName = name;
     }
 
     // Validate agent name

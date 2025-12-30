@@ -6,11 +6,13 @@ import {
   writeStorageConfig,
   readStorageConfig,
 } from "../../lib/storage-utils";
+import { promptText } from "../../lib/prompt-utils";
 
 export const initCommand = new Command()
   .name("init")
   .description("Initialize an artifact in the current directory")
-  .action(async () => {
+  .option("-n, --name <name>", "Artifact name (skip interactive prompt)")
+  .action(async (options: { name?: string }) => {
     try {
       const cwd = process.cwd();
       const dirName = path.basename(cwd);
@@ -42,12 +44,38 @@ export const initCommand = new Command()
         return;
       }
 
-      // Use directory name as artifact name
-      const artifactName = dirName;
+      // Determine artifact name
+      let artifactName: string;
+
+      if (options.name) {
+        // Use provided name (non-interactive mode)
+        artifactName = options.name;
+      } else {
+        // Interactive prompt with directory name as default
+        const defaultName = isValidStorageName(dirName) ? dirName : undefined;
+        const name = await promptText(
+          "Enter artifact name",
+          defaultName,
+          (value: string) => {
+            if (!isValidStorageName(value)) {
+              return "Must be 3-64 characters, lowercase alphanumeric with hyphens";
+            }
+            return true;
+          },
+        );
+
+        if (name === undefined) {
+          // User cancelled
+          console.log(chalk.dim("Cancelled"));
+          return;
+        }
+
+        artifactName = name;
+      }
 
       // Validate name
       if (!isValidStorageName(artifactName)) {
-        console.error(chalk.red(`✗ Invalid artifact name: "${dirName}"`));
+        console.error(chalk.red(`✗ Invalid artifact name: "${artifactName}"`));
         console.error(
           chalk.dim(
             "  Artifact names must be 3-64 characters, lowercase alphanumeric with hyphens",

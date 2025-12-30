@@ -246,9 +246,38 @@ export const storagesDownloadContract = c.router({
   },
 });
 
+/**
+ * Storage list contract for /api/storages/list
+ *
+ * Lists all storages for the authenticated user, filtered by type.
+ */
+export const storagesListContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/storages/list",
+    query: z.object({
+      type: storageTypeSchema,
+    }),
+    responses: {
+      200: z.array(
+        z.object({
+          name: z.string(),
+          size: z.number(),
+          fileCount: z.number(),
+          updatedAt: z.string(),
+        }),
+      ),
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List user storages by type",
+  },
+});
+
 export type StoragesPrepareContract = typeof storagesPrepareContract;
 export type StoragesCommitContract = typeof storagesCommitContract;
 export type StoragesDownloadContract = typeof storagesDownloadContract;
+export type StoragesListContract = typeof storagesListContract;
 
 // Export schemas for reuse
 export { storageTypeSchema, uploadStorageResponseSchema };

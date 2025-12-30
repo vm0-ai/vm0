@@ -2,14 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { initCommand } from "../init";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
-import * as readline from "readline";
 import * as yamlValidator from "../../lib/yaml-validator";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
-vi.mock("readline");
 vi.mock("../../lib/yaml-validator");
+vi.mock("../../lib/prompt-utils");
+
+import * as promptUtils from "../../lib/prompt-utils";
 
 describe("init command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -20,21 +21,8 @@ describe("init command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  // Mock readline interface
-  const mockRlQuestion = vi.fn();
-  const mockRlClose = vi.fn();
-  const mockRlOn = vi.fn();
-  const mockRlInterface = {
-    question: mockRlQuestion,
-    close: mockRlClose,
-    on: mockRlOn,
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readline.createInterface).mockReturnValue(
-      mockRlInterface as unknown as readline.Interface,
-    );
   });
 
   afterEach(() => {
@@ -100,9 +88,7 @@ describe("init command", () => {
     });
 
     it("should exit with error for invalid agent name", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("ab"); // Too short
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("ab"); // Too short
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(false);
 
       await expect(async () => {
@@ -115,20 +101,15 @@ describe("init command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should exit with error for empty agent name", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("");
-      });
-      vi.mocked(yamlValidator.validateAgentName).mockReturnValue(false);
+    it("should exit gracefully when user cancels prompt", async () => {
+      vi.mocked(promptUtils.promptText).mockResolvedValue(undefined); // User cancelled
 
-      await expect(async () => {
-        await initCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
+      await initCommand.parseAsync(["node", "cli"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid agent name"),
+        expect.stringContaining("Cancelled"),
       );
-      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockExit).not.toHaveBeenCalled();
     });
   });
 
@@ -140,9 +121,7 @@ describe("init command", () => {
     });
 
     it("should create vm0.yaml and AGENTS.md with valid agent name", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("my-agent");
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli"]);
 
@@ -163,9 +142,7 @@ describe("init command", () => {
     });
 
     it("should include correct vm0.yaml template content", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("test-agent");
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("test-agent");
 
       await initCommand.parseAsync(["node", "cli"]);
 
@@ -187,9 +164,7 @@ describe("init command", () => {
     });
 
     it("should display next steps after creation", async () => {
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("my-agent");
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli"]);
 
@@ -214,9 +189,7 @@ describe("init command", () => {
 
     it("should overwrite existing files with --force", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("my-agent");
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli", "--force"]);
 
@@ -232,9 +205,7 @@ describe("init command", () => {
 
     it("should work with -f short option", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
-      mockRlQuestion.mockImplementation((_, callback) => {
-        callback("my-agent");
-      });
+      vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli", "-f"]);
 
@@ -252,7 +223,7 @@ describe("init command", () => {
     it("should skip interactive prompt when --name is provided", async () => {
       await initCommand.parseAsync(["node", "cli", "--name", "cli-agent"]);
 
-      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(promptUtils.promptText).not.toHaveBeenCalled();
       expect(fs.writeFile).toHaveBeenCalledWith(
         "vm0.yaml",
         expect.stringContaining("cli-agent"),
@@ -262,7 +233,7 @@ describe("init command", () => {
     it("should work with -n short option", async () => {
       await initCommand.parseAsync(["node", "cli", "-n", "short-agent"]);
 
-      expect(mockRlQuestion).not.toHaveBeenCalled();
+      expect(promptUtils.promptText).not.toHaveBeenCalled();
       expect(fs.writeFile).toHaveBeenCalledWith(
         "vm0.yaml",
         expect.stringContaining("short-agent"),

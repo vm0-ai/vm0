@@ -75,10 +75,12 @@ export {
   storagesPrepareContract,
   storagesCommitContract,
   storagesDownloadContract,
+  storagesListContract,
   type StoragesContract,
   type StoragesPrepareContract,
   type StoragesCommitContract,
   type StoragesDownloadContract,
+  type StoragesListContract,
 } from "./storages";
 export {
   webhookEventsContract,
