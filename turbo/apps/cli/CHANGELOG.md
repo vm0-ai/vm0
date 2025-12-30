@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.32.0](https://github.com/vm0-ai/vm0/compare/cli-v4.31.1...cli-v4.32.0) (2025-12-30)
+
+
+### Features
+
+* **cli:** add artifact/volume list and clone commands with interactive prompts ([#800](https://github.com/vm0-ai/vm0/issues/800)) ([3a95d22](https://github.com/vm0-ai/vm0/commit/3a95d224fb9f38de92db5fd97e75c6968d7daed5))
+* **cli:** smart secret confirmation - only prompt for new secrets ([#814](https://github.com/vm0-ai/vm0/issues/814)) ([cdef21e](https://github.com/vm0-ai/vm0/commit/cdef21ec5facb35de73c509edd98a429cd8190ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.4.0
+
 ## [4.31.1](https://github.com/vm0-ai/vm0/compare/cli-v4.31.0...cli-v4.31.1) (2025-12-30)
 
 

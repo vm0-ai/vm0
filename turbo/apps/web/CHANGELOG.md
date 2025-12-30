@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.6.0](https://github.com/vm0-ai/vm0/compare/web-v7.5.0...web-v7.6.0) (2025-12-30)
+
+
+### Features
+
+* **cli:** add artifact/volume list and clone commands with interactive prompts ([#800](https://github.com/vm0-ai/vm0/issues/800)) ([3a95d22](https://github.com/vm0-ai/vm0/commit/3a95d224fb9f38de92db5fd97e75c6968d7daed5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.4.0
+
 ## [7.5.0](https://github.com/vm0-ai/vm0/compare/web-v7.4.0...web-v7.5.0) (2025-12-30)
 
 
