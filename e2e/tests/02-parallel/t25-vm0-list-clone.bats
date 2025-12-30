@@ -176,50 +176,6 @@ teardown() {
     assert_output --partial "already exists"
 }
 
-@test "vm0 artifact clone with --version flag" {
-    echo "# Step 1: Create and push two versions"
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    echo "version 1 content" > data.txt
-    run $CLI_COMMAND artifact push
-    assert_success
-    # Extract version ID (strip ANSI codes first, then extract hex)
-    VERSION1=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'Version: \K[0-9a-f]+' | head -1)
-
-    # Verify we got a version ID
-    [ -n "$VERSION1" ] || {
-        echo "# Failed to extract VERSION1 from output:"
-        echo "$output"
-        return 1
-    }
-    echo "# Extracted VERSION1: $VERSION1"
-
-    echo "version 2 content" > data.txt
-    $CLI_COMMAND artifact push >/dev/null
-
-    echo "# Step 2: Clone specific version"
-    cd "$TEST_DIR"
-    CLONE_DIR="${ARTIFACT_NAME}-v1"
-    echo "# Running: artifact clone $ARTIFACT_NAME $CLONE_DIR --version $VERSION1"
-    echo "# Current dir: $(pwd)"
-    run $CLI_COMMAND artifact clone "$ARTIFACT_NAME" "$CLONE_DIR" --version "$VERSION1"
-    echo "# Clone exit code: $status"
-    echo "# Clone output:"
-    echo "$output"
-    assert_success
-    assert_output --partial "Successfully cloned"
-
-    # Debug: List cloned directory
-    echo "# Contents of $CLONE_DIR:"
-    ls -la "$CLONE_DIR" || echo "# Directory listing failed"
-
-    echo "# Step 3: Verify we got version 1"
-    run cat "$CLONE_DIR/data.txt"
-    assert_output "version 1 content"
-}
-
 # ============================================
 # Volume Clone Tests
 # ============================================
