@@ -224,3 +224,136 @@ EOF
     assert_output --partial "github"
     assert_output --partial "axiom"
 }
+
+# ============================================
+# Smart secret confirmation tests
+# ============================================
+
+@test "vm0 compose re-compose with same secrets skips confirmation" {
+    echo "# Step 1: Create config with skill that has vm0_secrets"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+EOF
+
+    echo "# Step 2: First compose with --yes to approve secrets"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    assert_success
+    assert_output --partial "Compose"
+    # First compose should show secrets
+    assert_output --partial "ELEVENLABS_API_KEY"
+
+    echo "# Step 3: Re-compose WITHOUT --yes flag (should succeed without prompting)"
+    # Since secrets are the same as HEAD, no confirmation should be needed
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+    assert_output --partial "Compose"
+    # Should NOT show (new) marker since secret was already approved
+    refute_output --partial "(new)"
+}
+
+@test "vm0 compose shows (new) marker for truly new secrets" {
+    echo "# Step 1: Create config with first skill"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+EOF
+
+    echo "# Step 2: First compose with --yes"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Add second skill with different secret"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+      - https://github.com/vm0-ai/vm0-skills/tree/main/resend
+EOF
+
+    echo "# Step 4: Compose with --yes and verify (new) marker"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    assert_success
+    # RESEND_API_KEY is new, should show (new) marker
+    assert_output --partial "(new)"
+    assert_output --partial "RESEND_API_KEY"
+    # ELEVENLABS_API_KEY is not new, should NOT have (new) marker next to it
+    # Note: We can't easily assert that ELEVENLABS doesn't have (new) without complex parsing
+}
+
+@test "vm0 compose fails in non-TTY with new secrets without --yes" {
+    echo "# Step 1: Create config with first skill"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+EOF
+
+    echo "# Step 2: First compose with --yes"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Add second skill with new secret"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+      - https://github.com/vm0-ai/vm0-skills/tree/main/resend
+EOF
+
+    echo "# Step 4: Compose in non-TTY without --yes (should fail)"
+    run bash -c "echo '' | $CLI_COMMAND compose '$TEST_DIR/vm0.yaml'"
+    assert_failure
+    # Should show error about new secrets
+    assert_output --partial "New secrets detected"
+    assert_output --partial "RESEND_API_KEY"
+    assert_output --partial "--yes"
+}
+
+@test "vm0 compose first-time with secrets in non-TTY requires --yes" {
+    echo "# Step 1: Create config with skill that has vm0_secrets"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent with secrets"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
+EOF
+
+    echo "# Step 2: First-time compose in non-TTY without --yes (should fail)"
+    run bash -c "echo '' | $CLI_COMMAND compose '$TEST_DIR/vm0.yaml'"
+    assert_failure
+    # Should show error about new secrets (all secrets are new on first compose)
+    assert_output --partial "New secrets detected"
+    assert_output --partial "ELEVENLABS_API_KEY"
+}
