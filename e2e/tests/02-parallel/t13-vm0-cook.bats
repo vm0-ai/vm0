@@ -210,3 +210,35 @@ EOF
     echo "# Step 6: Verify .env file has new placeholder appended..."
     grep -q "^NEW_VAR=$" .env
 }
+
+@test "cook command with skills downloads and composes correctly" {
+    # Skip if not authenticated (requires VM0_TOKEN or logged in)
+    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+        skip "Not authenticated - run 'vm0 auth login' first"
+    fi
+
+    cd "$TEST_DIR"
+
+    echo "# Step 1: Create vm0.yaml config with skill..."
+    cat > vm0.yaml <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "E2E test agent for cook with skills"
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github
+EOF
+
+    echo "# Step 2: Run cook without prompt (preparation only)..."
+    run $CLI_COMMAND cook
+    assert_success
+
+    echo "# Step 3: Verify compose was called and skill was processed..."
+    assert_output --partial "vm0 compose vm0.yaml"
+    assert_output --partial "Downloading"
+    assert_output --partial "github"
+    # Skill upload should succeed
+    assert_output --partial "Skill"
+}
