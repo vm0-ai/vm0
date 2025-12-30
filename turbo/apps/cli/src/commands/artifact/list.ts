@@ -62,14 +62,24 @@ export const listCommand = new Command()
 
       if (items.length === 0) {
         console.log(chalk.dim("No artifacts found"));
-        console.log(chalk.dim("  Create one with: vm0 artifact init && vm0 artifact push"));
+        console.log(
+          chalk.dim(
+            "  Create one with: vm0 artifact init && vm0 artifact push",
+          ),
+        );
         return;
       }
 
       // Calculate column widths
       const nameWidth = Math.max(4, ...items.map((i) => i.name.length));
-      const sizeWidth = Math.max(4, ...items.map((i) => formatBytes(i.size).length));
-      const filesWidth = Math.max(5, ...items.map((i) => i.fileCount.toString().length));
+      const sizeWidth = Math.max(
+        4,
+        ...items.map((i) => formatBytes(i.size).length),
+      );
+      const filesWidth = Math.max(
+        5,
+        ...items.map((i) => i.fileCount.toString().length),
+      );
 
       // Print header
       const header = [
