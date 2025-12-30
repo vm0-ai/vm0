@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.3.1](https://github.com/vm0-ai/vm0/compare/web-v7.3.0...web-v7.3.1) (2025-12-30)
+
+
+### Bug Fixes
+
+* remove locale from legal pages paths ([#794](https://github.com/vm0-ai/vm0/issues/794)) ([67d0d24](https://github.com/vm0-ai/vm0/commit/67d0d249c48d204b06caaaa87e370edcd47787c5))
+
 ## [7.3.0](https://github.com/vm0-ai/vm0/compare/web-v7.2.0...web-v7.3.0) (2025-12-29)
 
 
