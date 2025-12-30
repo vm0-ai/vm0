@@ -232,10 +232,7 @@ export class AgentSessionService {
       artifactName: session.artifactName,
       vars: session.vars,
       secrets: session.secrets,
-      // secretNames column will be added in migration - use null for legacy sessions
-      secretNames: (session as Record<string, unknown>).secretNames as
-        | string[]
-        | null,
+      secretNames: session.secretNames ?? null,
       volumeVersions: session.volumeVersions,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,

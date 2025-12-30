@@ -33,7 +33,10 @@ export const agentSessions = pgTable("agent_sessions", {
   }),
   artifactName: varchar("artifact_name", { length: 255 }),
   vars: jsonb("vars").$type<Record<string, string>>(),
+  /** @deprecated Use secretNames instead - values are no longer persisted */
   secrets: jsonb("secrets").$type<Record<string, string>>(),
+  // Secret names for validation (values never stored)
+  secretNames: jsonb("secret_names").$type<string[]>(),
   // Volume versions snapshot at session creation for reproducibility
   volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
