@@ -15,6 +15,7 @@ export { METRICS_SCRIPT } from "./lib/metrics.py";
 export { UPLOAD_TELEMETRY_SCRIPT } from "./lib/upload_telemetry.py";
 export { PROXY_SETUP_SCRIPT } from "./lib/proxy_setup.py";
 export { MITM_ADDON_SCRIPT } from "./lib/mitm_addon.py";
+export { SECRET_MASKER_SCRIPT } from "./lib/secret_masker.py";
 export { RUN_AGENT_SCRIPT } from "./run-agent.py";
 
 /**
@@ -37,4 +38,5 @@ export const SCRIPT_PATHS = {
   uploadTelemetry: "/usr/local/bin/vm0-agent/lib/upload_telemetry.py",
   proxySetup: "/usr/local/bin/vm0-agent/lib/proxy_setup.py",
   mitmAddon: "/usr/local/bin/vm0-agent/lib/mitm_addon.py",
+  secretMasker: "/usr/local/bin/vm0-agent/lib/secret_masker.py",
 } as const;

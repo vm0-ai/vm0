@@ -53,6 +53,7 @@ export interface ExecutionContext {
   prompt: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>; // Decrypted secrets for environment expansion
+  secretNames?: string[]; // Secret names for client-side masking (passed to sandbox as VM0_SECRET_NAMES)
   sandboxToken: string;
 
   // Artifact settings (new runs only)

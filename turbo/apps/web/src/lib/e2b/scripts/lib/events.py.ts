@@ -6,6 +6,7 @@ export const EVENTS_SCRIPT = `#!/usr/bin/env python3
 """
 Event sending module for VM0 agent scripts.
 Sends JSONL events to the webhook endpoint.
+Masks secrets before sending using client-side masking.
 """
 import os
 from typing import Dict, Any
@@ -16,11 +17,13 @@ from common import (
 )
 from log import log_info, log_error
 from http_client import http_post_json
+from secret_masker import mask_data
 
 
 def send_event(event: Dict[str, Any], sequence_number: int) -> bool:
     """
     Send single event immediately to webhook.
+    Masks secrets before sending.
 
     Args:
         event: Event dictionary to send
@@ -73,10 +76,14 @@ def send_event(event: Dict[str, Any], sequence_number: int) -> bool:
     # Add sequence number to event
     event["sequenceNumber"] = sequence_number
 
-    # Build payload
+    # Mask secrets in event data before sending
+    # This ensures secrets are never sent to the server in plaintext
+    masked_event = mask_data(event)
+
+    # Build payload with masked event
     payload = {
         "runId": RUN_ID,
-        "events": [event]
+        "events": [masked_event]
     }
 
     # Send event using HTTP request function

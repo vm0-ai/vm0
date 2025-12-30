@@ -24,6 +24,7 @@ import {
   UPLOAD_TELEMETRY_SCRIPT,
   PROXY_SETUP_SCRIPT,
   MITM_ADDON_SCRIPT,
+  SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
 } from "./scripts";
@@ -216,6 +217,15 @@ export class E2BService {
       const provider = firstAgent.provider || "claude-code";
       sandboxEnvVars.CLI_AGENT_TYPE = provider;
       log.debug(`CLI_AGENT_TYPE set to: ${provider}`);
+
+      // Pass secret names to sandbox for client-side masking
+      // The sandbox will use these names to look up values from env vars and mask them
+      if (context.secretNames && context.secretNames.length > 0) {
+        sandboxEnvVars.VM0_SECRET_NAMES = context.secretNames.join(",");
+        log.debug(
+          `Passed ${context.secretNames.length} secret names for client-side masking`,
+        );
+      }
 
       sandbox = await this.createSandbox(
         sandboxEnvVars,
@@ -453,6 +463,7 @@ export class E2BService {
       { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
       { content: PROXY_SETUP_SCRIPT, path: SCRIPT_PATHS.proxySetup },
       { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
+      { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
   }
