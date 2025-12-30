@@ -2,7 +2,7 @@
  * Secret masking module for sandbox-side event masking (Python)
  *
  * This module masks secrets before events are sent to the server.
- * It reads secret names from VM0_SECRET_NAMES env var and masks their values.
+ * It reads base64-encoded secret values from VM0_SECRET_VALUES env var.
  */
 export const SECRET_MASKER_SCRIPT = `#!/usr/bin/env python3
 """
@@ -98,7 +98,7 @@ class SecretMasker:
 def get_masker() -> SecretMasker:
     """
     Get the global masker instance.
-    Initializes on first call using VM0_SECRET_NAMES env var.
+    Initializes on first call using VM0_SECRET_VALUES env var.
 
     Returns:
         SecretMasker instance
@@ -113,26 +113,29 @@ def get_masker() -> SecretMasker:
 
 def _create_masker() -> SecretMasker:
     """
-    Create a masker from VM0_SECRET_NAMES env var.
+    Create a masker from VM0_SECRET_VALUES env var.
 
-    VM0_SECRET_NAMES contains comma-separated secret names.
-    The actual values are read from environment variables.
+    VM0_SECRET_VALUES contains comma-separated base64-encoded secret values.
+    This avoids exposing plaintext secrets in environment variable names.
     """
-    secret_names_str = os.environ.get("VM0_SECRET_NAMES", "")
+    secret_values_str = os.environ.get("VM0_SECRET_VALUES", "")
 
-    if not secret_names_str:
+    if not secret_values_str:
         # No secrets to mask
         return SecretMasker([])
 
-    # Parse secret names
-    secret_names = [name.strip() for name in secret_names_str.split(",") if name.strip()]
-
-    # Get secret values from environment
+    # Parse base64-encoded values
     secret_values = []
-    for name in secret_names:
-        value = os.environ.get(name)
-        if value:
-            secret_values.append(value)
+    for encoded_value in secret_values_str.split(","):
+        encoded_value = encoded_value.strip()
+        if encoded_value:
+            try:
+                decoded = base64.b64decode(encoded_value).decode()
+                if decoded:
+                    secret_values.append(decoded)
+            except Exception:
+                # Skip invalid base64 values
+                pass
 
     return SecretMasker(secret_values)
 

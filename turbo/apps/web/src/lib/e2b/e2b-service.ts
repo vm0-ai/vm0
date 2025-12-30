@@ -218,12 +218,17 @@ export class E2BService {
       sandboxEnvVars.CLI_AGENT_TYPE = provider;
       log.debug(`CLI_AGENT_TYPE set to: ${provider}`);
 
-      // Pass secret names to sandbox for client-side masking
-      // The sandbox will use these names to look up values from env vars and mask them
-      if (context.secretNames && context.secretNames.length > 0) {
-        sandboxEnvVars.VM0_SECRET_NAMES = context.secretNames.join(",");
+      // Pass secret values to sandbox for client-side masking
+      // Values are base64 encoded and comma-separated
+      // The masker will decode these and use them to mask any occurrence in output
+      if (context.secrets && Object.keys(context.secrets).length > 0) {
+        const secretValues = Object.values(context.secrets);
+        const encodedValues = secretValues.map((v) =>
+          Buffer.from(v).toString("base64"),
+        );
+        sandboxEnvVars.VM0_SECRET_VALUES = encodedValues.join(",");
         log.debug(
-          `Passed ${context.secretNames.length} secret names for client-side masking`,
+          `Passed ${secretValues.length} secret values for client-side masking`,
         );
       }
 
