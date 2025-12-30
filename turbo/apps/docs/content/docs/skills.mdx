@@ -1,0 +1,69 @@
+---
+title: Skills
+description: Add capabilities to your agent with skills
+---
+
+Skills are reusable capabilities that extend what your agent can do. You can add skills to your agent by declaring them in the `vm0.yaml` configuration file.
+
+## Adding Skills
+
+Use the `skills` field in your agent configuration to declare which skills to load:
+
+```yaml
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/anthropics/skills/tree/main/skills/pdf
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+```
+
+Each skill is specified as a GitHub URL pointing to a directory containing the skill definition.
+
+## Skill URL Format
+
+Skills must be GitHub tree URLs in the format:
+
+```
+https://github.com/{owner}/{repo}/tree/{ref}/{path}
+```
+
+The `{ref}` can be:
+
+- **Branch name** - e.g., `main`, `master`, `develop`
+- **Tag** - e.g., `v1.0`, `v2.0.0`
+- **Commit SHA** - e.g., `abc123def`
+
+**Examples:**
+
+| Skill                 | URL                                                                |
+| --------------------- | ------------------------------------------------------------------ |
+| PDF (main branch)     | `https://github.com/anthropics/skills/tree/main/skills/pdf`        |
+| Slack (pinned to tag) | `https://github.com/vm0-ai/vm0-skills/tree/v1.0/slack`             |
+| GitHub CLI            | `https://github.com/vm0-ai/vm0-skills/tree/main/skills/github-cli` |
+
+The URL must point to a valid skill directory that follows the [agentskills.io](https://agentskills.io) format.
+
+After adding skills, publish and run your agent. See [Custom Agent](/docs/custom-agent#publishing-your-agent) for details on `vm0 compose` and `vm0 run` commands.
+
+## Available Skills
+
+Common skills from [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills):
+
+| Skill         | URL                                                            |
+| ------------- | -------------------------------------------------------------- |
+| Firecrawl     | `https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl`     |
+| Bright Data   | `https://github.com/vm0-ai/vm0-skills/tree/main/bright-data`   |
+| Discord       | `https://github.com/vm0-ai/vm0-skills/tree/main/discord`       |
+| DeepSeek      | `https://github.com/vm0-ai/vm0-skills/tree/main/deepseek`      |
+| fal.ai        | `https://github.com/vm0-ai/vm0-skills/tree/main/fal.ai`        |
+| GitHub        | `https://github.com/vm0-ai/vm0-skills/tree/main/github`        |
+| Gmail         | `https://github.com/vm0-ai/vm0-skills/tree/main/gmail`         |
+| Google Sheets | `https://github.com/vm0-ai/vm0-skills/tree/main/google-sheets` |
+| Hacker News   | `https://github.com/vm0-ai/vm0-skills/tree/main/hackernews`    |
+| Linear        | `https://github.com/vm0-ai/vm0-skills/tree/main/linear`        |
+| Notion        | `https://github.com/vm0-ai/vm0-skills/tree/main/notion`        |
+| OpenAI        | `https://github.com/vm0-ai/vm0-skills/tree/main/openai`        |
+| Runway        | `https://github.com/vm0-ai/vm0-skills/tree/main/runway`        |

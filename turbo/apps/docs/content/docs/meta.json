@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "index",
+    "custom-agent",
+    "skills",
+    "run-agent",
+    "artifact",
+    "github-actions",
+    "model-selection",
+    "environment-variables",
+    "custom-images"
+  ]
+}

@@ -1,15 +1,75 @@
 ---
-title: Hello World
-description: Your first document
+title: Getting Started
+description: Get started with vm0
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+## Installation
 
-> **Testing Preview Deployments**: This change will trigger a Vercel preview deployment with an isolated Neon database branch.
+Install the vm0 CLI globally:
 
-## What is Next?
+```bash
+# npm
+npm install -g @vm0/cli
+
+# yarn
+yarn global add @vm0/cli
+
+# pnpm
+pnpm add -g @vm0/cli
+```
+
+## Login
+
+Authenticate with your vm0 account:
+
+```bash
+vm0 auth login
+```
+
+## Create Your First Agent
+
+Create a new directory and initialize a vm0 agent:
+
+```bash
+mkdir my-agent && cd my-agent
+vm0 init
+```
+
+This creates two files:
+
+- **vm0.yaml** - Agent configuration file that defines the agent's provider, image, and environment settings
+- **AGENTS.md** - Instructions file that describes what the agent should do and how it should behave
+
+## Initialize Token
+
+Set up your Claude Code OAuth token:
+
+```bash
+claude setup-token
+echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
+```
+
+You can also use other LLM providers instead of Claude, like Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/model-selection) for configuration options.
+
+## Run Your Agent
+
+Start the agent with a prompt:
+
+```bash
+vm0 cook "let's start working."
+```
+
+This command displays the agent's execution logs in real-time. When the agent finishes, any files it created or modified will be downloaded to the `artifact` directory in your project.
+
+## Next Steps
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.vercel.app" />
+  <Card title="Custom Agent" href="/docs/custom-agent" />
+  <Card title="Skills" href="/docs/skills" />
+  <Card title="Run & Debug Agent" href="/docs/run-agent" />
+  <Card title="Artifact Management" href="/docs/artifact" />
+  <Card title="GitHub Actions" href="/docs/github-actions" />
+  <Card title="Model Selection" href="/docs/model-selection" />
+  <Card title="Environment Variables" href="/docs/environment-variables" />
+  <Card title="Custom Images" href="/docs/custom-images" />
 </Cards>

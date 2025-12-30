@@ -1,0 +1,137 @@
+---
+title: GitHub Actions
+description: Automate agent deployment with GitHub Actions
+---
+
+Integrate vm0 agents with GitHub Actions for automated publishing and execution.
+
+## Quick Setup
+
+For a repository with `vm0.yaml` and `AGENTS.md`, run:
+
+```bash
+vm0 setup-github
+```
+
+This command:
+
+1. Creates `.github/workflows/publish.yml` - Publishes agent on push to main
+2. Creates `.github/workflows/run.yml` - Runs agent on demand
+3. Sets up GitHub secrets automatically (VM0_TOKEN and any secrets from vm0.yaml)
+
+### Prerequisites
+
+- GitHub CLI installed and authenticated (`gh auth login`)
+- vm0 CLI authenticated (`vm0 auth login`)
+- `vm0.yaml` in your repository
+
+## Actions
+
+### compose-action
+
+Publishes your agent configuration to vm0.
+
+```yaml
+- name: Publish Agent
+  uses: vm0-ai/compose-action@v1
+  with:
+    vm0-token: ${{ secrets.VM0_TOKEN }}
+```
+
+See [vm0-ai/compose-action](https://github.com/vm0-ai/compose-action) for full documentation.
+
+### run-action
+
+Executes your agent in a workflow.
+
+```yaml
+- name: Run Agent
+  uses: vm0-ai/run-action@v1
+  with:
+    agent: my-agent
+    prompt: "do the task"
+    vm0-token: ${{ secrets.VM0_TOKEN }}
+```
+
+See [vm0-ai/run-action](https://github.com/vm0-ai/run-action) for full documentation.
+
+### image-build-action
+
+Build custom Docker images for your agent.
+
+```yaml
+- name: Build Image
+  uses: vm0-ai/image-build-action@v1
+  with:
+    name: my-custom-image
+    vm0-token: ${{ secrets.VM0_TOKEN }}
+```
+
+See [vm0-ai/image-build-action](https://github.com/vm0-ai/image-build-action) for full documentation.
+
+### artifact-pull-action
+
+Download artifacts from vm0 to your workflow.
+
+```yaml
+- name: Pull Artifact
+  uses: vm0-ai/artifact-pull-action@v1
+  with:
+    artifact-name: my-artifact
+    path: ./output
+    vm0-token: ${{ secrets.VM0_TOKEN }}
+```
+
+See [vm0-ai/artifact-pull-action](https://github.com/vm0-ai/artifact-pull-action) for full documentation.
+
+## Example Workflows
+
+### Scheduled Agent Run
+
+```yaml
+name: Daily Report
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Agent
+        uses: vm0-ai/run-action@v1
+        with:
+          agent: report-agent
+          prompt: "generate daily report"
+          vm0-token: ${{ secrets.VM0_TOKEN }}
+          secrets: |
+            API_KEY=${{ secrets.API_KEY }}
+```
+
+### Build and Publish
+
+```yaml
+name: Build and Publish
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Image
+        uses: vm0-ai/image-build-action@v1
+        with:
+          name: my-image
+          vm0-token: ${{ secrets.VM0_TOKEN }}
+
+      - name: Publish Agent
+        uses: vm0-ai/compose-action@v1
+        with:
+          vm0-token: ${{ secrets.VM0_TOKEN }}
+```

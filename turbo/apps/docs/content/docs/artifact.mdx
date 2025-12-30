@@ -1,0 +1,89 @@
+---
+title: Artifact Management
+description: Persistent storage for agent working directories
+---
+
+Artifacts provide persistent storage that maps to the CLI agent's working directory. Files created or modified by the agent are automatically saved and can be restored in future runs.
+
+## How Artifacts Work
+
+When you run an agent with `--artifact-name`:
+
+1. **Before running** - vm0 loads the artifact into the agent's working directory
+2. **After running** - vm0 persists any changes back to the artifact
+
+This allows your agent to maintain state across multiple runs, building on previous work.
+
+```bash
+vm0 run my-agent "continue the project" --artifact-name my-project
+```
+
+## Managing Artifacts
+
+You can also manage artifacts manually using the `vm0 artifact` commands.
+
+### Initialize
+
+Initialize an artifact in the current directory:
+
+```bash
+vm0 artifact init
+```
+
+This creates a `.vm0/storage.yaml` config file. The directory name becomes the artifact name.
+
+### Push
+
+Upload local files to the cloud:
+
+```bash
+vm0 artifact push
+```
+
+Options:
+
+- `-f, --force` - Force upload even if content unchanged
+
+### Pull
+
+Download artifact from the cloud:
+
+```bash
+# Pull latest version
+vm0 artifact pull
+
+# Pull specific version
+vm0 artifact pull abc123
+```
+
+### Status
+
+Check the cloud artifact status:
+
+```bash
+vm0 artifact status
+```
+
+Shows version, file count, and size of the remote artifact.
+
+## Example Workflow
+
+```bash
+# Create a project directory
+mkdir my-project && cd my-project
+
+# Initialize as an artifact
+vm0 artifact init
+
+# Add some initial files
+echo "# My Project" > README.md
+
+# Push to cloud
+vm0 artifact push
+
+# Run agent with this artifact
+vm0 run my-agent "set up a Python project" --artifact-name my-project
+
+# Pull the agent's changes locally
+vm0 artifact pull
+```
