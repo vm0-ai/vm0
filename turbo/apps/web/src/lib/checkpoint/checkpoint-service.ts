@@ -111,10 +111,11 @@ export class CheckpointService {
 
     // Build agent compose snapshot using version ID for reproducibility
     // Environment is re-expanded from vars/secrets on resume
+    // Note: secrets values are NEVER stored - only names for validation
     const agentComposeSnapshot: AgentComposeSnapshot = {
       agentComposeVersionId: run.agentComposeVersionId,
       vars: (run.vars as Record<string, string>) || undefined,
-      secrets: (run.secrets as Record<string, string>) || undefined,
+      secretNames: (run.secretNames as string[]) || undefined,
     };
 
     // Check if checkpoint already exists for this run (e.g., from a retry)
@@ -183,11 +184,12 @@ export class CheckpointService {
     // Find or create agent session
     // Sessions now store compose version ID for reproducibility
     // artifactSnapshot may be undefined for runs without artifact
+    // Note: secrets values are NEVER stored - only names for validation
     const artifactSnapshot = request.artifactSnapshot as
       | ArtifactSnapshot
       | undefined;
     const vars = (run.vars as Record<string, string>) || undefined;
-    const secrets = (run.secrets as Record<string, string>) || undefined;
+    const secretNames = (run.secretNames as string[]) || undefined;
     const volumeSnapshot = request.volumeVersionsSnapshot as
       | VolumeVersionsSnapshot
       | undefined;
@@ -197,7 +199,7 @@ export class CheckpointService {
       artifactSnapshot?.artifactName, // May be undefined for runs without artifact
       conversation.id,
       vars,
-      secrets,
+      secretNames,
       run.agentComposeVersionId, // Pass version ID to fix at session creation
       volumeSnapshot?.versions, // Pass volume versions to fix at session creation
     );
