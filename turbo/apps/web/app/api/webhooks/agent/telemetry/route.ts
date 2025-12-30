@@ -10,10 +10,6 @@ import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
 import {
-  createSecretMasker,
-  decryptSecrets,
-} from "../../../../../src/lib/crypto";
-import {
   ingestToAxiom,
   getDatasetName,
   DATASETS,
@@ -47,10 +43,11 @@ const router = tsr.router(webhookTelemetryContract, {
 
     const { userId } = auth;
 
-    // Verify run exists and belongs to user, and fetch secrets for masking
+    // Verify run exists and belongs to user
+    // Note: secrets are no longer stored in DB - masking is done client-side
     const selectStart = Date.now();
     const [run] = await globalThis.services.db
-      .select({ id: agentRuns.id, secrets: agentRuns.secrets })
+      .select({ id: agentRuns.id })
       .from(agentRuns)
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
@@ -65,14 +62,8 @@ const router = tsr.router(webhookTelemetryContract, {
       };
     }
 
-    // Get secrets from run record and create masker for protecting sensitive data
-    let secretValues: string[] = [];
-    if (run.secrets && typeof run.secrets === "object") {
-      const encryptedSecrets = run.secrets as Record<string, string>;
-      const decrypted = decryptSecrets(encryptedSecrets);
-      secretValues = Object.values(decrypted);
-    }
-    const masker = createSecretMasker(secretValues);
+    // Telemetry data is already masked client-side in the sandbox before sending
+    // No server-side masking needed - secrets values are never stored
 
     // Ingest system log to Axiom (fire-and-forget - don't fail webhook if Axiom fails)
     if (body.systemLog) {
@@ -81,7 +72,7 @@ const router = tsr.router(webhookTelemetryContract, {
         _time: new Date().toISOString(),
         runId: body.runId,
         userId: auth.userId,
-        log: masker.mask(body.systemLog) as string,
+        log: body.systemLog, // Already masked by client
       };
       ingestToAxiom(axiomDataset, [axiomEvent]).catch((err) => {
         log.error("Axiom system log ingest failed:", err);
@@ -109,10 +100,8 @@ const router = tsr.router(webhookTelemetryContract, {
     // Ingest network logs to Axiom (fire-and-forget)
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
-      const maskedNetworkLogs = masker.mask(
-        body.networkLogs,
-      ) as typeof body.networkLogs;
-      const axiomEvents = maskedNetworkLogs.map((netLog) => ({
+      // Network logs are already masked by client
+      const axiomEvents = body.networkLogs.map((netLog) => ({
         _time: netLog.timestamp,
         runId: body.runId,
         userId: auth.userId,
