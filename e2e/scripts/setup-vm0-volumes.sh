@@ -19,7 +19,7 @@ EOF
 
 # Initialize and push the volume
 cd "$TEMP_DIR/claude-files"
-vm0 volume init
+vm0 volume init --name claude-files
 vm0 volume push
 
 echo "VM0 test volumes setup complete!"
