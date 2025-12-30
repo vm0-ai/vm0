@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { parse as parseYaml } from "yaml";
 import {
   getInstructionsStorageName,
   getSkillStorageName as getCoreSkillStorageName,
@@ -137,4 +138,75 @@ export async function validateSkillDirectory(skillDir: string): Promise<void> {
       `Skill directory missing required SKILL.md file: ${skillDir}`,
     );
   }
+}
+
+/**
+ * Parsed skill frontmatter from SKILL.md
+ */
+export interface SkillFrontmatter {
+  name?: string;
+  description?: string;
+  vm0_secrets?: string[];
+  vm0_vars?: string[];
+}
+
+/**
+ * Parse frontmatter from SKILL.md content
+ * Extracts YAML between --- markers at the start of the file
+ *
+ * @param content - Raw content of SKILL.md file
+ * @returns Parsed frontmatter fields
+ */
+export function parseSkillFrontmatter(content: string): SkillFrontmatter {
+  // Match frontmatter between --- markers at the start of the file
+  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!frontmatterMatch) {
+    return {};
+  }
+
+  const yamlContent = frontmatterMatch[1];
+  if (!yamlContent) {
+    return {};
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(yamlContent);
+  } catch {
+    // Invalid YAML, return empty frontmatter
+    return {};
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {};
+  }
+
+  const data = parsed as Record<string, unknown>;
+
+  // Validate and extract fields
+  return {
+    name: typeof data.name === "string" ? data.name : undefined,
+    description:
+      typeof data.description === "string" ? data.description : undefined,
+    vm0_secrets: Array.isArray(data.vm0_secrets)
+      ? data.vm0_secrets.filter((s): s is string => typeof s === "string")
+      : undefined,
+    vm0_vars: Array.isArray(data.vm0_vars)
+      ? data.vm0_vars.filter((s): s is string => typeof s === "string")
+      : undefined,
+  };
+}
+
+/**
+ * Read and parse SKILL.md frontmatter from a skill directory
+ *
+ * @param skillDir - Path to the skill directory
+ * @returns Parsed frontmatter fields
+ */
+export async function readSkillFrontmatter(
+  skillDir: string,
+): Promise<SkillFrontmatter> {
+  const skillMdPath = path.join(skillDir, "SKILL.md");
+  const content = await fs.readFile(skillMdPath, "utf8");
+  return parseSkillFrontmatter(content);
 }

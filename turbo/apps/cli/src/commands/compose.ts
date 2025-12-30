@@ -8,7 +8,12 @@ import { getLegacySystemTemplateWarning } from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
 import { getProviderDefaults, getDefaultImage } from "../lib/provider-config";
-import { uploadInstructions, uploadSkill } from "../lib/system-storage";
+import {
+  uploadInstructions,
+  uploadSkill,
+  type SkillUploadResult,
+} from "../lib/system-storage";
+import { confirmPrompt, isInteractive } from "../lib/cli-prompt";
 
 /**
  * Transform experimental_secrets and experimental_vars shorthand to environment entries.
@@ -62,7 +67,8 @@ export const composeCommand = new Command()
   .name("compose")
   .description("Create or update agent compose")
   .argument("<config-file>", "Path to config YAML file")
-  .action(async (configFile: string) => {
+  .option("-y, --yes", "Skip confirmation prompts for skill requirements")
+  .action(async (configFile: string, options: { yes?: boolean }) => {
     try {
       // 1. Read file
       if (!existsSync(configFile)) {
@@ -168,7 +174,8 @@ export const composeCommand = new Command()
         }
       }
 
-      // Upload skills if specified
+      // Upload skills if specified and collect their frontmatter
+      const skillResults: SkillUploadResult[] = [];
       if (agent.skills && Array.isArray(agent.skills)) {
         const skillUrls = agent.skills as string[];
         console.log(`Uploading ${skillUrls.length} skill(s)...`);
@@ -176,9 +183,10 @@ export const composeCommand = new Command()
           try {
             console.log(chalk.dim(`  Downloading: ${skillUrl}`));
             const result = await uploadSkill(skillUrl);
+            skillResults.push(result);
             console.log(
               chalk.green(
-                `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
+                `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
               ),
             );
           } catch (error) {
@@ -188,6 +196,95 @@ export const composeCommand = new Command()
             }
             process.exit(1);
           }
+        }
+      }
+
+      // Collect all secrets/vars from skill frontmatters
+      // Map: varName -> array of skill names that declared it
+      const skillSecrets = new Map<string, string[]>();
+      const skillVars = new Map<string, string[]>();
+
+      for (const result of skillResults) {
+        const { frontmatter, skillName } = result;
+        if (frontmatter.vm0_secrets) {
+          for (const secret of frontmatter.vm0_secrets) {
+            if (!skillSecrets.has(secret)) {
+              skillSecrets.set(secret, []);
+            }
+            skillSecrets.get(secret)!.push(skillName);
+          }
+        }
+        if (frontmatter.vm0_vars) {
+          for (const varName of frontmatter.vm0_vars) {
+            if (!skillVars.has(varName)) {
+              skillVars.set(varName, []);
+            }
+            skillVars.get(varName)!.push(skillName);
+          }
+        }
+      }
+
+      // Filter out vars already in environment (explicit takes precedence)
+      const environment = (agent.environment as Record<string, string>) || {};
+      const newSecrets = [...skillSecrets.entries()].filter(
+        ([name]) => !(name in environment),
+      );
+      const newVars = [...skillVars.entries()].filter(
+        ([name]) => !(name in environment),
+      );
+
+      // If there are new vars from skills, display and prompt for confirmation
+      if (newSecrets.length > 0 || newVars.length > 0) {
+        console.log();
+        console.log(
+          chalk.bold("Skills require the following environment variables:"),
+        );
+        console.log();
+
+        if (newSecrets.length > 0) {
+          console.log(chalk.cyan("  Secrets:"));
+          for (const [name, skills] of newSecrets) {
+            console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
+          }
+        }
+
+        if (newVars.length > 0) {
+          console.log(chalk.cyan("  Vars:"));
+          for (const [name, skills] of newVars) {
+            console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
+          }
+        }
+
+        console.log();
+
+        // Check for confirmation
+        if (!options.yes) {
+          if (!isInteractive()) {
+            console.error(
+              chalk.red(
+                "✗ Non-interactive terminal. Use --yes flag to skip confirmation.",
+              ),
+            );
+            process.exit(1);
+          }
+
+          const confirmed = await confirmPrompt("? Proceed with compose?");
+          if (!confirmed) {
+            console.log(chalk.yellow("Compose cancelled."));
+            process.exit(0);
+          }
+        }
+
+        // Merge skill vars into environment
+        for (const [name] of newSecrets) {
+          environment[name] = `\${{ secrets.${name} }}`;
+        }
+        for (const [name] of newVars) {
+          environment[name] = `\${{ vars.${name} }}`;
+        }
+
+        if (Object.keys(environment).length > 0) {
+          agent.environment = environment;
         }
       }
 

@@ -7,6 +7,8 @@ import {
   getSkillStorageName,
   getInstructionsStorageName,
   validateSkillDirectory,
+  readSkillFrontmatter,
+  type SkillFrontmatter,
 } from "./github-skills";
 import { directUpload } from "./direct-upload";
 import { getValidatedProvider } from "@vm0/core";
@@ -15,6 +17,14 @@ export interface StorageUploadResult {
   name: string;
   versionId: string;
   action: "created" | "deduplicated";
+}
+
+/**
+ * Result of uploading a skill, including parsed frontmatter
+ */
+export interface SkillUploadResult extends StorageUploadResult {
+  skillName: string;
+  frontmatter: SkillFrontmatter;
 }
 
 /**
@@ -89,11 +99,11 @@ export async function uploadInstructions(
  * Upload a skill from GitHub as a volume
  *
  * @param skillUrl - GitHub tree URL for the skill
- * @returns Upload result with storage name and version
+ * @returns Upload result with storage name, version, and parsed frontmatter
  */
 export async function uploadSkill(
   skillUrl: string,
-): Promise<StorageUploadResult> {
+): Promise<SkillUploadResult> {
   const parsed = parseGitHubTreeUrl(skillUrl);
   const storageName = getSkillStorageName(parsed);
 
@@ -107,6 +117,9 @@ export async function uploadSkill(
     // Validate the skill has SKILL.md
     await validateSkillDirectory(skillDir);
 
+    // Parse frontmatter before upload
+    const frontmatter = await readSkillFrontmatter(skillDir);
+
     // Use direct upload (bypasses Vercel 4.5MB limit)
     const result = await directUpload(storageName, "volume", skillDir);
 
@@ -114,6 +127,8 @@ export async function uploadSkill(
       name: storageName,
       versionId: result.versionId,
       action: result.deduplicated ? "deduplicated" : "created",
+      skillName: parsed.skillName,
+      frontmatter,
     };
   } finally {
     // Clean up temp directory
