@@ -236,7 +236,6 @@ export class AgentSessionService {
       conversationId: session.conversationId,
       artifactName: session.artifactName,
       vars: session.vars,
-      secrets: session.secrets,
       secretNames: session.secretNames ?? null,
       volumeVersions: session.volumeVersions,
       createdAt: session.createdAt,
