@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.5.0](https://github.com/vm0-ai/vm0/compare/web-v7.4.0...web-v7.5.0) (2025-12-30)
+
+
+### Features
+
+* separate secrets from vars in checkpoint/session system ([#803](https://github.com/vm0-ai/vm0/issues/803)) ([538b4e5](https://github.com/vm0-ai/vm0/commit/538b4e56d9300905cf06f6fdd41143639615efcd))
+
 ## [7.4.0](https://github.com/vm0-ai/vm0/compare/web-v7.3.1...web-v7.4.0) (2025-12-30)
 
 

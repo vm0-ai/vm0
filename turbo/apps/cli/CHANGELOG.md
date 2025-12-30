@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.31.0](https://github.com/vm0-ai/vm0/compare/cli-v4.30.0...cli-v4.31.0) (2025-12-30)
+
+
+### Features
+
+* **cli:** parse vm0_secrets and vm0_vars from skill frontmatter during compose ([#804](https://github.com/vm0-ai/vm0/issues/804)) ([52f2cbe](https://github.com/vm0-ai/vm0/commit/52f2cbe8194c815accd624a69d769055a750e0a3))
+* separate secrets from vars in checkpoint/session system ([#803](https://github.com/vm0-ai/vm0/issues/803)) ([538b4e5](https://github.com/vm0-ai/vm0/commit/538b4e56d9300905cf06f6fdd41143639615efcd))
+
 ## [4.30.0](https://github.com/vm0-ai/vm0/compare/cli-v4.29.1...cli-v4.30.0) (2025-12-30)
 
 
