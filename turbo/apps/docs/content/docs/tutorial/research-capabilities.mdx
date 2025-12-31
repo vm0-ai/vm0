@@ -1,0 +1,169 @@
+---
+title: Adding Research Capabilities
+description: Enhance your agent with Firecrawl and Tavily for better research
+---
+
+Now let's give your research agent some superpowers by adding specialized tools for web research.
+
+## Why Add These Tools?
+
+The built-in `WebSearch` and `WebFetch` tools are great for basic tasks, but they have limitations. WebSearch returns snippets and may not always give you full content. WebFetch can struggle with JavaScript-heavy sites or complex page structures.
+
+This is where specialized services come in:
+
+**Firecrawl** is a web scraping service that turns any website into clean, LLM-ready markdown. It handles JavaScript rendering, removes navigation and ads, and extracts just the content you need.
+
+**Tavily** is an AI-powered search API built specifically for LLMs. It understands context better than traditional search and returns highly relevant sources with clean summaries.
+
+Together, they create a powerful workflow: Tavily finds the best sources, and Firecrawl extracts clean content from them.
+
+## Prerequisites
+
+You'll need API keys from both services:
+
+- **Firecrawl API key** from [firecrawl.dev](https://firecrawl.dev) (500 credits/month free)
+- **Tavily API key** from [tavily.com](https://tavily.com) (1,000 credits/month free)
+
+You should have also completed the previous sections of this tutorial.
+
+## Step 1: Add Skills to vm0.yaml
+
+Open your `vm0.yaml` and add the skills section:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-researcher:
+    provider: claude-code
+    instructions: AGENTS.md
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+      - https://github.com/vm0-ai/vm0-skills/tree/main/tavily
+```
+
+The skills section tells VM0 to load these integrations when composing your agent.
+
+<Callout type="info">
+  Learn more about [vm0.yaml configuration](/docs/reference/vm0-yaml) and the [skills system](/docs/core-concept/skills).
+</Callout>
+
+## Step 2: Update Agent Instructions
+
+Now update your `AGENTS.md` to use these new tools:
+
+```markdown title="AGENTS.md"
+# Deep Research Agent
+
+You help me research topics by gathering information from multiple sources and creating a summary report.
+
+## What to do
+
+When I give you a research topic:
+
+1. Create a folder based on the research topic to keep things organized
+2. Using tavily figure out 3-5 good sources to look at
+3. Using firecrawl visit each source and grab the important info
+4. For each source, write a research report about what you found from that source
+5. Combine everything into one report called `report.md` that summarizes all the findings
+
+That's it! Keep the files simple and readable.
+```
+
+The key changes are explicitly telling the agent to use tavily for search and firecrawl for content extraction.
+
+## Step 3: Compose Your Agent
+
+Recompose your agent to include the new skills:
+
+```bash
+vm0 compose vm0.yaml
+```
+
+You'll see output showing the skills being downloaded and uploaded:
+
+```
+  Auto-configured image: vm0/claude-code:latest
+  Auto-configured working_dir: /home/user/workspace
+Uploading instructions: AGENTS.md
+✓ Instructions uploaded: 15f0ffee
+Uploading 2 skill(s)...
+  Downloading: https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+  ✓ Skill (unchanged): firecrawl (119bf88e)
+  Downloading: https://github.com/vm0-ai/vm0-skills/tree/main/tavily
+  ✓ Skill uploaded: tavily (f1cc346f)
+
+Skills require the following environment variables:
+
+  Secrets:
+    FIRECRAWL_API_KEY        (new) <- firecrawl
+    TAVILY_API_KEY           (new) <- tavily
+
+? Approve 2 new secret(s)? › (Y/n)
+```
+
+VM0 is asking you to approve the new secrets required by these skills. This is a security confirmation since the secrets are implicitly passed through the skills. Type `y` and press Enter to continue.
+
+## Step 4: Run Your Agent
+
+Let's test it out:
+
+```bash
+vm0 run my-researcher --artifact-name artifact "research the latest developments in WebAssembly for 2025"
+```
+
+You'll see an error asking for the API keys:
+
+```
+✗ Run preparation failed
+  Missing required secrets: TAVILY_API_KEY, FIRECRAWL_API_KEY. Use '--secrets TAVILY_API_KEY=<value>' to provide them.
+```
+
+Open your `.env` file and add the API keys:
+
+```bash title=".env"
+FIRECRAWL_API_KEY=fc-xxx
+TAVILY_API_KEY=tvly-xxx
+```
+
+Now run again:
+
+```bash
+vm0 run my-researcher --artifact-name artifact "research the latest developments in WebAssembly for 2025"
+```
+
+This time it should work! You'll see the agent:
+
+1. Use Tavily to find relevant sources
+2. Use Firecrawl to extract content from each source
+3. Create individual research reports
+4. Combine everything into a final report
+
+The research quality will be noticeably better compared to using basic web tools.
+
+## What Just Happened?
+
+The skills system integrated Firecrawl and Tavily into your agent's capabilities. When you composed the agent, VM0:
+
+1. Downloaded the skill definitions from GitHub
+2. Built the `$HOME/.claude/skills` directory structure to mount into the sandbox
+3. Injected the API keys from your environment into the sandbox securely
+
+During execution, Claude Code could see these tools in its available toolkit and used them according to your instructions. The combination of AI-powered search and clean content extraction produced much higher quality research.
+
+To learn more about how skills are mounted into the sandbox, see the [Volume documentation](/docs/core-concept/volume). For details on how environment variables and secrets work, check the [Environment Variables documentation](/docs/core-concept/environment-variable).
+
+<Callout>
+  This is optional. You can commit your changes if you want to save this milestone.
+
+  ```bash
+  git add .
+  git commit -m "feat: add firecrawl and tavily skills to research agent"
+  ```
+</Callout>
+
+## Next Steps
+
+Your research agent is now much more capable! Next we'll try making the agent automatically commit research records to a GitHub repository. This requires providing git and github cli tools to the agent sandbox. We'll learn how to achieve this by customizing the container image.

@@ -1,0 +1,211 @@
+---
+title: Custom Container Image
+description: Create a custom image with GitHub CLI and automate repository commits
+---
+
+Now let's take your research agent to the next level by making it automatically commit research reports to a GitHub repository. To do this, we need to install the GitHub CLI tool in the agent's sandbox environment.
+
+## Prerequisites
+
+You'll need:
+
+- A GitHub account
+- A test repository where the agent can commit reports, create one if you don't have it
+- A GitHub personal access token with `content write` permission, you can create one at [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens)
+
+You should have also completed the previous sections of this tutorial.
+
+## Step 1: Create a Dockerfile
+
+Create a `Dockerfile` in your project directory:
+
+```dockerfile title="Dockerfile"
+FROM node:20-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code globally
+RUN npm install -g @anthropic-ai/claude-code
+```
+
+This Dockerfile starts from Node.js 20 slim image, installs system dependencies including Git and Python, adds the GitHub CLI tool, and finally installs Claude Code globally.
+
+<Callout type="info">
+  VM0 Dockerfiles only support `FROM` and `RUN` instructions. This is intentional - custom images are for pre-installing dependencies, not configuring application behavior. Learn more in the [Container Image documentation](/docs/core-concept/container-image).
+</Callout>
+
+## Step 2: Set Your Scope
+
+Before building images, you need to set your scope (your username namespace):
+
+```bash
+vm0 scope set your-username
+```
+
+Replace `your-username` with your preferred namespace. This creates a namespace for your images like `your-username/image-name`.
+
+## Step 3: Build the Image
+
+Build your custom image:
+
+```bash
+vm0 image build -f Dockerfile -n my-researcher-image
+```
+
+You'll see output showing the build progress:
+
+```
+Building image: my-researcher-image
+✓ Validated Dockerfile
+✓ Image built: a1b2c3d4
+✓ Image pushed: your-username/my-researcher-image:a1b2c3d4
+```
+
+This builds your custom image with GitHub CLI installed and pushes it to the VM0 registry.
+
+## Step 4: Update vm0.yaml
+
+Update your `vm0.yaml` to use the custom image and add the GitHub skill:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-researcher:
+    provider: claude-code
+    image: my-researcher-image # [!code highlight]
+    instructions: AGENTS.md
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+      - https://github.com/vm0-ai/vm0-skills/tree/main/tavily
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github # [!code highlight]
+```
+
+The key changes are:
+- Added `image: my-researcher-image` to use your custom image
+- Added the GitHub skill to enable GitHub operations
+
+## Step 5: Update Agent Instructions
+
+Update your `AGENTS.md` to include GitHub workflow:
+
+```markdown title="AGENTS.md"
+# Deep Research Agent
+
+You help me research topics by gathering information from multiple sources and creating a summary report.
+
+## What to do
+
+When I give you a research topic:
+
+1. `gh repo clone your-username/your-repo` as working directory and use `gh auth setup-git` make sure we have write permission
+2. Create a folder based on the research topic to keep things organized
+3. Using tavily figure out 3-5 good sources to look at
+4. Using firecrawl visit each source and grab the important info
+5. For each source, write a research report about what you found from that source
+6. Combine everything into one report called `report.md` that summarizes all the findings
+7. git commit & push
+
+That's it! Keep the files simple and readable.
+```
+
+The key changes are step 1 clones the GitHub repository as the working directory and sets up git authentication for write permission, so all research files are created inside the repo, and step 7 commits and pushes them to GitHub.
+
+## Step 6: Compose Your Agent
+
+Recompose your agent with the new image and skill:
+
+```bash
+vm0 compose vm0.yaml
+```
+
+You'll see output showing the GitHub skill being added:
+
+```
+  Auto-configured working_dir: /home/user/workspace
+Uploading instructions: AGENTS.md
+✓ Instructions uploaded: 1191fd33
+Uploading 3 skill(s)...
+  Downloading: https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+  ✓ Skill (unchanged): firecrawl (119bf88e)
+  Downloading: https://github.com/vm0-ai/vm0-skills/tree/main/tavily
+  ✓ Skill (unchanged): tavily (f1cc346f)
+  Downloading: https://github.com/vm0-ai/vm0-skills/tree/main/github
+  ✓ Skill uploaded: github (30aa39f6)
+
+Skills require the following environment variables:
+
+  Secrets:
+    FIRECRAWL_API_KEY        <- firecrawl
+    TAVILY_API_KEY           <- tavily
+    GH_TOKEN                 (new) <- github
+
+? Approve 1 new secret(s)? › (Y/n)
+```
+
+VM0 is asking you to approve the new `GH_TOKEN` secret required by the GitHub skill. Type `y` and press Enter to continue.
+
+## Step 7: Run Your Agent
+
+Now let's run the agent. Since we're using GitHub repository to store research reports, we don't need the artifact parameter:
+
+```bash
+vm0 run my-researcher "research the latest developments in WebAssembly for 2025"
+```
+
+You'll see an error asking for the GitHub token:
+
+```
+✗ Run preparation failed
+  Missing required secrets: GH_TOKEN. Use '--secrets GH_TOKEN=<value>' to provide them.
+```
+
+Open your `.env` file and add the GitHub token:
+
+```bash title=".env"
+FIRECRAWL_API_KEY=fc-xxx
+TAVILY_API_KEY=tvly-xxx
+GH_TOKEN=ghp_xxx
+```
+
+Now run again:
+
+```bash
+vm0 run my-researcher "research the latest developments in WebAssembly for 2025"
+```
+
+After the agent finishes running, visit your GitHub repository. You should see the research report, similar to https://github.com/vm0-ai/tutorial-report/blob/main/webassembly-2025-developments/report.md
+
+## What Just Happened?
+
+You created a custom container image with GitHub CLI pre-installed, and integrated the GitHub skill to access git operations. The custom image approach lets you pre-install any tools or dependencies your agent needs, from programming languages to CLI tools. This eliminates the need to install tools during every run.
+
+<Callout>
+  This is optional. You can commit your changes if you want to save this milestone.
+
+  ```bash
+  git add .
+  git commit -m "feat: add custom image with github cli and auto-commit capability"
+  ```
+</Callout>
+
+## Next Steps
+
+Congratulations! The tutorial ends here. You've built a capable deep research agent. From here, you can visit [Model Selection](/docs/model-selection) to explore cost-effective model alternatives, check out [GitHub Actions integration](/docs/usage/github-actions) to learn how to schedule automated runs, or experiment with your `AGENTS.md` to customize the output format and agent behavior.
