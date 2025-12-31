@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/docs-v0.6.0...docs-v0.7.0) (2025-12-31)
+
+
+### Features
+
+* **docs:** add api key instructions and reorder providers ([#844](https://github.com/vm0-ai/vm0/issues/844)) ([c156419](https://github.com/vm0-ai/vm0/commit/c1564190c2bf70e9c4949119bdfbe4efe0ba6586))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/docs-v0.5.1...docs-v0.6.0) (2025-12-31)
 
 

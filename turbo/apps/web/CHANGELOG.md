@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.8.0](https://github.com/vm0-ai/vm0/compare/web-v7.7.0...web-v7.8.0) (2025-12-31)
+
+
+### Features
+
+* add image assets for email template ([#841](https://github.com/vm0-ai/vm0/issues/841)) ([43610e7](https://github.com/vm0-ai/vm0/commit/43610e7f0b32e52cf3e89232cb2db81ef2f95407))
+
 ## [7.7.0](https://github.com/vm0-ai/vm0/compare/web-v7.6.0...web-v7.7.0) (2025-12-30)
 
 
