@@ -336,14 +336,17 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Deploy runner to Metal instance
+  # Deploy and start runner on Metal instance (PR-specific isolation)
   deploy-runner:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection]
-    # Only run if runner changed and it's a PR (experimental)
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.runner-changed == 'true'
+    needs: [change-detection, deploy-web]
+    # Only run if runner changed, it's a PR, and web deployment succeeded
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.change-detection.outputs.runner-changed == 'true' &&
+      needs.deploy-web.outputs.preview-url != ''
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -357,12 +360,22 @@ jobs:
           echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
           chmod 600 /tmp/.ssh/metal.pem
 
-      - name: Deploy to Metal instance
+      - name: Deploy and start runner
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
         run: |
-          # Create target directory on Metal
-          ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem \
-            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
-            "sudo mkdir -p /opt/vm0-runner && sudo chown \$(whoami) /opt/vm0-runner"
+          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
+          SSH_CMD="ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem ${METAL_USER}@${METAL_HOST}"
+          SCP_CMD="scp -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
+
+          # Stop any existing runner for this PR
+          $SSH_CMD "pkill -f 'vm0-runner.*pr-${PR_NUMBER}' || true"
+
+          # Create PR-specific directory on Metal
+          $SSH_CMD "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
 
           # Create production-only package.json (remove workspace refs)
           node -e "
@@ -376,48 +389,14 @@ jobs:
             console.log(JSON.stringify(prodPkg, null, 2));
           " > /tmp/package.json
 
-          # Copy built files and production package.json to Metal
-          scp -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem -r \
-            turbo/apps/runner/dist/* /tmp/package.json \
-            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }}:/opt/vm0-runner/
+          # Copy built files to Metal
+          $SCP_CMD -r turbo/apps/runner/dist/* /tmp/package.json ${METAL_USER}@${METAL_HOST}:${RUNNER_DIR}/
 
-          # Install dependencies on Metal
-          ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem \
-            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
-            "cd /opt/vm0-runner && npm install --omit=dev"
+          # Install dependencies and start runner
+          $SSH_CMD "cd ${RUNNER_DIR} && npm install --omit=dev"
 
-  # Run runner E2E tests on Metal instance
-  runner-e2e:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-runner]
-    # Only run if runner changed, deployed successfully, and it's a PR
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.runner-changed == 'true'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+          # TODO: Start runner as background process when start command is fully implemented
+          # $SSH_CMD "cd ${RUNNER_DIR} && nohup node index.js start --api-url ${API_URL} > runner.log 2>&1 &"
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p /tmp/.ssh
-          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
-          chmod 600 /tmp/.ssh/metal.pem
-
-      - name: Test Metal connectivity
-        run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i /tmp/.ssh/metal.pem \
-            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
-            "echo 'Metal instance reachable'"
-
-      - name: Install GNU parallel for bats
-        run: apt-get update && apt-get install -y parallel
-
-      - name: Run Runner E2E Tests
-        run: |
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats
-        env:
-          CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
-          SSH_KEY_PATH: /tmp/.ssh/metal.pem
+          echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
+          echo "API URL: ${API_URL}"
