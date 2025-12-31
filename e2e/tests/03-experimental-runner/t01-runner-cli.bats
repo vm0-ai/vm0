@@ -22,7 +22,8 @@ setup() {
 @test "vm0-runner --version shows version" {
     run runner_cmd --version
     assert_success
-    assert_output --partial "0.1.0"
+    # Check for semantic version pattern (e.g., 0.1.0, 1.0.0)
+    [[ "$output" =~ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
 @test "vm0-runner --help shows usage" {
