@@ -364,10 +364,27 @@ jobs:
             ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
             "sudo mkdir -p /opt/vm0-runner && sudo chown \$(whoami) /opt/vm0-runner"
 
-          # Copy built files to Metal
+          # Create production-only package.json (remove workspace refs)
+          node -e "
+            const pkg = require('./turbo/apps/runner/package.json');
+            const prodPkg = {
+              name: pkg.name,
+              version: pkg.version,
+              type: pkg.type,
+              dependencies: pkg.dependencies
+            };
+            console.log(JSON.stringify(prodPkg, null, 2));
+          " > /tmp/package.json
+
+          # Copy built files and production package.json to Metal
           scp -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem -r \
-            turbo/apps/runner/dist/* turbo/apps/runner/package.json \
+            turbo/apps/runner/dist/* /tmp/package.json \
             ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }}:/opt/vm0-runner/
+
+          # Install dependencies on Metal
+          ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem \
+            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
+            "cd /opt/vm0-runner && npm install --omit=dev"
 
   # Run runner E2E tests on Metal instance
   runner-e2e:
