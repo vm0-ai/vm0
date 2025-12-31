@@ -6,11 +6,9 @@
 load '../../helpers/setup.bash'
 load '../../helpers/metal.bash'
 
-# Skip all tests if Metal is not reachable
+# Verify Metal instance is reachable before each test
 setup() {
-    if ! metal_check; then
-        skip "Metal instance not reachable"
-    fi
+    metal_check || fail "Metal instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
 }
 
 @test "vm0-runner --version shows version" {
