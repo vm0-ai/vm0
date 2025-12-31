@@ -353,19 +353,19 @@ jobs:
 
       - name: Setup SSH key
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > ~/.ssh/metal.pem
-          chmod 600 ~/.ssh/metal.pem
+          mkdir -p /tmp/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
+          chmod 600 /tmp/.ssh/metal.pem
 
       - name: Deploy to Metal instance
         run: |
           # Create target directory on Metal
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/metal.pem \
+          ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem \
             ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
             "sudo mkdir -p /opt/vm0-runner && sudo chown \$(whoami) /opt/vm0-runner"
 
           # Copy built files to Metal
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/metal.pem -r \
+          scp -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem -r \
             turbo/apps/runner/dist/* turbo/apps/runner/package.json \
             ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }}:/opt/vm0-runner/
 
@@ -384,9 +384,15 @@ jobs:
 
       - name: Setup SSH key
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > ~/.ssh/metal.pem
-          chmod 600 ~/.ssh/metal.pem
+          mkdir -p /tmp/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
+          chmod 600 /tmp/.ssh/metal.pem
+
+      - name: Test Metal connectivity
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i /tmp/.ssh/metal.pem \
+            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
+            "echo 'Metal instance reachable'"
 
       - name: Install GNU parallel for bats
         run: apt-get update && apt-get install -y parallel
@@ -397,4 +403,4 @@ jobs:
         env:
           CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
-          SSH_KEY_PATH: ~/.ssh/metal.pem
+          SSH_KEY_PATH: /tmp/.ssh/metal.pem
