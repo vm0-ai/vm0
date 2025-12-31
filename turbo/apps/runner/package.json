@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/runner\"; delete this.private; delete this.scripts; delete this.devDependencies; this.bin[\"vm0-runner\"]=\"index.js\"; this.files=[\".\"]'",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -33,6 +34,7 @@
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
+    "json": "^11.0.0",
     "tsup": "^8.5.0",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"
