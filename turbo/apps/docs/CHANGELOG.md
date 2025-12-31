@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/docs-v0.7.0...docs-v0.8.0) (2025-12-31)
+
+
+### Features
+
+* **docs:** add deep research agent tutorial series ([#858](https://github.com/vm0-ai/vm0/issues/858)) ([aa53665](https://github.com/vm0-ai/vm0/commit/aa5366513054e5eb33c1e92f69bd7c0956e5e940))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/docs-v0.6.0...docs-v0.7.0) (2025-12-31)
 
 
