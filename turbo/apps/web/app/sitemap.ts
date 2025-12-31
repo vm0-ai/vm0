@@ -3,6 +3,7 @@ import { MetadataRoute } from "next";
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://vm0.ai";
   const blogUrl = "https://blog.vm0.ai";
+  const docsUrl = "https://docs.vm0.ai";
   const locales = ["en", "de", "es", "ja"];
 
   const routes = [
@@ -31,6 +32,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
       changeFrequency: "monthly" as const,
     },
+    {
+      path: "/privacy-policy",
+      priority: 0.6,
+      changeFrequency: "monthly" as const,
+    },
+    {
+      path: "/terms-of-use",
+      priority: 0.6,
+      changeFrequency: "monthly" as const,
+    },
   ];
 
   const urls: MetadataRoute.Sitemap = [];
@@ -55,6 +66,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
     });
+  });
+
+  // Add docs URL
+  urls.push({
+    url: docsUrl,
+    lastModified: new Date(),
+    changeFrequency: "weekly",
+    priority: 0.9,
   });
 
   return urls;

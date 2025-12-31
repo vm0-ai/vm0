@@ -10,6 +10,13 @@ const notoSans = Noto_Sans({
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={notoSans.className} suppressHydrationWarning>
+      <head>
+        <script
+          defer
+          data-domain="docs.vm0.ai"
+          src="https://plausible.io/js/script.js"
+        ></script>
+      </head>
       <body className="flex flex-col min-h-screen">
         <RootProvider>{children}</RootProvider>
       </body>
