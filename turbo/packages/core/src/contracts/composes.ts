@@ -54,6 +54,20 @@ const agentDefinitionSchema = z.object({
    * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
    */
   skills: z.array(z.string()).optional(),
+  /**
+   * Route this agent to a self-hosted runner instead of E2B.
+   * When specified, runs will be queued for the specified runner group.
+   */
+  experimental_runner: z
+    .object({
+      group: z
+        .string()
+        .regex(
+          /^[a-z0-9-]+\/[a-z0-9-]+$/,
+          "Runner group must be in scope/name format (e.g., acme/production)",
+        ),
+    })
+    .optional(),
 });
 
 /**
