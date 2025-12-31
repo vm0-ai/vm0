@@ -1,5 +1,9 @@
 import { Command } from "commander";
-import { loadConfig, validateFirecrackerPaths } from "../lib/config.js";
+import {
+  loadConfig,
+  validateFirecrackerPaths,
+  type RunnerConfig,
+} from "../lib/config.js";
 import {
   registerRunner,
   pollForJob,
@@ -8,48 +12,91 @@ import {
   type ExecutionContext,
 } from "../lib/api.js";
 import { getToken } from "../lib/token.js";
+import { executeJob as executeJobInVM } from "../lib/executor.js";
+import {
+  checkNetworkPrerequisites,
+  setupBridge,
+} from "../lib/firecracker/network.js";
 
 // Track active jobs for concurrency management
 const activeJobs = new Set<string>();
 
 /**
- * Execute a claimed job
- * Currently a stub - Phase 4+ will add Firecracker VM execution
+ * Execute a claimed job in stub mode (no VM, direct complete)
+ * Used for testing runner infrastructure without full Firecracker setup
  */
-async function executeJob(context: ExecutionContext): Promise<void> {
+async function executeJobStub(context: ExecutionContext): Promise<void> {
+  console.log(`  [STUB] Executing job ${context.runId}...`);
+  console.log(`  [STUB] Prompt: ${context.prompt.substring(0, 100)}...`);
+
+  // Simulate brief execution
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Report completion to server
+  try {
+    const result = await completeJob(context, 0);
+    console.log(`  [STUB] Job ${context.runId} reported as ${result.status}`);
+  } catch (err) {
+    console.error(
+      `  [STUB] Failed to report job ${context.runId} completion:`,
+      err instanceof Error ? err.message : "Unknown error",
+    );
+  }
+}
+
+/**
+ * Execute a claimed job in a Firecracker VM
+ */
+async function executeJobFirecracker(
+  context: ExecutionContext,
+  config: RunnerConfig,
+): Promise<void> {
   console.log(`  Executing job ${context.runId}...`);
   console.log(`  Prompt: ${context.prompt.substring(0, 100)}...`);
   console.log(`  Compose version: ${context.agentComposeVersionId}`);
 
-  let exitCode = 0;
-  let error: string | undefined;
-
   try {
-    // TODO: Phase 4+ - Firecracker VM execution
-    // For now, just log that we would execute
-    console.log("  [STUB] Job execution not yet implemented");
-    console.log("  [STUB] Would start Firecracker VM and run agent");
+    // Execute in Firecracker VM
+    const result = await executeJobInVM(context, config);
 
-    // Simulate some work
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    console.log(`  Job ${context.runId} execution completed`);
-  } catch (err) {
-    exitCode = 1;
-    error = err instanceof Error ? err.message : "Unknown execution error";
-    console.error(`  Job ${context.runId} execution failed: ${error}`);
-  }
-
-  // Report completion to server
-  try {
-    const result = await completeJob(context, exitCode, error);
-    console.log(`  Job ${context.runId} reported as ${result.status}`);
-  } catch (err) {
-    console.error(
-      `  Failed to report job ${context.runId} completion:`,
-      err instanceof Error ? err.message : "Unknown error",
+    console.log(
+      `  Job ${context.runId} execution completed with exit code ${result.exitCode}`,
     );
+
+    // The executor's bootstrap script calls the complete API directly
+    // But if execution fails before that, we need to report it ourselves
+    if (result.exitCode !== 0 && result.error) {
+      console.log(`  Job ${context.runId} failed: ${result.error}`);
+    }
+  } catch (err) {
+    const error =
+      err instanceof Error ? err.message : "Unknown execution error";
+    console.error(`  Job ${context.runId} execution failed: ${error}`);
+
+    // Report failure to server if VM execution failed before bootstrap
+    try {
+      const result = await completeJob(context, 1, error);
+      console.log(`  Job ${context.runId} reported as ${result.status}`);
+    } catch (reportErr) {
+      console.error(
+        `  Failed to report job ${context.runId} completion:`,
+        reportErr instanceof Error ? reportErr.message : "Unknown error",
+      );
+    }
   }
+}
+
+/**
+ * Execute a claimed job (dispatches to stub or Firecracker based on config)
+ */
+async function executeJob(
+  context: ExecutionContext,
+  config: RunnerConfig,
+): Promise<void> {
+  if (config.sandbox.stub_mode) {
+    return executeJobStub(context);
+  }
+  return executeJobFirecracker(context, config);
 }
 
 export const startCommand = new Command("start")
@@ -75,6 +122,25 @@ export const startCommand = new Command("start")
         if (options.dryRun) {
           console.log(JSON.stringify(config, null, 2));
           process.exit(0);
+        }
+
+        // Skip network setup in stub mode
+        if (!config.sandbox.stub_mode) {
+          // Check network prerequisites
+          const networkCheck = checkNetworkPrerequisites();
+          if (!networkCheck.ok) {
+            console.error("Network prerequisites not met:");
+            for (const error of networkCheck.errors) {
+              console.error(`  - ${error}`);
+            }
+            process.exit(1);
+          }
+
+          // Set up bridge network
+          console.log("Setting up network bridge...");
+          await setupBridge();
+        } else {
+          console.log("Stub mode enabled - skipping Firecracker setup");
         }
 
         // Check authentication
@@ -132,7 +198,7 @@ export const startCommand = new Command("start")
 
                 // Track and execute in background
                 activeJobs.add(context.runId);
-                executeJob(context)
+                executeJob(context, config)
                   .catch((error) => {
                     console.error(
                       `Job ${context.runId} failed:`,

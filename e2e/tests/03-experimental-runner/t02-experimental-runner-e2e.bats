@@ -33,6 +33,7 @@ setup_runner_auth() {
 EOFTOKEN"
 
     # Create runner.yaml config
+    # Note: stub_mode=true is used for CI testing until Firecracker rootfs is ready
     ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: e2e-test-runner
 group: ${TEST_RUNNER_GROUP}
@@ -40,6 +41,7 @@ sandbox:
   max_concurrent: 1
   vcpu: 2
   memory_mb: 2048
+  stub_mode: true
 firecracker:
   binary: /usr/local/bin/firecracker
   kernel: /opt/firecracker/vmlinux

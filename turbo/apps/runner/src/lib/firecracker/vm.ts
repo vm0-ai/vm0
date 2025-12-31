@@ -1,0 +1,332 @@
+/**
+ * Firecracker VM Lifecycle Manager
+ *
+ * Manages the complete lifecycle of a Firecracker microVM:
+ * - Process management (spawn, terminate)
+ * - Configuration via API
+ * - Network setup
+ * - Boot and shutdown
+ */
+
+import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { FirecrackerClient } from "./client.js";
+import {
+  createTapDevice,
+  deleteTapDevice,
+  generateNetworkBootArgs,
+  type VMNetworkConfig,
+} from "./network.js";
+
+/**
+ * VM configuration options
+ */
+export interface VMConfig {
+  vmId: number;
+  vcpus: number;
+  memoryMb: number;
+  kernelPath: string;
+  rootfsPath: string;
+  firecrackerBinary: string;
+  workDir?: string; // Working directory for VM files (default: /tmp/vm0-vm-{vmId})
+}
+
+/**
+ * VM state
+ */
+export type VMState =
+  | "created"
+  | "configuring"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "error";
+
+/**
+ * Firecracker VM instance
+ */
+export class FirecrackerVM {
+  private config: VMConfig;
+  private process: ChildProcess | null = null;
+  private client: FirecrackerClient | null = null;
+  private networkConfig: VMNetworkConfig | null = null;
+  private state: VMState = "created";
+  private workDir: string;
+  private socketPath: string;
+
+  constructor(config: VMConfig) {
+    this.config = config;
+    this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
+    this.socketPath = path.join(this.workDir, "firecracker.sock");
+  }
+
+  /**
+   * Get current VM state
+   */
+  getState(): VMState {
+    return this.state;
+  }
+
+  /**
+   * Get the VM's IP address (once started)
+   */
+  getGuestIp(): string | null {
+    return this.networkConfig?.guestIp || null;
+  }
+
+  /**
+   * Get the VM's network configuration
+   */
+  getNetworkConfig(): VMNetworkConfig | null {
+    return this.networkConfig;
+  }
+
+  /**
+   * Get the socket path for Firecracker API
+   */
+  getSocketPath(): string {
+    return this.socketPath;
+  }
+
+  /**
+   * Start the VM
+   * This spawns Firecracker, configures it via API, and boots the VM
+   */
+  async start(): Promise<void> {
+    if (this.state !== "created") {
+      throw new Error(`Cannot start VM in state: ${this.state}`);
+    }
+
+    try {
+      // Create working directory
+      fs.mkdirSync(this.workDir, { recursive: true });
+
+      // Clean up any existing socket
+      if (fs.existsSync(this.socketPath)) {
+        fs.unlinkSync(this.socketPath);
+      }
+
+      // Set up network first
+      console.log(`[VM ${this.config.vmId}] Setting up network...`);
+      this.networkConfig = await createTapDevice(this.config.vmId);
+
+      // Spawn Firecracker process
+      console.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
+      this.process = spawn(
+        this.config.firecrackerBinary,
+        ["--api-sock", this.socketPath],
+        {
+          cwd: this.workDir,
+          stdio: ["ignore", "pipe", "pipe"],
+          detached: false,
+        },
+      );
+
+      // Handle process errors
+      this.process.on("error", (err) => {
+        console.error(`[VM ${this.config.vmId}] Firecracker error:`, err);
+        this.state = "error";
+      });
+
+      this.process.on("exit", (code, signal) => {
+        console.log(
+          `[VM ${this.config.vmId}] Firecracker exited: code=${code}, signal=${signal}`,
+        );
+        if (this.state !== "stopped") {
+          this.state = "stopped";
+        }
+      });
+
+      // Log stdout/stderr
+      this.process.stdout?.on("data", (data: Buffer) => {
+        console.log(
+          `[VM ${this.config.vmId}] stdout: ${data.toString().trim()}`,
+        );
+      });
+      this.process.stderr?.on("data", (data: Buffer) => {
+        console.log(
+          `[VM ${this.config.vmId}] stderr: ${data.toString().trim()}`,
+        );
+      });
+
+      // Wait for API to become ready
+      this.client = new FirecrackerClient(this.socketPath);
+      console.log(`[VM ${this.config.vmId}] Waiting for API...`);
+      await this.client.waitUntilReady(10000, 100);
+
+      // Configure the VM
+      this.state = "configuring";
+      await this.configure();
+
+      // Boot the VM
+      console.log(`[VM ${this.config.vmId}] Booting...`);
+      await this.client.start();
+      this.state = "running";
+
+      console.log(
+        `[VM ${this.config.vmId}] Running at ${this.networkConfig.guestIp}`,
+      );
+    } catch (error) {
+      this.state = "error";
+      // Cleanup on failure
+      await this.cleanup();
+      throw error;
+    }
+  }
+
+  /**
+   * Configure the VM via Firecracker API
+   */
+  private async configure(): Promise<void> {
+    if (!this.client || !this.networkConfig) {
+      throw new Error("VM not properly initialized");
+    }
+
+    // Configure machine (vCPUs, memory)
+    console.log(
+      `[VM ${this.config.vmId}] Configuring: ${this.config.vcpus} vCPUs, ${this.config.memoryMb}MB RAM`,
+    );
+    await this.client.setMachineConfig({
+      vcpu_count: this.config.vcpus,
+      mem_size_mib: this.config.memoryMb,
+      smt: false,
+    });
+
+    // Configure boot source (kernel)
+    // Add network configuration to boot args
+    const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
+    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off ${networkBootArgs}`;
+
+    console.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
+    await this.client.setBootSource({
+      kernel_image_path: this.config.kernelPath,
+      boot_args: bootArgs,
+    });
+
+    // Configure root drive
+    console.log(`[VM ${this.config.vmId}] Rootfs: ${this.config.rootfsPath}`);
+    await this.client.setDrive({
+      drive_id: "rootfs",
+      path_on_host: this.config.rootfsPath,
+      is_root_device: true,
+      is_read_only: false, // Need write access for agent execution
+    });
+
+    // Configure network interface
+    console.log(
+      `[VM ${this.config.vmId}] Network: ${this.networkConfig.tapDevice}`,
+    );
+    await this.client.setNetworkInterface({
+      iface_id: "eth0",
+      guest_mac: this.networkConfig.guestMac,
+      host_dev_name: this.networkConfig.tapDevice,
+    });
+  }
+
+  /**
+   * Stop the VM gracefully
+   */
+  async stop(): Promise<void> {
+    if (this.state !== "running") {
+      console.log(`[VM ${this.config.vmId}] Not running, state: ${this.state}`);
+      return;
+    }
+
+    this.state = "stopping";
+    console.log(`[VM ${this.config.vmId}] Stopping...`);
+
+    try {
+      // Send graceful shutdown signal
+      if (this.client) {
+        try {
+          await this.client.sendCtrlAltDel();
+          // Wait briefly for graceful shutdown
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        } catch {
+          // API may fail if VM is already stopping
+        }
+      }
+    } finally {
+      await this.cleanup();
+    }
+  }
+
+  /**
+   * Force kill the VM
+   */
+  async kill(): Promise<void> {
+    console.log(`[VM ${this.config.vmId}] Force killing...`);
+    await this.cleanup();
+  }
+
+  /**
+   * Cleanup VM resources
+   */
+  private async cleanup(): Promise<void> {
+    // Kill Firecracker process
+    if (this.process && !this.process.killed) {
+      this.process.kill("SIGKILL");
+      this.process = null;
+    }
+
+    // Delete TAP device
+    if (this.networkConfig) {
+      await deleteTapDevice(this.networkConfig.tapDevice);
+      this.networkConfig = null;
+    }
+
+    // Clean up socket
+    if (fs.existsSync(this.socketPath)) {
+      try {
+        fs.unlinkSync(this.socketPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    this.client = null;
+    this.state = "stopped";
+    console.log(`[VM ${this.config.vmId}] Stopped`);
+  }
+
+  /**
+   * Wait for the VM process to exit
+   * Returns the exit code
+   */
+  async waitForExit(timeoutMs: number = 60000): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (!this.process) {
+        resolve(0);
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error(`VM did not exit within ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.process.on("exit", (code) => {
+        clearTimeout(timeout);
+        resolve(code ?? 0);
+      });
+    });
+  }
+
+  /**
+   * Check if the VM is running
+   */
+  isRunning(): boolean {
+    return (
+      this.state === "running" && this.process !== null && !this.process.killed
+    );
+  }
+}
+
+/**
+ * Create and start a VM with the given configuration
+ */
+export async function createVM(config: VMConfig): Promise<FirecrackerVM> {
+  const vm = new FirecrackerVM(config);
+  await vm.start();
+  return vm;
+}
