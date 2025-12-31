@@ -344,7 +344,6 @@ jobs:
           USE_MOCK_CLAUDE: "true"
           RUNNER_DEPLOYED: ${{ needs.deploy-runner.outputs.runner-deployed }}
           RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
-          RUNNER_COMMAND: "ssh -o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} 'cd ${{ needs.deploy-runner.outputs.runner-dir }} && node index.js'"
           SSH_KEY_PATH: /tmp/.ssh/metal.pem
           CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
