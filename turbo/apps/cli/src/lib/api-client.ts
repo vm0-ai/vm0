@@ -153,6 +153,44 @@ export interface ScopeResponse {
   updatedAt: string;
 }
 
+/**
+ * Session response from GET /api/agent/sessions/{id}
+ */
+export interface GetSessionResponse {
+  id: string;
+  agentComposeId: string;
+  agentComposeVersionId: string | null;
+  conversationId: string | null;
+  artifactName: string | null;
+  vars: Record<string, string> | null;
+  secretNames: string[] | null;
+  volumeVersions: Record<string, string> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Agent compose snapshot stored in checkpoints
+ */
+export interface AgentComposeSnapshot {
+  agentComposeVersionId: string;
+  vars?: Record<string, string>;
+  secretNames?: string[];
+}
+
+/**
+ * Checkpoint response from GET /api/agent/checkpoints/{id}
+ */
+export interface GetCheckpointResponse {
+  id: string;
+  runId: string;
+  conversationId: string;
+  agentComposeSnapshot: AgentComposeSnapshot;
+  artifactSnapshot: { artifactName: string; artifactVersion: string } | null;
+  volumeVersionsSnapshot: { versions: Record<string, string> } | null;
+  createdAt: string;
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -583,6 +621,55 @@ class ApiClient {
     }
 
     return (await response.json()) as ScopeResponse;
+  }
+
+  /**
+   * Get session by ID
+   * Used by run continue to fetch session info including secretNames
+   */
+  async getSession(sessionId: string): Promise<GetSessionResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(`${baseUrl}/api/agent/sessions/${sessionId}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(
+        error.error?.message || `Session not found: ${sessionId}`,
+      );
+    }
+
+    return (await response.json()) as GetSessionResponse;
+  }
+
+  /**
+   * Get checkpoint by ID
+   * Used by run resume to fetch checkpoint info including secretNames
+   */
+  async getCheckpoint(checkpointId: string): Promise<GetCheckpointResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const response = await fetch(
+      `${baseUrl}/api/agent/checkpoints/${checkpointId}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const error = (await response.json()) as ApiError;
+      throw new Error(
+        error.error?.message || `Checkpoint not found: ${checkpointId}`,
+      );
+    }
+
+    return (await response.json()) as GetCheckpointResponse;
   }
 
   /**

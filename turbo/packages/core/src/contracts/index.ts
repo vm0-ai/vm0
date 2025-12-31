@@ -148,3 +148,14 @@ export {
   type CreateScopeRequest,
   type UpdateScopeRequest,
 } from "./scopes";
+export {
+  sessionsByIdContract,
+  checkpointsByIdContract,
+  sessionResponseSchema,
+  checkpointResponseSchema,
+  agentComposeSnapshotSchema,
+  artifactSnapshotSchema,
+  volumeVersionsSnapshotSchema,
+  type SessionsByIdContract,
+  type CheckpointsByIdContract,
+} from "./sessions";

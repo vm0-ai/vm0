@@ -634,13 +634,17 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Load secrets from environment if not provided via CLI
-        // Note: secrets are required for resume since they're never stored
-        const secretNames = Object.keys(secrets);
-        const loadedSecrets =
-          secretNames.length > 0 ? secrets : loadValues({}, []);
+        // 2. Fetch checkpoint info to get required secret names
+        // This allows loading secrets from environment variables
+        const checkpointInfo = await apiClient.getCheckpoint(checkpointId);
+        const requiredSecretNames =
+          checkpointInfo.agentComposeSnapshot.secretNames || [];
 
-        // 3. Display starting message (verbose only)
+        // 3. Load secrets from CLI options + environment variables
+        // CLI-provided secrets take precedence, then fall back to env vars
+        const loadedSecrets = loadValues(secrets, requiredSecretNames);
+
+        // 4. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Resuming agent run from checkpoint", [
             { label: "Checkpoint ID", value: checkpointId },
@@ -667,7 +671,7 @@ runCmd
           ]);
         }
 
-        // 4. Call unified API with checkpointId
+        // 5. Call unified API with checkpointId
         const response = await apiClient.createRun({
           checkpointId,
           prompt,
@@ -788,13 +792,16 @@ runCmd
           process.exit(1);
         }
 
-        // 2. Load secrets from environment if not provided via CLI
-        // Note: secrets are required for continue since they're never stored
-        const secretNames = Object.keys(secrets);
-        const loadedSecrets =
-          secretNames.length > 0 ? secrets : loadValues({}, []);
+        // 2. Fetch session info to get required secret names
+        // This allows loading secrets from environment variables
+        const sessionInfo = await apiClient.getSession(agentSessionId);
+        const requiredSecretNames = sessionInfo.secretNames || [];
 
-        // 3. Display starting message (verbose only)
+        // 3. Load secrets from CLI options + environment variables
+        // CLI-provided secrets take precedence, then fall back to env vars
+        const loadedSecrets = loadValues(secrets, requiredSecretNames);
+
+        // 4. Display starting message (verbose only)
         if (verbose) {
           logVerbosePreFlight("Continuing agent run from session", [
             { label: "Session ID", value: agentSessionId },
@@ -822,7 +829,7 @@ runCmd
           ]);
         }
 
-        // 4. Call unified API with sessionId
+        // 5. Call unified API with sessionId
         const response = await apiClient.createRun({
           sessionId: agentSessionId,
           prompt,

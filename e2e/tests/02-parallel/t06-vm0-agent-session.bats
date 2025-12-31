@@ -244,3 +244,123 @@ teardown() {
 
     echo "# Verified: Continue works with templateVars stored in session"
 }
+
+@test "VM0 agent session: run continue loads secrets from environment variables" {
+    # This test verifies that vm0 run continue automatically loads secrets
+    # from environment variables when not provided via --secrets flag.
+    # This is the fix for issue #845.
+
+    # Use the env-expansion fixture which has secrets defined
+    export ENV_EXPANSION_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
+
+    # Step 1: Build the config with secrets
+    echo "# Step 1: Building config with secrets..."
+    run $CLI_COMMAND compose "$ENV_EXPANSION_CONFIG"
+    assert_success
+    assert_output --partial "vm0-env-expansion"
+
+    # Step 2: Create artifact
+    echo "# Step 2: Creating artifact..."
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+
+    echo "test-content" > testfile.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Step 3: Run agent WITH secrets to create session
+    # The env-expansion config has: TEST_VAR and TEST_SECRET
+    echo "# Step 3: Running agent with secrets to create session..."
+    run $CLI_COMMAND run "vm0-env-expansion" \
+        --vars "testVar=myTestVar" \
+        --secrets "TEST_SECRET=initial-secret-value" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "echo 'test' && echo \$TEST_SECRET"
+
+    assert_success
+    assert_output --partial "Session:"
+
+    # Extract session ID
+    SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Session ID: $SESSION_ID"
+    [ -n "$SESSION_ID" ] || {
+        echo "# Failed to extract session ID"
+        echo "$output"
+        return 1
+    }
+
+    # Step 4: Continue WITHOUT --secrets flag, but WITH env var set
+    # This is the key test: secrets should be loaded from environment
+    echo "# Step 4: Continuing with secret in environment variable..."
+    export TEST_SECRET="env-secret-value"
+    run $CLI_COMMAND run continue "$SESSION_ID" "echo 'continue test'"
+
+    # Should succeed - the secret was loaded from environment variable
+    assert_success
+    assert_output --partial "[tool_use] Bash"
+
+    # Verify the run completed successfully (not failed due to missing secrets)
+    refute_output --partial "Missing required secrets"
+
+    echo "# Verified: run continue loads secrets from environment variables"
+}
+
+@test "VM0 agent session: run resume loads secrets from environment variables" {
+    # This test verifies that vm0 run resume automatically loads secrets
+    # from environment variables when not provided via --secrets flag.
+    # This is the fix for issue #845.
+
+    # Use the env-expansion fixture which has secrets defined
+    export ENV_EXPANSION_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
+
+    # Step 1: Build the config with secrets
+    echo "# Step 1: Building config with secrets..."
+    run $CLI_COMMAND compose "$ENV_EXPANSION_CONFIG"
+    assert_success
+
+    # Step 2: Create artifact
+    echo "# Step 2: Creating artifact..."
+    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+
+    echo "test-content" > testfile.txt
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    # Step 3: Run agent WITH secrets to create checkpoint
+    echo "# Step 3: Running agent with secrets to create checkpoint..."
+    run $CLI_COMMAND run "vm0-env-expansion" \
+        --vars "testVar=myTestVar" \
+        --secrets "TEST_SECRET=initial-secret-value" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "echo 'test'"
+
+    assert_success
+    assert_output --partial "Checkpoint:"
+
+    # Extract checkpoint ID
+    CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Checkpoint ID: $CHECKPOINT_ID"
+    [ -n "$CHECKPOINT_ID" ] || {
+        echo "# Failed to extract checkpoint ID"
+        echo "$output"
+        return 1
+    }
+
+    # Step 4: Resume WITHOUT --secrets flag, but WITH env var set
+    # This is the key test: secrets should be loaded from environment
+    echo "# Step 4: Resuming with secret in environment variable..."
+    export TEST_SECRET="env-secret-value"
+    run $CLI_COMMAND run resume "$CHECKPOINT_ID" "echo 'resume test'"
+
+    # Should succeed - the secret was loaded from environment variable
+    assert_success
+    assert_output --partial "[tool_use] Bash"
+
+    # Verify the run completed successfully (not failed due to missing secrets)
+    refute_output --partial "Missing required secrets"
+
+    echo "# Verified: run resume loads secrets from environment variables"
+}
