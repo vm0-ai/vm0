@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/docs-v0.5.1...docs-v0.6.0) (2025-12-31)
+
+
+### Features
+
+* **docs:** highlight skills field in skills.mdx example ([#839](https://github.com/vm0-ai/vm0/issues/839)) ([756fe2f](https://github.com/vm0-ai/vm0/commit/756fe2f9ad0f92f1094fd0aad150e9900ed48295))
+
 ## [0.5.1](https://github.com/vm0-ai/vm0/compare/docs-v0.5.0...docs-v0.5.1) (2025-12-31)
 
 
