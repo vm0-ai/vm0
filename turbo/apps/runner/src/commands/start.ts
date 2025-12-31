@@ -4,6 +4,7 @@ import {
   registerRunner,
   pollForJob,
   claimJob,
+  completeJob,
   type ExecutionContext,
 } from "../lib/api.js";
 import { getToken } from "../lib/token.js";
@@ -20,15 +21,35 @@ async function executeJob(context: ExecutionContext): Promise<void> {
   console.log(`  Prompt: ${context.prompt.substring(0, 100)}...`);
   console.log(`  Compose version: ${context.agentComposeVersionId}`);
 
-  // TODO: Phase 4+ - Firecracker VM execution
-  // For now, just log that we would execute
-  console.log("  [STUB] Job execution not yet implemented");
-  console.log("  [STUB] Would start Firecracker VM and run agent");
+  let exitCode = 0;
+  let error: string | undefined;
 
-  // Simulate some work
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  try {
+    // TODO: Phase 4+ - Firecracker VM execution
+    // For now, just log that we would execute
+    console.log("  [STUB] Job execution not yet implemented");
+    console.log("  [STUB] Would start Firecracker VM and run agent");
 
-  console.log(`  Job ${context.runId} completed (stub)`);
+    // Simulate some work
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    console.log(`  Job ${context.runId} execution completed`);
+  } catch (err) {
+    exitCode = 1;
+    error = err instanceof Error ? err.message : "Unknown execution error";
+    console.error(`  Job ${context.runId} execution failed: ${error}`);
+  }
+
+  // Report completion to server
+  try {
+    const result = await completeJob(context, exitCode, error);
+    console.log(`  Job ${context.runId} reported as ${result.status}`);
+  } catch (err) {
+    console.error(
+      `  Failed to report job ${context.runId} completion:`,
+      err instanceof Error ? err.message : "Unknown error",
+    );
+  }
 }
 
 export const startCommand = new Command("start")

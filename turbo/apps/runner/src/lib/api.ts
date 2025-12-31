@@ -140,3 +140,43 @@ export async function claimJob(
 
   return response.json() as Promise<ExecutionContext>;
 }
+
+export interface CompleteJobResult {
+  success: boolean;
+  status: "completed" | "failed";
+}
+
+/**
+ * Report job completion to the server
+ * Uses the sandbox token for authentication
+ */
+export async function completeJob(
+  context: ExecutionContext,
+  exitCode: number,
+  error?: string,
+): Promise<CompleteJobResult> {
+  const response = await fetch(
+    `${context.apiUrl}/api/webhooks/agent/complete`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${context.sandboxToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        runId: context.runId,
+        exitCode,
+        error,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorData = (await response.json()) as ApiErrorResponse;
+    throw new Error(
+      `Failed to complete job: ${errorData.error?.message || response.statusText}`,
+    );
+  }
+
+  return response.json() as Promise<CompleteJobResult>;
+}
