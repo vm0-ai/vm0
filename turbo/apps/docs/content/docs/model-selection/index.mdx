@@ -1,13 +1,55 @@
 ---
 title: Overview
-description: Configure different LLM providers for Claude Code
+description: Configure different LLM providers for your agents
 ---
 
-VM0 allows you to use various LLM providers that implement the Anthropic API. Changing models is done by setting Claude Code related environment variables in your `vm0.yaml` file.
+VM0 supports two agent providers: **Claude Code** and **Codex**. You can also use alternative LLM providers with Claude Code.
 
-## Basic Structure
+## Provider Selection
 
-Set the `environment` field to override Claude Code's default model configuration:
+### Claude Code (Default)
+
+Claude Code is the default provider, using Anthropic's Claude model:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+```
+
+Required environment variable:
+
+| Name                      | Description                           |
+| ------------------------- | ------------------------------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` |
+
+### Codex
+
+Codex uses OpenAI's models:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: codex # [!code highlight]
+```
+
+Required environment variable:
+
+| Name             | Description         |
+| ---------------- | ------------------- |
+| `OPENAI_API_KEY` | API key from OpenAI |
+
+## Alternative LLM Providers (Claude Code only)
+
+<Callout type="warning">
+  Alternative LLM providers are only supported with Claude Code, not Codex.
+</Callout>
+
+You can use various LLM providers that implement the Anthropic API by setting environment variables:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -21,7 +63,7 @@ agents:
       ANTHROPIC_MODEL: "model-name" # [!code highlight]
 ```
 
-## Supported Providers
+### Supported Providers
 
 - [Moonshot (Kimi)](/docs/model-selection/moonshot)
 - [MiniMax](/docs/model-selection/minimax)
