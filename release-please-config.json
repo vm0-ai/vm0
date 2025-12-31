@@ -11,6 +11,9 @@
         },
         "turbo/apps/docs": {
             "releaseType": "node"
+        },
+        "turbo/apps/runner": {
+            "releaseType": "node"
         }
     },
     "plugins": [
