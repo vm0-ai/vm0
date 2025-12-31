@@ -5,6 +5,20 @@ description: Configuration file reference for VM0 agents
 
 The `vm0.yaml` file defines your agent configuration.
 
+## Minimal Example
+
+```yaml
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    instructions: AGENTS.md
+    image: vm0/claude-code:latest
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
 ## Full Example
 
 ```yaml
