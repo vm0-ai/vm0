@@ -6,7 +6,7 @@ setup() {
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp to avoid conflicts
-    export ARTIFACT_NAME="e2e-test-artifact-$(date +%s)"
+    export ARTIFACT_NAME="e2e-test-artifact-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {

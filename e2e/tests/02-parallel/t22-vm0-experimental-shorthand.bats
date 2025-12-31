@@ -5,7 +5,7 @@ load '../../helpers/setup'
 setup() {
     # Create temporary test directory for dynamic configs
     export TEST_DIR="$(mktemp -d)"
-    export UNIQUE_ID="$(date +%s)"
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-exp-shorthand-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-exp-shorthand-artifact-${UNIQUE_ID}"
 }

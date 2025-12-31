@@ -12,7 +12,7 @@ setup() {
     export TEST_DIR="$(mktemp -d)"
     # Use UUID for reliable uniqueness in parallel test runs
     export AGENT_NAME="e2e-scope-compose-$(cat /proc/sys/kernel/random/uuid | head -c 8)"
-    export ARTIFACT_NAME="e2e-scope-artifact-$(date +%s)"
+    export ARTIFACT_NAME="e2e-scope-artifact-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {

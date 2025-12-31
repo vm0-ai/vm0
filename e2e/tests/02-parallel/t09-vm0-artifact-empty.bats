@@ -12,7 +12,7 @@ AGENT_NAME="e2e-t09"
 
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export ARTIFACT_NAME="e2e-empty-artifact-$(date +%s)"
+    export ARTIFACT_NAME="e2e-empty-artifact-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
     export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF

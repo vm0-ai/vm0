@@ -7,7 +7,7 @@ load '../../helpers/setup'
 setup() {
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
-    export UNIQUE_ID="$(date +%s)"
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export ARTIFACT_NAME="e2e-list-artifact-${UNIQUE_ID}"
     export VOLUME_NAME="e2e-list-volume-${UNIQUE_ID}"
 }

@@ -12,7 +12,7 @@ load '../../helpers/setup'
 
 setup() {
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export ARTIFACT_NAME="e2e-network-logs-test-$(date +%s)"
+    export ARTIFACT_NAME="e2e-network-logs-test-$(date +%s%3N)-$RANDOM"
     export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-network-security.yaml"
 }
 

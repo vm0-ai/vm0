@@ -181,7 +181,7 @@ EOF
 # ============================================
 
 @test "vm0 run with version specifier runs specific version" {
-    export ARTIFACT_NAME="e2e-versioning-artifact-$(date +%s)"
+    export ARTIFACT_NAME="e2e-versioning-artifact-$(date +%s%3N)-$RANDOM"
 
     echo "# Creating initial config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -234,7 +234,7 @@ EOF
 }
 
 @test "vm0 run with :latest tag runs HEAD version" {
-    export ARTIFACT_NAME="e2e-versioning-latest-$(date +%s)"
+    export ARTIFACT_NAME="e2e-versioning-latest-$(date +%s%3N)-$RANDOM"
 
     echo "# Creating config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -267,7 +267,7 @@ EOF
 }
 
 @test "vm0 run with nonexistent version shows error" {
-    export ARTIFACT_NAME="e2e-versioning-error-$(date +%s)"
+    export ARTIFACT_NAME="e2e-versioning-error-$(date +%s%3N)-$RANDOM"
 
     echo "# Creating config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -294,7 +294,7 @@ EOF
 }
 
 @test "vm0 run without version specifier runs HEAD (backward compatible)" {
-    export ARTIFACT_NAME="e2e-versioning-compat-$(date +%s)"
+    export ARTIFACT_NAME="e2e-versioning-compat-$(date +%s%3N)-$RANDOM"
 
     echo "# Creating config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF

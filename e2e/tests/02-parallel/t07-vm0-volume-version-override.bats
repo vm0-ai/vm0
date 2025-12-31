@@ -16,7 +16,7 @@ setup() {
     # Use unique test names with timestamp
     # Volume name must match the config's volume name for --volume-version to work
     export VOLUME_NAME="test-volume"
-    export ARTIFACT_NAME="e2e-art-override-$(date +%s)"
+    export ARTIFACT_NAME="e2e-art-override-$(date +%s%3N)-$RANDOM"
     export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-volume-override.yaml"
 }
 

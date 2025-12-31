@@ -17,7 +17,7 @@ setup() {
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
-    export ARTIFACT_NAME="e2e-conversation-$(date +%s)"
+    export ARTIFACT_NAME="e2e-conversation-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
     export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF

@@ -9,7 +9,7 @@ load '../../helpers/setup'
 
 setup() {
     # Generate a unique slug for this test run to avoid conflicts
-    export TEST_SLUG="e2e-test-$(date +%s)"
+    export TEST_SLUG="e2e-test-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {
@@ -151,7 +151,7 @@ EOF
 
     # Try to run with a non-existent scope
     run $CLI_COMMAND run "nonexistent-scope/test-image" \
-        --artifact-name "e2e-scope-test-$(date +%s)" \
+        --artifact-name "e2e-scope-test-$(date +%s%3N)-$RANDOM" \
         "echo hello"
 
     # Should fail with scope not found
@@ -202,7 +202,7 @@ EOF
     fi
 
     # Try to update without --force (should fail)
-    NEW_SLUG="e2e-update-$(date +%s)"
+    NEW_SLUG="e2e-update-$(date +%s%3N)-$RANDOM"
     run $CLI_COMMAND scope set "$NEW_SLUG"
     assert_failure
     assert_output --partial "--force"
@@ -216,7 +216,7 @@ EOF
     fi
 
     # Update with --force
-    NEW_SLUG="e2e-force-$(date +%s)"
+    NEW_SLUG="e2e-force-$(date +%s%3N)-$RANDOM"
     run $CLI_COMMAND scope set "$NEW_SLUG" --force
     assert_success
     assert_output --partial "$NEW_SLUG"
@@ -224,7 +224,7 @@ EOF
 
 @test "vm0 scope set with --display-name sets custom name" {
     # Update scope with display name
-    NEW_SLUG="e2e-display-$(date +%s)"
+    NEW_SLUG="e2e-display-$(date +%s%3N)-$RANDOM"
     run $CLI_COMMAND scope set "$NEW_SLUG" --display-name "My Test Scope" --force
     assert_success
     assert_output --partial "$NEW_SLUG"

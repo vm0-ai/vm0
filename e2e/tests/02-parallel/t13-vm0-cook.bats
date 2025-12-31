@@ -6,7 +6,7 @@ setup() {
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
     # Use unique names with timestamp to avoid conflicts
-    export AGENT_NAME="e2e-cook-$(date +%s)"
+    export AGENT_NAME="e2e-cook-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {

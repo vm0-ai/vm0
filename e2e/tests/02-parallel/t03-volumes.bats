@@ -6,7 +6,7 @@ setup() {
     # Create temporary test directory
     export TEST_VOLUME_DIR="$(mktemp -d)"
     # Use unique test volume name with timestamp to avoid conflicts
-    export VOLUME_NAME="e2e-test-volume-$(date +%s)"
+    export VOLUME_NAME="e2e-test-volume-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {

@@ -4,7 +4,7 @@ load '../../helpers/setup'
 
 setup() {
     export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
-    export UNIQUE_ID="$(date +%s)"
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export SECRET_VALUE="secret-value-${UNIQUE_ID}"
     export VAR_VALUE="var-value-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-env-test-${UNIQUE_ID}"
