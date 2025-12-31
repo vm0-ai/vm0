@@ -44,26 +44,26 @@ volumes:
 
 ## Top-Level Fields
 
-| Field     | Type   | Required | Description                              |
-| --------- | ------ | -------- | ---------------------------------------- |
-| `version` | string | Yes      | Configuration version. Currently `"1.0"` |
-| `agents`  | object | Yes      | Map of agent definitions                 |
-| `volumes` | object | No       | Map of volume definitions                |
+| Field     | Type   | Required | Default | Description                              |
+| --------- | ------ | -------- | ------- | ---------------------------------------- |
+| `version` | string | Yes      | -       | Configuration version. Currently `"1.0"` |
+| `agents`  | object | Yes      | -       | Map of agent definitions                 |
+| `volumes` | object | No       | `{}`    | Map of volume definitions                |
 
 ## Agent Fields
 
-| Field          | Type   | Required | Description                                                                                       |
-| -------------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `provider`     | string | Yes      | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
-| `instructions` | string | No       | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
-| `image`        | string | No       | Custom container image. See [Container Image](/docs/core-concept/container-image)                 |
-| `skills`       | array  | No       | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |
-| `volumes`      | array  | No       | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
-| `environment`  | object | No       | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
+| Field          | Type   | Required | Default                                        | Description                                                                                       |
+| -------------- | ------ | -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `provider`     | string | Yes      | -                                              | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
+| `instructions` | string | No       | -                                              | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
+| `image`        | string | No       | `vm0/claude-code:latest` or `vm0/codex:latest` | Container image based on provider. See [Container Image](/docs/core-concept/container-image)      |
+| `skills`       | array  | No       | `[]`                                           | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |
+| `volumes`      | array  | No       | `[]`                                           | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
+| `environment`  | object | No       | `{}`                                           | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
 
 ## Volume Fields
 
-| Field     | Type   | Required | Description                                  |
-| --------- | ------ | -------- | -------------------------------------------- |
-| `name`    | string | Yes      | Volume name (must match `.vm0/storage.yaml`) |
-| `version` | string | No       | Version to use. Default: `latest`            |
+| Field     | Type   | Required | Default  | Description                                  |
+| --------- | ------ | -------- | -------- | -------------------------------------------- |
+| `name`    | string | Yes      | -        | Volume name (must match `.vm0/storage.yaml`) |
+| `version` | string | No       | `latest` | Version to use                               |
