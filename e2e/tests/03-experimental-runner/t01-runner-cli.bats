@@ -29,8 +29,10 @@ setup() {
 }
 
 @test "vm0-runner start fails without runner.yaml" {
-    # Run from /tmp where there's no runner.yaml
-    run ssh_run "cd /tmp && node ${RUNNER_DIR}/index.js start"
+    # Ensure no runner.yaml exists
+    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
+
+    run $RUNNER_COMMAND start
     assert_failure
     assert_output --partial "runner.yaml not found"
 }
