@@ -55,15 +55,32 @@ Before committing, verify:
 - ✅ Imperative mood (add, fix, update)
 - ✅ Accurately describes the "why" not just the "what"
 
+## Special Rules for Documentation App
+
+Changes to `turbo/apps/docs` should use `feat(docs):` or `fix(docs):` instead of `docs(...):`
+
+**Why?** The `turbo/apps/docs` directory IS the documentation application. Updates to it are features/fixes to the docs product, not just documentation changes to code. Using `feat(docs)` or `fix(docs)` triggers a proper release.
+
+| Change Type | Commit Type | Example |
+|-------------|-------------|---------|
+| Add new docs page | `feat(docs):` | `feat(docs): add codex provider documentation` |
+| Fix broken link | `fix(docs):` | `fix(docs): correct model selection link path` |
+| Update content | `feat(docs):` | `feat(docs): update quick start instructions` |
+
+❌ `docs: add integration guide` (won't trigger release)
+✅ `feat(docs): add integration guide` (triggers release)
+
 ## Common Mistakes to Avoid
 
 ❌ `Fix: Resolve database connection timeout.` (capitalized type, has period)
 ❌ `added user auth` (missing type, wrong tense)
 ❌ `feat: Add user authentication system with OAuth2...` (capitalized description, too long)
+❌ `docs: update quick start` (for turbo/apps/docs changes - use feat(docs) instead)
 
 ✅ `fix: resolve database connection timeout`
 ✅ `feat: add user authentication`
-✅ `docs(api): update endpoint documentation`
+✅ `docs(api): update endpoint documentation` (for inline code docs, not turbo/apps/docs)
+✅ `feat(docs): add new integration page` (for turbo/apps/docs changes)
 
 ## Integration with Workflow
 
