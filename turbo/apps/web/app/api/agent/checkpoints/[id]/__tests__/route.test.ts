@@ -1,7 +1,7 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -50,6 +50,10 @@ describe("GET /api/agent/checkpoints/:id", () => {
   const testVersionId = createHash("sha256")
     .update(JSON.stringify(testVersionContent))
     .digest("hex");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   beforeAll(async () => {
     initServices();
