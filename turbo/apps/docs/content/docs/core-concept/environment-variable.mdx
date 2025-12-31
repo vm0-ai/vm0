@@ -40,23 +40,14 @@ version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-    environment:
+    environment: # [!code highlight]
       # Secrets for sensitive data
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}"
-      DATABASE_PASSWORD: "${{ secrets.DB_PASSWORD }}"
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]
+      DATABASE_PASSWORD: "${{ secrets.DB_PASSWORD }}" # [!code highlight]
 
       # Vars for configuration
-      ENVIRONMENT: "${{ vars.ENV_NAME }}"
-      DEBUG_MODE: "${{ vars.DEBUG }}"
-```
-
-You can also use variables in volume names:
-
-```yaml title="vm0.yaml"
-volumes:
-  data-volume:
-    name: "data-${{ vars.ENV_NAME }}"
-    version: latest
+      ENVIRONMENT: "${{ vars.ENV_NAME }}" # [!code highlight]
+      DEBUG_MODE: "${{ vars.DEBUG }}" # [!code highlight]
 ```
 
 ## Passing Values
