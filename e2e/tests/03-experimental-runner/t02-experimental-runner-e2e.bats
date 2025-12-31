@@ -89,15 +89,15 @@ get_runner_logs() {
 # Verify test prerequisites
 setup() {
     if [[ -z "$RUNNER_DIR" ]]; then
-        skip "RUNNER_DIR not set - runner was not deployed"
+        fail "RUNNER_DIR not set - runner was not deployed"
     fi
 
     if ! ssh_check; then
-        skip "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
+        fail "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
     fi
 
     if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+        fail "VM0_API_URL not set"
     fi
 
     # Create temporary test directory
@@ -128,14 +128,10 @@ teardown() {
     echo "# Step 1: Get CLI auth token"
     # Read token from CLI config (created by auth automation)
     local cli_config_file="$HOME/.vm0/config.json"
-    if [ ! -f "$cli_config_file" ]; then
-        skip "CLI config not found - auth automation may not have run"
-    fi
+    [ -f "$cli_config_file" ] || fail "CLI config not found at $cli_config_file - auth automation must run first"
 
     local token=$(cat "$cli_config_file" | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-    if [ -z "$token" ]; then
-        skip "No token found in CLI config"
-    fi
+    [ -n "$token" ] || fail "No token found in CLI config"
 
     echo "# Step 2: Setup runner authentication on AWS Metal"
     setup_runner_auth "$token" "$VM0_API_URL"
