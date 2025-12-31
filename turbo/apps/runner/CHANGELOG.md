@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/vm0-ai/vm0/compare/runner-v0.2.0...runner-v0.2.1) (2025-12-31)
+
+
+### Bug Fixes
+
+* **runner:** add postbuild script for npm publish ([#852](https://github.com/vm0-ai/vm0/issues/852)) ([3318efe](https://github.com/vm0-ai/vm0/commit/3318efe26a6899542d2b79ba81910feab014789a))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/runner-v0.1.0...runner-v0.2.0) (2025-12-31)
 
 
