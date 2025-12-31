@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/docs-v0.4.1...docs-v0.5.0) (2025-12-31)
+
+
+### Features
+
+* **docs:** add codex provider info to model selection ([#832](https://github.com/vm0-ai/vm0/issues/832)) ([c0aabb7](https://github.com/vm0-ai/vm0/commit/c0aabb74d37226bdccf855ec33f7d614c50e678b))
+
+
+### Bug Fixes
+
+* **docs:** fix yaml formatting in volume.mdx ([#835](https://github.com/vm0-ai/vm0/issues/835)) ([30d2c6c](https://github.com/vm0-ai/vm0/commit/30d2c6ca17925c19d5da390692d3f0cce036d05a))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/docs-v0.4.0...docs-v0.4.1) (2025-12-30)
 
 
