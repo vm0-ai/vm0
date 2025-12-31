@@ -87,3 +87,13 @@ vm0 run my-agent "set up a Python project" --artifact-name my-project
 # Pull the agent's changes locally
 vm0 artifact pull
 ```
+
+## Artifact vs Volume
+
+|                 | Volume                                  | Artifact                               |
+| --------------- | --------------------------------------- | -------------------------------------- |
+| **Purpose**     | Pre-installed environment for the agent | Output produced by the agent           |
+| **Contains**    | Skills, configurations, scripts         | Files created or modified during runs  |
+| **Persistence** | Not auto-persisted after runs           | Automatically persisted after each run |
+
+Think of **Volume** as the tools and knowledge you give to an agent before it starts working, while **Artifact** is the work product the agent creates.

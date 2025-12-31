@@ -1,0 +1,20 @@
+---
+title: storage.yaml
+description: Configuration file reference for volumes and artifacts
+---
+
+The `storage.yaml` file is located at `.vm0/storage.yaml` inside a volume or artifact directory. It is created automatically when you run `vm0 volume init` or `vm0 artifact init`.
+
+## Example
+
+```yaml
+name: my-volume
+type: volume
+```
+
+## Fields
+
+| Field  | Type   | Required | Description                                                                   |
+| ------ | ------ | -------- | ----------------------------------------------------------------------------- |
+| `name` | string | Yes      | Unique name for the storage (3-64 chars, lowercase letters, numbers, hyphens) |
+| `type` | string | Yes      | Storage type: `volume` or `artifact`                                          |

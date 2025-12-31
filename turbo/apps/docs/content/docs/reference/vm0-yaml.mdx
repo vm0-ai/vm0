@@ -1,0 +1,56 @@
+---
+title: vm0.yaml
+description: Configuration file reference for VM0 agents
+---
+
+The `vm0.yaml` file defines your agent configuration.
+
+## Full Example
+
+```yaml
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    instructions: AGENTS.md
+    image: vm0/claude-code:latest
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
+    volumes:
+      - my-volume:/home/user/.config
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      MY_VAR: "value"
+
+volumes:
+  my-volume:
+    name: my-volume
+    version: latest
+```
+
+## Top-Level Fields
+
+| Field     | Type   | Required | Description                              |
+| --------- | ------ | -------- | ---------------------------------------- |
+| `version` | string | Yes      | Configuration version. Currently `"1.0"` |
+| `agents`  | object | Yes      | Map of agent definitions                 |
+| `volumes` | object | No       | Map of volume definitions                |
+
+## Agent Fields
+
+| Field          | Type   | Required | Description                                                                                       |
+| -------------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
+| `provider`     | string | Yes      | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
+| `instructions` | string | No       | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
+| `image`        | string | No       | Custom container image. See [Container Image](/docs/core-concept/container-image)                 |
+| `skills`       | array  | No       | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |
+| `volumes`      | array  | No       | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
+| `environment`  | object | No       | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
+
+## Volume Fields
+
+| Field     | Type   | Required | Description                                  |
+| --------- | ------ | -------- | -------------------------------------------- |
+| `name`    | string | Yes      | Volume name (must match `.vm0/storage.yaml`) |
+| `version` | string | No       | Version to use. Default: `latest`            |

@@ -1,0 +1,128 @@
+---
+title: Volume
+description: Understanding the underlying implementation of skills and instructions
+---
+
+Volume is the underlying implementation of [Skills](/docs/core-concept/skills) and [Instructions](/docs/core-concept/instructions). When you define skills or instructions in your `vm0.yaml`, VM0 automatically builds a volume and mounts it to the appropriate directory based on the agent provider.
+
+## Skills/Instructions vs Volume
+
+Using skills and instructions is the recommended way to configure agents. However, understanding volumes helps you see what happens under the hood.
+
+### Using Skills & Instructions (Recommended)
+
+<Tabs items={["vm0.yaml", "AGENTS.md"]}>
+<Tab value="vm0.yaml">
+```yaml
+version: "1.0"
+
+agents:
+my-agent:
+provider: claude-code
+instructions: AGENTS.md
+skills: - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
+
+````
+</Tab>
+<Tab value="AGENTS.md">
+```markdown
+You are a helpful assistant that reviews HackerNews
+and summarizes AI-related articles.
+````
+
+</Tab>
+</Tabs>
+
+### Equivalent Using Volume
+
+The above configuration is equivalent to manually creating a volume:
+
+<Tabs items={["vm0.yaml", "claude-files/CLAUDE.md"]}>
+<Tab value="vm0.yaml">
+```yaml
+version: "1.0"
+
+agents:
+my-agent:
+provider: claude-code
+image: vm0/claude-code:latest
+volumes: - claude-files:/home/user/.claude
+environment:
+CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+volumes:
+claude-files:
+name: claude-files
+version: latest
+
+````
+</Tab>
+<Tab value="claude-files/CLAUDE.md">
+```markdown
+You are a helpful assistant that reviews HackerNews
+and summarizes AI-related articles.
+````
+
+</Tab>
+</Tabs>
+
+With the volume directory structure:
+
+```
+claude-files/
+├── CLAUDE.md
+└── skills/
+    └── hackernews/    # Same as https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
+        └── SKILL.md
+```
+
+## When to Use Volumes Directly
+
+Using skills and instructions is recommended because they automatically adapt to the agent provider (mounting to the correct directory) and fetch remote skills for you.
+
+However, volumes are useful when you need:
+
+- **Private skills** - Skills that can't be hosted publicly
+- **User scripts** - Custom scripts that your agent can execute
+- **Custom config directories** - Mounting directories outside `~/.claude` or `~/.codex`, such as `.vim`, `.ssh`, `.zshrc`, or other dotfiles
+
+## Managing Volumes
+
+### 1. Declare in vm0.yaml
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    instructions: AGENTS.md
+    image: vm0/claude-code:latest
+    volumes:
+      - git-config:/home/user/.config/git # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+volumes: # [!code highlight]
+  git-config: # [!code highlight]
+    name: git-config # [!code highlight]
+    version: latest # [!code highlight]
+```
+
+- `git-config` in `volumes:` under agent must match the key in the top-level `volumes:` section
+- `name: git-config` must match the `name` in `.vm0/storage.yaml` inside your volume directory
+
+### 2. Create Volume Directory
+
+```bash
+mkdir git-config && cd git-config
+vm0 volume init  # Creates .vm0/storage.yaml
+```
+
+### 3. Manage Volume
+
+```bash
+vm0 volume push    # Push local files to cloud
+vm0 volume pull    # Pull cloud files to local
+vm0 volume status  # Show volume status
+```

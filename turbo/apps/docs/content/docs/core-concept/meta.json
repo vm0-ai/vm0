@@ -2,10 +2,11 @@
   "title": "Core Concept",
   "pages": [
     "agent-anatomy",
-    "instruction",
-    "skill",
+    "container-image",
+    "instructions",
+    "skills",
+    "volume",
     "artifact",
-    "environment-variable",
-    "container-image"
+    "environment-variable"
   ]
 }

@@ -9,67 +9,28 @@ Imagine a new colleague, Joseph, joins your team. Joseph is an experienced finan
 
 This scenario has many parallels with a VM0 Agent:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Joseph at Work                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌───────────────────────┐                                                  │
-│  │       Computer        │  Pre-installed software (browser, spreadsheet)  │
-│  └───────────────────────┘                                                  │
-│             +                                                               │
-│  ┌───────────────────────┐                                                  │
-│  │  Finance Expertise    │  Joseph's specialized knowledge                 │
-│  └───────────────────────┘                                                  │
-│             +                                                               │
-│  ┌───────────────────────┐                                                  │
-│  │     Work Plan         │  Tasks assigned by team lead                    │
-│  └───────────────────────┘                                                  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+<Mermaid chart={`flowchart LR
+    subgraph joseph["Joseph at Work"]
+        direction TB
+        computer["Computer<br/><small>Pre-installed software</small>"]
+        expertise["Finance Expertise<br/><small>Specialized knowledge</small>"]
+        plan["Work Plan<br/><small>Tasks from team lead</small>"]
+    end
 
-                                    ↓ maps to ↓
+    subgraph agent["VM0 Agent"]
+        direction TB
+        image["Container Image<br/><small>Runtime environment</small>"]
+        skills["Skills<br/><small>Domain capabilities</small>"]
+        instruction["Instruction<br/><small>Tasks in AGENTS.md</small>"]
+    end
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              VM0 Agent                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌───────────────────────┐                                                  │
-│  │   Container Image     │  Runtime environment with pre-installed tools   │
-│  └───────────────────────┘                                                  │
-│             +                                                               │
-│  ┌───────────────────────┐                                                  │
-│  │       Skills          │  Domain-specific capabilities                   │
-│  └───────────────────────┘                                                  │
-│             +                                                               │
-│  ┌───────────────────────┐                                                  │
-│  │    Instruction        │  Tasks defined in AGENTS.md                     │
-│  └───────────────────────┘                                                  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+    computer -.-> image
+    expertise -.-> skills
+    plan -.-> instruction
 
-The **Agent Provider** (Claude Code or Codex) is like Joseph himself - a capable worker with general skills. The **Container Image** is like Joseph's computer with pre-installed software. **Skills** give the agent specialized expertise in specific domains. And **Instruction** is the work plan that tells the agent what to do.
+`} />
 
-## Overview
-
-A VM0 agent is composed of two fundamental building blocks: a **Container Image** and a **Volume**.
-
-```
-┌─────────────────────────────────────────┐
-│                 Agent                   │
-├─────────────────────────────────────────┤
-│  ┌─────────────────────────────────┐    │
-│  │       Container Image           │    │
-│  │  (Runtime environment, tools)   │    │
-│  └─────────────────────────────────┘    │
-│                  +                      │
-│  ┌─────────────────────────────────┐    │
-│  │           Volume                │    │
-│  │  (Instructions, skills, files)  │    │
-│  └─────────────────────────────────┘    │
-└─────────────────────────────────────────┘
-```
+The **Agent Provider** (Claude Code or Codex) is a capable worker, and **Skills** give the agent specialized expertise in specific domains, just like the finance expertise Joseph has. The **Container Image** is like Joseph's computer with pre-installed software. And **Instruction** is the work plan that tells the agent what to do.
 
 ## Container Image
 
@@ -81,10 +42,9 @@ The Container Image is similar to a [Docker Image](https://docs.docker.com/get-s
 
 You can use VM0's default images or create custom images with additional tools like `ffmpeg`, `chromium`, or other dependencies. See [Container Image](/docs/core-concept/container-image) for details.
 
-## Volume
+## Skills & Instructions
 
-The Volume contains everything specific to your agent's task:
+When you run an agent, VM0 packages your skills and instructions and mounts them into the container at the appropriate location for the agent provider (`~/.claude` for Claude Code, `~/.codex` for Codex).
 
-- **Instructions** - What the agent should do
-- **Skills** - Reusable capabilities and integrations
-- **Files & Scripts** - Supporting files for the agent and scripts used by skills
+- **[Instruction](/docs/core-concept/instructions)** - Defines what the agent should do (via `AGENTS.md` or `CLAUDE.md`)
+- **[Skills](/docs/core-concept/skills)** - Reusable packages that add domain-specific capabilities, like [Firecrawl](/docs/integration/firecrawl), [Notion](/docs/integration/notion), or [Create Slides](https://github.com/anthropics/skills/tree/main/skills/pptx)
