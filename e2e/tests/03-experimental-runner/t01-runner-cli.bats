@@ -4,14 +4,14 @@
 # These tests run on AWS Metal instance via SSH using $RUNNER_COMMAND
 
 load '../../helpers/setup.bash'
-load '../../helpers/metal.bash'
+load '../../helpers/ssh.bash'
 
-# Verify RUNNER_COMMAND is set and Metal instance is reachable
+# Verify RUNNER_COMMAND is set and remote instance is reachable
 setup() {
     if [[ -z "$RUNNER_COMMAND" ]]; then
         fail "RUNNER_COMMAND not set - runner was not deployed"
     fi
-    metal_check || fail "Metal instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
+    ssh_check || fail "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
 }
 
 @test "vm0-runner --version shows version" {
@@ -30,14 +30,14 @@ setup() {
 
 @test "vm0-runner start fails without runner.yaml" {
     # Run from /tmp where there's no runner.yaml
-    run metal_run "cd /tmp && node ${RUNNER_DIR}/index.js start"
+    run ssh_run "cd /tmp && node ${RUNNER_DIR}/index.js start"
     assert_failure
     assert_output --partial "runner.yaml not found"
 }
 
 @test "vm0-runner start --dry-run validates config" {
-    # Create test config on Metal
-    metal_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
+    # Create test config on remote
+    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: ci-runner
 group: e2e/test
 sandbox:
@@ -57,12 +57,12 @@ EOFCONFIG"
     assert_output --partial "e2e/test"
 
     # Cleanup
-    metal_run "rm -f ${RUNNER_DIR}/runner.yaml"
+    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
 }
 
 @test "vm0-runner start rejects invalid group format" {
     # Create config with invalid group format
-    metal_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
+    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: ci-runner
 group: invalid-no-slash
 sandbox:
@@ -78,7 +78,7 @@ EOFCONFIG"
     assert_output --partial "Invalid configuration"
 
     # Cleanup
-    metal_run "rm -f ${RUNNER_DIR}/runner.yaml"
+    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
 }
 
 @test "vm0-runner setup shows placeholder message" {

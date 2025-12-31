@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-# Helper for running commands on AWS Metal instance via SSH
+# Helper for running commands on remote instance via SSH
 # Requires environment variables:
 #   CI_AWS_METAL_RUNNER_USER - SSH username
-#   CI_AWS_METAL_RUNNER_HOST - Metal instance IP/hostname
+#   CI_AWS_METAL_RUNNER_HOST - Remote instance IP/hostname
 # Optional:
 #   SSH_KEY_PATH - Path to SSH private key (for CI)
 
-metal_run() {
+ssh_run() {
     if [[ -z "$CI_AWS_METAL_RUNNER_USER" || -z "$CI_AWS_METAL_RUNNER_HOST" ]]; then
         echo "Error: CI_AWS_METAL_RUNNER_USER and CI_AWS_METAL_RUNNER_HOST must be set" >&2
         return 1
@@ -25,7 +25,7 @@ metal_run() {
         "$@"
 }
 
-# Check if Metal instance is reachable
-metal_check() {
-    metal_run "echo 'Metal instance reachable'" >/dev/null 2>&1
+# Check if remote instance is reachable
+ssh_check() {
+    ssh_run "echo 'Remote instance reachable'" >/dev/null 2>&1
 }
