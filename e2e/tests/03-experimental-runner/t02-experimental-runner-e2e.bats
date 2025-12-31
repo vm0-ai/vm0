@@ -49,14 +49,15 @@ EOFCONFIG"
 
 # Start runner in background on AWS Metal
 start_runner() {
-    # Build environment variables for runner
-    local env_vars=""
+    # Build environment variable exports for runner
+    local env_exports=""
     if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
-        env_vars="VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' "
+        env_exports="export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && "
     fi
 
     # Start runner in background and save PID
-    ssh_run "cd ${RUNNER_DIR} && nohup ${env_vars}node index.js start > /tmp/vm0-runner-e2e.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
+    # Use bash -c to properly handle environment variables with nohup
+    ssh_run "cd ${RUNNER_DIR} && ${env_exports}nohup node index.js start > /tmp/vm0-runner-e2e.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
 
     # Wait for runner to register
     sleep 3
