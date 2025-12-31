@@ -3,6 +3,56 @@ title: Agent Anatomy
 description: Understanding what makes up a VM0 agent
 ---
 
+## An Analogy
+
+Imagine a new colleague, Joseph, joins your team. Joseph is an experienced finance expert. To help him work effectively, the team sets up a computer for him with pre-installed software like web browsers and spreadsheets. Joseph has extensive experience using these tools and specialized knowledge in finance. Your team lead assigns Joseph a routine work plan to help grow the business.
+
+This scenario has many parallels with a VM0 Agent:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Joseph at Work                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────────────┐                                                  │
+│  │       Computer        │  Pre-installed software (browser, spreadsheet)  │
+│  └───────────────────────┘                                                  │
+│             +                                                               │
+│  ┌───────────────────────┐                                                  │
+│  │  Finance Expertise    │  Joseph's specialized knowledge                 │
+│  └───────────────────────┘                                                  │
+│             +                                                               │
+│  ┌───────────────────────┐                                                  │
+│  │     Work Plan         │  Tasks assigned by team lead                    │
+│  └───────────────────────┘                                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                    ↓ maps to ↓
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              VM0 Agent                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────────────┐                                                  │
+│  │   Container Image     │  Runtime environment with pre-installed tools   │
+│  └───────────────────────┘                                                  │
+│             +                                                               │
+│  ┌───────────────────────┐                                                  │
+│  │       Skills          │  Domain-specific capabilities                   │
+│  └───────────────────────┘                                                  │
+│             +                                                               │
+│  ┌───────────────────────┐                                                  │
+│  │    Instruction        │  Tasks defined in AGENTS.md                     │
+│  └───────────────────────┘                                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+The **Agent Provider** (Claude Code or Codex) is like Joseph himself - a capable worker with general skills. The **Container Image** is like Joseph's computer with pre-installed software. **Skills** give the agent specialized expertise in specific domains. And **Instruction** is the work plan that tells the agent what to do.
+
+## Overview
+
 A VM0 agent is composed of two fundamental building blocks: a **Container Image** and a **Volume**.
 
 ```
