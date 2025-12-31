@@ -88,10 +88,12 @@ EOFCONFIG"
     ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
 }
 
-@test "vm0-runner setup shows placeholder message" {
-    run runner_cmd setup
+@test "vm0-runner setup --help shows usage" {
+    run runner_cmd setup --help
     assert_success
-    assert_output --partial "not yet implemented"
+    assert_output --partial "Configure runner authentication"
+    assert_output --partial "--api-url"
+    assert_output --partial "--test"
 }
 
 @test "vm0-runner status shows placeholder message" {
