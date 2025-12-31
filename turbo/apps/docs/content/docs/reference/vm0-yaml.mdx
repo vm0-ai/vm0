@@ -14,7 +14,6 @@ agents:
   my-agent:
     provider: claude-code
     instructions: AGENTS.md
-    image: vm0/claude-code:latest
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
