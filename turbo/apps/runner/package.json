@@ -1,0 +1,40 @@
+{
+  "name": "@vm0/runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted runner for VM0 agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vm0-ai/vm0",
+    "directory": "turbo/apps/runner"
+  },
+  "type": "module",
+  "bin": {
+    "vm0-runner": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "yaml": "^2.3.4",
+    "zod": "^3.25.64"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "tsup": "^8.5.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

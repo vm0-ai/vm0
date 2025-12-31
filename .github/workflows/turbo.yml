@@ -25,6 +25,7 @@ jobs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
+      runner-changed: ${{ steps.detect.outputs.runner-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +43,7 @@ jobs:
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=false" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "runner-changed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -51,6 +53,7 @@ jobs:
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "runner-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -97,6 +100,16 @@ jobs:
           else
             echo "No changes detected in CLI app or E2E tests"
             echo "cli-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check runner app
+          cd /__w/vm0/vm0/turbo/apps/runner
+          if npx turbo-ignore 2>/dev/null; then
+            echo "No changes detected in runner app"
+            echo "runner-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in runner app"
+            echo "runner-changed=true" >> $GITHUB_OUTPUT
           fi
 
   lint:
@@ -322,3 +335,66 @@ jobs:
             kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
             echo "Cron simulator stopped"
           fi
+
+  # Deploy runner to Metal instance
+  deploy-runner:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection]
+    # Only run if runner changed and it's a PR (experimental)
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.runner-changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build Runner
+        run: cd turbo && pnpm --filter @vm0/runner build
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > ~/.ssh/metal.pem
+          chmod 600 ~/.ssh/metal.pem
+
+      - name: Deploy to Metal instance
+        run: |
+          # Create target directory on Metal
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/metal.pem \
+            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }} \
+            "sudo mkdir -p /opt/vm0-runner && sudo chown \$(whoami) /opt/vm0-runner"
+
+          # Copy built files to Metal
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/metal.pem -r \
+            turbo/apps/runner/dist/* turbo/apps/runner/package.json \
+            ${{ secrets.CI_AWS_METAL_RUNNER_USER }}@${{ secrets.CI_AWS_METAL_RUNNER_HOST }}:/opt/vm0-runner/
+
+  # Run runner E2E tests on Metal instance
+  runner-e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-runner]
+    # Only run if runner changed, deployed successfully, and it's a PR
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.runner-changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > ~/.ssh/metal.pem
+          chmod 600 ~/.ssh/metal.pem
+
+      - name: Install GNU parallel for bats
+        run: apt-get update && apt-get install -y parallel
+
+      - name: Run Runner E2E Tests
+        run: |
+          ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats
+        env:
+          CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          SSH_KEY_PATH: ~/.ssh/metal.pem

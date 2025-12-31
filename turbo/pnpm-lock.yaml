@@ -155,6 +155,40 @@ importers:
         specifier: ^5.9.2
         version: 5.9.2
 
+  apps/runner:
+    dependencies:
+      commander:
+        specifier: ^14.0.0
+        version: 14.0.0
+      yaml:
+        specifier: ^2.3.4
+        version: 2.8.1
+      zod:
+        specifier: ^3.25.64
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.34.0(jiti@2.6.1)
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.0(@swc/core@1.15.7)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.2)(yaml@2.8.1)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.1)(tsx@4.20.6)(yaml@2.8.1)
+
   apps/web:
     dependencies:
       '@aws-sdk/client-s3':
@@ -6065,6 +6099,9 @@ packages:
   zip-stream@6.0.1:
     resolution: {integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==}
     engines: {node: '>= 14'}
+
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
   zod@4.1.12:
     resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
@@ -12813,6 +12850,8 @@ snapshots:
       archiver-utils: 5.0.2
       compress-commons: 6.0.2
       readable-stream: 4.7.0
+
+  zod@3.25.76: {}
 
   zod@4.1.12: {}
 
