@@ -1,8 +1,4 @@
 {
   "title": "Tutorial",
-  "pages": [
-    "deep-research-agent",
-    "my-first-agent",
-    "writing-instructions"
-  ]
+  "pages": ["deep-research-agent", "my-first-agent", "writing-instructions"]
 }
