@@ -17,19 +17,20 @@ Using skills and instructions is the recommended way to configure agents. Howeve
 version: "1.0"
 
 agents:
-my-agent:
-provider: claude-code
-instructions: AGENTS.md
-skills: - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
-
-````
+  my-agent:
+    provider: claude-code
+    instructions: AGENTS.md # [!code highlight]
+    skills: # [!code highlight]
+      - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
 </Tab>
 <Tab value="AGENTS.md">
 ```markdown
 You are a helpful assistant that reviews HackerNews
 and summarizes AI-related articles.
-````
-
+```
 </Tab>
 </Tabs>
 
@@ -43,26 +44,25 @@ The above configuration is equivalent to manually creating a volume:
 version: "1.0"
 
 agents:
-my-agent:
-provider: claude-code
-image: vm0/claude-code:latest
-volumes: - claude-files:/home/user/.claude
-environment:
-CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+  my-agent:
+    provider: claude-code
+    image: vm0/claude-code:latest
+    volumes: # [!code highlight]
+      - claude-files:/home/user/.claude # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-volumes:
-claude-files:
-name: claude-files
-version: latest
-
-````
+volumes: # [!code highlight]
+  claude-files: # [!code highlight]
+    name: claude-files # [!code highlight]
+    version: latest # [!code highlight]
+```
 </Tab>
 <Tab value="claude-files/CLAUDE.md">
 ```markdown
 You are a helpful assistant that reviews HackerNews
 and summarizes AI-related articles.
-````
-
+```
 </Tab>
 </Tabs>
 
