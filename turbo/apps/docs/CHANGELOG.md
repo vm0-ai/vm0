@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/docs-v0.5.0...docs-v0.5.1) (2025-12-31)
+
+
+### Bug Fixes
+
+* **docs:** align homepage structure with sidebar navigation ([#836](https://github.com/vm0-ai/vm0/issues/836)) ([f112352](https://github.com/vm0-ai/vm0/commit/f112352e0f6569e8f5a435588ba5be04937e3ed6))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/docs-v0.4.1...docs-v0.5.0) (2025-12-31)
 
 
