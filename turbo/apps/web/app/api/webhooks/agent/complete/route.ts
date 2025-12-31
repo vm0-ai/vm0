@@ -132,6 +132,12 @@ const router = tsr.router(webhookCompleteContract, {
           };
         }
 
+        // At this point, checkpoint must exist (both early returns above handle !checkpoint cases)
+        if (!checkpoint) {
+          // This should never happen, but TypeScript needs this for type narrowing
+          throw new Error("Unexpected state: checkpoint is null");
+        }
+
         // Get agent session for the conversation
         const [session] = await globalThis.services.db
           .select()
