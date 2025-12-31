@@ -41,16 +41,25 @@ interface ApiErrorResponse {
 
 /**
  * Get authentication headers
+ * Includes Vercel bypass secret if available (for CI/preview deployments)
  */
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await getToken();
   if (!token) {
     throw new Error("Not authenticated. Run 'vm0-runner setup' first.");
   }
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+
+  // Add Vercel bypass secret if available (for CI/preview deployments)
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  return headers;
 }
 
 /**
@@ -155,14 +164,22 @@ export async function completeJob(
   exitCode: number,
   error?: string,
 ): Promise<CompleteJobResult> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${context.sandboxToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // Add Vercel bypass secret if available (for CI/preview deployments)
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
   const response = await fetch(
     `${context.apiUrl}/api/webhooks/agent/complete`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${context.sandboxToken}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         runId: context.runId,
         exitCode,

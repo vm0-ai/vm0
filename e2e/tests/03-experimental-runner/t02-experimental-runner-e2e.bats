@@ -49,8 +49,14 @@ EOFCONFIG"
 
 # Start runner in background on AWS Metal
 start_runner() {
+    # Build environment variables for runner
+    local env_vars=""
+    if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+        env_vars="VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' "
+    fi
+
     # Start runner in background and save PID
-    ssh_run "cd ${RUNNER_DIR} && nohup node index.js start > /tmp/vm0-runner-e2e.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
+    ssh_run "cd ${RUNNER_DIR} && nohup ${env_vars}node index.js start > /tmp/vm0-runner-e2e.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
 
     # Wait for runner to register
     sleep 3
@@ -140,20 +146,15 @@ teardown() {
     # Give runner time to register
     sleep 5
 
-    # Check if runner API is available (skip if API returns non-JSON response)
+    # Check runner logs for registration status
     local runner_logs=$(get_runner_logs)
     echo "# Initial runner logs:"
     echo "$runner_logs"
 
-    if [[ "$runner_logs" =~ "is not valid JSON" ]] || [[ "$runner_logs" =~ "Unexpected token" ]]; then
-        skip "Runner API not available - API endpoints may not be deployed yet"
-    fi
-
-    # Check if runner registration failed
-    if [[ "$runner_logs" =~ "Error:" ]] && ! [[ "$runner_logs" =~ "Runner registered" ]]; then
-        echo "# Runner registration failed"
-        echo "$runner_logs"
-        skip "Runner registration failed - API may not be accessible"
+    # Verify runner registered successfully
+    if ! [[ "$runner_logs" =~ "Runner registered" ]]; then
+        echo "# Runner registration may have failed"
+        # Continue anyway to see the actual error in final logs
     fi
 
     echo "# Step 4: Create agent config with experimental_runner"
