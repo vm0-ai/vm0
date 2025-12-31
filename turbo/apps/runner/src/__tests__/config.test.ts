@@ -164,6 +164,7 @@ firecracker:
 
 describe("validateFirecrackerPaths", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.spyOn(fs, "existsSync");
   });
 
