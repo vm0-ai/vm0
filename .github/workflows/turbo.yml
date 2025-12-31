@@ -25,6 +25,7 @@ jobs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
+      runner-changed: ${{ steps.detect.outputs.runner-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +43,7 @@ jobs:
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=false" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "runner-changed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -51,6 +53,7 @@ jobs:
             echo "web-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "runner-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -97,6 +100,16 @@ jobs:
           else
             echo "No changes detected in CLI app or E2E tests"
             echo "cli-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check runner app
+          cd /__w/vm0/vm0/turbo/apps/runner
+          if npx turbo-ignore 2>/dev/null; then
+            echo "No changes detected in runner app"
+            echo "runner-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in runner app"
+            echo "runner-changed=true" >> $GITHUB_OUTPUT
           fi
 
   lint:
@@ -244,7 +257,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web]
+    needs: [change-detection, deploy-web, deploy-runner]
     # Run if:
     # - It's a PR, (CLI or web) changed, and web deployment succeeded
     # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
@@ -304,16 +317,36 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Setup Runner Command (if deployed)
+        if: needs.deploy-runner.outputs.runner-deployed == 'true'
+        run: |
+          mkdir -p /tmp/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
+          chmod 600 /tmp/.ssh/metal.pem
+          echo "SSH key setup for runner tests"
+
       - name: Run CLI E2E Tests
         run: |
           # Step 1: Run serial tests sequentially (establishes stable scope)
           ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats
           # Step 2: Run parallel tests with -j 10
           ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
+          # Step 3: Run runner tests if runner was deployed
+          if [ "$RUNNER_DEPLOYED" = "true" ]; then
+            echo "Running runner E2E tests..."
+            ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats
+          else
+            echo "Skipping runner tests (runner not deployed)"
+          fi
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          RUNNER_DEPLOYED: ${{ needs.deploy-runner.outputs.runner-deployed }}
+          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
+          SSH_KEY_PATH: /tmp/.ssh/metal.pem
+          CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
 
       - name: Stop Cron Simulator
         if: always()
@@ -322,3 +355,81 @@ jobs:
             kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
             echo "Cron simulator stopped"
           fi
+
+  # Deploy runner on Metal instance (PR-specific isolation)
+  deploy-runner:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web]
+    # Run whenever cli-e2e would run (CLI or web changed) so we can output runner status
+    if: |
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
+    outputs:
+      runner-deployed: ${{ steps.deploy.outputs.runner-deployed }}
+      runner-dir: ${{ steps.deploy.outputs.runner-dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p /tmp/.ssh
+          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
+          chmod 600 /tmp/.ssh/metal.pem
+
+      - name: Deploy runner
+        id: deploy
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUNNER_CHANGED: ${{ needs.change-detection.outputs.runner-changed }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+        run: |
+          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
+          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
+
+          # Only deploy if runner code changed
+          if [ "$RUNNER_CHANGED" != "true" ]; then
+            echo "Runner code not changed, skipping deployment"
+            echo "runner-deployed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Deploying runner to Metal..."
+
+          # Build runner first
+          cd turbo && pnpm --filter @vm0/runner build
+          cd ..
+
+          # Define SSH options
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
+          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+
+          # Stop any existing runner for this PR (ignore if none running)
+          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
+
+          # Create PR-specific directory on Metal
+          ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
+
+          # Create production-only package.json (remove workspace refs)
+          node -e "
+            const pkg = require('./turbo/apps/runner/package.json');
+            const prodPkg = {
+              name: pkg.name,
+              version: pkg.version,
+              type: pkg.type,
+              dependencies: pkg.dependencies
+            };
+            console.log(JSON.stringify(prodPkg, null, 2));
+          " > /tmp/package.json
+
+          # Copy built files to Metal
+          scp $SSH_OPTS -r turbo/apps/runner/dist/* /tmp/package.json "${SSH_TARGET}:${RUNNER_DIR}/"
+
+          # Install dependencies
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && npm install --omit=dev"
+
+          echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
+          echo "runner-deployed=true" >> $GITHUB_OUTPUT
