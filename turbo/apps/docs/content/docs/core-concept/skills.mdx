@@ -15,9 +15,9 @@ version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-    skills:
-      - https://github.com/anthropics/skills/tree/main/skills/pdf
-      - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+    skills: # [!code highlight]
+      - https://github.com/anthropics/skills/tree/main/skills/pdf # [!code highlight]
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack # [!code highlight]
 ```
 
 Each skill is specified as a GitHub URL pointing to a directory containing the skill definition.
