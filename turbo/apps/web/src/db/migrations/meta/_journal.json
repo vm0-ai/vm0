@@ -351,6 +351,13 @@
       "when": 1767400000000,
       "tag": "0049_create_runners_table",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1767500000000,
+      "tag": "0050_add_runner_fields_to_agent_runs",
+      "breakpoints": true
     }
   ]
 }
