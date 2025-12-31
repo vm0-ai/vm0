@@ -67,7 +67,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
  */
 async function getBaseUrl(): Promise<string> {
   const apiUrl = await getApiUrl();
-  return apiUrl || "https://www.vm0.ai";
+  if (!apiUrl) {
+    throw new Error("API URL not configured. Run 'vm0-runner setup' first.");
+  }
+  return apiUrl;
 }
 
 /**

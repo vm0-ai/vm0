@@ -22,32 +22,9 @@ import {
 const activeJobs = new Set<string>();
 
 /**
- * Execute a claimed job in stub mode (no VM, direct complete)
- * Used for testing runner infrastructure without full Firecracker setup
- */
-async function executeJobStub(context: ExecutionContext): Promise<void> {
-  console.log(`  [STUB] Executing job ${context.runId}...`);
-  console.log(`  [STUB] Prompt: ${context.prompt.substring(0, 100)}...`);
-
-  // Simulate brief execution
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  // Report completion to server
-  try {
-    const result = await completeJob(context, 0);
-    console.log(`  [STUB] Job ${context.runId} reported as ${result.status}`);
-  } catch (err) {
-    console.error(
-      `  [STUB] Failed to report job ${context.runId} completion:`,
-      err instanceof Error ? err.message : "Unknown error",
-    );
-  }
-}
-
-/**
  * Execute a claimed job in a Firecracker VM
  */
-async function executeJobFirecracker(
+async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,
 ): Promise<void> {
@@ -86,19 +63,6 @@ async function executeJobFirecracker(
   }
 }
 
-/**
- * Execute a claimed job (dispatches to stub or Firecracker based on config)
- */
-async function executeJob(
-  context: ExecutionContext,
-  config: RunnerConfig,
-): Promise<void> {
-  if (config.sandbox.stub_mode) {
-    return executeJobStub(context);
-  }
-  return executeJobFirecracker(context, config);
-}
-
 export const startCommand = new Command("start")
   .description("Start the runner")
   .option("--config <path>", "Config file path", "./runner.yaml")
@@ -124,24 +88,19 @@ export const startCommand = new Command("start")
           process.exit(0);
         }
 
-        // Skip network setup in stub mode
-        if (!config.sandbox.stub_mode) {
-          // Check network prerequisites
-          const networkCheck = checkNetworkPrerequisites();
-          if (!networkCheck.ok) {
-            console.error("Network prerequisites not met:");
-            for (const error of networkCheck.errors) {
-              console.error(`  - ${error}`);
-            }
-            process.exit(1);
+        // Check network prerequisites
+        const networkCheck = checkNetworkPrerequisites();
+        if (!networkCheck.ok) {
+          console.error("Network prerequisites not met:");
+          for (const error of networkCheck.errors) {
+            console.error(`  - ${error}`);
           }
-
-          // Set up bridge network
-          console.log("Setting up network bridge...");
-          await setupBridge();
-        } else {
-          console.log("Stub mode enabled - skipping Firecracker setup");
+          process.exit(1);
         }
+
+        // Set up bridge network
+        console.log("Setting up network bridge...");
+        await setupBridge();
 
         // Check authentication
         const token = await getToken();
@@ -176,16 +135,22 @@ export const startCommand = new Command("start")
           running = false;
         });
 
+        // Track job completion promises for graceful shutdown
+        const jobPromises = new Set<Promise<void>>();
+
         // Main polling loop
         while (running) {
-          // Check concurrency limit
+          // Check concurrency limit - skip poll if at capacity
           if (activeJobs.size >= config.sandbox.max_concurrent) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            // Wait for any job to complete before polling again
+            if (jobPromises.size > 0) {
+              await Promise.race(jobPromises);
+            }
             continue;
           }
 
           try {
-            // Poll for pending jobs
+            // Poll for pending jobs (server holds request up to 30s)
             const job = await pollForJob(config.group);
 
             if (job) {
@@ -198,7 +163,7 @@ export const startCommand = new Command("start")
 
                 // Track and execute in background
                 activeJobs.add(context.runId);
-                executeJob(context, config)
+                const jobPromise: Promise<void> = executeJob(context, config)
                   .catch((error) => {
                     console.error(
                       `Job ${context.runId} failed:`,
@@ -207,7 +172,9 @@ export const startCommand = new Command("start")
                   })
                   .finally(() => {
                     activeJobs.delete(context.runId);
+                    jobPromises.delete(jobPromise);
                   });
+                jobPromises.add(jobPromise);
               } catch (error) {
                 // Job was claimed by another runner, continue polling
                 console.log(
@@ -221,19 +188,16 @@ export const startCommand = new Command("start")
               "Polling error:",
               error instanceof Error ? error.message : "Unknown error",
             );
-            // Wait before retrying on error
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+            // Continue immediately - server long-poll provides natural backoff
           }
         }
 
         // Wait for active jobs to complete
-        if (activeJobs.size > 0) {
+        if (jobPromises.size > 0) {
           console.log(
-            `Waiting for ${activeJobs.size} active job(s) to complete...`,
+            `Waiting for ${jobPromises.size} active job(s) to complete...`,
           );
-          while (activeJobs.size > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
+          await Promise.all(jobPromises);
         }
 
         console.log("Runner stopped");

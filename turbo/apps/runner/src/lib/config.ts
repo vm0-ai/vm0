@@ -18,9 +18,6 @@ export const runnerConfigSchema = z.object({
       max_concurrent: z.number().int().min(1).default(1),
       vcpu: z.number().int().min(1).default(2),
       memory_mb: z.number().int().min(128).default(2048),
-      // Stub mode: skip Firecracker VM, call complete API directly
-      // Used for testing runner infrastructure without full VM setup
-      stub_mode: z.boolean().default(false),
     })
     .default({}),
   firecracker: z.object({

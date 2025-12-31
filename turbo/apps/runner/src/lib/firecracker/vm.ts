@@ -54,11 +54,16 @@ export class FirecrackerVM {
   private state: VMState = "created";
   private workDir: string;
   private socketPath: string;
+  private vsockPath: string;
+  private guestCid: number;
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
+    this.vsockPath = path.join(this.workDir, "vsock.sock");
+    // Guest CID must be >= 3 (0=hypervisor, 1=local, 2=host)
+    this.guestCid = config.vmId + 3;
   }
 
   /**
@@ -87,6 +92,20 @@ export class FirecrackerVM {
    */
   getSocketPath(): string {
     return this.socketPath;
+  }
+
+  /**
+   * Get the vsock socket path for host-guest communication
+   */
+  getVsockPath(): string {
+    return this.vsockPath;
+  }
+
+  /**
+   * Get the guest CID for vsock
+   */
+  getGuestCid(): number {
+    return this.guestCid;
   }
 
   /**
@@ -222,6 +241,16 @@ export class FirecrackerVM {
       guest_mac: this.networkConfig.guestMac,
       host_dev_name: this.networkConfig.tapDevice,
     });
+
+    // Configure vsock for host-guest communication
+    console.log(
+      `[VM ${this.config.vmId}] Vsock: CID ${this.guestCid}, path ${this.vsockPath}`,
+    );
+    await this.client.setVsock({
+      vsock_id: "vm0-vsock",
+      guest_cid: this.guestCid,
+      uds_path: this.vsockPath,
+    });
   }
 
   /**
@@ -241,8 +270,6 @@ export class FirecrackerVM {
       if (this.client) {
         try {
           await this.client.sendCtrlAltDel();
-          // Wait briefly for graceful shutdown
-          await new Promise((resolve) => setTimeout(resolve, 2000));
         } catch {
           // API may fail if VM is already stopping
         }

@@ -2,11 +2,11 @@
  * Job Executor
  *
  * Executes agent jobs inside Firecracker VMs.
- * Handles VM lifecycle, script injection, and job completion.
+ * Handles VM lifecycle, script injection via vsock, and job completion.
  */
 
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
-import { SSHClient, createVMSSHClient } from "./firecracker/ssh.js";
+import { VsockClient, createVMVsockClient } from "./firecracker/vsock.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
 
@@ -175,7 +175,7 @@ export async function executeJob(
 ): Promise<ExecutionResult> {
   const vmId = getNextVmId();
   let vm: FirecrackerVM | null = null;
-  let ssh: SSHClient | null = null;
+  let vsock: VsockClient | null = null;
 
   console.log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
 
@@ -195,24 +195,20 @@ export async function executeJob(
     vm = new FirecrackerVM(vmConfig);
     await vm.start();
 
-    // Get VM's IP address
-    const guestIp = vm.getGuestIp();
-    if (!guestIp) {
-      throw new Error("VM started but no IP address assigned");
-    }
+    // Get vsock path for host-guest communication
+    const vsockPath = vm.getVsockPath();
+    console.log(`[Executor] VM ${vmId} started, vsock at ${vsockPath}`);
 
-    console.log(`[Executor] VM ${vmId} started at ${guestIp}`);
+    // Create vsock client and wait for vm0-agent to be reachable
+    vsock = createVMVsockClient(vsockPath);
+    console.log(`[Executor] Waiting for vm0-agent on vsock...`);
+    await vsock.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
-    // Create SSH client and wait for VM to be reachable
-    ssh = createVMSSHClient(guestIp);
-    console.log(`[Executor] Waiting for SSH on ${guestIp}...`);
-    await ssh.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
-
-    console.log(`[Executor] SSH ready on ${guestIp}`);
+    console.log(`[Executor] vm0-agent ready on vsock`);
 
     // Create working directory
     const workingDir = "/workspace";
-    await ssh.mkdir(workingDir);
+    await vsock.mkdir(workingDir);
 
     // Set up environment variables
     const envVars: Record<string, string> = {
@@ -236,10 +232,10 @@ export async function executeJob(
       }
     }
 
-    // Write bootstrap script to VM
+    // Write bootstrap script to VM via vsock
     console.log(`[Executor] Injecting bootstrap script...`);
-    await ssh.writeFile("/tmp/vm0-bootstrap.py", BOOTSTRAP_SCRIPT);
-    await ssh.execOrThrow("chmod +x /tmp/vm0-bootstrap.py");
+    await vsock.writeFile("/tmp/vm0-bootstrap.py", BOOTSTRAP_SCRIPT);
+    await vsock.execOrThrow("chmod +x /tmp/vm0-bootstrap.py");
 
     // Build environment export string
     const envExports = Object.entries(envVars)
@@ -254,7 +250,7 @@ export async function executeJob(
     console.log(`[Executor] Running agent...`);
     const startTime = Date.now();
 
-    const result = await ssh.exec(
+    const result = await vsock.exec(
       `${envExports} && python3 /tmp/vm0-bootstrap.py`,
     );
 
