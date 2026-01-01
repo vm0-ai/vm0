@@ -84,7 +84,11 @@ export class FirecrackerClient {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          Connection: "close", // Disable keep-alive to prevent request pipelining issues
         },
+        // Disable agent to ensure fresh connection for each request
+        // Firecracker's single-threaded API can have issues with pipelined requests
+        agent: false,
       };
 
       const req = http.request(options, (res) => {
