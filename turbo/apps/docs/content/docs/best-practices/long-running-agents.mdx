@@ -15,7 +15,7 @@ Let's fix this step by step.
 
 Start simple:
 
-```markdown
+````markdown
 ## Task
 Review the last 1000 commits in the Linux kernel repository.
 For each commit, analyze:
@@ -24,7 +24,7 @@ For each commit, analyze:
 - Potential impact
 
 Generate a summary report when complete.
-```
+````
 
 The agent will start working, but expect frequent pauses asking for confirmation, or it might just stop after a while claiming the task is done.
 
@@ -32,7 +32,7 @@ The agent will start working, but expect frequent pauses asking for confirmation
 
 Tell the agent explicitly to keep going:
 
-```markdown
+````markdown
 ## Task
 Review the last 1000 commits in the Linux kernel repository.
 For each commit, analyze:
@@ -47,7 +47,7 @@ Generate a summary report when complete.
 - Do NOT pause to ask for confirmation
 - Do NOT stop until the entire task is finished
 - If you encounter an error, log it and continue with the next commit
-```
+````
 
 Better. The agent now knows to push through. But there's still a problem: when the context window fills up and gets compacted, the agent loses track of where it was.
 
@@ -55,7 +55,7 @@ Better. The agent now knows to push through. But there's still a problem: when t
 
 Give the agent a file to track progress:
 
-```markdown
+````markdown
 ## Task
 Review the last 1000 commits in the Linux kernel repository.
 
@@ -87,7 +87,7 @@ Review the last 1000 commits in the Linux kernel repository.
 - Update the file immediately after completing each task
 - Never stop until `completed` equals `total`
 - If context is compacted, re-read `tasks.json` to restore state
-```
+````
 
 Now the agent has persistent memory. After context compaction, it reads `tasks.json`, sees "423/1000 completed", and picks up where it left off. This matches [Anthropic's research](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) on the importance of progress files for state reconstruction.
 
@@ -97,7 +97,7 @@ Task tracking solves the memory problem, but there's another issue: analyzing 10
 
 The fix: delegate each commit to a subagent that returns only the summary.
 
-```markdown
+````markdown
 ## Task
 Review the last 1000 commits in the Linux kernel repository.
 
@@ -124,7 +124,7 @@ The subagent knows nothing about other commits.
 - Use subagents to prevent context bloat
 - Each subagent handles exactly ONE commit
 - Main agent context stays clean
-```
+````
 
 Each commit gets analyzed with fresh context. The main agent stays lean, just managing the queue and collecting results. If a subagent fails, it doesn't corrupt anything else.
 
@@ -132,7 +132,7 @@ Each commit gets analyzed with fresh context. The main agent stays lean, just ma
 
 Here's everything put together:
 
-```markdown
+````markdown
 # Linux Kernel Commit Reviewer
 
 You are a code review agent analyzing Linux kernel commits.
@@ -185,7 +185,7 @@ When all tasks are completed:
 - After ANY context compaction, re-read `tasks.json`
 - Each subagent handles exactly ONE commit
 - Save progress after EVERY task (not in batches)
-```
+````
 
 ## Key Principles
 
