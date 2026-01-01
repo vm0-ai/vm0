@@ -11,6 +11,10 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test-runner",
       group: "test/e2e",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       sandbox: {
         max_concurrent: 2,
         vcpu: 4,
@@ -29,6 +33,7 @@ describe("RunnerConfig Schema", () => {
       expect(result.data.name).toBe("test-runner");
       expect(result.data.group).toBe("test/e2e");
       expect(result.data.sandbox.max_concurrent).toBe(2);
+      expect(result.data.server.url).toBe("https://example.com");
     }
   });
 
@@ -36,6 +41,10 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test",
       group: "scope/name",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
@@ -53,6 +62,10 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test",
       group: "invalid-no-slash",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       sandbox: {},
       firecracker: {
         binary: "/usr/bin/firecracker",
@@ -69,6 +82,10 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test",
       group: "Scope/Name",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       sandbox: {},
       firecracker: {
         binary: "/usr/bin/firecracker",
@@ -85,6 +102,10 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "",
       group: "scope/name",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
@@ -100,8 +121,46 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test",
       group: "scope/name",
+      server: {
+        url: "https://example.com",
+        token: "test-token",
+      },
       firecracker: {
         binary: "",
+        kernel: "/opt/vmlinux",
+        rootfs: "/opt/rootfs.ext4",
+      },
+    };
+
+    const result = runnerConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject missing server config", () => {
+    const config = {
+      name: "test",
+      group: "scope/name",
+      firecracker: {
+        binary: "/usr/bin/firecracker",
+        kernel: "/opt/vmlinux",
+        rootfs: "/opt/rootfs.ext4",
+      },
+    };
+
+    const result = runnerConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject invalid server URL", () => {
+    const config = {
+      name: "test",
+      group: "scope/name",
+      server: {
+        url: "not-a-valid-url",
+        token: "test-token",
+      },
+      firecracker: {
+        binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.ext4",
       },
@@ -131,6 +190,9 @@ describe("loadConfig", () => {
     const yamlContent = `
 name: test-runner
 group: e2e/test
+server:
+  url: https://example.com
+  token: test-token
 sandbox:
   max_concurrent: 1
   vcpu: 2
@@ -145,12 +207,16 @@ firecracker:
     const config = loadConfig(testConfigPath);
     expect(config.name).toBe("test-runner");
     expect(config.group).toBe("e2e/test");
+    expect(config.server.url).toBe("https://example.com");
   });
 
   it("should throw error for invalid YAML config", () => {
     const yamlContent = `
 name: test-runner
 group: invalid-group
+server:
+  url: https://example.com
+  token: test-token
 firecracker:
   binary: /usr/bin/firecracker
   kernel: /opt/vmlinux
