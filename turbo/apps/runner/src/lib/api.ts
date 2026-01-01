@@ -7,7 +7,10 @@
  * - claimJob: Claim a job for execution
  */
 
-import { getToken, getApiUrl } from "./token.js";
+export interface ServerConfig {
+  url: string;
+  token: string;
+}
 
 export interface RunnerResponse {
   id: string;
@@ -43,11 +46,7 @@ interface ApiErrorResponse {
  * Get authentication headers
  * Includes Vercel bypass secret if available (for CI/preview deployments)
  */
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
-  if (!token) {
-    throw new Error("Not authenticated. Run 'vm0-runner setup' first.");
-  }
+function getAuthHeaders(token: string): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -63,27 +62,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * Get the API base URL
- */
-async function getBaseUrl(): Promise<string> {
-  const apiUrl = await getApiUrl();
-  if (!apiUrl) {
-    throw new Error("API URL not configured. Run 'vm0-runner setup' first.");
-  }
-  return apiUrl;
-}
-
-/**
  * Register or update a runner with the server
  */
 export async function registerRunner(
+  server: ServerConfig,
   name: string,
   group: string,
 ): Promise<RunnerResponse> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(server.token);
 
-  const response = await fetch(`${baseUrl}/api/runners/register`, {
+  const response = await fetch(`${server.url}/api/runners/register`, {
     method: "POST",
     headers,
     body: JSON.stringify({ name, group }),
@@ -103,12 +91,14 @@ export async function registerRunner(
  * Poll for pending jobs (long-polling)
  * Returns a job if available, null if timeout reached
  */
-export async function pollForJob(group: string): Promise<Job | null> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getAuthHeaders();
+export async function pollForJob(
+  server: ServerConfig,
+  group: string,
+): Promise<Job | null> {
+  const headers = getAuthHeaders(server.token);
 
   const response = await fetch(
-    `${baseUrl}/api/runners/poll?group=${encodeURIComponent(group)}`,
+    `${server.url}/api/runners/poll?group=${encodeURIComponent(group)}`,
     {
       method: "GET",
       headers,
@@ -131,17 +121,20 @@ export async function pollForJob(group: string): Promise<Job | null> {
  * Returns execution context with sandbox token
  */
 export async function claimJob(
+  server: ServerConfig,
   runId: string,
   runnerId: string,
 ): Promise<ExecutionContext> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getAuthHeaders();
+  const headers = getAuthHeaders(server.token);
 
-  const response = await fetch(`${baseUrl}/api/runners/jobs/${runId}/claim`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ runnerId }),
-  });
+  const response = await fetch(
+    `${server.url}/api/runners/jobs/${runId}/claim`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ runnerId }),
+    },
+  );
 
   if (!response.ok) {
     const errorData = (await response.json()) as ApiErrorResponse;

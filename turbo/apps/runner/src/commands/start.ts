@@ -11,7 +11,6 @@ import {
   completeJob,
   type ExecutionContext,
 } from "../lib/api.js";
-import { getToken } from "../lib/token.js";
 import { executeJob as executeJobInVM } from "../lib/executor.js";
 import {
   checkNetworkPrerequisites,
@@ -66,14 +65,9 @@ async function executeJob(
 export const startCommand = new Command("start")
   .description("Start the runner")
   .option("--config <path>", "Config file path", "./runner.yaml")
-  .option("--api-url <url>", "VM0 API URL")
   .option("--dry-run", "Validate config without starting")
   .action(
-    async (options: {
-      config: string;
-      apiUrl?: string;
-      dryRun?: boolean;
-    }): Promise<void> => {
+    async (options: { config: string; dryRun?: boolean }): Promise<void> => {
       try {
         // Load and validate config
         const config = loadConfig(options.config);
@@ -102,20 +96,15 @@ export const startCommand = new Command("start")
         console.log("Setting up network bridge...");
         await setupBridge();
 
-        // Check authentication
-        const token = await getToken();
-        if (!token) {
-          console.error(
-            "Error: Not authenticated. Run 'vm0-runner setup' first.",
-          );
-          process.exit(1);
-        }
-
         // Register runner with server
         console.log(
           `Registering runner '${config.name}' for group '${config.group}'...`,
         );
-        const runner = await registerRunner(config.name, config.group);
+        const runner = await registerRunner(
+          config.server,
+          config.name,
+          config.group,
+        );
         console.log(`Runner registered: ${runner.id}`);
 
         // Start polling loop
@@ -151,14 +140,18 @@ export const startCommand = new Command("start")
 
           try {
             // Poll for pending jobs (server holds request up to 30s)
-            const job = await pollForJob(config.group);
+            const job = await pollForJob(config.server, config.group);
 
             if (job) {
               console.log(`Found job: ${job.runId}`);
 
               // Claim the job
               try {
-                const context = await claimJob(job.runId, runner.id);
+                const context = await claimJob(
+                  config.server,
+                  job.runId,
+                  runner.id,
+                );
                 console.log(`Claimed job: ${context.runId}`);
 
                 // Track and execute in background

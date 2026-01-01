@@ -18,24 +18,18 @@ runner_cmd() {
     ssh_run "cd ${RUNNER_DIR} && node index.js $*"
 }
 
-# Setup runner authentication and config on AWS Metal
-setup_runner_auth() {
+# Setup runner config on AWS Metal
+setup_runner_config() {
     local token="$1"
     local api_url="$2"
 
-    # Create ~/.vm0 directory and runner-token.json on remote
-    ssh_run "mkdir -p ~/.vm0"
-    ssh_run "cat > ~/.vm0/runner-token.json << 'EOFTOKEN'
-{
-  \"token\": \"${token}\",
-  \"apiUrl\": \"${api_url}\"
-}
-EOFTOKEN"
-
-    # Create runner.yaml config for full Firecracker execution
-    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
+    # Create runner.yaml config with server credentials for full Firecracker execution
+    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << EOFCONFIG
 name: e2e-test-runner
 group: ${TEST_RUNNER_GROUP}
+server:
+  url: ${api_url}
+  token: ${token}
 sandbox:
   max_concurrent: 1
   vcpu: 2
@@ -117,7 +111,7 @@ teardown() {
     fi
 
     # Clean up remote config
-    ssh_run "rm -f ~/.vm0/runner-token.json ${RUNNER_DIR}/runner.yaml" 2>/dev/null || true
+    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml" 2>/dev/null || true
 }
 
 # ============================================
@@ -133,8 +127,8 @@ teardown() {
     local token=$(cat "$cli_config_file" | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
     [ -n "$token" ] || fail "No token found in CLI config"
 
-    echo "# Step 2: Setup runner authentication on AWS Metal"
-    setup_runner_auth "$token" "$VM0_API_URL"
+    echo "# Step 2: Setup runner config on AWS Metal"
+    setup_runner_config "$token" "$VM0_API_URL"
 
     echo "# Step 3: Start runner in background"
     run start_runner

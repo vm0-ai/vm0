@@ -44,10 +44,13 @@ setup() {
 }
 
 @test "vm0-runner start --dry-run validates config" {
-    # Create test config on remote
+    # Create test config on remote with server credentials
     ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: ci-runner
 group: e2e/test
+server:
+  url: https://example.com
+  token: test-token
 sandbox:
   max_concurrent: 1
   vcpu: 2
@@ -73,6 +76,9 @@ EOFCONFIG"
     ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: ci-runner
 group: invalid-no-slash
+server:
+  url: https://example.com
+  token: test-token
 sandbox:
   max_concurrent: 1
 firecracker:
@@ -87,14 +93,6 @@ EOFCONFIG"
 
     # Cleanup
     ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
-}
-
-@test "vm0-runner setup --help shows usage" {
-    run runner_cmd setup --help
-    assert_success
-    assert_output --partial "Configure runner authentication"
-    assert_output --partial "--api-url"
-    assert_output --partial "--test"
 }
 
 @test "vm0-runner status shows placeholder message" {
