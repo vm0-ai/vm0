@@ -348,8 +348,8 @@ jobs:
           fi
           echo "Token obtained successfully"
 
-          echo "Creating runner.yaml config on Metal..."
-          ssh $SSH_OPTS "$SSH_TARGET" "cat > ${RUNNER_DIR}/runner.yaml << EOFCONFIG
+          echo "Creating runner.yaml config locally..."
+          cat > /tmp/runner.yaml <<EOF
           name: e2e-runner-pr-${PR_NUMBER}
           group: ${RUNNER_GROUP}
           server:
@@ -363,17 +363,17 @@ jobs:
             binary: /usr/local/bin/firecracker
             kernel: /opt/firecracker/vmlinux
             rootfs: /opt/firecracker/rootfs.ext4
-          EOFCONFIG"
+          EOF
+
+          echo "Copying runner.yaml to Metal..."
+          scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
 
           echo "Stopping any existing runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}' || true"
+          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
           sleep 2
 
           echo "Starting runner on Metal..."
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && \
-            export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && \
-            export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && \
-            nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 &"
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 &"
 
           sleep 5
 
@@ -427,9 +427,9 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
           echo "Stopping runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}' || true"
+          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
           echo "Getting final runner logs..."
-          ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs'" || true
+          ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
           echo "Runner stopped"
 
       - name: Stop Cron Simulator
