@@ -10,6 +10,10 @@ import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
 
+// Ensure this route is always dynamically rendered (never cached)
+// This is critical for authentication headers to be properly read
+export const dynamic = "force-dynamic";
+
 const log = logger("api:runners:poll");
 
 const router = tsr.router(runnersPollContract, {
