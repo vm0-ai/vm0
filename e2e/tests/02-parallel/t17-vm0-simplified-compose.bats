@@ -323,8 +323,10 @@ EOF
 
     echo "# Running agent to verify skill is mounted..."
     # The skill is mounted at /home/user/.claude/skills/github/
+    # Provide mock GH_TOKEN since the github skill requires it
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --secrets GH_TOKEN=mock-token \
         "ls /home/user/.claude/skills/github/"
     assert_success
 
