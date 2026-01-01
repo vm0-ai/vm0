@@ -9,8 +9,12 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
+import { headers } from "next/headers";
 
 const log = logger("api:runners:poll");
+
+// Force dynamic rendering to prevent any caching
+export const dynamic = "force-dynamic";
 
 // Long-polling timeout in milliseconds
 const POLL_TIMEOUT_MS = 30000;
@@ -28,8 +32,18 @@ const router = tsr.router(runnersPollContract, {
   poll: async ({ query }) => {
     initServices();
 
+    // Debug logging for auth troubleshooting
+    const headersList = await headers();
+    const authHeader = headersList.get("Authorization");
+    log.debug(
+      `Poll request - Auth header present: ${!!authHeader}, starts with Bearer: ${authHeader?.startsWith("Bearer ")}, has vm0_live: ${authHeader?.includes("vm0_live_")}`,
+    );
+
     const userId = await getUserId();
     if (!userId) {
+      log.warn(
+        `Poll auth failed - Auth header: ${authHeader ? "present" : "missing"}, Token prefix: ${authHeader?.substring(0, 20)}...`,
+      );
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 

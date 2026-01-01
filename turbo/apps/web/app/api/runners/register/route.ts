@@ -8,6 +8,9 @@ import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:runners:register");
 
+// Force dynamic rendering to prevent any caching
+export const dynamic = "force-dynamic";
+
 const router = tsr.router(runnersRegisterContract, {
   register: async ({ body }) => {
     initServices();

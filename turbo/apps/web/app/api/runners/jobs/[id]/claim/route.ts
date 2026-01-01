@@ -17,6 +17,9 @@ import type { AgentComposeYaml } from "../../../../../../src/types/agent-compose
 
 const log = logger("api:runners:jobs:claim");
 
+// Force dynamic rendering to prevent any caching
+export const dynamic = "force-dynamic";
+
 /**
  * Get the first agent from compose (currently only one agent is supported)
  */
