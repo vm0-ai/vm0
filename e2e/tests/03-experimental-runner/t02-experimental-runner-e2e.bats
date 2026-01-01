@@ -48,6 +48,9 @@ start_runner() {
     if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
         env_exports="export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && "
     fi
+    if [ -n "$USE_MOCK_CLAUDE" ]; then
+        env_exports="${env_exports}export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && "
+    fi
 
     # Start runner in background and save PID
     # Use bash -c to properly handle environment variables with nohup

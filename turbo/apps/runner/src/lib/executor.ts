@@ -63,6 +63,12 @@ function buildEnvironmentVariables(
     envVars.VERCEL_PROTECTION_BYPASS = vercelBypass;
   }
 
+  // Pass USE_MOCK_CLAUDE from host environment for testing
+  const useMockClaude = process.env.USE_MOCK_CLAUDE;
+  if (useMockClaude) {
+    envVars.USE_MOCK_CLAUDE = useMockClaude;
+  }
+
   // Add artifact configuration if present
   if (context.storageManifest?.artifact) {
     const artifact = context.storageManifest.artifact;
@@ -110,6 +116,19 @@ function buildEnvExports(envVars: Record<string, string>): string {
       return `export ${key}='${escapedValue}'`;
     })
     .join(" && ");
+}
+
+/**
+ * Configure DNS in the VM
+ * Uses Google Public DNS and Cloudflare DNS for reliability
+ */
+async function configureDNS(vsock: VsockClient): Promise<void> {
+  // Write resolv.conf with public DNS servers
+  await vsock.execOrThrow(
+    `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
+      `echo "nameserver 8.8.4.4" >> /etc/resolv.conf && ` +
+      `echo "nameserver 1.1.1.1" >> /etc/resolv.conf`,
+  );
 }
 
 /**
@@ -245,6 +264,10 @@ export async function executeJob(
     await vsock.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
     console.log(`[Executor] vm0-agent ready on vsock`);
+
+    // Configure DNS for network access
+    console.log(`[Executor] Configuring DNS...`);
+    await configureDNS(vsock);
 
     // Upload all Python scripts via tar archive
     console.log(`[Executor] Uploading scripts...`);
