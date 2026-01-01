@@ -77,15 +77,25 @@ export class FirecrackerClient {
     body?: unknown,
   ): Promise<unknown> {
     return new Promise((resolve, reject) => {
+      // Serialize body first to calculate Content-Length
+      const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
+
+      const headers: http.OutgoingHttpHeaders = {
+        Accept: "application/json",
+        Connection: "close", // Disable keep-alive to prevent request pipelining issues
+      };
+
+      // Set Content-Type and Content-Length for requests with body
+      if (bodyStr !== undefined) {
+        headers["Content-Type"] = "application/json";
+        headers["Content-Length"] = Buffer.byteLength(bodyStr);
+      }
+
       const options: http.RequestOptions = {
         socketPath: this.socketPath,
         path,
         method,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Connection: "close", // Disable keep-alive to prevent request pipelining issues
-        },
+        headers,
         // Disable agent to ensure fresh connection for each request
         // Firecracker's single-threaded API can have issues with pipelined requests
         agent: false,
@@ -132,8 +142,8 @@ export class FirecrackerClient {
         reject(new Error(`Failed to connect to Firecracker: ${err.message}`));
       });
 
-      if (body !== undefined) {
-        req.write(JSON.stringify(body));
+      if (bodyStr !== undefined) {
+        req.write(bodyStr);
       }
 
       req.end();
