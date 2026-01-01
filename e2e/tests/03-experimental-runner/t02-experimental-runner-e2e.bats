@@ -33,7 +33,7 @@ server:
 sandbox:
   max_concurrent: 1
   vcpu: 2
-  memory_mb: 2048
+  memory_mb: 512
 firecracker:
   binary: /usr/local/bin/firecracker
   kernel: /opt/firecracker/vmlinux
