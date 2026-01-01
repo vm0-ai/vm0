@@ -139,49 +139,54 @@ export const startCommand = new Command("start")
           }
 
           try {
-            // Poll for pending jobs (server holds request up to 30s)
+            // Poll for pending jobs
             const job = await pollForJob(config.server, config.group);
 
-            if (job) {
-              console.log(`Found job: ${job.runId}`);
+            if (!job) {
+              // No job found, wait before polling again
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              continue;
+            }
 
-              // Claim the job
-              try {
-                const context = await claimJob(
-                  config.server,
-                  job.runId,
-                  runner.id,
-                );
-                console.log(`Claimed job: ${context.runId}`);
+            console.log(`Found job: ${job.runId}`);
 
-                // Track and execute in background
-                activeJobs.add(context.runId);
-                const jobPromise: Promise<void> = executeJob(context, config)
-                  .catch((error) => {
-                    console.error(
-                      `Job ${context.runId} failed:`,
-                      error instanceof Error ? error.message : "Unknown error",
-                    );
-                  })
-                  .finally(() => {
-                    activeJobs.delete(context.runId);
-                    jobPromises.delete(jobPromise);
-                  });
-                jobPromises.add(jobPromise);
-              } catch (error) {
-                // Job was claimed by another runner, continue polling
-                console.log(
-                  `Could not claim job ${job.runId}:`,
-                  error instanceof Error ? error.message : "Unknown error",
-                );
-              }
+            // Claim the job
+            try {
+              const context = await claimJob(
+                config.server,
+                job.runId,
+                runner.id,
+              );
+              console.log(`Claimed job: ${context.runId}`);
+
+              // Track and execute in background
+              activeJobs.add(context.runId);
+              const jobPromise: Promise<void> = executeJob(context, config)
+                .catch((error) => {
+                  console.error(
+                    `Job ${context.runId} failed:`,
+                    error instanceof Error ? error.message : "Unknown error",
+                  );
+                })
+                .finally(() => {
+                  activeJobs.delete(context.runId);
+                  jobPromises.delete(jobPromise);
+                });
+              jobPromises.add(jobPromise);
+            } catch (error) {
+              // Job was claimed by another runner, continue polling
+              console.log(
+                `Could not claim job ${job.runId}:`,
+                error instanceof Error ? error.message : "Unknown error",
+              );
             }
           } catch (error) {
             console.error(
               "Polling error:",
               error instanceof Error ? error.message : "Unknown error",
             );
-            // Continue immediately - server long-poll provides natural backoff
+            // Wait before retrying after error
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         }
 
