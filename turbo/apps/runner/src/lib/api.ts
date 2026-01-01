@@ -135,6 +135,9 @@ export async function registerRunner(
 /**
  * Poll for pending jobs (long-polling)
  * Returns a job if available, null if timeout reached
+ *
+ * NOTE: Uses POST instead of GET to avoid CDN caching issues on preview deployments.
+ * POST requests are never cached, ensuring the Authorization header is always read fresh.
  */
 export async function pollForJob(
   server: ServerConfig,
@@ -142,13 +145,11 @@ export async function pollForJob(
 ): Promise<Job | null> {
   const headers = getAuthHeaders(server.token);
 
-  const response = await fetch(
-    `${server.url}/api/runners/poll?group=${encodeURIComponent(group)}`,
-    {
-      method: "GET",
-      headers,
-    },
-  );
+  const response = await fetch(`${server.url}/api/runners/poll`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ group }),
+  });
 
   if (!response.ok) {
     const errorData = (await response.json()) as ApiErrorResponse;

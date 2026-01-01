@@ -66,14 +66,17 @@ export const jobSchema = z.object({
 });
 
 /**
- * Runners poll contract - GET /api/runners/poll
+ * Runners poll contract - POST /api/runners/poll
  * Long-polling endpoint to fetch pending jobs for a runner group
+ *
+ * NOTE: Uses POST instead of GET to avoid CDN caching issues on preview deployments.
+ * POST requests are never cached, ensuring the Authorization header is always read fresh.
  */
 export const runnersPollContract = c.router({
   poll: {
-    method: "GET",
+    method: "POST",
     path: "/api/runners/poll",
-    query: z.object({
+    body: z.object({
       group: runnerGroupSchema,
     }),
     responses: {

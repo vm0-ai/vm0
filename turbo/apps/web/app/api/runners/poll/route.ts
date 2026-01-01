@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 const log = logger("api:runners:poll");
 
 const router = tsr.router(runnersPollContract, {
-  poll: async ({ query }) => {
+  poll: async ({ body }) => {
     initServices();
 
     const userId = await getUserId();
@@ -25,7 +25,7 @@ const router = tsr.router(runnersPollContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { group } = query;
+    const { group } = body;
 
     // Simple single query - runner client handles polling loop
     const [pendingRun] = await globalThis.services.db
@@ -89,8 +89,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
       queryError: { issues: Array<{ path: string[]; message: string }> } | null;
     };
 
-    if (validationError.queryError) {
-      const issue = validationError.queryError.issues[0];
+    if (validationError.bodyError) {
+      const issue = validationError.bodyError.issues[0];
       if (issue) {
         const path = issue.path.join(".");
         const message = path ? `${path}: ${issue.message}` : issue.message;
@@ -109,4 +109,4 @@ const handler = createHandler(runnersPollContract, router, {
   errorHandler,
 });
 
-export { handler as GET };
+export { handler as POST };
