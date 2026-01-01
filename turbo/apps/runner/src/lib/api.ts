@@ -30,9 +30,54 @@ export interface Job {
   checkpointId: string | null;
 }
 
+/**
+ * Storage entry in manifest
+ */
+export interface StorageEntry {
+  mountPath: string;
+  archiveUrl: string | null;
+}
+
+/**
+ * Artifact entry in manifest
+ */
+export interface ArtifactEntry {
+  mountPath: string;
+  archiveUrl: string | null;
+  vasStorageName: string;
+  vasVersionId: string;
+}
+
+/**
+ * Storage manifest containing presigned URLs for download
+ */
+export interface StorageManifest {
+  storages: StorageEntry[];
+  artifact: ArtifactEntry | null;
+}
+
+/**
+ * Resume session information
+ */
+export interface ResumeSession {
+  sessionId: string;
+  sessionHistory: string;
+}
+
+/**
+ * Execution context returned by claim API
+ * Contains all information needed to execute the job
+ */
 export interface ExecutionContext extends Job {
   sandboxToken: string;
   apiUrl: string;
+  // New fields for E2B parity:
+  workingDir: string;
+  storageManifest: StorageManifest | null;
+  environment: Record<string, string> | null;
+  resumeSession: ResumeSession | null;
+  secretValues: string[] | null;
+  cliAgentType: string;
 }
 
 interface ApiErrorResponse {

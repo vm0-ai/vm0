@@ -89,6 +89,40 @@ export const runnersPollContract = c.router({
 });
 
 /**
+ * Storage entry in manifest
+ */
+export const storageEntrySchema = z.object({
+  mountPath: z.string(),
+  archiveUrl: z.string().nullable(),
+});
+
+/**
+ * Artifact entry in manifest
+ */
+export const artifactEntrySchema = z.object({
+  mountPath: z.string(),
+  archiveUrl: z.string().nullable(),
+  vasStorageName: z.string(),
+  vasVersionId: z.string(),
+});
+
+/**
+ * Storage manifest with presigned URLs for download
+ */
+export const storageManifestSchema = z.object({
+  storages: z.array(storageEntrySchema),
+  artifact: artifactEntrySchema.nullable(),
+});
+
+/**
+ * Resume session information
+ */
+export const resumeSessionSchema = z.object({
+  sessionId: z.string(),
+  sessionHistory: z.string(),
+});
+
+/**
  * Execution context returned when claiming a job
  */
 export const executionContextSchema = z.object({
@@ -100,6 +134,13 @@ export const executionContextSchema = z.object({
   checkpointId: z.string().uuid().nullable(),
   sandboxToken: z.string(),
   apiUrl: z.string(),
+  // New fields for E2B parity:
+  workingDir: z.string(),
+  storageManifest: storageManifestSchema.nullable(),
+  environment: z.record(z.string(), z.string()).nullable(),
+  resumeSession: resumeSessionSchema.nullable(),
+  secretValues: z.array(z.string()).nullable(),
+  cliAgentType: z.string(),
 });
 
 /**
@@ -135,3 +176,7 @@ export type RunnerResponse = z.infer<typeof runnerResponseSchema>;
 export type RunnerStatus = z.infer<typeof runnerStatusSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
+export type StorageEntry = z.infer<typeof storageEntrySchema>;
+export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
+export type StorageManifest = z.infer<typeof storageManifestSchema>;
+export type ResumeSession = z.infer<typeof resumeSessionSchema>;
