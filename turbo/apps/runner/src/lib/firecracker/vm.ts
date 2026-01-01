@@ -216,7 +216,6 @@ export class FirecrackerVM {
     await this.client.setMachineConfig({
       vcpu_count: this.config.vcpus,
       mem_size_mib: this.config.memoryMb,
-      smt: false,
     });
 
     // Configure boot source (kernel)

@@ -91,6 +91,11 @@ export class FirecrackerClient {
         headers["Content-Length"] = Buffer.byteLength(bodyStr);
       }
 
+      // Debug log
+      console.log(
+        `[FC API] ${method} ${path}${bodyStr ? ` (${Buffer.byteLength(bodyStr)} bytes)` : ""}`,
+      );
+
       const options: http.RequestOptions = {
         socketPath: this.socketPath,
         path,
