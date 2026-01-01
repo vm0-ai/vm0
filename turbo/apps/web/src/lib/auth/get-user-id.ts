@@ -20,6 +20,12 @@ export async function getUserId(): Promise<string | null> {
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 
+  // Debug: log auth header status
+  log.debug("getUserId called", {
+    hasAuthHeader: !!authHeader,
+    authHeaderPrefix: authHeader?.substring(0, 20),
+  });
+
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7); // Remove "Bearer "
 
@@ -50,9 +56,13 @@ export async function getUserId(): Promise<string | null> {
           .where(eq(cliTokens.token, token))
           .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
+        log.debug("CLI token authenticated", { userId: tokenRecord.userId });
         return tokenRecord.userId;
       }
 
+      log.debug("CLI token not found or expired", {
+        tokenPrefix: token.substring(0, 15),
+      });
       return null;
     }
 
