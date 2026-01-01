@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # Test Runner artifact checkpoint versioning
-# Adapted from 02-parallel/t04-vm0-artifact-checkpoint.bats for runner execution
+# The runner is started by the CI workflow before these tests run.
 #
 # This test verifies that:
 # 1. Agent runs create new artifact versions during checkpoint
@@ -13,70 +13,10 @@ load '../../helpers/ssh.bash'
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t03"
 
-# Test-specific setup
-TEST_RUNNER_GROUP="e2e/checkpoint-test-$$"
-RUNNER_PID_FILE="/tmp/vm0-runner-checkpoint-$$.pid"
-
-# Helper to run vm0-runner commands on remote
-runner_cmd() {
-    ssh_run "cd ${RUNNER_DIR} && node index.js $*"
-}
-
-# Setup runner config on AWS Metal
-setup_runner_config() {
-    local token="$1"
-    local api_url="$2"
-
-    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << EOFCONFIG
-name: e2e-checkpoint-runner
-group: ${TEST_RUNNER_GROUP}
-server:
-  url: ${api_url}
-  token: ${token}
-sandbox:
-  max_concurrent: 1
-  vcpu: 2
-  memory_mb: 512
-firecracker:
-  binary: /usr/local/bin/firecracker
-  kernel: /opt/firecracker/vmlinux
-  rootfs: /opt/firecracker/rootfs.ext4
-EOFCONFIG"
-}
-
-# Start runner in background on AWS Metal
-start_runner() {
-    local env_exports=""
-    if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
-        env_exports="export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && "
-    fi
-    if [ -n "$USE_MOCK_CLAUDE" ]; then
-        env_exports="${env_exports}export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && "
-    fi
-
-    ssh_run "cd ${RUNNER_DIR} && ${env_exports}nohup node index.js start > /tmp/vm0-runner-checkpoint.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
-    sleep 5
-
-    local pid=$(ssh_run "cat ${RUNNER_PID_FILE} 2>/dev/null || echo ''")
-    if [ -z "$pid" ]; then
-        echo "Failed to start runner"
-        return 1
-    fi
-    echo "Runner started with PID: $pid"
-}
-
-# Stop runner on AWS Metal
-stop_runner() {
-    local pid=$(ssh_run "cat ${RUNNER_PID_FILE} 2>/dev/null || echo ''")
-    if [ -n "$pid" ]; then
-        ssh_run "kill $pid 2>/dev/null || true"
-        ssh_run "rm -f ${RUNNER_PID_FILE}"
-    fi
-}
-
-# Get runner logs
+# Get runner logs (for debugging)
 get_runner_logs() {
-    ssh_run "cat /tmp/vm0-runner-checkpoint.log 2>/dev/null || echo 'No logs'"
+    local pr_num="${PR_NUMBER:-unknown}"
+    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
 }
 
 setup() {
@@ -93,6 +33,10 @@ setup() {
         skip "VM0_API_URL not set"
     fi
 
+    if [[ -z "$RUNNER_GROUP" ]]; then
+        skip "RUNNER_GROUP not set - runner was not started by workflow"
+    fi
+
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
@@ -107,7 +51,7 @@ agents:
     description: "E2E test agent for checkpoint testing with runner"
     provider: claude-code
     experimental_runner:
-      group: ${TEST_RUNNER_GROUP}
+      group: ${RUNNER_GROUP}
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -119,9 +63,6 @@ EOF
 }
 
 teardown() {
-    # Stop runner
-    stop_runner
-
     # Clean up temporary directory
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
@@ -130,8 +71,6 @@ teardown() {
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
-    # Clean up remote config
-    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml" 2>/dev/null || true
 }
 
 @test "Runner checkpoint: compose agent with experimental_runner" {
@@ -141,26 +80,10 @@ teardown() {
 }
 
 @test "Runner checkpoint: agent changes preserved on resume, not HEAD" {
-    # Get CLI auth token
-    local cli_config_file="$HOME/.vm0/config.json"
-    [ -f "$cli_config_file" ] || skip "CLI config not found - auth automation must run first"
-
-    local token=$(cat "$cli_config_file" | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-    [ -n "$token" ] || skip "No token found in CLI config"
-
-    # Setup and start runner
-    echo "# Step 0: Starting runner..."
-    setup_runner_config "$token" "$VM0_API_URL"
-    run start_runner
-    assert_success
-    sleep 10
-
-    # Verify runner is actually polling
-    echo "# Initial runner logs:"
-    get_runner_logs
+    echo "# Using shared runner with group: ${RUNNER_GROUP}"
 
     # Compose the agent
-    echo "# Step 0.5: Composing agent..."
+    echo "# Step 0: Composing agent..."
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
 
