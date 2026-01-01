@@ -5,6 +5,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { runners } from "../../../../src/db/schema/runner";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
+import { headers } from "next/headers";
 
 // Ensure this route is always dynamically rendered (never cached)
 // This is critical for authentication headers to be properly read
@@ -16,8 +17,20 @@ const router = tsr.router(runnersRegisterContract, {
   register: async ({ body }) => {
     initServices();
 
+    // Debug: Log auth header before checking
+    const headersList = await headers();
+    const authHeader = headersList.get("Authorization");
+    log.debug("Register request received", {
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
+      bodyName: body.name,
+    });
+
     const userId = await getUserId();
     if (!userId) {
+      log.warn("Register authentication failed", {
+        authHeaderPresent: !!authHeader,
+      });
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
