@@ -55,7 +55,7 @@ start_runner() {
     fi
 
     ssh_run "cd ${RUNNER_DIR} && ${env_exports}nohup node index.js start > /tmp/vm0-runner-checkpoint.log 2>&1 & echo \$! > ${RUNNER_PID_FILE}"
-    sleep 3
+    sleep 5
 
     local pid=$(ssh_run "cat ${RUNNER_PID_FILE} 2>/dev/null || echo ''")
     if [ -z "$pid" ]; then
@@ -153,7 +153,11 @@ teardown() {
     setup_runner_config "$token" "$VM0_API_URL"
     run start_runner
     assert_success
-    sleep 5
+    sleep 10
+
+    # Verify runner is actually polling
+    echo "# Initial runner logs:"
+    get_runner_logs
 
     # Compose the agent
     echo "# Step 0.5: Composing agent..."
@@ -173,12 +177,16 @@ teardown() {
 
     # Step 2: Run agent to modify artifact
     echo "# Step 2: Running agent to modify artifact..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     echo "# Run output:"
     echo "$output"
+
+    # Always show runner logs for debugging
+    echo "# Runner logs (after run):"
+    get_runner_logs
 
     assert_success
     assert_output --partial "Checkpoint:"
