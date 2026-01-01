@@ -55,6 +55,7 @@ export class FirecrackerVM {
   private workDir: string;
   private socketPath: string;
   private vsockPath: string;
+  private vmRootfsPath: string; // Per-VM copy of rootfs
   private guestCid: number;
 
   constructor(config: VMConfig) {
@@ -62,6 +63,7 @@ export class FirecrackerVM {
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vsockPath = path.join(this.workDir, "vsock.sock");
+    this.vmRootfsPath = path.join(this.workDir, "rootfs.ext4");
     // Guest CID must be >= 3 (0=hypervisor, 1=local, 2=host)
     this.guestCid = config.vmId + 3;
   }
@@ -125,6 +127,11 @@ export class FirecrackerVM {
       if (fs.existsSync(this.socketPath)) {
         fs.unlinkSync(this.socketPath);
       }
+
+      // Copy rootfs to VM-local path for isolation
+      // Each VM needs its own writable copy to prevent corruption
+      console.log(`[VM ${this.config.vmId}] Copying rootfs for isolation...`);
+      fs.copyFileSync(this.config.rootfsPath, this.vmRootfsPath);
 
       // Set up network first
       console.log(`[VM ${this.config.vmId}] Setting up network...`);
@@ -223,11 +230,11 @@ export class FirecrackerVM {
       boot_args: bootArgs,
     });
 
-    // Configure root drive
-    console.log(`[VM ${this.config.vmId}] Rootfs: ${this.config.rootfsPath}`);
+    // Configure root drive (using VM-local copy for isolation)
+    console.log(`[VM ${this.config.vmId}] Rootfs: ${this.vmRootfsPath}`);
     await this.client.setDrive({
       drive_id: "rootfs",
-      path_on_host: this.config.rootfsPath,
+      path_on_host: this.vmRootfsPath,
       is_root_device: true,
       is_read_only: false, // Need write access for agent execution
     });
@@ -307,6 +314,15 @@ export class FirecrackerVM {
     if (fs.existsSync(this.socketPath)) {
       try {
         fs.unlinkSync(this.socketPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    // Clean up VM-local rootfs copy to save disk space
+    if (fs.existsSync(this.vmRootfsPath)) {
+      try {
+        fs.unlinkSync(this.vmRootfsPath);
       } catch {
         // Ignore cleanup errors
       }
