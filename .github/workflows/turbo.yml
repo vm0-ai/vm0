@@ -349,26 +349,20 @@ jobs:
           echo "Token obtained successfully"
 
           echo "Creating runner.yaml config locally..."
-          cat > /tmp/runner.yaml <<'EOF'
-name: e2e-runner-pr-PRNUM
-group: GRPNAME
-server:
-  url: APIURL
-  token: TOKENVAL
-sandbox:
-  max_concurrent: 1
-  vcpu: 2
-  memory_mb: 512
-firecracker:
-  binary: /usr/local/bin/firecracker
-  kernel: /opt/firecracker/vmlinux
-  rootfs: /opt/firecracker/rootfs.ext4
-EOF
-          # Replace placeholders with actual values
-          sed -i "s|PRNUM|${PR_NUMBER}|g" /tmp/runner.yaml
-          sed -i "s|GRPNAME|${RUNNER_GROUP}|g" /tmp/runner.yaml
-          sed -i "s|APIURL|${VM0_API_URL}|g" /tmp/runner.yaml
-          sed -i "s|TOKENVAL|${TOKEN}|g" /tmp/runner.yaml
+          printf '%s\n' \
+            "name: e2e-runner-pr-${PR_NUMBER}" \
+            "group: ${RUNNER_GROUP}" \
+            "server:" \
+            "  url: ${VM0_API_URL}" \
+            "  token: ${TOKEN}" \
+            "sandbox:" \
+            "  max_concurrent: 1" \
+            "  vcpu: 2" \
+            "  memory_mb: 512" \
+            "firecracker:" \
+            "  binary: /usr/local/bin/firecracker" \
+            "  kernel: /opt/firecracker/vmlinux" \
+            "  rootfs: /opt/firecracker/rootfs.ext4" > /tmp/runner.yaml
 
           echo "Copying runner.yaml to Metal..."
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
