@@ -19,7 +19,7 @@ import type {
   ResumeSession,
 } from "./api.js";
 import type { RunnerConfig } from "./config.js";
-import { getAllScripts, createScriptsTarBuffer } from "./scripts/tar.js";
+import { getAllScripts } from "./scripts/tar.js";
 import { SCRIPT_PATHS } from "./scripts/index.js";
 
 /**
@@ -132,23 +132,26 @@ async function configureDNS(vsock: VsockClient): Promise<void> {
 }
 
 /**
- * Upload all scripts to VM via tar archive
+ * Upload all scripts to VM individually
+ * Using individual file writes instead of tar archive due to 32KB buffer
+ * limit in the vm0-agent vsock daemon
  */
 async function uploadScripts(vsock: VsockClient): Promise<void> {
-  // Get all scripts and create tar buffer
   const scripts = getAllScripts();
-  const tarBuffer = createScriptsTarBuffer(scripts);
 
-  // Write tar archive to VM
-  await vsock.writeFile("/tmp/vm0-scripts.tar", tarBuffer.toString("base64"));
-
-  // Decode base64, extract, and set permissions
+  // Create directories first
   await vsock.execOrThrow(
-    `base64 -d /tmp/vm0-scripts.tar > /tmp/vm0-scripts-decoded.tar && ` +
-      `mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
-      `cd / && tar xf /tmp/vm0-scripts-decoded.tar && ` +
-      `chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true && ` +
-      `rm -f /tmp/vm0-scripts.tar /tmp/vm0-scripts-decoded.tar`,
+    `mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
+  );
+
+  // Write each script file individually
+  for (const script of scripts) {
+    await vsock.writeFile(script.path, script.content);
+  }
+
+  // Set executable permissions
+  await vsock.execOrThrow(
+    `chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
   );
 }
 
