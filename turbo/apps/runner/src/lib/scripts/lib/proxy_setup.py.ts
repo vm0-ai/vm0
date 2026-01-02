@@ -17,7 +17,7 @@ import subprocess
 import time
 
 # Add lib to path for imports
-sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
+sys.path.insert(0, "/opt/vm0-scripts/lib")
 
 from log import log_info, log_error, log_warn
 
@@ -25,7 +25,7 @@ from log import log_info, log_error, log_warn
 MITM_PORT = 8080
 MITM_CA_DIR = "/root/.mitmproxy"  # Proxy setup runs as root
 MITM_CA_CERT = f"{MITM_CA_DIR}/mitmproxy-ca-cert.pem"
-ADDON_PATH = "/usr/local/bin/vm0-agent/lib/mitm_addon.py"
+ADDON_PATH = "/opt/vm0-scripts/lib/mitm_addon.py"
 
 
 def run_cmd(cmd: list, check: bool = True) -> subprocess.CompletedProcess:

@@ -26,7 +26,7 @@ import threading
 import time
 
 # Add lib to path for imports
-sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
+sys.path.insert(0, "/opt/vm0-scripts/lib")
 
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
@@ -236,7 +236,7 @@ def _run() -> tuple[int, str]:
 
         # Select Claude binary - use mock-claude for testing if USE_MOCK_CLAUDE is set
         if use_mock:
-            claude_bin = "/usr/local/bin/vm0-agent/lib/mock_claude.py"
+            claude_bin = "/opt/vm0-scripts/lib/mock_claude.py"
             log_info("Using mock-claude for testing")
         else:
             claude_bin = "claude"
