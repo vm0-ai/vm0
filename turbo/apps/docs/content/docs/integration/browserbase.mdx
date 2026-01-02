@@ -1,0 +1,96 @@
+---
+title: Browserbase
+description: Cloud browser infrastructure for AI agents with session persistence and debugging
+---
+
+[Browserbase](https://www.browserbase.com/) is a cloud browser infrastructure service that provides managed browser sessions for AI agents and automation workflows with Playwright and Puppeteer support.
+
+## Required Secrets
+
+| Secret                   | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| `BROWSERBASE_API_KEY`    | API key from [Browserbase Dashboard](https://www.browserbase.com/) |
+| `BROWSERBASE_PROJECT_ID` | Project ID from [Browserbase Dashboard](https://www.browserbase.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/browserbase # [!code highlight]
+    environment:
+      BROWSERBASE_API_KEY: "${{ secrets.BROWSERBASE_API_KEY }}" # [!code highlight]
+      BROWSERBASE_PROJECT_ID: "${{ secrets.BROWSERBASE_PROJECT_ID }}" # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "automate browser tasks" \
+  --secrets BROWSERBASE_API_KEY=xxx \
+  --secrets BROWSERBASE_PROJECT_ID=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Browser Automation Agent
+
+You use Browserbase to automate web browser tasks with persistent sessions.
+
+## Workflow
+
+1. Create a new browser session
+2. Use the session with Playwright or Puppeteer
+3. Perform automation tasks
+4. Retrieve session logs and recordings
+
+## Capabilities
+
+- Create managed browser sessions
+- Persist authentication across sessions using contexts
+- Access live debugging URLs
+- Download session recordings and logs
+- Upload files for use in sessions
+```
+
+```markdown title="AGENTS.md"
+# Web Testing Agent
+
+You use Browserbase to run automated tests across multiple browsers.
+
+## Workflow
+
+1. Create browser session with specific configuration
+2. Run test suite via Playwright
+3. Capture screenshots and recordings
+4. Generate test reports from session data
+
+## Features
+
+- Configurable session timeouts
+- Multiple region support
+- Proxy support (paid plans)
+- Session status monitoring
+```
+
+## Features
+
+### Session Management
+- Create sessions with custom timeouts and keepAlive settings
+- Filter sessions by status (RUNNING, ERROR, TIMED_OUT, COMPLETED)
+- Live debugging with Chrome DevTools
+- Session recording retrieval
+
+### Context Persistence
+- Save cookies, cache, and session storage
+- Restore authentication across multiple sessions
+- Automatic context updates after session completion
+
+### Limitations
+- Free plans limited to 1 concurrent session
+- Proxy support requires paid plans
