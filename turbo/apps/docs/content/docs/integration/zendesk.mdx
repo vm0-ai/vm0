@@ -29,7 +29,9 @@ agents:
 
 ```bash
 vm0 run my-agent "create support ticket" \
-  --secrets ZENDESK_API_TOKEN=xxx # [!code highlight]
+  --secrets ZENDESK_API_TOKEN=xxx \
+  --vars ZENDESK_EMAIL=xxx \
+  --vars ZENDESK_SUBDOMAIN=xxx # [!code highlight]
 ```
 
 ## Example Instructions
