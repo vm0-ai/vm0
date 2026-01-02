@@ -14,12 +14,6 @@ on:
         type: boolean
         default: false
 
-# Ensure only one workflow runs per PR at a time
-# This prevents race conditions with Metal runner resources
-concurrency:
-  group: turbo-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   # Detect changes in apps to optimize CI pipeline
   change-detection:
