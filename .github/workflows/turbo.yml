@@ -339,6 +339,7 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
           RUNNER_GROUP="e2e/pr-${PR_NUMBER}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
           echo "Getting CLI token from ~/.vm0/config.json..."
           TOKEN=$(cat ~/.vm0/config.json | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
@@ -368,15 +369,18 @@ jobs:
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
 
           echo "Stopping any existing runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi"
           sleep 2
 
           echo "Starting runner on Metal..."
-          ssh -f $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 &"
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 & echo \$! > ${PID_FILE}"
 
           sleep 5
 
           echo "Checking runner status..."
+          RUNNER_PID=$(ssh $SSH_OPTS "$SSH_TARGET" "cat ${PID_FILE} 2>/dev/null || echo 'No PID'")
+          echo "Runner PID: $RUNNER_PID"
+
           RUNNER_LOG=$(ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs yet'")
           echo "Runner logs:"
           echo "$RUNNER_LOG"
@@ -425,8 +429,9 @@ jobs:
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
           echo "Stopping runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi"
           echo "Getting final runner logs..."
           ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
           echo "Runner stopped"
@@ -489,9 +494,10 @@ jobs:
           # Define SSH options
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
           # Stop any existing runner for this PR (ignore if none running)
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi"
 
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"

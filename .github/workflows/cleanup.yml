@@ -5,6 +5,46 @@ on:
     types: [closed]
 
 jobs:
+  cleanup-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Runner on Metal
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          # Skip if secrets not available
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOST" ]; then
+            echo "Metal secrets not available, skipping runner cleanup"
+            exit 0
+          fi
+
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/metal.pem
+          chmod 600 ~/.ssh/metal.pem
+
+          SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/metal.pem"
+          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
+          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
+          LOG_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.log"
+
+          echo "Cleaning up runner for PR #${PR_NUMBER}..."
+
+          # Stop runner process if running
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then echo 'Stopping runner PID:' \$(cat ${PID_FILE}); kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi" || true
+
+          # Remove runner directory
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -d ${RUNNER_DIR} ]; then echo 'Removing runner directory'; rm -rf ${RUNNER_DIR}; fi" || true
+
+          # Remove log file
+          ssh $SSH_OPTS "$SSH_TARGET" "rm -f ${LOG_FILE}" || true
+
+          echo "Runner cleanup complete for PR #${PR_NUMBER}"
+
   cleanup-database:
     runs-on: ubuntu-latest
     container:
