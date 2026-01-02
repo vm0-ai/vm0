@@ -139,6 +139,18 @@ export async function setupBridge(): Promise<void> {
 }
 
 /**
+ * Check if a TAP device exists
+ */
+async function tapDeviceExists(tapDevice: string): Promise<boolean> {
+  try {
+    await execCommand(`ip link show ${tapDevice}`, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create and configure a TAP device for a VM
  */
 export async function createTapDevice(vmId: number): Promise<VMNetworkConfig> {
@@ -150,6 +162,12 @@ export async function createTapDevice(vmId: number): Promise<VMNetworkConfig> {
 
   // Ensure bridge exists
   await setupBridge();
+
+  // Delete existing TAP device if it exists (from previous runs or failed cleanup)
+  if (await tapDeviceExists(tapDevice)) {
+    console.log(`TAP device ${tapDevice} already exists, deleting it first...`);
+    await deleteTapDevice(tapDevice);
+  }
 
   // Create TAP device
   await execCommand(`ip tuntap add ${tapDevice} mode tap`);
