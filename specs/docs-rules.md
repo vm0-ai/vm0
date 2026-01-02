@@ -1,13 +1,22 @@
-# Integration Doc Rules
+# Integration Documentation Rules
 
-These rules defines the structure for documenting SaaS integrations in `turbo/apps/docs/content/docs/integration/`.
-File Location `turbo/apps/docs/content/docs/integration/{skill-name}.mdx`
-1. each integration should 和 vm0-ai/vm0-skills 下的对应 skill 描述一致
-2. 每个 integration 文档的结构，参考后文 "Integration 文档结构" 这一部分的描述
+This document defines the structure and standards for documenting SaaS integrations in `turbo/apps/docs/content/docs/integration/`.
+
+## File Location
+
+All integration documentation files should be located at:
+```
+turbo/apps/docs/content/docs/integration/{skill-name}.mdx
+```
+
+## Key Principles
+
+1. **Consistency with vm0-skills**: Each integration doc should align with the corresponding skill description in the `vm0-ai/vm0-skills` repository
+2. **Standard Structure**: Follow the structure defined in the "Integration Document Structure" section below
 
 ## Adding to Navigation
 
-Add the new file to `turbo/apps/docs/content/docs/integration/meta.json`, 并确保是按照名称排序:
+Add new integration files to `turbo/apps/docs/content/docs/integration/meta.json` in **alphabetical order**:
 
 ```json
 {
@@ -19,13 +28,18 @@ Add the new file to `turbo/apps/docs/content/docs/integration/meta.json`, 并确
 }
 ```
 
-# Integration 文档结构
+---
 
-* 标题是 SaaS 服务名
-* 副标题简单介绍该 SaaS 服务解决的最主要问题
-* 第一段以这个 SaaS 服务名开头（要有外链），简单介绍这个 SaaS 服务
+# Integration Document Structure
 
-开头类似于
+## Front Matter and Introduction
+
+Every integration doc must start with:
+- **Title**: The official SaaS service name
+- **Description**: Brief one-line explanation of the primary problem the SaaS solves
+- **First paragraph**: Links to the official website and provides a concise overview
+
+**Example:**
 
 ```mdx
 ---
@@ -36,11 +50,22 @@ description: {Brief description of what the SaaS does}
 [{SaaS Name}]({official-website-url}) is {one sentence description of the SaaS}.
 ```
 
-## Required Environment
-* 这一节用一个表格列出对应 vm0-ai/vm0-skills/<SAAS_NAME>/SKILL.md 中开头部分所编写的 vm0_secrets 和 vm0_vars
-* 表格有三列，第一列为 Name，内容是环境变量的名称。第二列是 Type，有 secret 和 var 两种。第三列是 Description，介绍这个环境变量的作用，如果能从 SKILL.md 中获取到访问哪个地址来生成这个 Token 的话，就放个链接，类似于 [XXX Dashboard](https://...)
+## Required Environment Section
 
-整体类似于下面的表格:
+This section documents all environment variables needed for the integration.
+
+**Guidelines:**
+- **Critical**: The environment variable types must strictly match the corresponding `vm0-ai/vm0-skills/<SAAS_NAME>/SKILL.md` file
+  - Variables listed under `vm0_secrets` in SKILL.md must be marked as `secret` in the documentation
+  - Variables listed under `vm0_vars` in SKILL.md must be marked as `var` in the documentation
+  - When checking compliance, always read the corresponding SKILL.md file to verify correctness
+- Create a table listing all `vm0_secrets` and `vm0_vars` from the corresponding SKILL.md file
+- Table must have three columns:
+  - **Name**: The environment variable name
+  - **Type**: Either `secret` or `var` (must match SKILL.md)
+  - **Description**: Explains the variable's purpose. Include links to where users can obtain tokens/keys (e.g., [XXX Dashboard](https://...))
+
+**Example:**
 
 | Name                  | Type   | Description                                           |
 | --------------------- | ------ | ----------------------------------------------------- |
@@ -48,10 +73,16 @@ description: {Brief description of what the SaaS does}
 | `CHATWOOT_ACCOUNT_ID` | var    | Account ID from the URL (e.g., `/app/accounts/1/...`) |
 | `CHATWOOT_BASE_URL`   | var    | Base URL (e.g., `https://app.chatwoot.com`)           |
 
-## Configuration
-* 这一节列出一个 vm0.yaml 的例子，注意高亮对应的 skill 引用
+## Configuration Section
 
-整体类似于下面的代码块:
+This section shows how to configure the skill in `vm0.yaml`.
+
+**Guidelines:**
+- Provide a minimal `vm0.yaml` example
+- Highlight the skill reference line using `# [!code highlight]`
+- Only include the skill URL in the skills array (no environment block needed)
+
+**Example:**
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -63,25 +94,49 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/apify # [!code highlight]
 ```
 
-## Run
+## Run Section
 
-* 这一节列出运行时如何传递参数，注意高亮对应的 secrets / vars 传递
-* 如果要传递多个 secrets / vars，需要在一行中进行高亮，否则 code block 和 highlight 注释会冲突
-* 注意这里 run 参数应该和上面 required environment 保持一致
+This section demonstrates how to pass environment variables when running the agent.
 
-整体类似于下面的代码块:
+**Guidelines:**
+- Use a backslash `\` to separate the `vm0 run` command and the parameters into two lines
+- **Critical**: All `--secrets` and `--vars` parameters must be on the same line (the second line) - do not split them with additional backslashes
+- Ensure the variables match those listed in the "Required Environment" section
+- Highlight the second line (containing all secrets/vars) using `# [!code highlight]`
+
+**Correct Format:**
 
 ```bash
 vm0 run my-agent "list open conversations" \
   --secrets CHATWOOT_API_TOKEN=xxx --vars CHATWOOT_ACCOUNT_ID=xxx --vars CHATWOOT_BASE_URL=xxx # [!code highlight]
 ```
 
-## Example Instructions
+**Incorrect Format (DO NOT USE):**
 
-* 这里列出 2 个 AGENTS.md 的例子
-* 例子中提一下要 use 这个 SaaS 来实现一个 workflow
+```bash
+# ❌ Wrong: Everything on one line without backslash
+vm0 run my-agent "list open conversations" --secrets CHATWOOT_API_TOKEN=xxx --vars CHATWOOT_ACCOUNT_ID=xxx --vars CHATWOOT_BASE_URL=xxx # [!code highlight]
 
-整体类似于下面的代码块
+# ❌ Wrong: Splitting secrets/vars across multiple lines
+vm0 run my-agent "list open conversations" \
+  --secrets CHATWOOT_API_TOKEN=xxx \
+  --vars CHATWOOT_ACCOUNT_ID=xxx --vars CHATWOOT_BASE_URL=xxx # [!code highlight]
+```
+
+## Example Instructions Section
+
+This section provides two example `AGENTS.md` configurations demonstrating different use cases.
+
+**Guidelines:**
+- Include exactly two examples showing different workflows
+- Each example should mention using the SaaS service to implement a specific workflow
+- Structure each example with:
+  - Agent title describing its purpose
+  - Introduction mentioning the SaaS usage
+  - Workflow section with numbered steps
+  - Additional relevant sections (Guidelines, Capabilities, Rules, etc.)
+
+**Example:**
 
 ```markdown title="AGENTS.md"
 # Support Agent
@@ -119,3 +174,13 @@ You use Chatwoot to manage customer contacts.
 - identifier (external system ID)
 - custom_attributes
 ```
+
+---
+
+## Code Highlighting Best Practices
+
+- Use Shiki's `# [!code highlight]` syntax to emphasize important lines
+- In YAML: Add `# [!code highlight]` at the end of the line
+- In Bash: Highlighting only works on lines without `\` continuation
+  - For commands with multiple secrets/vars, consolidate them on a single line before the highlight comment
+  - Never split highlighted content across multiple lines with backslash continuations
