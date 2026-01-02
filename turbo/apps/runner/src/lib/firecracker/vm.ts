@@ -123,9 +123,12 @@ export class FirecrackerVM {
       // Create working directory
       fs.mkdirSync(this.workDir, { recursive: true });
 
-      // Clean up any existing socket
+      // Clean up any existing sockets from previous runs
       if (fs.existsSync(this.socketPath)) {
         fs.unlinkSync(this.socketPath);
+      }
+      if (fs.existsSync(this.vsockPath)) {
+        fs.unlinkSync(this.vsockPath);
       }
 
       // Copy rootfs to VM-local path for isolation
@@ -309,10 +312,17 @@ export class FirecrackerVM {
       this.networkConfig = null;
     }
 
-    // Clean up socket
+    // Clean up sockets
     if (fs.existsSync(this.socketPath)) {
       try {
         fs.unlinkSync(this.socketPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+    if (fs.existsSync(this.vsockPath)) {
+      try {
+        fs.unlinkSync(this.vsockPath);
       } catch {
         // Ignore cleanup errors
       }
