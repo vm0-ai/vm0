@@ -35,7 +35,8 @@ jobs:
           echo "Cleaning up runner for PR #${PR_NUMBER}..."
 
           # Stop runner process if running
-          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then echo 'Stopping runner PID:' \$(cat ${PID_FILE}); kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi" || true
+          # Kill by PID file first, then use pkill as fallback to catch orphans
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then echo 'Stopping runner PID:' \$(cat ${PID_FILE}); kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; pkill -f 'node index.js start' 2>/dev/null || true" || true
 
           # Remove runner directory
           ssh $SSH_OPTS "$SSH_TARGET" "if [ -d ${RUNNER_DIR} ]; then echo 'Removing runner directory'; rm -rf ${RUNNER_DIR}; fi" || true
