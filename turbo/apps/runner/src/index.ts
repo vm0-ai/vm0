@@ -1,3 +1,4 @@
+// vm0-runner CLI entrypoint
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
