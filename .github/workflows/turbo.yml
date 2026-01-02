@@ -405,16 +405,37 @@ jobs:
 
       - name: Run CLI E2E Tests
         run: |
+          # Track exit codes so all test suites run even if earlier ones fail
+          SERIAL_EXIT=0
+          PARALLEL_EXIT=0
+          RUNNER_EXIT=0
+
           # Step 1: Run serial tests sequentially (establishes stable scope)
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats
+          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
+
           # Step 2: Run parallel tests with -j 10
-          ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
+          ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
+
           # Step 3: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo "Running runner E2E tests..."
-            ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats
+            ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
           else
             echo "Skipping runner tests (runner not deployed)"
+          fi
+
+          # Report results and exit with failure if any suite failed
+          echo ""
+          echo "=== Test Results ==="
+          echo "Serial tests: $([ $SERIAL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
+          echo "Parallel tests: $([ $PARALLEL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
+          if [ "$RUNNER_DEPLOYED" = "true" ]; then
+            echo "Runner tests: $([ $RUNNER_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
+          fi
+
+          # Exit with failure if any test suite failed
+          if [ $SERIAL_EXIT -ne 0 ] || [ $PARALLEL_EXIT -ne 0 ] || [ $RUNNER_EXIT -ne 0 ]; then
+            exit 1
           fi
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
