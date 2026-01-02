@@ -7,6 +7,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { agentComposeVersions } from "./agent-compose";
+import { runners } from "./runner";
 
 /**
  * Agent Runs table
@@ -32,4 +33,8 @@ export const agentRuns = pgTable("agent_runs", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   lastHeartbeatAt: timestamp("last_heartbeat_at"),
+  // Runner-related fields for self-hosted execution
+  runnerGroup: varchar("runner_group", { length: 255 }),
+  runnerId: uuid("runner_id").references(() => runners.id),
+  claimedAt: timestamp("claimed_at"),
 });

@@ -182,8 +182,8 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# Running vm0 compose with --yes to approve secrets..."
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying skill download and upload..."
@@ -205,12 +205,12 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# First compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# First compose with --yes..."
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Second compose with same skill..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
     # Should show unchanged indicator for the skill
     assert_output --partial "unchanged"
@@ -241,9 +241,9 @@ EOF
 You are a test agent with GitHub skills enabled.
 EOF
 
-    echo "# Running vm0 compose..."
+    echo "# Running vm0 compose with --yes..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
+    run $CLI_COMMAND compose --yes vm0.yaml
     assert_success
 
     echo "# Verifying both uploads..."
@@ -310,8 +310,8 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# Running vm0 compose with --yes..."
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
@@ -323,8 +323,10 @@ EOF
 
     echo "# Running agent to verify skill is mounted..."
     # The skill is mounted at /home/user/.claude/skills/github/
+    # Provide mock GH_TOKEN since the github skill requires it
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --secrets GH_TOKEN=mock-token \
         "ls /home/user/.claude/skills/github/"
     assert_success
 

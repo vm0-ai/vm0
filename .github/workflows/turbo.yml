@@ -14,6 +14,12 @@ on:
         type: boolean
         default: false
 
+# Ensure only one workflow runs per PR at a time
+# This prevents race conditions with Metal runner resources
+concurrency:
+  group: turbo-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Detect changes in apps to optimize CI pipeline
   change-detection:
@@ -325,6 +331,83 @@ jobs:
           chmod 600 /tmp/.ssh/metal.pem
           echo "SSH key setup for runner tests"
 
+      - name: Start Runner (if deployed)
+        if: needs.deploy-runner.outputs.runner-deployed == 'true'
+        env:
+          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          USE_MOCK_CLAUDE: "true"
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
+          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          RUNNER_GROUP="e2e/pr-${PR_NUMBER}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
+
+          echo "Getting CLI token from ~/.vm0/config.json..."
+          TOKEN=$(cat ~/.vm0/config.json | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+          if [ -z "$TOKEN" ]; then
+            echo "ERROR: No token found in CLI config"
+            exit 1
+          fi
+          echo "Token obtained successfully"
+
+          echo "Creating runner.yaml config locally..."
+          printf '%s\n' \
+            "name: e2e-runner-pr-${PR_NUMBER}" \
+            "group: ${RUNNER_GROUP}" \
+            "server:" \
+            "  url: ${VM0_API_URL}" \
+            "  token: ${TOKEN}" \
+            "sandbox:" \
+            "  max_concurrent: 1" \
+            "  vcpu: 2" \
+            "  memory_mb: 512" \
+            "firecracker:" \
+            "  binary: /usr/local/bin/firecracker" \
+            "  kernel: /opt/firecracker/vmlinux" \
+            "  rootfs: /opt/firecracker/rootfs.ext4" > /tmp/runner.yaml
+
+          echo "Copying runner.yaml to Metal..."
+          scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
+
+          echo "Stopping any existing runner for PR #${PR_NUMBER}..."
+          # Stop pm2 process if running
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
+          sleep 1
+
+          echo "Starting runner on Metal via pm2..."
+          # Create a wrapper script to ensure arguments are preserved on PM2 restart
+          ssh $SSH_OPTS "$SSH_TARGET" "cat > ${RUNNER_DIR}/start-runner.sh << 'SCRIPT'
+#!/bin/bash
+cd \$(dirname \$0)
+exec node index.js start --config ./runner.yaml
+SCRIPT
+chmod +x ${RUNNER_DIR}/start-runner.sh"
+
+          # Use pm2 to manage runner process - survives SSH disconnect, auto-restarts on crash
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' pm2 start start-runner.sh --name vm0-runner-pr-${PR_NUMBER} --log /tmp/vm0-runner-pr-${PR_NUMBER}.log --interpreter bash"
+          sleep 5
+
+          echo "Checking runner status..."
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 status vm0-runner-pr-${PR_NUMBER}"
+
+          RUNNER_LOG=$(ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs yet'")
+          echo "Runner logs:"
+          echo "$RUNNER_LOG"
+
+          if echo "$RUNNER_LOG" | grep -q "Runner registered"; then
+            echo "✅ Runner registered successfully"
+          else
+            echo "⚠️ Runner may not have registered yet, continuing anyway..."
+          fi
+
+          # Export runner group for tests
+          echo "RUNNER_GROUP=${RUNNER_GROUP}" >> $GITHUB_ENV
+
       - name: Run CLI E2E Tests
         run: |
           # Step 1: Run serial tests sequentially (establishes stable scope)
@@ -347,6 +430,25 @@ jobs:
           SSH_KEY_PATH: /tmp/.ssh/metal.pem
           CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # RUNNER_GROUP is set dynamically in "Start Runner" step
+
+      - name: Stop Runner (if deployed)
+        if: always() && needs.deploy-runner.outputs.runner-deployed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
+          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          echo "Stopping runner for PR #${PR_NUMBER}..."
+          # Stop and remove pm2 process
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
+          echo "Getting final runner logs..."
+          ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
+          echo "Runner stopped"
 
       - name: Stop Cron Simulator
         if: always()
@@ -406,9 +508,10 @@ jobs:
           # Define SSH options
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
+          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
-          # Stop any existing runner for this PR (ignore if none running)
-          ssh $SSH_OPTS "$SSH_TARGET" "pkill -f 'vm0-runner.*pr-${PR_NUMBER}'" || true
+          # Stop any existing runner for this PR via pm2
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
 
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"

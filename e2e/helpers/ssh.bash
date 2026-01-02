@@ -13,14 +13,16 @@ ssh_run() {
         return 1
     fi
 
-    local ssh_opts=(-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10)
+    local ssh_opts=(-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
     # Add SSH key if specified
     if [[ -n "$SSH_KEY_PATH" ]]; then
         ssh_opts+=(-i "$SSH_KEY_PATH")
     fi
 
-    ssh "${ssh_opts[@]}" \
+    # Use timeout to prevent hanging SSH commands (default 120s)
+    local ssh_timeout="${SSH_COMMAND_TIMEOUT:-120}"
+    timeout "$ssh_timeout" ssh "${ssh_opts[@]}" \
         "$CI_AWS_METAL_RUNNER_USER@$CI_AWS_METAL_RUNNER_HOST" \
         "$@"
 }

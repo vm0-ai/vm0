@@ -13,6 +13,10 @@ export const runnerConfigSchema = z.object({
       /^[a-z0-9-]+\/[a-z0-9-]+$/,
       "Group must be in format 'scope/name' (lowercase, hyphens allowed)",
     ),
+  server: z.object({
+    url: z.string().url("Server URL must be a valid URL"),
+    token: z.string().min(1, "Server token is required"),
+  }),
   sandbox: z
     .object({
       max_concurrent: z.number().int().min(1).default(1),

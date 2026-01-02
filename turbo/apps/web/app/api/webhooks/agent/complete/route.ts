@@ -84,6 +84,7 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(checkpoints.runId, body.runId))
           .limit(1);
 
+        // Checkpoint is required for all successful runs (both E2B and self-hosted runner)
         if (!checkpoint) {
           // Update run status to failed
           await globalThis.services.db

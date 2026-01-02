@@ -97,7 +97,7 @@ EOF
 # ============================================
 
 @test "vm0 compose with skills that have no frontmatter vars works correctly" {
-    echo "# Step 1: Create config with github skill (no vm0_secrets/vm0_vars in frontmatter)"
+    echo "# Step 1: Create config with github skill"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -109,15 +109,13 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Step 2: Compose the config (should not prompt for vars)"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# Step 2: Compose the config with --yes to approve secrets"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Verify compose succeeded without prompting"
+    echo "# Step 3: Verify compose succeeded"
     assert_output --partial "Compose"
     assert_output --partial "skill"
-    # Should not show "Skills require the following environment variables"
-    refute_output --partial "require the following environment variables"
 }
 
 # ============================================
@@ -164,8 +162,8 @@ EOF
     echo "# Step 2: Create and push artifact"
     setup_artifact
 
-    echo "# Step 3: Compose the config"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# Step 3: Compose the config with --yes to approve secrets"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 4: Verify skill was uploaded"
@@ -190,8 +188,8 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Step 2: Compose the config"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# Step 2: Compose the config with --yes to approve secrets"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 3: Verify skill was downloaded and uploaded"

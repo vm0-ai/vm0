@@ -1,5 +1,5 @@
+// vm0-runner CLI entrypoint
 import { program } from "commander";
-import { setupCommand } from "./commands/setup.js";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
 
@@ -13,7 +13,6 @@ program
   .version(version)
   .description("Self-hosted runner for VM0 agents");
 
-program.addCommand(setupCommand);
 program.addCommand(startCommand);
 program.addCommand(statusCommand);
 

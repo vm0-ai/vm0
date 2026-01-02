@@ -9,6 +9,7 @@ export const ApiError = {
   UNAUTHORIZED: { status: 401 as const, code: "UNAUTHORIZED" },
   FORBIDDEN: { status: 403 as const, code: "FORBIDDEN" },
   NOT_FOUND: { status: 404 as const, code: "NOT_FOUND" },
+  CONFLICT: { status: 409 as const, code: "CONFLICT" },
   INTERNAL_SERVER_ERROR: {
     status: 500 as const,
     code: "INTERNAL_SERVER_ERROR",

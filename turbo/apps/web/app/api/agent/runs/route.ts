@@ -381,6 +381,49 @@ const router = tsr.router(runsMainContract, {
 
     log.debug(`Created run record: ${run.id}`);
 
+    // Fetch compose content if not already available (needed for checkpoint/session resume)
+    if (!composeContent) {
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, agentComposeVersionId))
+        .limit(1);
+      if (version) {
+        composeContent = version.content as AgentComposeYaml;
+      }
+    }
+
+    // Check for experimental_runner routing
+    // If the agent specifies a runner group, queue for self-hosted runner instead of E2B
+    if (composeContent) {
+      const agentKeys = Object.keys(composeContent.agents);
+      const firstAgentKey = agentKeys[0];
+      if (firstAgentKey) {
+        const agent = composeContent.agents[firstAgentKey];
+        const runnerGroup = agent?.experimental_runner?.group;
+
+        if (runnerGroup) {
+          log.debug(`Run ${run.id} routed to runner group: ${runnerGroup}`);
+
+          // Update run with runner group - keep status as 'pending'
+          await globalThis.services.db
+            .update(agentRuns)
+            .set({ runnerGroup })
+            .where(eq(agentRuns.id, run.id));
+
+          // Return early - run will be picked up by polling runner
+          return {
+            status: 201 as const,
+            body: {
+              runId: run.id,
+              status: "pending" as const,
+              createdAt: run.createdAt.toISOString(),
+            },
+          };
+        }
+      }
+    }
+
     // Generate temporary bearer token for E2B sandbox
     const sandboxToken = await generateSandboxToken(userId, run.id);
     log.debug(`Generated sandbox token for run: ${run.id}`);

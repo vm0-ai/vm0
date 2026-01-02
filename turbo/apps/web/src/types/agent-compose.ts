@@ -40,6 +40,13 @@ export interface AgentDefinition {
    * Format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
    */
   skills?: string[];
+  /**
+   * Route this agent to a self-hosted runner instead of E2B.
+   * When specified, runs will be queued for the specified runner group.
+   */
+  experimental_runner?: {
+    group: string;
+  };
 }
 
 export interface AgentComposeYaml {

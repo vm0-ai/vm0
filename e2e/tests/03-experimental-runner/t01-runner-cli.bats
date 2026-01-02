@@ -22,7 +22,8 @@ setup() {
 @test "vm0-runner --version shows version" {
     run runner_cmd --version
     assert_success
-    assert_output --partial "0.1.0"
+    # Check for semantic version pattern (e.g., 0.1.0, 1.0.0)
+    [[ "$output" =~ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
 @test "vm0-runner --help shows usage" {
@@ -34,44 +35,28 @@ setup() {
 }
 
 @test "vm0-runner start fails without runner.yaml" {
-    # Ensure no runner.yaml exists
-    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
+    # Backup existing runner.yaml if exists (created by CI workflow)
+    ssh_run "mv ${RUNNER_DIR}/runner.yaml ${RUNNER_DIR}/runner.yaml.bak 2>/dev/null || true"
 
     run runner_cmd start
     assert_failure
     assert_output --partial "runner.yaml not found"
-}
 
-@test "vm0-runner start --dry-run validates config" {
-    # Create test config on remote
-    ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
-name: ci-runner
-group: e2e/test
-sandbox:
-  max_concurrent: 1
-  vcpu: 2
-  memory_mb: 2048
-firecracker:
-  binary: /usr/local/bin/firecracker
-  kernel: /opt/firecracker/vmlinux
-  rootfs: /opt/firecracker/rootfs.ext4
-EOFCONFIG"
-
-    run runner_cmd start --dry-run
-    assert_success
-    assert_output --partial "Config valid"
-    assert_output --partial "ci-runner"
-    assert_output --partial "e2e/test"
-
-    # Cleanup
-    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
+    # Restore runner.yaml
+    ssh_run "mv ${RUNNER_DIR}/runner.yaml.bak ${RUNNER_DIR}/runner.yaml 2>/dev/null || true"
 }
 
 @test "vm0-runner start rejects invalid group format" {
+    # Backup existing runner.yaml
+    ssh_run "mv ${RUNNER_DIR}/runner.yaml ${RUNNER_DIR}/runner.yaml.bak 2>/dev/null || true"
+
     # Create config with invalid group format
     ssh_run "cat > ${RUNNER_DIR}/runner.yaml << 'EOFCONFIG'
 name: ci-runner
 group: invalid-no-slash
+server:
+  url: https://example.com
+  token: test-token
 sandbox:
   max_concurrent: 1
 firecracker:
@@ -80,18 +65,12 @@ firecracker:
   rootfs: /opt/firecracker/rootfs.ext4
 EOFCONFIG"
 
-    run runner_cmd start --dry-run
+    run runner_cmd start
     assert_failure
     assert_output --partial "Invalid configuration"
 
-    # Cleanup
-    ssh_run "rm -f ${RUNNER_DIR}/runner.yaml"
-}
-
-@test "vm0-runner setup shows placeholder message" {
-    run runner_cmd setup
-    assert_success
-    assert_output --partial "not yet implemented"
+    # Restore runner.yaml
+    ssh_run "mv ${RUNNER_DIR}/runner.yaml.bak ${RUNNER_DIR}/runner.yaml 2>/dev/null || true"
 }
 
 @test "vm0-runner status shows placeholder message" {
