@@ -248,4 +248,3 @@ export async function completeJob(
 
   return response.json() as Promise<CompleteJobResult>;
 }
-// CI trigger comment
