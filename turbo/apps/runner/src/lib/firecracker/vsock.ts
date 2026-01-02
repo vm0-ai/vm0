@@ -61,26 +61,55 @@ export class VsockClient {
 
   /**
    * Connect to the vsock and send a request
+   *
+   * Firecracker vsock protocol:
+   * 1. Connect to the Unix socket at socketPath
+   * 2. Send "CONNECT <port>\n" to initiate connection to guest
+   * 3. Wait for "OK <hostside_port>\n" response
+   * 4. Send JSON request, receive JSON response
    */
   private async sendRequest(request: AgentRequest): Promise<AgentResponse> {
     return new Promise((resolve, reject) => {
-      // Connect to Firecracker's vsock Unix socket
-      // The socket path format for connecting to a specific guest port:
-      // connect to socketPath_PORT (e.g., /tmp/fc.vsock_5000)
-      const connectPath = `${this.config.socketPath}_${this.config.port}`;
-
-      const socket = net.createConnection(connectPath, () => {
-        // Send request as JSON followed by newline
-        socket.write(JSON.stringify(request) + "\n");
+      // Connect to Firecracker's vsock Unix socket directly
+      const socket = net.createConnection(this.config.socketPath, () => {
+        // Send CONNECT command to establish connection to guest port
+        socket.write(`CONNECT ${this.config.port}\n`);
       });
 
+      let phase: "connect" | "response" = "connect";
       let data = "";
 
       socket.on("data", (chunk: Buffer) => {
         data += chunk.toString();
+
+        if (phase === "connect") {
+          // Check for OK response from Firecracker
+          const newlineIdx = data.indexOf("\n");
+          if (newlineIdx !== -1) {
+            const connectResponse = data.substring(0, newlineIdx);
+            if (connectResponse.startsWith("OK")) {
+              // Connection established, send the actual request
+              phase = "response";
+              data = data.substring(newlineIdx + 1); // Keep any remaining data
+              socket.write(JSON.stringify(request) + "\n");
+            } else {
+              socket.destroy();
+              reject(
+                new Error(
+                  `Vsock CONNECT failed: ${connectResponse || "connection closed"}`,
+                ),
+              );
+            }
+          }
+        }
       });
 
       socket.on("end", () => {
+        if (phase === "connect") {
+          reject(new Error("Vsock connection closed before CONNECT completed"));
+          return;
+        }
+
         try {
           const response = JSON.parse(data) as AgentResponse;
           resolve(response);
