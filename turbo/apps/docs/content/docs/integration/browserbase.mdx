@@ -1,0 +1,75 @@
+---
+title: Browserbase
+description: Cloud browser infrastructure for AI agents and automation
+---
+
+[Browserbase](https://www.browserbase.com/) is a cloud browser infrastructure service that provides managed browser sessions for AI agents and automation workflows with Playwright and Puppeteer support.
+
+## Required Environment
+
+| Name                     | Type   | Description                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------- |
+| `BROWSERBASE_API_KEY`    | secret | API key from [Browserbase Dashboard](https://www.browserbase.com/) |
+| `BROWSERBASE_PROJECT_ID` | secret | Project ID from [Browserbase Dashboard](https://www.browserbase.com/) |
+
+## Configuration
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/browserbase # [!code highlight]
+```
+
+## Run
+
+```bash
+vm0 run my-agent "automate browser tasks" \
+  --secrets BROWSERBASE_API_KEY=xxx --secrets BROWSERBASE_PROJECT_ID=xxx # [!code highlight]
+```
+
+## Example Instructions
+
+```markdown title="AGENTS.md"
+# Browser Automation Agent
+
+You use Browserbase to automate web browser tasks with persistent sessions.
+
+## Workflow
+
+1. Create a new browser session
+2. Use the session with Playwright or Puppeteer
+3. Perform automation tasks
+4. Retrieve session logs and recordings
+
+## Capabilities
+
+- Create managed browser sessions
+- Persist authentication across sessions using contexts
+- Access live debugging URLs
+- Download session recordings and logs
+- Upload files for use in sessions
+```
+
+```markdown title="AGENTS.md"
+# Web Testing Agent
+
+You use Browserbase to run automated tests across multiple browsers.
+
+## Workflow
+
+1. Create browser session with specific configuration
+2. Run test suite via Playwright
+3. Capture screenshots and recordings
+4. Generate test reports from session data
+
+## Guidelines
+
+- Configure session timeouts and regions as needed
+- Use contexts to persist authentication state
+- Enable proxy support on paid plans for protected sites
+- Monitor session status and usage limits
+```

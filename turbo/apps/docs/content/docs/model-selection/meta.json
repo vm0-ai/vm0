@@ -1,4 +1,12 @@
 {
   "title": "Model Selection",
-  "pages": ["index", "openrouter", "moonshot", "minimax", "deepseek", "zai"]
+  "pages": [
+    "index",
+    "claude",
+    "openrouter",
+    "moonshot",
+    "minimax",
+    "deepseek",
+    "zai"
+  ]
 }
