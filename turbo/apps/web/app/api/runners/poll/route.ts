@@ -11,10 +11,6 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
 import { headers } from "next/headers";
 
-// Ensure this route is always dynamically rendered (never cached)
-// This is critical for authentication headers to be properly read
-export const dynamic = "force-dynamic";
-
 const log = logger("api:runners:poll");
 
 const router = tsr.router(runnersPollContract, {
