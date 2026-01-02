@@ -380,8 +380,8 @@ jobs:
           sleep 2
 
           echo "Starting runner on Metal..."
-          # Start runner and capture the actual node process PID
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 & sleep 1 && pgrep -x node > ${PID_FILE}"
+          # Start runner using setsid to fully detach from SSH session, capture PID
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && setsid node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 < /dev/null & sleep 2 && pgrep -x node > ${PID_FILE}"
 
           sleep 5
 
