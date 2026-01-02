@@ -1,16 +1,16 @@
 ---
 title: Browserbase
-description: Cloud browser infrastructure for AI agents with session persistence and debugging
+description: Cloud browser infrastructure for AI agents and automation
 ---
 
 [Browserbase](https://www.browserbase.com/) is a cloud browser infrastructure service that provides managed browser sessions for AI agents and automation workflows with Playwright and Puppeteer support.
 
-## Required Secrets
+## Required Environment
 
-| Secret                   | Description                                                         |
-| ------------------------ | ------------------------------------------------------------------- |
-| `BROWSERBASE_API_KEY`    | API key from [Browserbase Dashboard](https://www.browserbase.com/) |
-| `BROWSERBASE_PROJECT_ID` | Project ID from [Browserbase Dashboard](https://www.browserbase.com/) |
+| Name                     | Type   | Description                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------- |
+| `BROWSERBASE_API_KEY`    | secret | API key from [Browserbase Dashboard](https://www.browserbase.com/) |
+| `BROWSERBASE_PROJECT_ID` | secret | Project ID from [Browserbase Dashboard](https://www.browserbase.com/) |
 
 ## Configuration
 
@@ -22,9 +22,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/browserbase # [!code highlight]
-    environment:
-      BROWSERBASE_API_KEY: "${{ secrets.BROWSERBASE_API_KEY }}" # [!code highlight]
-      BROWSERBASE_PROJECT_ID: "${{ secrets.BROWSERBASE_PROJECT_ID }}" # [!code highlight]
 ```
 
 ## Run
@@ -70,27 +67,10 @@ You use Browserbase to run automated tests across multiple browsers.
 3. Capture screenshots and recordings
 4. Generate test reports from session data
 
-## Features
+## Guidelines
 
-- Configurable session timeouts
-- Multiple region support
-- Proxy support (paid plans)
-- Session status monitoring
+- Configure session timeouts and regions as needed
+- Use contexts to persist authentication state
+- Enable proxy support on paid plans for protected sites
+- Monitor session status and usage limits
 ```
-
-## Features
-
-### Session Management
-- Create sessions with custom timeouts and keepAlive settings
-- Filter sessions by status (RUNNING, ERROR, TIMED_OUT, COMPLETED)
-- Live debugging with Chrome DevTools
-- Session recording retrieval
-
-### Context Persistence
-- Save cookies, cache, and session storage
-- Restore authentication across multiple sessions
-- Automatic context updates after session completion
-
-### Limitations
-- Free plans limited to 1 concurrent session
-- Proxy support requires paid plans
