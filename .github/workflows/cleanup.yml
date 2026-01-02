@@ -34,8 +34,8 @@ jobs:
 
           echo "Cleaning up runner for PR #${PR_NUMBER}..."
 
-          # Stop runner process if running (kill screen session and orphan processes)
-          ssh $SSH_OPTS "$SSH_TARGET" "screen -S vm0-runner-pr-${PR_NUMBER} -X quit 2>/dev/null || true; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done; rm -f ${PID_FILE}" || true
+          # Stop runner process via pm2
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true" || true
 
           # Remove runner directory
           ssh $SSH_OPTS "$SSH_TARGET" "if [ -d ${RUNNER_DIR} ]; then echo 'Removing runner directory'; rm -rf ${RUNNER_DIR}; fi" || true

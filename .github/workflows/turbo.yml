@@ -375,22 +375,17 @@ jobs:
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
 
           echo "Stopping any existing runner for PR #${PR_NUMBER}..."
-          # Kill existing screen session and any orphan node processes
-          ssh $SSH_OPTS "$SSH_TARGET" "screen -S vm0-runner-pr-${PR_NUMBER} -X quit 2>/dev/null || true; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done; rm -f ${PID_FILE}"
-          sleep 2
+          # Stop pm2 process if running
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
+          sleep 1
 
-          echo "Starting runner on Metal via screen..."
-          # Use screen to fully detach runner from SSH session - survives SSH disconnect
-          ssh $SSH_OPTS "$SSH_TARGET" "screen -dmS vm0-runner-pr-${PR_NUMBER} bash -c 'cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_AUTOMATION_BYPASS_SECRET} && export USE_MOCK_CLAUDE=${USE_MOCK_CLAUDE} && node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1'"
-          sleep 3
-          # Capture PID after screen starts the process
-          ssh $SSH_OPTS "$SSH_TARGET" "pgrep -x node > ${PID_FILE} 2>/dev/null || echo 'No node process'"
-
+          echo "Starting runner on Metal via pm2..."
+          # Use pm2 to manage runner process - survives SSH disconnect, auto-restarts on crash
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' pm2 start index.js --name vm0-runner-pr-${PR_NUMBER} --log /tmp/vm0-runner-pr-${PR_NUMBER}.log"
           sleep 5
 
           echo "Checking runner status..."
-          RUNNER_PID=$(ssh $SSH_OPTS "$SSH_TARGET" "cat ${PID_FILE} 2>/dev/null || echo 'No PID'")
-          echo "Runner PID: $RUNNER_PID"
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 status vm0-runner-pr-${PR_NUMBER}"
 
           RUNNER_LOG=$(ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs yet'")
           echo "Runner logs:"
@@ -440,10 +435,9 @@ jobs:
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
           echo "Stopping runner for PR #${PR_NUMBER}..."
-          # Kill screen session and any orphan node processes
-          ssh $SSH_OPTS "$SSH_TARGET" "screen -S vm0-runner-pr-${PR_NUMBER} -X quit 2>/dev/null || true; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done; rm -f ${PID_FILE}"
+          # Stop and remove pm2 process
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
           echo "Getting final runner logs..."
           ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
           echo "Runner stopped"
@@ -508,8 +502,8 @@ jobs:
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
           PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
-          # Stop any existing runner for this PR (kill screen session and orphan processes)
-          ssh $SSH_OPTS "$SSH_TARGET" "screen -S vm0-runner-pr-${PR_NUMBER} -X quit 2>/dev/null || true; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done; rm -f ${PID_FILE}"
+          # Stop any existing runner for this PR via pm2
+          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
 
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
