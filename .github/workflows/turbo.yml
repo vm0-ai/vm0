@@ -375,12 +375,7 @@ jobs:
 
           echo "Starting runner on Metal via pm2..."
           # Create a wrapper script to ensure arguments are preserved on PM2 restart
-          ssh $SSH_OPTS "$SSH_TARGET" "cat > ${RUNNER_DIR}/start-runner.sh << 'SCRIPT'
-#!/bin/bash
-cd \$(dirname \$0)
-exec node index.js start --config ./runner.yaml
-SCRIPT
-chmod +x ${RUNNER_DIR}/start-runner.sh"
+          ssh $SSH_OPTS "$SSH_TARGET" "echo '#!/bin/bash' > ${RUNNER_DIR}/start-runner.sh && echo 'cd \$(dirname \$0)' >> ${RUNNER_DIR}/start-runner.sh && echo 'exec node index.js start --config ./runner.yaml' >> ${RUNNER_DIR}/start-runner.sh && chmod +x ${RUNNER_DIR}/start-runner.sh"
 
           # Use pm2 to manage runner process - survives SSH disconnect, auto-restarts on crash
           ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' pm2 start start-runner.sh --name vm0-runner-pr-${PR_NUMBER} --log /tmp/vm0-runner-pr-${PR_NUMBER}.log --interpreter bash"
