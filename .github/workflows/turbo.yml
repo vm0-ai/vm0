@@ -375,13 +375,13 @@ jobs:
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
 
           echo "Stopping any existing runner for PR #${PR_NUMBER}..."
-          # Kill by PID file first, then use pgrep as fallback to catch orphans
-          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; pkill -f 'node index.js start' 2>/dev/null || true"
+          # Kill by PID file first, then use pgrep+kill as fallback (pkill -f would kill the SSH session itself)
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done"
           sleep 2
 
           echo "Starting runner on Metal..."
-          # Start runner and capture the actual node process PID (not bash wrapper)
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 & sleep 1 && pgrep -f 'node index.js start' > ${PID_FILE}"
+          # Start runner and capture the actual node process PID
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && export VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' && export USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' && nohup node index.js start > /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>&1 & sleep 1 && pgrep -x node > ${PID_FILE}"
 
           sleep 5
 
@@ -439,8 +439,8 @@ jobs:
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
           PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
           echo "Stopping runner for PR #${PR_NUMBER}..."
-          # Kill by PID file first, then use pkill as fallback
-          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; pkill -f 'node index.js start' 2>/dev/null || true"
+          # Kill by PID file first, then use pgrep+kill as fallback (pkill -f would kill SSH session)
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done"
           echo "Getting final runner logs..."
           ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
           echo "Runner stopped"
@@ -506,8 +506,8 @@ jobs:
           PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
           # Stop any existing runner for this PR (ignore if none running)
-          # Kill by PID file first, then use pkill as fallback to catch orphans
-          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; pkill -f 'node index.js start' 2>/dev/null || true"
+          # Kill by PID file first, then use pgrep+kill as fallback (pkill -f would kill SSH session)
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -f ${PID_FILE} ]; then kill \$(cat ${PID_FILE}) 2>/dev/null || true; rm -f ${PID_FILE}; fi; for pid in \$(pgrep -x node); do kill \$pid 2>/dev/null || true; done"
 
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
