@@ -305,7 +305,7 @@ export async function executeJob(
     const startTime = Date.now();
 
     const result = await vsock.exec(
-      `source ${envFilePath} && python3 -u ${SCRIPT_PATHS.runAgent}`,
+      `. ${envFilePath} && python3 -u ${SCRIPT_PATHS.runAgent}`,
     );
 
     const duration = Math.round((Date.now() - startTime) / 1000);
