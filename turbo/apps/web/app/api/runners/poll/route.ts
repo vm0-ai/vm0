@@ -21,10 +21,10 @@ const router = tsr.router(runnersPollContract, {
   poll: async ({ body }) => {
     initServices();
 
-    // Debug: Log auth header before checking
+    // Debug: Log auth header before checking (using warn to force output)
     const headersList = await headers();
     const authHeader = headersList.get("Authorization");
-    log.debug("Poll request received", {
+    log.warn("Poll request received", {
       hasAuthHeader: !!authHeader,
       authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
       bodyGroup: body.group,
@@ -34,8 +34,13 @@ const router = tsr.router(runnersPollContract, {
     if (!userId) {
       log.warn("Poll authentication failed", {
         authHeaderPresent: !!authHeader,
+        authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
       });
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+      // Include debug info in error message for client-side logging
+      return createErrorResponse(
+        "UNAUTHORIZED",
+        `Not authenticated (hasHeader=${!!authHeader}, prefix=${authHeader?.substring(0, 20) ?? "none"})`,
+      );
     }
 
     const { group } = body;
