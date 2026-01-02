@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.33.0](https://github.com/vm0-ai/vm0/compare/cli-v4.32.0...cli-v4.33.0) (2025-12-31)
+
+
+### Features
+
+* load secrets from env vars for run continue/resume ([#846](https://github.com/vm0-ai/vm0/issues/846)) ([2d8ae98](https://github.com/vm0-ai/vm0/commit/2d8ae9837463d44846326bd5eca925026ccc3c4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.5.0
+
 ## [4.32.0](https://github.com/vm0-ai/vm0/compare/cli-v4.31.1...cli-v4.32.0) (2025-12-30)
 
 

@@ -5,11 +5,11 @@ description: Send messages and manage Discord servers
 
 [Discord](https://discord.com/) is a communication platform for communities. This skill enables your agent to send messages, manage channels, and interact with Discord servers.
 
-## Required Secrets
+## Required Environment
 
-| Secret              | Description                                                                            |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `DISCORD_BOT_TOKEN` | Bot token from [Discord Developer Portal](https://discord.com/developers/applications) |
+| Name                | Type   | Description                                                                            |
+| ------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `DISCORD_BOT_TOKEN` | secret | Bot token from [Discord Developer Portal](https://discord.com/developers/applications) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/discord # [!code highlight]
-    environment:
-      DISCORD_BOT_TOKEN: "${{ secrets.DISCORD_BOT_TOKEN }}" # [!code highlight]
 ```
 
 ## Run

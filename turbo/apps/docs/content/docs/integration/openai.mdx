@@ -5,11 +5,11 @@ description: Use OpenAI models for text, image, and audio generation
 
 [OpenAI](https://openai.com/) provides AI models for text generation, image creation, and more. This skill enables your agent to use GPT, DALL-E, Whisper, and other OpenAI APIs.
 
-## Required Secrets
+## Required Environment
 
-| Secret           | Description                                                          |
-| ---------------- | -------------------------------------------------------------------- |
-| `OPENAI_API_KEY` | API key from [OpenAI Platform](https://platform.openai.com/api-keys) |
+| Name             | Type   | Description                                                          |
+| ---------------- | ------ | -------------------------------------------------------------------- |
+| `OPENAI_API_KEY` | secret | API key from [OpenAI Platform](https://platform.openai.com/api-keys) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/openai # [!code highlight]
-    environment:
-      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" # [!code highlight]
 ```
 
 ## Run

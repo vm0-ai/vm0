@@ -5,11 +5,11 @@ description: Send messages and interact with Slack workspaces
 
 [Slack](https://slack.com/) is a business communication platform. This skill enables your agent to send messages, read channels, and interact with Slack workspaces.
 
-## Required Secrets
+## Required Environment
 
-| Secret            | Description                                                                  |
-| ----------------- | ---------------------------------------------------------------------------- |
-| `SLACK_BOT_TOKEN` | Bot token starting with `xoxb-` from [Slack API](https://api.slack.com/apps) |
+| Name              | Type   | Description                                                                  |
+| ----------------- | ------ | ---------------------------------------------------------------------------- |
+| `SLACK_BOT_TOKEN` | secret | Bot token starting with `xoxb-` from [Slack API](https://api.slack.com/apps) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/slack # [!code highlight]
-    environment:
-      SLACK_BOT_TOKEN: "${{ secrets.SLACK_BOT_TOKEN }}" # [!code highlight]
 ```
 
 ## Run

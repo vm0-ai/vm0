@@ -2,6 +2,7 @@
   "pages": [
     "index",
     "quick-start",
+    "tutorial",
     "core-concept",
     "usage",
     "model-selection",

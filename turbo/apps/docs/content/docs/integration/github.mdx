@@ -5,11 +5,11 @@ description: Interact with GitHub repositories, issues, and pull requests
 
 [GitHub](https://github.com/) is a code hosting platform. This skill enables your agent to manage repositories, issues, pull requests, and more using the GitHub CLI.
 
-## Required Secrets
+## Required Environment
 
-| Secret         | Description                                                                      |
-| -------------- | -------------------------------------------------------------------------------- |
-| `GITHUB_TOKEN` | Personal access token from [GitHub Settings](https://github.com/settings/tokens) |
+| Name       | Type   | Description                                                                      |
+| ---------- | ------ | -------------------------------------------------------------------------------- |
+| `GH_TOKEN` | secret | Personal access token from [GitHub Settings](https://github.com/settings/tokens) |
 
 ## Configuration
 
@@ -21,15 +21,13 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github # [!code highlight]
-    environment:
-      GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" # [!code highlight]
 ```
 
 ## Run
 
 ```bash
 vm0 run my-agent "list open PRs" \
-  --secrets GITHUB_TOKEN=ghp_xxx # [!code highlight]
+  --secrets GH_TOKEN=ghp_xxx # [!code highlight]
 ```
 
 ## Example Instructions

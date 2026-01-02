@@ -29,7 +29,7 @@ agents:
 
 ```bash
 vm0 run my-agent "create a bug ticket in Jira" \
-  --secrets JIRA_API_TOKEN=xxx # [!code highlight]
+  --secrets JIRA_API_TOKEN=xxx --vars JIRA_DOMAIN=xxx --vars JIRA_EMAIL=xxx # [!code highlight]
 ```
 
 ## Example Instructions

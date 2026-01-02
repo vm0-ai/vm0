@@ -5,11 +5,11 @@ description: Create and manage Notion pages and databases
 
 [Notion](https://www.notion.so/) is a productivity and note-taking application. This skill enables your agent to create pages, update databases, and manage content in Notion.
 
-## Required Secrets
+## Required Environment
 
-| Secret           | Description                                                                              |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `NOTION_API_KEY` | Integration token from [Notion Integrations](https://www.notion.so/profile/integrations) |
+| Name             | Type   | Description                                                                              |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------- |
+| `NOTION_API_KEY` | secret | Integration token from [Notion Integrations](https://www.notion.so/profile/integrations) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/notion # [!code highlight]
-    environment:
-      NOTION_API_KEY: "${{ secrets.NOTION_API_KEY }}" # [!code highlight]
 ```
 
 ## Run
