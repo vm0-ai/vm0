@@ -55,6 +55,67 @@ export function getAllScripts(): ScriptEntry[] {
 }
 
 /**
+ * Create a directory entry header for tar archive
+ */
+function createDirectoryHeader(dirPath: string, mtime: number): Buffer | null {
+  const BLOCK_SIZE = 512;
+  // Ensure path ends with /
+  const path = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+
+  // Skip empty or root paths
+  if (path === "/" || path === "") return null;
+
+  const header = Buffer.alloc(BLOCK_SIZE, 0);
+
+  // File name (100 bytes, position 0) - must end with /
+  header.write(path, 0, 100, "utf-8");
+
+  // File mode (8 bytes, position 100) - 0755 for directory
+  header.write("0000755\0", 100, 8, "utf-8");
+
+  // Owner UID (8 bytes, position 108) - 0
+  header.write("0000000\0", 108, 8, "utf-8");
+
+  // Owner GID (8 bytes, position 116) - 0
+  header.write("0000000\0", 116, 8, "utf-8");
+
+  // File size in octal (12 bytes, position 124) - 0 for directories
+  header.write("00000000000\0", 124, 12, "utf-8");
+
+  // Modification time (12 bytes, position 136)
+  const mtimeOctal = mtime.toString(8).padStart(11, "0");
+  header.write(mtimeOctal + "\0", 136, 12, "utf-8");
+
+  // Checksum placeholder (8 bytes, position 148) - spaces for calculation
+  header.write("        ", 148, 8, "utf-8");
+
+  // Type flag (1 byte, position 156) - '5' for directory
+  header.write("5", 156, 1, "utf-8");
+
+  // USTAR magic (6 bytes, position 257)
+  header.write("ustar\0", 257, 6, "utf-8");
+
+  // USTAR version (2 bytes, position 263)
+  header.write("00", 263, 2, "utf-8");
+
+  // Owner name (32 bytes, position 265)
+  header.write("root", 265, 32, "utf-8");
+
+  // Group name (32 bytes, position 297)
+  header.write("root", 297, 32, "utf-8");
+
+  // Calculate checksum
+  let checksum = 0;
+  for (let i = 0; i < BLOCK_SIZE; i++) {
+    checksum += header.readUInt8(i);
+  }
+  const checksumStr = checksum.toString(8).padStart(6, "0");
+  header.write(checksumStr + "\0 ", 148, 8, "utf-8");
+
+  return header;
+}
+
+/**
  * Create a tar archive containing all scripts with correct paths
  *
  * TAR format (POSIX ustar):
@@ -64,7 +125,36 @@ export function getAllScripts(): ScriptEntry[] {
 export function createScriptsTarBuffer(scripts: ScriptEntry[]): Buffer {
   const BLOCK_SIZE = 512;
   const blocks: Buffer[] = [];
+  const mtime = Math.floor(Date.now() / 1000);
 
+  // Collect all unique directories needed
+  const dirs = new Set<string>();
+  for (const script of scripts) {
+    const path = script.path.startsWith("/")
+      ? script.path.slice(1)
+      : script.path;
+    // Add all parent directories
+    const parts = path.split("/");
+    let current = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (part) {
+        current = current ? current + "/" + part : part;
+        dirs.add(current);
+      }
+    }
+  }
+
+  // Add directory entries first (sorted to ensure parents come before children)
+  const sortedDirs = Array.from(dirs).sort();
+  for (const dir of sortedDirs) {
+    const dirHeader = createDirectoryHeader(dir, mtime);
+    if (dirHeader) {
+      blocks.push(dirHeader);
+    }
+  }
+
+  // Add file entries
   for (const script of scripts) {
     const content = Buffer.from(script.content, "utf-8");
     // Remove leading slash for tar path
@@ -91,11 +181,9 @@ export function createScriptsTarBuffer(scripts: ScriptEntry[]): Buffer {
     const sizeOctal = content.length.toString(8).padStart(11, "0");
     header.write(sizeOctal + "\0", 124, 12, "utf-8");
 
-    // Modification time (12 bytes, position 136) - current time
-    const mtime = Math.floor(Date.now() / 1000)
-      .toString(8)
-      .padStart(11, "0");
-    header.write(mtime + "\0", 136, 12, "utf-8");
+    // Modification time (12 bytes, position 136) - use shared mtime
+    const mtimeOctal = mtime.toString(8).padStart(11, "0");
+    header.write(mtimeOctal + "\0", 136, 12, "utf-8");
 
     // Checksum placeholder (8 bytes, position 148) - spaces for calculation
     header.write("        ", 148, 8, "utf-8");
