@@ -373,6 +373,12 @@ jobs:
           ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
           sleep 1
 
+          echo "Cleaning up old tap devices and log files..."
+          # Remove any leftover tap devices from previous runs
+          ssh $SSH_OPTS "$SSH_TARGET" "for tap in \$(ip link show 2>/dev/null | grep -o 'tap[0-9]*' | head -20); do sudo ip link delete \$tap 2>/dev/null || true; done"
+          # Clear old log file to avoid showing historical errors
+          ssh $SSH_OPTS "$SSH_TARGET" "rm -f /tmp/vm0-runner-pr-${PR_NUMBER}.log"
+
           echo "Starting runner on Metal via pm2..."
           # Create a wrapper script to ensure arguments are preserved on PM2 restart
           ssh $SSH_OPTS "$SSH_TARGET" "echo '#!/bin/bash' > ${RUNNER_DIR}/start-runner.sh && echo 'cd \$(dirname \$0)' >> ${RUNNER_DIR}/start-runner.sh && echo 'exec node index.js start --config ./runner.yaml' >> ${RUNNER_DIR}/start-runner.sh && chmod +x ${RUNNER_DIR}/start-runner.sh"
