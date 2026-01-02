@@ -36,10 +36,10 @@ const router = tsr.router(runnersPollContract, {
         authHeaderPresent: !!authHeader,
         authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
       });
-      // Include debug info in error message for client-side logging
+      // Include debug info and version marker in error message
       return createErrorResponse(
         "UNAUTHORIZED",
-        `Not authenticated (hasHeader=${!!authHeader}, prefix=${authHeader?.substring(0, 20) ?? "none"})`,
+        `Auth failed [v2]: hasHeader=${!!authHeader}, prefix=${authHeader?.substring(0, 20) ?? "none"}`,
       );
     }
 
