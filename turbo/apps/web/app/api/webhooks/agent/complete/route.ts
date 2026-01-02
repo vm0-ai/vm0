@@ -84,9 +84,8 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(checkpoints.runId, body.runId))
           .limit(1);
 
-        // For self-hosted runner runs (runnerId set), checkpoint is optional
-        // Self-hosted runners manage their own execution without E2B checkpoints
-        if (!checkpoint && !run.runnerId) {
+        // Checkpoint is required for all successful runs (both E2B and self-hosted runner)
+        if (!checkpoint) {
           // Update run status to failed
           await globalThis.services.db
             .update(agentRuns)
@@ -110,32 +109,6 @@ const router = tsr.router(webhookCompleteContract, {
               },
             },
           };
-        }
-
-        // For self-hosted runner runs without checkpoint, mark as completed without result
-        if (!checkpoint && run.runnerId) {
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({
-              status: "completed",
-              completedAt: new Date(),
-            })
-            .where(eq(agentRuns.id, body.runId));
-
-          log.debug(`Self-hosted run ${body.runId} completed successfully`);
-          return {
-            status: 200 as const,
-            body: {
-              success: true,
-              status: "completed" as const,
-            },
-          };
-        }
-
-        // At this point, checkpoint must exist (both early returns above handle !checkpoint cases)
-        if (!checkpoint) {
-          // This should never happen, but TypeScript needs this for type narrowing
-          throw new Error("Unexpected state: checkpoint is null");
         }
 
         // Get agent session for the conversation
