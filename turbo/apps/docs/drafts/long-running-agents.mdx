@@ -15,16 +15,18 @@ Let's fix this step by step.
 
 Start simple:
 
-````markdown
+```markdown
 ## Task
+
 Review the last 1000 commits in the Linux kernel repository.
 For each commit, analyze:
+
 - The type of change (bugfix, feature, refactor, etc.)
 - Files modified
 - Potential impact
 
 Generate a summary report when complete.
-````
+```
 
 The agent will start working, but expect frequent pauses asking for confirmation, or it might just stop after a while claiming the task is done.
 
@@ -32,10 +34,12 @@ The agent will start working, but expect frequent pauses asking for confirmation
 
 Tell the agent explicitly to keep going:
 
-````markdown
+```markdown
 ## Task
+
 Review the last 1000 commits in the Linux kernel repository.
 For each commit, analyze:
+
 - The type of change (bugfix, feature, refactor, etc.)
 - Files modified
 - Potential impact
@@ -43,11 +47,12 @@ For each commit, analyze:
 Generate a summary report when complete.
 
 ## Important
+
 - Complete ALL 1000 commits before stopping
 - Do NOT pause to ask for confirmation
 - Do NOT stop until the entire task is finished
 - If you encounter an error, log it and continue with the next commit
-````
+```
 
 Better. The agent now knows to push through. But there's still a problem: when the context window fills up and gets compacted, the agent loses track of where it was.
 
@@ -57,9 +62,11 @@ Give the agent a file to track progress:
 
 ````markdown
 ## Task
+
 Review the last 1000 commits in the Linux kernel repository.
 
 ## Workflow
+
 1. First, create a `tasks.json` file with all 1000 commits to review
 2. Each task should have: `id`, `commit_hash`, `status` (pending/in_progress/completed), and `summary`
 3. Process tasks one by one, updating `tasks.json` after each
@@ -67,6 +74,7 @@ Review the last 1000 commits in the Linux kernel repository.
 5. Continue until ALL tasks have status "completed"
 
 ## Task File Format
+
 ```json
 {
   "total": 1000,
@@ -83,6 +91,7 @@ Review the last 1000 commits in the Linux kernel repository.
 ```
 
 ## Important
+
 - Always read `tasks.json` before starting work
 - Update the file immediately after completing each task
 - Never stop until `completed` equals `total`
@@ -97,11 +106,13 @@ Task tracking solves the memory problem, but there's another issue: analyzing 10
 
 The fix: delegate each commit to a subagent that returns only the summary.
 
-````markdown
+```markdown
 ## Task
+
 Review the last 1000 commits in the Linux kernel repository.
 
 ## Workflow
+
 1. Create `tasks.json` with all commits to review
 2. For each pending task:
    - Spawn a subagent to analyze that single commit
@@ -110,21 +121,24 @@ Review the last 1000 commits in the Linux kernel repository.
 3. Continue until all tasks are completed
 
 ## Subagent Instructions
+
 Each subagent receives the specific commit hash and output format requirements.
 It fetches the commit, analyzes it, returns a structured summary, and exits.
 The subagent knows nothing about other commits.
 
 ## Main Agent Responsibilities
+
 - Orchestrate the overall workflow
 - Track progress in `tasks.json`
 - Aggregate results into final report
 - Never stop until all tasks complete
 
 ## Important
+
 - Use subagents to prevent context bloat
 - Each subagent handles exactly ONE commit
 - Main agent context stays clean
-````
+```
 
 Each commit gets analyzed with fresh context. The main agent stays lean, just managing the queue and collecting results. If a subagent fails, it doesn't corrupt anything else.
 
@@ -138,20 +152,24 @@ Here's everything put together:
 You are a code review agent analyzing Linux kernel commits.
 
 ## Objective
+
 Review the last 1000 commits and produce a comprehensive analysis report.
 
 ## Files
+
 - `tasks.json` - Task tracking file (create if missing)
 - `report.md` - Final analysis report
 - `errors.log` - Any errors encountered
 
 ## Startup Procedure
+
 1. Read `tasks.json` if it exists
 2. If missing, initialize with all 1000 commits
 3. Identify the next pending task
 4. Log current progress: "Resuming: X/1000 completed"
 
 ## Main Loop
+
 For each pending task:
 
 1. Mark task as "in_progress" in `tasks.json`
@@ -171,7 +189,9 @@ For each pending task:
 7. Continue to next task
 
 ## Completion
+
 When all tasks are completed:
+
 1. Generate `report.md` with:
    - Executive summary
    - Statistics (by type, by risk, by subsystem)
@@ -179,6 +199,7 @@ When all tasks are completed:
 2. Final commit: `git commit -m "Complete: 1000 commit review"`
 
 ## Critical Rules
+
 - NEVER stop until completed == total
 - NEVER ask for user confirmation mid-task
 - If a commit fails to analyze, log error and continue
@@ -205,6 +226,7 @@ Make the agent read context before doing anything:
 
 ```markdown
 ## On Every Session Start
+
 1. Read tasks.json
 2. Read errors.log
 3. Log current state
@@ -218,6 +240,7 @@ Agents sometimes mark things done without actually checking. Tell them to verify
 
 ```markdown
 After marking a task complete:
+
 1. Verify the output file exists
 2. Validate the JSON/data format
 3. Confirm the expected fields are present
@@ -229,9 +252,11 @@ After marking a task complete:
 
 ```markdown
 # Vague
+
 Continue until done.
 
 # Clear
+
 Continue until tasks.json shows completed == 1000.
 ```
 
