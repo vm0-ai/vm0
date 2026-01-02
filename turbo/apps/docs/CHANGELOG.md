@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/docs-v0.9.0...docs-v0.10.0) (2026-01-02)
+
+
+### Features
+
+* **docs:** add best practices for long-running agents ([#860](https://github.com/vm0-ai/vm0/issues/860)) ([7de2c56](https://github.com/vm0-ai/vm0/commit/7de2c56dfac3e3547d3cd6a4fa0b8c69e36800d2))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/docs-v0.8.0...docs-v0.9.0) (2026-01-01)
 
 
