@@ -136,8 +136,8 @@ export const startCommand = new Command("start")
           const job = await pollForJob(config.server, config.group);
 
           if (!job) {
-            // No job found, wait before polling again
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            // No job found, wait before polling again (30s for low-frequency runner)
+            await new Promise((resolve) => setTimeout(resolve, 30000));
             continue;
           }
 
