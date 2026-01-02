@@ -1,4 +1,4 @@
-name: Turbo
+name: Turbo  # CI workflow
 
 on:
   pull_request:
