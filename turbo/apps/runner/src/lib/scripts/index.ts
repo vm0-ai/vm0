@@ -21,24 +21,24 @@ export { RUN_AGENT_SCRIPT } from "./run-agent.py.js";
 
 /**
  * Script paths in the Firecracker VM
- * Same paths as E2B for consistency
+ * Using /opt/vm0-scripts to avoid conflict with /usr/local/bin/vm0-agent binary
  */
 export const SCRIPT_PATHS = {
-  baseDir: "/usr/local/bin/vm0-agent",
-  libDir: "/usr/local/bin/vm0-agent/lib",
-  libInit: "/usr/local/bin/vm0-agent/lib/__init__.py",
-  runAgent: "/usr/local/bin/vm0-agent/run-agent.py",
-  common: "/usr/local/bin/vm0-agent/lib/common.py",
-  log: "/usr/local/bin/vm0-agent/lib/log.py",
-  httpClient: "/usr/local/bin/vm0-agent/lib/http_client.py",
-  events: "/usr/local/bin/vm0-agent/lib/events.py",
-  directUpload: "/usr/local/bin/vm0-agent/lib/direct_upload.py",
-  download: "/usr/local/bin/vm0-agent/lib/download.py",
-  checkpoint: "/usr/local/bin/vm0-agent/lib/checkpoint.py",
-  mockClaude: "/usr/local/bin/vm0-agent/lib/mock_claude.py",
-  metrics: "/usr/local/bin/vm0-agent/lib/metrics.py",
-  uploadTelemetry: "/usr/local/bin/vm0-agent/lib/upload_telemetry.py",
-  proxySetup: "/usr/local/bin/vm0-agent/lib/proxy_setup.py",
-  mitmAddon: "/usr/local/bin/vm0-agent/lib/mitm_addon.py",
-  secretMasker: "/usr/local/bin/vm0-agent/lib/secret_masker.py",
+  baseDir: "/opt/vm0-scripts",
+  libDir: "/opt/vm0-scripts/lib",
+  libInit: "/opt/vm0-scripts/lib/__init__.py",
+  runAgent: "/opt/vm0-scripts/run-agent.py",
+  common: "/opt/vm0-scripts/lib/common.py",
+  log: "/opt/vm0-scripts/lib/log.py",
+  httpClient: "/opt/vm0-scripts/lib/http_client.py",
+  events: "/opt/vm0-scripts/lib/events.py",
+  directUpload: "/opt/vm0-scripts/lib/direct_upload.py",
+  download: "/opt/vm0-scripts/lib/download.py",
+  checkpoint: "/opt/vm0-scripts/lib/checkpoint.py",
+  mockClaude: "/opt/vm0-scripts/lib/mock_claude.py",
+  metrics: "/opt/vm0-scripts/lib/metrics.py",
+  uploadTelemetry: "/opt/vm0-scripts/lib/upload_telemetry.py",
+  proxySetup: "/opt/vm0-scripts/lib/proxy_setup.py",
+  mitmAddon: "/opt/vm0-scripts/lib/mitm_addon.py",
+  secretMasker: "/opt/vm0-scripts/lib/secret_masker.py",
 } as const;

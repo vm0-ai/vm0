@@ -36,7 +36,9 @@ trap cleanup EXIT
 echo "Mounting rootfs..."
 sudo mount -o loop "$ROOTFS_PATH" "$MOUNT_POINT"
 
-# Install vm0-agent (C binary, static linked)
+# Install vm0-agent (C binary vsock daemon, static linked)
+# Note: Python scripts are uploaded to /opt/vm0-scripts/ at runtime
+# to avoid conflict with this binary path
 echo "Installing vm0-agent..."
 sudo cp "$SCRIPT_DIR/vm0-agent" "$MOUNT_POINT/usr/local/bin/vm0-agent"
 sudo chmod +x "$MOUNT_POINT/usr/local/bin/vm0-agent"
