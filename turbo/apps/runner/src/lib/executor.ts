@@ -106,18 +106,10 @@ function buildEnvironmentVariables(
 }
 
 /**
- * Build environment file content for shell sourcing
- * Uses base64 encoding to safely handle any characters in values
+ * Path to environment JSON file in VM
+ * Used by run-agent.py to load environment variables
  */
-function buildEnvFile(envVars: Record<string, string>): string {
-  return Object.entries(envVars)
-    .map(([key, value]) => {
-      // Base64 encode the value to handle any special characters
-      const encoded = Buffer.from(value).toString("base64");
-      return `export ${key}=$(echo '${encoded}' | base64 -d)`;
-    })
-    .join("\n");
-}
+const ENV_JSON_PATH = "/tmp/vm0-env.json";
 
 /**
  * Configure DNS in the VM
@@ -293,20 +285,17 @@ export async function executeJob(
       );
     }
 
-    // Build environment variables and write to file in VM
-    // Using a file avoids shell escaping issues with special characters
+    // Build environment variables and write as JSON file in VM
+    // Using JSON avoids shell escaping issues entirely - Python loads it directly
     const envVars = buildEnvironmentVariables(context);
-    const envFileContent = buildEnvFile(envVars);
-    const envFilePath = "/tmp/vm0-env.sh";
-    await vsock.writeFile(envFilePath, envFileContent);
+    const envJson = JSON.stringify(envVars);
+    await vsock.writeFile(ENV_JSON_PATH, envJson);
 
-    // Execute run-agent.py with environment from file
+    // Execute run-agent.py which loads environment from JSON
     console.log(`[Executor] Running agent...`);
     const startTime = Date.now();
 
-    const result = await vsock.exec(
-      `. ${envFilePath} && python3 -u ${SCRIPT_PATHS.runAgent}`,
-    );
+    const result = await vsock.exec(`python3 -u ${SCRIPT_PATHS.runAgent}`);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(

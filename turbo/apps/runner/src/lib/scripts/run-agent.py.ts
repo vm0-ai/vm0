@@ -25,6 +25,15 @@ import json
 import threading
 import time
 
+# Load environment from JSON file before any other imports
+# This allows the executor to pass environment variables safely without shell escaping
+ENV_JSON_PATH = "/tmp/vm0-env.json"
+if os.path.exists(ENV_JSON_PATH):
+    with open(ENV_JSON_PATH, "r") as f:
+        env_data = json.load(f)
+        for key, value in env_data.items():
+            os.environ[key] = value
+
 # Add lib to path for imports
 sys.path.insert(0, "/opt/vm0-scripts/lib")
 
