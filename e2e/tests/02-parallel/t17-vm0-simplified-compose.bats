@@ -183,7 +183,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying skill download and upload..."
@@ -206,11 +206,11 @@ agents:
 EOF
 
     echo "# First compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Second compose with same skill..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
     # Should show unchanged indicator for the skill
     assert_output --partial "unchanged"
@@ -243,7 +243,7 @@ EOF
 
     echo "# Running vm0 compose..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
+    run $CLI_COMMAND compose --yes vm0.yaml
     assert_success
 
     echo "# Verifying both uploads..."
@@ -311,7 +311,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
