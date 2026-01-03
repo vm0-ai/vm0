@@ -121,9 +121,11 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
  */
 async function configureDNS(ssh: SSHClient): Promise<void> {
   // Write resolv.conf with public DNS servers
-  // We're connected as root, so no sudo needed
+  // First remove the existing file/symlink (may be managed by systemd-resolved)
+  // Then create a new regular file with DNS servers
   await ssh.execOrThrow(
-    `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
+    `rm -f /etc/resolv.conf && ` +
+      `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
       `echo "nameserver 8.8.4.4" >> /etc/resolv.conf && ` +
       `echo "nameserver 1.1.1.1" >> /etc/resolv.conf`,
   );
