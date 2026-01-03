@@ -116,22 +116,6 @@ function buildEnvironmentVariables(
 const ENV_JSON_PATH = "/tmp/vm0-env.json";
 
 /**
- * Configure DNS in the VM
- * Uses Google Public DNS and Cloudflare DNS for reliability
- */
-async function configureDNS(ssh: SSHClient): Promise<void> {
-  // Write resolv.conf with public DNS servers
-  // First remove the existing file/symlink (may be managed by systemd-resolved)
-  // Then create a new regular file with DNS servers
-  await ssh.execOrThrow(
-    `rm -f /etc/resolv.conf && ` +
-      `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
-      `echo "nameserver 8.8.4.4" >> /etc/resolv.conf && ` +
-      `echo "nameserver 1.1.1.1" >> /etc/resolv.conf`,
-  );
-}
-
-/**
  * Upload all scripts to VM individually via SSH
  */
 async function uploadScripts(ssh: SSHClient): Promise<void> {
@@ -269,11 +253,8 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
-    // Configure DNS for network access
-    console.log(`[Executor] Configuring DNS...`);
-    await configureDNS(ssh);
-
     // Upload all Python scripts
+    // Note: DNS is pre-configured in rootfs via setup-ssh.sh
     console.log(`[Executor] Uploading scripts...`);
     await uploadScripts(ssh);
     console.log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);

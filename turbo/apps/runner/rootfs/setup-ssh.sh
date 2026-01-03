@@ -117,12 +117,25 @@ sudo ln -sf /lib/systemd/system/ssh.service "$MOUNT_POINT/etc/systemd/system/mul
 sudo ln -sf /lib/systemd/system/sshd.service "$MOUNT_POINT/etc/systemd/system/multi-user.target.wants/sshd.service" 2>/dev/null || \
 echo "Note: Could not enable SSH service symlink, may need manual configuration"
 
+# Configure DNS (remove systemd-resolved symlink and create static config)
+echo "Configuring DNS..."
+sudo rm -f "$MOUNT_POINT/etc/resolv.conf"
+sudo tee "$MOUNT_POINT/etc/resolv.conf" > /dev/null << 'EOF'
+# Static DNS configuration for Firecracker VMs
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+nameserver 1.1.1.1
+EOF
+sudo chmod 644 "$MOUNT_POINT/etc/resolv.conf"
+
 # Verify installation
 echo ""
 echo "Installation complete. Verifying..."
 ls -la "$MOUNT_POINT/etc/ssh/sshd_config"
 ls -la "$MOUNT_POINT/etc/ssh/ssh_host_"*"_key" 2>/dev/null || echo "No host keys found"
+echo "DNS config:"
+cat "$MOUNT_POINT/etc/resolv.conf"
 
 echo ""
-echo "Success! SSH configured in $ROOTFS_PATH"
+echo "Success! SSH and DNS configured in $ROOTFS_PATH"
 echo "VMs will accept SSH connections on port 22 with empty root password."
