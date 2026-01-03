@@ -25,14 +25,35 @@ import json
 import threading
 import time
 
+# Early startup logging - helps debug issues before other imports
+print("[run-agent] Script starting...", flush=True)
+
 # Load environment from JSON file before any other imports
 # This allows the executor to pass environment variables safely without shell escaping
 ENV_JSON_PATH = "/tmp/vm0-env.json"
 if os.path.exists(ENV_JSON_PATH):
-    with open(ENV_JSON_PATH, "r") as f:
-        env_data = json.load(f)
-        for key, value in env_data.items():
-            os.environ[key] = value
+    print(f"[run-agent] Loading environment from {ENV_JSON_PATH}", flush=True)
+    try:
+        with open(ENV_JSON_PATH, "r") as f:
+            env_data = json.load(f)
+            for key, value in env_data.items():
+                os.environ[key] = value
+        print(f"[run-agent] Loaded {len(env_data)} environment variables", flush=True)
+    except Exception as e:
+        print(f"[run-agent] ERROR loading JSON: {e}", flush=True)
+        sys.exit(1)
+else:
+    print(f"[run-agent] ERROR: Environment file not found: {ENV_JSON_PATH}", flush=True)
+    sys.exit(1)
+
+# Verify critical environment variables
+critical_vars = ["VM0_RUN_ID", "VM0_API_URL", "VM0_WORKING_DIR", "VM0_PROMPT"]
+for var in critical_vars:
+    val = os.environ.get(var, "")
+    if val:
+        print(f"[run-agent] {var}={val[:50]}{'...' if len(val) > 50 else ''}", flush=True)
+    else:
+        print(f"[run-agent] WARNING: {var} is empty", flush=True)
 
 # Add lib to path for imports
 sys.path.insert(0, "/opt/vm0-scripts/lib")
