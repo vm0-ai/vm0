@@ -54,18 +54,13 @@ export class FirecrackerVM {
   private state: VMState = "created";
   private workDir: string;
   private socketPath: string;
-  private vsockPath: string;
   private vmRootfsPath: string; // Per-VM copy of rootfs
-  private guestCid: number;
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
-    this.vsockPath = path.join(this.workDir, "vsock.sock");
     this.vmRootfsPath = path.join(this.workDir, "rootfs.ext4");
-    // Guest CID must be >= 3 (0=hypervisor, 1=local, 2=host)
-    this.guestCid = config.vmId + 3;
   }
 
   /**
@@ -97,20 +92,6 @@ export class FirecrackerVM {
   }
 
   /**
-   * Get the vsock socket path for host-guest communication
-   */
-  getVsockPath(): string {
-    return this.vsockPath;
-  }
-
-  /**
-   * Get the guest CID for vsock
-   */
-  getGuestCid(): number {
-    return this.guestCid;
-  }
-
-  /**
    * Start the VM
    * This spawns Firecracker, configures it via API, and boots the VM
    */
@@ -123,12 +104,9 @@ export class FirecrackerVM {
       // Create working directory
       fs.mkdirSync(this.workDir, { recursive: true });
 
-      // Clean up any existing sockets from previous runs
+      // Clean up any existing socket from previous runs
       if (fs.existsSync(this.socketPath)) {
         fs.unlinkSync(this.socketPath);
-      }
-      if (fs.existsSync(this.vsockPath)) {
-        fs.unlinkSync(this.vsockPath);
       }
 
       // Copy rootfs to VM-local path for isolation
@@ -250,16 +228,6 @@ export class FirecrackerVM {
       guest_mac: this.networkConfig.guestMac,
       host_dev_name: this.networkConfig.tapDevice,
     });
-
-    // Configure vsock for host-guest communication
-    console.log(
-      `[VM ${this.config.vmId}] Vsock: CID ${this.guestCid}, path ${this.vsockPath}`,
-    );
-    await this.client.setVsock({
-      vsock_id: "vm0-vsock",
-      guest_cid: this.guestCid,
-      uds_path: this.vsockPath,
-    });
   }
 
   /**
@@ -312,17 +280,10 @@ export class FirecrackerVM {
       this.networkConfig = null;
     }
 
-    // Clean up sockets
+    // Clean up socket
     if (fs.existsSync(this.socketPath)) {
       try {
         fs.unlinkSync(this.socketPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
-    if (fs.existsSync(this.vsockPath)) {
-      try {
-        fs.unlinkSync(this.vsockPath);
       } catch {
         // Ignore cleanup errors
       }

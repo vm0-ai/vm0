@@ -7,4 +7,3 @@
 export * from "./client.js";
 export * from "./network.js";
 export * from "./vm.js";
-export * from "./vsock.js";

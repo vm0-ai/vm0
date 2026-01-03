@@ -2,7 +2,7 @@
  * Job Executor
  *
  * Executes agent jobs inside Firecracker VMs.
- * Handles VM lifecycle, script injection via vsock, and job completion.
+ * Handles VM lifecycle, script injection via SSH, and job completion.
  *
  * This executor achieves E2B parity by:
  * - Uploading the same Python scripts used by E2B
@@ -12,7 +12,11 @@
  */
 
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
-import { type VsockClient, createVMVsockClient } from "./firecracker/vsock.js";
+import {
+  type SSHClient,
+  createVMSSHClient,
+  getRunnerSSHKeyPath,
+} from "./ssh.js";
 import type {
   ExecutionContext,
   StorageManifest,
@@ -115,9 +119,9 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
  * Configure DNS in the VM
  * Uses Google Public DNS and Cloudflare DNS for reliability
  */
-async function configureDNS(vsock: VsockClient): Promise<void> {
+async function configureDNS(ssh: SSHClient): Promise<void> {
   // Write resolv.conf with public DNS servers
-  await vsock.execOrThrow(
+  await ssh.execOrThrow(
     `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
       `echo "nameserver 8.8.4.4" >> /etc/resolv.conf && ` +
       `echo "nameserver 1.1.1.1" >> /etc/resolv.conf`,
@@ -125,25 +129,23 @@ async function configureDNS(vsock: VsockClient): Promise<void> {
 }
 
 /**
- * Upload all scripts to VM individually
- * Using individual file writes instead of tar archive due to 32KB buffer
- * limit in the vm0-agent vsock daemon
+ * Upload all scripts to VM individually via SSH
  */
-async function uploadScripts(vsock: VsockClient): Promise<void> {
+async function uploadScripts(ssh: SSHClient): Promise<void> {
   const scripts = getAllScripts();
 
   // Create directories first
-  await vsock.execOrThrow(
+  await ssh.execOrThrow(
     `mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
   );
 
   // Write each script file individually
   for (const script of scripts) {
-    await vsock.writeFile(script.path, script.content);
+    await ssh.writeFile(script.path, script.content);
   }
 
   // Set executable permissions
-  await vsock.execOrThrow(
+  await ssh.execOrThrow(
     `chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
   );
 }
@@ -152,7 +154,7 @@ async function uploadScripts(vsock: VsockClient): Promise<void> {
  * Download storages to VM using storage manifest
  */
 async function downloadStorages(
-  vsock: VsockClient,
+  ssh: SSHClient,
   manifest: StorageManifest,
 ): Promise<void> {
   // Count archives to download
@@ -169,10 +171,10 @@ async function downloadStorages(
 
   // Write manifest to VM
   const manifestJson = JSON.stringify(manifest);
-  await vsock.writeFile("/tmp/storage-manifest.json", manifestJson);
+  await ssh.writeFile("/tmp/storage-manifest.json", manifestJson);
 
   // Run download script
-  const result = await vsock.exec(
+  const result = await ssh.exec(
     `python3 ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
   );
 
@@ -187,7 +189,7 @@ async function downloadStorages(
  * Restore session history for resume functionality
  */
 async function restoreSessionHistory(
-  vsock: VsockClient,
+  ssh: SSHClient,
   resumeSession: ResumeSession,
   workingDir: string,
   cliAgentType: string,
@@ -213,8 +215,8 @@ async function restoreSessionHistory(
 
   // Create directory and write file
   const dirPath = sessionPath.substring(0, sessionPath.lastIndexOf("/"));
-  await vsock.execOrThrow(`mkdir -p "${dirPath}"`);
-  await vsock.writeFile(sessionPath, sessionHistory);
+  await ssh.execOrThrow(`mkdir -p "${dirPath}"`);
+  await ssh.writeFile(sessionPath, sessionHistory);
 
   console.log(
     `[Executor] Session history restored (${sessionHistory.split("\n").length} lines)`,
@@ -230,7 +232,6 @@ export async function executeJob(
 ): Promise<ExecutionResult> {
   const vmId = getNextVmId();
   let vm: FirecrackerVM | null = null;
-  let vsock: VsockClient | null = null;
 
   console.log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
 
@@ -250,35 +251,39 @@ export async function executeJob(
     vm = new FirecrackerVM(vmConfig);
     await vm.start();
 
-    // Get vsock path for host-guest communication
-    const vsockPath = vm.getVsockPath();
-    console.log(`[Executor] VM ${vmId} started, vsock at ${vsockPath}`);
+    // Get VM IP for SSH connection
+    const guestIp = vm.getGuestIp();
+    if (!guestIp) {
+      throw new Error("VM started but no IP address available");
+    }
+    console.log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
-    // Create vsock client and wait for vm0-agent to be reachable
-    vsock = createVMVsockClient(vsockPath);
-    console.log(`[Executor] Waiting for vm0-agent on vsock...`);
-    await vsock.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
+    // Create SSH client and wait for SSH to become available
+    const privateKeyPath = getRunnerSSHKeyPath();
+    const ssh = createVMSSHClient(guestIp, "root", privateKeyPath || undefined);
+    console.log(`[Executor] Waiting for SSH on ${guestIp}...`);
+    await ssh.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
-    console.log(`[Executor] vm0-agent ready on vsock`);
+    console.log(`[Executor] SSH ready on ${guestIp}`);
 
     // Configure DNS for network access
     console.log(`[Executor] Configuring DNS...`);
-    await configureDNS(vsock);
+    await configureDNS(ssh);
 
-    // Upload all Python scripts via tar archive
+    // Upload all Python scripts
     console.log(`[Executor] Uploading scripts...`);
-    await uploadScripts(vsock);
+    await uploadScripts(ssh);
     console.log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
-      await downloadStorages(vsock, context.storageManifest);
+      await downloadStorages(ssh, context.storageManifest);
     }
 
     // Restore session history if resuming
     if (context.resumeSession) {
       await restoreSessionHistory(
-        vsock,
+        ssh,
         context.resumeSession,
         context.workingDir,
         context.cliAgentType || "claude-code",
@@ -292,38 +297,30 @@ export async function executeJob(
     console.log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
-    await vsock.writeFile(ENV_JSON_PATH, envJson);
-
-    // Verify the JSON file was written correctly
-    const verifyResult = await vsock.exec(`cat ${ENV_JSON_PATH} | wc -c`);
-    console.log(
-      `[Executor] Verified env JSON: ${verifyResult.stdout.trim()} bytes`,
-    );
-
-    // Verify Python and script exist
-    const pythonCheck = await vsock.exec(
-      `python3 --version && test -f ${SCRIPT_PATHS.runAgent} && echo "Script exists"`,
-    );
-    console.log(`[Executor] Python check: ${pythonCheck.stdout.trim()}`);
+    await ssh.writeFile(ENV_JSON_PATH, envJson);
 
     // Execute run-agent.py which loads environment from JSON
     console.log(`[Executor] Running agent...`);
     const startTime = Date.now();
 
-    const result = await vsock.exec(`python3 -u ${SCRIPT_PATHS.runAgent}`);
+    const result = await ssh.exec(`python3 -u ${SCRIPT_PATHS.runAgent}`);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(
       `[Executor] Agent finished in ${duration}s with exit code ${result.exitCode}`,
     );
 
-    // Log output for debugging (always log, even if empty)
-    console.log(
-      `[Executor] stdout (${result.stdout.length} chars): ${result.stdout.substring(0, 500)}`,
-    );
-    console.log(
-      `[Executor] stderr (${result.stderr.length} chars): ${result.stderr.substring(0, 500)}`,
-    );
+    // Log output for debugging
+    if (result.stdout) {
+      console.log(
+        `[Executor] stdout (${result.stdout.length} chars): ${result.stdout.substring(0, 500)}`,
+      );
+    }
+    if (result.stderr) {
+      console.log(
+        `[Executor] stderr (${result.stderr.length} chars): ${result.stderr.substring(0, 500)}`,
+      );
+    }
 
     return {
       exitCode: result.exitCode,
