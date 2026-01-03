@@ -289,7 +289,22 @@ export async function executeJob(
     // Using JSON avoids shell escaping issues entirely - Python loads it directly
     const envVars = buildEnvironmentVariables(context);
     const envJson = JSON.stringify(envVars);
+    console.log(
+      `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
+    );
     await vsock.writeFile(ENV_JSON_PATH, envJson);
+
+    // Verify the JSON file was written correctly
+    const verifyResult = await vsock.exec(`cat ${ENV_JSON_PATH} | wc -c`);
+    console.log(
+      `[Executor] Verified env JSON: ${verifyResult.stdout.trim()} bytes`,
+    );
+
+    // Verify Python and script exist
+    const pythonCheck = await vsock.exec(
+      `python3 --version && test -f ${SCRIPT_PATHS.runAgent} && echo "Script exists"`,
+    );
+    console.log(`[Executor] Python check: ${pythonCheck.stdout.trim()}`);
 
     // Execute run-agent.py which loads environment from JSON
     console.log(`[Executor] Running agent...`);
@@ -302,13 +317,13 @@ export async function executeJob(
       `[Executor] Agent finished in ${duration}s with exit code ${result.exitCode}`,
     );
 
-    // Log output for debugging
-    if (result.stdout) {
-      console.log(`[Executor] stdout: ${result.stdout.substring(0, 500)}...`);
-    }
-    if (result.stderr) {
-      console.log(`[Executor] stderr: ${result.stderr.substring(0, 500)}...`);
-    }
+    // Log output for debugging (always log, even if empty)
+    console.log(
+      `[Executor] stdout (${result.stdout.length} chars): ${result.stdout.substring(0, 500)}`,
+    );
+    console.log(
+      `[Executor] stderr (${result.stderr.length} chars): ${result.stderr.substring(0, 500)}`,
+    );
 
     return {
       exitCode: result.exitCode,
