@@ -120,11 +120,11 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
  * Uses Google Public DNS and Cloudflare DNS for reliability
  */
 async function configureDNS(ssh: SSHClient): Promise<void> {
-  // Write resolv.conf with public DNS servers
+  // Write resolv.conf with public DNS servers (use sudo for permission)
   await ssh.execOrThrow(
-    `echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
+    `sudo sh -c 'echo "nameserver 8.8.8.8" > /etc/resolv.conf && ` +
       `echo "nameserver 8.8.4.4" >> /etc/resolv.conf && ` +
-      `echo "nameserver 1.1.1.1" >> /etc/resolv.conf`,
+      `echo "nameserver 1.1.1.1" >> /etc/resolv.conf'`,
   );
 }
 
