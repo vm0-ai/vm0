@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.10.0](https://github.com/vm0-ai/vm0/compare/web-v7.9.0...web-v7.10.0) (2026-01-04)
+
+
+### Features
+
+* add docs analytics and update main site sitemap ([#856](https://github.com/vm0-ai/vm0/issues/856)) ([1c870cd](https://github.com/vm0-ai/vm0/commit/1c870cd44b68a460e55a3248f09003e69ca0ec89))
+
 ## [7.9.0](https://github.com/vm0-ai/vm0/compare/web-v7.8.0...web-v7.9.0) (2025-12-31)
 
 
