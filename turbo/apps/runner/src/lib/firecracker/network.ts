@@ -85,19 +85,14 @@ async function execCommand(cmd: string, sudo: boolean = true): Promise<string> {
  * Get the default network interface (the one used to reach the internet)
  */
 async function getDefaultInterface(): Promise<string> {
-  try {
-    // Get the interface used to reach 8.8.8.8
-    const result = await execCommand(`ip route get 8.8.8.8`, false);
-    // Output format: "8.8.8.8 via X.X.X.X dev <interface> ..."
-    const match = result.match(/dev\s+(\S+)/);
-    if (match && match[1]) {
-      return match[1];
-    }
-  } catch {
-    // Ignore errors
+  // Get the interface used to reach 8.8.8.8
+  const result = await execCommand(`ip route get 8.8.8.8`, false);
+  // Output format: "8.8.8.8 via X.X.X.X dev <interface> ..."
+  const match = result.match(/dev\s+(\S+)/);
+  if (match && match[1]) {
+    return match[1];
   }
-  // Fallback to common interface names
-  return "eth0";
+  throw new Error(`Failed to detect default network interface from: ${result}`);
 }
 
 /**
@@ -255,13 +250,13 @@ export async function createTapDevice(vmId: number): Promise<VMNetworkConfig> {
  * Delete a TAP device
  */
 export async function deleteTapDevice(tapDevice: string): Promise<void> {
-  try {
-    await execCommand(`ip link delete ${tapDevice}`);
-    console.log(`TAP device ${tapDevice} deleted`);
-  } catch (error) {
-    // Ignore errors if device doesn't exist
-    console.log(`TAP device ${tapDevice} may not exist: ${error}`);
+  // Only attempt delete if device exists
+  if (!(await tapDeviceExists(tapDevice))) {
+    console.log(`TAP device ${tapDevice} does not exist, skipping delete`);
+    return;
   }
+  await execCommand(`ip link delete ${tapDevice}`);
+  console.log(`TAP device ${tapDevice} deleted`);
 }
 
 /**

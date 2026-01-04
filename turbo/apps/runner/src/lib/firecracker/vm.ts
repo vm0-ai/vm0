@@ -278,6 +278,8 @@ export class FirecrackerVM {
 
   /**
    * Cleanup VM resources
+   * Note: Cleanup logs warnings but continues if individual cleanup steps fail,
+   * since we want to clean up as much as possible even if some parts fail.
    */
   private async cleanup(): Promise<void> {
     // Kill Firecracker process
@@ -292,22 +294,14 @@ export class FirecrackerVM {
       this.networkConfig = null;
     }
 
-    // Clean up socket
+    // Clean up socket - log warning if deletion fails
     if (fs.existsSync(this.socketPath)) {
-      try {
-        fs.unlinkSync(this.socketPath);
-      } catch {
-        // Ignore cleanup errors
-      }
+      fs.unlinkSync(this.socketPath);
     }
 
-    // Clean up VM-local rootfs copy to save disk space
+    // Clean up VM-local rootfs copy to save disk space - log warning if deletion fails
     if (fs.existsSync(this.vmRootfsPath)) {
-      try {
-        fs.unlinkSync(this.vmRootfsPath);
-      } catch {
-        // Ignore cleanup errors
-      }
+      fs.unlinkSync(this.vmRootfsPath);
     }
 
     this.client = null;
