@@ -26,7 +26,10 @@ function PlausibleTrackerInner() {
     }
 
     // Track pageview on route change
-    if (typeof window !== "undefined" && window.plausible) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.plausible === "function"
+    ) {
       const url =
         pathname + (searchParams?.toString() ? `?${searchParams}` : "");
       window.plausible("pageview", { u: url });
