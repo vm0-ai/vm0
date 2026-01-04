@@ -316,7 +316,7 @@ const cookCmd = new Command()
 // Default action for "vm0 cook [prompt]"
 cookCmd
   .argument("[prompt]", "Prompt for the agent")
-  .option("-y, --yes", "Automatically approve new environment variables")
+  .option("-y, --yes", "Skip confirmation prompts")
   .action(async (prompt: string | undefined, options: { yes?: boolean }) => {
     // Step 0: Check for updates and auto-upgrade if needed
     const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);

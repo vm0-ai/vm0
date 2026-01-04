@@ -103,7 +103,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent with skill without frontmatter vars"
+    description: "Test agent with skill"
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
