@@ -2,7 +2,6 @@ import "@/app/global.css";
 import { RootProvider } from "fumadocs-ui/provider";
 import { Noto_Sans } from "next/font/google";
 import Script from "next/script";
-import { PlausibleTracker } from "@/components/plausible-tracker";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -15,6 +14,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       <head>
         <Script
           src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
+          data-domain="vm0.ai"
           strategy="afterInteractive"
           async
         />
@@ -26,10 +26,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
         </Script>
       </head>
       <body className="flex flex-col min-h-screen">
-        <RootProvider>
-          <PlausibleTracker />
-          {children}
-        </RootProvider>
+        <RootProvider>{children}</RootProvider>
       </body>
     </html>
   );
