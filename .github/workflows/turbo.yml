@@ -359,7 +359,7 @@ jobs:
             "sandbox:" \
             "  max_concurrent: 8" \
             "  vcpu: 2" \
-            "  memory_mb: 512" \
+            "  memory_mb: 1024" \
             "  poll_interval_ms: 1000" \
             "firecracker:" \
             "  binary: /usr/local/bin/firecracker" \
