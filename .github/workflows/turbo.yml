@@ -363,7 +363,7 @@ jobs:
             "firecracker:" \
             "  binary: /usr/local/bin/firecracker" \
             "  kernel: /opt/firecracker/vmlinux" \
-            "  rootfs: ${RUNNER_DIR}/rootfs.ext4" > /tmp/runner.yaml
+            "  rootfs: /opt/firecracker/rootfs.ext4" > /tmp/runner.yaml
 
           echo "Copying runner.yaml to Metal..."
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
@@ -539,9 +539,16 @@ jobs:
           echo "Checking/Installing Firecracker..."
           ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./install-firecracker.sh"
 
-          # Build rootfs from Dockerfile (PR-specific)
-          echo "Building rootfs from Dockerfile..."
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./build-rootfs.sh ${RUNNER_DIR}/rootfs.ext4"
+          # Build rootfs from Dockerfile (global, shared across all PRs)
+          # Only rebuild if not exists or FORCE_REBUILD_ROOTFS is set
+          GLOBAL_ROOTFS="/opt/firecracker/rootfs.ext4"
+          echo "Checking global rootfs at ${GLOBAL_ROOTFS}..."
+          if ssh $SSH_OPTS "$SSH_TARGET" "[ -f ${GLOBAL_ROOTFS} ]"; then
+            echo "Global rootfs already exists, skipping build"
+          else
+            echo "Building global rootfs from Dockerfile..."
+            ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./build-rootfs.sh ${GLOBAL_ROOTFS}"
+          fi
 
           # Create production-only package.json (remove workspace refs)
           node -e "

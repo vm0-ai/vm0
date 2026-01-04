@@ -10,11 +10,15 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { runners } from "../../../../../../src/db/schema/runner";
+import {
+  runners,
+  runnerJobQueue,
+} from "../../../../../../src/db/schema/runner";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
+import { decryptSecrets } from "../../../../../../src/lib/crypto/secrets-encryption";
 
 const log = logger("api:runners:jobs:claim");
 
@@ -43,61 +47,44 @@ const router = tsr.router(runnersJobClaimContract, {
       return createErrorResponse("NOT_FOUND", "Runner not found");
     }
 
-    // Fetch the pending run
-    const [pendingRun] = await globalThis.services.db
+    // Fetch the job from runner_job_queue
+    const [job] = await globalThis.services.db
       .select()
-      .from(agentRuns)
+      .from(runnerJobQueue)
       .where(
-        and(
-          eq(agentRuns.id, runId),
-          eq(agentRuns.status, "pending"),
-          isNull(agentRuns.runnerId),
-        ),
+        and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
       )
       .limit(1);
 
-    if (!pendingRun) {
+    if (!job) {
       // Check if job exists but is already claimed
-      const [existingRun] = await globalThis.services.db
+      const [existingJob] = await globalThis.services.db
         .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, runId))
+        .from(runnerJobQueue)
+        .where(eq(runnerJobQueue.runId, runId))
         .limit(1);
 
-      if (existingRun) {
-        if (existingRun.runnerId) {
-          return createErrorResponse("CONFLICT", "Job already claimed");
-        }
-        return createErrorResponse(
-          "CONFLICT",
-          `Job is not available (status: ${existingRun.status})`,
-        );
+      if (existingJob) {
+        return createErrorResponse("CONFLICT", "Job already claimed");
       }
 
-      return createErrorResponse("NOT_FOUND", "Job not found");
+      return createErrorResponse("NOT_FOUND", "Job not found in queue");
     }
 
-    // Claim the job - atomically update status and set runner
+    // Claim the job - atomically update in runner_job_queue
     const now = new Date();
-    const [claimedRun] = await globalThis.services.db
-      .update(agentRuns)
+    const [claimedJob] = await globalThis.services.db
+      .update(runnerJobQueue)
       .set({
         runnerId,
         claimedAt: now,
-        status: "running",
-        startedAt: now,
-        lastHeartbeatAt: now,
       })
       .where(
-        and(
-          eq(agentRuns.id, runId),
-          eq(agentRuns.status, "pending"),
-          isNull(agentRuns.runnerId),
-        ),
+        and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
       )
       .returning();
 
-    if (!claimedRun) {
+    if (!claimedJob) {
       // Race condition - job was claimed by another runner
       return createErrorResponse(
         "CONFLICT",
@@ -105,26 +92,35 @@ const router = tsr.router(runnersJobClaimContract, {
       );
     }
 
+    // Update agent_runs status to running
+    const [run] = await globalThis.services.db
+      .update(agentRuns)
+      .set({
+        status: "running",
+        startedAt: now,
+        lastHeartbeatAt: now,
+      })
+      .where(eq(agentRuns.id, runId))
+      .returning();
+
+    if (!run) {
+      return createErrorResponse("NOT_FOUND", "Run not found");
+    }
+
     log.debug(`Job ${runId} claimed by runner ${runnerId}`);
 
     // Generate sandbox token for the runner to use when calling webhooks
-    const sandboxToken = await generateSandboxToken(
-      pendingRun.userId,
-      pendingRun.id,
-    );
+    const sandboxToken = await generateSandboxToken(run.userId, run.id);
 
-    // Load stored execution context (prepared at job creation via late routing)
+    // Load stored execution context from the job queue
     const storedContext =
-      claimedRun.executionContext as StoredExecutionContext | null;
+      claimedJob.executionContext as StoredExecutionContext | null;
 
     if (!storedContext) {
-      // This can happen for jobs created before the late-routing update
-      log.warn(
-        `Job ${runId} has no stored execution context (created before late-routing update)`,
-      );
+      log.warn(`Job ${runId} has no stored execution context`);
       return createErrorResponse(
         "BAD_REQUEST",
-        "Job missing execution context (created before late-routing update)",
+        "Job missing execution context",
       );
     }
 
@@ -132,16 +128,22 @@ const router = tsr.router(runnersJobClaimContract, {
       `Loaded stored context: workingDir=${storedContext.workingDir}, cliAgentType=${storedContext.cliAgentType}`,
     );
 
+    // Decrypt secrets before returning to runner
+    const secretValues = decryptSecrets(
+      storedContext.encryptedSecrets,
+      globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+    );
+
     // Return execution context (context already prepared at job creation)
     return {
       status: 200 as const,
       body: {
-        runId: claimedRun.id,
-        prompt: claimedRun.prompt,
-        agentComposeVersionId: claimedRun.agentComposeVersionId,
-        vars: (claimedRun.vars as Record<string, string>) ?? null,
-        secretNames: claimedRun.secretNames ?? null,
-        checkpointId: claimedRun.resumedFromCheckpointId ?? null,
+        runId: run.id,
+        prompt: run.prompt,
+        agentComposeVersionId: run.agentComposeVersionId,
+        vars: (run.vars as Record<string, string>) ?? null,
+        secretNames: run.secretNames ?? null,
+        checkpointId: run.resumedFromCheckpointId ?? null,
         sandboxToken,
         apiUrl: globalThis.services.env.VM0_API_URL || "https://www.vm0.ai",
         // From stored context (prepared at job creation):
@@ -149,7 +151,7 @@ const router = tsr.router(runnersJobClaimContract, {
         storageManifest: storedContext.storageManifest,
         environment: storedContext.environment,
         resumeSession: storedContext.resumeSession,
-        secretValues: storedContext.secretValues,
+        secretValues, // Decrypted secrets
         cliAgentType: storedContext.cliAgentType,
       },
     };

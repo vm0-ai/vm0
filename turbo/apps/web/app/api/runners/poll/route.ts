@@ -6,6 +6,7 @@ import {
 import { runnersPollContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { runnerJobQueue } from "../../../../src/db/schema/runner";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
@@ -41,33 +42,36 @@ const router = tsr.router(runnersPollContract, {
 
     const { group } = body;
 
-    // Simple single query - runner client handles polling loop
-    const [pendingRun] = await globalThis.services.db
+    // Query runner_job_queue for unclaimed jobs, join with agent_runs for metadata
+    const [pendingJob] = await globalThis.services.db
       .select({
-        id: agentRuns.id,
+        runId: runnerJobQueue.runId,
         prompt: agentRuns.prompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
         secretNames: agentRuns.secretNames,
         resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       })
-      .from(agentRuns)
+      .from(runnerJobQueue)
+      .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
       .where(
         and(
-          eq(agentRuns.runnerGroup, group),
-          eq(agentRuns.status, "pending"),
-          isNull(agentRuns.runnerId),
+          eq(runnerJobQueue.runnerGroup, group),
+          isNull(runnerJobQueue.claimedAt),
         ),
       )
       .limit(1);
 
+    // Alias for backward compatibility
+    const pendingRun = pendingJob;
+
     if (pendingRun) {
-      log.debug(`Found pending job: ${pendingRun.id}`);
+      log.debug(`Found pending job: ${pendingRun.runId}`);
       return {
         status: 200 as const,
         body: {
           job: {
-            runId: pendingRun.id,
+            runId: pendingRun.runId,
             prompt: pendingRun.prompt,
             agentComposeVersionId: pendingRun.agentComposeVersionId,
             vars: (pendingRun.vars as Record<string, string>) ?? null,

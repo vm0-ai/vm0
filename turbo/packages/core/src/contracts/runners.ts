@@ -128,13 +128,14 @@ export const resumeSessionSchema = z.object({
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
+ * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
   workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
-  secretValues: z.array(z.string()).nullable(),
+  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
   cliAgentType: z.string(),
   experimentalNetworkSecurity: z.boolean().optional(),
 });

@@ -10,6 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { runnerJobQueue } from "../../../../src/db/schema/runner";
 import { eq } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
@@ -19,6 +20,7 @@ import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { storageService } from "../../../../src/lib/storage/storage-service";
 import { logger } from "../../../../src/lib/logger";
+import { encryptSecrets } from "../../../../src/lib/crypto/secrets-encryption";
 
 const log = logger("api:runs");
 
@@ -472,25 +474,35 @@ const router = tsr.router(runsMainContract, {
           workingDir,
         );
 
-        // Build stored execution context
+        // Encrypt secrets before storing
+        const secretValues = context.secrets
+          ? Object.values(context.secrets)
+          : null;
+        const encryptedSecrets = encryptSecrets(
+          secretValues,
+          globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+        );
+
+        // Build stored execution context with encrypted secrets
         const storedContext: StoredExecutionContext = {
           workingDir,
           storageManifest,
           environment: context.environment || null,
           resumeSession: context.resumeSession || null,
-          secretValues: context.secrets ? Object.values(context.secrets) : null,
+          encryptedSecrets, // Encrypted secrets (replaces secretValues)
           cliAgentType: extractCliAgentType(context.agentCompose),
           experimentalNetworkSecurity: context.experimentalNetworkSecurity,
         };
 
-        // Update run with runner group and stored context - keep status as 'pending'
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({
-            runnerGroup,
-            executionContext: storedContext,
-          })
-          .where(eq(agentRuns.id, run.id));
+        // Insert into runner job queue - separate table for runner jobs
+        // TTL: 24 hours for job expiration
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await globalThis.services.db.insert(runnerJobQueue).values({
+          runId: run.id,
+          runnerGroup,
+          executionContext: storedContext,
+          expiresAt,
+        });
 
         // Return early - run will be picked up by polling runner
         return {

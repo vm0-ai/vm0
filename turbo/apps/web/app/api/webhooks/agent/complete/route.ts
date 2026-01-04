@@ -6,6 +6,7 @@ import {
 import { webhookCompleteContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { runnerJobQueue } from "../../../../../src/db/schema/runner";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
@@ -174,6 +175,20 @@ const router = tsr.router(webhookCompleteContract, {
       // Kill sandbox (wait for completion to ensure cleanup before response)
       if (sandboxId) {
         await e2bService.killSandbox(sandboxId);
+      }
+
+      // Clean up runner job queue entry (for self-hosted runner jobs)
+      // This removes the encrypted secrets from the database
+      try {
+        await globalThis.services.db
+          .delete(runnerJobQueue)
+          .where(eq(runnerJobQueue.runId, body.runId));
+      } catch (cleanupError) {
+        // Don't fail the completion if cleanup fails - the TTL will handle it
+        log.warn(
+          `Failed to cleanup runner job queue for ${body.runId}:`,
+          cleanupError,
+        );
       }
 
       return {
