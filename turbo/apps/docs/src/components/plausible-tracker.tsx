@@ -15,20 +15,26 @@ declare global {
 function PlausibleTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isFirstRender = useRef(true);
   const lastTrackedPath = useRef<string>("");
 
   useEffect(() => {
-    // Skip tracking on initial mount - Plausible's script handles that
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      lastTrackedPath.current =
-        pathname + (searchParams?.toString() ? `?${searchParams}` : "");
+    // Wait for plausible to be loaded
+    if (
+      typeof window === "undefined" ||
+      typeof window.plausible !== "function"
+    ) {
       return;
     }
 
     const currentPath =
       pathname + (searchParams?.toString() ? `?${searchParams}` : "");
+
+    // Initialize on first run - store initial path but don't track
+    // (Plausible's script handles the initial pageview after init)
+    if (lastTrackedPath.current === "") {
+      lastTrackedPath.current = currentPath;
+      return;
+    }
 
     // Only track if path actually changed
     if (currentPath === lastTrackedPath.current) {
@@ -36,13 +42,8 @@ function PlausibleTrackerInner() {
     }
 
     // Track pageview on route change
-    if (
-      typeof window !== "undefined" &&
-      typeof window.plausible === "function"
-    ) {
-      window.plausible("pageview", { u: currentPath });
-      lastTrackedPath.current = currentPath;
-    }
+    window.plausible("pageview", { u: currentPath });
+    lastTrackedPath.current = currentPath;
   }, [pathname, searchParams]);
 
   return null;
