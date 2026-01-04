@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/docs-v0.11.0...docs-v0.11.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** change Plausible domain to vm0.ai for unified tracking ([#876](https://github.com/vm0-ai/vm0/issues/876)) ([07d80af](https://github.com/vm0-ai/vm0/commit/07d80af8adf9951ac7e90624cfc49fd5eb263203))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/docs-v0.10.0...docs-v0.11.0) (2026-01-04)
 
 
