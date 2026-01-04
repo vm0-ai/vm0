@@ -81,9 +81,15 @@ EOF
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from experimental runner"
 
-    # The run should complete
     echo "# Run output:"
     echo "$output"
+
+    # Always show runner logs for debugging before assert
+    echo "# Runner logs (for debugging):"
+    get_runner_logs
+
+    # Verify the run completed successfully
+    assert_success
 
     echo "# Step 5: Get runner logs"
     local runner_logs=$(get_runner_logs)

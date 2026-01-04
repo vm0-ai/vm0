@@ -145,15 +145,6 @@ export async function pollForJob(
 ): Promise<Job | null> {
   const headers = getAuthHeaders(server.token);
 
-  // Debug: Log headers being sent (mask token for security)
-  const debugHeaders = {
-    ...headers,
-    Authorization: headers.Authorization
-      ? `Bearer ${headers.Authorization.substring(7, 22)}...`
-      : "MISSING",
-  };
-  console.log(`[DEBUG] Poll request headers:`, JSON.stringify(debugHeaders));
-
   const response = await fetch(`${server.url}/api/runners/poll`, {
     method: "POST",
     headers,
