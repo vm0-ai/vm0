@@ -11,6 +11,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
 import { FirecrackerClient } from "./client.js";
 import {
   createTapDevice,
@@ -145,17 +146,28 @@ export class FirecrackerVM {
         }
       });
 
-      // Log stdout/stderr
-      this.process.stdout?.on("data", (data: Buffer) => {
-        console.log(
-          `[VM ${this.config.vmId}] stdout: ${data.toString().trim()}`,
-        );
-      });
-      this.process.stderr?.on("data", (data: Buffer) => {
-        console.log(
-          `[VM ${this.config.vmId}] stderr: ${data.toString().trim()}`,
-        );
-      });
+      // Log stdout/stderr line by line (prevents fragmented output)
+      if (this.process.stdout) {
+        const stdoutRL = readline.createInterface({
+          input: this.process.stdout,
+        });
+        stdoutRL.on("line", (line) => {
+          // Only log non-empty kernel boot messages at debug level
+          if (line.trim()) {
+            console.log(`[VM ${this.config.vmId}] ${line}`);
+          }
+        });
+      }
+      if (this.process.stderr) {
+        const stderrRL = readline.createInterface({
+          input: this.process.stderr,
+        });
+        stderrRL.on("line", (line) => {
+          if (line.trim()) {
+            console.error(`[VM ${this.config.vmId}] stderr: ${line}`);
+          }
+        });
+      }
 
       // Wait for API to become ready
       this.client = new FirecrackerClient(this.socketPath);
