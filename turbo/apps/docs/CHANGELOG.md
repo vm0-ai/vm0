@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.4](https://github.com/vm0-ai/vm0/compare/docs-v0.13.3...docs-v0.13.4) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** remove plausible.init call to prevent duplicate counting ([#895](https://github.com/vm0-ai/vm0/issues/895)) ([f5ae5d2](https://github.com/vm0-ai/vm0/commit/f5ae5d224ddc4758671ac245e9ac31a87cef8cf9))
+
 ## [0.13.3](https://github.com/vm0-ai/vm0/compare/docs-v0.13.2...docs-v0.13.3) (2026-01-04)
 
 
