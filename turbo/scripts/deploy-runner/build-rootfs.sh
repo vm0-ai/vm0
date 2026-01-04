@@ -66,24 +66,24 @@ build_image() {
 }
 
 # Export filesystem from Docker container
+# Returns the path to the exported tar file via global variable
 export_filesystem() {
-    echo "[EXPORT] Exporting filesystem from container..."
+    echo "[EXPORT] Exporting filesystem from container..." >&2
 
     # Remove any existing container
     $DOCKER rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
     # Create container (don't start it)
-    $DOCKER create --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    $DOCKER create --name "$CONTAINER_NAME" "$IMAGE_NAME" >&2
 
     # Export to tar
-    TMP_TAR=$(mktemp)
-    $DOCKER export "$CONTAINER_NAME" -o "$TMP_TAR"
+    EXPORTED_TAR=$(mktemp)
+    $DOCKER export "$CONTAINER_NAME" -o "$EXPORTED_TAR"
 
     # Cleanup container
-    $DOCKER rm -f "$CONTAINER_NAME"
+    $DOCKER rm -f "$CONTAINER_NAME" >&2
 
-    echo "[OK] Filesystem exported to temporary tar"
-    echo "$TMP_TAR"
+    echo "[OK] Filesystem exported to temporary tar: $EXPORTED_TAR" >&2
 }
 
 # Create ext4 image and populate with filesystem
@@ -194,8 +194,8 @@ verify_rootfs() {
 main() {
     check_dependencies
     build_image
-    TAR_PATH=$(export_filesystem)
-    create_ext4_image "$TAR_PATH"
+    export_filesystem
+    create_ext4_image "$EXPORTED_TAR"
     verify_rootfs
 
     echo ""
