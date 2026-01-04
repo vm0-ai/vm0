@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.6](https://github.com/vm0-ai/vm0/compare/docs-v0.13.5...docs-v0.13.6) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** remove data-domain to prevent duplicate pageview tracking ([#902](https://github.com/vm0-ai/vm0/issues/902)) ([d07ac1e](https://github.com/vm0-ai/vm0/commit/d07ac1e8a289479bb921105ab91d3e6796128ce6))
+
 ## [0.13.5](https://github.com/vm0-ai/vm0/compare/docs-v0.13.4...docs-v0.13.5) (2026-01-04)
 
 

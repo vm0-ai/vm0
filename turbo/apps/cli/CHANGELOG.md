@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.35.0](https://github.com/vm0-ai/vm0/compare/cli-v4.34.0...cli-v4.35.0) (2026-01-04)
+
+
+### Features
+
+* **cli:** setup-github respects git root directory when run from subdirectory ([#897](https://github.com/vm0-ai/vm0/issues/897)) ([d5bae12](https://github.com/vm0-ai/vm0/commit/d5bae12875e2ce2318681c7eeda3f9296f0a21b4))
+
 ## [4.34.0](https://github.com/vm0-ai/vm0/compare/cli-v4.33.0...cli-v4.34.0) (2026-01-04)
 
 
