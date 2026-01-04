@@ -14,7 +14,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
         <script
           defer
           data-domain="vm0.ai"
-          src="https://plausible.io/js/script.js"
+          src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
         ></script>
       </head>
       <body className="flex flex-col min-h-screen">
