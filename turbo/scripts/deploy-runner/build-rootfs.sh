@@ -92,14 +92,18 @@ create_ext4_image() {
 
     echo "[CREATE] Creating ext4 image (${ROOTFS_SIZE_MB}MB)..."
 
-    # Remove existing output file
-    rm -f "$OUTPUT_PATH"
+    # Ensure output directory exists with proper permissions
+    OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
+    sudo mkdir -p "$OUTPUT_DIR"
 
-    # Create sparse file
-    dd if=/dev/zero of="$OUTPUT_PATH" bs=1M count=0 seek="$ROOTFS_SIZE_MB" 2>/dev/null
+    # Remove existing output file
+    sudo rm -f "$OUTPUT_PATH"
+
+    # Create sparse file (use sudo for protected directories like /opt)
+    sudo dd if=/dev/zero of="$OUTPUT_PATH" bs=1M count=0 seek="$ROOTFS_SIZE_MB" 2>/dev/null
 
     # Format as ext4
-    mkfs.ext4 -F -L "rootfs" "$OUTPUT_PATH" >/dev/null 2>&1
+    sudo mkfs.ext4 -F -L "rootfs" "$OUTPUT_PATH" >/dev/null 2>&1
 
     # Mount and extract
     MOUNT_POINT=$(mktemp -d)
