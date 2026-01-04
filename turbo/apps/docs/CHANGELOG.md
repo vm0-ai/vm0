@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.5](https://github.com/vm0-ai/vm0/compare/docs-v0.13.4...docs-v0.13.5) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** prevent plausible duplicate visitor counting ([#898](https://github.com/vm0-ai/vm0/issues/898)) ([0d183ce](https://github.com/vm0-ai/vm0/commit/0d183ce52875f22b954b27448699071030340bd6))
+
 ## [0.13.4](https://github.com/vm0-ai/vm0/compare/docs-v0.13.3...docs-v0.13.4) (2026-01-04)
 
 
