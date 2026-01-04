@@ -15,45 +15,6 @@ export const runnerGroupSchema = z
   );
 
 /**
- * Runner status
- */
-export const runnerStatusSchema = z.enum(["online", "offline", "busy"]);
-
-/**
- * Runner response schema
- */
-export const runnerResponseSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  group: z.string(),
-  status: runnerStatusSchema,
-  lastHeartbeatAt: z.string().datetime().nullable(),
-  createdAt: z.string().datetime(),
-});
-
-/**
- * Runners registration contract - POST /api/runners/register
- */
-export const runnersRegisterContract = c.router({
-  register: {
-    method: "POST",
-    path: "/api/runners/register",
-    body: z.object({
-      name: z.string().min(1).max(255),
-      group: runnerGroupSchema,
-    }),
-    responses: {
-      200: runnerResponseSchema,
-      201: runnerResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Register or update a runner",
-  },
-});
-
-/**
  * Job schema for polling response
  */
 export const jobSchema = z.object({
@@ -164,6 +125,7 @@ export const executionContextSchema = z.object({
 /**
  * Runners job claim contract - POST /api/runners/jobs/:id/claim
  * Claim a pending job for execution
+ * Verifies that the job's agent_run belongs to the authenticated user
  */
 export const runnersJobClaimContract = c.router({
   claim: {
@@ -172,13 +134,12 @@ export const runnersJobClaimContract = c.router({
     pathParams: z.object({
       id: z.string().uuid(),
     }),
-    body: z.object({
-      runnerId: z.string().uuid(),
-    }),
+    body: z.object({}),
     responses: {
       200: executionContextSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema, // Job does not belong to user
       404: apiErrorSchema,
       409: apiErrorSchema, // Already claimed
       500: apiErrorSchema,
@@ -187,11 +148,8 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
-export type RunnersRegisterContract = typeof runnersRegisterContract;
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
-export type RunnerResponse = z.infer<typeof runnerResponseSchema>;
-export type RunnerStatus = z.infer<typeof runnerStatusSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<

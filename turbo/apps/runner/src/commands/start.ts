@@ -5,7 +5,6 @@ import {
   type RunnerConfig,
 } from "../lib/config.js";
 import {
-  registerRunner,
   pollForJob,
   claimJob,
   completeJob,
@@ -89,19 +88,10 @@ export const startCommand = new Command("start")
       console.log("Setting up network bridge...");
       await setupBridge();
 
-      // Register runner with server
-      console.log(
-        `Registering runner '${config.name}' for group '${config.group}'...`,
-      );
-      const runner = await registerRunner(
-        config.server,
-        config.name,
-        config.group,
-      );
-      console.log(`Runner registered: ${runner.id}`);
-
       // Start polling loop
-      console.log("Starting polling loop...");
+      console.log(
+        `Starting runner '${config.name}' for group '${config.group}'...`,
+      );
       console.log(`Max concurrent jobs: ${config.sandbox.max_concurrent}`);
       console.log("Press Ctrl+C to stop");
       console.log("");
@@ -145,7 +135,7 @@ export const startCommand = new Command("start")
 
           // Claim the job
           try {
-            const context = await claimJob(config.server, job.runId, runner.id);
+            const context = await claimJob(config.server, job.runId);
             console.log(`Claimed job: ${context.runId}`);
 
             // Track and execute in background

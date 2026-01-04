@@ -10,10 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import {
-  runners,
-  runnerJobQueue,
-} from "../../../../../../src/db/schema/runner";
+import { runnerJobQueue } from "../../../../../../src/db/schema/runner";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
@@ -43,7 +40,7 @@ function getApiUrl(): string {
 }
 
 const router = tsr.router(runnersJobClaimContract, {
-  claim: async ({ params, body }) => {
+  claim: async ({ params }) => {
     initServices();
 
     const userId = await getUserId();
@@ -52,31 +49,23 @@ const router = tsr.router(runnersJobClaimContract, {
     }
 
     const { id: runId } = params;
-    const { runnerId } = body;
 
-    log.debug(`Runner ${runnerId} claiming job: ${runId}`);
+    log.debug(`Claiming job: ${runId}`);
 
-    // Verify the runner exists and belongs to the user
-    const [runner] = await globalThis.services.db
-      .select()
-      .from(runners)
-      .where(and(eq(runners.id, runnerId), eq(runners.userId, userId)))
-      .limit(1);
-
-    if (!runner) {
-      return createErrorResponse("NOT_FOUND", "Runner not found");
-    }
-
-    // Fetch the job from runner_job_queue
-    const [job] = await globalThis.services.db
-      .select()
+    // Fetch the job from runner_job_queue and verify ownership via agent_run
+    const [jobWithRun] = await globalThis.services.db
+      .select({
+        job: runnerJobQueue,
+        runUserId: agentRuns.userId,
+      })
       .from(runnerJobQueue)
+      .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
       .where(
         and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
       )
       .limit(1);
 
-    if (!job) {
+    if (!jobWithRun) {
       // Check if job exists but is already claimed
       const [existingJob] = await globalThis.services.db
         .select()
@@ -91,12 +80,16 @@ const router = tsr.router(runnersJobClaimContract, {
       return createErrorResponse("NOT_FOUND", "Job not found in queue");
     }
 
+    // Verify the job belongs to the authenticated user
+    if (jobWithRun.runUserId !== userId) {
+      return createErrorResponse("FORBIDDEN", "Job does not belong to user");
+    }
+
     // Claim the job - atomically update in runner_job_queue
     const now = new Date();
     const [claimedJob] = await globalThis.services.db
       .update(runnerJobQueue)
       .set({
-        runnerId,
         claimedAt: now,
       })
       .where(
@@ -127,7 +120,7 @@ const router = tsr.router(runnersJobClaimContract, {
       return createErrorResponse("NOT_FOUND", "Run not found");
     }
 
-    log.debug(`Job ${runId} claimed by runner ${runnerId}`);
+    log.debug(`Job ${runId} claimed`);
 
     // Generate sandbox token for the runner to use when calling webhooks
     const sandboxToken = await generateSandboxToken(run.userId, run.id);

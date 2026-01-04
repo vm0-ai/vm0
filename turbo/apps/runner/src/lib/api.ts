@@ -2,7 +2,6 @@
  * API client for VM0 server communication
  *
  * Provides methods for runner operations:
- * - registerRunner: Register/update runner with server
  * - pollForJob: Long-polling to fetch pending jobs
  * - claimJob: Claim a job for execution
  */
@@ -10,15 +9,6 @@
 export interface ServerConfig {
   url: string;
   token: string;
-}
-
-export interface RunnerResponse {
-  id: string;
-  name: string;
-  group: string;
-  status: "online" | "offline" | "busy";
-  lastHeartbeatAt: string | null;
-  createdAt: string;
 }
 
 export interface Job {
@@ -107,32 +97,6 @@ function getAuthHeaders(token: string): Record<string, string> {
 }
 
 /**
- * Register or update a runner with the server
- */
-export async function registerRunner(
-  server: ServerConfig,
-  name: string,
-  group: string,
-): Promise<RunnerResponse> {
-  const headers = getAuthHeaders(server.token);
-
-  const response = await fetch(`${server.url}/api/runners/register`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, group }),
-  });
-
-  if (!response.ok) {
-    const errorData = (await response.json()) as ApiErrorResponse;
-    throw new Error(
-      `Failed to register runner: ${errorData.error?.message || response.statusText}`,
-    );
-  }
-
-  return response.json() as Promise<RunnerResponse>;
-}
-
-/**
  * Poll for pending jobs (long-polling)
  * Returns a job if available, null if timeout reached
  *
@@ -169,7 +133,6 @@ export async function pollForJob(
 export async function claimJob(
   server: ServerConfig,
   runId: string,
-  runnerId: string,
 ): Promise<ExecutionContext> {
   const headers = getAuthHeaders(server.token);
 
@@ -178,7 +141,7 @@ export async function claimJob(
     {
       method: "POST",
       headers,
-      body: JSON.stringify({ runnerId }),
+      body: JSON.stringify({}),
     },
   );
 

@@ -41,7 +41,7 @@ const router = tsr.router(runnersPollContract, {
 
     const { group } = body;
 
-    // Query runner_job_queue for unclaimed jobs, join with agent_runs for metadata
+    // Query runner_job_queue for unclaimed jobs belonging to the authenticated user
     const [pendingJob] = await globalThis.services.db
       .select({
         runId: runnerJobQueue.runId,
@@ -57,6 +57,7 @@ const router = tsr.router(runnersPollContract, {
         and(
           eq(runnerJobQueue.runnerGroup, group),
           isNull(runnerJobQueue.claimedAt),
+          eq(agentRuns.userId, userId),
         ),
       )
       .limit(1);
