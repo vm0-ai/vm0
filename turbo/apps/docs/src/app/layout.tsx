@@ -13,7 +13,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       <head>
         <script
           defer
-          data-domain="docs.vm0.ai"
+          data-domain="vm0.ai"
           src="https://plausible.io/js/script.js"
         ></script>
       </head>
