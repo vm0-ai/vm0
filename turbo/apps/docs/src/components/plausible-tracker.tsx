@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, Suspense } from "react";
+import { useEffect, Suspense } from "react";
 
 declare global {
   interface Window {
@@ -15,7 +15,6 @@ declare global {
 function PlausibleTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const lastTrackedPath = useRef<string>("");
 
   useEffect(() => {
     // Wait for plausible to be loaded
@@ -29,21 +28,33 @@ function PlausibleTrackerInner() {
     const currentPath =
       pathname + (searchParams?.toString() ? `?${searchParams}` : "");
 
-    // Initialize on first run - store initial path but don't track
+    // Use sessionStorage to persist state across component remounts
+    const storageKey = "plausible-tracker";
+    const stored = sessionStorage.getItem(storageKey);
+
+    // First run - mark as initialized but don't track
     // (Plausible's script handles the initial pageview after init)
-    if (lastTrackedPath.current === "") {
-      lastTrackedPath.current = currentPath;
+    if (!stored) {
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({ initialized: true, lastPath: currentPath }),
+      );
       return;
     }
 
+    const state = JSON.parse(stored);
+
     // Only track if path actually changed
-    if (currentPath === lastTrackedPath.current) {
+    if (currentPath === state.lastPath) {
       return;
     }
 
     // Track pageview on route change
     window.plausible("pageview", { u: currentPath });
-    lastTrackedPath.current = currentPath;
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ initialized: true, lastPath: currentPath }),
+    );
   }, [pathname, searchParams]);
 
   return null;
