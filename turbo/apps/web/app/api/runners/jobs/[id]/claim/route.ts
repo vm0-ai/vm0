@@ -22,6 +22,26 @@ import { decryptSecrets } from "../../../../../../src/lib/crypto/secrets-encrypt
 
 const log = logger("api:runners:jobs:claim");
 
+/**
+ * Get the API URL for the runner to use when calling webhooks.
+ * Uses VM0_API_URL if set, otherwise falls back to VERCEL_URL for preview deployments.
+ */
+function getApiUrl(): string {
+  // Explicit configuration takes precedence
+  if (globalThis.services.env.VM0_API_URL) {
+    return globalThis.services.env.VM0_API_URL;
+  }
+
+  // Use Vercel URL for preview deployments
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
+    return `https://${vercelUrl}`;
+  }
+
+  // Production fallback
+  return "https://www.vm0.ai";
+}
+
 const router = tsr.router(runnersJobClaimContract, {
   claim: async ({ params, body }) => {
     initServices();
@@ -145,7 +165,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretNames: run.secretNames ?? null,
         checkpointId: run.resumedFromCheckpointId ?? null,
         sandboxToken,
-        apiUrl: globalThis.services.env.VM0_API_URL || "https://www.vm0.ai",
+        apiUrl: getApiUrl(),
         // From stored context (prepared at job creation):
         workingDir: storedContext.workingDir,
         storageManifest: storedContext.storageManifest,
