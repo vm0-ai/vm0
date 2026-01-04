@@ -90,7 +90,7 @@ async function getDefaultInterface(): Promise<string> {
     const result = await execCommand(`ip route get 8.8.8.8`, false);
     // Output format: "8.8.8.8 via X.X.X.X dev <interface> ..."
     const match = result.match(/dev\s+(\S+)/);
-    if (match) {
+    if (match && match[1]) {
       return match[1];
     }
   } catch {
