@@ -1,0 +1,279 @@
+---
+title: Long-Running Agents
+description: Techniques to keep your AI agent running continuously without interruption
+---
+
+AI agents working on complex tasks often hit a wall: they pause to ask "Should I continue?", lose track of progress after context compaction, or declare victory with only half the work done. This guide walks through practical techniques to fix these problems.
+
+## The Problem
+
+Say you want to **review the last 1,000 commits in the Linux kernel repository**. The agent needs to fetch commit history, analyze each one, and generate a report. Sounds straightforward, but without proper guidance, the agent will likely stop after a few dozen commits to check in with you, or worse, lose all progress when the context window fills up.
+
+Let's fix this step by step.
+
+## Level 1: Basic Instructions
+
+Start simple:
+
+```markdown
+## Task
+
+Review the last 1000 commits in the Linux kernel repository.
+For each commit, analyze:
+
+- The type of change (bugfix, feature, refactor, etc.)
+- Files modified
+- Potential impact
+
+Generate a summary report when complete.
+```
+
+The agent will start working, but expect frequent pauses asking for confirmation, or it might just stop after a while claiming the task is done.
+
+## Level 2: Explicit Continuation
+
+Tell the agent explicitly to keep going:
+
+```markdown
+## Task
+
+Review the last 1000 commits in the Linux kernel repository.
+For each commit, analyze:
+
+- The type of change (bugfix, feature, refactor, etc.)
+- Files modified
+- Potential impact
+
+Generate a summary report when complete.
+
+## Important
+
+- Complete ALL 1000 commits before stopping
+- Do NOT pause to ask for confirmation
+- Do NOT stop until the entire task is finished
+- If you encounter an error, log it and continue with the next commit
+```
+
+Better. The agent now knows to push through. But there's still a problem: when the context window fills up and gets compacted, the agent loses track of where it was.
+
+## Level 3: Task Tracking with tasks.json
+
+Give the agent a file to track progress:
+
+````markdown
+## Task
+
+Review the last 1000 commits in the Linux kernel repository.
+
+## Workflow
+
+1. First, create a `tasks.json` file with all 1000 commits to review
+2. Each task should have: `id`, `commit_hash`, `status` (pending/in_progress/completed), and `summary`
+3. Process tasks one by one, updating `tasks.json` after each
+4. Read `tasks.json` at the start of each session to resume progress
+5. Continue until ALL tasks have status "completed"
+
+## Task File Format
+
+```json
+{
+  "total": 1000,
+  "completed": 0,
+  "tasks": [
+    {
+      "id": 1,
+      "commit_hash": "abc123",
+      "status": "pending",
+      "summary": null
+    }
+  ]
+}
+```
+
+## Important
+
+- Always read `tasks.json` before starting work
+- Update the file immediately after completing each task
+- Never stop until `completed` equals `total`
+- If context is compacted, re-read `tasks.json` to restore state
+````
+
+Now the agent has persistent memory. After context compaction, it reads `tasks.json`, sees "423/1000 completed", and picks up where it left off. This matches [Anthropic's research](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) on the importance of progress files for state reconstruction.
+
+## Level 4: Subagents for Context Management
+
+Task tracking solves the memory problem, but there's another issue: analyzing 1000 commits accumulates a lot of context. By commit 500, the agent is dragging around summaries and analysis from all previous commits, slowing everything down and risking another compaction.
+
+The fix: delegate each commit to a subagent that returns only the summary.
+
+```markdown
+## Task
+
+Review the last 1000 commits in the Linux kernel repository.
+
+## Workflow
+
+1. Create `tasks.json` with all commits to review
+2. For each pending task:
+   - Spawn a subagent to analyze that single commit
+   - The subagent returns only the summary
+   - Update `tasks.json` with the result
+3. Continue until all tasks are completed
+
+## Subagent Instructions
+
+Each subagent receives the specific commit hash and output format requirements.
+It fetches the commit, analyzes it, returns a structured summary, and exits.
+The subagent knows nothing about other commits.
+
+## Main Agent Responsibilities
+
+- Orchestrate the overall workflow
+- Track progress in `tasks.json`
+- Aggregate results into final report
+- Never stop until all tasks complete
+
+## Important
+
+- Use subagents to prevent context bloat
+- Each subagent handles exactly ONE commit
+- Main agent context stays clean
+```
+
+Each commit gets analyzed with fresh context. The main agent stays lean, just managing the queue and collecting results. If a subagent fails, it doesn't corrupt anything else.
+
+## Complete Example
+
+Here's everything put together:
+
+````markdown
+# Linux Kernel Commit Reviewer
+
+You are a code review agent analyzing Linux kernel commits.
+
+## Objective
+
+Review the last 1000 commits and produce a comprehensive analysis report.
+
+## Files
+
+- `tasks.json` - Task tracking file (create if missing)
+- `report.md` - Final analysis report
+- `errors.log` - Any errors encountered
+
+## Startup Procedure
+
+1. Read `tasks.json` if it exists
+2. If missing, initialize with all 1000 commits
+3. Identify the next pending task
+4. Log current progress: "Resuming: X/1000 completed"
+
+## Main Loop
+
+For each pending task:
+
+1. Mark task as "in_progress" in `tasks.json`
+2. Spawn subagent with:
+   ```
+   Analyze commit {hash}:
+   - Change type (bugfix/feature/refactor/docs/test)
+   - Risk level (low/medium/high)
+   - Files changed
+   - Brief summary (1-2 sentences)
+   Return as JSON.
+   ```
+3. Receive subagent result
+4. Update task with summary, mark as "completed"
+5. Increment completed counter
+6. Commit changes: `git commit -m "Review commit {hash}"`
+7. Continue to next task
+
+## Completion
+
+When all tasks are completed:
+
+1. Generate `report.md` with:
+   - Executive summary
+   - Statistics (by type, by risk, by subsystem)
+   - Notable findings
+2. Final commit: `git commit -m "Complete: 1000 commit review"`
+
+## Critical Rules
+
+- NEVER stop until completed == total
+- NEVER ask for user confirmation mid-task
+- If a commit fails to analyze, log error and continue
+- After ANY context compaction, re-read `tasks.json`
+- Each subagent handles exactly ONE commit
+- Save progress after EVERY task (not in batches)
+````
+
+## Key Principles
+
+These ideas come from [Anthropic's engineering research](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) on long-running agents.
+
+### 1. Progress Files Are Essential
+
+When context gets compacted or the agent restarts, it needs to quickly figure out where things stand. A simple `tasks.json` or `claude-progress.txt` gives the agent instant awareness of what's done and what's next.
+
+### 2. Incremental Commits
+
+Don't wait until everything is finished to save. Commit after each meaningful chunk of work. If something goes wrong at commit 847, you don't lose commits 1-846.
+
+### 3. Session Startup Rituals
+
+Make the agent read context before doing anything:
+
+```markdown
+## On Every Session Start
+
+1. Read tasks.json
+2. Read errors.log
+3. Log current state
+4. Identify next action
+5. Then proceed
+```
+
+### 4. End-to-End Verification
+
+Agents sometimes mark things done without actually checking. Tell them to verify:
+
+```markdown
+After marking a task complete:
+
+1. Verify the output file exists
+2. Validate the JSON/data format
+3. Confirm the expected fields are present
+```
+
+### 5. Explicit Completion Conditions
+
+"Continue until done" is too vague. The agent will interpret "done" however it wants.
+
+```markdown
+# Vague
+
+Continue until done.
+
+# Clear
+
+Continue until tasks.json shows completed == 1000.
+```
+
+### 6. Subagent Isolation
+
+For repetitive tasks, subagents keep the main context clean, isolate failures to individual items, and maintain consistent performance from task 1 to task 1000.
+
+## Troubleshooting
+
+**Agent still stops early**: Add more explicit continuation instructions with specific numeric targets. Try adding a "checkpoint and continue" pattern.
+
+**Context compaction causes lost progress**: Make sure `tasks.json` is read at session start. Keep the progress file format simple and put a "current state summary" at the top.
+
+**Subagent results are inconsistent**: Provide explicit output format examples, validate responses before accepting them, and add retry logic for failures.
+
+**Task file becomes too large**: Split into multiple files like `tasks-001.json`, `tasks-002.json`. Keep only pending items in the active file and archive completed tasks separately.
+
+## Summary
+
+Long-running agents need explicit instructions to keep going, a progress file to survive context compaction, startup rituals to restore state, subagents to keep context clean, incremental saves for recovery, and unambiguous completion conditions. Get these right and your agent will reliably grind through thousand-item tasks without hand-holding.

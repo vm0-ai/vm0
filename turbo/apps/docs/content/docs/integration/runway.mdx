@@ -5,11 +5,11 @@ description: Generate videos with Runway AI
 
 [Runway](https://runwayml.com/) is an AI-powered video generation platform. This skill enables your agent to create videos from text or images using Gen-3 and other Runway models.
 
-## Required Secrets
+## Required Environment
 
-| Secret           | Description                                                       |
-| ---------------- | ----------------------------------------------------------------- |
-| `RUNWAY_API_KEY` | API key from [Runway Developer Portal](https://dev.runwayml.com/) |
+| Name             | Type   | Description                                                       |
+| ---------------- | ------ | ----------------------------------------------------------------- |
+| `RUNWAY_API_KEY` | secret | API key from [Runway Developer Portal](https://dev.runwayml.com/) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/runway # [!code highlight]
-    environment:
-      RUNWAY_API_KEY: "${{ secrets.RUNWAY_API_KEY }}" # [!code highlight]
 ```
 
 ## Run

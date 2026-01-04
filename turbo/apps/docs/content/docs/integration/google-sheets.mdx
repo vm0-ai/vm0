@@ -5,13 +5,13 @@ description: Read and write data in Google Sheets
 
 [Google Sheets](https://sheets.google.com/) is a spreadsheet application. This skill enables your agent to read data, update cells, and manage spreadsheets.
 
-## Required Secrets
+## Required Environment
 
-| Secret                        | Description         |
-| ----------------------------- | ------------------- |
-| `GOOGLE_SHEETS_CLIENT_ID`     | OAuth client ID     |
-| `GOOGLE_SHEETS_CLIENT_SECRET` | OAuth client secret |
-| `GOOGLE_SHEETS_REFRESH_TOKEN` | Refresh token       |
+| Name                          | Type   | Description         |
+| ----------------------------- | ------ | ------------------- |
+| `GOOGLE_SHEETS_CLIENT_ID`     | var    | OAuth client ID     |
+| `GOOGLE_SHEETS_CLIENT_SECRET` | secret | OAuth client secret |
+| `GOOGLE_SHEETS_REFRESH_TOKEN` | secret | Refresh token       |
 
 See [Google Cloud Console](/docs/integration/google-cloud-console) for how to obtain these credentials. Select the minimum scope required for your use case:
 
@@ -30,10 +30,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/google-sheets # [!code highlight]
-    environment:
-      GOOGLE_SHEETS_CLIENT_ID: "${{ secrets.GOOGLE_SHEETS_CLIENT_ID }}" # [!code highlight]
-      GOOGLE_SHEETS_CLIENT_SECRET: "${{ secrets.GOOGLE_SHEETS_CLIENT_SECRET }}" # [!code highlight]
-      GOOGLE_SHEETS_REFRESH_TOKEN: "${{ secrets.GOOGLE_SHEETS_REFRESH_TOKEN }}" # [!code highlight]
 ```
 
 ## Run

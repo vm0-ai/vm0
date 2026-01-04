@@ -5,11 +5,11 @@ description: Web scraping and crawling with Firecrawl API
 
 [Firecrawl](https://www.firecrawl.dev/) is a web scraping API that helps you extract clean, structured data from any website.
 
-## Required Secrets
+## Required Environment
 
-| Secret              | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| `FIRECRAWL_API_KEY` | API key from [Firecrawl Dashboard](https://www.firecrawl.dev/) |
+| Name                | Type   | Description                                                    |
+| ------------------- | ------ | -------------------------------------------------------------- |
+| `FIRECRAWL_API_KEY` | secret | API key from [Firecrawl Dashboard](https://www.firecrawl.dev/) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl # [!code highlight]
-    environment:
-      FIRECRAWL_API_KEY: "${{ secrets.FIRECRAWL_API_KEY }}" # [!code highlight]
 ```
 
 ## Run

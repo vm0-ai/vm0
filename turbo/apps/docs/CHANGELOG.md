@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/docs-v0.9.0...docs-v0.10.0) (2026-01-02)
+
+
+### Features
+
+* **docs:** add best practices for long-running agents ([#860](https://github.com/vm0-ai/vm0/issues/860)) ([7de2c56](https://github.com/vm0-ai/vm0/commit/7de2c56dfac3e3547d3cd6a4fa0b8c69e36800d2))
+
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/docs-v0.8.0...docs-v0.9.0) (2026-01-01)
+
+
+### Features
+
+* **docs:** add claude model selection guide as first vendor ([#861](https://github.com/vm0-ai/vm0/issues/861)) ([671c673](https://github.com/vm0-ai/vm0/commit/671c673b5945be439568be261a163b97998fb0d2))
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/docs-v0.7.0...docs-v0.8.0) (2025-12-31)
+
+
+### Features
+
+* **docs:** add deep research agent tutorial series ([#858](https://github.com/vm0-ai/vm0/issues/858)) ([aa53665](https://github.com/vm0-ai/vm0/commit/aa5366513054e5eb33c1e92f69bd7c0956e5e940))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/docs-v0.6.0...docs-v0.7.0) (2025-12-31)
 
 

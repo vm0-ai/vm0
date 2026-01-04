@@ -316,7 +316,8 @@ const cookCmd = new Command()
 // Default action for "vm0 cook [prompt]"
 cookCmd
   .argument("[prompt]", "Prompt for the agent")
-  .action(async (prompt: string | undefined) => {
+  .option("-y, --yes", "Skip confirmation prompts")
+  .action(async (prompt: string | undefined, options: { yes?: boolean }) => {
     // Step 0: Check for updates and auto-upgrade if needed
     const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
     if (shouldExit) {
@@ -475,11 +476,14 @@ cookCmd
     // Step 4: Compose agent
     console.log();
     console.log(chalk.bold("Composing agent:"));
-    printCommand(`vm0 compose ${CONFIG_FILE}`);
+    const composeArgs = options.yes
+      ? ["compose", "--yes", CONFIG_FILE]
+      : ["compose", CONFIG_FILE];
+    printCommand(`vm0 ${composeArgs.join(" ")}`);
 
     try {
       // Use inherit to show compose output and allow confirmation prompts
-      await execVm0Command(["compose", CONFIG_FILE], {
+      await execVm0Command(composeArgs, {
         cwd,
       });
     } catch (error) {

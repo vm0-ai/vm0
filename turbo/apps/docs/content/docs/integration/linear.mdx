@@ -5,11 +5,11 @@ description: Manage issues and projects in Linear
 
 [Linear](https://linear.app/) is a project management tool for software teams. This skill enables your agent to create issues, update statuses, and manage projects.
 
-## Required Secrets
+## Required Environment
 
-| Secret           | Description                                                     |
-| ---------------- | --------------------------------------------------------------- |
-| `LINEAR_API_KEY` | API key from [Linear Settings](https://linear.app/settings/api) |
+| Name             | Type   | Description                                                     |
+| ---------------- | ------ | --------------------------------------------------------------- |
+| `LINEAR_API_KEY` | secret | API key from [Linear Settings](https://linear.app/settings/api) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/linear # [!code highlight]
-    environment:
-      LINEAR_API_KEY: "${{ secrets.LINEAR_API_KEY }}" # [!code highlight]
 ```
 
 ## Run

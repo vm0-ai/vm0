@@ -5,13 +5,13 @@ description: Send and manage emails with Gmail API
 
 [Gmail](https://gmail.com/) is Google's email service. This skill enables your agent to send emails, read messages, and manage your inbox.
 
-## Required Secrets
+## Required Environment
 
-| Secret                | Description         |
-| --------------------- | ------------------- |
-| `GMAIL_CLIENT_ID`     | OAuth client ID     |
-| `GMAIL_CLIENT_SECRET` | OAuth client secret |
-| `GMAIL_REFRESH_TOKEN` | Refresh token       |
+| Name                  | Type   | Description         |
+| --------------------- | ------ | ------------------- |
+| `GMAIL_CLIENT_ID`     | var    | OAuth client ID     |
+| `GMAIL_CLIENT_SECRET` | secret | OAuth client secret |
+| `GMAIL_REFRESH_TOKEN` | secret | Refresh token       |
 
 See [Google Cloud Console](/docs/integration/google-cloud-console) for how to obtain these credentials. Select the minimum scope required for your use case:
 
@@ -32,10 +32,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/gmail # [!code highlight]
-    environment:
-      GMAIL_CLIENT_ID: "${{ secrets.GMAIL_CLIENT_ID }}" # [!code highlight]
-      GMAIL_CLIENT_SECRET: "${{ secrets.GMAIL_CLIENT_SECRET }}" # [!code highlight]
-      GMAIL_REFRESH_TOKEN: "${{ secrets.GMAIL_REFRESH_TOKEN }}" # [!code highlight]
 ```
 
 ## Run

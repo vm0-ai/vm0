@@ -189,7 +189,7 @@ async function pollEvents(
   let nextSequence = 0;
   let complete = false;
   let result: PollResult = { succeeded: true, runId };
-  const pollIntervalMs = 500;
+  const pollIntervalMs = 1000;
   const startTimestamp = options.startTimestamp;
   let previousTimestamp = startTimestamp;
   const verbose = options.verbose;

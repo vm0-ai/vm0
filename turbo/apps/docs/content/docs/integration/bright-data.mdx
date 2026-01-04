@@ -5,11 +5,11 @@ description: Web scraping with proxies and data collection
 
 [Bright Data](https://brightdata.com/) provides web scraping infrastructure with residential proxies and pre-built data collectors. This skill enables your agent to scrape websites at scale.
 
-## Required Secrets
+## Required Environment
 
-| Secret               | Description                                                                   |
-| -------------------- | ----------------------------------------------------------------------------- |
-| `BRIGHTDATA_API_KEY` | API key from [Bright Data Dashboard](https://brightdata.com/cp/setting/users) |
+| Name                 | Type   | Description                                                                   |
+| -------------------- | ------ | ----------------------------------------------------------------------------- |
+| `BRIGHTDATA_API_KEY` | secret | API key from [Bright Data Dashboard](https://brightdata.com/cp/setting/users) |
 
 ## Configuration
 
@@ -21,8 +21,6 @@ agents:
     provider: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/bright-data # [!code highlight]
-    environment:
-      BRIGHTDATA_API_KEY: "${{ secrets.BRIGHTDATA_API_KEY }}" # [!code highlight]
 ```
 
 ## Run

@@ -1,0 +1,259 @@
+---
+title: Writing Instructions
+description: Define your deep research agent's workflow with custom instructions
+---
+
+Now that you've run your first agent, let's customize it to become a deep research agent that can gather information from multiple sources and create comprehensive reports.
+
+## Prerequisites
+
+Make sure you've completed the previous step and have:
+- A `research-agent/` directory with `vm0.yaml`, `AGENTS.md`, and `.gitignore`
+- Claude Code token configured in `.env`
+- Successfully run `vm0 cook "let's do it"`
+- Committed your initial setup to git
+
+Your project structure should look like this:
+
+```
+research-agent/
+├── vm0.yaml
+├── AGENTS.md
+├── .gitignore
+├── .env
+└── artifact/
+    └── content.md
+```
+
+## Step 1: Design Your Research Workflow
+
+Let's design a simple deep research workflow:
+
+1. **Create a topic folder** to organize output files
+2. **Identify information sources** to research
+3. **Fetch from each source** and gather information
+4. **Save each source separately** as individual files
+5. **Synthesize final report** by combining all sources
+
+## Step 2: Update AGENTS.md
+
+Now let's update the `AGENTS.md` file to implement this workflow. Replace the entire content with:
+
+```markdown title="AGENTS.md"
+# Deep Research Agent
+
+You help me research topics by gathering information from multiple sources and creating a summary report.
+
+## What to do
+
+When I give you a research topic:
+
+1. Create a folder based on the research topic to keep things organized
+2. Figure out 3-5 good sources to look at
+3. Go visit each source and grab the important info
+4. For each source, write a research report about what you found from that source
+5. Combine everything into one report called `report.md` that summarizes all the findings
+
+That's it! Keep the files simple and readable.
+```
+
+Save this file and your research agent instructions are ready!
+
+## Step 3: Compose Your Agent
+
+Now we need to compose (build) the agent with the new instructions:
+
+```bash
+vm0 compose vm0.yaml
+```
+
+You should see output like:
+
+```
+Auto-configured image: vm0/claude-code:latest
+Auto-configured working_dir: /home/user/workspace
+Uploading instructions: AGENTS.md
+✓ Instructions (changed): a3f89b2c
+Uploading compose...
+✓ Compose version exists: your-username/my-researcher
+  Version: f4d29a81
+```
+
+<Callout type="success">
+Notice the instructions hash changed from the previous version. This means your new instructions have been uploaded successfully.
+</Callout>
+
+## Step 4: Run Your Research Agent
+
+Now let's test the research agent:
+
+```bash
+vm0 run my-researcher --artifact-name artifact "AI coding assistants"
+```
+
+You should see the agent create a todo list and start working:
+
+```
+[tool_use] TodoWrite
+  todos: [
+    "Create research folder for AI coding assistants",
+    "Identify 3-5 good sources about AI coding assistants",
+    "Gather information from each source",
+    "Write individual research reports for each source",
+    "Create final combined report (report.md)"
+  ]
+
+[tool_use] Bash
+  command: mkdir -p "ai_coding_assistants_research"
+  description: Create research folder
+```
+
+The agent will then visit multiple sources, gather information, and write individual reports:
+
+```
+[tool_result] Completed
+  File created successfully at: /home/user/workspace/ai_coding_assistants_research/source_1_features_comparison.md
+
+[tool_result] Completed
+  File created successfully at: /home/user/workspace/ai_coding_assistants_research/source_2_tool_comparison.md
+
+[tool_result] Completed
+  File created successfully at: /home/user/workspace/ai_coding_assistants_research/source_3_pair_programming.md
+
+[tool_result] Completed
+  File created successfully at: /home/user/workspace/ai_coding_assistants_research/source_4_enterprise_productivity.md
+```
+
+Finally, it will create the combined report that synthesizes all findings.
+
+When the agent completes, you'll see a summary:
+
+```
+[text] Perfect! I've completed your research on AI coding assistants. Here's what I created:
+
+## Research Complete
+
+I've gathered information from multiple sources and created a comprehensive research report
+in the `ai_coding_assistants_research` folder:
+
+### Files Created:
+
+1. source_1_features_comparison.md
+2. source_2_tool_comparison.md
+3. source_3_pair_programming.md
+4. source_4_enterprise_productivity.md
+5. report.md
+
+[result] ✓ completed successfully
+  Duration: 250.3s
+  Cost: $0.6441
+  Turns: 16
+  Tokens: input=2k output=10k
+```
+
+Check your results:
+
+```bash
+cd artifact && vm0 artifact pull && ls
+# You should see a folder like: ai_coding_assistants_research/
+
+ls ai_coding_assistants_research/
+# You should see files like:
+# source_1_features_comparison.md
+# source_2_tool_comparison.md
+# source_3_pair_programming.md
+# source_4_enterprise_productivity.md
+# report.md
+
+cat ai_coding_assistants_research/report.md
+# View the comprehensive research report
+```
+
+The final report will look something like this:
+
+```markdown
+# AI Coding Assistants: Comprehensive Research Report (2025)
+
+## Executive Summary
+
+AI coding assistants have transformed software development in 2025, with 76% of
+developers using or planning to use AI tools. This report synthesizes research on
+the leading AI coding assistants, their capabilities, enterprise applications, and
+impact on developer productivity.
+
+---
+
+## Market Landscape
+
+### Adoption Statistics
+- **76%** of developers say they use or plan to use AI tools
+- **62%** are already actively using them
+- **82%** of enterprises reportedly use GitHub Copilot
+
+[... detailed findings from each source ...]
+
+---
+
+## Sources
+
+### General Features and Comparison
+- [Best AI Coding Assistants as of December 2025 | Shakudo](...)
+- [20 Best AI Code Assistants Reviewed and Tested [August 2025]](...)
+
+### Tool-Specific Comparisons
+- [GitHub Copilot vs Cursor vs Claude: I Tested All AI Coding Tools](...)
+- [Claude, Cursor, Aider, Cline, Copilot: Which Is the Best One?](...)
+
+### Pair Programming
+- [Pair Programming with AI Coding Agents: Is It Beneficial?](...)
+
+### Enterprise and Productivity
+- [Tabnine AI Code Assistant](...)
+- [Amazon Q Developer – AWS](...)
+```
+
+## What Just Happened?
+
+By modifying `AGENTS.md`, we completely changed how the agent behaves. The agent now implements a deep research workflow: it identifies multiple sources, visits each one, writes individual reports, and synthesizes everything into a comprehensive final report.
+
+The same agent with different instructions does completely different work. The instructions file defines the agent's behavior and workflow.
+
+## Try Different Research Topics
+
+Your agent can now research any topic. Try these:
+
+```bash
+# Technology research
+vm0 run my-researcher --artifact-name artifact "latest developments in quantum computing"
+
+# Market analysis
+vm0 run my-researcher --artifact-name artifact "EV battery market"
+
+# Product comparison
+vm0 run my-researcher --artifact-name artifact "top 5 note-taking apps"
+
+# Academic research
+vm0 run my-researcher --artifact-name artifact "psychological effects of remote work"
+```
+
+## Before Moving On
+
+<Callout type="tip">
+This step is optional. If you're familiar with git and want to track your project changes, follow the steps below. Otherwise, you can skip directly to the next section.
+</Callout>
+
+Let's commit the updated instructions:
+
+```bash
+# Add the modified AGENTS.md
+git add AGENTS.md
+
+# Commit with a conventional commit message
+git commit -m "feat: update instructions for deep research workflow"
+```
+
+Now your changes are saved!
+
+## Next Steps
+
+Great! You've created a functional deep research agent. In the next part, we'll add better web scraping capabilities to improve the quality of information gathering.

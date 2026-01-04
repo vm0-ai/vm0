@@ -232,11 +232,11 @@ agents:
 EOF
 
     echo "# Step 2: Run cook without prompt (preparation only)..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --yes
     assert_success
 
     echo "# Step 3: Verify compose was called and skill was processed..."
-    assert_output --partial "vm0 compose vm0.yaml"
+    assert_output --partial "vm0 compose --yes vm0.yaml"
     assert_output --partial "Downloading"
     assert_output --partial "github"
     # Skill upload should succeed

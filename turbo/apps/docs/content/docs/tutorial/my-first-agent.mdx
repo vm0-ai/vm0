@@ -1,0 +1,256 @@
+---
+title: My First Agent
+description: Set up and run your first agent in 5 minutes
+---
+
+In this guide, you'll create your first VM0 agent, configure it, and run it to see how agents work.
+
+## Prerequisites
+
+Before starting, make sure you have:
+- VM0 CLI installed (`npm install -g @vm0/cli`)
+- Authenticated with VM0 (`vm0 auth login`)
+
+## Step 1: Create Your Project
+
+Create a new directory for your research agent:
+
+```bash
+mkdir research-agent
+cd research-agent
+```
+
+## Step 2: Initialize Your Agent
+
+Initialize a new VM0 agent project with a descriptive name:
+
+```bash
+vm0 init -n my-researcher
+```
+
+This command creates two important files:
+
+- **vm0.yaml** - Agent configuration file that defines provider, image, and environment settings
+- **AGENTS.md** - Instructions file that describes what your agent should do
+
+Let's look at what was created:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-researcher:
+    provider: claude-code
+    # Build agentic workflow using natural language
+    instructions: AGENTS.md
+    # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills
+    # skills:
+    #   - https://github.com/vm0-ai/vm0-skills/tree/main/github
+    environment:
+      # Get token using: claude setup-token, then add to .env file
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+```markdown title="AGENTS.md"
+# Agent Instructions
+
+You are a HackerNews AI content curator.
+
+## Workflow
+
+1. Go to HackerNews and read the top 10 articles
+2. Find and extract AI-related content from these articles
+3. Summarize the findings into a X (Twitter) post format
+4. Write the summary to content.md
+```
+
+The `vm0.yaml` file includes helpful comments showing you where to add skills and how the environment variables work. The `AGENTS.md` file provides a complete example workflow that you can study and customize. We'll modify this in the next part of the tutorial to build our research agent.
+
+## Step 3: Set Up Claude Code Token
+
+Your agent needs authentication to use Claude. Set up your OAuth token:
+
+```bash
+claude setup-token
+```
+
+This will open your browser to authenticate with Claude. After completing authentication, you'll receive a token.
+
+Create a `.env` file in your project directory:
+
+```bash
+echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
+```
+
+<Callout type="info">
+Replace `<your-token>` with the actual token you received from the authentication process.
+</Callout>
+
+<Callout type="tip">
+You can also use other LLM providers instead of Claude, such as Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/model-selection) for configuration options.
+</Callout>
+
+## Step 4: Run Your First Agent
+
+Now let's run your agent and watch it complete the workflow:
+
+```bash
+vm0 cook "let's do it"
+```
+
+You'll see output similar to this:
+
+```
+Reading config: vm0.yaml
+✓ Config validated: 1 agent, 0 volume(s)
+
+Processing artifact:
+> mkdir artifact
+> cd artifact
+> vm0 artifact init --name artifact
+> vm0 artifact push
+> cd ..
+
+Composing agent:
+> vm0 compose vm0.yaml
+  Auto-configured image: vm0/claude-code:latest
+  Auto-configured working_dir: /home/user/workspace
+Uploading instructions: AGENTS.md
+✓ Instructions (unchanged): b2d77a3d
+Uploading compose...
+✓ Compose version exists: your-username/my-researcher
+  Version: e2ec8e50
+
+Running agent:
+> vm0 run my-researcher --artifact-name artifact "let's do it"
+
+▶ Run started
+  Run ID:   56a0d396-7d95-4cde-a44d-232ad6f8a21f
+  Sandbox:  ic63cb57nrddkra94yzg7
+
+[init] Starting Claude Code agent
+  Session: 4b5d44f8-2d5f-494d-b8ce-698eb355096d
+  Model: claude-sonnet-4-5-20250929
+
+[text] I'll help you curate AI content from HackerNews! Let me create a todo list...
+[tool_use] TodoWrite
+[tool_use] WebFetch - https://news.ycombinator.com
+[tool_use] Write - /home/user/workspace/content.md
+
+[result] ✓ completed successfully
+  Duration: 54.0s
+  Cost: $0.1166
+
+✓ Run completed successfully
+
+Pulling updated artifact:
+> cd artifact
+> vm0 artifact pull b5abed3a
+> cd ..
+```
+
+Check your results:
+
+```bash
+ls artifact
+# Output: content.md
+
+cat artifact/content.md
+# You'll see the AI content summary!
+```
+
+<Callout type="success">
+If you see `artifact/content.md` created with HackerNews AI content, congratulations! Your agent is working correctly.
+</Callout>
+
+## What Just Happened?
+
+`vm0 cook` is a convenient command that runs multiple steps automatically. Here's what it did:
+
+### 1. Prepared Artifact Directory
+```bash
+mkdir artifact
+cd artifact
+vm0 artifact init --name artifact
+vm0 artifact push
+cd ..
+```
+This creates a workspace where your agent can save output files. The artifact directory is synced between your local machine and the remote agent.
+
+See [Artifact](/docs/core-concept/artifact) for more information about managing agent output.
+
+### 2. Composed Agent
+```bash
+vm0 compose vm0.yaml
+```
+This step binds your [instructions](/docs/core-concept/instructions), [skills](/docs/core-concept/skills), and [container image](/docs/core-concept/container-image) together to compose your agent.
+
+### 3. Ran Agent
+```bash
+vm0 run my-researcher --artifact-name artifact "let's do it"
+```
+This step creates a remote sandbox environment and executes your prompt using Claude Code with your configured instructions and skills, streaming real-time logs back to you.
+
+In this step, Claude Code follows your prompt "let's do it" along with the instructions in `AGENTS.md` to complete the workflow: fetching content from HackerNews, extracting AI-related articles, and generating the X (Twitter) post summary.
+
+### 4. Downloaded Results
+```bash
+cd artifact && vm0 artifact pull <artifact-version> && cd ..
+```
+Any files the agent created or modified are downloaded to your local `artifact` directory.
+
+## Understanding Your Project Structure
+
+After this step, your project should look like this:
+
+```
+research-agent/
+├── vm0.yaml       # Agent configuration
+├── AGENTS.md      # Agent instructions (system prompt)
+├── .env           # Your secrets (never commit this!)
+└── artifact/      # Output files from agent runs
+    └── content.md # HackerNews AI summary created by agent
+```
+
+## Before Moving On
+
+<Callout type="tip">
+This step is optional. If you're familiar with git and want to track your project changes, follow the steps below. Otherwise, you can skip directly to the next section.
+</Callout>
+
+Let's create a `.gitignore` file and commit your work. This is a good practice to track your project changes.
+
+Create a `.gitignore` file in your project directory:
+
+```bash
+cat > .gitignore << 'EOF'
+# Environment variables (contains secrets)
+.env
+
+# Artifact directory (already persisted in VM0 remote storage)
+artifact/
+EOF
+```
+
+<Callout type="info">
+The `artifact/` directory is automatically synced with VM0's remote storage, so you don't need to commit it to git. The `.env` file contains your API tokens and should never be committed for security reasons.
+</Callout>
+
+Initialize git repository and commit:
+
+```bash
+# Initialize git repository
+git init
+
+# Add files to staging
+git add .gitignore vm0.yaml AGENTS.md
+
+# Commit with a conventional commit message
+git commit -m "chore: initial agent setup with gitignore"
+```
+
+Now your project is tracked in git and sensitive files are protected!
+
+## Next Steps
+
+Continue to the next section to learn how to customize the AGENTS.md instructions and build a deep research agent.
