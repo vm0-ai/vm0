@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.8](https://github.com/vm0-ai/vm0/compare/docs-v0.13.7...docs-v0.13.8) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** use sessionstorage to persist tracking state across remounts ([#905](https://github.com/vm0-ai/vm0/issues/905)) ([7e1b755](https://github.com/vm0-ai/vm0/commit/7e1b75595380ca2498ac4711f1559a04066a37e2))
+
 ## [0.13.7](https://github.com/vm0-ai/vm0/compare/docs-v0.13.6...docs-v0.13.7) (2026-01-04)
 
 
