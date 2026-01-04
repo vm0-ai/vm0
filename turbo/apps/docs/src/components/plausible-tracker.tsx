@@ -16,12 +16,22 @@ function PlausibleTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isFirstRender = useRef(true);
+  const lastTrackedPath = useRef<string>("");
 
   useEffect(() => {
     // Skip tracking on initial mount - Plausible's script handles that
-    // Only track subsequent client-side navigation
     if (isFirstRender.current) {
       isFirstRender.current = false;
+      lastTrackedPath.current =
+        pathname + (searchParams?.toString() ? `?${searchParams}` : "");
+      return;
+    }
+
+    const currentPath =
+      pathname + (searchParams?.toString() ? `?${searchParams}` : "");
+
+    // Only track if path actually changed
+    if (currentPath === lastTrackedPath.current) {
       return;
     }
 
@@ -30,9 +40,8 @@ function PlausibleTrackerInner() {
       typeof window !== "undefined" &&
       typeof window.plausible === "function"
     ) {
-      const url =
-        pathname + (searchParams?.toString() ? `?${searchParams}` : "");
-      window.plausible("pageview", { u: url });
+      window.plausible("pageview", { u: currentPath });
+      lastTrackedPath.current = currentPath;
     }
   }, [pathname, searchParams]);
 

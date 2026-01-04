@@ -21,7 +21,8 @@ export default function Layout({ children }: LayoutProps<"/">) {
         />
         <Script id="plausible-init" strategy="afterInteractive">
           {`
-            window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)};
+            window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+            plausible.init({domain:"vm0.ai"})
           `}
         </Script>
       </head>
