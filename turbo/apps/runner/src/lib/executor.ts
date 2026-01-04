@@ -211,6 +211,22 @@ async function restoreSessionHistory(
 }
 
 /**
+ * Configure DNS in the VM
+ * Systemd-resolved may overwrite /etc/resolv.conf at boot,
+ * so we need to ensure DNS servers are configured after SSH is ready.
+ */
+async function configureDNS(ssh: SSHClient): Promise<void> {
+  // Remove any symlink and write static DNS configuration
+  const dnsConfig = `nameserver 8.8.8.8
+nameserver 8.8.4.4
+nameserver 1.1.1.1`;
+
+  await ssh.execOrThrow(
+    `rm -f /etc/resolv.conf && echo '${dnsConfig}' > /etc/resolv.conf`,
+  );
+}
+
+/**
  * Execute a job in a Firecracker VM
  */
 export async function executeJob(
@@ -253,8 +269,11 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
+    // Configure DNS - systemd may have overwritten resolv.conf at boot
+    console.log(`[Executor] Configuring DNS...`);
+    await configureDNS(ssh);
+
     // Upload all Python scripts
-    // Note: DNS is pre-configured in rootfs via setup-ssh.sh
     console.log(`[Executor] Uploading scripts...`);
     await uploadScripts(ssh);
     console.log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);

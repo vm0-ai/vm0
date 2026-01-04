@@ -82,6 +82,60 @@ async function execCommand(cmd: string, sudo: boolean = true): Promise<string> {
 }
 
 /**
+ * Get the default network interface (the one used to reach the internet)
+ */
+async function getDefaultInterface(): Promise<string> {
+  try {
+    // Get the interface used to reach 8.8.8.8
+    const result = await execCommand(`ip route get 8.8.8.8`, false);
+    // Output format: "8.8.8.8 via X.X.X.X dev <interface> ..."
+    const match = result.match(/dev\s+(\S+)/);
+    if (match) {
+      return match[1];
+    }
+  } catch {
+    // Ignore errors
+  }
+  // Fallback to common interface names
+  return "eth0";
+}
+
+/**
+ * Set up iptables FORWARD rules for VM traffic
+ * Docker sets FORWARD chain policy to DROP, so we need explicit rules
+ */
+async function setupForwardRules(): Promise<void> {
+  const extIface = await getDefaultInterface();
+  console.log(`Setting up FORWARD rules for ${BRIDGE_NAME} <-> ${extIface}`);
+
+  // Allow outbound traffic from VM bridge to external interface
+  try {
+    await execCommand(
+      `iptables -C FORWARD -i ${BRIDGE_NAME} -o ${extIface} -j ACCEPT`,
+    );
+    console.log("FORWARD outbound rule already exists");
+  } catch {
+    await execCommand(
+      `iptables -I FORWARD -i ${BRIDGE_NAME} -o ${extIface} -j ACCEPT`,
+    );
+    console.log("FORWARD outbound rule added");
+  }
+
+  // Allow return traffic from external interface to VM bridge
+  try {
+    await execCommand(
+      `iptables -C FORWARD -i ${extIface} -o ${BRIDGE_NAME} -m state --state RELATED,ESTABLISHED -j ACCEPT`,
+    );
+    console.log("FORWARD inbound rule already exists");
+  } catch {
+    await execCommand(
+      `iptables -I FORWARD -i ${extIface} -o ${BRIDGE_NAME} -m state --state RELATED,ESTABLISHED -j ACCEPT`,
+    );
+    console.log("FORWARD inbound rule added");
+  }
+}
+
+/**
  * Check if bridge exists
  */
 export async function bridgeExists(): Promise<boolean> {
@@ -101,6 +155,8 @@ export async function setupBridge(): Promise<void> {
   // Check if bridge already exists
   if (await bridgeExists()) {
     console.log(`Bridge ${BRIDGE_NAME} already exists`);
+    // Still ensure FORWARD rules are set up (they may be missing after reboot or Docker restart)
+    await setupForwardRules();
     return;
   }
 
@@ -134,6 +190,10 @@ export async function setupBridge(): Promise<void> {
     );
     console.log("NAT rule added");
   }
+
+  // Set up FORWARD rules for VM traffic
+  // Docker sets FORWARD policy to DROP, so we need explicit rules
+  await setupForwardRules();
 
   console.log(`Bridge ${BRIDGE_NAME} configured with IP ${BRIDGE_IP}`);
 }
