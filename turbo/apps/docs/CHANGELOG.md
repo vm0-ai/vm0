@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/vm0-ai/vm0/compare/docs-v0.13.2...docs-v0.13.3) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** add plausible initialization script ([#893](https://github.com/vm0-ai/vm0/issues/893)) ([ed5eb8d](https://github.com/vm0-ai/vm0/commit/ed5eb8d50a2dfcace1174dcf30ab23705a9a68ce))
+
 ## [0.13.2](https://github.com/vm0-ai/vm0/compare/docs-v0.13.1...docs-v0.13.2) (2026-01-04)
 
 
