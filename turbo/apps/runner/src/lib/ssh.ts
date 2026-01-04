@@ -92,7 +92,9 @@ export class SSHClient {
    */
   async exec(command: string): Promise<ExecResult> {
     const sshCmd = this.buildSSHCommand();
-    const fullCmd = [...sshCmd, command].join(" ");
+    // Quote the command to ensure pipes and redirections run on remote, not local
+    const escapedCommand = command.replace(/'/g, "'\\''");
+    const fullCmd = [...sshCmd, `'${escapedCommand}'`].join(" ");
 
     try {
       const { stdout, stderr } = await execAsync(fullCmd, {
