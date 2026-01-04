@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, Suspense } from "react";
+import { useEffect, useRef, Suspense } from "react";
 
 declare global {
   interface Window {
@@ -15,8 +15,16 @@ declare global {
 function PlausibleTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
+    // Skip tracking on initial mount - Plausible's script handles that
+    // Only track subsequent client-side navigation
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
     // Track pageview on route change
     if (typeof window !== "undefined" && window.plausible) {
       const url =
