@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { execSync, spawnSync } from "child_process";
+import path from "path";
 import { parse as parseYaml } from "yaml";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { getToken } from "../lib/config";
@@ -30,10 +31,45 @@ function isGhAuthenticated(): boolean {
   }
 }
 
-async function checkPrerequisites(): Promise<string | undefined> {
+function getGitRoot(): string | null {
+  try {
+    return execSync("git rev-parse --show-toplevel", {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function getRelativeWorkingDir(gitRoot: string): string | null {
+  const cwd = process.cwd();
+  if (cwd === gitRoot) {
+    return null;
+  }
+  const relativePath = path.relative(gitRoot, cwd);
+  // Ensure forward slashes for YAML (Windows compatibility)
+  return relativePath.replace(/\\/g, "/");
+}
+
+async function checkPrerequisites(): Promise<
+  { token: string; gitRoot: string } | undefined
+> {
   console.log("Checking prerequisites...");
 
-  // 1. Check gh CLI installed
+  // 1. Check if in git repository
+  const gitRoot = getGitRoot();
+  if (!gitRoot) {
+    console.log(chalk.red("✗ Not in a git repository"));
+    console.log();
+    console.log("This command must be run from within a git repository.");
+    console.log();
+    console.log("To initialize a git repository, run:");
+    console.log(`  ${chalk.cyan("git init")}`);
+    process.exit(1);
+  }
+  console.log(chalk.green("✓ Git repository detected"));
+
+  // 2. Check gh CLI installed
   if (!isGhInstalled()) {
     console.log(chalk.red("✗ GitHub CLI (gh) is not installed"));
     console.log();
@@ -51,7 +87,7 @@ async function checkPrerequisites(): Promise<string | undefined> {
   }
   console.log(chalk.green("✓ GitHub CLI (gh) is installed"));
 
-  // 2. Check gh authenticated
+  // 3. Check gh authenticated
   if (!isGhAuthenticated()) {
     console.log(chalk.red("✗ GitHub CLI is not authenticated"));
     console.log();
@@ -64,7 +100,7 @@ async function checkPrerequisites(): Promise<string | undefined> {
   }
   console.log(chalk.green("✓ GitHub CLI is authenticated"));
 
-  // 3. Check VM0 authenticated
+  // 4. Check VM0 authenticated
   const token = await getToken();
   if (!token) {
     console.log(chalk.red("✗ VM0 not authenticated"));
@@ -78,7 +114,7 @@ async function checkPrerequisites(): Promise<string | undefined> {
   }
   console.log(chalk.green("✓ VM0 authenticated"));
 
-  // 4. Check vm0.yaml exists
+  // 5. Check vm0.yaml exists
   if (!existsSync("vm0.yaml")) {
     console.log(chalk.red("✗ vm0.yaml not found"));
     console.log();
@@ -93,22 +129,27 @@ async function checkPrerequisites(): Promise<string | undefined> {
   }
   console.log(chalk.green("✓ vm0.yaml found"));
 
-  return token;
+  return { token, gitRoot };
 }
 
 // ============================================================================
 // Workflow File Generation
 // ============================================================================
 
-function generatePublishYaml(): string {
+function generatePublishYaml(workingDir: string | null): string {
+  const pathPrefix = workingDir ? `${workingDir}/` : "";
+  const workingDirYaml = workingDir
+    ? `          working-directory: ${workingDir}\n`
+    : "";
+
   return `name: Publish Agent
 
 on:
   push:
     branches: [main]
     paths:
-      - 'vm0.yaml'
-      - 'AGENTS.md'
+      - '${pathPrefix}vm0.yaml'
+      - '${pathPrefix}AGENTS.md'
 
 jobs:
   publish:
@@ -121,7 +162,7 @@ jobs:
         id: compose
         with:
           vm0-token: \${{ secrets.VM0_TOKEN }}
-
+${workingDirYaml}
       - name: Show Results
         run: |
           echo "Agent: \${{ steps.compose.outputs.name }}"
@@ -428,10 +469,12 @@ export const setupGithubCommand = new Command()
       skipSecrets?: boolean;
     }) => {
       // 1. Check prerequisites
-      const vm0Token = await checkPrerequisites();
-      if (!vm0Token) {
+      const prereqs = await checkPrerequisites();
+      if (!prereqs) {
         process.exit(1);
       }
+      const { token: vm0Token, gitRoot } = prereqs;
+      const workingDir = getRelativeWorkingDir(gitRoot);
       console.log();
 
       // 2. Parse vm0.yaml
@@ -454,12 +497,14 @@ export const setupGithubCommand = new Command()
       );
       console.log();
 
-      // 4. Check existing workflow files
-      const publishPath = ".github/workflows/publish.yml";
-      const runPath = ".github/workflows/run.yml";
+      // 4. Check existing workflow files (at git root)
+      const publishPath = path.join(gitRoot, ".github/workflows/publish.yml");
+      const runPath = path.join(gitRoot, ".github/workflows/run.yml");
+      const displayPublishPath = ".github/workflows/publish.yml";
+      const displayRunPath = ".github/workflows/run.yml";
       const existingFiles: string[] = [];
-      if (existsSync(publishPath)) existingFiles.push(publishPath);
-      if (existsSync(runPath)) existingFiles.push(runPath);
+      if (existsSync(publishPath)) existingFiles.push(displayPublishPath);
+      if (existsSync(runPath)) existingFiles.push(displayRunPath);
 
       if (existingFiles.length > 0 && !options.force) {
         console.log(chalk.yellow("⚠ Existing workflow files detected:"));
@@ -483,21 +528,21 @@ export const setupGithubCommand = new Command()
         console.log();
       }
 
-      // 5. Create workflow files
+      // 5. Create workflow files (at git root)
       console.log("Creating workflow files...");
-      await mkdir(".github/workflows", { recursive: true });
+      await mkdir(path.join(gitRoot, ".github/workflows"), { recursive: true });
 
-      await writeFile(publishPath, generatePublishYaml());
-      const publishStatus = existingFiles.includes(publishPath)
+      await writeFile(publishPath, generatePublishYaml(workingDir));
+      const publishStatus = existingFiles.includes(displayPublishPath)
         ? "Overwrote"
         : "Created";
-      console.log(chalk.green(`✓ ${publishStatus} ${publishPath}`));
+      console.log(chalk.green(`✓ ${publishStatus} ${displayPublishPath}`));
 
       await writeFile(runPath, generateRunYaml(agentName, secrets, vars));
-      const runStatus = existingFiles.includes(runPath)
+      const runStatus = existingFiles.includes(displayRunPath)
         ? "Overwrote"
         : "Created";
-      console.log(chalk.green(`✓ ${runStatus} ${runPath}`));
+      console.log(chalk.green(`✓ ${runStatus} ${displayRunPath}`));
       console.log();
 
       // 6. Handle secrets/vars setup

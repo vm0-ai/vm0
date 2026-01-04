@@ -54,6 +54,8 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github creates workflow files with --skip-secrets" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
+
     # First create a vm0.yaml
     $CLI_COMMAND init --name test-setup-agent
 
@@ -72,6 +74,7 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github generates correct publish.yml content" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name my-publish-agent
 
     run $CLI_COMMAND setup-github --skip-secrets
@@ -90,6 +93,7 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github generates correct run.yml content with agent name" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name my-run-agent
 
     run $CLI_COMMAND setup-github --skip-secrets
@@ -107,6 +111,7 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github warns about existing workflow files" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name test-agent
 
     # Create existing workflow file
@@ -123,6 +128,7 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github --force overwrites existing workflow files" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name test-agent
 
     # Create existing workflow files
@@ -143,6 +149,7 @@ check_setup_github_prereqs() {
 @test "vm0 setup-github -f short option works" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name test-agent
 
     # Create existing workflow file
@@ -156,6 +163,8 @@ check_setup_github_prereqs() {
 
 @test "vm0 setup-github includes secrets from experimental_secrets" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
+
+    git init
 
     # Create vm0.yaml with experimental_secrets
     cat > vm0.yaml << 'EOF'
@@ -182,6 +191,8 @@ EOF
 @test "vm0 setup-github includes vars from experimental_vars" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
+
     # Create vm0.yaml with experimental_vars
     cat > vm0.yaml << 'EOF'
 version: "1.0"
@@ -207,6 +218,7 @@ EOF
 @test "vm0 setup-github --yes auto-confirms overwrite prompt" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
     $CLI_COMMAND init --name test-agent
 
     # Create existing workflow file
@@ -222,6 +234,8 @@ EOF
 @test "vm0 setup-github -y short option works" {
     check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
 
+    git init
+
     $CLI_COMMAND init --name test-agent
 
     mkdir -p .github/workflows
@@ -230,4 +244,81 @@ EOF
     run $CLI_COMMAND setup-github -y --skip-secrets
     assert_success
     assert_output --partial "Overwrote"
+}
+
+@test "vm0 setup-github from subdirectory writes workflows to git root" {
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
+
+    # Initialize git repo at root
+    git init
+
+    # Create subdirectory with vm0 config
+    mkdir .vm0
+    cd .vm0
+    $CLI_COMMAND init --name subdir-test-agent
+
+    # Run setup-github from subdirectory
+    run $CLI_COMMAND setup-github --skip-secrets
+    assert_success
+
+    # Verify workflow files at git root (parent directory)
+    [ -f "../.github/workflows/publish.yml" ]
+    [ -f "../.github/workflows/run.yml" ]
+
+    # Verify working-directory in publish.yml
+    run cat ../.github/workflows/publish.yml
+    assert_output --partial "working-directory: .vm0"
+    assert_output --partial "'.vm0/vm0.yaml'"
+    assert_output --partial "'.vm0/AGENTS.md'"
+}
+
+@test "vm0 setup-github from nested subdirectory uses correct working-directory" {
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
+
+    git init
+
+    # Create nested subdirectory
+    mkdir -p configs/agents
+    cd configs/agents
+    $CLI_COMMAND init --name nested-test-agent
+
+    run $CLI_COMMAND setup-github --skip-secrets
+    assert_success
+
+    # Verify workflow files at git root
+    [ -f "../../.github/workflows/publish.yml" ]
+
+    # Verify correct nested working-directory
+    run cat ../../.github/workflows/publish.yml
+    assert_output --partial "working-directory: configs/agents"
+    assert_output --partial "'configs/agents/vm0.yaml'"
+}
+
+@test "vm0 setup-github fails when not in git repository" {
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
+
+    # Don't initialize git - just create vm0.yaml
+    $CLI_COMMAND init --name no-git-agent
+
+    run $CLI_COMMAND setup-github --skip-secrets
+    assert_failure
+    assert_output --partial "Not in a git repository"
+}
+
+@test "vm0 setup-github from git root does not include working-directory" {
+    check_setup_github_prereqs || skip "Requires gh CLI and VM0 auth"
+
+    git init
+    $CLI_COMMAND init --name root-agent
+
+    run $CLI_COMMAND setup-github --skip-secrets
+    assert_success
+
+    # Verify publish.yml does NOT contain working-directory
+    run cat .github/workflows/publish.yml
+    refute_output --partial "working-directory"
+
+    # Verify paths are not prefixed
+    assert_output --partial "'vm0.yaml'"
+    assert_output --partial "'AGENTS.md'"
 }
