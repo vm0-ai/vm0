@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/docs-v0.13.1...docs-v0.13.2) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** add function type check for plausible ([#891](https://github.com/vm0-ai/vm0/issues/891)) ([e69ef91](https://github.com/vm0-ai/vm0/commit/e69ef91c9cc7aa0c2d0fe7199699b62013a75927))
+
 ## [0.13.1](https://github.com/vm0-ai/vm0/compare/docs-v0.13.0...docs-v0.13.1) (2026-01-04)
 
 
