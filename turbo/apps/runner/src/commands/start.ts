@@ -126,8 +126,11 @@ export const startCommand = new Command("start")
           const job = await pollForJob(config.server, config.group);
 
           if (!job) {
-            // No job found, wait before polling again (30s for low-frequency runner)
-            await new Promise((resolve) => setTimeout(resolve, 30000));
+            // No job found, wait before polling again
+            // Interval is configurable via sandbox.poll_interval_ms (default 5s)
+            await new Promise((resolve) =>
+              setTimeout(resolve, config.sandbox.poll_interval_ms),
+            );
             continue;
           }
 

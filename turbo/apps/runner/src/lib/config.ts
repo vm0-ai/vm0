@@ -22,6 +22,7 @@ export const runnerConfigSchema = z.object({
       max_concurrent: z.number().int().min(1).default(1),
       vcpu: z.number().int().min(1).default(2),
       memory_mb: z.number().int().min(128).default(2048),
+      poll_interval_ms: z.number().int().min(1000).default(5000),
     })
     .default({}),
   firecracker: z.object({
