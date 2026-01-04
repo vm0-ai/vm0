@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.7](https://github.com/vm0-ai/vm0/compare/docs-v0.13.6...docs-v0.13.7) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** prevent duplicate pageview on initial page load ([#903](https://github.com/vm0-ai/vm0/issues/903)) ([6304303](https://github.com/vm0-ai/vm0/commit/6304303c414696ba454f7417772b99d635057a00))
+
 ## [0.13.6](https://github.com/vm0-ai/vm0/compare/docs-v0.13.5...docs-v0.13.6) (2026-01-04)
 
 
