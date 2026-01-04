@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract } from "@vm0/core";
+import { runsMainContract, type StoredExecutionContext } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -17,9 +17,40 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
+import { storageService } from "../../../../src/lib/storage/storage-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:runs");
+
+/**
+ * Extract working directory from agent compose config
+ */
+function extractWorkingDir(agentCompose: unknown): string {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return "/workspace";
+  const agents = Object.values(compose.agents);
+  return agents[0]?.working_dir || "/workspace";
+}
+
+/**
+ * Extract CLI agent type from agent compose config
+ */
+function extractCliAgentType(agentCompose: unknown): string {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return "claude-code";
+  const agents = Object.values(compose.agents);
+  return agents[0]?.provider || "claude-code";
+}
+
+/**
+ * Resolve runner group from agent compose config
+ */
+function resolveRunnerGroup(agentCompose: unknown): string | null {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return null;
+  const agents = Object.values(compose.agents);
+  return agents[0]?.experimental_runner?.group ?? null;
+}
 
 const router = tsr.router(runsMainContract, {
   create: async ({ body }) => {
@@ -393,55 +424,12 @@ const router = tsr.router(runsMainContract, {
       }
     }
 
-    // Check for experimental_runner routing
-    // If the agent specifies a runner group, queue for self-hosted runner instead of E2B
-    if (composeContent) {
-      const agentKeys = Object.keys(composeContent.agents);
-      const firstAgentKey = agentKeys[0];
-      if (firstAgentKey) {
-        const agent = composeContent.agents[firstAgentKey];
-        const runnerGroup = agent?.experimental_runner?.group;
-
-        if (runnerGroup) {
-          log.debug(`Run ${run.id} routed to runner group: ${runnerGroup}`);
-
-          // Update run with runner group - keep status as 'pending'
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({ runnerGroup })
-            .where(eq(agentRuns.id, run.id));
-
-          // Return early - run will be picked up by polling runner
-          return {
-            status: 201 as const,
-            body: {
-              runId: run.id,
-              status: "pending" as const,
-              createdAt: run.createdAt.toISOString(),
-            },
-          };
-        }
-      }
-    }
-
-    // Generate temporary bearer token for E2B sandbox
+    // Generate temporary bearer token (needed for both runner and E2B paths)
     const sandboxToken = await generateSandboxToken(userId, run.id);
     log.debug(`Generated sandbox token for run: ${run.id}`);
 
-    // Update run status to 'running' before starting E2B execution
-    // Initialize lastHeartbeatAt for sandbox cleanup monitoring
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({
-        status: "running",
-        startedAt: new Date(),
-        lastHeartbeatAt: new Date(),
-      })
-      .where(eq(agentRuns.id, run.id));
-
-    // Build execution context and start sandbox (fire-and-forget)
-    // vm0_start event is sent by E2B service after storage preparation
-    // Final status will be updated by webhook when run-agent.sh completes
+    // Build execution context FIRST (for both paths - late routing)
+    // This ensures runner jobs get the same context preparation as E2B jobs
     try {
       const context = await runService.buildExecutionContext({
         checkpointId: body.checkpointId,
@@ -463,6 +451,68 @@ const router = tsr.router(runsMainContract, {
         resumedFromCheckpointId: body.checkpointId,
         continuedFromSessionId: body.sessionId,
       });
+
+      // LATE ROUTING DECISION - after context is built
+      // Check for experimental_runner routing
+      const runnerGroup = resolveRunnerGroup(context.agentCompose);
+
+      if (runnerGroup) {
+        log.debug(`Run ${run.id} routed to runner group: ${runnerGroup}`);
+
+        // Prepare storage manifest with presigned URLs for runner
+        const workingDir = extractWorkingDir(context.agentCompose);
+        const storageManifest = await storageService.prepareStorageManifest(
+          context.agentCompose as AgentComposeYaml,
+          context.vars || {},
+          userId,
+          context.artifactName,
+          context.artifactVersion,
+          context.volumeVersions,
+          context.resumeArtifact,
+          workingDir,
+        );
+
+        // Build stored execution context
+        const storedContext: StoredExecutionContext = {
+          workingDir,
+          storageManifest,
+          environment: context.environment || null,
+          resumeSession: context.resumeSession || null,
+          secretValues: context.secrets ? Object.values(context.secrets) : null,
+          cliAgentType: extractCliAgentType(context.agentCompose),
+          experimentalNetworkSecurity: context.experimentalNetworkSecurity,
+        };
+
+        // Update run with runner group and stored context - keep status as 'pending'
+        await globalThis.services.db
+          .update(agentRuns)
+          .set({
+            runnerGroup,
+            executionContext: storedContext,
+          })
+          .where(eq(agentRuns.id, run.id));
+
+        // Return early - run will be picked up by polling runner
+        return {
+          status: 201 as const,
+          body: {
+            runId: run.id,
+            status: "pending" as const,
+            createdAt: run.createdAt.toISOString(),
+          },
+        };
+      }
+
+      // E2B path - update run status to 'running' before starting execution
+      // Initialize lastHeartbeatAt for sandbox cleanup monitoring
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "running",
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+        })
+        .where(eq(agentRuns.id, run.id));
 
       // Start execution - returns immediately after sandbox is prepared
       // Agent execution continues in background (fire-and-forget)

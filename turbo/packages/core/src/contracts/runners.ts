@@ -126,6 +126,20 @@ export const resumeSessionSchema = z.object({
 });
 
 /**
+ * Stored execution context (subset stored in database for late routing)
+ * Contains prepared context without runtime-generated fields
+ */
+export const storedExecutionContextSchema = z.object({
+  workingDir: z.string(),
+  storageManifest: storageManifestSchema.nullable(),
+  environment: z.record(z.string(), z.string()).nullable(),
+  resumeSession: resumeSessionSchema.nullable(),
+  secretValues: z.array(z.string()).nullable(),
+  cliAgentType: z.string(),
+  experimentalNetworkSecurity: z.boolean().optional(),
+});
+
+/**
  * Execution context returned when claiming a job
  */
 export const executionContextSchema = z.object({
@@ -179,6 +193,9 @@ export type RunnerResponse = z.infer<typeof runnerResponseSchema>;
 export type RunnerStatus = z.infer<typeof runnerStatusSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
+export type StoredExecutionContext = z.infer<
+  typeof storedExecutionContextSchema
+>;
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;

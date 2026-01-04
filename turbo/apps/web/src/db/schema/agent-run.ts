@@ -37,4 +37,7 @@ export const agentRuns = pgTable("agent_runs", {
   runnerGroup: varchar("runner_group", { length: 255 }),
   runnerId: uuid("runner_id").references(() => runners.id),
   claimedAt: timestamp("claimed_at"),
+  // Prepared execution context for runner jobs (late routing)
+  // Contains: workingDir, storageManifest, environment, resumeSession, secretValues, cliAgentType
+  executionContext: jsonb("execution_context"),
 });

@@ -168,6 +168,7 @@ export {
   runnerResponseSchema,
   jobSchema,
   executionContextSchema,
+  storedExecutionContextSchema,
   type RunnersRegisterContract,
   type RunnersPollContract,
   type RunnersJobClaimContract,
@@ -175,4 +176,5 @@ export {
   type RunnerStatus,
   type Job,
   type ExecutionContext,
+  type StoredExecutionContext,
 } from "./runners";

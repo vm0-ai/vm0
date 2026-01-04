@@ -149,10 +149,28 @@ install_docker() {
     echo "[OK] Docker installed: $(docker --version)"
 }
 
+# Install Node.js if not present (required for running the runner)
+install_nodejs() {
+    if command -v node &> /dev/null; then
+        echo "[OK] Node.js already installed: $(node --version)"
+        return 0
+    fi
+
+    echo "[INSTALL] Installing Node.js 24.x..."
+
+    # Install Node.js using NodeSource repository
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
+    echo "[OK] Node.js installed: $(node --version)"
+    echo "[OK] npm installed: $(npm --version)"
+}
+
 # Main
 main() {
     install_dependencies
     install_docker
+    install_nodejs
     install_firecracker
     install_kernel
     check_kvm || true
@@ -162,6 +180,7 @@ main() {
     echo "Firecracker: ${FIRECRACKER_BIN}"
     echo "Kernel: ${KERNEL_PATH}"
     echo "Docker: $(docker --version 2>/dev/null || echo 'not installed')"
+    echo "Node.js: $(node --version 2>/dev/null || echo 'not installed')"
     echo ""
     echo "Next step: Build rootfs with ./build-rootfs.sh"
 }

@@ -3,30 +3,20 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { runnersJobClaimContract, createErrorResponse } from "@vm0/core";
+import {
+  runnersJobClaimContract,
+  createErrorResponse,
+  type StoredExecutionContext,
+} from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { runners } from "../../../../../../src/db/schema/runner";
-import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
-import { storageService } from "../../../../../../src/lib/storage/storage-service";
-import type { AgentComposeYaml } from "../../../../../../src/types/agent-compose";
 
 const log = logger("api:runners:jobs:claim");
-
-/**
- * Get the first agent from compose (currently only one agent is supported)
- */
-function getFirstAgent(
-  compose?: AgentComposeYaml,
-): AgentComposeYaml["agents"][string] | undefined {
-  if (!compose?.agents) return undefined;
-  const values = Object.values(compose.agents);
-  return values[0];
-}
 
 const router = tsr.router(runnersJobClaimContract, {
   claim: async ({ params, body }) => {
@@ -123,82 +113,26 @@ const router = tsr.router(runnersJobClaimContract, {
       pendingRun.id,
     );
 
-    // Get agent compose version for working_dir and provider
-    const [composeVersion] = await globalThis.services.db
-      .select()
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, claimedRun.agentComposeVersionId))
-      .limit(1);
+    // Load stored execution context (prepared at job creation via late routing)
+    const storedContext =
+      claimedRun.executionContext as StoredExecutionContext | null;
 
-    const agentCompose = composeVersion?.content as
-      | AgentComposeYaml
-      | undefined;
-    const firstAgent = getFirstAgent(agentCompose);
-    const workingDir = firstAgent?.working_dir || "/workspace";
-    const cliAgentType = firstAgent?.provider || "claude-code";
-
-    log.debug(`Working dir: ${workingDir}, CLI type: ${cliAgentType}`);
-
-    // Prepare storage manifest with presigned URLs
-    // Note: artifactName, artifactVersion, volumeVersions are not stored in agentRuns
-    // For now, we prepare manifest without artifact (runner jobs don't support artifact yet)
-    let storageManifest = null;
-    try {
-      storageManifest = await storageService.prepareStorageManifest(
-        agentCompose,
-        (claimedRun.vars as Record<string, string>) || {},
-        claimedRun.userId,
-        undefined, // artifactName - not available in agentRuns
-        undefined, // artifactVersion - not available in agentRuns
-        undefined, // volumeVersions - not available in agentRuns
-        undefined, // resumeArtifact handled separately
-        workingDir,
-      );
-      log.debug(
-        `Storage manifest prepared with ${storageManifest.storages.length} storages`,
-      );
-    } catch (err) {
+    if (!storedContext) {
+      // This can happen for jobs created before the late-routing update
       log.warn(
-        `Failed to prepare storage manifest: ${err instanceof Error ? err.message : err}`,
+        `Job ${runId} has no stored execution context (created before late-routing update)`,
+      );
+      return createErrorResponse(
+        "BAD_REQUEST",
+        "Job missing execution context (created before late-routing update)",
       );
     }
 
-    // Get resume session if checkpointId present
-    // Note: checkpoints table uses different schema - it stores agentComposeSnapshot, not sessionHistory
-    // For now, resumeSession is not supported for runner jobs
-    const resumeSession = null;
-    if (claimedRun.resumedFromCheckpointId) {
-      log.debug(
-        `Resume from checkpoint ${claimedRun.resumedFromCheckpointId} requested but not yet implemented for runners`,
-      );
-      // TODO: Implement resume session support for runners
-      // This requires storing session history in checkpoints or agent_sessions table
-    }
+    log.debug(
+      `Loaded stored context: workingDir=${storedContext.workingDir}, cliAgentType=${storedContext.cliAgentType}`,
+    );
 
-    // Expand environment variables from agent compose
-    let environment: Record<string, string> | null = null;
-    if (firstAgent?.environment) {
-      environment = {};
-      for (const [key, value] of Object.entries(firstAgent.environment)) {
-        // Expand ${{ vars.X }} references
-        if (typeof value === "string") {
-          environment[key] = value.replace(
-            /\$\{\{\s*vars\.(\w+)\s*\}\}/g,
-            (_, varName) => {
-              const vars = claimedRun.vars as Record<string, string> | null;
-              return vars?.[varName] || "";
-            },
-          );
-        }
-      }
-    }
-
-    // Note: secretValues are not available in runner context
-    // Secrets need to be resolved separately by the runner if needed
-    // For now, we pass null and the runner can implement secret resolution later
-    const secretValues: string[] | null = null;
-
-    // Return execution context
+    // Return execution context (context already prepared at job creation)
     return {
       status: 200 as const,
       body: {
@@ -210,13 +144,13 @@ const router = tsr.router(runnersJobClaimContract, {
         checkpointId: claimedRun.resumedFromCheckpointId ?? null,
         sandboxToken,
         apiUrl: globalThis.services.env.VM0_API_URL || "https://www.vm0.ai",
-        // New fields for E2B parity:
-        workingDir,
-        storageManifest,
-        environment,
-        resumeSession,
-        secretValues,
-        cliAgentType,
+        // From stored context (prepared at job creation):
+        workingDir: storedContext.workingDir,
+        storageManifest: storedContext.storageManifest,
+        environment: storedContext.environment,
+        resumeSession: storedContext.resumeSession,
+        secretValues: storedContext.secretValues,
+        cliAgentType: storedContext.cliAgentType,
       },
     };
   },
