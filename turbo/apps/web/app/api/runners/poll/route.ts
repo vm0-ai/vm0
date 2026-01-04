@@ -18,12 +18,11 @@ const router = tsr.router(runnersPollContract, {
   poll: async ({ body }) => {
     initServices();
 
-    // Debug: Log auth header before checking (using warn to force output)
+    // Debug: Log auth header before checking
     const headersList = await headers();
     const authHeader = headersList.get("Authorization");
-    log.warn("Poll request received", {
+    log.debug("Poll request received", {
       hasAuthHeader: !!authHeader,
-      authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
       bodyGroup: body.group,
     });
 
