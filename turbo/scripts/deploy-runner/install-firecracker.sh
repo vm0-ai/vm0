@@ -88,22 +88,41 @@ install_kernel() {
     echo "[OK] Kernel installed to ${KERNEL_PATH}"
 }
 
-# Verify KVM access
-check_kvm() {
+# Configure KVM access
+setup_kvm() {
     if [ ! -e /dev/kvm ]; then
-        echo "[WARN] /dev/kvm not found - Firecracker requires KVM support"
-        echo "       Make sure you're running on a bare-metal instance with KVM enabled"
+        echo "[ERROR] /dev/kvm not found - Firecracker requires KVM support"
+        echo "        Make sure you're running on a bare-metal instance with KVM enabled"
         return 1
     fi
 
-    if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-        echo "[WARN] /dev/kvm not accessible - you may need to add user to kvm group:"
-        echo "       sudo usermod -aG kvm \$USER"
-        return 1
+    # Check if user already has access
+    if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        echo "[OK] KVM is available and accessible"
+        return 0
     fi
 
-    echo "[OK] KVM is available and accessible"
-    return 0
+    echo "[SETUP] Configuring KVM access..."
+
+    # Add user to kvm group (for future sessions)
+    if ! groups "$USER" | grep -q '\bkvm\b'; then
+        echo "[SETUP] Adding $USER to kvm group..."
+        sudo usermod -aG kvm "$USER"
+    fi
+
+    # Set /dev/kvm permissions for immediate access (current session)
+    # This is needed because group membership only takes effect after re-login
+    echo "[SETUP] Setting /dev/kvm permissions..."
+    sudo chmod 666 /dev/kvm
+
+    # Verify access now works
+    if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        echo "[OK] KVM configured and accessible"
+        return 0
+    else
+        echo "[ERROR] Failed to configure KVM access"
+        return 1
+    fi
 }
 
 # Install required system packages
@@ -181,7 +200,7 @@ main() {
     install_nodejs
     install_firecracker
     install_kernel
-    check_kvm || true
+    setup_kvm
 
     echo ""
     echo "=== Installation Complete ==="
