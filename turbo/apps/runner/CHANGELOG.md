@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/vm0-ai/vm0/compare/runner-v1.1.0...runner-v1.2.0) (2026-01-04)
+
+
+### Features
+
+* **docs:** trigger release for product philosophy page ([#884](https://github.com/vm0-ai/vm0/issues/884)) ([45ec3a2](https://github.com/vm0-ai/vm0/commit/45ec3a296b4d4ac01b4ac1f0536692d1626c7551))
+
 ## [1.1.0](https://github.com/vm0-ai/vm0/compare/runner-v1.0.0...runner-v1.1.0) (2025-12-31)
 
 

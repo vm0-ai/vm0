@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/vm0-ai/vm0/compare/core-v2.5.0...core-v2.6.0) (2026-01-04)
+
+
+### Features
+
+* **docs:** trigger release for product philosophy page ([#884](https://github.com/vm0-ai/vm0/issues/884)) ([45ec3a2](https://github.com/vm0-ai/vm0/commit/45ec3a296b4d4ac01b4ac1f0536692d1626c7551))
+
 ## [2.5.0](https://github.com/vm0-ai/vm0/compare/core-v2.4.0...core-v2.5.0) (2025-12-31)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.34.0](https://github.com/vm0-ai/vm0/compare/cli-v4.33.0...cli-v4.34.0) (2026-01-04)
+
+
+### Features
+
+* **docs:** trigger release for product philosophy page ([#884](https://github.com/vm0-ai/vm0/issues/884)) ([45ec3a2](https://github.com/vm0-ai/vm0/commit/45ec3a296b4d4ac01b4ac1f0536692d1626c7551))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 2.6.0
+
 ## [4.33.0](https://github.com/vm0-ai/vm0/compare/cli-v4.32.0...cli-v4.33.0) (2025-12-31)
 
 

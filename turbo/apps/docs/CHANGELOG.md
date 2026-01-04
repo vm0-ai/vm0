@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/docs-v0.11.2...docs-v0.12.0) (2026-01-04)
+
+
+### Features
+
+* **docs:** trigger release for product philosophy page ([#884](https://github.com/vm0-ai/vm0/issues/884)) ([45ec3a2](https://github.com/vm0-ai/vm0/commit/45ec3a296b4d4ac01b4ac1f0536692d1626c7551))
+
 ## [0.11.2](https://github.com/vm0-ai/vm0/compare/docs-v0.11.1...docs-v0.11.2) (2026-01-04)
 
 
