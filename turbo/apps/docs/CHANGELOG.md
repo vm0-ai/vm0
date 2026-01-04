@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/vm0-ai/vm0/compare/docs-v0.11.1...docs-v0.11.2) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** use custom Plausible script to match main site ([#878](https://github.com/vm0-ai/vm0/issues/878)) ([be10efe](https://github.com/vm0-ai/vm0/commit/be10efe0bd40e0d2047478174342f133e5b40b31))
+
 ## [0.11.1](https://github.com/vm0-ai/vm0/compare/docs-v0.11.0...docs-v0.11.1) (2026-01-04)
 
 
