@@ -1,6 +1,7 @@
 import "@/app/global.css";
 import { RootProvider } from "fumadocs-ui/provider";
 import { Noto_Sans } from "next/font/google";
+import { PlausibleTracker } from "@/components/plausible-tracker";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -18,7 +19,10 @@ export default function Layout({ children }: LayoutProps<"/">) {
         ></script>
       </head>
       <body className="flex flex-col min-h-screen">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider>
+          <PlausibleTracker />
+          {children}
+        </RootProvider>
       </body>
     </html>
   );
