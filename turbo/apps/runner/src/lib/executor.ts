@@ -35,15 +35,13 @@ export interface ExecutionResult {
 }
 
 /**
- * VM ID counter for unique TAP devices
+ * Extract short VM ID from runId (UUID)
+ * Uses first 8 characters of UUID for unique identification
  */
-let vmIdCounter = 0;
-
-/**
- * Get next VM ID
- */
-function getNextVmId(): number {
-  return ++vmIdCounter;
+function getVmIdFromRunId(runId: string): string {
+  // runId is a UUID like "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  // Extract first 8 chars (before first hyphen) for a unique short ID
+  return runId.split("-")[0] || runId.substring(0, 8);
 }
 
 /**
@@ -233,7 +231,9 @@ export async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,
 ): Promise<ExecutionResult> {
-  const vmId = getNextVmId();
+  // Use runId (UUID) to derive unique VM identifier
+  // This ensures no conflicts even across process restarts
+  const vmId = getVmIdFromRunId(context.runId);
   let vm: FirecrackerVM | null = null;
 
   console.log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);

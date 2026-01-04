@@ -33,23 +33,41 @@ const BRIDGE_NETMASK = "255.255.255.0";
 const BRIDGE_CIDR = "172.16.0.0/24";
 
 /**
- * Generate a MAC address for a VM
- * Uses the vm0 OUI prefix (locally administered) with VM ID
+ * Simple hash function to convert a string to a number
+ * Used for generating unique MAC/IP from string vmId
  */
-export function generateMacAddress(vmId: number): string {
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Generate a MAC address for a VM
+ * Uses the vm0 OUI prefix (locally administered) with hashed VM ID
+ */
+export function generateMacAddress(vmId: string): string {
   // Locally administered MAC: 02:xx:xx:xx:xx:xx
-  // Format: 02:00:vm:00:00:id
-  const id = vmId & 0xff;
-  return `02:00:00:00:00:${id.toString(16).padStart(2, "0")}`;
+  // Use hash of vmId for last 3 bytes to ensure uniqueness
+  const hash = hashString(vmId);
+  const b1 = (hash >> 16) & 0xff;
+  const b2 = (hash >> 8) & 0xff;
+  const b3 = hash & 0xff;
+  return `02:00:00:${b1.toString(16).padStart(2, "0")}:${b2.toString(16).padStart(2, "0")}:${b3.toString(16).padStart(2, "0")}`;
 }
 
 /**
  * Generate an IP address for a VM within the bridge subnet
  * VM IPs start at 172.16.0.2 (172.16.0.1 is the bridge)
  */
-export function generateGuestIp(vmId: number): string {
+export function generateGuestIp(vmId: string): string {
   // Guest IPs: 172.16.0.2 - 172.16.0.254
-  const lastOctet = (vmId % 253) + 2;
+  const hash = hashString(vmId);
+  const lastOctet = (hash % 253) + 2;
   return `172.16.0.${lastOctet}`;
 }
 
@@ -208,8 +226,9 @@ async function tapDeviceExists(tapDevice: string): Promise<boolean> {
 /**
  * Create and configure a TAP device for a VM
  */
-export async function createTapDevice(vmId: number): Promise<VMNetworkConfig> {
-  const tapDevice = `tap${vmId}`;
+export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
+  // TAP device name limited to 15 chars, use "tap" + first 8 chars of vmId
+  const tapDevice = `tap${vmId.substring(0, 8)}`;
   const guestMac = generateMacAddress(vmId);
   const guestIp = generateGuestIp(vmId);
 

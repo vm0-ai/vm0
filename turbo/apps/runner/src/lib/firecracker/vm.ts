@@ -24,7 +24,7 @@ import {
  * VM configuration options
  */
 export interface VMConfig {
-  vmId: number;
+  vmId: string; // Unique identifier (e.g., first 8 chars of runId UUID)
   vcpus: number;
   memoryMb: number;
   kernelPath: string;
@@ -294,14 +294,9 @@ export class FirecrackerVM {
       this.networkConfig = null;
     }
 
-    // Clean up socket - log warning if deletion fails
-    if (fs.existsSync(this.socketPath)) {
-      fs.unlinkSync(this.socketPath);
-    }
-
-    // Clean up VM-local rootfs copy to save disk space - log warning if deletion fails
-    if (fs.existsSync(this.vmRootfsPath)) {
-      fs.unlinkSync(this.vmRootfsPath);
+    // Clean up entire workDir (includes socket and rootfs)
+    if (fs.existsSync(this.workDir)) {
+      fs.rmSync(this.workDir, { recursive: true, force: true });
     }
 
     this.client = null;
