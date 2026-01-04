@@ -153,17 +153,25 @@ install_docker() {
 install_nodejs() {
     if command -v node &> /dev/null; then
         echo "[OK] Node.js already installed: $(node --version)"
-        return 0
+    else
+        echo "[INSTALL] Installing Node.js 24.x..."
+
+        # Install Node.js using NodeSource repository
+        curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+
+        echo "[OK] Node.js installed: $(node --version)"
+        echo "[OK] npm installed: $(npm --version)"
     fi
 
-    echo "[INSTALL] Installing Node.js 24.x..."
-
-    # Install Node.js using NodeSource repository
-    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-
-    echo "[OK] Node.js installed: $(node --version)"
-    echo "[OK] npm installed: $(npm --version)"
+    # Install pm2 globally for process management
+    if command -v pm2 &> /dev/null; then
+        echo "[OK] pm2 already installed: $(pm2 --version)"
+    else
+        echo "[INSTALL] Installing pm2..."
+        sudo npm install -g pm2
+        echo "[OK] pm2 installed: $(pm2 --version)"
+    fi
 }
 
 # Main
@@ -181,6 +189,7 @@ main() {
     echo "Kernel: ${KERNEL_PATH}"
     echo "Docker: $(docker --version 2>/dev/null || echo 'not installed')"
     echo "Node.js: $(node --version 2>/dev/null || echo 'not installed')"
+    echo "pm2: $(pm2 --version 2>/dev/null || echo 'not installed')"
     echo ""
     echo "Next step: Build rootfs with ./build-rootfs.sh"
 }
