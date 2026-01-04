@@ -1,0 +1,96 @@
+---
+title: Product Philosophy
+description: The vision, values, and principles that guide VM0's development
+---
+
+From day one, VM0 chose to define its philosophy explicitly. This philosophy represents our vision, our values, and our view of what a durable product should be. It is not a manifesto for launch, but a set of principles we expect to **practice, test, and refine as the product evolves**.
+
+We believe good systems are shaped by clear beliefs. We anchor our work around four core principles. Each principle includes a small number of concrete ideas that explain how we think about what our product should be, what we choose to build, and how those beliefs show up in practice.
+
+## **Human**
+
+### **Build for people first**
+
+We start with developers, with the long-term goal of serving builders.
+
+Developers help us establish rigor early. They notice friction, ambiguity, and broken abstractions quickly. By holding ourselves to their standards, we ensure the system remains usable as it grows.
+
+Builders are the destination. People who want to turn ideas into reality, not by fighting tools, but by working comfortably with them.
+
+### **Natural language as an honest interface**
+
+Programming languages have historically enabled precision, but they have also constrained who can create. They require people to reshape intent into machine-first structures before action is possible.
+
+As programming becomes less mysterious, we believe natural language can become a serious interface for execution. Not only for content creation or deep research, but for carrying ideas into action and completing real tasks.
+
+The goal is to let humans express intent in a form that aligns with how they think.
+
+### **Human in the loop, by design**
+
+Human-in-the-loop means humans retain agency. We do not aim for full replacement. We aim for collaboration. Humans should be able to confirm, customize, and remain aware of what agents are doing.
+
+The system is designed to amplify human judgment and keep people aware of what is happening.
+
+### **Security from day one**
+
+As agents become more capable, interactions multiply. Humans interact with agents. Agents interact with APIs. Agents interact with other agents. Each interaction introduces uncertainty.
+
+Security must exist at the foundation. We treat security as a first-order concern and will continue to evolve our approach as the system grows. Trust is not added later. It is established early or not at all.
+
+### **Systems teach behavior**
+
+Every system shapes how people act and decide. What it encourages gets reinforced, and what it ignores slowly fades. So, the way VM0 guide agents toward best practices matters. The way VM0 structure defaults matters. The way builders are encouraged to compose agents matters.
+
+VM0 attempts to guide people and agents toward doing the right things more naturally.
+
+## **Iterative**
+
+### **Built for long-running work**
+
+VM0 is built for sustained and production work. As an infrastructure product, VM0  exists to empower builders and developers to explore the boundaries of what is possible, without confusing exploration with toys. Real systems must improve over time.
+
+That requires knowing where to start optimizing.
+
+Every execution leaves a trace
+
+State is preserved through volumes, snapshots, and logs
+
+Work can be rolled back and reviewed
+
+Iteration without memory is repetition. We design for learning.
+
+## **Coherent**
+
+### **Everything fits together**
+
+The AI era encourages immediate action. Powerful models and flexible tools make exploration easy. Coherence is harder.
+
+We design with system thinking. We don't like assembling features, and we create abstractions carefully. LLMs are already powerful. Our responsibility is to add structure where it matters.
+
+CLI, GUI, and API are different interfaces to the same system. They should reinforce a shared mental model.
+
+Abstractions do not conflict
+
+Mental models remain consistent
+
+The product is not a feature collage
+
+## **Legible**
+
+### **Systems should be readable**
+
+LLMs are probabilistic. They can behave unpredictably. When systems serve real production workflows, legibility becomes important. State should be visible; behavior should be explainable; the system should not be a black box
+
+People must be able to understand what the system is doing, why it is doing it, and what changed as a result.
+
+## Adaptive
+
+### **Flexibility is a core design requirement**
+
+VM0 is not built around the question "What can AI do?" That answer keeps changing and is not a reliable foundation for long-lived systems.
+
+We focus on a more stable question: How do we build systems that people can understand, trust, and work with over time?
+
+For this reason, we are building a **runtime**, not a fixed solution. The runtime is designed to adapt as underlying technologies evolve, rather than being tied to any single model, capability, or moment in time.
+
+In short，VM0's philosophy focuses on building infrastructure that remains reliable, understandable, and usable in real workflows, while preserving human agency as requirements and technologies change.

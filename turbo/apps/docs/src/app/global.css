@@ -66,3 +66,24 @@ a[data-card]:hover {
   box-shadow: none !important;
   padding-left: 0 !important;
 }
+
+/* Increase spacing for sidebar navigation items - both links and folder buttons */
+aside a[href^="/docs"],
+aside button[aria-controls] {
+  margin-bottom: 4px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+/* Ensure active links also have proper spacing */
+aside a[data-active] {
+  margin-bottom: 4px !important;
+}
+
+/* Increase spacing between content and previous/next navigation - only on docs pages */
+article + .grid.grid-cols-2.pb-6,
+main > .grid.grid-cols-2.pb-6:last-child,
+[class*="prose"] ~ .grid.grid-cols-2.pb-6 {
+  margin-top: 60px !important;
+  padding-top: 20px !important;
+}
