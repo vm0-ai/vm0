@@ -125,9 +125,34 @@ install_dependencies() {
     echo "[OK] All dependencies installed"
 }
 
+# Install Docker if not present
+install_docker() {
+    if command -v docker &> /dev/null; then
+        echo "[OK] Docker already installed: $(docker --version)"
+        return 0
+    fi
+
+    echo "[INSTALL] Installing Docker..."
+
+    # Install Docker using official convenience script
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sudo sh /tmp/get-docker.sh
+    rm /tmp/get-docker.sh
+
+    # Add current user to docker group
+    sudo usermod -aG docker "$USER"
+
+    # Start Docker service
+    sudo systemctl enable docker
+    sudo systemctl start docker
+
+    echo "[OK] Docker installed: $(docker --version)"
+}
+
 # Main
 main() {
     install_dependencies
+    install_docker
     install_firecracker
     install_kernel
     check_kvm || true
@@ -136,6 +161,7 @@ main() {
     echo "=== Installation Complete ==="
     echo "Firecracker: ${FIRECRACKER_BIN}"
     echo "Kernel: ${KERNEL_PATH}"
+    echo "Docker: $(docker --version 2>/dev/null || echo 'not installed')"
     echo ""
     echo "Next step: Build rootfs with ./build-rootfs.sh"
 }

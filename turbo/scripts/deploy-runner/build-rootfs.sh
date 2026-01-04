@@ -24,6 +24,9 @@ IMAGE_NAME="vm0-rootfs"
 CONTAINER_NAME="vm0-rootfs-tmp"
 ROOTFS_SIZE_MB="${ROOTFS_SIZE_MB:-2048}"
 
+# Docker command (may need sudo if user not in docker group)
+DOCKER="docker"
+
 echo "=== Firecracker Rootfs Builder ==="
 echo "Output: ${OUTPUT_PATH}"
 echo "Size: ${ROOTFS_SIZE_MB}MB"
@@ -35,12 +38,19 @@ check_dependencies() {
 
     if ! command -v docker &> /dev/null; then
         echo "ERROR: Docker is required but not installed"
+        echo "Run ./install-firecracker.sh first to install Docker"
         exit 1
     fi
 
+    # Check if docker works without sudo
+    if ! docker info &> /dev/null; then
+        echo "[INFO] Docker requires sudo (user not in docker group yet)"
+        DOCKER="sudo docker"
+    fi
+
     if ! command -v mkfs.ext4 &> /dev/null; then
-        echo "ERROR: mkfs.ext4 is required (install e2fsprogs)"
-        exit 1
+        echo "[INSTALL] Installing e2fsprogs..."
+        sudo apt-get update && sudo apt-get install -y e2fsprogs
     fi
 
     echo "[OK] All dependencies available"
@@ -50,7 +60,7 @@ check_dependencies() {
 build_image() {
     echo "[BUILD] Building Docker image..."
 
-    docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+    $DOCKER build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 
     echo "[OK] Docker image built: ${IMAGE_NAME}"
 }
@@ -60,17 +70,17 @@ export_filesystem() {
     echo "[EXPORT] Exporting filesystem from container..."
 
     # Remove any existing container
-    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    $DOCKER rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
     # Create container (don't start it)
-    docker create --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    $DOCKER create --name "$CONTAINER_NAME" "$IMAGE_NAME"
 
     # Export to tar
     TMP_TAR=$(mktemp)
-    docker export "$CONTAINER_NAME" -o "$TMP_TAR"
+    $DOCKER export "$CONTAINER_NAME" -o "$TMP_TAR"
 
     # Cleanup container
-    docker rm -f "$CONTAINER_NAME"
+    $DOCKER rm -f "$CONTAINER_NAME"
 
     echo "[OK] Filesystem exported to temporary tar"
     echo "$TMP_TAR"
