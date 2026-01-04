@@ -21,7 +21,7 @@ export { RUN_AGENT_SCRIPT } from "./run-agent.py.js";
 
 /**
  * Script paths in the Firecracker VM
- * Using /opt/vm0-scripts to avoid conflict with /usr/local/bin/vm0-agent binary
+ * Using /opt/vm0-scripts as a dedicated directory for agent execution scripts
  */
 export const SCRIPT_PATHS = {
   baseDir: "/opt/vm0-scripts",
