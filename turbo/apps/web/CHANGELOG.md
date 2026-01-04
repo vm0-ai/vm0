@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.11.0](https://github.com/vm0-ai/vm0/compare/web-v7.10.0...web-v7.11.0) (2026-01-04)
+
+
+### Features
+
+* **web:** remove cookbooks from navigation ([#880](https://github.com/vm0-ai/vm0/issues/880)) ([627ecaa](https://github.com/vm0-ai/vm0/commit/627ecaa9e415f5a9c59510fbf7dae1dd3d27b4cd))
+
 ## [7.10.0](https://github.com/vm0-ai/vm0/compare/web-v7.9.0...web-v7.10.0) (2026-01-04)
 
 
