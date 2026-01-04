@@ -76,9 +76,6 @@ export default function Navbar() {
             >
               {t("blog")}
             </a>
-            <Link href="/cookbooks" className="nav-link">
-              {t("cookbooks")}
-            </Link>
             <Link href="/skills" className="nav-link">
               {t("skills")}
             </Link>
@@ -150,13 +147,6 @@ export default function Navbar() {
             >
               {t("blog")}
             </a>
-            <Link
-              href="/cookbooks"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {t("cookbooks")}
-            </Link>
             <Link
               href="/skills"
               className="mobile-menu-link"
