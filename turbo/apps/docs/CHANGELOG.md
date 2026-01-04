@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/docs-v0.12.0...docs-v0.13.0) (2026-01-04)
+
+
+### Features
+
+* **docs:** add client-side route tracking for plausible analytics ([#886](https://github.com/vm0-ai/vm0/issues/886)) ([66a4b2a](https://github.com/vm0-ai/vm0/commit/66a4b2a108f9cae937e34cc40af39af4d5af77e3))
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/docs-v0.11.2...docs-v0.12.0) (2026-01-04)
 
 
