@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/vm0-ai/vm0/compare/docs-v0.13.0...docs-v0.13.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** skip plausible tracking on initial render ([#888](https://github.com/vm0-ai/vm0/issues/888)) ([ddb11ba](https://github.com/vm0-ai/vm0/commit/ddb11bad167b66563f0fc0b4f12a68aff12f1dea))
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/docs-v0.12.0...docs-v0.13.0) (2026-01-04)
 
 
