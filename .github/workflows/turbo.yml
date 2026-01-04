@@ -414,8 +414,8 @@ jobs:
           # Step 1: Run runner tests FIRST if runner was deployed
           # This is the most critical test - if it fails, skip other tests to save time
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo "=== Running Runner E2E Tests (Priority, 8 parallel) ==="
-            ./e2e/test/libs/bats/bin/bats -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            echo "=== Running Runner E2E Tests (Priority) ==="
+            ./e2e/test/libs/bats/bin/bats ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
