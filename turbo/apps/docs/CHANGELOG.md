@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.9](https://github.com/vm0-ai/vm0/compare/docs-v0.13.8...docs-v0.13.9) (2026-01-04)
+
+
+### Bug Fixes
+
+* **docs:** remove plausibletracker to test automatic spa tracking ([#907](https://github.com/vm0-ai/vm0/issues/907)) ([5609fd1](https://github.com/vm0-ai/vm0/commit/5609fd1b21fa08673b880bc0ee6266a8afdc7673))
+
 ## [0.13.8](https://github.com/vm0-ai/vm0/compare/docs-v0.13.7...docs-v0.13.8) (2026-01-04)
 
 
