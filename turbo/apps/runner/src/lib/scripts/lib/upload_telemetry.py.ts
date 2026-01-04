@@ -9,6 +9,7 @@ Reads system log and metrics files, tracks position to avoid duplicates,
 and uploads to the telemetry webhook endpoint.
 Masks secrets before sending using client-side masking.
 """
+from __future__ import annotations
 import json
 import os
 import threading

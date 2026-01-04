@@ -7,6 +7,7 @@ export const METRICS_SCRIPT = `#!/usr/bin/env python3
 Metrics collection module for VM0 sandbox.
 Collects system resource metrics (CPU, memory, disk) and writes to JSONL file.
 """
+from __future__ import annotations
 import json
 import subprocess
 import threading
