@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 
 declare global {
   interface Window {
@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-export function PlausibleTracker() {
+function PlausibleTrackerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -26,4 +26,12 @@ export function PlausibleTracker() {
   }, [pathname, searchParams]);
 
   return null;
+}
+
+export function PlausibleTracker() {
+  return (
+    <Suspense fallback={null}>
+      <PlausibleTrackerInner />
+    </Suspense>
+  );
 }
