@@ -340,10 +340,11 @@ jobs:
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
 
           # Generate config locally (needs CLI token from CI)
-          turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" /tmp/runner.yaml
+          CONFIG_FILE="/tmp/runner-pr-${PR_NUMBER}.yaml"
+          turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" "$CONFIG_FILE"
 
           # Copy config to Metal and start runner
-          scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
+          scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
           ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
 
           # Export runner group for tests
