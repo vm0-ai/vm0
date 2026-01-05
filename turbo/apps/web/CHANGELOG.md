@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.0.0](https://github.com/vm0-ai/vm0/compare/web-v7.12.0...web-v8.0.0) (2026-01-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runner:** stub_mode config option removed
+
+### Features
+
+* **runner:** implement @vm0/runner MVP with firecracker execution ([#851](https://github.com/vm0-ai/vm0/issues/851)) ([d2437a2](https://github.com/vm0-ai/vm0/commit/d2437a2cdc7b9df240b26b5cbcb00bf17334b509))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.0.0
+
 ## [7.12.0](https://github.com/vm0-ai/vm0/compare/web-v7.11.0...web-v7.12.0) (2026-01-04)
 
 
