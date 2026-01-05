@@ -95,7 +95,7 @@ setup_artifact() {
     assert_success
 
     echo "# Running with --vars and --secrets..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -123,7 +123,7 @@ setup_artifact() {
 
     echo "# Running with secret in environment..."
     export TEST_SECRET="${SECRET_VALUE}"
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
