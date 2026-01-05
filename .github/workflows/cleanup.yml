@@ -28,21 +28,9 @@ jobs:
 
           SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
-          LOG_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.log"
 
           echo "Cleaning up runner for PR #${PR_NUMBER}..."
-
-          # Stop runner process via pm2 (pm2 delete returns 0 even if not found with 2>/dev/null)
-          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
-
-          # Remove runner directory
-          ssh $SSH_OPTS "$SSH_TARGET" "rm -rf ${RUNNER_DIR}"
-
-          # Remove log file
-          ssh $SSH_OPTS "$SSH_TARGET" "rm -f ${LOG_FILE}"
-
-          echo "Runner cleanup complete for PR #${PR_NUMBER}"
+          ssh $SSH_OPTS "$SSH_TARGET" "/opt/vm0-runner/scripts/cleanup-runner.sh '${PR_NUMBER}'"
 
   cleanup-database:
     runs-on: ubuntu-latest

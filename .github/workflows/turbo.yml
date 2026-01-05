@@ -338,28 +338,16 @@ jobs:
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          RUNNER_GROUP="e2e/pr-${PR_NUMBER}"
 
-          echo "Getting CLI token from ~/.vm0/config.json..."
-          TOKEN=$(jq -r '.token' ~/.vm0/config.json)
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "ERROR: No token found in CLI config"
-            exit 1
-          fi
-          echo "Token obtained successfully"
+          # Generate config locally (needs CLI token from CI)
+          turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" /tmp/runner.yaml
 
-          echo "Creating runner.yaml config locally..."
-          printf 'name: e2e-runner-pr-%s\ngroup: %s\nserver:\n  url: %s\n  token: %s\nsandbox:\n  max_concurrent: 4\n  vcpu: 2\n  memory_mb: 1024\n  poll_interval_ms: 1000\nfirecracker:\n  binary: /usr/local/bin/firecracker\n  kernel: /opt/firecracker/vmlinux\n  rootfs: /opt/firecracker/rootfs.ext4\n' \
-            "${PR_NUMBER}" "${RUNNER_GROUP}" "${VM0_API_URL}" "${TOKEN}" > /tmp/runner.yaml
-
-          echo "Copying runner.yaml to Metal..."
+          # Copy config to Metal and start runner
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
-
-          echo "Starting runner via deploy script..."
           ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
 
           # Export runner group for tests
-          echo "RUNNER_GROUP=${RUNNER_GROUP}" >> $GITHUB_ENV
+          echo "RUNNER_GROUP=e2e/pr-${PR_NUMBER}" >> $GITHUB_ENV
 
       - name: Run CLI E2E Tests
         run: |
@@ -424,11 +412,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
-          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/stop-runner.sh '${PR_NUMBER}' --show-logs"
+          ssh $SSH_OPTS "$SSH_TARGET" "/opt/vm0-runner/scripts/stop-runner.sh '${PR_NUMBER}' --show-logs"
 
       - name: Stop Cron Simulator
         if: always()
@@ -495,9 +482,10 @@ jobs:
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
 
-          # Copy deploy scripts to Metal
+          # Copy deploy scripts to Metal (PR-specific and global location)
           echo "Copying deploy scripts to Metal..."
           scp $SSH_OPTS -r turbo/scripts/deploy-runner "${SSH_TARGET}:${RUNNER_DIR}/"
+          ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p /opt/vm0-runner/scripts && sudo cp ${RUNNER_DIR}/deploy-runner/*.sh /opt/vm0-runner/scripts/ && sudo chmod +x /opt/vm0-runner/scripts/*.sh"
 
           # Install Firecracker if not present (global, one-time)
           echo "Checking/Installing Firecracker..."
