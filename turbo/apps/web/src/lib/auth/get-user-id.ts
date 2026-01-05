@@ -20,10 +20,8 @@ export async function getUserId(): Promise<string | null> {
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 
-  // Debug: log auth header status (using warn to force output)
-  log.warn("getUserId called", {
+  log.debug("getUserId called", {
     hasAuthHeader: !!authHeader,
-    authHeaderPrefix: authHeader?.substring(0, 20),
   });
 
   if (authHeader?.startsWith("Bearer ")) {
@@ -56,7 +54,7 @@ export async function getUserId(): Promise<string | null> {
           .where(eq(cliTokens.token, token))
           .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
-        log.warn("CLI token authenticated", { userId: tokenRecord.userId });
+        log.debug("CLI token authenticated", { userId: tokenRecord.userId });
         return tokenRecord.userId;
       }
 
@@ -75,6 +73,6 @@ export async function getUserId(): Promise<string | null> {
 
   // Fall back to Clerk session auth
   const { userId } = await auth();
-  log.warn("Clerk fallback auth result", { hasUserId: !!userId });
+  log.debug("Clerk fallback auth result", { hasUserId: !!userId });
   return userId;
 }

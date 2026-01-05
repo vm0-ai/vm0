@@ -30,13 +30,8 @@ const router = tsr.router(runnersPollContract, {
     if (!userId) {
       log.warn("Poll authentication failed", {
         authHeaderPresent: !!authHeader,
-        authHeaderPrefix: authHeader?.substring(0, 20) ?? "none",
       });
-      // Include debug info and version marker in error message
-      return createErrorResponse(
-        "UNAUTHORIZED",
-        `Auth failed [v2]: hasHeader=${!!authHeader}, prefix=${authHeader?.substring(0, 20) ?? "none"}`,
-      );
+      return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
     const { group } = body;

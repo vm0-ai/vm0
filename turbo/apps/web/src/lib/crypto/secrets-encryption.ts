@@ -20,10 +20,13 @@ export function encryptSecrets(
   }
 
   if (!encryptionKey) {
-    log.warn(
-      "SECRETS_ENCRYPTION_KEY not configured, storing secrets unencrypted",
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SECRETS_ENCRYPTION_KEY must be set in production");
+    }
+    // Only allow unencrypted storage in development/test
+    log.debug(
+      "SECRETS_ENCRYPTION_KEY not configured, using unencrypted storage (dev mode)",
     );
-    // Return JSON-encoded secrets without encryption
     return JSON.stringify({ unencrypted: true, data: secrets });
   }
 
