@@ -120,8 +120,10 @@ export interface CompleteJobResult {
 /**
  * Report job completion to the server
  * Uses the sandbox token for authentication
+ * apiUrl comes from runner config, not from execution context
  */
 export async function completeJob(
+  apiUrl: string,
   context: ExecutionContext,
   exitCode: number,
   error?: string,
@@ -137,18 +139,15 @@ export async function completeJob(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(
-    `${context.apiUrl}/api/webhooks/agent/complete`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        runId: context.runId,
-        exitCode,
-        error,
-      }),
-    },
-  );
+  const response = await fetch(`${apiUrl}/api/webhooks/agent/complete`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runId: context.runId,
+      exitCode,
+      error,
+    }),
+  });
 
   if (!response.ok) {
     const errorData = (await response.json()) as ApiErrorResponse;

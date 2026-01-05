@@ -50,9 +50,10 @@ function getVmIdFromRunId(runId: string): string {
  */
 function buildEnvironmentVariables(
   context: ExecutionContext,
+  apiUrl: string,
 ): Record<string, string> {
   const envVars: Record<string, string> = {
-    VM0_API_URL: context.apiUrl,
+    VM0_API_URL: apiUrl,
     VM0_RUN_ID: context.runId,
     VM0_API_TOKEN: context.sandboxToken,
     VM0_PROMPT: context.prompt,
@@ -300,7 +301,8 @@ export async function executeJob(
 
     // Build environment variables and write as JSON file in VM
     // Using JSON avoids shell escaping issues entirely - Python loads it directly
-    const envVars = buildEnvironmentVariables(context);
+    // API URL comes from runner config, not from claim response
+    const envVars = buildEnvironmentVariables(context, config.server.url);
     const envJson = JSON.stringify(envVars);
     console.log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,

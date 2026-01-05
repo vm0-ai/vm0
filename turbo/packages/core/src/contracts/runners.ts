@@ -112,7 +112,6 @@ export const executionContextSchema = z.object({
   secretNames: z.array(z.string()).nullable(),
   checkpointId: z.string().uuid().nullable(),
   sandboxToken: z.string(),
-  apiUrl: z.string(),
   // New fields for E2B parity:
   workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),

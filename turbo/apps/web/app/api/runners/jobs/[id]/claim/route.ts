@@ -20,26 +20,6 @@ import { validateRunnerGroupScope } from "../../../../../../src/lib/scope/scope-
 
 const log = logger("api:runners:jobs:claim");
 
-/**
- * Get the API URL for the runner to use when calling webhooks.
- * Uses VM0_API_URL if set, otherwise falls back to VERCEL_URL for preview deployments.
- */
-function getApiUrl(): string {
-  // Explicit configuration takes precedence
-  if (globalThis.services.env.VM0_API_URL) {
-    return globalThis.services.env.VM0_API_URL;
-  }
-
-  // Use Vercel URL for preview deployments
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) {
-    return `https://${vercelUrl}`;
-  }
-
-  // Production fallback
-  return "https://www.vm0.ai";
-}
-
 const router = tsr.router(runnersJobClaimContract, {
   claim: async ({ params }) => {
     initServices();
@@ -167,6 +147,7 @@ const router = tsr.router(runnersJobClaimContract, {
     );
 
     // Return execution context (context already prepared at job creation)
+    // Note: apiUrl is not returned - runner uses its configured server.url
     return {
       status: 200 as const,
       body: {
@@ -177,7 +158,6 @@ const router = tsr.router(runnersJobClaimContract, {
         secretNames: run.secretNames ?? null,
         checkpointId: run.resumedFromCheckpointId ?? null,
         sandboxToken,
-        apiUrl: getApiUrl(),
         // From stored context (prepared at job creation):
         workingDir: storedContext.workingDir,
         storageManifest: storedContext.storageManifest,

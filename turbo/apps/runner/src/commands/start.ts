@@ -50,7 +50,7 @@ async function executeJob(
 
     // Report failure to server if VM execution failed before bootstrap
     // Let errors propagate - the caller's .catch() will handle them
-    const result = await completeJob(context, 1, error);
+    const result = await completeJob(config.server.url, context, 1, error);
     console.log(`  Job ${context.runId} reported as ${result.status}`);
   }
 }
