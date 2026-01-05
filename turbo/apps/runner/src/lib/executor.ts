@@ -308,26 +308,55 @@ export async function executeJob(
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
     // Execute env-loader.py which loads environment from JSON, then runs run-agent.py
-    // Redirect output to system log file so telemetry can upload it
-    // Use shell construct to preserve exit code while redirecting
+    // Use nohup to run in background (like E2B) so SSH doesn't block
     const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
-    console.log(`[Executor] Running agent via env-loader...`);
+    const exitCodeFile = `/tmp/vm0-exit-${context.runId}`;
+    console.log(`[Executor] Running agent via env-loader (background)...`);
     const startTime = Date.now();
 
-    // Run with output redirected to log file, capturing exit code via shell
-    // The { cmd; } construct allows us to redirect all output while preserving exit code
-    const result = await ssh.exec(
-      `{ python3 -u ${ENV_LOADER_PATH}; } > ${systemLogFile} 2>&1; echo "EXIT_CODE:$?"`,
+    // Start agent in background using nohup
+    // Write exit code to file when done so we can poll for completion
+    // Use python3 -u for unbuffered output
+    await ssh.exec(
+      `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
     );
+    console.log(`[Executor] Agent started in background`);
 
-    // Parse exit code from the output (last line is "EXIT_CODE:N")
-    const lines = result.stdout.trim().split("\n");
-    const exitCodeLine = lines[lines.length - 1] ?? "";
-    const exitCodeMatch = exitCodeLine.match(/EXIT_CODE:(\d+)/);
-    const exitCode =
-      exitCodeMatch && exitCodeMatch[1] ? parseInt(exitCodeMatch[1], 10) : 1;
+    // Poll for completion by checking if exit code file exists
+    // Timeout after 30 minutes (configurable for long-running agents)
+    const pollIntervalMs = 2000; // Check every 2 seconds
+    const maxWaitMs = 30 * 60 * 1000; // 30 minutes max
+    let exitCode = 1;
+    let completed = false;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+      // Check if exit code file exists
+      const checkResult = await ssh.exec(`cat ${exitCodeFile} 2>/dev/null`);
+      if (checkResult.exitCode === 0 && checkResult.stdout.trim()) {
+        exitCode = parseInt(checkResult.stdout.trim(), 10) || 1;
+        completed = true;
+        break;
+      }
+
+      // Log progress every 30 seconds
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      if (elapsed % 30 === 0 && elapsed > 0) {
+        console.log(`[Executor] Agent still running... (${elapsed}s elapsed)`);
+      }
+    }
 
     const duration = Math.round((Date.now() - startTime) / 1000);
+
+    if (!completed) {
+      console.log(`[Executor] Agent timed out after ${duration}s`);
+      return {
+        exitCode: 1,
+        error: `Agent execution timed out after ${duration}s`,
+      };
+    }
+
     console.log(
       `[Executor] Agent finished in ${duration}s with exit code ${exitCode}`,
     );
