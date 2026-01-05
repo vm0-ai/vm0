@@ -33,7 +33,7 @@ pm2 delete "$PROCESS_NAME" 2>/dev/null || true
 WORKSPACES_DIR="${RUNNER_DIR}/workspaces"
 if [ -d "$WORKSPACES_DIR" ]; then
   echo "Cleaning up workspaces: $WORKSPACES_DIR"
-  rm -rf "$WORKSPACES_DIR"
+  sudo rm -rf "$WORKSPACES_DIR"
 fi
 
 # Clean up TAP devices that may have been left behind

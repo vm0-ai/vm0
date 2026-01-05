@@ -22,8 +22,8 @@ echo "Cleaning up runner for PR #${PR_NUMBER}..."
 # Stop pm2 process
 pm2 delete "$PROCESS_NAME" 2>/dev/null || true
 
-# Remove runner directory
-rm -rf "$RUNNER_DIR"
+# Remove runner directory (needs sudo as it was created with sudo)
+sudo rm -rf "$RUNNER_DIR"
 
 # Remove log file
 rm -f "$LOG_FILE"
