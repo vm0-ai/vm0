@@ -141,6 +141,14 @@ const router = tsr.router(runnersJobClaimContract, {
       `Loaded stored context: workingDir=${storedContext.workingDir}, cliAgentType=${storedContext.cliAgentType}`,
     );
 
+    // Delete job queue entry - context has been retrieved, no longer needed
+    // This also removes the encrypted secrets from the database
+    await globalThis.services.db
+      .delete(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, runId));
+
+    log.debug(`Deleted job queue entry for ${runId}`);
+
     // Decrypt secrets before returning to runner
     const secretValues = decryptSecrets(
       storedContext.encryptedSecrets,
