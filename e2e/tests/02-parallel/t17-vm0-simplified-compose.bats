@@ -182,7 +182,7 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Running vm0 compose with --yes to approve secrets..."
+    echo "# Running vm0 compose..."
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
@@ -205,7 +205,7 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# First compose with --yes..."
+    echo "# First compose..."
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
@@ -241,7 +241,7 @@ EOF
 You are a test agent with GitHub skills enabled.
 EOF
 
-    echo "# Running vm0 compose with --yes..."
+    echo "# Running vm0 compose..."
     cd "$TEST_DIR"
     run $CLI_COMMAND compose --yes vm0.yaml
     assert_success
@@ -310,7 +310,7 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Running vm0 compose with --yes..."
+    echo "# Running vm0 compose..."
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
@@ -323,10 +323,10 @@ EOF
 
     echo "# Running agent to verify skill is mounted..."
     # The skill is mounted at /home/user/.claude/skills/github/
-    # Provide mock GH_TOKEN since the github skill requires it
+    # Provide mock GH_TOKEN since github skill requires it
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        --secrets GH_TOKEN=mock-token \
+        --secrets "GH_TOKEN=mock-token-for-test" \
         "ls /home/user/.claude/skills/github/"
     assert_success
 

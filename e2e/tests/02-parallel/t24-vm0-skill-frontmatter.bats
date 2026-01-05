@@ -109,7 +109,7 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Step 2: Compose the config with --yes to approve secrets"
+    echo "# Step 2: Compose the config with --yes to skip confirmation"
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
@@ -162,7 +162,7 @@ EOF
     echo "# Step 2: Create and push artifact"
     setup_artifact
 
-    echo "# Step 3: Compose the config with --yes to approve secrets"
+    echo "# Step 3: Compose the config"
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
@@ -188,7 +188,7 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Step 2: Compose the config with --yes to approve secrets"
+    echo "# Step 2: Compose the config"
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
