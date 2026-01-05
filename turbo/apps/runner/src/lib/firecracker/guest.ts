@@ -1,8 +1,11 @@
 /**
- * SSH Client for VM Communication
+ * Guest Communication Client
  *
- * Provides SSH-based command execution for Firecracker VMs.
- * Replaces vsock for more reliable stdout/stderr handling.
+ * Provides communication with Firecracker VM guests.
+ * Uses SSH for command execution and file transfer.
+ *
+ * This module abstracts the communication protocol (SSH) from the rest of the codebase,
+ * allowing for potential future changes (e.g., vsock) without affecting consumers.
  */
 
 import { exec, execSync } from "node:child_process";

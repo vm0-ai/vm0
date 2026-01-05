@@ -16,14 +16,14 @@ import {
   type SSHClient,
   createVMSSHClient,
   getRunnerSSHKeyPath,
-} from "./ssh.js";
+} from "./firecracker/guest.js";
 import type {
   ExecutionContext,
   StorageManifest,
   ResumeSession,
 } from "./api.js";
 import type { RunnerConfig } from "./config.js";
-import { getAllScripts } from "./scripts/tar.js";
+import { getAllScripts } from "./scripts/utils.js";
 import { SCRIPT_PATHS } from "./scripts/index.js";
 
 /**
