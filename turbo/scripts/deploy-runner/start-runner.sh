@@ -64,6 +64,18 @@ for i in $(seq 1 10); do
   sleep 1
 done
 
+# Wait for runner to fully initialize (setup network bridge, start polling)
+# The runner logs "Press Ctrl+C to stop" when it's ready to accept jobs
+echo "Waiting for runner to initialize..."
+for i in $(seq 1 10); do
+  if grep -q "Press Ctrl+C to stop" "$LOG_FILE" 2>/dev/null; then
+    echo "Runner is fully initialized and polling for jobs"
+    break
+  fi
+  echo "  Waiting for initialization... (attempt $i)"
+  sleep 1
+done
+
 # Show status
 pm2 status "$PROCESS_NAME"
 
