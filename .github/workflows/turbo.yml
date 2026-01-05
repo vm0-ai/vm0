@@ -504,14 +504,20 @@ jobs:
             ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./build-rootfs.sh ${GLOBAL_ROOTFS}"
           fi
 
-          # Create production-only package.json (remove workspace refs)
+          # Create production-only package.json (resolve workspace refs to actual versions)
           node -e "
             const pkg = require('./turbo/apps/runner/package.json');
+            const corePkg = require('./turbo/packages/core/package.json');
+            const deps = { ...pkg.dependencies };
+            // Resolve workspace:* to actual version
+            if (deps['@vm0/core'] && deps['@vm0/core'].startsWith('workspace:')) {
+              deps['@vm0/core'] = corePkg.version;
+            }
             const prodPkg = {
               name: pkg.name,
               version: pkg.version,
               type: pkg.type,
-              dependencies: pkg.dependencies
+              dependencies: deps
             };
             console.log(JSON.stringify(prodPkg, null, 2));
           " > /tmp/package.json
@@ -519,8 +525,8 @@ jobs:
           # Copy built files to Metal
           scp $SSH_OPTS -r turbo/apps/runner/dist/* /tmp/package.json "${SSH_TARGET}:${RUNNER_DIR}/"
 
-          # Install dependencies (using pnpm for workspace: protocol support)
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && pnpm install --prod"
+          # Install dependencies
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && npm install --omit=dev"
 
           echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
