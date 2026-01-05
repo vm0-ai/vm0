@@ -308,31 +308,41 @@ export async function executeJob(
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
     // Execute env-loader.py which loads environment from JSON, then runs run-agent.py
+    // Redirect output to system log file so telemetry can upload it
+    // Use shell construct to preserve exit code while redirecting
+    const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
     console.log(`[Executor] Running agent via env-loader...`);
     const startTime = Date.now();
 
-    const result = await ssh.exec(`python3 -u ${ENV_LOADER_PATH}`);
+    // Run with output redirected to log file, capturing exit code via shell
+    // The { cmd; } construct allows us to redirect all output while preserving exit code
+    const result = await ssh.exec(
+      `{ python3 -u ${ENV_LOADER_PATH}; } > ${systemLogFile} 2>&1; echo "EXIT_CODE:$?"`,
+    );
+
+    // Parse exit code from the output (last line is "EXIT_CODE:N")
+    const lines = result.stdout.trim().split("\n");
+    const exitCodeLine = lines[lines.length - 1] ?? "";
+    const exitCodeMatch = exitCodeLine.match(/EXIT_CODE:(\d+)/);
+    const exitCode =
+      exitCodeMatch && exitCodeMatch[1] ? parseInt(exitCodeMatch[1], 10) : 1;
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(
-      `[Executor] Agent finished in ${duration}s with exit code ${result.exitCode}`,
+      `[Executor] Agent finished in ${duration}s with exit code ${exitCode}`,
     );
 
-    // Log output for debugging
-    if (result.stdout) {
+    // Read log file for debugging output
+    const logResult = await ssh.exec(`tail -100 ${systemLogFile} 2>/dev/null`);
+    if (logResult.stdout) {
       console.log(
-        `[Executor] stdout (${result.stdout.length} chars): ${result.stdout.substring(0, 500)}`,
-      );
-    }
-    if (result.stderr) {
-      console.log(
-        `[Executor] stderr (${result.stderr.length} chars): ${result.stderr.substring(0, 500)}`,
+        `[Executor] Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
       );
     }
 
     return {
-      exitCode: result.exitCode,
-      error: result.exitCode !== 0 ? result.stderr || undefined : undefined,
+      exitCode,
+      error: exitCode !== 0 ? logResult.stdout || undefined : undefined,
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
