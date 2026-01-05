@@ -349,62 +349,14 @@ jobs:
           echo "Token obtained successfully"
 
           echo "Creating runner.yaml config locally..."
-          cat > /tmp/runner.yaml <<EOF
-name: e2e-runner-pr-${PR_NUMBER}
-group: ${RUNNER_GROUP}
-server:
-  url: ${VM0_API_URL}
-  token: ${TOKEN}
-sandbox:
-  max_concurrent: 4
-  vcpu: 2
-  memory_mb: 1024
-  poll_interval_ms: 1000
-firecracker:
-  binary: /usr/local/bin/firecracker
-  kernel: /opt/firecracker/vmlinux
-  rootfs: /opt/firecracker/rootfs.ext4
-EOF
+          printf 'name: e2e-runner-pr-%s\ngroup: %s\nserver:\n  url: %s\n  token: %s\nsandbox:\n  max_concurrent: 4\n  vcpu: 2\n  memory_mb: 1024\n  poll_interval_ms: 1000\nfirecracker:\n  binary: /usr/local/bin/firecracker\n  kernel: /opt/firecracker/vmlinux\n  rootfs: /opt/firecracker/rootfs.ext4\n' \
+            "${PR_NUMBER}" "${RUNNER_GROUP}" "${VM0_API_URL}" "${TOKEN}" > /tmp/runner.yaml
 
           echo "Copying runner.yaml to Metal..."
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
 
-          echo "Stopping any existing runner for PR #${PR_NUMBER}..."
-          # Stop pm2 process if running
-          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
-          sleep 1
-
-          echo "Cleaning up old tap devices and log files..."
-          # Remove any leftover tap devices from previous runs
-          ssh $SSH_OPTS "$SSH_TARGET" "for tap in \$(ip link show 2>/dev/null | grep -o 'tap[0-9a-f]*' | head -20); do sudo ip link delete \$tap 2>/dev/null || true; done"
-          # Clear old log file to avoid showing historical errors
-          ssh $SSH_OPTS "$SSH_TARGET" "rm -f /tmp/vm0-runner-pr-${PR_NUMBER}.log"
-
-          echo "Starting runner on Metal via pm2..."
-          # Create a wrapper script to ensure arguments are preserved on PM2 restart
-          ssh $SSH_OPTS "$SSH_TARGET" "echo '#!/bin/bash' > ${RUNNER_DIR}/start-runner.sh && echo 'cd \$(dirname \$0)' >> ${RUNNER_DIR}/start-runner.sh && echo 'exec node index.js start --config ./runner.yaml' >> ${RUNNER_DIR}/start-runner.sh && chmod +x ${RUNNER_DIR}/start-runner.sh"
-
-          # Use pm2 to manage runner process - survives SSH disconnect, auto-restarts on crash
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' pm2 start start-runner.sh --name vm0-runner-pr-${PR_NUMBER} --log /tmp/vm0-runner-pr-${PR_NUMBER}.log --interpreter bash"
-
-          echo "Waiting for runner to start..."
-          # Wait for pm2 process to be online (max 10 attempts, 1 second each)
-          for i in $(seq 1 10); do
-            STATUS=$(ssh $SSH_OPTS "$SSH_TARGET" "pm2 jlist | jq -r '.[] | select(.name==\"vm0-runner-pr-${PR_NUMBER}\") | .pm2_env.status' 2>/dev/null || echo 'unknown'")
-            if [ "$STATUS" = "online" ]; then
-              echo "✅ Runner process is online"
-              break
-            fi
-            echo "  Attempt $i: status=$STATUS, waiting..."
-            sleep 1
-          done
-
-          echo "Checking runner status..."
-          ssh $SSH_OPTS "$SSH_TARGET" "pm2 status vm0-runner-pr-${PR_NUMBER}"
-
-          RUNNER_LOG=$(ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs yet'")
-          echo "Runner logs:"
-          echo "$RUNNER_LOG"
+          echo "Starting runner via deploy script..."
+          ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
 
           # Export runner group for tests
           echo "RUNNER_GROUP=${RUNNER_GROUP}" >> $GITHUB_ENV
@@ -476,12 +428,7 @@ EOF
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          echo "Stopping runner for PR #${PR_NUMBER}..."
-          # Stop and remove pm2 process
-          ssh $SSH_OPTS "$SSH_TARGET" "pm2 delete vm0-runner-pr-${PR_NUMBER} 2>/dev/null || true"
-          echo "Getting final runner logs..."
-          ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null" || echo 'No logs'
-          echo "Runner stopped"
+          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/stop-runner.sh '${PR_NUMBER}' --show-logs"
 
       - name: Stop Cron Simulator
         if: always()
