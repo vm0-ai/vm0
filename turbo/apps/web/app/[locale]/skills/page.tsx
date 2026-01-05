@@ -25,17 +25,12 @@ interface SkillMetadata {
 }
 
 async function getSkills(): Promise<SkillMetadata[]> {
-  try {
-    // Import the API handler directly for server-side rendering
-    // This avoids issues with VERCEL_URL vs custom domain
-    const { GET } = await import("../../api/web/skills/route");
-    const response = await GET();
-    const data = await response.json();
-    return data.skills || [];
-  } catch (error) {
-    console.error("Error fetching skills:", error);
-    return [];
-  }
+  // Import the API handler directly for server-side rendering
+  // This avoids issues with VERCEL_URL vs custom domain
+  const { GET } = await import("../../api/web/skills/route");
+  const response = await GET();
+  const data = await response.json();
+  return data.skills || [];
 }
 
 export default async function SkillsPage() {

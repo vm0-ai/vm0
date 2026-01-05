@@ -192,8 +192,7 @@ const router = tsr.router(webhookCompleteContract, {
         .set({
           status: "failed",
           completedAt: new Date(),
-          error:
-            error instanceof Error ? error.message : "Complete API failed",
+          error: error instanceof Error ? error.message : "Complete API failed",
         })
         .where(eq(agentRuns.id, body.runId));
 
