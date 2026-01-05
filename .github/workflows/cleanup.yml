@@ -31,7 +31,10 @@ jobs:
 
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           echo "Cleaning up runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/cleanup-runner.sh '${PR_NUMBER}'"
+
+          # Check if runner directory exists before cleanup
+          # (PR may not have deployed a runner if no runner code changes)
+          ssh $SSH_OPTS "$SSH_TARGET" "if [ -d '${RUNNER_DIR}' ]; then ${RUNNER_DIR}/deploy-runner/cleanup-runner.sh '${PR_NUMBER}'; else echo 'No runner directory to clean up (runner was not deployed for this PR)'; fi"
 
   cleanup-database:
     runs-on: ubuntu-latest
