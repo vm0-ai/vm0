@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/vm0-ai/vm0/compare/runner-v2.0.0...runner-v2.0.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* **runner:** use nohup for background agent execution ([#919](https://github.com/vm0-ai/vm0/issues/919)) ([52dc960](https://github.com/vm0-ai/vm0/commit/52dc9607f53e400aff1bf6bc003783af387103b8))
+
 ## [2.0.0](https://github.com/vm0-ai/vm0/compare/runner-v1.2.0...runner-v2.0.0) (2026-01-05)
 
 
