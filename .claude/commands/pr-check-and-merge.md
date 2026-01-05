@@ -27,20 +27,24 @@ When this command is executed, perform the following steps in order:
 3. Find the PR for current branch: `gh pr list --head {branch} --json number --jq '.[0].number'`
 4. If no PR found, exit with error
 
-### Step 2: Wait for Pipeline
+### Step 2: Wait and Check Pipeline Status
 
-Wait 60 seconds for the pipeline to complete or stabilize:
-- This allows CI/CD to process recent commits
-- Display countdown: "Waiting: XX seconds remaining"
+Use the **pr-pipeline-monitor** agent to wait for pipeline and check status:
 
-### Step 3: Check Pipeline Status
+```typescript
+await Task({
+  description: "Monitor PR pipeline",
+  prompt: `Monitor PR #${pr_id} pipeline status.`,
+  subagent_type: "pr-pipeline-monitor"
+});
+```
 
-Check the pipeline status using: `gh pr checks {pr-id}`
+### Step 3: Handle Result
 
-Possible outcomes:
+Based on the agent's result:
 - **All passing**: Continue to merge step
 - **Failures detected**: Proceed to fix attempts
-- **Still running**: Wait 30 seconds and retry (up to 3 times)
+- **Still running**: Agent will retry up to 30 times (~30 min), then report timeout
 
 ### Step 4: Fix Detected Issues
 
@@ -53,7 +57,7 @@ Based on failure types, attempt automatic fixes:
    - Stage changes: `git add -A`
    - Commit: `git commit -m "fix: auto-format code"`
    - Push: `git push`
-4. Wait 60 seconds for pipeline to restart
+4. Go back to Step 2 (re-run agent)
 
 #### For Test Failures (if output contains "test" and "fail"):
 1. Navigate to turbo directory: `cd /workspaces/vm0/turbo`
@@ -68,15 +72,14 @@ Based on failure types, attempt automatic fixes:
 
 After any successful fix:
 - Reset retry counter
-- Wait for pipeline to process the fix
+- Go back to Step 2 (re-run agent)
 - Re-check pipeline status
 
 ### Step 5: Final Verification
 
 After fixes (or if no fixes needed):
-1. Run final pipeline check: `gh pr checks {pr-id}`
-2. If still failing after 3 retry attempts, exit with error
-3. If passing, proceed to merge
+1. If still failing after 3 retry attempts, exit with error
+2. If passing, proceed to merge
 
 ### Step 6: Merge the PR
 
@@ -90,9 +93,7 @@ If all checks pass, execute merge workflow:
 
 ## Configuration
 
-- **Initial wait**: 60 seconds before first check
-- **Retry attempts**: Maximum 3 times
-- **Retry delay**: 30 seconds between attempts
+- **Pipeline monitoring**: See pr-pipeline-monitor agent configuration
 - **Fix wait**: 60 seconds after pushing fixes
 
 ## Error Conditions
@@ -149,3 +150,4 @@ Running pnpm format...
 - Automatically handles common issues that can be fixed programmatically
 - Uses squash merge to keep main branch history clean
 - Preserves commit messages in squashed commit
+- Uses pr-pipeline-monitor agent to handle the waiting/polling
