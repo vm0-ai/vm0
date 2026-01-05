@@ -326,31 +326,6 @@ jobs:
           chmod 600 /tmp/.ssh/metal.pem
           echo "SSH key setup for runner tests"
 
-      - name: Start Runner (if deployed)
-        if: needs.deploy-runner.outputs.runner-deployed == 'true'
-        env:
-          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-        run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
-          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-
-          # Generate config locally (needs CLI token from CI)
-          CONFIG_FILE="/tmp/runner-pr-${PR_NUMBER}.yaml"
-          turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" "$CONFIG_FILE"
-
-          # Copy config to Metal and start runner
-          scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
-          ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
-
-          # Export runner group for tests
-          echo "RUNNER_GROUP=e2e-stable/pr-${PR_NUMBER}" >> $GITHUB_ENV
-
       - name: Run CLI E2E Tests
         run: |
           # Track exit codes
@@ -358,8 +333,8 @@ jobs:
           SERIAL_EXIT=0
           PARALLEL_EXIT=0
 
-          # Step 1: Run serial tests sequentially (establishes stable scope)
-          # Must run first so runner tests can use e2e-stable scope
+          # Step 1: Run serial tests sequentially (establishes e2e-stable scope)
+          # MUST run first so runner can use e2e-stable scope
           echo "=== Running Serial E2E Tests ==="
           ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
 
@@ -370,8 +345,24 @@ jobs:
           fi
           echo "✅ Serial tests passed"
 
-          # Step 2: Run runner tests if runner was deployed
-          # These use e2e-stable scope established by serial tests
+          # Step 2: Start runner AFTER serial tests (scope is now established)
+          if [ "$RUNNER_DEPLOYED" = "true" ]; then
+            echo ""
+            echo "=== Starting Runner (after scope established) ==="
+            SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
+            SSH_TARGET="${CI_AWS_METAL_RUNNER_USER}@${CI_AWS_METAL_RUNNER_HOST}"
+
+            # Generate config locally (needs CLI token from CI with correct scope)
+            CONFIG_FILE="/tmp/runner-pr-${PR_NUMBER}.yaml"
+            turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" "$CONFIG_FILE"
+
+            # Copy config to Metal and start runner
+            scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
+            ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
+            echo "✅ Runner started with scope e2e-stable/pr-${PR_NUMBER}"
+          fi
+
+          # Step 3: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
@@ -388,7 +379,7 @@ jobs:
             echo "Skipping runner tests (runner not deployed)"
           fi
 
-          # Step 3: Run parallel tests with -j 10
+          # Step 4: Run parallel tests with -j 10
           echo ""
           echo "=== Running Parallel E2E Tests ==="
           ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
@@ -416,7 +407,6 @@ jobs:
           CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          # RUNNER_GROUP is set dynamically in "Start Runner" step
 
       - name: Stop Runner (if deployed)
         if: always() && needs.deploy-runner.outputs.runner-deployed == 'true'
