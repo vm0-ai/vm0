@@ -170,6 +170,37 @@ export class SSHClient {
   }
 
   /**
+   * Write content to a file on the remote VM using sudo
+   * Used for writing to privileged locations like /usr/local/bin
+   */
+  async writeFileWithSudo(remotePath: string, content: string): Promise<void> {
+    // Base64 encode to handle any special characters
+    const encoded = Buffer.from(content).toString("base64");
+
+    // Use sudo tee to write the file
+    // Split into chunks if content is too large for command line
+    const maxChunkSize = 65000; // Safe limit for command line
+
+    if (encoded.length <= maxChunkSize) {
+      // Small file - single command
+      await this.execOrThrow(
+        `echo '${encoded}' | base64 -d | sudo tee '${remotePath}' > /dev/null`,
+      );
+    } else {
+      // Large file - use multiple commands with append
+      await this.execOrThrow(`sudo rm -f '${remotePath}'`);
+
+      for (let i = 0; i < encoded.length; i += maxChunkSize) {
+        const chunk = encoded.slice(i, i + maxChunkSize);
+        const teeFlag = i === 0 ? "" : "-a"; // -a for append mode
+        await this.execOrThrow(
+          `echo '${chunk}' | base64 -d | sudo tee ${teeFlag} '${remotePath}' > /dev/null`,
+        );
+      }
+    }
+  }
+
+  /**
    * Read a file from the remote VM
    */
   async readFile(remotePath: string): Promise<string> {

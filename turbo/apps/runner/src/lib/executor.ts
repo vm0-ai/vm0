@@ -117,23 +117,24 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
 
 /**
  * Upload all scripts to VM individually via SSH
+ * Scripts are installed to /usr/local/bin which requires sudo
  */
 async function uploadScripts(ssh: SSHClient): Promise<void> {
   const scripts = getAllScripts();
 
-  // Create directories first
+  // Create directories first (requires sudo for /usr/local/bin)
   await ssh.execOrThrow(
-    `mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
+    `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
   );
 
-  // Write each script file individually
+  // Write each script file individually using sudo tee
   for (const script of scripts) {
-    await ssh.writeFile(script.path, script.content);
+    await ssh.writeFileWithSudo(script.path, script.content);
   }
 
-  // Set executable permissions
+  // Set executable permissions (requires sudo)
   await ssh.execOrThrow(
-    `chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
+    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
   );
 }
 
@@ -214,15 +215,17 @@ async function restoreSessionHistory(
  * Configure DNS in the VM
  * Systemd-resolved may overwrite /etc/resolv.conf at boot,
  * so we need to ensure DNS servers are configured after SSH is ready.
+ * Requires sudo since we're connected as 'user', not root.
  */
 async function configureDNS(ssh: SSHClient): Promise<void> {
   // Remove any symlink and write static DNS configuration
+  // Use sudo since /etc/resolv.conf requires root access
   const dnsConfig = `nameserver 8.8.8.8
 nameserver 8.8.4.4
 nameserver 1.1.1.1`;
 
   await ssh.execOrThrow(
-    `rm -f /etc/resolv.conf && echo '${dnsConfig}' > /etc/resolv.conf`,
+    `sudo sh -c 'rm -f /etc/resolv.conf && echo "${dnsConfig}" > /etc/resolv.conf'`,
   );
 }
 
@@ -268,8 +271,10 @@ export async function executeJob(
     console.log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
     // Create SSH client and wait for SSH to become available
+    // Connect as 'user' (not root) to match E2B behavior
+    // Privileged operations use sudo
     const privateKeyPath = getRunnerSSHKeyPath();
-    const ssh = createVMSSHClient(guestIp, "root", privateKeyPath || undefined);
+    const ssh = createVMSSHClient(guestIp, "user", privateKeyPath || undefined);
     console.log(`[Executor] Waiting for SSH on ${guestIp}...`);
     await ssh.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
