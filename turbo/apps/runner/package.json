@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/runner\"; delete this.private; delete this.scripts; delete this.devDependencies; this.bin[\"vm0-runner\"]=\"index.js\"; this.files=[\".\"]'",
+    "postbuild": "cp package.json dist/ && node -e \"const fs = require('fs'); const pkg = require('./dist/package.json'); const corePkg = require('../../packages/core/package.json'); pkg.name = '@vm0/runner'; delete pkg.private; delete pkg.scripts; delete pkg.devDependencies; pkg.dependencies['@vm0/core'] = corePkg.version; pkg.bin['vm0-runner'] = 'index.js'; pkg.files = ['.']; fs.writeFileSync('./dist/package.json', JSON.stringify(pkg, null, 2));\"",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
