@@ -50,7 +50,9 @@ RUN npm install -g @anthropic-ai/claude-code@latest
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user
 # - Add to sudo group for privileged operations
-RUN useradd -m -u 1000 -s /bin/bash user \
+# Note: node:24-bookworm-slim has 'node' user at UID 1000, so we delete it first
+RUN userdel -r node 2>/dev/null || true \
+    && useradd -m -u 1000 -s /bin/bash user \
     && usermod -aG sudo user \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
