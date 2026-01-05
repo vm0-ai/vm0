@@ -12,7 +12,7 @@ import * as blobSchema from "./schema/blob";
 import * as imageSchema from "./schema/image";
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as scopeSchema from "./schema/scope";
-import * as runnerSchema from "./schema/runner";
+import * as runnerSchema from "./schema/runner-job-queue";
 
 export const schema = {
   ...userSchema,

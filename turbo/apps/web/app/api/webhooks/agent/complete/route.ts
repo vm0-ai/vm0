@@ -6,7 +6,7 @@ import {
 import { webhookCompleteContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { runnerJobQueue } from "../../../../../src/db/schema/runner";
+import { runnerJobQueue } from "../../../../../src/db/schema/runner-job-queue";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";

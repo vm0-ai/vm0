@@ -6,7 +6,7 @@ import {
 import { runnersPollContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { runnerJobQueue } from "../../../../src/db/schema/runner";
+import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";

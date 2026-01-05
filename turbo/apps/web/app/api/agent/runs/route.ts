@@ -10,7 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { runnerJobQueue } from "../../../../src/db/schema/runner";
+import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
