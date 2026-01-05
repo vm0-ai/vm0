@@ -25,6 +25,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@vm0/core": "workspace:*",
     "commander": "^14.0.0",
     "yaml": "^2.3.4",
     "zod": "^3.25.64"

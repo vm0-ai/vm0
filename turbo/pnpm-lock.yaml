@@ -157,6 +157,9 @@ importers:
 
   apps/runner:
     dependencies:
+      '@vm0/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       commander:
         specifier: ^14.0.0
         version: 14.0.0

@@ -6,70 +6,27 @@
  * - claimJob: Claim a job for execution
  */
 
+import type {
+  Job,
+  ExecutionContext,
+  StorageManifest,
+  ResumeSession,
+} from "@vm0/core";
+
+// Re-export types for consumers
+export type { Job, ExecutionContext, StorageManifest, ResumeSession };
+
+/**
+ * Runner-specific server configuration
+ */
 export interface ServerConfig {
   url: string;
   token: string;
 }
 
-export interface Job {
-  runId: string;
-  prompt: string;
-  agentComposeVersionId: string;
-  vars: Record<string, string> | null;
-  secretNames: string[] | null;
-  checkpointId: string | null;
-}
-
 /**
- * Storage entry in manifest
+ * Internal API error response type
  */
-export interface StorageEntry {
-  mountPath: string;
-  archiveUrl: string | null;
-}
-
-/**
- * Artifact entry in manifest
- */
-export interface ArtifactEntry {
-  mountPath: string;
-  archiveUrl: string | null;
-  vasStorageName: string;
-  vasVersionId: string;
-}
-
-/**
- * Storage manifest containing presigned URLs for download
- */
-export interface StorageManifest {
-  storages: StorageEntry[];
-  artifact: ArtifactEntry | null;
-}
-
-/**
- * Resume session information
- */
-export interface ResumeSession {
-  sessionId: string;
-  sessionHistory: string;
-}
-
-/**
- * Execution context returned by claim API
- * Contains all information needed to execute the job
- */
-export interface ExecutionContext extends Job {
-  sandboxToken: string;
-  apiUrl: string;
-  // New fields for E2B parity:
-  workingDir: string;
-  storageManifest: StorageManifest | null;
-  environment: Record<string, string> | null;
-  resumeSession: ResumeSession | null;
-  secretValues: string[] | null;
-  cliAgentType: string;
-}
-
 interface ApiErrorResponse {
   error: {
     message: string;
