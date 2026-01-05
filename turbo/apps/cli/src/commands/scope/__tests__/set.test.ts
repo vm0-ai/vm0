@@ -26,7 +26,9 @@ describe("scope set command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue(
         new Error("Not authenticated"),
       );
@@ -47,7 +49,9 @@ describe("scope set command", () => {
 
   describe("create new scope", () => {
     it("should create scope successfully", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockResolvedValue({
         id: "test-id",
         slug: "testslug",
@@ -72,7 +76,9 @@ describe("scope set command", () => {
     });
 
     it("should create scope with display name", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockResolvedValue({
         id: "test-id",
         slug: "testslug",
@@ -153,7 +159,9 @@ describe("scope set command", () => {
 
   describe("error handling", () => {
     it("should handle slug already taken", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue(
         new Error("Scope already exists"),
       );
@@ -169,7 +177,9 @@ describe("scope set command", () => {
     });
 
     it("should handle reserved slug", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue(
         new Error('Scope slug "vm0" is reserved'),
       );
@@ -185,7 +195,9 @@ describe("scope set command", () => {
     });
 
     it("should handle vm0 prefix rejection", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue(
         new Error('Scope slug "vm0test" is reserved'),
       );
@@ -201,7 +213,9 @@ describe("scope set command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue(
         new Error("Unexpected error"),
       );
@@ -217,7 +231,9 @@ describe("scope set command", () => {
     });
 
     it("should handle non-Error exceptions", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(new Error("Not found"));
+      vi.mocked(apiClient.getScope).mockRejectedValue(
+        new Error("No scope configured"),
+      );
       vi.mocked(apiClient.createScope).mockRejectedValue("Unknown error");
 
       await expect(async () => {
