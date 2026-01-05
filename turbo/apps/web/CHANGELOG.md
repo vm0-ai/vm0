@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.0.1](https://github.com/vm0-ai/vm0/compare/web-v8.0.0...web-v8.0.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* **runner:** use config server url instead of claim response ([#921](https://github.com/vm0-ai/vm0/issues/921)) ([f7b2b54](https://github.com/vm0-ai/vm0/commit/f7b2b54e61e2dafed797be155c5ed8200f5789eb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.0.1
+
 ## [8.0.0](https://github.com/vm0-ai/vm0/compare/web-v7.12.0...web-v8.0.0) (2026-01-05)
 
 
