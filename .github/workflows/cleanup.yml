@@ -29,8 +29,9 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
 
+          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           echo "Cleaning up runner for PR #${PR_NUMBER}..."
-          ssh $SSH_OPTS "$SSH_TARGET" "/opt/vm0-runner/scripts/cleanup-runner.sh '${PR_NUMBER}'"
+          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/cleanup-runner.sh '${PR_NUMBER}'"
 
   cleanup-database:
     runs-on: ubuntu-latest

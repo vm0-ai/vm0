@@ -422,12 +422,13 @@ jobs:
         if: always() && needs.deploy-runner.outputs.runner-deployed == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          ssh $SSH_OPTS "$SSH_TARGET" "/opt/vm0-runner/scripts/stop-runner.sh '${PR_NUMBER}' --show-logs"
+          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/stop-runner.sh '${PR_NUMBER}' --show-logs"
 
       - name: Stop Cron Simulator
         if: always()
@@ -514,10 +515,10 @@ jobs:
           scp $SSH_OPTS /tmp/vm0-runner-bundle.tar.gz "${SSH_TARGET}:/tmp/"
           ssh $SSH_OPTS "$SSH_TARGET" "rm -rf ${RUNNER_DIR}/* && tar -xzf /tmp/vm0-runner-bundle.tar.gz -C /tmp && cp -r /tmp/vm0-runner-bundle/* ${RUNNER_DIR}/ && rm -rf /tmp/vm0-runner-bundle /tmp/vm0-runner-bundle.tar.gz"
 
-          # Copy deploy scripts to Metal (PR-specific and global location)
+          # Copy deploy scripts to Metal (PR-specific location only for isolation)
           echo "Copying deploy scripts to Metal..."
           scp $SSH_OPTS -r turbo/scripts/deploy-runner "${SSH_TARGET}:${RUNNER_DIR}/"
-          ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p /opt/vm0-runner/scripts && sudo cp ${RUNNER_DIR}/deploy-runner/*.sh /opt/vm0-runner/scripts/ && sudo chmod +x /opt/vm0-runner/scripts/*.sh"
+          ssh $SSH_OPTS "$SSH_TARGET" "chmod +x ${RUNNER_DIR}/deploy-runner/*.sh"
 
           # Install Firecracker if not present (global, one-time)
           echo "Checking/Installing Firecracker..."
