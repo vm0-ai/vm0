@@ -4,7 +4,6 @@
 CREATE TABLE "runner_job_queue" (
   "run_id" uuid PRIMARY KEY REFERENCES "agent_runs"("id") ON DELETE CASCADE,
   "runner_group" varchar(255) NOT NULL,
-  "runner_id" uuid REFERENCES "runners"("id"),
   "claimed_at" timestamp,
   "execution_context" jsonb NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL,
