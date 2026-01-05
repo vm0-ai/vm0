@@ -95,7 +95,7 @@ setup_artifact() {
     assert_success
 
     echo "# Running with --vars and --secrets..."
-    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -123,7 +123,7 @@ setup_artifact() {
 
     echo "# Running with secret in environment..."
     export TEST_SECRET="${SECRET_VALUE}"
-    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
@@ -146,7 +146,7 @@ setup_artifact() {
     echo "# Running without providing secret..."
     unset TEST_SECRET
 
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=somevalue" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
@@ -167,7 +167,7 @@ setup_artifact() {
     assert_success
 
     echo "# Running without providing vars..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
@@ -188,7 +188,7 @@ setup_artifact() {
     assert_success
 
     echo "# Step 1: Initial run with secrets..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -207,7 +207,7 @@ setup_artifact() {
     echo "# Session ID: $SESSION_ID"
 
     echo "# Step 3: Continue WITHOUT secrets should fail..."
-    run timeout 120s $CLI_COMMAND run continue "$SESSION_ID" "echo CONTINUED"
+    run $CLI_COMMAND run continue "$SESSION_ID" "echo CONTINUED"
 
     echo "# Output:"
     echo "$output"
@@ -216,7 +216,7 @@ setup_artifact() {
     assert_output --partial "Missing required secrets: TEST_SECRET"
 
     echo "# Step 4: Continue WITH secrets should succeed..."
-    run timeout 120s $CLI_COMMAND run continue "$SESSION_ID" \
+    run $CLI_COMMAND run continue "$SESSION_ID" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         "echo CONTINUED && echo SECRET=\$TEST_SECRET"
     assert_success

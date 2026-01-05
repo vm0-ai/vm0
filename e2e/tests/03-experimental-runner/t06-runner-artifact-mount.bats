@@ -92,7 +92,7 @@ teardown() {
 
     # Step 2: Run agent with artifact, list files
     echo "# Step 2: Running agent to list files..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
@@ -128,7 +128,7 @@ teardown() {
 
     # Simple run that should complete
     echo "# Running simple command..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo done"
 

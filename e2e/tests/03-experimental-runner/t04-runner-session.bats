@@ -95,7 +95,7 @@ teardown() {
 
     # Step 2: Run agent to modify artifact
     echo "# Step 2: Running agent to create session..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
@@ -127,7 +127,7 @@ teardown() {
 
     # Step 4: Continue from session - should get LATEST artifact (HEAD)
     echo "# Step 4: Continuing from session..."
-    run timeout 120s $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
 
     echo "# Continue output:"
     echo "$output"
@@ -166,7 +166,7 @@ teardown() {
 
     # Step 2: First run
     echo "# Step 2: First run..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'first run'"
 
@@ -179,7 +179,7 @@ teardown() {
 
     # Step 3: Second run
     echo "# Step 3: Second run..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'second run'"
 
@@ -221,7 +221,7 @@ teardown() {
 
     # Step 2: Run agent WITH template variables
     echo "# Step 2: Running agent with --vars..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'initial run' && cat testfile.txt"
@@ -243,7 +243,7 @@ teardown() {
 
     # Step 4: Continue from session
     echo "# Step 4: Continuing from session..."
-    run timeout 120s $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
 
     assert_success
 

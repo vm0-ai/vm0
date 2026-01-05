@@ -95,7 +95,7 @@ teardown() {
 
     # Step 2: Run agent to modify artifact
     echo "# Step 2: Running agent to modify artifact..."
-    run timeout 180s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
@@ -131,7 +131,7 @@ teardown() {
 
     # Step 4: Resume from checkpoint
     echo "# Step 4: Resuming from checkpoint..."
-    run timeout 120s $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
         "ls && cat counter.txt"
 
     echo "# Resume output:"

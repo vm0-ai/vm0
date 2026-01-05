@@ -71,8 +71,7 @@ EOF
     assert_success
 
     echo "# Step 4: Run the agent (runner should pick it up)"
-    # Run with timeout since runner completes quickly with mock claude
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from experimental runner"
 

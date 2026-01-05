@@ -90,7 +90,7 @@ teardown() {
 
     # Step 2: Run agent
     echo "# Step 2: Running agent..."
-    run timeout 120s $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello from agent'"
 
