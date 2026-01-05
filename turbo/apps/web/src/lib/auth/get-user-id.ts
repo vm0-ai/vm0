@@ -26,7 +26,7 @@ export async function getUserId(): Promise<string | null> {
     // Reject sandbox JWT tokens on normal APIs
     // They must use webhook endpoints with getSandboxAuth()
     if (isSandboxToken(token)) {
-      log.warn("Rejected sandbox JWT token on normal API endpoint");
+      log.debug("Rejected sandbox JWT token on normal API endpoint");
       return null;
     }
 
@@ -50,25 +50,17 @@ export async function getUserId(): Promise<string | null> {
           .where(eq(cliTokens.token, token))
           .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
-        log.debug("CLI token authenticated", { userId: tokenRecord.userId });
         return tokenRecord.userId;
       }
 
-      log.warn("CLI token not found or expired", {
-        tokenPrefix: token.substring(0, 15),
-      });
       return null;
     }
 
     // Unknown token format
-    log.warn("Unknown token format", {
-      tokenPrefix: token.substring(0, 15),
-    });
     return null;
   }
 
   // Fall back to Clerk session auth
   const { userId } = await auth();
-  log.debug("Clerk fallback auth result", { hasUserId: !!userId });
   return userId;
 }
