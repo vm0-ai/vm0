@@ -47,12 +47,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code CLI globally (matching e2b template)
 RUN npm install -g @anthropic-ai/claude-code@latest
 
+# Create 'user' account (UID 1000) matching E2B sandbox default
+# - Home directory at /home/user
+# - Add to sudo group for privileged operations
+RUN useradd -m -u 1000 -s /bin/bash user \
+    && usermod -aG sudo user \
+    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+    && passwd -d user
+
 # Configure SSH server for VM communication
-# - Allow root login with empty password (acceptable for ephemeral sandboxes)
+# - Allow root and user login with empty password (acceptable for ephemeral sandboxes)
 # - Disable DNS lookup for faster connections
-# - Create required directories
-RUN mkdir -p /run/sshd /root/.ssh \
-    && chmod 700 /root/.ssh \
+# - Create required directories for both root and user
+RUN mkdir -p /run/sshd /root/.ssh /home/user/.ssh \
+    && chmod 700 /root/.ssh /home/user/.ssh \
+    && chown user:user /home/user/.ssh \
     && sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
     && sed -i 's/#PermitEmptyPasswords.*/PermitEmptyPasswords yes/' /etc/ssh/sshd_config \
     && sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
@@ -71,9 +80,6 @@ RUN systemctl enable ssh
 
 # Create working directory for agent scripts
 RUN mkdir -p /opt/vm0-scripts/lib
-
-# Create user working directory (common sandbox working dir)
-RUN mkdir -p /home/user && chmod 755 /home/user
 
 # Set default target for systemd
 RUN systemctl set-default multi-user.target
