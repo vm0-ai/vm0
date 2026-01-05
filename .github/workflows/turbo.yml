@@ -484,31 +484,12 @@ jobs:
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
 
-          # Create staging directory with built files and resolved dependencies
+          # Create staging directory with built files
+          # Note: dist/package.json is already production-ready (postbuild removes @vm0/core)
           STAGING_DIR="/tmp/vm0-runner-bundle"
           rm -rf "$STAGING_DIR"
           mkdir -p "$STAGING_DIR"
-
-          # Copy built dist files
           cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
-
-          # Create production package.json with resolved workspace refs
-          node -e "
-            const pkg = require('./turbo/apps/runner/package.json');
-            const corePkg = require('./turbo/packages/core/package.json');
-            const deps = { ...pkg.dependencies };
-            // Resolve workspace:* to actual version
-            if (deps['@vm0/core'] && deps['@vm0/core'].startsWith('workspace:')) {
-              deps['@vm0/core'] = corePkg.version;
-            }
-            const prodPkg = {
-              name: pkg.name,
-              version: pkg.version,
-              type: pkg.type,
-              dependencies: deps
-            };
-            console.log(JSON.stringify(prodPkg, null, 2));
-          " > "$STAGING_DIR/package.json"
 
           # Install dependencies on CI (where npm registry is accessible)
           echo "Installing dependencies on CI..."

@@ -15,6 +15,8 @@ export default defineConfig({
   banner: {
     js: "#!/usr/bin/env node",
   },
+  // Bundle @vm0/core since it's a private workspace package not published to npm
+  noExternal: ["@vm0/core"],
   // Inject version from package.json at build time
   define: {
     __RUNNER_VERSION__: JSON.stringify(pkg.version),
