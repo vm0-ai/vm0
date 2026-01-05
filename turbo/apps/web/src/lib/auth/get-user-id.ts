@@ -20,10 +20,6 @@ export async function getUserId(): Promise<string | null> {
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 
-  log.debug("getUserId called", {
-    hasAuthHeader: !!authHeader,
-  });
-
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7); // Remove "Bearer "
 

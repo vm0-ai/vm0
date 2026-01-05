@@ -10,7 +10,6 @@ import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
-import { headers } from "next/headers";
 
 const log = logger("api:runners:poll");
 
@@ -18,19 +17,8 @@ const router = tsr.router(runnersPollContract, {
   poll: async ({ body }) => {
     initServices();
 
-    // Debug: Log auth header before checking
-    const headersList = await headers();
-    const authHeader = headersList.get("Authorization");
-    log.debug("Poll request received", {
-      hasAuthHeader: !!authHeader,
-      bodyGroup: body.group,
-    });
-
     const userId = await getUserId();
     if (!userId) {
-      log.warn("Poll authentication failed", {
-        authHeaderPresent: !!authHeader,
-      });
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
