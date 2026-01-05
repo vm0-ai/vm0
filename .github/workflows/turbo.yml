@@ -518,14 +518,35 @@ jobs:
           ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./install-firecracker.sh"
 
           # Build rootfs from Dockerfile (global, shared across all PRs)
-          # Only rebuild if not exists or FORCE_REBUILD_ROOTFS is set
+          # Rebuild if: rootfs doesn't exist, or Dockerfile changed (based on hash)
           GLOBAL_ROOTFS="/opt/firecracker/rootfs.ext4"
+          ROOTFS_HASH_FILE="/opt/firecracker/rootfs.hash"
+          DOCKERFILE_HASH=$(sha256sum turbo/scripts/deploy-runner/Dockerfile | cut -d' ' -f1)
           echo "Checking global rootfs at ${GLOBAL_ROOTFS}..."
-          if ssh $SSH_OPTS "$SSH_TARGET" "[ -f ${GLOBAL_ROOTFS} ]"; then
-            echo "Global rootfs already exists, skipping build"
+          echo "Current Dockerfile hash: ${DOCKERFILE_HASH}"
+
+          NEEDS_REBUILD="false"
+          if ! ssh $SSH_OPTS "$SSH_TARGET" "[ -f ${GLOBAL_ROOTFS} ]"; then
+            echo "Rootfs does not exist, will build"
+            NEEDS_REBUILD="true"
+          elif ! ssh $SSH_OPTS "$SSH_TARGET" "[ -f ${ROOTFS_HASH_FILE} ]"; then
+            echo "Rootfs hash file does not exist, will rebuild to track changes"
+            NEEDS_REBUILD="true"
           else
+            REMOTE_HASH=$(ssh $SSH_OPTS "$SSH_TARGET" "cat ${ROOTFS_HASH_FILE}")
+            if [ "${DOCKERFILE_HASH}" != "${REMOTE_HASH}" ]; then
+              echo "Dockerfile changed (${REMOTE_HASH} -> ${DOCKERFILE_HASH}), will rebuild"
+              NEEDS_REBUILD="true"
+            else
+              echo "Rootfs up to date (hash: ${DOCKERFILE_HASH})"
+            fi
+          fi
+
+          if [ "${NEEDS_REBUILD}" = "true" ]; then
             echo "Building global rootfs from Dockerfile..."
             ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./build-rootfs.sh ${GLOBAL_ROOTFS}"
+            ssh $SSH_OPTS "$SSH_TARGET" "echo '${DOCKERFILE_HASH}' | sudo tee ${ROOTFS_HASH_FILE}"
+            echo "Rootfs built and hash saved"
           fi
 
           echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
