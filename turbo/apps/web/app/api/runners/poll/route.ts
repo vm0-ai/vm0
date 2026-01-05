@@ -10,6 +10,7 @@ import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
+import { validateRunnerGroupScope } from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:runners:poll");
 
@@ -23,6 +24,16 @@ const router = tsr.router(runnersPollContract, {
     }
 
     const { group } = body;
+
+    // Validate runner group scope matches user's scope
+    try {
+      await validateRunnerGroupScope(userId, group);
+    } catch (error) {
+      return createErrorResponse(
+        "FORBIDDEN",
+        error instanceof Error ? error.message : "Scope validation failed",
+      );
+    }
 
     // Query runner_job_queue for unclaimed jobs belonging to the authenticated user
     const [pendingJob] = await globalThis.services.db

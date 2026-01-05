@@ -21,6 +21,7 @@ import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { storageService } from "../../../../src/lib/storage/storage-service";
 import { logger } from "../../../../src/lib/logger";
 import { encryptSecrets } from "../../../../src/lib/crypto/secrets-encryption";
+import { validateRunnerGroupScope } from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:runs");
 
@@ -460,6 +461,9 @@ const router = tsr.router(runsMainContract, {
 
       if (runnerGroup) {
         log.debug(`Run ${run.id} routed to runner group: ${runnerGroup}`);
+
+        // Validate runner group scope matches user's scope
+        await validateRunnerGroupScope(userId, runnerGroup);
 
         // Prepare storage manifest with presigned URLs for runner
         const workingDir = extractWorkingDir(context.agentCompose);

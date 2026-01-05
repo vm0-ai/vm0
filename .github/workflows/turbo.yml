@@ -349,7 +349,7 @@ jobs:
           ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
 
           # Export runner group for tests
-          echo "RUNNER_GROUP=e2e/pr-${PR_NUMBER}" >> $GITHUB_ENV
+          echo "RUNNER_GROUP=e2e-stable/pr-${PR_NUMBER}" >> $GITHUB_ENV
 
       - name: Run CLI E2E Tests
         run: |
@@ -358,42 +358,52 @@ jobs:
           SERIAL_EXIT=0
           PARALLEL_EXIT=0
 
-          # Step 1: Run runner tests FIRST if runner was deployed
-          # This is the most critical test - if it fails, skip other tests to save time
+          # Step 1: Run serial tests sequentially (establishes stable scope)
+          # Must run first so runner tests can use e2e-stable scope
+          echo "=== Running Serial E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
+
+          if [ $SERIAL_EXIT -ne 0 ]; then
+            echo ""
+            echo "❌ Serial tests failed - skipping remaining tests"
+            exit 1
+          fi
+          echo "✅ Serial tests passed"
+
+          # Step 2: Run runner tests if runner was deployed
+          # These use e2e-stable scope established by serial tests
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
+            echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
             ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
-              echo "❌ Runner tests failed - skipping other tests"
+              echo "❌ Runner tests failed - skipping parallel tests"
               exit 1
             fi
             echo "✅ Runner tests passed"
           else
+            echo ""
             echo "Skipping runner tests (runner not deployed)"
           fi
 
-          echo ""
-          echo "=== Running Standard E2E Tests ==="
-
-          # Step 2: Run serial tests sequentially (establishes stable scope)
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
-
           # Step 3: Run parallel tests with -j 10
+          echo ""
+          echo "=== Running Parallel E2E Tests ==="
           ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
 
           # Report results and exit with failure if any suite failed
           echo ""
           echo "=== Test Results ==="
+          echo "Serial tests: PASSED"
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo "Runner tests: PASSED"
           fi
-          echo "Serial tests: $([ $SERIAL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
           echo "Parallel tests: $([ $PARALLEL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
 
-          # Exit with failure if any test suite failed
-          if [ $SERIAL_EXIT -ne 0 ] || [ $PARALLEL_EXIT -ne 0 ]; then
+          # Exit with failure if parallel tests failed
+          if [ $PARALLEL_EXIT -ne 0 ]; then
             exit 1
           fi
         env:

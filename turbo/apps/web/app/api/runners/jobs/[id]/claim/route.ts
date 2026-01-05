@@ -16,6 +16,7 @@ import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
 import { decryptSecrets } from "../../../../../../src/lib/crypto/secrets-encryption";
+import { validateRunnerGroupScope } from "../../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:runners:jobs:claim");
 
@@ -83,6 +84,16 @@ const router = tsr.router(runnersJobClaimContract, {
     // Verify the job belongs to the authenticated user
     if (jobWithRun.runUserId !== userId) {
       return createErrorResponse("FORBIDDEN", "Job does not belong to user");
+    }
+
+    // Validate runner group scope matches user's scope
+    try {
+      await validateRunnerGroupScope(userId, jobWithRun.job.runnerGroup);
+    } catch (error) {
+      return createErrorResponse(
+        "FORBIDDEN",
+        error instanceof Error ? error.message : "Scope validation failed",
+      );
     }
 
     // Claim the job - atomically update in runner_job_queue

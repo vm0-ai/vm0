@@ -16,7 +16,7 @@ if [ -z "$PR_NUMBER" ] || [ -z "$API_URL" ] || [ -z "$OUTPUT_FILE" ]; then
   exit 1
 fi
 
-RUNNER_GROUP="e2e/pr-${PR_NUMBER}"
+RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}"
 
 echo "Getting CLI token from ~/.vm0/config.json..."
 TOKEN=$(jq -r '.token' ~/.vm0/config.json)

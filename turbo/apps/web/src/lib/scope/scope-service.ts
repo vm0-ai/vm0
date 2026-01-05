@@ -312,3 +312,33 @@ export async function assertScopeWriteAccess(
     throw new ForbiddenError("You don't have write access to this scope");
   }
 }
+
+/**
+ * Validate that a runner group's scope matches the user's scope.
+ * Runner groups are in format "scope/name" (e.g., "e2e-stable/pr-851").
+ * The scope part must match the user's personal scope slug.
+ *
+ * @throws ForbiddenError if scope doesn't match
+ */
+export async function validateRunnerGroupScope(
+  clerkUserId: string,
+  group: string,
+): Promise<void> {
+  const scopeSlug = group.split("/")[0];
+  if (!scopeSlug) {
+    throw new ForbiddenError("Invalid runner group format");
+  }
+
+  const userScope = await getUserScopeByClerkId(clerkUserId);
+  if (!userScope) {
+    throw new ForbiddenError(
+      `Runner group scope "${scopeSlug}" requires you to have a scope configured`,
+    );
+  }
+
+  if (userScope.slug !== scopeSlug) {
+    throw new ForbiddenError(
+      `Runner group scope "${scopeSlug}" does not match your scope "${userScope.slug}"`,
+    );
+  }
+}
