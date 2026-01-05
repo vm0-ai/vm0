@@ -21,6 +21,8 @@ import {
   SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
+  ENV_LOADER_SCRIPT,
+  ENV_LOADER_PATH,
 } from "./index.js";
 
 export interface ScriptEntry {
@@ -48,5 +50,7 @@ export function getAllScripts(): ScriptEntry[] {
     { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
     { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
     { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+    // Env loader is runner-specific (loads env from JSON before executing run-agent.py)
+    { content: ENV_LOADER_SCRIPT, path: ENV_LOADER_PATH },
   ];
 }

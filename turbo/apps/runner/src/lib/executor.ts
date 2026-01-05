@@ -25,7 +25,7 @@ import type {
 } from "./api.js";
 import type { RunnerConfig } from "./config.js";
 import { getAllScripts } from "./scripts/utils.js";
-import { SCRIPT_PATHS } from "./scripts/index.js";
+import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
 
 /**
  * Execution result
@@ -307,11 +307,11 @@ export async function executeJob(
     );
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
-    // Execute run-agent.py which loads environment from JSON
-    console.log(`[Executor] Running agent...`);
+    // Execute env-loader.py which loads environment from JSON, then runs run-agent.py
+    console.log(`[Executor] Running agent via env-loader...`);
     const startTime = Date.now();
 
-    const result = await ssh.exec(`python3 -u ${SCRIPT_PATHS.runAgent}`);
+    const result = await ssh.exec(`python3 -u ${ENV_LOADER_PATH}`);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(
