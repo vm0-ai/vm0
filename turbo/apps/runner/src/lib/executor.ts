@@ -323,9 +323,9 @@ export async function executeJob(
     console.log(`[Executor] Agent started in background`);
 
     // Poll for completion by checking if exit code file exists
-    // Timeout after 30 minutes (configurable for long-running agents)
+    // Timeout after 24 hours (same as E2B sandbox timeout)
     const pollIntervalMs = 2000; // Check every 2 seconds
-    const maxWaitMs = 30 * 60 * 1000; // 30 minutes max
+    const maxWaitMs = 24 * 60 * 60 * 1000; // 24 hours max
     let exitCode = 1;
     let completed = false;
 
@@ -338,12 +338,6 @@ export async function executeJob(
         exitCode = parseInt(checkResult.stdout.trim(), 10) || 1;
         completed = true;
         break;
-      }
-
-      // Log progress every 30 seconds
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      if (elapsed % 30 === 0 && elapsed > 0) {
-        console.log(`[Executor] Agent still running... (${elapsed}s elapsed)`);
       }
     }
 
