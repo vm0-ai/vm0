@@ -339,32 +339,32 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
           SSH_TARGET="${METAL_USER}@${METAL_HOST}"
           RUNNER_GROUP="e2e/pr-${PR_NUMBER}"
-          PID_FILE="/tmp/vm0-runner-pr-${PR_NUMBER}.pid"
 
           echo "Getting CLI token from ~/.vm0/config.json..."
-          TOKEN=$(cat ~/.vm0/config.json | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-          if [ -z "$TOKEN" ]; then
+          TOKEN=$(jq -r '.token' ~/.vm0/config.json)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
             echo "ERROR: No token found in CLI config"
             exit 1
           fi
           echo "Token obtained successfully"
 
           echo "Creating runner.yaml config locally..."
-          printf '%s\n' \
-            "name: e2e-runner-pr-${PR_NUMBER}" \
-            "group: ${RUNNER_GROUP}" \
-            "server:" \
-            "  url: ${VM0_API_URL}" \
-            "  token: ${TOKEN}" \
-            "sandbox:" \
-            "  max_concurrent: 4" \
-            "  vcpu: 2" \
-            "  memory_mb: 1024" \
-            "  poll_interval_ms: 1000" \
-            "firecracker:" \
-            "  binary: /usr/local/bin/firecracker" \
-            "  kernel: /opt/firecracker/vmlinux" \
-            "  rootfs: /opt/firecracker/rootfs.ext4" > /tmp/runner.yaml
+          cat > /tmp/runner.yaml <<EOF
+name: e2e-runner-pr-${PR_NUMBER}
+group: ${RUNNER_GROUP}
+server:
+  url: ${VM0_API_URL}
+  token: ${TOKEN}
+sandbox:
+  max_concurrent: 4
+  vcpu: 2
+  memory_mb: 1024
+  poll_interval_ms: 1000
+firecracker:
+  binary: /usr/local/bin/firecracker
+  kernel: /opt/firecracker/vmlinux
+  rootfs: /opt/firecracker/rootfs.ext4
+EOF
 
           echo "Copying runner.yaml to Metal..."
           scp $SSH_OPTS /tmp/runner.yaml "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
@@ -376,7 +376,7 @@ jobs:
 
           echo "Cleaning up old tap devices and log files..."
           # Remove any leftover tap devices from previous runs
-          ssh $SSH_OPTS "$SSH_TARGET" "for tap in \$(ip link show 2>/dev/null | grep -o 'tap[0-9]*' | head -20); do sudo ip link delete \$tap 2>/dev/null || true; done"
+          ssh $SSH_OPTS "$SSH_TARGET" "for tap in \$(ip link show 2>/dev/null | grep -o 'tap[0-9a-f]*' | head -20); do sudo ip link delete \$tap 2>/dev/null || true; done"
           # Clear old log file to avoid showing historical errors
           ssh $SSH_OPTS "$SSH_TARGET" "rm -f /tmp/vm0-runner-pr-${PR_NUMBER}.log"
 
@@ -386,7 +386,18 @@ jobs:
 
           # Use pm2 to manage runner process - survives SSH disconnect, auto-restarts on crash
           ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' pm2 start start-runner.sh --name vm0-runner-pr-${PR_NUMBER} --log /tmp/vm0-runner-pr-${PR_NUMBER}.log --interpreter bash"
-          sleep 5
+
+          echo "Waiting for runner to start..."
+          # Wait for pm2 process to be online (max 10 attempts, 1 second each)
+          for i in $(seq 1 10); do
+            STATUS=$(ssh $SSH_OPTS "$SSH_TARGET" "pm2 jlist | jq -r '.[] | select(.name==\"vm0-runner-pr-${PR_NUMBER}\") | .pm2_env.status' 2>/dev/null || echo 'unknown'")
+            if [ "$STATUS" = "online" ]; then
+              echo "✅ Runner process is online"
+              break
+            fi
+            echo "  Attempt $i: status=$STATUS, waiting..."
+            sleep 1
+          done
 
           echo "Checking runner status..."
           ssh $SSH_OPTS "$SSH_TARGET" "pm2 status vm0-runner-pr-${PR_NUMBER}"
@@ -394,12 +405,6 @@ jobs:
           RUNNER_LOG=$(ssh $SSH_OPTS "$SSH_TARGET" "cat /tmp/vm0-runner-pr-${PR_NUMBER}.log 2>/dev/null || echo 'No logs yet'")
           echo "Runner logs:"
           echo "$RUNNER_LOG"
-
-          if echo "$RUNNER_LOG" | grep -q "Runner registered"; then
-            echo "✅ Runner registered successfully"
-          else
-            echo "⚠️ Runner may not have registered yet, continuing anyway..."
-          fi
 
           # Export runner group for tests
           echo "RUNNER_GROUP=${RUNNER_GROUP}" >> $GITHUB_ENV
