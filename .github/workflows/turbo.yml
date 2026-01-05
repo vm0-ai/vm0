@@ -484,6 +484,45 @@ jobs:
           # Create PR-specific directory on Metal
           ssh $SSH_OPTS "$SSH_TARGET" "sudo mkdir -p ${RUNNER_DIR} && sudo chown \$(whoami) ${RUNNER_DIR}"
 
+          # Create staging directory with built files and resolved dependencies
+          STAGING_DIR="/tmp/vm0-runner-bundle"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
+
+          # Copy built dist files
+          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
+
+          # Create production package.json with resolved workspace refs
+          node -e "
+            const pkg = require('./turbo/apps/runner/package.json');
+            const corePkg = require('./turbo/packages/core/package.json');
+            const deps = { ...pkg.dependencies };
+            // Resolve workspace:* to actual version
+            if (deps['@vm0/core'] && deps['@vm0/core'].startsWith('workspace:')) {
+              deps['@vm0/core'] = corePkg.version;
+            }
+            const prodPkg = {
+              name: pkg.name,
+              version: pkg.version,
+              type: pkg.type,
+              dependencies: deps
+            };
+            console.log(JSON.stringify(prodPkg, null, 2));
+          " > "$STAGING_DIR/package.json"
+
+          # Install dependencies on CI (where npm registry is accessible)
+          echo "Installing dependencies on CI..."
+          cd "$STAGING_DIR" && npm install --omit=dev
+          cd -
+
+          # Create tarball of the complete bundle
+          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
+
+          # Copy tarball to Metal and extract
+          echo "Uploading bundle to Metal..."
+          scp $SSH_OPTS /tmp/vm0-runner-bundle.tar.gz "${SSH_TARGET}:/tmp/"
+          ssh $SSH_OPTS "$SSH_TARGET" "rm -rf ${RUNNER_DIR}/* && tar -xzf /tmp/vm0-runner-bundle.tar.gz -C /tmp && cp -r /tmp/vm0-runner-bundle/* ${RUNNER_DIR}/ && rm -rf /tmp/vm0-runner-bundle /tmp/vm0-runner-bundle.tar.gz"
+
           # Copy deploy scripts to Metal (PR-specific and global location)
           echo "Copying deploy scripts to Metal..."
           scp $SSH_OPTS -r turbo/scripts/deploy-runner "${SSH_TARGET}:${RUNNER_DIR}/"
@@ -503,30 +542,6 @@ jobs:
             echo "Building global rootfs from Dockerfile..."
             ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR}/deploy-runner && ./build-rootfs.sh ${GLOBAL_ROOTFS}"
           fi
-
-          # Create production-only package.json (resolve workspace refs to actual versions)
-          node -e "
-            const pkg = require('./turbo/apps/runner/package.json');
-            const corePkg = require('./turbo/packages/core/package.json');
-            const deps = { ...pkg.dependencies };
-            // Resolve workspace:* to actual version
-            if (deps['@vm0/core'] && deps['@vm0/core'].startsWith('workspace:')) {
-              deps['@vm0/core'] = corePkg.version;
-            }
-            const prodPkg = {
-              name: pkg.name,
-              version: pkg.version,
-              type: pkg.type,
-              dependencies: deps
-            };
-            console.log(JSON.stringify(prodPkg, null, 2));
-          " > /tmp/package.json
-
-          # Copy built files to Metal
-          scp $SSH_OPTS -r turbo/apps/runner/dist/* /tmp/package.json "${SSH_TARGET}:${RUNNER_DIR}/"
-
-          # Install dependencies
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && npm install --omit=dev"
 
           echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
