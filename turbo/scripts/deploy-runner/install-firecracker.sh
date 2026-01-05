@@ -183,6 +183,15 @@ install_nodejs() {
         echo "[OK] npm installed: $(npm --version)"
     fi
 
+    # Install pnpm globally (required for workspace: protocol support)
+    if command -v pnpm &> /dev/null; then
+        echo "[OK] pnpm already installed: $(pnpm --version)"
+    else
+        echo "[INSTALL] Installing pnpm..."
+        sudo npm install -g pnpm
+        echo "[OK] pnpm installed: $(pnpm --version)"
+    fi
+
     # Install pm2 globally for process management
     if command -v pm2 &> /dev/null; then
         echo "[OK] pm2 already installed: $(pm2 --version)"
@@ -208,6 +217,7 @@ main() {
     echo "Kernel: ${KERNEL_PATH}"
     echo "Docker: $(docker --version 2>/dev/null || echo 'not installed')"
     echo "Node.js: $(node --version 2>/dev/null || echo 'not installed')"
+    echo "pnpm: $(pnpm --version 2>/dev/null || echo 'not installed')"
     echo "pm2: $(pm2 --version 2>/dev/null || echo 'not installed')"
     echo ""
     echo "Next step: Build rootfs with ./build-rootfs.sh"

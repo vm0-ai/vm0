@@ -519,8 +519,8 @@ jobs:
           # Copy built files to Metal
           scp $SSH_OPTS -r turbo/apps/runner/dist/* /tmp/package.json "${SSH_TARGET}:${RUNNER_DIR}/"
 
-          # Install dependencies
-          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && npm install --omit=dev"
+          # Install dependencies (using pnpm for workspace: protocol support)
+          ssh $SSH_OPTS "$SSH_TARGET" "cd ${RUNNER_DIR} && pnpm install --prod"
 
           echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
