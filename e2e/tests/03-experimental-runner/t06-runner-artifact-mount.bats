@@ -8,15 +8,10 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
+load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t06"
-
-# Get runner logs (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
 
 setup() {
     # Verify prerequisites
@@ -115,9 +110,6 @@ teardown() {
 
     # Step 4: Verify run completes properly
     assert_output --partial "Checkpoint:"
-
-    echo "# Runner logs:"
-    get_runner_logs
 }
 
 @test "Runner mount: run completes with checkpoint" {
@@ -145,7 +137,4 @@ teardown() {
 
     assert_success
     assert_output --partial "Run completed successfully"
-
-    echo "# Runner logs:"
-    get_runner_logs
 }

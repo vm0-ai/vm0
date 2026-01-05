@@ -6,12 +6,7 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
-
-# Get runner logs from AWS Metal (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
+load '../../helpers/runner.bash'
 
 # Verify test prerequisites
 setup() {
@@ -84,19 +79,18 @@ EOF
     echo "# Run output:"
     echo "$output"
 
-    # Always show runner logs for debugging before assert
-    echo "# Runner logs (for debugging):"
-    get_runner_logs
+    # Show runner logs only if command failed (reduces SSH overhead)
+    show_logs_on_failure
 
     # Verify the run completed successfully
     assert_success
 
-    echo "# Step 5: Get runner logs"
+    echo "# Step 5: Verify runner processed the job"
     local runner_logs=$(get_runner_logs)
     echo "# Runner logs:"
     echo "$runner_logs"
 
-    echo "# Step 6: Verify runner processed the job"
+    echo "# Step 6: Check runner claimed and executed the job"
     # Check if runner claimed and executed the job
     [[ "$runner_logs" =~ "Found job" ]] || [[ "$runner_logs" =~ "Claimed job" ]] || [[ "$runner_logs" =~ "reported as completed" ]]
 }

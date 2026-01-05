@@ -10,15 +10,10 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
+load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t04"
-
-# Get runner logs (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
 
 setup() {
     # Verify prerequisites
@@ -150,9 +145,6 @@ teardown() {
 
     # Counter should be 999 (from HEAD), not 200 (from checkpoint)
     assert_output --partial "999"
-
-    echo "# Runner logs:"
-    get_runner_logs
 }
 
 @test "Runner session: session persists across runs with same config" {
@@ -208,7 +200,6 @@ teardown() {
     }
 
     echo "# Verified: Same session returned"
-    get_runner_logs
 }
 
 @test "Runner session: continue works with templateVars" {
@@ -260,5 +251,4 @@ teardown() {
     assert_output --partial "updated-content"
 
     echo "# Verified: Continue works with templateVars"
-    get_runner_logs
 }

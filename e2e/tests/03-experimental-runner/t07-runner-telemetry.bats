@@ -10,15 +10,10 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
+load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t07"
-
-# Get runner logs (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
 
 setup() {
     # Verify prerequisites
@@ -174,7 +169,4 @@ teardown() {
     assert_failure
     assert_output --partial "mutually exclusive"
     echo "# Mutually exclusive OK"
-
-    echo "# Runner logs:"
-    get_runner_logs
 }

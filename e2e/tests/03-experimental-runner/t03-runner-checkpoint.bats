@@ -9,15 +9,10 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
+load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t03"
-
-# Get runner logs (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
 
 setup() {
     # Verify prerequisites
@@ -107,9 +102,8 @@ teardown() {
     echo "# Run output:"
     echo "$output"
 
-    # Always show runner logs for debugging
-    echo "# Runner logs (after run):"
-    get_runner_logs
+    # Show runner logs only if command failed (reduces SSH overhead)
+    show_logs_on_failure
 
     assert_success
     assert_output --partial "Checkpoint:"
@@ -156,7 +150,4 @@ teardown() {
 
     # Counter should be 101 (from checkpoint), not 0 (HEAD)
     assert_output --partial "101"
-
-    echo "# Runner logs:"
-    get_runner_logs
 }

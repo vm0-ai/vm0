@@ -10,15 +10,10 @@
 
 load '../../helpers/setup.bash'
 load '../../helpers/ssh.bash'
+load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t05"
-
-# Get runner logs (for debugging)
-get_runner_logs() {
-    local pr_num="${PR_NUMBER:-unknown}"
-    ssh_run "cat /tmp/vm0-runner-pr-${pr_num}.log 2>/dev/null || echo 'No logs'"
-}
 
 setup() {
     # Verify prerequisites
@@ -117,8 +112,6 @@ setup_artifact() {
     # Verify secrets are masked
     assert_output --partial "SECRET=***"
     refute_output --partial "SECRET=${SECRET_VALUE}"
-
-    get_runner_logs
 }
 
 @test "Runner env: loads secrets from environment variables" {
@@ -141,8 +134,6 @@ setup_artifact() {
     assert_success
     assert_output --partial "VAR=${VAR_VALUE}"
     assert_output --partial "SECRET=***"
-
-    get_runner_logs
 }
 
 @test "Runner env: fails when required secret is missing" {
@@ -166,8 +157,6 @@ setup_artifact() {
     assert_failure
     assert_output --partial "Missing required secrets"
     assert_output --partial "TEST_SECRET"
-
-    get_runner_logs
 }
 
 @test "Runner env: fails when required vars are missing" {
@@ -189,8 +178,6 @@ setup_artifact() {
     assert_failure
     assert_output --partial "Missing required"
     assert_output --partial "testVar"
-
-    get_runner_logs
 }
 
 @test "Runner env: continue requires secrets to be re-provided" {
@@ -235,6 +222,4 @@ setup_artifact() {
     assert_success
     assert_output --partial "CONTINUED"
     assert_output --partial "SECRET=***"
-
-    get_runner_logs
 }
