@@ -1,23 +1,25 @@
 /**
  * Agent execution scripts (Python)
  * Re-exports all script constants for use by executor
- * These are the same scripts used by E2B service
+ * Script content is shared with E2B service via @vm0/core
  */
-export { INIT_SCRIPT } from "./lib/__init__.py.js";
-export { COMMON_SCRIPT } from "./lib/common.py.js";
-export { LOG_SCRIPT } from "./lib/log.py.js";
-export { HTTP_SCRIPT } from "./lib/http_client.py.js";
-export { EVENTS_SCRIPT } from "./lib/events.py.js";
-export { DIRECT_UPLOAD_SCRIPT } from "./lib/direct_upload.py.js";
-export { DOWNLOAD_SCRIPT } from "./lib/download.py.js";
-export { CHECKPOINT_SCRIPT } from "./lib/checkpoint.py.js";
-export { MOCK_CLAUDE_SCRIPT } from "./lib/mock_claude.py.js";
-export { METRICS_SCRIPT } from "./lib/metrics.py.js";
-export { UPLOAD_TELEMETRY_SCRIPT } from "./lib/upload_telemetry.py.js";
-export { PROXY_SETUP_SCRIPT } from "./lib/proxy_setup.py.js";
-export { MITM_ADDON_SCRIPT } from "./lib/mitm_addon.py.js";
-export { SECRET_MASKER_SCRIPT } from "./lib/secret_masker.py.js";
-export { RUN_AGENT_SCRIPT } from "./run-agent.py.js";
+export {
+  INIT_SCRIPT,
+  COMMON_SCRIPT,
+  LOG_SCRIPT,
+  HTTP_SCRIPT,
+  EVENTS_SCRIPT,
+  DIRECT_UPLOAD_SCRIPT,
+  DOWNLOAD_SCRIPT,
+  CHECKPOINT_SCRIPT,
+  MOCK_CLAUDE_SCRIPT,
+  METRICS_SCRIPT,
+  UPLOAD_TELEMETRY_SCRIPT,
+  PROXY_SETUP_SCRIPT,
+  MITM_ADDON_SCRIPT,
+  SECRET_MASKER_SCRIPT,
+  RUN_AGENT_SCRIPT,
+} from "@vm0/core";
 
 /**
  * Script paths in the Firecracker VM

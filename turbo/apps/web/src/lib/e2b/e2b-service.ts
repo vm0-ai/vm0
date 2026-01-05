@@ -27,7 +27,7 @@ import {
   SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
-} from "./scripts";
+} from "@vm0/core";
 import type { ExecutionContext } from "../run/types";
 import { calculateSessionHistoryPath } from "../run/run-service";
 import { logger } from "../logger";
