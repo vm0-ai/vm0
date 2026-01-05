@@ -11,6 +11,7 @@
  * - Supporting checkpoint/resume functionality
  */
 
+import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import {
   type SSHClient,
@@ -240,6 +241,9 @@ export async function executeJob(
 
   try {
     // Create VM configuration
+    // Use workspaces directory under runner's working directory for easy cleanup
+    // When runner is stopped, the entire PR directory can be deleted
+    const workspacesDir = path.join(process.cwd(), "workspaces");
     const vmConfig: VMConfig = {
       vmId,
       vcpus: config.sandbox.vcpu,
@@ -247,6 +251,7 @@ export async function executeJob(
       kernelPath: config.firecracker.kernel,
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
+      workDir: path.join(workspacesDir, `vm0-${vmId}`),
     };
 
     // Create and start VM
