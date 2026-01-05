@@ -18,8 +18,15 @@ export const setCommand = new Command()
         let existingScope;
         try {
           existingScope = await apiClient.getScope();
-        } catch {
-          // No existing scope - that's fine
+        } catch (error) {
+          // Only swallow "No scope configured" errors - that's the expected case for new users
+          // All other errors (network, auth, etc.) should propagate to the outer handler
+          if (
+            !(error instanceof Error) ||
+            !error.message.includes("No scope configured")
+          ) {
+            throw error;
+          }
         }
 
         let scope;

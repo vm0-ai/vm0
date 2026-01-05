@@ -353,17 +353,10 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // Always cleanup VM
+    // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
       console.log(`[Executor] Cleaning up VM ${vmId}...`);
-      try {
-        await vm.kill();
-      } catch (error) {
-        console.error(
-          `[Executor] Failed to cleanup VM ${vmId}:`,
-          error instanceof Error ? error.message : error,
-        );
-      }
+      await vm.kill();
     }
   }
 }

@@ -185,20 +185,17 @@ const router = tsr.router(webhookCompleteContract, {
     } catch (error) {
       log.error("Error:", error);
 
-      // Try to update run status to failed
-      try {
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({
-            status: "failed",
-            completedAt: new Date(),
-            error:
-              error instanceof Error ? error.message : "Complete API failed",
-          })
-          .where(eq(agentRuns.id, body.runId));
-      } catch {
-        log.error("Failed to update run status after error");
-      }
+      // Update run status to failed - if this fails, let it propagate
+      // since we can't recover from a database error anyway
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          error:
+            error instanceof Error ? error.message : "Complete API failed",
+        })
+        .where(eq(agentRuns.id, body.runId));
 
       // Still try to kill sandbox on error
       if (sandboxId) {

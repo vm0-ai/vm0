@@ -167,25 +167,17 @@ export const composeCommand = new Command()
         const instructionsPath = agent.instructions as string;
         const provider = agent.provider as string | undefined;
         console.log(`Uploading instructions: ${instructionsPath}`);
-        try {
-          const result = await uploadInstructions(
-            agentName,
-            instructionsPath,
-            basePath,
-            provider,
-          );
-          console.log(
-            chalk.green(
-              `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
-            ),
-          );
-        } catch (error) {
-          console.error(chalk.red(`✗ Failed to upload instructions`));
-          if (error instanceof Error) {
-            console.error(chalk.dim(`  ${error.message}`));
-          }
-          process.exit(1);
-        }
+        const result = await uploadInstructions(
+          agentName,
+          instructionsPath,
+          basePath,
+          provider,
+        );
+        console.log(
+          chalk.green(
+            `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
+          ),
+        );
       }
 
       // Upload skills if specified and collect their frontmatter
@@ -194,22 +186,14 @@ export const composeCommand = new Command()
         const skillUrls = agent.skills as string[];
         console.log(`Uploading ${skillUrls.length} skill(s)...`);
         for (const skillUrl of skillUrls) {
-          try {
-            console.log(chalk.dim(`  Downloading: ${skillUrl}`));
-            const result = await uploadSkill(skillUrl);
-            skillResults.push(result);
-            console.log(
-              chalk.green(
-                `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
-              ),
-            );
-          } catch (error) {
-            console.error(chalk.red(`✗ Failed to upload skill: ${skillUrl}`));
-            if (error instanceof Error) {
-              console.error(chalk.dim(`  ${error.message}`));
-            }
-            process.exit(1);
-          }
+          console.log(chalk.dim(`  Downloading: ${skillUrl}`));
+          const result = await uploadSkill(skillUrl);
+          skillResults.push(result);
+          console.log(
+            chalk.green(
+              `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
+            ),
+          );
         }
       }
 

@@ -257,11 +257,13 @@ export class FirecrackerVM {
     try {
       // Send graceful shutdown signal
       if (this.client) {
-        try {
-          await this.client.sendCtrlAltDel();
-        } catch {
-          // API may fail if VM is already stopping
-        }
+        await this.client.sendCtrlAltDel().catch((error: unknown) => {
+          // Expected: API may fail if VM is already stopping
+          console.log(
+            `[VM ${this.config.vmId}] Graceful shutdown signal failed (VM may already be stopping):`,
+            error instanceof Error ? error.message : error,
+          );
+        });
       }
     } finally {
       await this.cleanup();

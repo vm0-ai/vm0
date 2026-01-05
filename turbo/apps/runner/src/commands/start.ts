@@ -49,15 +49,9 @@ async function executeJob(
     console.error(`  Job ${context.runId} execution failed: ${error}`);
 
     // Report failure to server if VM execution failed before bootstrap
-    try {
-      const result = await completeJob(context, 1, error);
-      console.log(`  Job ${context.runId} reported as ${result.status}`);
-    } catch (reportErr) {
-      console.error(
-        `  Failed to report job ${context.runId} completion:`,
-        reportErr instanceof Error ? reportErr.message : "Unknown error",
-      );
-    }
+    // Let errors propagate - the caller's .catch() will handle them
+    const result = await completeJob(context, 1, error);
+    console.log(`  Job ${context.runId} reported as ${result.status}`);
   }
 }
 

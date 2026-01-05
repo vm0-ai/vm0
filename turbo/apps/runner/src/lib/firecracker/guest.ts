@@ -200,15 +200,10 @@ export class SSHClient {
     intervalMs: number = 2000,
   ): Promise<void> {
     const start = Date.now();
-    let lastError: Error | null = null;
 
     while (Date.now() - start < timeoutMs) {
-      try {
-        if (await this.isReachable()) {
-          return;
-        }
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
+      if (await this.isReachable()) {
+        return;
       }
 
       // Wait before retry
@@ -223,7 +218,7 @@ export class SSHClient {
     }
 
     throw new Error(
-      `SSH not reachable after ${timeoutMs}ms at ${this.config.host}: ${lastError?.message || "timeout"}`,
+      `SSH not reachable after ${timeoutMs}ms at ${this.config.host}`,
     );
   }
 

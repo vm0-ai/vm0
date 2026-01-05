@@ -375,40 +375,20 @@ const runCmd = new Command()
           if (verbose) {
             console.log(chalk.dim(`  Using compose ID: ${identifier}`));
           }
-          try {
-            const compose = await apiClient.getComposeById(name);
-            composeId = compose.id;
-            composeContent = compose.content;
-          } catch (error) {
-            if (error instanceof Error) {
-              console.error(chalk.red(`✗ Compose not found: ${name}`));
-            }
-            process.exit(1);
-          }
+          const compose = await apiClient.getComposeById(name);
+          composeId = compose.id;
+          composeContent = compose.content;
         } else {
           // It's an agent name - resolve to compose ID
           if (verbose) {
             const displayRef = scope ? `${scope}/${name}` : name;
             console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
-          try {
-            const compose = await apiClient.getComposeByName(name, scope);
-            composeId = compose.id;
-            composeContent = compose.content;
-            if (verbose) {
-              console.log(chalk.dim(`  Resolved to compose ID: ${composeId}`));
-            }
-          } catch (error) {
-            if (error instanceof Error) {
-              const displayRef = scope ? `${scope}/${name}` : name;
-              console.error(chalk.red(`✗ Agent not found: ${displayRef}`));
-              console.error(
-                chalk.dim(
-                  "  Make sure you've composed the agent with: vm0 compose",
-                ),
-              );
-            }
-            process.exit(1);
+          const compose = await apiClient.getComposeByName(name, scope);
+          composeId = compose.id;
+          composeContent = compose.content;
+          if (verbose) {
+            console.log(chalk.dim(`  Resolved to compose ID: ${composeId}`));
           }
         }
 
@@ -433,14 +413,9 @@ const runCmd = new Command()
                 ),
               );
             }
-          } catch (error) {
-            if (error instanceof Error) {
-              console.error(chalk.red(`✗ Version not found: ${version}`));
-              console.error(
-                chalk.dim("  Make sure the version hash is correct."),
-              );
-            }
-            process.exit(1);
+          } catch {
+            // Wrap version errors with specific message for better error handling
+            throw new Error(`Version not found: ${version}`);
           }
         }
         // Note: "latest" version uses agentComposeId which resolves to HEAD
@@ -551,6 +526,11 @@ const runCmd = new Command()
           if (error.message.includes("Not authenticated")) {
             console.error(
               chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.startsWith("Version not found:")) {
+            console.error(chalk.red(`✗ ${error.message}`));
+            console.error(
+              chalk.dim("  Make sure the version hash is correct."),
             );
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));

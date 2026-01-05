@@ -59,7 +59,11 @@ export const pushCommand = new Command()
     } catch (error) {
       console.error(chalk.red("✗ Push failed"));
       if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
+        if (error.message.includes("Not authenticated")) {
+          console.error(chalk.dim("  Run: vm0 auth login"));
+        } else {
+          console.error(chalk.dim(`  ${error.message}`));
+        }
       }
       process.exit(1);
     }
