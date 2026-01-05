@@ -360,13 +360,16 @@ jobs:
             scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
             ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
             echo "✅ Runner started with scope e2e-stable/pr-${PR_NUMBER}"
+
+            # Set RUNNER_GROUP for subsequent tests (export to current shell)
+            export RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}"
           fi
 
           # Step 3: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
-            ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""

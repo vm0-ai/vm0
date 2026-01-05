@@ -16,21 +16,21 @@ load '../../helpers/runner.bash'
 AGENT_NAME="e2e-runner-t05"
 
 setup() {
-    # Verify prerequisites
+    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
     if [[ -z "$RUNNER_DIR" ]]; then
-        skip "RUNNER_DIR not set - runner was not deployed"
+        fail "RUNNER_DIR not set - runner was not deployed"
     fi
 
     if ! ssh_check; then
-        skip "Remote instance not reachable"
+        fail "Remote instance not reachable"
     fi
 
     if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+        fail "VM0_API_URL not set"
     fi
 
     if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set - runner was not started by workflow"
+        fail "RUNNER_GROUP not set - runner was not started by workflow"
     fi
 
     # Create unique test values
