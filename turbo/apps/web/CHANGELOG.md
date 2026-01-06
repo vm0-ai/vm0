@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.1.0](https://github.com/vm0-ai/vm0/compare/web-v8.0.2...web-v8.1.0) (2026-01-06)
+
+
+### Features
+
+* **runner:** add official runner support for vm0/* groups ([#930](https://github.com/vm0-ai/vm0/issues/930)) ([8bc6382](https://github.com/vm0-ai/vm0/commit/8bc63826a242cb6f632ac9456c8b64008020a8b1))
+
 ## [8.0.2](https://github.com/vm0-ai/vm0/compare/web-v8.0.1...web-v8.0.2) (2026-01-06)
 
 
