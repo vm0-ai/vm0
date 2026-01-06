@@ -7,3 +7,4 @@ CHANGELOG.md
 .source
 Caddyfile
 apps/docs/content/docs/**/*.mdx
+**/codereviews/**
