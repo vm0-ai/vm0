@@ -73,7 +73,9 @@ const router = tsr.router(runnersJobClaimContract, {
           "Official runners can only claim jobs from vm0/* groups",
         );
       }
-      log.debug(`Official runner claiming job from ${jobWithRun.job.runnerGroup}`);
+      log.debug(
+        `Official runner claiming job from ${jobWithRun.job.runnerGroup}`,
+      );
     } else {
       // User runners: verify job ownership and scope
       if (jobWithRun.runUserId !== auth.userId) {
