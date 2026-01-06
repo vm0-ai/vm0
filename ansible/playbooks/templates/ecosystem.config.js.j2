@@ -30,6 +30,11 @@ module.exports = {
     // Environment
     env: {
       NODE_ENV: 'production',
+{% if extra_env is defined and extra_env %}
+{% for key, value in extra_env.items() %}
+      {{ key }}: '{{ value }}',
+{% endfor %}
+{% endif %}
     }
   }]
 };

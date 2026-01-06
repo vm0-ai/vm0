@@ -1,31 +1,51 @@
-# Deploy VM0 Runner to Production
+# Deploy VM0 Runner
 #
-# This playbook deploys the VM0 runner to production metal instances
-# with rolling updates and graceful drain support.
+# This playbook deploys the VM0 runner to metal instances.
+# Supports both CI (PR testing) and Production deployments.
 #
-# Usage:
+# CI Usage (single host, no drain):
+#   ansible-playbook -i "host," playbooks/deploy-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
+#     -e "runner_group=vm0/development-pr-123" \
+#     -e "pm2_process_name=vm0-runner-pr-123" \
+#     -e "official_runner_secret=xxx" \
+#     -e "api_url=https://preview-url.vercel.app" \
+#     -e "enable_drain=false"
+#
+# Production Usage (multiple hosts, with drain):
 #   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
 #     -e "api_url=https://app.vm0.dev" \
-#     --private-key /path/to/key.pem
+#     -e "enable_drain=true"
 #
-# Variables:
-#   - official_runner_secret: (required) The OFFICIAL_RUNNER_SECRET for authentication
-#   - api_url: (required) The production API URL
-#   - runner_bundle_path: (required) Path to pre-built runner bundle tarball
-#   - drain_timeout: (optional) Max seconds to wait for drain (default: 86400 = 24h)
+# Required Variables:
+#   - official_runner_secret: The OFFICIAL_RUNNER_SECRET for authentication
+#   - api_url: The API URL (preview URL for CI, production URL for prod)
+#   - runner_bundle_path: Path to pre-built runner bundle tarball
+#
+# Optional Variables (with defaults):
+#   - runner_base_dir: Runner installation directory (default: /opt/vm0-runner/production)
+#   - runner_group: Runner group name (default: vm0/production)
+#   - pm2_process_name: PM2 process name (default: vm0-runner-production)
+#   - enable_drain: Whether to drain before stopping (default: true)
+#   - drain_timeout: Max seconds to wait for drain (default: 86400 = 24h)
+#   - extra_env: Additional environment variables as JSON (default: {})
 
 - name: Deploy VM0 Runner
   hosts: all
-  serial: 1  # Rolling update: one host at a time
+  serial: 1  # Rolling update: one host at a time (no effect for single host)
   become: yes
 
   vars:
+    # Defaults for production - CI should override these
     runner_base_dir: /opt/vm0-runner/production
     runner_group: vm0/production
     pm2_process_name: vm0-runner-production
+    enable_drain: true
     drain_timeout: 86400  # 24 hours
+    extra_env: {}
 
   tasks:
     # ========================================
@@ -39,8 +59,18 @@
           - runner_bundle_path is defined
         fail_msg: "Required variables: official_runner_secret, api_url, runner_bundle_path"
 
+    - name: Display deployment configuration
+      debug:
+        msg: |
+          Deploying runner:
+          - Directory: {{ runner_base_dir }}
+          - Group: {{ runner_group }}
+          - Process: {{ pm2_process_name }}
+          - API: {{ api_url }}
+          - Drain enabled: {{ enable_drain }}
+
     # ========================================
-    # Phase 2: Drain (Maintenance Mode)
+    # Phase 2: Stop existing runner
     # ========================================
     - name: Check if runner is currently running
       command: pm2 pid {{ pm2_process_name }}
@@ -49,8 +79,9 @@
       changed_when: false
       become: no
 
+    # Production: Drain before stopping (wait for active jobs)
     - name: Enter maintenance mode (stop polling, wait for active jobs)
-      when: pm2_pid.rc == 0 and pm2_pid.stdout != ""
+      when: enable_drain and pm2_pid.rc == 0 and pm2_pid.stdout != ""
       block:
         - name: Signal runner to enter drain mode
           command: kill -USR1 {{ pm2_pid.stdout }}
@@ -91,6 +122,13 @@
           ignore_errors: yes
           become: no
 
+    # CI: Just stop without drain (no long-running jobs)
+    - name: Stop runner without drain
+      when: not enable_drain and pm2_pid.rc == 0 and pm2_pid.stdout != ""
+      command: pm2 delete {{ pm2_process_name }}
+      ignore_errors: yes
+      become: no
+
     # ========================================
     # Phase 3: Deploy
     # ========================================
@@ -102,6 +140,11 @@
         group: "{{ ansible_user }}"
         mode: '0755'
 
+    - name: Clean runner directory
+      shell: rm -rf {{ runner_base_dir }}/*
+      args:
+        warn: false
+
     - name: Extract runner bundle
       unarchive:
         src: "{{ runner_bundle_path }}"
@@ -109,6 +152,14 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         extra_opts: [--strip-components=1]
+
+    - name: Ensure deploy-runner directory exists
+      file:
+        path: "{{ runner_base_dir }}/deploy-runner"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
 
     - name: Copy deploy scripts
       copy:
@@ -165,6 +216,7 @@
       args:
         chdir: "{{ runner_base_dir }}"
       become: no
+      environment: "{{ extra_env }}"
 
     - name: Save PM2 process list
       command: pm2 save
@@ -192,3 +244,4 @@
           - Process: {{ pm2_process_name }}
           - Group: {{ runner_group }}
           - API: {{ api_url }}
+          - Directory: {{ runner_base_dir }}
