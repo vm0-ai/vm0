@@ -40,6 +40,7 @@ vi.mock("../../../../../src/lib/run", () => ({
     createRunContext: vi.fn(),
     buildExecutionContext: vi.fn(),
     executeRun: vi.fn(),
+    prepareAndDispatch: vi.fn(),
     validateCheckpoint: vi.fn(),
     validateAgentSession: vi.fn(),
   },
@@ -142,28 +143,26 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
   describe("Fire-and-Forget Execution", () => {
     it("should return immediately with 'running' status after sandbox preparation", async () => {
-      // Mock run service - executeRun returns immediately with 'running' status
-      // Note: executeRun now also updates sandboxId in the database internally
-      // buildExecutionContext must pass through runId for the executeRun mock to update the correct record
+      // Mock run service - prepareAndDispatch returns immediately with 'running' status
+      // Note: prepareAndDispatch now also updates sandboxId in the database internally
+      // buildExecutionContext must pass through runId for the prepareAndDispatch mock to update the correct record
       mockRunService.buildExecutionContext.mockImplementation(
         async (params) => {
           return { runId: params.runId } as never;
         },
       );
-      mockRunService.executeRun.mockImplementation(async (context) => {
-        // Simulate the sandboxId update that now happens inside executeRun
+      mockRunService.prepareAndDispatch.mockImplementation(async (context) => {
+        // Simulate the sandboxId update that now happens inside prepareAndDispatch
         await globalThis.services.db
           .update(agentRuns)
-          .set({ sandboxId: "test-sandbox-123" })
+          .set({ sandboxId: "test-sandbox-123", status: "running" })
           .where(eq(agentRuns.id, context.runId));
 
         return {
           runId: context.runId,
           status: "running" as const,
           sandboxId: "test-sandbox-123",
-          output: "",
-          executionTimeMs: 500,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       });
 
@@ -206,27 +205,25 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
     it("should update sandboxId in database after successful preparation", async () => {
       // Mock successful sandbox preparation
-      // Note: executeRun now updates sandboxId in the database internally
-      // buildExecutionContext must pass through runId for the executeRun mock to update the correct record
+      // Note: prepareAndDispatch now updates sandboxId in the database internally
+      // buildExecutionContext must pass through runId for the prepareAndDispatch mock to update the correct record
       mockRunService.buildExecutionContext.mockImplementation(
         async (params) => {
           return { runId: params.runId } as never;
         },
       );
-      mockRunService.executeRun.mockImplementation(async (context) => {
-        // Simulate the sandboxId update that now happens inside executeRun
+      mockRunService.prepareAndDispatch.mockImplementation(async (context) => {
+        // Simulate the sandboxId update that now happens inside prepareAndDispatch
         await globalThis.services.db
           .update(agentRuns)
-          .set({ sandboxId: "sandbox-abc-123" })
+          .set({ sandboxId: "sandbox-abc-123", status: "running" })
           .where(eq(agentRuns.id, context.runId));
 
         return {
           runId: context.runId,
           status: "running" as const,
           sandboxId: "sandbox-abc-123",
-          output: "",
-          executionTimeMs: 300,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       });
 
@@ -262,7 +259,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     it("should return 'failed' status if sandbox preparation fails", async () => {
       // Mock sandbox preparation failure
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockRejectedValue(
+      mockRunService.prepareAndDispatch.mockRejectedValue(
         new Error("Sandbox preparation failed"),
       );
 
@@ -300,13 +297,11 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     it("should return quickly even with complex context building", async () => {
       // Mock run service with realistic timing
       mockRunService.buildExecutionContext.mockResolvedValue({} as never);
-      mockRunService.executeRun.mockResolvedValue({
+      mockRunService.prepareAndDispatch.mockResolvedValue({
         runId: "test-run-id",
         status: "running" as const,
         sandboxId: "test-sandbox",
-        output: "",
-        executionTimeMs: 1000,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
