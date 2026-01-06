@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/vm0-ai/vm0/compare/runner-v2.0.2...runner-v2.0.3) (2026-01-06)
+
+
+### Bug Fixes
+
+* **runner:** connect as user instead of root via ssh ([#923](https://github.com/vm0-ai/vm0/issues/923)) ([80f999d](https://github.com/vm0-ai/vm0/commit/80f999d41e6f3e3fc54319bab31aae21623f1081))
+
 ## [2.0.2](https://github.com/vm0-ai/vm0/compare/runner-v2.0.1...runner-v2.0.2) (2026-01-05)
 
 
