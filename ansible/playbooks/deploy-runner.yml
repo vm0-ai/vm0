@@ -1,0 +1,194 @@
+# Deploy VM0 Runner to Production
+#
+# This playbook deploys the VM0 runner to production metal instances
+# with rolling updates and graceful drain support.
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "official_runner_secret=xxx" \
+#     -e "api_url=https://app.vm0.dev" \
+#     --private-key /path/to/key.pem
+#
+# Variables:
+#   - official_runner_secret: (required) The OFFICIAL_RUNNER_SECRET for authentication
+#   - api_url: (required) The production API URL
+#   - runner_bundle_path: (required) Path to pre-built runner bundle tarball
+#   - drain_timeout: (optional) Max seconds to wait for drain (default: 86400 = 24h)
+
+- name: Deploy VM0 Runner
+  hosts: all
+  serial: 1  # Rolling update: one host at a time
+  become: yes
+
+  vars:
+    runner_base_dir: /opt/vm0-runner/production
+    runner_group: vm0/production
+    pm2_process_name: vm0-runner-production
+    drain_timeout: 86400  # 24 hours
+
+  tasks:
+    # ========================================
+    # Phase 1: Pre-flight checks
+    # ========================================
+    - name: Check required variables
+      assert:
+        that:
+          - official_runner_secret is defined
+          - api_url is defined
+          - runner_bundle_path is defined
+        fail_msg: "Required variables: official_runner_secret, api_url, runner_bundle_path"
+
+    # ========================================
+    # Phase 2: Drain (Maintenance Mode)
+    # ========================================
+    - name: Check if runner is currently running
+      command: pm2 pid {{ pm2_process_name }}
+      register: pm2_pid
+      ignore_errors: yes
+      changed_when: false
+      become: no
+
+    - name: Enter maintenance mode (stop polling, wait for active jobs)
+      when: pm2_pid.rc == 0 and pm2_pid.stdout != ""
+      block:
+        - name: Signal runner to enter drain mode
+          command: kill -USR1 {{ pm2_pid.stdout }}
+
+        - name: Wait for active jobs to complete
+          shell: |
+            # Poll status file until active_jobs is 0 or timeout
+            timeout={{ drain_timeout }}
+            elapsed=0
+            status_file="{{ runner_base_dir }}/status.json"
+
+            while [ $elapsed -lt $timeout ]; do
+              if [ -f "$status_file" ]; then
+                # Check mode and active_jobs from JSON
+                mode=$(cat "$status_file" | grep -o '"mode":"[^"]*"' | cut -d'"' -f4)
+                active=$(cat "$status_file" | grep -o '"active_jobs":[0-9]*' | grep -o '[0-9]*')
+
+                if [ "$active" = "0" ]; then
+                  echo "Drain complete: no active jobs (mode: $mode)"
+                  exit 0
+                fi
+                echo "Draining: $active active job(s), mode: $mode (${elapsed}s elapsed)"
+              else
+                echo "Status file not found yet, waiting..."
+              fi
+              sleep 10
+              elapsed=$((elapsed + 10))
+            done
+
+            echo "Drain timeout after ${timeout}s"
+            exit 1
+          args:
+            executable: /bin/bash
+          register: drain_result
+
+        - name: Stop runner after drain
+          command: pm2 delete {{ pm2_process_name }}
+          ignore_errors: yes
+          become: no
+
+    # ========================================
+    # Phase 3: Deploy
+    # ========================================
+    - name: Ensure runner directory exists
+      file:
+        path: "{{ runner_base_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Extract runner bundle
+      unarchive:
+        src: "{{ runner_bundle_path }}"
+        dest: "{{ runner_base_dir }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        extra_opts: [--strip-components=1]
+
+    - name: Copy deploy scripts
+      copy:
+        src: "{{ item }}"
+        dest: "{{ runner_base_dir }}/deploy-runner/"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      with_fileglob:
+        - "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/*.sh"
+
+    # ========================================
+    # Phase 4: Install Dependencies (if needed)
+    # ========================================
+    - name: Check if Firecracker is installed
+      stat:
+        path: /usr/local/bin/firecracker
+      register: firecracker_bin
+
+    - name: Install Firecracker
+      command: "{{ runner_base_dir }}/deploy-runner/install-firecracker.sh"
+      when: not firecracker_bin.stat.exists
+
+    - name: Check if rootfs exists
+      stat:
+        path: /opt/firecracker/rootfs.ext4
+      register: rootfs_file
+
+    - name: Build rootfs
+      command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh /opt/firecracker/rootfs.ext4"
+      when: not rootfs_file.stat.exists
+
+    # ========================================
+    # Phase 5: Configure and Start
+    # ========================================
+    - name: Generate runner configuration
+      template:
+        src: runner.yaml.j2
+        dest: "{{ runner_base_dir }}/runner.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Create PM2 ecosystem file
+      template:
+        src: ecosystem.config.js.j2
+        dest: "{{ runner_base_dir }}/ecosystem.config.js"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Start runner via PM2
+      command: pm2 start ecosystem.config.js
+      args:
+        chdir: "{{ runner_base_dir }}"
+      become: no
+
+    - name: Save PM2 process list
+      command: pm2 save
+      become: no
+
+    # ========================================
+    # Phase 6: Health Check
+    # ========================================
+    - name: Wait for runner to be ready
+      wait_for:
+        path: /tmp/{{ pm2_process_name }}.log
+        search_regex: "Press Ctrl\\+C to stop"
+        timeout: 120
+
+    - name: Verify runner is polling
+      shell: pm2 jlist | jq -r '.[] | select(.name=="{{ pm2_process_name }}") | .pm2_env.status'
+      register: pm2_status
+      failed_when: pm2_status.stdout != "online"
+      become: no
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ✓ Runner deployed successfully on {{ inventory_hostname }}
+          - Process: {{ pm2_process_name }}
+          - Group: {{ runner_group }}
+          - API: {{ api_url }}

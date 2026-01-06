@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import { writeFileSync } from "fs";
+import { dirname, join } from "path";
 import {
   loadConfig,
   validateFirecrackerPaths,
@@ -18,6 +20,44 @@ import {
 
 // Track active jobs for concurrency management
 const activeJobs = new Set<string>();
+
+// Runner mode for maintenance/drain support
+type RunnerMode = "running" | "draining" | "stopped";
+
+interface RunnerStatus {
+  mode: RunnerMode;
+  active_jobs: number;
+  active_job_ids: string[];
+  started_at: string;
+  updated_at: string;
+}
+
+/**
+ * Write runner status to a JSON file for external monitoring.
+ * Used by deployment tools (Ansible) to track drain progress.
+ */
+function writeStatusFile(
+  statusFilePath: string,
+  mode: RunnerMode,
+  startedAt: Date,
+): void {
+  const status: RunnerStatus = {
+    mode,
+    active_jobs: activeJobs.size,
+    active_job_ids: Array.from(activeJobs),
+    started_at: startedAt.toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    writeFileSync(statusFilePath, JSON.stringify(status, null, 2));
+  } catch (err) {
+    // Non-fatal: log and continue
+    console.error(
+      `Failed to write status file: ${err instanceof Error ? err.message : "Unknown error"}`,
+    );
+  }
+}
 
 /**
  * Execute a claimed job in a Firecracker VM
@@ -82,23 +122,56 @@ export const startCommand = new Command("start")
       console.log("Setting up network bridge...");
       await setupBridge();
 
+      // Status file for external monitoring (Ansible drain support)
+      const statusFilePath = join(dirname(options.config), "status.json");
+      const startedAt = new Date();
+
+      // Use object to track mode - avoids TypeScript control flow issues with callbacks
+      const state = { mode: "running" as RunnerMode };
+
+      // Helper to update status file
+      const updateStatus = (): void => {
+        writeStatusFile(statusFilePath, state.mode, startedAt);
+      };
+
       // Start polling loop
       console.log(
         `Starting runner '${config.name}' for group '${config.group}'...`,
       );
       console.log(`Max concurrent jobs: ${config.sandbox.max_concurrent}`);
+      console.log(`Status file: ${statusFilePath}`);
       console.log("Press Ctrl+C to stop");
       console.log("");
+
+      // Write initial status
+      updateStatus();
 
       // Handle graceful shutdown
       let running = true;
       process.on("SIGINT", () => {
         console.log("\nShutting down...");
         running = false;
+        state.mode = "stopped";
+        updateStatus();
       });
       process.on("SIGTERM", () => {
         console.log("\nShutting down...");
         running = false;
+        state.mode = "stopped";
+        updateStatus();
+      });
+
+      // Handle SIGUSR1 for maintenance/drain mode
+      // When received, stop polling for new jobs but continue executing active jobs
+      process.on("SIGUSR1", () => {
+        if (state.mode === "running") {
+          console.log("\n[Maintenance] Entering drain mode...");
+          console.log(
+            `[Maintenance] Active jobs: ${activeJobs.size} (will wait for completion)`,
+          );
+          state.mode = "draining";
+          updateStatus();
+        }
       });
 
       // Track job completion promises for graceful shutdown
@@ -106,11 +179,27 @@ export const startCommand = new Command("start")
 
       // Main polling loop
       while (running) {
+        // In drain mode, don't poll for new jobs - just wait for active jobs to complete
+        if (state.mode === "draining") {
+          if (activeJobs.size === 0) {
+            console.log("[Maintenance] All jobs completed, exiting drain mode");
+            running = false;
+            break;
+          }
+          // Wait for any job to complete
+          if (jobPromises.size > 0) {
+            await Promise.race(jobPromises);
+            updateStatus(); // Update status after job completes
+          }
+          continue;
+        }
+
         // Check concurrency limit - skip poll if at capacity
         if (activeJobs.size >= config.sandbox.max_concurrent) {
           // Wait for any job to complete before polling again
           if (jobPromises.size > 0) {
             await Promise.race(jobPromises);
+            updateStatus(); // Update status after job completes
           }
           continue;
         }
@@ -137,6 +226,8 @@ export const startCommand = new Command("start")
 
             // Track and execute in background
             activeJobs.add(context.runId);
+            updateStatus(); // Update status when job starts
+
             const jobPromise: Promise<void> = executeJob(context, config)
               .catch((error) => {
                 console.error(
@@ -147,6 +238,7 @@ export const startCommand = new Command("start")
               .finally(() => {
                 activeJobs.delete(context.runId);
                 jobPromises.delete(jobPromise);
+                updateStatus(); // Update status when job completes
               });
             jobPromises.add(jobPromise);
           } catch (error) {
@@ -173,6 +265,10 @@ export const startCommand = new Command("start")
         );
         await Promise.all(jobPromises);
       }
+
+      // Final status update
+      state.mode = "stopped";
+      updateStatus();
 
       console.log("Runner stopped");
       process.exit(0);

@@ -106,6 +106,7 @@ jobs:
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
+            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             DEBUG=*
 
   # Deploy docs app to production
@@ -191,3 +192,63 @@ jobs:
 
       - name: Publish to npm with OIDC
         run: cd turbo/apps/runner/dist && npm publish --access public
+
+  # Deploy runner to production metal instances
+  deploy-runner-production:
+    needs: [release-please, publish-runner-npm]
+    if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Build runner bundle
+        run: |
+          # Build runner
+          cd turbo && pnpm -F @vm0/runner build
+
+          # Create staging directory with built files
+          STAGING_DIR="/tmp/vm0-runner-bundle"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
+          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
+
+          # Install production dependencies
+          cd "$STAGING_DIR" && npm install --omit=dev
+
+          # Create tarball
+          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
+
+          echo "Bundle created at /tmp/vm0-runner-bundle.tar.gz"
+          ls -lh /tmp/vm0-runner-bundle.tar.gz
+
+      - name: Deploy to production with Ansible
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
+          chmod 600 ~/.ssh/prod-runner.pem
+
+          # Run Ansible playbook with rolling deployment
+          cd ansible
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/deploy-runner.yml \
+            --private-key ~/.ssh/prod-runner.pem \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
+            -e "api_url=https://app.vm0.dev" \
+            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -v

@@ -1,0 +1,24 @@
+# Production Runner Inventory
+#
+# This inventory is designed to be used with environment variables
+# passed from GitHub Actions:
+#   - AWS_METAL_RUNNER_HOSTS: comma-separated list of hosts
+#   - AWS_METAL_RUNNER_USER: SSH username
+#
+# Usage from GitHub Actions:
+#   ansible-playbook -i inventory/production.yml playbooks/deploy-runner.yml
+#
+# The actual hosts are injected via --extra-vars or environment variables
+# to keep sensitive information in GitHub Secrets.
+
+all:
+  children:
+    runners:
+      hosts:
+        # Hosts are added dynamically via command line:
+        # ansible-playbook -i "host1,host2," -e "ansible_user=ubuntu" playbook.yml
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        runner_base_dir: /opt/vm0-runner
+        runner_group: vm0/production
+        pm2_process_name: vm0-runner-production
