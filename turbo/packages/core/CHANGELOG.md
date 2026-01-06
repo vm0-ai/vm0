@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/vm0-ai/vm0/compare/core-v3.0.1...core-v3.0.2) (2026-01-06)
+
+
+### Bug Fixes
+
+* handle jsonQuery parsing hex version IDs as numbers ([#926](https://github.com/vm0-ai/vm0/issues/926)) ([b8cd4f8](https://github.com/vm0-ai/vm0/commit/b8cd4f8480f8ae103559c2ffd5f48cce2581c315))
+
 ## [3.0.1](https://github.com/vm0-ai/vm0/compare/core-v3.0.0...core-v3.0.1) (2026-01-05)
 
 
