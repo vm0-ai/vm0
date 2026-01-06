@@ -8,33 +8,47 @@ jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
     steps:
-      - name: Cleanup Runner on Metal
+      - uses: actions/checkout@v4
+
+      - name: Check if cleanup needed
+        id: check
+        env:
+          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOST" ]; then
+            echo "Metal secrets not available, skipping runner cleanup"
+            echo "should-cleanup=false" >> $GITHUB_OUTPUT
+          else
+            echo "should-cleanup=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Ansible
+        if: steps.check.outputs.should-cleanup == 'true'
+        run: pip install ansible
+
+      - name: Cleanup Runner with Ansible
+        if: steps.check.outputs.should-cleanup == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          # Skip if secrets not available
-          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOST" ]; then
-            echo "Metal secrets not available, skipping runner cleanup"
-            exit 0
-          fi
-
           # Setup SSH key
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/metal.pem
           chmod 600 ~/.ssh/metal.pem
 
-          SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/metal.pem"
-          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-
-          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
-          echo "Cleaning up runner for PR #${PR_NUMBER}..."
-
-          # Check if runner directory exists before cleanup
-          # (PR may not have deployed a runner if no runner code changes)
-          ssh $SSH_OPTS "$SSH_TARGET" "if [ -d '${RUNNER_DIR}' ]; then ${RUNNER_DIR}/deploy-runner/cleanup-runner.sh '${PR_NUMBER}'; else echo 'No runner directory to clean up (runner was not deployed for this PR)'; fi"
+          # Run Ansible cleanup playbook
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOST}," \
+            playbooks/cleanup-runner.yml \
+            --private-key ~/.ssh/metal.pem \
+            -e "ansible_user=${METAL_USER}" \
+            -e "pr_number=${PR_NUMBER}" \
+            -v
 
   cleanup-database:
     runs-on: ubuntu-latest

@@ -397,18 +397,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 
-      - name: Stop Runner (if deployed)
-        if: always() && needs.deploy-runner.outputs.runner-deployed == 'true'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
-        run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
-          SSH_TARGET="${METAL_USER}@${METAL_HOST}"
-          ssh $SSH_OPTS "$SSH_TARGET" "${RUNNER_DIR}/deploy-runner/stop-runner.sh '${PR_NUMBER}' --show-logs"
-
       - name: Stop Cron Simulator
         if: always()
         run: |

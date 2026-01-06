@@ -1,0 +1,80 @@
+# Cleanup VM0 Runner
+#
+# This playbook cleans up a runner deployment on metal instances.
+# Used when a PR is closed/merged to remove PR-specific runner resources.
+#
+# Usage:
+#   ansible-playbook -i "host," playbooks/cleanup-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "pr_number=123" \
+#     --private-key /path/to/key.pem
+#
+# Required Variables:
+#   - pr_number: The PR number to clean up
+
+- name: Cleanup VM0 Runner
+  hosts: all
+  become: yes
+
+  vars:
+    runner_base_dir: "/opt/vm0-runner/pr-{{ pr_number }}"
+    pm2_process_name: "vm0-runner-pr-{{ pr_number }}"
+    log_file: "/tmp/{{ pm2_process_name }}.log"
+
+  tasks:
+    - name: Check required variables
+      assert:
+        that:
+          - pr_number is defined
+        fail_msg: "Required variable: pr_number"
+
+    - name: Display cleanup configuration
+      debug:
+        msg: |
+          Cleaning up runner for PR #{{ pr_number }}:
+          - Directory: {{ runner_base_dir }}
+          - Process: {{ pm2_process_name }}
+          - Log file: {{ log_file }}
+
+    # Stop PM2 process
+    - name: Stop PM2 process
+      command: pm2 delete {{ pm2_process_name }}
+      become: no
+      ignore_errors: yes
+      register: pm2_result
+
+    - name: Display PM2 stop result
+      debug:
+        msg: "PM2 process {{ 'stopped' if pm2_result.rc == 0 else 'was not running' }}"
+
+    # Kill any orphaned node processes
+    - name: Kill any node processes running from runner directory
+      shell: pkill -f "node.*{{ runner_base_dir }}" || true
+
+    - name: Wait for processes to terminate
+      pause:
+        seconds: 1
+
+    - name: Force kill remaining processes
+      shell: pkill -9 -f "node.*{{ runner_base_dir }}" || true
+
+    # Clean up files
+    - name: Check if runner directory exists
+      stat:
+        path: "{{ runner_base_dir }}"
+      register: runner_dir_stat
+
+    - name: Remove runner directory
+      file:
+        path: "{{ runner_base_dir }}"
+        state: absent
+      when: runner_dir_stat.stat.exists
+
+    - name: Remove log file
+      file:
+        path: "{{ log_file }}"
+        state: absent
+
+    - name: Display cleanup summary
+      debug:
+        msg: "Runner cleanup complete for PR #{{ pr_number }}"
