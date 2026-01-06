@@ -7,10 +7,13 @@ import { runnersPollContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
-import { eq, and, isNull } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { eq, and, isNull, type SQL } from "drizzle-orm";
+import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/logger";
-import { validateRunnerGroupScope } from "../../../../src/lib/scope/scope-service";
+import {
+  validateRunnerGroupScope,
+  isOfficialRunnerGroup,
+} from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:runners:poll");
 
@@ -18,24 +21,48 @@ const router = tsr.router(runnersPollContract, {
   poll: async ({ body }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    const auth = await getRunnerAuth();
+    if (!auth) {
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
     const { group } = body;
 
-    // Validate runner group scope matches user's scope
-    try {
-      await validateRunnerGroupScope(userId, group);
-    } catch (error) {
-      return createErrorResponse(
-        "FORBIDDEN",
-        error instanceof Error ? error.message : "Scope validation failed",
-      );
+    // Build query conditions based on auth type
+    let whereConditions: SQL<unknown>[];
+
+    if (auth.type === "official-runner") {
+      // Official runners can only poll official runner groups (vm0/*)
+      if (!isOfficialRunnerGroup(group)) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          "Official runners can only poll vm0/* groups",
+        );
+      }
+      // Query all unclaimed jobs for the group (no userId filter)
+      whereConditions = [
+        eq(runnerJobQueue.runnerGroup, group),
+        isNull(runnerJobQueue.claimedAt),
+      ];
+      log.debug(`Official runner polling group: ${group}`);
+    } else {
+      // User runners: validate scope and filter by userId
+      try {
+        await validateRunnerGroupScope(auth.userId, group);
+      } catch (error) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          error instanceof Error ? error.message : "Scope validation failed",
+        );
+      }
+      whereConditions = [
+        eq(runnerJobQueue.runnerGroup, group),
+        isNull(runnerJobQueue.claimedAt),
+        eq(agentRuns.userId, auth.userId),
+      ];
     }
 
-    // Query runner_job_queue for unclaimed jobs belonging to the authenticated user
+    // Query runner_job_queue for unclaimed jobs
     const [pendingJob] = await globalThis.services.db
       .select({
         runId: runnerJobQueue.runId,
@@ -47,30 +74,21 @@ const router = tsr.router(runnersPollContract, {
       })
       .from(runnerJobQueue)
       .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
-      .where(
-        and(
-          eq(runnerJobQueue.runnerGroup, group),
-          isNull(runnerJobQueue.claimedAt),
-          eq(agentRuns.userId, userId),
-        ),
-      )
+      .where(and(...whereConditions))
       .limit(1);
 
-    // Alias for backward compatibility
-    const pendingRun = pendingJob;
-
-    if (pendingRun) {
-      log.debug(`Found pending job: ${pendingRun.runId}`);
+    if (pendingJob) {
+      log.debug(`Found pending job: ${pendingJob.runId}`);
       return {
         status: 200 as const,
         body: {
           job: {
-            runId: pendingRun.runId,
-            prompt: pendingRun.prompt,
-            agentComposeVersionId: pendingRun.agentComposeVersionId,
-            vars: (pendingRun.vars as Record<string, string>) ?? null,
-            secretNames: pendingRun.secretNames ?? null,
-            checkpointId: pendingRun.resumedFromCheckpointId ?? null,
+            runId: pendingJob.runId,
+            prompt: pendingJob.prompt,
+            agentComposeVersionId: pendingJob.agentComposeVersionId,
+            vars: (pendingJob.vars as Record<string, string>) ?? null,
+            secretNames: pendingJob.secretNames ?? null,
+            checkpointId: pendingJob.resumedFromCheckpointId ?? null,
           },
         },
       };

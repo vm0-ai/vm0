@@ -22,6 +22,7 @@ function initEnv() {
       R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1).optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
+      OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN: z.string().min(1).optional(),
     },
     client: {
@@ -41,6 +42,7 @@ function initEnv() {
       R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
       R2_USER_STORAGES_BUCKET_NAME: process.env.R2_USER_STORAGES_BUCKET_NAME,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
+      OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       AXIOM_TOKEN: process.env.AXIOM_TOKEN,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
