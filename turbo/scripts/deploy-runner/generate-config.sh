@@ -1,9 +1,9 @@
 #!/bin/bash
 # Generate runner.yaml configuration
-# This script runs in the CI container (has access to CLI token)
+# This script runs in the CI container
 #
 # Usage: ./generate-config.sh <pr-number> <api-url> <output-file>
-# Reads token from ~/.vm0/config.json
+# Requires OFFICIAL_RUNNER_SECRET environment variable
 
 set -e
 
@@ -16,15 +16,16 @@ if [ -z "$PR_NUMBER" ] || [ -z "$API_URL" ] || [ -z "$OUTPUT_FILE" ]; then
   exit 1
 fi
 
-RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}"
+# Use official runner group (vm0/* groups are for official runners)
+RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
 
-echo "Getting CLI token from ~/.vm0/config.json..."
-TOKEN=$(jq -r '.token' ~/.vm0/config.json)
-if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-  echo "ERROR: No token found in CLI config"
+# Use official runner token format
+if [ -z "$OFFICIAL_RUNNER_SECRET" ]; then
+  echo "ERROR: OFFICIAL_RUNNER_SECRET environment variable not set"
   exit 1
 fi
-echo "Token obtained successfully"
+TOKEN="vm0_official_${OFFICIAL_RUNNER_SECRET}"
+echo "Using official runner token"
 
 echo "Creating runner.yaml config..."
 cat > "$OUTPUT_FILE" << EOF

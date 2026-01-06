@@ -346,31 +346,15 @@ jobs:
           fi
           echo "✅ Serial tests passed"
 
-          # Step 2: Start runner AFTER serial tests (scope is now established)
-          if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo ""
-            echo "=== Starting Runner (after scope established) ==="
-            SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/.ssh/metal.pem"
-            SSH_TARGET="${CI_AWS_METAL_RUNNER_USER}@${CI_AWS_METAL_RUNNER_HOST}"
+          # Runner is started in deploy-runner job with official token
+          # Set RUNNER_GROUP for runner tests
+          export RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
 
-            # Generate config locally (needs CLI token from CI with correct scope)
-            CONFIG_FILE="/tmp/runner-pr-${PR_NUMBER}.yaml"
-            turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${VM0_API_URL}" "$CONFIG_FILE"
-
-            # Copy config to Metal and start runner
-            scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
-            ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${VERCEL_AUTOMATION_BYPASS_SECRET}' USE_MOCK_CLAUDE='${USE_MOCK_CLAUDE}' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
-            echo "✅ Runner started with scope e2e-stable/pr-${PR_NUMBER}"
-
-            # Set RUNNER_GROUP for subsequent tests (export to current shell)
-            export RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}"
-          fi
-
-          # Step 3: Run runner tests if runner was deployed
+          # Step 2: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
-            RUNNER_GROUP="e2e-stable/pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
@@ -463,6 +447,7 @@ jobs:
           RUNNER_CHANGED: ${{ needs.change-detection.outputs.runner-changed }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
@@ -553,3 +538,14 @@ jobs:
 
           echo "Runner deployed to ${RUNNER_DIR} for PR #${PR_NUMBER}"
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
+
+          # Generate runner config with official runner token
+          echo "Generating runner config..."
+          CONFIG_FILE="/tmp/runner-pr-${PR_NUMBER}.yaml"
+          OFFICIAL_RUNNER_SECRET="${OFFICIAL_RUNNER_SECRET}" turbo/scripts/deploy-runner/generate-config.sh "${PR_NUMBER}" "${{ needs.deploy-web.outputs.preview-url }}" "$CONFIG_FILE"
+
+          # Copy config to Metal and start runner
+          echo "Starting runner on Metal..."
+          scp $SSH_OPTS "$CONFIG_FILE" "${SSH_TARGET}:${RUNNER_DIR}/runner.yaml"
+          ssh $SSH_OPTS "$SSH_TARGET" "VERCEL_AUTOMATION_BYPASS_SECRET='${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}' USE_MOCK_CLAUDE='true' ${RUNNER_DIR}/deploy-runner/start-runner.sh '${RUNNER_DIR}' '${PR_NUMBER}'"
+          echo "Runner started with official group vm0/development-pr-${PR_NUMBER}"
