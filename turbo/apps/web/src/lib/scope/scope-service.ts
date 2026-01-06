@@ -5,6 +5,7 @@ import { users } from "../../db/schema/user";
 import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
+import { isSystemScope } from "@vm0/core";
 
 const log = logger("service:scope");
 
@@ -314,11 +315,25 @@ export async function assertScopeWriteAccess(
 }
 
 /**
+ * Check if a runner group belongs to the official vm0 system scope.
+ * Official runner groups (vm0/production, vm0/development) can be used by any user.
+ *
+ * @param group - Runner group in format "scope/name"
+ * @returns true if the group is an official runner group (vm0/*)
+ */
+export function isOfficialRunnerGroup(group: string): boolean {
+  const scopeSlug = group.split("/")[0];
+  return scopeSlug ? isSystemScope(scopeSlug) : false;
+}
+
+/**
  * Validate that a runner group's scope matches the user's scope.
  * Runner groups are in format "scope/name" (e.g., "e2e-stable/pr-851").
- * The scope part must match the user's personal scope slug.
  *
- * @throws ForbiddenError if scope doesn't match
+ * For official runner groups (vm0/*), any authenticated user is allowed.
+ * For user runner groups, the scope part must match the user's personal scope slug.
+ *
+ * @throws ForbiddenError if scope doesn't match (for non-official groups)
  */
 export async function validateRunnerGroupScope(
   clerkUserId: string,
@@ -329,6 +344,12 @@ export async function validateRunnerGroupScope(
     throw new ForbiddenError("Invalid runner group format");
   }
 
+  // Official runner groups (vm0/*) are accessible to all authenticated users
+  if (isSystemScope(scopeSlug)) {
+    return;
+  }
+
+  // For user runner groups, validate scope ownership
   const userScope = await getUserScopeByClerkId(clerkUserId);
   if (!userScope) {
     throw new ForbiddenError(

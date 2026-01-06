@@ -410,6 +410,7 @@ jobs:
           CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 
       - name: Stop Runner (if deployed)
         if: always() && needs.deploy-runner.outputs.runner-deployed == 'true'
