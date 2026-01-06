@@ -10,6 +10,23 @@ const c = initContract();
 const storageTypeSchema = z.enum(["volume", "artifact"]);
 
 /**
+ * Version ID query parameter schema
+ *
+ * Handles jsonQuery edge case where hex strings like "846e3519"
+ * are parsed as JavaScript scientific notation numbers (e.g., 846e3519 = Infinity).
+ *
+ * The preprocess step converts any non-null/undefined value to string,
+ * then validates it matches hex format (8-64 characters).
+ */
+const versionQuerySchema = z.preprocess(
+  (val) => (val === undefined || val === null ? undefined : String(val)),
+  z
+    .string()
+    .regex(/^[a-f0-9]{8,64}$/i, "Version must be 8-64 hex characters")
+    .optional(),
+);
+
+/**
  * Upload storage response schema (JSON part of POST response)
  */
 const uploadStorageResponseSchema = z.object({
@@ -72,7 +89,7 @@ export const storagesContract = c.router({
     path: "/api/storages",
     query: z.object({
       name: z.string().min(1, "Storage name is required"),
-      version: z.string().optional(),
+      version: versionQuerySchema,
     }),
     responses: {
       // Binary response - actual handling done at route level
@@ -218,7 +235,7 @@ export const storagesDownloadContract = c.router({
     query: z.object({
       name: z.string().min(1, "Storage name is required"),
       type: storageTypeSchema,
-      version: z.string().optional(),
+      version: versionQuerySchema,
     }),
     responses: {
       // Normal response with presigned URL
