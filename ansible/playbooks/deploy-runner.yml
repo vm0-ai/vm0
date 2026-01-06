@@ -142,8 +142,6 @@
 
     - name: Clean runner directory
       shell: rm -rf {{ runner_base_dir }}/*
-      args:
-        warn: false
 
     - name: Extract runner bundle
       unarchive:
