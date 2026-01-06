@@ -155,3 +155,6 @@ settings.local.json
 
 # Local HTTPS certificates
 .certs/
+
+# Code reviews
+codereviews/
