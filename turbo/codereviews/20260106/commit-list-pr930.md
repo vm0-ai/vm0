@@ -1,4 +1,0 @@
-- [ ] f6a517c3 - feat(runner): add official runner support for vm0/\* groups
-- [ ] 11239b5b - fix(ci): add OFFICIAL_RUNNER_SECRET to Vercel deployment env
-- [ ] 6ecedaad - fix: format claim route
-- [ ] d2b4bff6 - refactor(ci): switch E2E tests to official runner
