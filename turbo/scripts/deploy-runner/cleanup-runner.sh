@@ -19,8 +19,18 @@ RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
 
 echo "Cleaning up runner for PR #${PR_NUMBER}..."
 
-# Stop pm2 process
+# Stop pm2 process (if using pm2)
 pm2 delete "$PROCESS_NAME" 2>/dev/null || true
+
+# Kill any node processes running from this runner directory
+# This catches runners started directly (not via pm2)
+pkill -f "node.*${RUNNER_DIR}" 2>/dev/null || true
+
+# Wait a moment for processes to terminate
+sleep 1
+
+# Force kill if still running
+pkill -9 -f "node.*${RUNNER_DIR}" 2>/dev/null || true
 
 # Remove runner directory (needs sudo as it was created with sudo)
 sudo rm -rf "$RUNNER_DIR"
