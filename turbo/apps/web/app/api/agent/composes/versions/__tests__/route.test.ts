@@ -173,7 +173,7 @@ describe("GET /api/agent/composes/versions", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Invalid version format");
+    expect(data.error.message).toContain("8-64 hex characters");
   });
 
   it("should return 400 for invalid version format (non-hex)", async () => {
@@ -186,7 +186,7 @@ describe("GET /api/agent/composes/versions", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Invalid version format");
+    expect(data.error.message).toContain("8-64 hex characters");
   });
 
   it("should return 400 when composeId is missing", async () => {
