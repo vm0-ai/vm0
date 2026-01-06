@@ -453,7 +453,7 @@ jobs:
 
       - name: Install Ansible
         if: steps.check.outputs.should-deploy == 'true'
-        run: pip install ansible
+        run: apt-get update && apt-get install -y ansible
 
       - name: Build runner bundle
         if: steps.check.outputs.should-deploy == 'true'
