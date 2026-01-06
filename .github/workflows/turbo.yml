@@ -257,7 +257,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, deploy-runner]
+    needs: [change-detection, deploy-web, deploy-runner, lint, test]
     # Run if:
     # - It's a PR, (CLI or web) changed, and web deployment succeeded
     # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
