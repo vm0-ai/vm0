@@ -39,7 +39,6 @@ vi.mock("../../../../../src/lib/run", () => ({
   runService: {
     createRunContext: vi.fn(),
     buildExecutionContext: vi.fn(),
-    executeRun: vi.fn(),
     prepareAndDispatch: vi.fn(),
     validateCheckpoint: vi.fn(),
     validateAgentSession: vi.fn(),

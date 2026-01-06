@@ -192,13 +192,8 @@ export class E2BExecutor implements Executor {
         await this.cleanupSandbox(sandbox);
       }
 
-      return {
-        runId: context.runId,
-        status: "running", // Return running even on failure - status is in DB
-        sandboxId: sandbox?.sandboxId,
-        createdAt: new Date(startTime).toISOString(),
-        error: errorMessage,
-      };
+      // Re-throw error for caller to handle
+      throw error;
     }
   }
 

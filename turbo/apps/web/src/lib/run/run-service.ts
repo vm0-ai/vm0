@@ -16,8 +16,6 @@ import type {
 } from "../checkpoint/types";
 import { agentSessionService } from "../agent-session";
 import { sessionHistoryService } from "../session-history";
-import { e2bService } from "../e2b";
-import type { RunResult } from "../e2b/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
   expandVariables,
@@ -873,21 +871,6 @@ export class RunService {
       resumedFromCheckpointId: params.resumedFromCheckpointId,
       continuedFromSessionId: params.continuedFromSessionId,
     };
-  }
-
-  /**
-   * Execute an agent run with the given context
-   * Delegates to e2b-service for actual execution
-   *
-   * @deprecated Use dispatch() with PreparedContext instead
-   * @param context Execution context (new run or resume)
-   * @returns Run result
-   */
-  async executeRun(context: ExecutionContext): Promise<RunResult> {
-    log.debug(
-      `Executing run ${context.runId} (resume: ${!!context.resumeSession})`,
-    );
-    return await e2bService.execute(context);
   }
 
   /**
