@@ -207,7 +207,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
 
       - name: Install Ansible
-        run: apt-get update && apt-get install -y ansible
+        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
 
       - name: Build runner bundle
         run: |
