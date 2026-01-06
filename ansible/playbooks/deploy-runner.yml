@@ -203,14 +203,14 @@
 
     - name: Create PM2 ecosystem file
       template:
-        src: ecosystem.config.js.j2
-        dest: "{{ runner_base_dir }}/ecosystem.config.js"
+        src: ecosystem.config.cjs.j2
+        dest: "{{ runner_base_dir }}/ecosystem.config.cjs"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0644'
 
     - name: Start runner via PM2
-      command: pm2 start ecosystem.config.js
+      command: pm2 start ecosystem.config.cjs
       args:
         chdir: "{{ runner_base_dir }}"
       become: no
