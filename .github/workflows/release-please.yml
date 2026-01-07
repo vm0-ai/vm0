@@ -211,8 +211,8 @@ jobs:
 
       - name: Build runner bundle
         run: |
-          # Build runner
-          cd turbo && pnpm -F @vm0/runner build
+          # Build runner (use subshell to preserve working directory)
+          (cd turbo && pnpm -F @vm0/runner build)
 
           # Create staging directory with built files
           STAGING_DIR="/tmp/vm0-runner-bundle"
@@ -221,7 +221,7 @@ jobs:
           cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
 
           # Install production dependencies
-          cd "$STAGING_DIR" && npm install --omit=dev
+          (cd "$STAGING_DIR" && npm install --omit=dev)
 
           # Create tarball
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
