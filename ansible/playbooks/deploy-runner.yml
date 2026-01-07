@@ -95,9 +95,9 @@
 
             while [ $elapsed -lt $timeout ]; do
               if [ -f "$status_file" ]; then
-                # Check mode and active_jobs from JSON
-                mode=$(cat "$status_file" | grep -o '"mode":"[^"]*"' | cut -d'"' -f4)
-                active=$(cat "$status_file" | grep -o '"active_jobs":[0-9]*' | grep -o '[0-9]*')
+                # Check mode and active_jobs from JSON (handle pretty-printed format with spaces)
+                mode=$(cat "$status_file" | grep -o '"mode": *"[^"]*"' | cut -d'"' -f4)
+                active=$(cat "$status_file" | grep -o '"active_jobs": *[0-9]*' | grep -o '[0-9]*')
 
                 if [ "$active" = "0" ]; then
                   echo "Drain complete: no active jobs (mode: $mode)"

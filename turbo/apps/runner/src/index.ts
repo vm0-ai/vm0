@@ -1,5 +1,6 @@
 // VM0 Runner - Self-hosted runner for the VM0 platform
 // Connects to the VM0 API server to poll and execute agent jobs
+// Supports drain mode for zero-downtime deployments via SIGUSR1 signal
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
