@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.4](https://github.com/vm0-ai/vm0/compare/runner-v2.1.3...runner-v2.1.4) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** use correct production API URL for runner deployment ([#950](https://github.com/vm0-ai/vm0/issues/950)) ([9624eed](https://github.com/vm0-ai/vm0/commit/9624eedcb5b15118ad9d11852055a65f9470585d))
+
 ## [2.1.3](https://github.com/vm0-ai/vm0/compare/runner-v2.1.2...runner-v2.1.3) (2026-01-07)
 
 
