@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/vm0-ai/vm0/compare/runner-v2.0.4...runner-v2.1.0) (2026-01-07)
+
+
+### Features
+
+* **runner:** add production deployment with Ansible rolling updates ([#935](https://github.com/vm0-ai/vm0/issues/935)) ([9e8fce6](https://github.com/vm0-ai/vm0/commit/9e8fce6480e754135dd61df146d961e14a2e9f7d))
+
 ## [2.0.4](https://github.com/vm0-ai/vm0/compare/runner-v2.0.3...runner-v2.0.4) (2026-01-06)
 
 
