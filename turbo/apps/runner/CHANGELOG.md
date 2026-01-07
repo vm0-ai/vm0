@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/vm0-ai/vm0/compare/runner-v2.1.6...runner-v2.2.0) (2026-01-07)
+
+
+### Features
+
+* **runner:** add API connectivity health check ([#956](https://github.com/vm0-ai/vm0/issues/956)) ([9ddd6ff](https://github.com/vm0-ai/vm0/commit/9ddd6ff99fca79001b3c2b149a0ff82dfa017162))
+
 ## [2.1.6](https://github.com/vm0-ai/vm0/compare/runner-v2.1.5...runner-v2.1.6) (2026-01-07)
 
 
