@@ -1,4 +1,4 @@
-// vm0-runner CLI entrypoint
+// vm0-runner CLI entrypoint - self-hosted runner for VM0 platform
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
