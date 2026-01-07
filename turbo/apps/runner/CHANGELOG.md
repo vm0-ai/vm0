@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.6](https://github.com/vm0-ai/vm0/compare/runner-v2.1.5...runner-v2.1.6) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** handle pretty-printed JSON in drain script ([#954](https://github.com/vm0-ai/vm0/issues/954)) ([bc7784a](https://github.com/vm0-ai/vm0/commit/bc7784ae152d913d09c05b5524dc6d029f2a7b4b))
+
 ## [2.1.5](https://github.com/vm0-ai/vm0/compare/runner-v2.1.4...runner-v2.1.5) (2026-01-07)
 
 
