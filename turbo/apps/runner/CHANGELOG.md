@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.3](https://github.com/vm0-ai/vm0/compare/runner-v2.1.2...runner-v2.1.3) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** use pm2 jlist for reliable PID detection ([#946](https://github.com/vm0-ai/vm0/issues/946)) ([1eb915b](https://github.com/vm0-ai/vm0/commit/1eb915bccf92412e235d0ed43e192b06f60a66c5))
+
 ## [2.1.2](https://github.com/vm0-ai/vm0/compare/runner-v2.1.1...runner-v2.1.2) (2026-01-07)
 
 
