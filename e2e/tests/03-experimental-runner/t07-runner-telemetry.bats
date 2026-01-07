@@ -7,24 +7,15 @@
 # 1. Agent runs display Run ID at start
 # 2. Agent runs collect telemetry data (system log and metrics)
 # 3. The vm0 logs command can retrieve telemetry data
+#
+# BLACK BOX test - only interacts via CLI/API
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t07"
 
 setup() {
-    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi
@@ -115,7 +106,6 @@ teardown() {
     echo "# Run ID: $RUN_ID"
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
-        get_runner_logs
         return 1
     }
 

@@ -5,24 +5,15 @@
 #
 # Verifies that artifacts pushed via CLI are correctly mounted and visible
 # in the sandbox during agent runs with runner
+#
+# BLACK BOX test - only interacts via CLI/API
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t06"
 
 setup() {
-    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi

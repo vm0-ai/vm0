@@ -7,24 +7,15 @@
 # 1. Agent runs create agent sessions
 # 2. vm0 run continue uses session's conversation but latest artifact version
 # 3. Session stores and inherits templateVars for continue operations
+#
+# BLACK BOX test - only interacts via CLI/API
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t04"
 
 setup() {
-    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi
@@ -111,7 +102,6 @@ teardown() {
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ] || {
         echo "# Failed to extract session ID"
-        get_runner_logs
         return 1
     }
 
@@ -195,7 +185,6 @@ teardown() {
         echo "# Session IDs don't match!"
         echo "# First:  $SESSION_ID_1"
         echo "# Second: $SESSION_ID_2"
-        get_runner_logs
         return 1
     }
 

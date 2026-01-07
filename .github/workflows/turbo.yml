@@ -319,14 +319,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Setup Runner Command (if deployed)
-        if: needs.deploy-runner.outputs.runner-deployed == 'true'
-        run: |
-          mkdir -p /tmp/.ssh
-          echo "${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}" > /tmp/.ssh/metal.pem
-          chmod 600 /tmp/.ssh/metal.pem
-          echo "SSH key setup for runner tests"
-
       - name: Run CLI E2E Tests
         run: |
           # Track exit codes
@@ -390,10 +382,6 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           RUNNER_DEPLOYED: ${{ needs.deploy-runner.outputs.runner-deployed }}
-          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
-          SSH_KEY_PATH: /tmp/.ssh/metal.pem
-          CI_AWS_METAL_RUNNER_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          CI_AWS_METAL_RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 

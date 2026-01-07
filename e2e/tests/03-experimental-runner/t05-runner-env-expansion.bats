@@ -7,24 +7,15 @@
 # 1. Vars and secrets are expanded in agent environment
 # 2. Secrets are masked in output
 # 3. Missing secrets/vars cause appropriate errors
+#
+# BLACK BOX test - only interacts via CLI/API
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t05"
 
 setup() {
-    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi
@@ -201,7 +192,6 @@ setup_artifact() {
     SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
     [ -n "$SESSION_ID" ] || {
         echo "# Failed to extract session ID"
-        get_runner_logs
         return 1
     }
     echo "# Session ID: $SESSION_ID"

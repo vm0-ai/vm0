@@ -6,24 +6,15 @@
 # This test verifies that:
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
+#
+# BLACK BOX test - only interacts via CLI/API
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Unique agent name for this test file
 AGENT_NAME="e2e-runner-t03"
 
 setup() {
-    # Verify prerequisites - fail if missing (skip is not allowed in 03 suite)
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi
@@ -102,9 +93,6 @@ teardown() {
     echo "# Run output:"
     echo "$output"
 
-    # Show runner logs only if command failed (reduces SSH overhead)
-    show_logs_on_failure
-
     assert_success
     assert_output --partial "Checkpoint:"
 
@@ -113,8 +101,6 @@ teardown() {
     echo "# Checkpoint ID: $CHECKPOINT_ID"
     [ -n "$CHECKPOINT_ID" ] || {
         echo "# Failed to extract checkpoint ID"
-        echo "# Runner logs:"
-        get_runner_logs
         return 1
     }
 

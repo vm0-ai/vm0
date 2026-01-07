@@ -3,21 +3,14 @@
 # E2E tests for experimental_runner compose field with actual runner execution
 # The runner is started by the CI workflow before these tests run.
 # Tests submit jobs and verify the shared runner picks them up.
+#
+# These are BLACK BOX tests - they only interact via the CLI/API,
+# not by SSH-ing into the runner machine.
 
 load '../../helpers/setup.bash'
-load '../../helpers/ssh.bash'
-load '../../helpers/runner.bash'
 
 # Verify test prerequisites
 setup() {
-    if [[ -z "$RUNNER_DIR" ]]; then
-        fail "RUNNER_DIR not set - runner was not deployed"
-    fi
-
-    if ! ssh_check; then
-        fail "Remote instance not reachable - check CI_AWS_METAL_RUNNER_* secrets"
-    fi
-
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
     fi
@@ -78,20 +71,11 @@ EOF
     echo "# Run output:"
     echo "$output"
 
-    # Show runner logs only if command failed (reduces SSH overhead)
-    show_logs_on_failure
-
     # Verify the run completed successfully
     assert_success
 
-    echo "# Step 5: Verify runner processed the job"
-    local runner_logs=$(get_runner_logs)
-    echo "# Runner logs:"
-    echo "$runner_logs"
-
-    echo "# Step 6: Check runner claimed and executed the job"
-    # Check if runner claimed and executed the job
-    [[ "$runner_logs" =~ "Found job" ]] || [[ "$runner_logs" =~ "Claimed job" ]] || [[ "$runner_logs" =~ "reported as completed" ]]
+    # Verify the run completed with expected output
+    assert_output --partial "Run completed successfully"
 }
 
 @test "experimental_runner: compose validation accepts valid group format" {
