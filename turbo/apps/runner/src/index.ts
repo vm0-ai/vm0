@@ -1,5 +1,5 @@
 // VM0 Runner - Self-hosted runner for the VM0 platform
-// Connects to the VM0 API to poll and execute agent jobs
+// Connects to the VM0 API server to poll and execute agent jobs
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
