@@ -248,6 +248,7 @@
       args:
         chdir: "{{ runner_base_dir }}"
       become: no
+      environment: "{{ extra_env }}"
       register: status_check
       retries: 3
       delay: 5
