@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.1.1](https://github.com/vm0-ai/vm0/compare/web-v8.1.0...web-v8.1.1) (2026-01-07)
+
+
+### Bug Fixes
+
+* **web:** add module documentation to trigger production deployment ([#948](https://github.com/vm0-ai/vm0/issues/948)) ([4af933c](https://github.com/vm0-ai/vm0/commit/4af933c0d04ec0cd5edbde29769e522831172fa8))
+
 ## [8.1.0](https://github.com/vm0-ai/vm0/compare/web-v8.0.2...web-v8.1.0) (2026-01-06)
 
 
