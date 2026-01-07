@@ -17,7 +17,7 @@
 #   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
-#     -e "api_url=https://app.vm0.dev" \
+#     -e "api_url=https://www.vm0.ai" \
 #     -e "enable_drain=true"
 #
 # Required Variables:

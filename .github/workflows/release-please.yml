@@ -249,6 +249,6 @@ jobs:
             --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
-            -e "api_url=https://app.vm0.dev" \
+            -e "api_url=https://www.vm0.ai" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -v
