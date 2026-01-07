@@ -1,3 +1,10 @@
+/**
+ * Runner authentication module
+ *
+ * Handles authentication for runner endpoints (poll, claim).
+ * Supports official runners (vm0_official_*) and user runners (vm0_live_*).
+ */
+
 import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
