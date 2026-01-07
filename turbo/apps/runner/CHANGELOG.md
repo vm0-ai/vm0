@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2](https://github.com/vm0-ai/vm0/compare/runner-v2.1.1...runner-v2.1.2) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** standardize file header comment ([#944](https://github.com/vm0-ai/vm0/issues/944)) ([5e98888](https://github.com/vm0-ai/vm0/commit/5e98888527f6c7bdda9c5fa7bcdf94b5351336a9))
+
 ## [2.1.1](https://github.com/vm0-ai/vm0/compare/runner-v2.1.0...runner-v2.1.1) (2026-01-07)
 
 
