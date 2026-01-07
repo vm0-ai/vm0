@@ -198,6 +198,17 @@
       command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh /opt/firecracker/rootfs.ext4"
       when: not rootfs_file.stat.exists
 
+    - name: Ensure user is in kvm group for Firecracker
+      user:
+        name: "{{ ansible_user }}"
+        groups: kvm
+        append: yes
+      register: kvm_group_result
+
+    - name: Reset connection to pick up new group membership
+      meta: reset_connection
+      when: kvm_group_result.changed
+
     # ========================================
     # Phase 5: Configure and Start
     # ========================================
