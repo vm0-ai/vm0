@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/vm0-ai/vm0/compare/runner-v2.1.0...runner-v2.1.1) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** capitalize comment for consistency ([#941](https://github.com/vm0-ai/vm0/issues/941)) ([de2a5b7](https://github.com/vm0-ai/vm0/commit/de2a5b7ad501819a539fefcccc409f9a38ae2d23))
+
 ## [2.1.0](https://github.com/vm0-ai/vm0/compare/runner-v2.0.4...runner-v2.1.0) (2026-01-07)
 
 
