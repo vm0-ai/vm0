@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.5](https://github.com/vm0-ai/vm0/compare/runner-v2.1.4...runner-v2.1.5) (2026-01-07)
+
+
+### Bug Fixes
+
+* **runner:** configure SSH keep-alive for long-running drain operations ([#952](https://github.com/vm0-ai/vm0/issues/952)) ([ed99196](https://github.com/vm0-ai/vm0/commit/ed9919632aea23afb5eb6538489bfe182a6a0ade))
+
 ## [2.1.4](https://github.com/vm0-ai/vm0/compare/runner-v2.1.3...runner-v2.1.4) (2026-01-07)
 
 
