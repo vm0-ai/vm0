@@ -1,4 +1,4 @@
-// VM0 Runner - Self-hosted runner for VM0 platform
+// VM0 Runner - Self-hosted runner for the VM0 platform
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";

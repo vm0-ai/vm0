@@ -472,7 +472,7 @@ jobs:
           chmod 600 ~/.ssh/metal.pem
 
           # Run Ansible playbook for CI deployment
-          # Note: enable_drain must be passed as JSON to preserve boolean type
+          # Enable drain mode to test the same code path as production
           cd ansible
           ansible-playbook \
             -i "${METAL_HOST}," \
@@ -485,7 +485,7 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-            -e '{"enable_drain": false}' \
+            -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 

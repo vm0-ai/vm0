@@ -73,7 +73,7 @@
     # Phase 2: Stop existing runner
     # ========================================
     - name: Check if runner is currently running
-      command: pm2 pid {{ pm2_process_name }}
+      shell: pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="{{ pm2_process_name }}") | .pid // empty'
       register: pm2_pid
       ignore_errors: yes
       changed_when: false
@@ -81,7 +81,7 @@
 
     # Production: Drain before stopping (wait for active jobs)
     - name: Enter maintenance mode (stop polling, wait for active jobs)
-      when: enable_drain and pm2_pid.rc == 0 and pm2_pid.stdout != ""
+      when: enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
       block:
         - name: Signal runner to enter drain mode
           command: kill -USR1 {{ pm2_pid.stdout }}
@@ -124,7 +124,7 @@
 
     # CI: Just stop without drain (no long-running jobs)
     - name: Stop runner without drain
-      when: not enable_drain and pm2_pid.rc == 0 and pm2_pid.stdout != ""
+      when: not enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
       command: pm2 delete {{ pm2_process_name }}
       ignore_errors: yes
       become: no
