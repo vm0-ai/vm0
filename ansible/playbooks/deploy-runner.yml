@@ -169,6 +169,14 @@
       with_fileglob:
         - "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/*.sh"
 
+    - name: Copy Dockerfile for rootfs build
+      copy:
+        src: "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/Dockerfile"
+        dest: "{{ runner_base_dir }}/deploy-runner/Dockerfile"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
     # ========================================
     # Phase 4: Install Dependencies (if needed)
     # ========================================
