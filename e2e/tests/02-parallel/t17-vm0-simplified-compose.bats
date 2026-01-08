@@ -214,13 +214,14 @@ EOF
 
 @test "vm0 compose with skills downloads and uploads skill" {
     echo "# Creating config with skills..."
+    # Note: Using base image since github variant may not exist yet
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0/claude-code-github:dev
+    image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -237,13 +238,14 @@ EOF
 
 @test "vm0 compose with skills deduplicates unchanged skill" {
     echo "# Creating config with skills..."
+    # Note: Using base image since github variant may not exist yet
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0/claude-code-github:dev
+    image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -265,13 +267,14 @@ EOF
 
 @test "vm0 compose with both instructions and skills" {
     echo "# Creating config with both instructions and skills..."
+    # Note: Using base image since github variant may not exist yet
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0/claude-code-github:dev
+    image: vm0/claude-code:dev
     instructions: AGENTS.md
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -342,13 +345,15 @@ EOF
 
 @test "vm0 run with skills mounts skill directory" {
     echo "# Creating config with skills..."
+    # Note: Using base image since github variant may not exist yet
+    # Skills work with any image - they're just file mounts
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     provider: claude-code
-    image: vm0/claude-code-github:dev
+    image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
