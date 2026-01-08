@@ -36,6 +36,13 @@ teardown() {
 }
 
 @test "runner network security: run with proxy captures network traffic" {
+    # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
+    # The network security proxy requires mitmproxy installed on the runner
+    # and CA certificate baked into the rootfs, which may not be available in CI
+    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
+        skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
+    fi
+
     echo "# Using shared runner with group: ${RUNNER_GROUP}"
 
     echo "# Step 1: Create agent config with experimental_runner and network_security"
