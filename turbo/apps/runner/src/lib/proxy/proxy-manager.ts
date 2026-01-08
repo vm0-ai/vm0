@@ -85,7 +85,9 @@ export class ProxyManager {
     fs.writeFileSync(this.config.addonPath, RUNNER_MITM_ADDON_SCRIPT, {
       mode: 0o755,
     });
-    console.log(`[ProxyManager] Addon script written to ${this.config.addonPath}`);
+    console.log(
+      `[ProxyManager] Addon script written to ${this.config.addonPath}`,
+    );
   }
 
   /**
