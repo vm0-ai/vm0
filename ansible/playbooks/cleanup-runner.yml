@@ -48,15 +48,27 @@
         msg: "PM2 process {{ 'stopped' if pm2_result.rc == 0 else 'was not running' }}"
 
     # Kill any orphaned node processes
-    - name: Kill any node processes running from runner directory
-      shell: pkill -f "node.*{{ runner_base_dir }}" || true
+    # Note: We use pgrep + kill instead of pkill to avoid pkill matching itself
+    # (pkill -f "pattern" would match the shell process running the pkill command)
+    - name: Find node processes running from runner directory
+      shell: pgrep -f "node.*{{ runner_base_dir }}" || true
+      register: node_pids
+      changed_when: false
+
+    - name: Kill node processes (graceful)
+      shell: kill {{ node_pids.stdout_lines | join(' ') }}
+      when: node_pids.stdout_lines | length > 0
+      ignore_errors: yes
 
     - name: Wait for processes to terminate
       pause:
         seconds: 1
+      when: node_pids.stdout_lines | length > 0
 
-    - name: Force kill remaining processes
-      shell: pkill -9 -f "node.*{{ runner_base_dir }}" || true
+    - name: Force kill remaining node processes
+      shell: kill -9 {{ node_pids.stdout_lines | join(' ') }}
+      when: node_pids.stdout_lines | length > 0
+      ignore_errors: yes
 
     # Clean up files
     - name: Check if runner directory exists
