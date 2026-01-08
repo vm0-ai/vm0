@@ -220,6 +220,15 @@
       command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
       when: not rootfs_file.stat.exists or force_rebuild_rootfs
 
+    - name: Check if proxy CA certificate exists
+      stat:
+        path: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
+      register: proxy_ca_file
+
+    - name: Generate proxy CA certificate if not exists
+      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/deploy-runner/proxy-ca"
+      when: not proxy_ca_file.stat.exists
+
     - name: Ensure proxy CA directory exists
       file:
         path: /opt/vm0-runner/proxy
