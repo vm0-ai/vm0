@@ -146,6 +146,23 @@ def request(flow: http.HTTPFlow) -> None:
         flow.metadata["skip_rewrite"] = True
         return
 
+    # Skip rewriting requests to trusted domains (S3, etc.)
+    # S3 presigned URLs have signatures that break when proxied
+    host = flow.request.pretty_host.lower()
+    TRUSTED_DOMAINS = [
+        ".s3.amazonaws.com",
+        ".s3-",  # Regional S3 endpoints like s3-us-west-2.amazonaws.com
+        "s3.amazonaws.com",
+        ".r2.cloudflarestorage.com",
+        ".storage.googleapis.com",
+    ]
+    for domain in TRUSTED_DOMAINS:
+        if domain in host or host.endswith(domain.lstrip(".")):
+            ctx.log.info(f"[{run_id}] Skipping trusted domain: {host}")
+            flow.metadata["original_url"] = get_original_url(flow)
+            flow.metadata["skip_rewrite"] = True
+            return
+
     # Get original target URL
     original_url = get_original_url(flow)
     flow.metadata["original_url"] = original_url
