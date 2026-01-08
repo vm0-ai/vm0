@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/vm0-ai/vm0/compare/core-v3.0.2...core-v3.1.0) (2026-01-08)
+
+
+### Features
+
+* replace custom image building with apps-based image selection ([#963](https://github.com/vm0-ai/vm0/issues/963)) ([231f9b0](https://github.com/vm0-ai/vm0/commit/231f9b0890b07baaa618be58a7da14cc52b0ec7d))
+
 ## [3.0.2](https://github.com/vm0-ai/vm0/compare/core-v3.0.1...core-v3.0.2) (2026-01-06)
 
 

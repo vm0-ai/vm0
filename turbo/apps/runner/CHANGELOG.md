@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.2.1](https://github.com/vm0-ai/vm0/compare/runner-v2.2.0...runner-v2.2.1) (2026-01-08)
+
+
+### Bug Fixes
+
+* **ci:** use per-pr rootfs to prevent cross-pr interference ([#973](https://github.com/vm0-ai/vm0/issues/973)) ([d6bd661](https://github.com/vm0-ai/vm0/commit/d6bd661fae1352ee578844a79d34d2eefe8cf429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.1.0
+
 ## [2.2.0](https://github.com/vm0-ai/vm0/compare/runner-v2.1.6...runner-v2.2.0) (2026-01-07)
 
 

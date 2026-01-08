@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.2.0](https://github.com/vm0-ai/vm0/compare/web-v8.1.1...web-v8.2.0) (2026-01-08)
+
+
+### Features
+
+* **app:** initialize app subproject with Vite SPA and ccstate ([#967](https://github.com/vm0-ai/vm0/issues/967)) ([b3227d3](https://github.com/vm0-ai/vm0/commit/b3227d341e53ba33e3a43321e863d8760cbb7eee))
+* replace custom image building with apps-based image selection ([#963](https://github.com/vm0-ai/vm0/issues/963)) ([231f9b0](https://github.com/vm0-ai/vm0/commit/231f9b0890b07baaa618be58a7da14cc52b0ec7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.1.0
+
 ## [8.1.1](https://github.com/vm0-ai/vm0/compare/web-v8.1.0...web-v8.1.1) (2026-01-07)
 
 
