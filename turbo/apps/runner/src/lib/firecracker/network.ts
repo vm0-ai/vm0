@@ -330,55 +330,59 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
 const PROXY_PORT = 8080;
 
 /**
- * Set up iptables DNAT rules to redirect VM traffic to the proxy
- * This enables transparent HTTPS interception for network security mode
+ * Set up iptables DNAT rules to redirect a specific VM's traffic to the proxy
+ * Only VMs with network security enabled should have their traffic intercepted.
+ *
+ * @param vmIp The VM's IP address (e.g., "172.16.0.42")
  */
-export async function setupProxyDnatRules(): Promise<void> {
+export async function setupVMProxyRules(vmIp: string): Promise<void> {
   console.log(
-    `Setting up proxy DNAT rules: ${BRIDGE_CIDR} -> localhost:${PROXY_PORT}`,
+    `Setting up proxy rules for VM ${vmIp} -> localhost:${PROXY_PORT}`,
   );
 
-  // Redirect HTTP (port 80) from VM subnet to proxy
+  // Redirect HTTP (port 80) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTP already exists");
+    console.log(`Proxy rule for ${vmIp}:80 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTP added");
+    console.log(`Proxy rule for ${vmIp}:80 added`);
   }
 
-  // Redirect HTTPS (port 443) from VM subnet to proxy
+  // Redirect HTTPS (port 443) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTPS already exists");
+    console.log(`Proxy rule for ${vmIp}:443 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTPS added");
+    console.log(`Proxy rule for ${vmIp}:443 added`);
   }
 
-  console.log("Proxy DNAT rules configured");
+  console.log(`Proxy rules configured for VM ${vmIp}`);
 }
 
 /**
- * Remove iptables DNAT rules for the proxy
+ * Remove iptables DNAT rules for a specific VM
+ *
+ * @param vmIp The VM's IP address
  */
-export async function removeProxyDnatRules(): Promise<void> {
-  console.log("Removing proxy DNAT rules...");
+export async function removeVMProxyRules(vmIp: string): Promise<void> {
+  console.log(`Removing proxy rules for VM ${vmIp}...`);
 
   // Remove HTTP rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTP removed");
+    console.log(`Proxy rule for ${vmIp}:80 removed`);
   } catch {
     // Rule doesn't exist, that's fine
   }
@@ -386,12 +390,12 @@ export async function removeProxyDnatRules(): Promise<void> {
   // Remove HTTPS rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
     );
-    console.log("Proxy DNAT rule for HTTPS removed");
+    console.log(`Proxy rule for ${vmIp}:443 removed`);
   } catch {
     // Rule doesn't exist, that's fine
   }
 
-  console.log("Proxy DNAT rules cleanup complete");
+  console.log(`Proxy rules cleanup complete for VM ${vmIp}`);
 }

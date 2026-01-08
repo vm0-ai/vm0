@@ -16,8 +16,6 @@ import { executeJob as executeJobInVM } from "../lib/executor.js";
 import {
   checkNetworkPrerequisites,
   setupBridge,
-  setupProxyDnatRules,
-  removeProxyDnatRules,
 } from "../lib/firecracker/network.js";
 import {
   initProxyManager,
@@ -138,10 +136,11 @@ export const startCommand = new Command("start")
       });
 
       // Try to start proxy - if mitmproxy is not installed, continue without it
+      // Note: Per-VM iptables rules are set up in executor.ts when a job with
+      // experimentalNetworkSecurity is executed, not globally here.
       let proxyEnabled = false;
       try {
         await proxyManager.start();
-        await setupProxyDnatRules();
         proxyEnabled = true;
         console.log("Network proxy initialized successfully");
       } catch (err) {
@@ -300,7 +299,6 @@ export const startCommand = new Command("start")
       // Cleanup proxy
       if (proxyEnabled) {
         console.log("Stopping network proxy...");
-        await removeProxyDnatRules();
         await getProxyManager().stop();
       }
 

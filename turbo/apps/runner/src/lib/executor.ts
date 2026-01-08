@@ -19,6 +19,10 @@ import {
   createVMSSHClient,
   getRunnerSSHKeyPath,
 } from "./firecracker/guest.js";
+import {
+  setupVMProxyRules,
+  removeVMProxyRules,
+} from "./firecracker/network.js";
 import type {
   ExecutionContext,
   StorageManifest,
@@ -426,11 +430,17 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
-    // Register VM in proxy registry and install CA certificate if network security is enabled
+    // Register VM in proxy registry, set up iptables rules, and install CA if network security is enabled
     if (context.experimentalNetworkSecurity) {
       console.log(
         `[Executor] Setting up network security mode for VM ${guestIp}`,
       );
+
+      // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
+      // This must be done before the VM makes any network requests
+      await setupVMProxyRules(guestIp);
+
+      // Register VM in the proxy registry so mitmproxy can associate requests
       getVMRegistry().register(guestIp, context.runId, context.sandboxToken);
 
       // Install proxy CA certificate so VM trusts mitmproxy
@@ -540,9 +550,22 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // Unregister VM from proxy registry if network security was enabled
+    // Clean up network security if it was enabled
     if (context.experimentalNetworkSecurity && guestIp) {
-      console.log(`[Executor] Unregistering VM ${guestIp} from proxy registry`);
+      console.log(
+        `[Executor] Cleaning up network security for VM ${guestIp}`,
+      );
+
+      // Remove per-VM iptables rules first
+      try {
+        await removeVMProxyRules(guestIp);
+      } catch (err) {
+        console.error(
+          `[Executor] Failed to remove VM proxy rules: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+
+      // Unregister from proxy registry
       getVMRegistry().unregister(guestIp);
 
       // Upload network logs to telemetry endpoint
