@@ -22,8 +22,6 @@ import {
   MOCK_CLAUDE_SCRIPT,
   METRICS_SCRIPT,
   UPLOAD_TELEMETRY_SCRIPT,
-  PROXY_SETUP_SCRIPT,
-  MITM_ADDON_SCRIPT,
   SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
@@ -172,25 +170,6 @@ export class E2BService {
         sandboxEnvVars.USE_MOCK_CLAUDE = "true";
       }
 
-      // Enable proxy mode for network security
-      // When true, mitmproxy will be set up to intercept traffic
-      // and decrypt vm0_enc_ tokens before forwarding to APIs
-      if (context.experimentalNetworkSecurity) {
-        sandboxEnvVars.VM0_PROXY_ENABLED = "true";
-        // Set SSL certificate environment variables for mitmproxy CA
-        // These ensure Python's requests/urllib and other libraries trust the proxy CA
-        sandboxEnvVars.REQUESTS_CA_BUNDLE =
-          "/etc/ssl/certs/ca-certificates.crt";
-        sandboxEnvVars.SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
-        sandboxEnvVars.CURL_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
-        // Node.js also needs the CA cert
-        sandboxEnvVars.NODE_EXTRA_CA_CERTS =
-          "/etc/ssl/certs/ca-certificates.crt";
-        log.debug(
-          `Network security enabled for run ${context.runId} - proxy mode active`,
-        );
-      }
-
       // Add artifact information for checkpoint
       // Only artifact creates new versions after agent runs
       if (artifactForCommand) {
@@ -277,11 +256,7 @@ export class E2BService {
       // The script will send events via webhook and update status when complete
       // NOTE: All env vars are already set at sandbox creation time, scripts already uploaded
       log.debug(`[${context.runId}] Starting agent execution...`);
-      await this.startAgentExecution(
-        sandbox,
-        context.runId,
-        context.experimentalNetworkSecurity || false,
-      );
+      await this.startAgentExecution(sandbox, context.runId);
       log.debug(`[${context.runId}] Agent execution command sent`);
 
       const prepTimeMs = Date.now() - startTime;
@@ -466,8 +441,6 @@ export class E2BService {
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
       { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
       { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
-      { content: PROXY_SETUP_SCRIPT, path: SCRIPT_PATHS.proxySetup },
-      { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
       { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
@@ -618,29 +591,13 @@ export class E2BService {
   private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
-    networkSecurityEnabled: boolean,
   ): Promise<void> {
     log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
-
-    // Run proxy setup as root BEFORE starting agent if network security is enabled
-    // This is done synchronously to ensure proxy is ready before agent starts
-    // The agent then runs as default user ('user') for normal operation
-    if (networkSecurityEnabled) {
-      log.debug(`Running proxy setup as root for run ${runId}...`);
-      const proxySetupCmd = `python3 ${SCRIPT_PATHS.libDir}/proxy_setup.py > /tmp/vm0-proxy-setup-${runId}.log 2>&1`;
-      await sandbox.commands.run(proxySetupCmd, { user: "root" });
-      log.debug(`Proxy setup completed for run ${runId}`);
-    }
 
     // Start Python script in background using nohup to ignore SIGHUP signal
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
     // Redirect output to per-run log file in /tmp with vm0- prefix
-    //
-    // NOTE: Agent runs as E2B default user ('user').
-    // When network security is enabled, proxy setup is done as root before this.
-    // mitmproxy also runs as root, and nftables skips root's traffic (meta skuid 0)
-    // to avoid redirect loops.
     // Use python3 -u for unbuffered stdout/stderr to ensure logs are written immediately
     const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
     log.debug(`[${runId}] Executing background command: ${cmd}`);

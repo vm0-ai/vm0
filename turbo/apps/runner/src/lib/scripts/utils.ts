@@ -16,8 +16,6 @@ import {
   MOCK_CLAUDE_SCRIPT,
   METRICS_SCRIPT,
   UPLOAD_TELEMETRY_SCRIPT,
-  PROXY_SETUP_SCRIPT,
-  MITM_ADDON_SCRIPT,
   SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
@@ -46,8 +44,6 @@ export function getAllScripts(): ScriptEntry[] {
     { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
     { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
     { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
-    { content: PROXY_SETUP_SCRIPT, path: SCRIPT_PATHS.proxySetup },
-    { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
     { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
     { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     // Env loader is runner-specific (loads env from JSON before executing run-agent.py)

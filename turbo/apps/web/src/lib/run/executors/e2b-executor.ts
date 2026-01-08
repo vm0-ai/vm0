@@ -16,8 +16,6 @@ import {
   MOCK_CLAUDE_SCRIPT,
   METRICS_SCRIPT,
   UPLOAD_TELEMETRY_SCRIPT,
-  PROXY_SETUP_SCRIPT,
-  MITM_ADDON_SCRIPT,
   SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
   SCRIPT_PATHS,
@@ -142,11 +140,7 @@ export class E2BExecutor implements Executor {
 
       // Start agent execution (fire-and-forget)
       log.debug(`[${context.runId}] Starting agent execution...`);
-      await this.startAgentExecution(
-        sandbox,
-        context.runId,
-        context.experimentalNetworkSecurity,
-      );
+      await this.startAgentExecution(sandbox, context.runId);
       log.debug(`[${context.runId}] Agent execution command sent`);
 
       const prepTimeMs = Date.now() - startTime;
@@ -244,15 +238,6 @@ export class E2BExecutor implements Executor {
       sandboxEnvVars.USE_MOCK_CLAUDE = "true";
     }
 
-    // Enable proxy mode for network security
-    if (context.experimentalNetworkSecurity) {
-      sandboxEnvVars.VM0_PROXY_ENABLED = "true";
-      sandboxEnvVars.REQUESTS_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
-      sandboxEnvVars.SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
-      sandboxEnvVars.CURL_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
-      sandboxEnvVars.NODE_EXTRA_CA_CERTS = "/etc/ssl/certs/ca-certificates.crt";
-    }
-
     // Add artifact information for checkpoint
     if (artifactForCommand) {
       sandboxEnvVars.VM0_ARTIFACT_DRIVER = "vas";
@@ -329,8 +314,6 @@ export class E2BExecutor implements Executor {
       { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
       { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
       { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
-      { content: PROXY_SETUP_SCRIPT, path: SCRIPT_PATHS.proxySetup },
-      { content: MITM_ADDON_SCRIPT, path: SCRIPT_PATHS.mitmAddon },
       { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
     ];
@@ -423,15 +406,7 @@ export class E2BExecutor implements Executor {
   private async startAgentExecution(
     sandbox: Sandbox,
     runId: string,
-    networkSecurityEnabled: boolean,
   ): Promise<void> {
-    if (networkSecurityEnabled) {
-      log.debug(`Running proxy setup as root for run ${runId}...`);
-      const proxySetupCmd = `python3 ${SCRIPT_PATHS.libDir}/proxy_setup.py > /tmp/vm0-proxy-setup-${runId}.log 2>&1`;
-      await sandbox.commands.run(proxySetupCmd, { user: "root" });
-      log.debug(`Proxy setup completed for run ${runId}`);
-    }
-
     const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
     await sandbox.commands.run(cmd);
   }
