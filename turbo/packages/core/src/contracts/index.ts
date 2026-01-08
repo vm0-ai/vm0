@@ -32,7 +32,9 @@ export {
   agentComposeContentSchema,
   composeResponseSchema,
   SUPPORTED_APPS,
+  SUPPORTED_APP_TAGS,
   type SupportedApp,
+  type SupportedAppTag,
 } from "./composes";
 export {
   runsMainContract,

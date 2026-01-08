@@ -53,6 +53,30 @@ export const SUPPORTED_APPS = ["github"] as const;
 export type SupportedApp = (typeof SUPPORTED_APPS)[number];
 
 /**
+ * Supported app version tags
+ */
+export const SUPPORTED_APP_TAGS = ["latest", "dev"] as const;
+export type SupportedAppTag = (typeof SUPPORTED_APP_TAGS)[number];
+
+/**
+ * App string format: "app" or "app:tag"
+ * Examples: "github", "github:dev", "github:latest"
+ */
+const appStringSchema = z
+  .string()
+  .regex(
+    /^[a-z]+(:(?:latest|dev))?$/,
+    "App must be in format 'app' or 'app:tag' (e.g., 'github', 'github:dev')",
+  )
+  .refine(
+    (val) => {
+      const [app] = val.split(":");
+      return SUPPORTED_APPS.includes(app as SupportedApp);
+    },
+    `Unsupported app. Supported apps: ${SUPPORTED_APPS.join(", ")}`,
+  );
+
+/**
  * Agent definition schema
  */
 const agentDefinitionSchema = z.object({
@@ -65,9 +89,11 @@ const agentDefinitionSchema = z.object({
   provider: z.string().min(1, "Provider is required"),
   /**
    * Array of pre-installed apps/tools for the agent environment.
-   * Currently supported: "github" (includes GitHub CLI)
+   * Format: "app" or "app:tag" (e.g., "github", "github:dev", "github:latest")
+   * Default tag is "latest" if not specified.
+   * Currently supported apps: "github" (includes GitHub CLI)
    */
-  apps: z.array(z.enum(SUPPORTED_APPS)).optional(),
+  apps: z.array(appStringSchema).optional(),
   volumes: z.array(z.string()).optional(),
   working_dir: z.string().optional(), // Optional when provider supports auto-config
   environment: z.record(z.string(), z.string()).optional(),

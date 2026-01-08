@@ -1,4 +1,4 @@
-import { SUPPORTED_APPS } from "@vm0/core";
+import { SUPPORTED_APPS, SUPPORTED_APP_TAGS } from "@vm0/core";
 import { isProviderSupported } from "./provider-config";
 
 /**
@@ -281,7 +281,7 @@ export function validateAgentCompose(config: unknown): {
     }
   }
 
-  // Validate apps if present
+  // Validate apps if present (format: "app" or "app:tag")
   if (agent.apps !== undefined) {
     if (!Array.isArray(agent.apps)) {
       return {
@@ -289,17 +289,40 @@ export function validateAgentCompose(config: unknown): {
         error: "agent.apps must be an array of strings",
       };
     }
-    for (const app of agent.apps as unknown[]) {
-      if (typeof app !== "string") {
+    for (const appEntry of agent.apps as unknown[]) {
+      if (typeof appEntry !== "string") {
         return {
           valid: false,
           error: "Each entry in apps must be a string",
         };
       }
-      if (!SUPPORTED_APPS.includes(app as (typeof SUPPORTED_APPS)[number])) {
+
+      // Parse app:tag format
+      const [appName, tag] = appEntry.split(":");
+      if (!appName) {
         return {
           valid: false,
-          error: `Invalid app: "${app}". Supported apps: ${SUPPORTED_APPS.join(", ")}`,
+          error: `Invalid app format: "${appEntry}". Expected "app" or "app:tag"`,
+        };
+      }
+
+      if (
+        !SUPPORTED_APPS.includes(appName as (typeof SUPPORTED_APPS)[number])
+      ) {
+        return {
+          valid: false,
+          error: `Invalid app: "${appName}". Supported apps: ${SUPPORTED_APPS.join(", ")}`,
+        };
+      }
+
+      // Validate tag if present
+      if (
+        tag !== undefined &&
+        !SUPPORTED_APP_TAGS.includes(tag as (typeof SUPPORTED_APP_TAGS)[number])
+      ) {
+        return {
+          valid: false,
+          error: `Invalid app tag: "${tag}". Supported tags: ${SUPPORTED_APP_TAGS.join(", ")}`,
         };
       }
     }

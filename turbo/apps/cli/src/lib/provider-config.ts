@@ -98,9 +98,25 @@ const PROVIDER_APPS_IMAGES: Record<
 };
 
 /**
+ * Parse app string into app name and tag
+ * @param appString - App string in format "app" or "app:tag"
+ * @returns Object with app name and tag (defaults to "latest")
+ */
+export function parseAppString(appString: string): {
+  app: string;
+  tag: "latest" | "dev";
+} {
+  const [app, tag] = appString.split(":");
+  return {
+    app: app ?? appString,
+    tag: tag === "dev" ? "dev" : "latest",
+  };
+}
+
+/**
  * Get the default image for a provider with optional apps
  * @param provider - The provider name
- * @param apps - Optional array of apps to include
+ * @param apps - Optional array of apps in format "app" or "app:tag"
  * @returns Default image string or undefined if provider is not recognized
  */
 export function getDefaultImageWithApps(
@@ -110,25 +126,26 @@ export function getDefaultImageWithApps(
   const defaults = PROVIDER_DEFAULTS[provider];
   if (!defaults) return undefined;
 
-  const isDevelopment =
-    process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
-
   // Check if apps require a special image variant
   if (apps && apps.length > 0) {
     const providerApps = PROVIDER_APPS_IMAGES[provider];
     if (providerApps) {
       // Currently we only support single app (github)
       // For future: could combine apps or use most specific variant
-      const appName = apps[0];
-      if (appName) {
-        const appImage = providerApps[appName];
+      const firstApp = apps[0];
+      if (firstApp) {
+        const { app, tag } = parseAppString(firstApp);
+        const appImage = providerApps[app];
         if (appImage) {
-          return isDevelopment ? appImage.development : appImage.production;
+          // Use the tag from the app string (dev or latest)
+          return tag === "dev" ? appImage.development : appImage.production;
         }
       }
     }
   }
 
-  // Fall back to default image
+  // Fall back to default image based on NODE_ENV
+  const isDevelopment =
+    process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
   return isDevelopment ? defaults.image.development : defaults.image.production;
 }
