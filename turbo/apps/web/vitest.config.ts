@@ -1,5 +1,4 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import { config } from "dotenv";
 import { existsSync } from "fs";
@@ -11,10 +10,9 @@ if (existsSync(envLocalPath)) {
 }
 
 export default defineConfig({
-  plugins: [react()],
   test: {
     globals: true,
-    environment: "jsdom",
+    environment: "node",
     setupFiles: "./src/test/setup.ts",
     // Don't override env vars, let them pass through from system
     // Run tests sequentially to avoid database race conditions

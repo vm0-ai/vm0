@@ -112,6 +112,7 @@ export class FirecrackerVM {
 
       // Copy rootfs to VM-local path for isolation
       // Each VM needs its own writable copy to prevent corruption
+      // Note: In CI, each PR has its own rootfs at {runner_base_dir}/rootfs.ext4
       console.log(`[VM ${this.config.vmId}] Copying rootfs for isolation...`);
       fs.copyFileSync(this.config.rootfsPath, this.vmRootfsPath);
 

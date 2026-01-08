@@ -485,6 +485,8 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
+            -e "force_rebuild_rootfs=true" \
             -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v

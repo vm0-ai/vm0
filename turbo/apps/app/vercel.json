@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd ../.. && pnpm run build --filter=app",
+  "installCommand": "cd ../.. && pnpm install",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionHistoryService } from "../session-history-service";
 import * as blobServiceModule from "../../blob/blob-service";
