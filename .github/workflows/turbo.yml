@@ -508,6 +508,8 @@ jobs:
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
+          # Calculate unique proxy port for this PR (8080-9079 range)
+          PROXY_PORT=$((8080 + PR_NUMBER % 1000))
 
           # Setup SSH key
           mkdir -p ~/.ssh
@@ -530,6 +532,7 @@ jobs:
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
             -e "force_rebuild_rootfs=true" \
+            -e "proxy_port=${PROXY_PORT}" \
             -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v

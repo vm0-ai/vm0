@@ -30,6 +30,11 @@ export const runnerConfigSchema = z.object({
     kernel: z.string().min(1, "Kernel path is required"),
     rootfs: z.string().min(1, "Rootfs path is required"),
   }),
+  proxy: z
+    .object({
+      port: z.number().int().min(1024).max(65535).default(8080),
+    })
+    .default({}),
 });
 
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;

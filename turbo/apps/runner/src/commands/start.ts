@@ -133,6 +133,7 @@ export const startCommand = new Command("start")
       initVMRegistry();
       const proxyManager = initProxyManager({
         apiUrl: config.server.url,
+        port: config.proxy.port,
       });
 
       // Try to start proxy - if mitmproxy is not installed, continue without it

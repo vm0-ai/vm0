@@ -325,30 +325,29 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
 }
 
 /**
- * Proxy DNAT configuration
- */
-const PROXY_PORT = 8080;
-
-/**
  * Set up iptables DNAT rules to redirect a specific VM's traffic to the proxy
  * Only VMs with network security enabled should have their traffic intercepted.
  *
  * @param vmIp The VM's IP address (e.g., "172.16.0.42")
+ * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
  */
-export async function setupVMProxyRules(vmIp: string): Promise<void> {
+export async function setupVMProxyRules(
+  vmIp: string,
+  proxyPort: number,
+): Promise<void> {
   console.log(
-    `Setting up proxy rules for VM ${vmIp} -> localhost:${PROXY_PORT}`,
+    `Setting up proxy rules for VM ${vmIp} -> localhost:${proxyPort}`,
   );
 
   // Redirect HTTP (port 80) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:80 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:80 added`);
   }
@@ -356,12 +355,12 @@ export async function setupVMProxyRules(vmIp: string): Promise<void> {
   // Redirect HTTPS (port 443) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:443 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:443 added`);
   }
@@ -373,14 +372,18 @@ export async function setupVMProxyRules(vmIp: string): Promise<void> {
  * Remove iptables DNAT rules for a specific VM
  *
  * @param vmIp The VM's IP address
+ * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
  */
-export async function removeVMProxyRules(vmIp: string): Promise<void> {
+export async function removeVMProxyRules(
+  vmIp: string,
+  proxyPort: number,
+): Promise<void> {
   console.log(`Removing proxy rules for VM ${vmIp}...`);
 
   // Remove HTTP rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:80 removed`);
   } catch {
@@ -390,7 +393,7 @@ export async function removeVMProxyRules(vmIp: string): Promise<void> {
   // Remove HTTPS rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
     );
     console.log(`Proxy rule for ${vmIp}:443 removed`);
   } catch {

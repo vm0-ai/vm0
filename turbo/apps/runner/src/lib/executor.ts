@@ -438,7 +438,7 @@ export async function executeJob(
 
       // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
       // This must be done before the VM makes any network requests
-      await setupVMProxyRules(guestIp);
+      await setupVMProxyRules(guestIp, config.proxy.port);
 
       // Register VM in the proxy registry so mitmproxy can associate requests
       getVMRegistry().register(guestIp, context.runId, context.sandboxToken);
@@ -556,7 +556,7 @@ export async function executeJob(
 
       // Remove per-VM iptables rules first
       try {
-        await removeVMProxyRules(guestIp);
+        await removeVMProxyRules(guestIp, config.proxy.port);
       } catch (err) {
         console.error(
           `[Executor] Failed to remove VM proxy rules: ${err instanceof Error ? err.message : "Unknown error"}`,
