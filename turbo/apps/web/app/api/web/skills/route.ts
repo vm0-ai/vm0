@@ -600,113 +600,92 @@ function parseSkillMarkdown(content: string): {
   return { description, setupRequired: setupRequired.slice(0, 3) };
 }
 
-async function fetchSkillMetadata(
-  skillName: string,
-): Promise<SkillMetadata | null> {
-  try {
-    // 1. Check for curated metadata first (highest priority)
-    const curatedInfo = SKILL_CATEGORIES[skillName];
-    if (curatedInfo?.description) {
-      return {
-        name: skillName,
-        description: curatedInfo.description,
-        category: curatedInfo.category,
-        logo: curatedInfo.logo,
-        docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
-      };
-    }
-
-    // 2. Try to fetch and parse SKILL.md
-    const skillMdResponse = await fetch(
-      `https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/${skillName}/SKILL.md`,
-      {
-        headers: { "User-Agent": "VM0-Website" },
-        next: { revalidate: 3600 },
-      },
-    );
-
-    if (!skillMdResponse.ok) {
-      // 3. Ultimate fallback
-      return {
-        name: skillName,
-        description: `${skillName.replace(/-/g, " ")} integration for VM0 agents`,
-        category: curatedInfo?.category || "Other",
-        logo: curatedInfo?.logo || generateLogoUrl(skillName),
-        docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
-      };
-    }
-
-    const content = await skillMdResponse.text();
-    const parsed = parseSkillMarkdown(content);
-
-    // Use parsed data with smart fallbacks
-    const description =
-      parsed.description ||
-      `${skillName.replace(/-/g, " ")} integration for VM0 agents`;
-    const category =
-      curatedInfo?.category || detectCategory(skillName, description);
-    const logo = curatedInfo?.logo || generateLogoUrl(skillName);
-
+async function fetchSkillMetadata(skillName: string): Promise<SkillMetadata> {
+  // 1. Check for curated metadata first (highest priority)
+  const curatedInfo = SKILL_CATEGORIES[skillName];
+  if (curatedInfo?.description) {
     return {
       name: skillName,
-      description,
-      category,
-      logo,
+      description: curatedInfo.description,
+      category: curatedInfo.category,
+      logo: curatedInfo.logo,
       docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
-      setupRequired: parsed.setupRequired,
     };
-  } catch (error) {
-    console.error(`Failed to fetch metadata for ${skillName}:`, error);
-    return null;
   }
+
+  // 2. Try to fetch and parse SKILL.md
+  const skillMdResponse = await fetch(
+    `https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/${skillName}/SKILL.md`,
+    {
+      headers: { "User-Agent": "VM0-Website" },
+      next: { revalidate: 3600 },
+    },
+  );
+
+  if (!skillMdResponse.ok) {
+    // 3. Ultimate fallback
+    return {
+      name: skillName,
+      description: `${skillName.replace(/-/g, " ")} integration for VM0 agents`,
+      category: curatedInfo?.category || "Other",
+      logo: curatedInfo?.logo || generateLogoUrl(skillName),
+      docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
+    };
+  }
+
+  const content = await skillMdResponse.text();
+  const parsed = parseSkillMarkdown(content);
+
+  // Use parsed data with smart fallbacks
+  const description =
+    parsed.description ||
+    `${skillName.replace(/-/g, " ")} integration for VM0 agents`;
+  const category =
+    curatedInfo?.category || detectCategory(skillName, description);
+  const logo = curatedInfo?.logo || generateLogoUrl(skillName);
+
+  return {
+    name: skillName,
+    description,
+    category,
+    logo,
+    docsUrl: `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`,
+    setupRequired: parsed.setupRequired,
+  };
 }
 
 export async function GET() {
-  try {
-    const skillNames = await fetchSkillsList();
+  const skillNames = await fetchSkillsList();
 
-    // Fetch metadata for all skills in parallel
-    const skillsPromises = skillNames.map((name) => fetchSkillMetadata(name));
-    const skillsData = await Promise.all(skillsPromises);
+  // Fetch metadata for all skills in parallel
+  const skillsPromises = skillNames.map((name) => fetchSkillMetadata(name));
+  const skillsData = await Promise.all(skillsPromises);
 
-    // Filter out null values and sort by category
-    const skills = skillsData
-      .filter((skill): skill is SkillMetadata => skill !== null)
-      .sort((a, b) => {
-        if (a.category === b.category) {
-          return a.name.localeCompare(b.name);
-        }
-        return a.category.localeCompare(b.category);
-      });
+  // Sort by category
+  const skills = skillsData.sort((a, b) => {
+    if (a.category === b.category) {
+      return a.name.localeCompare(b.name);
+    }
+    return a.category.localeCompare(b.category);
+  });
 
-    // Group by category
-    const skillsByCategory = skills.reduce(
-      (acc, skill) => {
-        if (!acc[skill.category]) {
-          acc[skill.category] = [];
-        }
-        acc[skill.category]!.push(skill);
-        return acc;
-      },
-      {} as Record<string, SkillMetadata[]>,
-    );
+  // Group by category
+  const skillsByCategory = skills.reduce(
+    (acc, skill) => {
+      if (!acc[skill.category]) {
+        acc[skill.category] = [];
+      }
+      acc[skill.category]!.push(skill);
+      return acc;
+    },
+    {} as Record<string, SkillMetadata[]>,
+  );
 
-    return NextResponse.json({
-      success: true,
-      total: skills.length,
-      categories: Object.keys(skillsByCategory).length,
-      skillsByCategory,
-      skills,
-    });
-  } catch (error) {
-    console.error("Error fetching skills:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch skills",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    success: true,
+    total: skills.length,
+    categories: Object.keys(skillsByCategory).length,
+    skillsByCategory,
+    skills,
+  });
 }

@@ -175,79 +175,74 @@ function detectIcon(id: string, name: string, description: string): string {
 // Parse vm0.yaml content to extract metadata
 async function parseCookbookMetadata(
   cookbookId: string,
-): Promise<CookbookMetadata | null> {
-  try {
-    // Try to fetch vm0.yaml
-    const yamlResponse = await fetch(
-      `https://raw.githubusercontent.com/vm0-ai/vm0-cookbooks/main/${cookbookId}/vm0.yaml`,
-      {
-        headers: { "User-Agent": "VM0-Website" },
-        next: { revalidate: 3600 },
-      },
-    );
+): Promise<CookbookMetadata> {
+  // Try to fetch vm0.yaml
+  const yamlResponse = await fetch(
+    `https://raw.githubusercontent.com/vm0-ai/vm0-cookbooks/main/${cookbookId}/vm0.yaml`,
+    {
+      headers: { "User-Agent": "VM0-Website" },
+      next: { revalidate: 3600 },
+    },
+  );
 
-    if (!yamlResponse.ok) {
-      // Fallback: generate basic metadata from ID
-      const rawName = cookbookId
-        .replace(/^\d+-/, "")
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+  if (!yamlResponse.ok) {
+    // Fallback: generate basic metadata from ID
+    const rawName = cookbookId
+      .replace(/^\d+-/, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
-      const name = optimizeTitle(rawName, cookbookId);
-      const description = optimizeDescription(
-        `Learn how to build ${name.toLowerCase()}`,
-        name,
-        cookbookId,
-      );
-
-      return {
-        id: cookbookId,
-        name,
-        description,
-        icon: detectIcon(cookbookId, name, description),
-        docsUrl: `https://github.com/vm0-ai/vm0-cookbooks/tree/main/${cookbookId}`,
-      };
-    }
-
-    const yamlContent = await yamlResponse.text();
-
-    // Extract agent name and description from YAML
-    const nameMatch = yamlContent.match(/name:\s*["']?([^"'\n]+)["']?/);
-    const descMatch = yamlContent.match(/description:\s*["']?([^"'\n]+)["']?/i);
-
-    let rawName = nameMatch ? nameMatch[1]?.trim() : "";
-    let rawDescription = descMatch ? descMatch[1]?.trim() : "";
-
-    // If no name found, generate from ID
-    if (!rawName) {
-      rawName = cookbookId
-        .replace(/^\d+-/, "")
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-
-    // Optimize title and description
     const name = optimizeTitle(rawName, cookbookId);
-
-    // If no description found, generate basic one
-    if (!rawDescription) {
-      rawDescription = `Learn how to build ${name.toLowerCase()}`;
-    }
-
-    const description = optimizeDescription(rawDescription, name, cookbookId);
-    const icon = detectIcon(cookbookId, name, description);
+    const description = optimizeDescription(
+      `Learn how to build ${name.toLowerCase()}`,
+      name,
+      cookbookId,
+    );
 
     return {
       id: cookbookId,
       name,
       description,
-      icon,
+      icon: detectIcon(cookbookId, name, description),
       docsUrl: `https://github.com/vm0-ai/vm0-cookbooks/tree/main/${cookbookId}`,
     };
-  } catch (error) {
-    console.error(`Failed to fetch metadata for ${cookbookId}:`, error);
-    return null;
   }
+
+  const yamlContent = await yamlResponse.text();
+
+  // Extract agent name and description from YAML
+  const nameMatch = yamlContent.match(/name:\s*["']?([^"'\n]+)["']?/);
+  const descMatch = yamlContent.match(/description:\s*["']?([^"'\n]+)["']?/i);
+
+  let rawName = nameMatch ? nameMatch[1]?.trim() : "";
+  let rawDescription = descMatch ? descMatch[1]?.trim() : "";
+
+  // If no name found, generate from ID
+  if (!rawName) {
+    rawName = cookbookId
+      .replace(/^\d+-/, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  // Optimize title and description
+  const name = optimizeTitle(rawName, cookbookId);
+
+  // If no description found, generate basic one
+  if (!rawDescription) {
+    rawDescription = `Learn how to build ${name.toLowerCase()}`;
+  }
+
+  const description = optimizeDescription(rawDescription, name, cookbookId);
+  const icon = detectIcon(cookbookId, name, description);
+
+  return {
+    id: cookbookId,
+    name,
+    description,
+    icon,
+    docsUrl: `https://github.com/vm0-ai/vm0-cookbooks/tree/main/${cookbookId}`,
+  };
 }
 
 async function fetchCookbooksList(): Promise<string[]> {
@@ -275,34 +270,15 @@ async function fetchCookbooksList(): Promise<string[]> {
 }
 
 export async function GET() {
-  try {
-    const cookbookIds = await fetchCookbooksList();
+  const cookbookIds = await fetchCookbooksList();
 
-    // Fetch metadata for all cookbooks in parallel
-    const cookbooksPromises = cookbookIds.map((id) =>
-      parseCookbookMetadata(id),
-    );
-    const cookbooksData = await Promise.all(cookbooksPromises);
+  // Fetch metadata for all cookbooks in parallel
+  const cookbooksPromises = cookbookIds.map((id) => parseCookbookMetadata(id));
+  const cookbooks = await Promise.all(cookbooksPromises);
 
-    // Filter out null values
-    const cookbooks = cookbooksData.filter(
-      (cookbook): cookbook is CookbookMetadata => cookbook !== null,
-    );
-
-    return NextResponse.json({
-      success: true,
-      total: cookbooks.length,
-      cookbooks,
-    });
-  } catch (error) {
-    console.error("Error fetching cookbooks:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch cookbooks",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    success: true,
+    total: cookbooks.length,
+    cookbooks,
+  });
 }
