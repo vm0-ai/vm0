@@ -3,7 +3,7 @@ title: Syncing Reports to GitHub
 description: Enable your agent to automatically commit research reports to GitHub repositories
 ---
 
-Now let's take your research agent to the next level by making it automatically commit research reports to a GitHub repository. To do this, we need to install the GitHub CLI tool in the agent's sandbox environment.
+Now let's take your research agent to the next level by making it automatically commit research reports to a GitHub repository. With VM0's `apps` field, you can easily add pre-installed tools like the GitHub CLI to your agent's environment.
 
 ## Prerequisites
 
@@ -15,72 +15,9 @@ You'll need:
 
 You should have also completed the previous sections of this tutorial.
 
-## Step 1: Create a Dockerfile
+## Step 1: Update vm0.yaml
 
-Create a `Dockerfile` in your project directory:
-
-```dockerfile title="Dockerfile"
-FROM node:20-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    python3 \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install GitHub CLI
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code
-```
-
-This Dockerfile starts from Node.js 20 slim image, installs system dependencies including Git and Python, adds the GitHub CLI tool, and finally installs Claude Code globally.
-
-<Callout type="info">
-  VM0 Dockerfiles only support `FROM` and `RUN` instructions. This is intentional - custom images are for pre-installing dependencies, not configuring application behavior. Learn more in the [Container Image documentation](/docs/core-concept/container-image).
-</Callout>
-
-## Step 2: Set Your Scope
-
-Before building images, you need to set your scope (your username namespace):
-
-```bash
-vm0 scope set your-username
-```
-
-Replace `your-username` with your preferred namespace. This creates a namespace for your images like `your-username/image-name`.
-
-## Step 3: Build the Image
-
-Build your custom image:
-
-```bash
-vm0 image build -f Dockerfile -n my-researcher-image
-```
-
-You'll see output showing the build progress:
-
-```
-Building image: my-researcher-image
-✓ Validated Dockerfile
-✓ Image built: a1b2c3d4
-✓ Image pushed: your-username/my-researcher-image:a1b2c3d4
-```
-
-This builds your custom image with GitHub CLI installed and pushes it to the VM0 registry.
-
-## Step 4: Update vm0.yaml
-
-Update your `vm0.yaml` to use the custom image and add the GitHub skill:
+Update your `vm0.yaml` to use the GitHub app and add the GitHub skill:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -88,7 +25,8 @@ version: "1.0"
 agents:
   my-researcher:
     provider: claude-code
-    image: my-researcher-image # [!code highlight]
+    apps:
+      - github # [!code highlight]
     instructions: AGENTS.md
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -99,10 +37,14 @@ agents:
 ```
 
 The key changes are:
-- Added `image: my-researcher-image` to use your custom image
+- Added `apps: [github]` to include a container image with GitHub CLI pre-installed
 - Added the GitHub skill to enable GitHub operations
 
-## Step 5: Update Agent Instructions
+<Callout type="info">
+  The `apps` field automatically selects a container image with the specified tools pre-installed. Currently supported: `github` (includes GitHub CLI). You can also specify version tags like `github:dev` or `github:latest`.
+</Callout>
+
+## Step 2: Update Agent Instructions
 
 Update your `AGENTS.md` to include GitHub workflow:
 
@@ -128,9 +70,9 @@ That's it! Keep the files simple and readable.
 
 The key changes are step 1 clones the GitHub repository as the working directory and sets up git authentication for write permission, so all research files are created inside the repo, and step 7 commits and pushes them to GitHub.
 
-## Step 6: Compose Your Agent
+## Step 3: Compose Your Agent
 
-Recompose your agent with the new image and skill:
+Recompose your agent with the new configuration:
 
 ```bash
 vm0 compose vm0.yaml
@@ -139,6 +81,7 @@ vm0 compose vm0.yaml
 You'll see output showing the GitHub skill being added:
 
 ```
+  Auto-configured image: vm0/claude-code-github:latest
   Auto-configured working_dir: /home/user/workspace
 Uploading instructions: AGENTS.md
 ✓ Instructions uploaded: 1191fd33
@@ -162,7 +105,7 @@ Skills require the following environment variables:
 
 VM0 is asking you to approve the new `GH_TOKEN` secret required by the GitHub skill. Type `y` and press Enter to continue.
 
-## Step 7: Run Your Agent
+## Step 4: Run Your Agent
 
 Now let's run the agent. Since we're using GitHub repository to store research reports, we don't need the artifact parameter:
 
@@ -195,14 +138,14 @@ After the agent finishes running, visit your GitHub repository. You should see t
 
 ## What Just Happened?
 
-You created a custom container image with GitHub CLI pre-installed, and integrated the GitHub skill to access git operations. The custom image approach lets you pre-install any tools or dependencies your agent needs, from programming languages to CLI tools. This eliminates the need to install tools during every run.
+You used the `apps: [github]` field to automatically get a container image with GitHub CLI pre-installed. The `apps` field is the simplest way to add pre-installed tools to your agent's environment - no custom Docker images or Dockerfiles required.
 
 <Callout>
   This is optional. You can commit your changes if you want to save this milestone.
 
   ```bash
   git add .
-  git commit -m "feat: add custom image with github cli and auto-commit capability"
+  git commit -m "feat: add github app and auto-commit capability"
   ```
 </Callout>
 

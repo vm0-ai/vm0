@@ -40,7 +40,7 @@ The Container Image is similar to a [Docker Image](https://docs.docker.com/get-s
 - System tools and dependencies
 - Base configuration
 
-You can use VM0's default images or create custom images with additional tools like `ffmpeg`, `chromium`, or other dependencies. See [Container Image](/docs/core-concept/container-image) for details.
+VM0 automatically selects the appropriate container image based on your provider and `apps` configuration. Use the `apps` field to include pre-installed tools like GitHub CLI (e.g., `apps: [github]`).
 
 ## Skills & Instructions
 

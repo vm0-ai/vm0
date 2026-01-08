@@ -27,7 +27,8 @@ agents:
   my-agent:
     provider: claude-code
     instructions: AGENTS.md
-    image: vm0/claude-code:latest
+    apps:
+      - github
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
     volumes:
@@ -52,14 +53,14 @@ volumes:
 
 ## Agent Fields
 
-| Field          | Type   | Required | Default                                        | Description                                                                                       |
-| -------------- | ------ | -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `provider`     | string | Yes      | -                                              | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
-| `instructions` | string | No       | -                                              | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
-| `image`        | string | No       | `vm0/claude-code:latest` or `vm0/codex:latest` | Container image based on provider. See [Container Image](/docs/core-concept/container-image)      |
-| `skills`       | array  | No       | `[]`                                           | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |
-| `volumes`      | array  | No       | `[]`                                           | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
-| `environment`  | object | No       | `{}`                                           | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
+| Field          | Type   | Required | Default | Description                                                                                       |
+| -------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `provider`     | string | Yes      | -       | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
+| `instructions` | string | No       | -       | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
+| `apps`         | array  | No       | `[]`    | Pre-installed tools. Supported: `github`, `github:dev`, `github:latest`                           |
+| `skills`       | array  | No       | `[]`    | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |
+| `volumes`      | array  | No       | `[]`    | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
+| `environment`  | object | No       | `{}`    | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
 
 ## Volume Fields
 

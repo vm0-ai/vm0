@@ -55,20 +55,6 @@ Executes your agent in a workflow.
 
 See [vm0-ai/run-action](https://github.com/vm0-ai/run-action) for full documentation.
 
-### image-build-action
-
-Build custom Docker images for your agent.
-
-```yaml
-- name: Build Image
-  uses: vm0-ai/image-build-action@v1
-  with:
-    name: my-custom-image
-    vm0-token: ${{ secrets.VM0_TOKEN }}
-```
-
-See [vm0-ai/image-build-action](https://github.com/vm0-ai/image-build-action) for full documentation.
-
 ### artifact-pull-action
 
 Download artifacts from vm0 to your workflow.
@@ -109,26 +95,20 @@ jobs:
             API_KEY=${{ secrets.API_KEY }}
 ```
 
-### Build and Publish
+### Publish on Push
 
 ```yaml title=".github/workflows/publish.yml"
-name: Build and Publish
+name: Publish Agent
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build Image
-        uses: vm0-ai/image-build-action@v1
-        with:
-          name: my-image
-          vm0-token: ${{ secrets.VM0_TOKEN }}
 
       - name: Publish Agent
         uses: vm0-ai/compose-action@v1
