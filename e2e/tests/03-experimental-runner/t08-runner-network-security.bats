@@ -91,8 +91,27 @@ EOF
     }
 
     # Step 6: Verify vm0 logs --network command retrieves network logs
-    echo "# Step 6: Fetching network logs..."
-    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    # Note: Axiom has some ingestion delay, so we retry a few times
+    echo "# Step 6: Fetching network logs (with retry for Axiom delay)..."
+
+    NETWORK_LOGS_FOUND=false
+    for i in {1..5}; do
+        echo "# Attempt $i: Fetching network logs..."
+        run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+
+        if [[ "$output" == *"POST"* ]]; then
+            NETWORK_LOGS_FOUND=true
+            break
+        fi
+
+        echo "# Network logs not yet available, waiting 3s..."
+        sleep 3
+    done
+
+    if [[ "$NETWORK_LOGS_FOUND" != "true" ]]; then
+        echo "# Final output after retries: $output"
+        fail "Network logs not found after 5 retries"
+    fi
 
     assert_success
 

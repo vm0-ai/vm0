@@ -292,7 +292,7 @@ async function showNetworkLogs(
   if (response.networkLogs.length === 0) {
     console.log(
       chalk.yellow(
-        "No network logs found for this run. Network logs are only captured when beta_network_security is enabled.",
+        "No network logs found for this run. Network logs are only captured when experimental_network_security is enabled on an experimental_runner.",
       ),
     );
     return;
