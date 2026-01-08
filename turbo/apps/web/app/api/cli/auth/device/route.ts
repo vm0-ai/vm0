@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 
-// Characters that are easy to read (excluding 0/O, 1/I/L)
+// Characters that are easy to read (excluding confusable characters: 0/O, 1/I/L)
 const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 function generateDeviceCode(): string {
