@@ -161,3 +161,6 @@ codereviews/
 
 # Runner proxy CA certificates (generated per-deployment)
 turbo/scripts/deploy-runner/proxy-ca/
+
+# SSH private keys and certificates (should never be committed)
+*.pem
