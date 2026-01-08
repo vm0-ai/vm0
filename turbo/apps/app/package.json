@@ -36,6 +36,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "happy-dom": "^20.0.0",
+    "msw": "^2.12.7",
     "oxlint": "^1.14.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.2",
