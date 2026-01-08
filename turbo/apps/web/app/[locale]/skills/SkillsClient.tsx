@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
-import Particles from "../cookbooks/Particles";
+import Particles from "./Particles";
 
 interface SkillMetadata {
   name: string;

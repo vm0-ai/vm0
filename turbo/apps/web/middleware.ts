@@ -7,7 +7,6 @@ import { locales, defaultLocale } from "./i18n";
 const isPublicRoute = createRouteMatcher([
   "/",
   "/:locale",
-  "/:locale/cookbooks",
   "/:locale/skills",
   "/:locale/terms-of-use",
   "/:locale/privacy-policy",

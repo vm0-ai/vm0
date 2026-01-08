@@ -80,7 +80,6 @@
   "nav": {
     "docs": "Docs",
     "blog": "Blog",
-    "cookbooks": "Recetas",
     "skills": "Skills",
     "github": "GitHub",
     "contact": "Agendar demo",
@@ -92,77 +91,6 @@
     "language": "Idioma",
     "termsOfUse": "Términos de Uso",
     "privacyPolicy": "Política de Privacidad"
-  },
-  "cookbooks": {
-    "hero": {
-      "title": "Recetas",
-      "description": "Ejemplos de agentes listos para ejecutar que te permiten comenzar rápidamente. Cada receta es un ejemplo completo y funcional que puedes desplegar en minutos.",
-      "viewOnGithub": "Ver en GitHub"
-    },
-    "getStarted": {
-      "title": "Comenzar",
-      "step1": "Únete a la lista de espera en"
-    },
-    "allCookbooks": {
-      "title": "Todas las Recetas",
-      "viewCookbook": "Ver receta"
-    },
-    "cta": {
-      "title": "¿Listo para construir tu propio agente?",
-      "subtitle": "// comienza con una receta, hazla tuya",
-      "joinWaitlist": "Unirse a lista de espera",
-      "exploreCookbooks": "Explorar recetas"
-    },
-    "items": {
-      "101-intro": {
-        "name": "Receta de Introducción",
-        "description": "Introducción paso a paso que cubre comandos CLI esenciales, fundamentos de desarrollo de agentes y aspectos básicos de la plataforma."
-      },
-      "102-writing-agent": {
-        "name": "Agente de Escritura",
-        "description": "Agente de escritura de múltiples pasos que genera, revisa y refina contenido con ciclos de mejora iterativa."
-      },
-      "103-fetch-stores": {
-        "name": "Obtener y Almacenar",
-        "description": "Demuestra la obtención de datos externos y el almacenamiento de resultados en el sistema de artefactos de VM0 para persistencia."
-      },
-      "104-content-farm": {
-        "name": "Granja de Contenido",
-        "description": "Pipeline de generación de contenido automatizado con controles de calidad, optimización SEO y salida multiformato."
-      },
-      "105-hf-trainer": {
-        "name": "Entrenador HuggingFace",
-        "description": "Ajuste fino de modelos HuggingFace dentro de sandboxes VM0 con soporte GPU y seguimiento de experimentos."
-      },
-      "106-tiktok-influencer": {
-        "name": "Influencer de TikTok",
-        "description": "Analiza tendencias de TikTok, genera ideas de contenido viral y automatiza horarios de publicación."
-      },
-      "107-firecrawl-summary": {
-        "name": "Resumen Firecrawl",
-        "description": "Rastrea sitios web con Firecrawl y genera resúmenes inteligentes e información de contenido web."
-      },
-      "108-competitor-research": {
-        "name": "Investigación de Competidores",
-        "description": "Recopilación automatizada de inteligencia competitiva con análisis de mercado y detección de tendencias."
-      },
-      "109-github-agent": {
-        "name": "Agente GitHub",
-        "description": "Agente de flujo de trabajo de GitHub autónomo para revisiones de código, clasificación de issues y gestión de PR."
-      },
-      "110-startup-portrait": {
-        "name": "Retrato de Startup",
-        "description": "Genera informes completos de análisis de startups con dimensionamiento de mercado y posicionamiento competitivo."
-      },
-      "111-daily-data-report": {
-        "name": "Informe Diario de Datos",
-        "description": "Genera informes diarios completos que agregan datos de GitHub, Plausible Analytics y otras fuentes."
-      },
-      "201-intro-skills": {
-        "name": "Introducción a Skills",
-        "description": "Descubre cómo extender las capacidades de los agentes con skills predefinidas e integraciones personalizadas."
-      }
-    }
   },
   "skills": {
     "hero": {

@@ -80,7 +80,6 @@
   "nav": {
     "docs": "ドキュメント",
     "blog": "ブログ",
-    "cookbooks": "クックブック",
     "skills": "Skills",
     "github": "GitHub",
     "contact": "デモを予約",
@@ -92,77 +91,6 @@
     "language": "言語",
     "termsOfUse": "利用規約",
     "privacyPolicy": "プライバシーポリシー"
-  },
-  "cookbooks": {
-    "hero": {
-      "title": "クックブック",
-      "description": "すぐに使えるエージェントの例で、素早く始められます。各クックブックは、数分で展開できる完全な動作例です。",
-      "viewOnGithub": "GitHubで見る"
-    },
-    "getStarted": {
-      "title": "はじめに",
-      "step1": "ウェイトリストに参加する"
-    },
-    "allCookbooks": {
-      "title": "すべてのクックブック",
-      "viewCookbook": "クックブックを見る"
-    },
-    "cta": {
-      "title": "独自のエージェントを構築する準備はできましたか？",
-      "subtitle": "// クックブックから始めて、あなたのものにしましょう",
-      "joinWaitlist": "ウェイトリストに参加",
-      "exploreCookbooks": "クックブックを探索"
-    },
-    "items": {
-      "101-intro": {
-        "name": "入門クックブック",
-        "description": "必須のCLIコマンド、エージェント開発の基礎、プラットフォームの基本をカバーする段階的な入門。"
-      },
-      "102-writing-agent": {
-        "name": "ライティングエージェント",
-        "description": "反復的な改善サイクルでコンテンツを生成、レビュー、洗練するマルチステップライティングエージェント。"
-      },
-      "103-fetch-stores": {
-        "name": "取得と保存",
-        "description": "外部データの取得とVM0のアーティファクトシステムへの結果の永続的な保存を実演。"
-      },
-      "104-content-farm": {
-        "name": "コンテンツファーム",
-        "description": "品質チェック、SEO最適化、マルチフォーマット出力を備えた自動コンテンツ生成パイプライン。"
-      },
-      "105-hf-trainer": {
-        "name": "HuggingFaceトレーナー",
-        "description": "GPU サポートと実験追跡機能を備えたVM0サンドボックス内でのHuggingFaceモデルの微調整。"
-      },
-      "106-tiktok-influencer": {
-        "name": "TikTokインフルエンサー",
-        "description": "TikTokトレンドを分析し、バイラルコンテンツのアイデアを生成し、投稿スケジュールを自動化。"
-      },
-      "107-firecrawl-summary": {
-        "name": "Firecrawl要約",
-        "description": "Firecrawlでウェブサイトをクロールし、ウェブコンテンツからインテリジェントな要約と洞察を生成。"
-      },
-      "108-competitor-research": {
-        "name": "競合調査",
-        "description": "市場分析とトレンド検出を備えた自動競合インテリジェンス収集。"
-      },
-      "109-github-agent": {
-        "name": "GitHubエージェント",
-        "description": "コードレビュー、Issue管理、PR管理のための自律型GitHubワークフローエージェント。"
-      },
-      "110-startup-portrait": {
-        "name": "スタートアップポートレート",
-        "description": "市場規模測定と競争上のポジショニングを含む包括的なスタートアップ分析レポートを生成。"
-      },
-      "111-daily-data-report": {
-        "name": "日次データレポート",
-        "description": "GitHub、Plausible Analytics、その他のソースからデータを集約した包括的な日次レポートを生成。"
-      },
-      "201-intro-skills": {
-        "name": "スキル入門",
-        "description": "事前構築されたスキルとカスタム統合でエージェント機能を拡張する方法を学ぶ。"
-      }
-    }
   },
   "skills": {
     "hero": {

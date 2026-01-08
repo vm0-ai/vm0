@@ -13,11 +13,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly" as const,
     },
     {
-      path: "/cookbooks",
-      priority: 0.9,
-      changeFrequency: "weekly" as const,
-    },
-    {
       path: "/skills",
       priority: 0.9,
       changeFrequency: "weekly" as const,

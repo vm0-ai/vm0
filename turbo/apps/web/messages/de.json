@@ -80,7 +80,6 @@
   "nav": {
     "docs": "Docs",
     "blog": "Blog",
-    "cookbooks": "Kochbücher",
     "skills": "Skills",
     "github": "GitHub",
     "contact": "Demo vereinbaren",
@@ -92,77 +91,6 @@
     "language": "Sprache",
     "termsOfUse": "Nutzungsbedingungen",
     "privacyPolicy": "Datenschutzrichtlinie"
-  },
-  "cookbooks": {
-    "hero": {
-      "title": "Kochbücher",
-      "description": "Sofort einsatzbereite Agentenbeispiele für einen schnellen Start. Jedes Kochbuch ist ein vollständiges, funktionierendes Beispiel, das Sie in wenigen Minuten bereitstellen können.",
-      "viewOnGithub": "Auf GitHub ansehen"
-    },
-    "getStarted": {
-      "title": "Erste Schritte",
-      "step1": "Treten Sie der Warteliste bei unter"
-    },
-    "allCookbooks": {
-      "title": "Alle Kochbücher",
-      "viewCookbook": "Kochbuch ansehen"
-    },
-    "cta": {
-      "title": "Bereit, Ihren eigenen Agenten zu erstellen?",
-      "subtitle": "// Beginnen Sie mit einem Kochbuch und machen Sie es zu Ihrem eigenen",
-      "joinWaitlist": "Warteliste beitreten",
-      "exploreCookbooks": "Kochbücher erkunden"
-    },
-    "items": {
-      "101-intro": {
-        "name": "Einführungs-Kochbuch",
-        "description": "Schritt-für-Schritt-Einführung mit essentiellen CLI-Befehlen, Grundlagen der Agentenentwicklung und Plattform-Fundamenten."
-      },
-      "102-writing-agent": {
-        "name": "Schreib-Agent",
-        "description": "Mehrstufiger Schreib-Agent, der Inhalte generiert, überprüft und mit iterativen Verbesserungszyklen verfeinert."
-      },
-      "103-fetch-stores": {
-        "name": "Abrufen & Speichern",
-        "description": "Demonstriert das Abrufen externer Daten und Speichern der Ergebnisse im Artefakt-System von VM0 für Persistenz."
-      },
-      "104-content-farm": {
-        "name": "Content-Farm",
-        "description": "Automatisierte Content-Generierungs-Pipeline mit Qualitätsprüfungen, SEO-Optimierung und Multi-Format-Ausgabe."
-      },
-      "105-hf-trainer": {
-        "name": "HuggingFace Trainer",
-        "description": "Fine-Tuning von HuggingFace-Modellen in VM0-Sandboxen mit GPU-Unterstützung und Experiment-Tracking."
-      },
-      "106-tiktok-influencer": {
-        "name": "TikTok Influencer",
-        "description": "Analysieren Sie TikTok-Trends, generieren Sie virale Content-Ideen und automatisieren Sie Posting-Zeitpläne."
-      },
-      "107-firecrawl-summary": {
-        "name": "Firecrawl-Zusammenfassung",
-        "description": "Durchsuchen Sie Websites mit Firecrawl und generieren Sie intelligente Zusammenfassungen und Einblicke aus Webinhalten."
-      },
-      "108-competitor-research": {
-        "name": "Wettbewerber-Recherche",
-        "description": "Automatisierte Competitive Intelligence mit Marktanalyse und Trend-Erkennung."
-      },
-      "109-github-agent": {
-        "name": "GitHub-Agent",
-        "description": "Autonomer GitHub-Workflow-Agent für Code-Reviews, Issue-Triage und PR-Management."
-      },
-      "110-startup-portrait": {
-        "name": "Startup-Portrait",
-        "description": "Erstellen Sie umfassende Startup-Analyseberichte mit Marktgrößenbestimmung und Wettbewerbspositionierung."
-      },
-      "111-daily-data-report": {
-        "name": "Täglicher Datenbericht",
-        "description": "Generieren Sie umfassende tägliche Berichte, die Daten von GitHub, Plausible Analytics und anderen Quellen aggregieren."
-      },
-      "201-intro-skills": {
-        "name": "Einführung in Skills",
-        "description": "Entdecken Sie, wie Sie Agentenfähigkeiten mit vorgefertigten Skills und benutzerdefinierten Integrationen erweitern können."
-      }
-    }
   },
   "skills": {
     "hero": {

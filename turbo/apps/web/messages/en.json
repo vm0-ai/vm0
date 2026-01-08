@@ -80,7 +80,6 @@
   "nav": {
     "docs": "Docs",
     "blog": "Blog",
-    "cookbooks": "Cookbooks",
     "skills": "Skills",
     "github": "GitHub",
     "contact": "Schedule a demo",
@@ -92,77 +91,6 @@
     "language": "Language",
     "termsOfUse": "Terms of Use",
     "privacyPolicy": "Privacy Policy"
-  },
-  "cookbooks": {
-    "hero": {
-      "title": "Cookbooks",
-      "description": "Ready-to-run agent examples to get you started quickly. Each cookbook is a complete, working example you can deploy in minutes.",
-      "viewOnGithub": "View on GitHub"
-    },
-    "getStarted": {
-      "title": "Get Started",
-      "step1": "Join the waitlist at"
-    },
-    "allCookbooks": {
-      "title": "All Cookbooks",
-      "viewCookbook": "View cookbook"
-    },
-    "cta": {
-      "title": "Ready to build your own agent?",
-      "subtitle": "// start with a cookbook, make it yours",
-      "joinWaitlist": "Join waitlist",
-      "exploreCookbooks": "Explore cookbooks"
-    },
-    "items": {
-      "101-intro": {
-        "name": "Intro Cookbook",
-        "description": "Step-by-step introduction covering essential CLI commands, agent development basics, and platform fundamentals."
-      },
-      "102-writing-agent": {
-        "name": "Writing Agent",
-        "description": "Multi-step writing agent that generates, reviews, and refines content with iterative improvement cycles."
-      },
-      "103-fetch-stores": {
-        "name": "Fetch & Store",
-        "description": "Demonstrates fetching external data and storing results in VM0's artifact system for persistence."
-      },
-      "104-content-farm": {
-        "name": "Content Farm",
-        "description": "Automated content generation pipeline with quality checks, SEO optimization, and multi-format output."
-      },
-      "105-hf-trainer": {
-        "name": "HuggingFace Trainer",
-        "description": "Fine-tune HuggingFace models inside VM0 sandboxes with GPU support and experiment tracking."
-      },
-      "106-tiktok-influencer": {
-        "name": "TikTok Influencer",
-        "description": "Analyze TikTok trends, generate viral content ideas, and automate posting schedules."
-      },
-      "107-firecrawl-summary": {
-        "name": "Firecrawl Summary",
-        "description": "Crawl websites with Firecrawl and generate intelligent summaries and insights from web content."
-      },
-      "108-competitor-research": {
-        "name": "Competitor Research",
-        "description": "Automated competitive intelligence gathering with market analysis and trend detection."
-      },
-      "109-github-agent": {
-        "name": "GitHub Agent",
-        "description": "Autonomous GitHub workflow agent for code reviews, issue triage, and PR management."
-      },
-      "110-startup-portrait": {
-        "name": "Startup Portrait",
-        "description": "Generate comprehensive startup analysis reports with market sizing and competitive positioning."
-      },
-      "111-daily-data-report": {
-        "name": "Daily Data Report",
-        "description": "Generate comprehensive daily reports aggregating data from GitHub, Plausible analytics, and other sources."
-      },
-      "201-intro-skills": {
-        "name": "Introduction to Skills",
-        "description": "Discover how to extend agent capabilities with pre-built skills and custom integrations."
-      }
-    }
   },
   "skills": {
     "hero": {
