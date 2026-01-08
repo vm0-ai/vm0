@@ -7,7 +7,6 @@ import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
 import { artifactCommand } from "./commands/artifact";
 import { cookCommand } from "./commands/cook";
-import { imageCommand } from "./commands/image";
 import { logsCommand } from "./commands/logs";
 import { scopeCommand } from "./commands/scope";
 import { initCommand } from "./commands/init";
@@ -66,13 +65,12 @@ authCommand
     await setupToken();
   });
 
-// Register compose, run, volume, artifact, cook, image, logs, and scope commands
+// Register compose, run, volume, artifact, cook, logs, and scope commands
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
 program.addCommand(artifactCommand);
 program.addCommand(cookCommand);
-program.addCommand(imageCommand);
 program.addCommand(logsCommand);
 program.addCommand(scopeCommand);
 program.addCommand(initCommand);

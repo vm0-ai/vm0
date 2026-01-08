@@ -1,3 +1,4 @@
+import { SUPPORTED_APPS } from "@vm0/core";
 import { isProviderSupported } from "./provider-config";
 
 /**
@@ -275,6 +276,30 @@ export function validateAgentCompose(config: unknown): {
         return {
           valid: false,
           error: "experimental_vars entries cannot be empty strings",
+        };
+      }
+    }
+  }
+
+  // Validate apps if present
+  if (agent.apps !== undefined) {
+    if (!Array.isArray(agent.apps)) {
+      return {
+        valid: false,
+        error: "agent.apps must be an array of strings",
+      };
+    }
+    for (const app of agent.apps as unknown[]) {
+      if (typeof app !== "string") {
+        return {
+          valid: false,
+          error: "Each entry in apps must be a string",
+        };
+      }
+      if (!SUPPORTED_APPS.includes(app as (typeof SUPPORTED_APPS)[number])) {
+        return {
+          valid: false,
+          error: `Invalid app: "${app}". Supported apps: ${SUPPORTED_APPS.join(", ")}`,
         };
       }
     }

@@ -12,7 +12,10 @@ import {
 } from "@vm0/core";
 import { apiClient } from "../lib/api-client";
 import { validateAgentCompose } from "../lib/yaml-validator";
-import { getProviderDefaults, getDefaultImage } from "../lib/provider-config";
+import {
+  getProviderDefaults,
+  getDefaultImageWithApps,
+} from "../lib/provider-config";
 import {
   uploadInstructions,
   uploadSkill,
@@ -121,13 +124,20 @@ export const composeCommand = new Command()
         transformExperimentalShorthand(agentConfig);
       }
 
-      // 3.6 Check for legacy image format and show deprecation warning
+      // 3.6 Check for legacy image format and show deprecation warnings
       for (const [name, agentConfig] of Object.entries(agentsConfig)) {
         const image = agentConfig.image as string | undefined;
         if (image) {
+          // Show deprecation warning for explicit image field
+          console.log(
+            chalk.yellow(
+              `⚠ Agent "${name}": 'image' field is deprecated. Use 'apps' field for pre-installed tools.`,
+            ),
+          );
+          // Also check for legacy vm0-* format
           const warning = getLegacySystemTemplateWarning(image);
           if (warning) {
-            console.log(chalk.yellow(`⚠ Agent "${name}": ${warning}`));
+            console.log(chalk.yellow(`  ${warning}`));
           }
         }
       }
@@ -143,7 +153,12 @@ export const composeCommand = new Command()
         const defaults = getProviderDefaults(agent.provider as string);
         if (defaults) {
           if (!agent.image) {
-            const defaultImage = getDefaultImage(agent.provider as string);
+            // Use apps-aware image selection
+            const apps = agent.apps as string[] | undefined;
+            const defaultImage = getDefaultImageWithApps(
+              agent.provider as string,
+              apps,
+            );
             if (defaultImage) {
               agent.image = defaultImage;
               console.log(

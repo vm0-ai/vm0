@@ -14,9 +14,13 @@
 export const SYSTEM_SCOPE_SLUG = "vm0";
 export const SYSTEM_IMAGE_CLAUDE_CODE = "claude-code";
 export const SYSTEM_IMAGE_CODEX = "codex";
+export const SYSTEM_IMAGE_CLAUDE_CODE_GITHUB = "claude-code-github";
+export const SYSTEM_IMAGE_CODEX_GITHUB = "codex-github";
 export const SYSTEM_IMAGES = [
   SYSTEM_IMAGE_CLAUDE_CODE,
   SYSTEM_IMAGE_CODEX,
+  SYSTEM_IMAGE_CLAUDE_CODE_GITHUB,
+  SYSTEM_IMAGE_CODEX_GITHUB,
 ] as const;
 export const SYSTEM_VALID_TAGS = ["latest", "dev"] as const;
 
@@ -102,7 +106,7 @@ export function getLegacySystemTemplateWarning(
     return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex:dev" instead.`;
   }
   if (legacyFormat.startsWith("vm0-github-cli")) {
-    return `Warning: "${legacyFormat}" is deprecated and will be removed. No replacement available.`;
+    return `Warning: "${legacyFormat}" is deprecated. Use "apps: [github]" in vm0.yaml instead.`;
   }
 
   // Generic warning for other vm0-* formats

@@ -47,12 +47,27 @@ const volumeConfigSchema = z.object({
 });
 
 /**
+ * Supported apps that can be pre-installed in agent environments
+ */
+export const SUPPORTED_APPS = ["github"] as const;
+export type SupportedApp = (typeof SUPPORTED_APPS)[number];
+
+/**
  * Agent definition schema
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
-  image: z.string().optional(), // Optional when provider supports auto-config
+  /**
+   * @deprecated Use `apps` field instead for pre-installed tools.
+   * This field will be removed in a future version.
+   */
+  image: z.string().optional(),
   provider: z.string().min(1, "Provider is required"),
+  /**
+   * Array of pre-installed apps/tools for the agent environment.
+   * Currently supported: "github" (includes GitHub CLI)
+   */
+  apps: z.array(z.enum(SUPPORTED_APPS)).optional(),
   volumes: z.array(z.string()).optional(),
   working_dir: z.string().optional(), // Optional when provider supports auto-config
   environment: z.record(z.string(), z.string()).optional(),

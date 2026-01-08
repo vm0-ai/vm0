@@ -357,7 +357,12 @@ describe("system scope constants", () => {
   });
 
   it("has correct system images array", () => {
-    expect(SYSTEM_IMAGES).toEqual(["claude-code", "codex"]);
+    expect(SYSTEM_IMAGES).toEqual([
+      "claude-code",
+      "codex",
+      "claude-code-github",
+      "codex-github",
+    ]);
   });
 
   it("has correct valid tags", () => {
@@ -496,7 +501,7 @@ describe("getLegacySystemTemplateWarning", () => {
     it("returns warning for vm0-github-cli", () => {
       const warning = getLegacySystemTemplateWarning("vm0-github-cli");
       expect(warning).toContain("deprecated");
-      expect(warning).toContain("will be removed");
+      expect(warning).toContain("apps: [github]");
     });
 
     it("returns generic warning for other vm0-* formats", () => {
