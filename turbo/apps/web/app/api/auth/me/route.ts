@@ -2,9 +2,6 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { authContract } from "@vm0/core";
 import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { logger } from "../../../../src/lib/logger";
-
-const log = logger("api:auth");
 
 const router = tsr.router(authContract, {
   me: async () => {
@@ -19,39 +16,29 @@ const router = tsr.router(authContract, {
       };
     }
 
-    try {
-      const client = await clerkClient();
-      const user = await client.users.getUser(userId);
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
 
-      if (!user) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "User not found", code: "NOT_FOUND" },
-          },
-        };
-      }
-
-      const email = user.emailAddresses.find(
-        (e) => e.id === user.primaryEmailAddressId,
-      )?.emailAddress;
-
+    if (!user) {
       return {
-        status: 200 as const,
+        status: 404 as const,
         body: {
-          userId: user.id,
-          email: email || "",
-        },
-      };
-    } catch (error) {
-      log.error("Failed to get user info:", error);
-      return {
-        status: 500 as const,
-        body: {
-          error: { message: "Internal server error", code: "INTERNAL_ERROR" },
+          error: { message: "User not found", code: "NOT_FOUND" },
         },
       };
     }
+
+    const email = user.emailAddresses.find(
+      (e) => e.id === user.primaryEmailAddressId,
+    )?.emailAddress;
+
+    return {
+      status: 200 as const,
+      body: {
+        userId: user.id,
+        email: email || "",
+      },
+    };
   },
 });
 
