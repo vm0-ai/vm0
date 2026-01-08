@@ -56,44 +56,26 @@ const router = tsr.router(webhookCheckpointsContract, {
     // Note: We don't check run status here because the checkpoint is called from within
     // the sandbox before the E2B service updates the run status to "completed"
 
-    try {
-      // Create checkpoint
-      const result = await checkpointService.createCheckpoint(body);
+    // Create checkpoint
+    const result = await checkpointService.createCheckpoint(body);
 
-      log.debug(
-        `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
-      );
+    log.debug(
+      `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
+    );
 
-      // Note: vm0_result event is now sent by the complete API
-      // This endpoint only handles checkpoint data persistence
+    // Note: vm0_result event is now sent by the complete API
+    // This endpoint only handles checkpoint data persistence
 
-      return {
-        status: 200 as const,
-        body: {
-          checkpointId: result.checkpointId,
-          agentSessionId: result.agentSessionId,
-          conversationId: result.conversationId,
-          artifact: result.artifact,
-          volumes: result.volumes,
-        },
-      };
-    } catch (error) {
-      log.error("Error:", error);
-
-      // Note: vm0_error event is now sent by the complete API
-      // If checkpoint fails, run-agent.sh will call complete API with exitCode != 0
-
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            message:
-              error instanceof Error ? error.message : "Internal server error",
-            code: "INTERNAL_ERROR",
-          },
-        },
-      };
-    }
+    return {
+      status: 200 as const,
+      body: {
+        checkpointId: result.checkpointId,
+        agentSessionId: result.agentSessionId,
+        conversationId: result.conversationId,
+        artifact: result.artifact,
+        volumes: result.volumes,
+      },
+    };
   },
 });
 

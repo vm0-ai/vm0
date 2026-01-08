@@ -8,6 +8,7 @@ export default defineConfig({
     port: 3002,
     strictPort: true,
     host: true,
+    allowedHosts: ["platform.vm7.ai"],
   },
   build: {
     outDir: "dist",

@@ -26,6 +26,7 @@ jobs:
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
+      app-changed: ${{ steps.detect.outputs.app-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +45,7 @@ jobs:
             echo "docs-changed=false" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
+            echo "app-changed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -54,6 +56,7 @@ jobs:
             echo "docs-changed=true" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
+            echo "app-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -110,6 +113,16 @@ jobs:
           else
             echo "Changes detected in runner app"
             echo "runner-changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check app (Vite SPA)
+          cd /__w/vm0/vm0/turbo/apps/app
+          if npx turbo-ignore 2>/dev/null; then
+            echo "No changes detected in app"
+            echo "app-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in app"
+            echo "app-changed=true" >> $GITHUB_OUTPUT
           fi
 
   lint:
@@ -250,6 +263,34 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: preview
           deployment-env: docs
+          meta-branch: ${{ github.head_ref }}
+          meta-pr: ${{ github.event.pull_request.number }}
+
+  # Deploy app (Vite SPA)
+  deploy-app:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection]
+    # Only deploy if it's a PR and app changed
+    if: github.event_name == 'pull_request' && needs.change-detection.outputs.app-changed == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Deploy App to Vercel
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
+          environment: preview
+          deployment-env: app
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 

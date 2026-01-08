@@ -75,143 +75,112 @@ const router = tsr.router(webhookCompleteContract, {
 
     let finalStatus: "completed" | "failed";
 
-    try {
-      if (body.exitCode === 0) {
-        // Success: query checkpoint and store result in run table
-        const [checkpoint] = await globalThis.services.db
-          .select()
-          .from(checkpoints)
-          .where(eq(checkpoints.runId, body.runId))
-          .limit(1);
+    if (body.exitCode === 0) {
+      // Success: query checkpoint and store result in run table
+      const [checkpoint] = await globalThis.services.db
+        .select()
+        .from(checkpoints)
+        .where(eq(checkpoints.runId, body.runId))
+        .limit(1);
 
-        if (!checkpoint) {
-          // Update run status to failed
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({
-              status: "failed",
-              completedAt: new Date(),
-              error: "Checkpoint for run not found",
-            })
-            .where(eq(agentRuns.id, body.runId));
-
-          if (sandboxId) {
-            await e2bService.killSandbox(sandboxId);
-          }
-
-          return {
-            status: 404 as const,
-            body: {
-              error: {
-                message: "Checkpoint for run not found",
-                code: "NOT_FOUND",
-              },
-            },
-          };
-        }
-
-        // Get agent session for the conversation
-        const [session] = await globalThis.services.db
-          .select()
-          .from(agentSessions)
-          .where(eq(agentSessions.conversationId, checkpoint.conversationId))
-          .limit(1);
-
-        // Extract artifact info from checkpoint (may be null for runs without artifact)
-        const artifactSnapshot =
-          checkpoint.artifactSnapshot as ArtifactSnapshot | null;
-        const volumeVersions = checkpoint.volumeVersionsSnapshot as
-          | { versions: Record<string, string> }
-          | undefined;
-
-        // Build result object to store in run table
-        const result: RunResult = {
-          checkpointId: checkpoint.id,
-          agentSessionId: session?.id ?? checkpoint.conversationId,
-          conversationId: checkpoint.conversationId,
-          volumes: volumeVersions?.versions,
-        };
-
-        // Only add artifact if present in checkpoint
-        if (artifactSnapshot) {
-          result.artifact = {
-            [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
-          };
-        }
-
-        // Update run status and result
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({
-            status: "completed",
-            completedAt: new Date(),
-            result,
-          })
-          .where(eq(agentRuns.id, body.runId));
-
-        finalStatus = "completed";
-        log.debug(`Run ${body.runId} completed successfully`);
-      } else {
-        // Failure: store error in run table
-        const errorMessage =
-          body.error || `Agent exited with code ${body.exitCode}`;
-
-        // Update run status and error
+      if (!checkpoint) {
+        // Update run status to failed
         await globalThis.services.db
           .update(agentRuns)
           .set({
             status: "failed",
             completedAt: new Date(),
-            error: errorMessage,
+            error: "Checkpoint for run not found",
           })
           .where(eq(agentRuns.id, body.runId));
 
-        finalStatus = "failed";
-        log.warn(`Run ${body.runId} failed: ${errorMessage}`);
+        if (sandboxId) {
+          await e2bService.killSandbox(sandboxId);
+        }
+
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: "Checkpoint for run not found",
+              code: "NOT_FOUND",
+            },
+          },
+        };
       }
 
-      // Kill sandbox (wait for completion to ensure cleanup before response)
-      if (sandboxId) {
-        await e2bService.killSandbox(sandboxId);
-      }
+      // Get agent session for the conversation
+      const [session] = await globalThis.services.db
+        .select()
+        .from(agentSessions)
+        .where(eq(agentSessions.conversationId, checkpoint.conversationId))
+        .limit(1);
 
-      return {
-        status: 200 as const,
-        body: {
-          success: true,
-          status: finalStatus,
-        },
+      // Extract artifact info from checkpoint (may be null for runs without artifact)
+      const artifactSnapshot =
+        checkpoint.artifactSnapshot as ArtifactSnapshot | null;
+      const volumeVersions = checkpoint.volumeVersionsSnapshot as
+        | { versions: Record<string, string> }
+        | undefined;
+
+      // Build result object to store in run table
+      const result: RunResult = {
+        checkpointId: checkpoint.id,
+        agentSessionId: session?.id ?? checkpoint.conversationId,
+        conversationId: checkpoint.conversationId,
+        volumes: volumeVersions?.versions,
       };
-    } catch (error) {
-      log.error("Error:", error);
 
-      // Update run status to failed - if this fails, let it propagate
-      // since we can't recover from a database error anyway
+      // Only add artifact if present in checkpoint
+      if (artifactSnapshot) {
+        result.artifact = {
+          [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+        };
+      }
+
+      // Update run status and result
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          result,
+        })
+        .where(eq(agentRuns.id, body.runId));
+
+      finalStatus = "completed";
+      log.debug(`Run ${body.runId} completed successfully`);
+    } else {
+      // Failure: store error in run table
+      const errorMessage =
+        body.error || `Agent exited with code ${body.exitCode}`;
+
+      // Update run status and error
       await globalThis.services.db
         .update(agentRuns)
         .set({
           status: "failed",
           completedAt: new Date(),
-          error: error instanceof Error ? error.message : "Complete API failed",
+          error: errorMessage,
         })
         .where(eq(agentRuns.id, body.runId));
 
-      // Still try to kill sandbox on error
-      if (sandboxId) {
-        await e2bService.killSandbox(sandboxId);
-      }
-
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            message:
-              error instanceof Error ? error.message : "Internal server error",
-            code: "INTERNAL_ERROR",
-          },
-        },
-      };
+      finalStatus = "failed";
+      log.warn(`Run ${body.runId} failed: ${errorMessage}`);
     }
+
+    // Kill sandbox (wait for completion to ensure cleanup before response)
+    if (sandboxId) {
+      await e2bService.killSandbox(sandboxId);
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        success: true,
+        status: finalStatus,
+      },
+    };
   },
 });
 
