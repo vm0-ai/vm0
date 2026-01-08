@@ -37,8 +37,7 @@ teardown() {
 
 @test "runner network security: run with proxy captures network traffic" {
     # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
-    # The network security proxy requires mitmproxy installed on the runner
-    # and CA certificate baked into the rootfs, which may not be available in CI
+    # Useful for local development when mitmproxy isn't installed
     if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
         skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
     fi

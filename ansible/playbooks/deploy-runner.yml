@@ -192,6 +192,18 @@
       command: "{{ runner_base_dir }}/deploy-runner/install-firecracker.sh"
       when: not firecracker_bin.stat.exists
 
+    - name: Check if mitmproxy is installed
+      command: mitmdump --version
+      register: mitmproxy_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Install mitmproxy
+      pip:
+        name: mitmproxy
+        executable: pip3
+      when: mitmproxy_check.rc != 0
+
     - name: Check if rootfs exists
       stat:
         path: "{{ rootfs_path }}"
@@ -200,6 +212,23 @@
     - name: Build rootfs
       command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
       when: not rootfs_file.stat.exists or force_rebuild_rootfs
+
+    - name: Ensure proxy CA directory exists
+      file:
+        path: /opt/vm0-runner/proxy
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy proxy CA certificate for mitmproxy
+      copy:
+        src: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
+        dest: /opt/vm0-runner/proxy/mitmproxy-ca.pem
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+        remote_src: yes
 
     - name: Ensure user is in kvm group for Firecracker
       user:
