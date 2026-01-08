@@ -1,6 +1,4 @@
 /**
- * @vitest-environment node
- *
  * Note: This test file focuses on E2B SDK integration testing.
  * Database operations (updating run status/sandboxId) are side effects
  * that are tested separately in integration tests. These unit tests

@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initServices } from "../../init-services";
 import { agentSessions } from "../../../db/schema/agent-session";
