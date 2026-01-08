@@ -1,6 +1,7 @@
 import { config as baseConfig } from "@vm0/eslint-config/base";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
+import ccstatePlugin from "./custom-eslint/index.ts";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -12,10 +13,15 @@ export default [
   {
     plugins: {
       "react-hooks": pluginReactHooks,
+      ccstate: ccstatePlugin,
     },
     rules: {
       ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
+      "ccstate/signal-dollar-suffix": "warn",
+      "ccstate/no-export-state": "error",
+      "ccstate/signal-check-await": "warn",
+      "ccstate/tsx-in-views": "error",
     },
   },
   {
