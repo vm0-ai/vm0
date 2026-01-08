@@ -57,15 +57,26 @@ The request body contains your query:
 
 ### Get a Run
 
+Query:
+
+```graphql
+{
+  run(id: "run_abc123") {
+    id
+    status
+    prompt
+    createdAt
+  }
+}
+```
+
+curl:
+
 ```bash
 curl -X POST https://vm0.ai/api/graphql \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
-  -d @- << 'EOF'
-{
-  "query": "{ run(id: \"run_abc123\") { id status prompt createdAt } }"
-}
-EOF
+  -d '{"query": "{ run(id: \"run_abc123\") { id status prompt createdAt } }"}'
 ```
 
 Response:
@@ -85,35 +96,60 @@ Response:
 
 ### Create a Run
 
+Mutation:
+
+```graphql
+mutation ($input: CreateRunInput!) {
+  createRun(input: $input) {
+    run {
+      id
+      status
+    }
+  }
+}
+```
+
+Variables:
+
+```json
+{
+  "input": {
+    "agentId": "agent_xyz789",
+    "prompt": "Create a hello world script"
+  }
+}
+```
+
+curl:
+
 ```bash
 curl -X POST https://vm0.ai/api/graphql \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
-  -d @- << 'EOF'
-{
-  "query": "mutation ($input: CreateRunInput!) { createRun(input: $input) { run { id status } } }",
-  "variables": {
-    "input": {
-      "agentId": "agent_xyz789",
-      "prompt": "Create a hello world script"
-    }
-  }
-}
-EOF
+  -d '{"query": "mutation ($input: CreateRunInput!) { createRun(input: $input) { run { id status } } }", "variables": {"input": {"agentId": "agent_xyz789", "prompt": "Create a hello world script"}}}'
 ```
 
 ### Subscribe to Events
+
+Subscription:
+
+```graphql
+subscription {
+  runEvents(runId: "run_abc123") {
+    eventType
+    eventData
+  }
+}
+```
+
+curl:
 
 ```bash
 curl -N https://vm0.ai/api/graphql \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Accept: text/event-stream" \
-  -d @- << 'EOF'
-{
-  "query": "subscription { runEvents(runId: \"run_abc123\") { eventType eventData } }"
-}
-EOF
+  -d '{"query": "subscription { runEvents(runId: \"run_abc123\") { eventType eventData } }"}'
 ```
 
 ## Types Reference
