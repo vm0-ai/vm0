@@ -46,6 +46,9 @@
     enable_drain: true
     drain_timeout: 86400  # 24 hours
     extra_env: {}
+    # Rootfs configuration - CI should override for per-PR isolation
+    rootfs_path: /opt/firecracker/rootfs.ext4
+    force_rebuild_rootfs: false
 
   tasks:
     # ========================================
@@ -191,12 +194,12 @@
 
     - name: Check if rootfs exists
       stat:
-        path: /opt/firecracker/rootfs.ext4
+        path: "{{ rootfs_path }}"
       register: rootfs_file
 
     - name: Build rootfs
-      command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh /opt/firecracker/rootfs.ext4"
-      when: not rootfs_file.stat.exists
+      command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
+      when: not rootfs_file.stat.exists or force_rebuild_rootfs
 
     - name: Ensure user is in kvm group for Firecracker
       user:

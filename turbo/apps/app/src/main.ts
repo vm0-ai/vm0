@@ -1,0 +1,31 @@
+import { createStore, type Store } from "ccstate";
+import { createRoot } from "react-dom/client";
+import { bootstrap$ } from "./signals/bootstrap.ts";
+import { detach, Reason } from "./signals/utils.ts";
+import { setupRouter } from "./views/main.tsx";
+
+async function main(rootEl: HTMLDivElement, store: Store, signal: AbortSignal) {
+  await store.set(
+    bootstrap$,
+    () => {
+      setupRouter(store, (el) => {
+        const root = createRoot(rootEl);
+        root.render(el);
+        signal.addEventListener("abort", () => {
+          root.unmount();
+        });
+      });
+    },
+    signal,
+  );
+}
+
+detach(
+  main(
+    document.getElementById("root") as HTMLDivElement,
+    createStore(),
+    AbortSignal.any([]),
+  ),
+  Reason.Entrance,
+  "main",
+);

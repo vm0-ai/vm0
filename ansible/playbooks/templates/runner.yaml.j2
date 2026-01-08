@@ -17,4 +17,4 @@ sandbox:
 firecracker:
   binary: /usr/local/bin/firecracker
   kernel: /opt/firecracker/vmlinux
-  rootfs: /opt/firecracker/rootfs.ext4
+  rootfs: {{ rootfs_path | default('/opt/firecracker/rootfs.ext4') }}
