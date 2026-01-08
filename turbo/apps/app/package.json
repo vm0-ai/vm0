@@ -32,6 +32,8 @@
     "@vitejs/plugin-react": "^4.5.1",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "happy-dom": "^20.0.0",
     "oxlint": "^1.14.0",
     "tailwindcss": "^4.1.8",
