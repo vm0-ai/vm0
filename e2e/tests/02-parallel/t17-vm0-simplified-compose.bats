@@ -382,6 +382,39 @@ EOF
     assert_output --partial "SKILL.md"
 }
 
+@test "vm0 run with apps github has gh cli installed" {
+    echo "# Creating config with apps: [github]..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    apps:
+      - github
+EOF
+
+    echo "# Running vm0 compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact storage..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running agent to verify gh cli is installed..."
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "gh --version"
+    assert_success
+
+    echo "# Verifying gh version output..."
+    assert_output --partial "gh version"
+}
+
 # ============================================
 # Validation tests
 # ============================================
