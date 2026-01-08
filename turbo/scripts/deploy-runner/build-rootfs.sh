@@ -56,19 +56,6 @@ check_dependencies() {
     echo "[OK] All dependencies available"
 }
 
-# Generate proxy CA certificate if not exists
-ensure_proxy_ca() {
-    local ca_cert="${SCRIPT_DIR}/proxy-ca/mitmproxy-ca-cert.pem"
-
-    if [ -f "$ca_cert" ]; then
-        echo "[OK] Proxy CA certificate exists"
-        return 0
-    fi
-
-    echo "[GENERATE] Generating proxy CA certificate..."
-    "${SCRIPT_DIR}/generate-proxy-ca.sh" "${SCRIPT_DIR}/proxy-ca"
-}
-
 # Build Docker image
 build_image() {
     echo "[BUILD] Building Docker image..."
@@ -210,7 +197,6 @@ verify_rootfs() {
 # Main
 main() {
     check_dependencies
-    ensure_proxy_ca
     build_image
     export_filesystem
     create_ext4_image "$EXPORTED_TAR"

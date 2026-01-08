@@ -324,6 +324,39 @@ async function restoreSessionHistory(
 }
 
 /**
+ * Path to the proxy CA certificate on the runner host (cert only, no private key)
+ */
+const PROXY_CA_CERT_PATH = "/opt/vm0-runner/proxy/mitmproxy-ca-cert.pem";
+
+/**
+ * Install proxy CA certificate in VM for network security mode
+ * This allows the VM to trust the runner's mitmproxy for HTTPS interception
+ */
+async function installProxyCA(ssh: SSHClient): Promise<void> {
+  // Read CA certificate from runner host
+  if (!fs.existsSync(PROXY_CA_CERT_PATH)) {
+    throw new Error(
+      `Proxy CA certificate not found at ${PROXY_CA_CERT_PATH}. Run generate-proxy-ca.sh first.`,
+    );
+  }
+
+  const caCert = fs.readFileSync(PROXY_CA_CERT_PATH, "utf-8");
+  console.log(
+    `[Executor] Installing proxy CA certificate (${caCert.length} bytes)`,
+  );
+
+  // Write CA cert to VM's CA certificates directory
+  await ssh.writeFileWithSudo(
+    "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
+    caCert,
+  );
+
+  // Update CA certificates (requires sudo)
+  await ssh.execOrThrow("sudo update-ca-certificates");
+  console.log(`[Executor] Proxy CA certificate installed successfully`);
+}
+
+/**
  * Configure DNS in the VM
  * Systemd-resolved may overwrite /etc/resolv.conf at boot,
  * so we need to ensure DNS servers are configured after SSH is ready.
@@ -393,12 +426,15 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
-    // Register VM in proxy registry if network security is enabled
+    // Register VM in proxy registry and install CA certificate if network security is enabled
     if (context.experimentalNetworkSecurity) {
       console.log(
-        `[Executor] Registering VM ${guestIp} for network security mode`,
+        `[Executor] Setting up network security mode for VM ${guestIp}`,
       );
       getVMRegistry().register(guestIp, context.runId, context.sandboxToken);
+
+      // Install proxy CA certificate so VM trusts mitmproxy
+      await installProxyCA(ssh);
     }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot

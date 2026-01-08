@@ -3,7 +3,7 @@
 # Generate mitmproxy CA certificate for VM0 runner proxy
 #
 # This script generates a CA certificate and private key that will be:
-# 1. Baked into the VM rootfs (so VMs trust the proxy)
+# 1. Dynamically installed to VMs at runtime (via executor.ts)
 # 2. Used by mitmproxy on the runner host (for HTTPS interception)
 #
 # The certificate is generated in mitmproxy-compatible format.
@@ -14,7 +14,7 @@
 #   output_dir  Directory for output files (default: ./proxy-ca)
 #
 # Output files:
-#   - mitmproxy-ca-cert.pem  CA certificate (copy to rootfs)
+#   - mitmproxy-ca-cert.pem  CA certificate (installed to VMs dynamically)
 #   - mitmproxy-ca.pem       CA certificate + private key (for mitmproxy)
 #
 
@@ -64,11 +64,12 @@ echo ""
 echo "=== CA Certificate Generated ==="
 echo ""
 echo "Files created:"
-echo "  - ${OUTPUT_DIR}/mitmproxy-ca-cert.pem  (CA certificate - for rootfs)"
+echo "  - ${OUTPUT_DIR}/mitmproxy-ca-cert.pem  (CA certificate - for VM installation)"
 echo "  - ${OUTPUT_DIR}/mitmproxy-ca.pem       (CA cert + key - for mitmproxy)"
 echo "  - ${OUTPUT_DIR}/mitmproxy-ca-key.pem   (CA private key)"
 echo ""
 echo "Next steps:"
-echo "  1. Rebuild rootfs: ./build-rootfs.sh"
-echo "  2. Copy proxy-ca/ to runner host: /opt/vm0-runner/proxy/"
+echo "  Copy CA files to runner host: /opt/vm0-runner/proxy/"
+echo "  - mitmproxy-ca.pem (for mitmproxy)"
+echo "  - mitmproxy-ca-cert.pem (for VM installation)"
 echo ""

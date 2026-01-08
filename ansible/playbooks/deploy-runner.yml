@@ -237,13 +237,22 @@
         group: "{{ ansible_user }}"
         mode: '0755'
 
-    - name: Copy proxy CA certificate for mitmproxy
+    - name: Copy proxy CA (cert+key) for mitmproxy
       copy:
         src: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
         dest: /opt/vm0-runner/proxy/mitmproxy-ca.pem
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0600'
+        remote_src: yes
+
+    - name: Copy proxy CA certificate (cert only) for VM installation
+      copy:
+        src: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca-cert.pem"
+        dest: /opt/vm0-runner/proxy/mitmproxy-ca-cert.pem
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
         remote_src: yes
 
     - name: Ensure user is in kvm group for Firecracker
