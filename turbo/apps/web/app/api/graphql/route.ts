@@ -12,10 +12,11 @@ import type { GraphQLContext } from "../../../src/graphql/context";
  * - Context with authentication and database
  * - GraphiQL playground (in development)
  */
-const yoga = createYoga<object, GraphQLContext>({
+const { handleRequest } = createYoga<object, GraphQLContext>({
   schema,
   graphqlEndpoint: "/api/graphql",
   graphiql: process.env.NODE_ENV !== "production",
+  fetchAPI: { Response },
   context: async () => {
     // Initialize services (database connection, etc.)
     initServices();
@@ -31,5 +32,6 @@ const yoga = createYoga<object, GraphQLContext>({
 });
 
 // Export handlers for Next.js App Router
-export const GET = yoga;
-export const POST = yoga;
+// Wrap handleRequest to fix Next.js 15 type compatibility
+export const GET = (req: Request) => handleRequest(req, {});
+export const POST = (req: Request) => handleRequest(req, {});
