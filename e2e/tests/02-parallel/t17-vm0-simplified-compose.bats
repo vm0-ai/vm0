@@ -384,14 +384,14 @@ EOF
 
 @test "vm0 run with apps github has gh cli installed" {
     echo "# Creating config with apps: [github]..."
+    # Note: Using explicit dev image since production image is only built after merge to main
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     provider: claude-code
-    apps:
-      - github
+    image: vm0/claude-code-github:dev
 EOF
 
     echo "# Running vm0 compose..."
