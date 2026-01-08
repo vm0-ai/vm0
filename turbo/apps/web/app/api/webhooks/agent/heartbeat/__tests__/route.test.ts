@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
 import { POST as createCompose } from "../../../../agent/composes/route";
