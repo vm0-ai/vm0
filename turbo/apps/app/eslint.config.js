@@ -18,9 +18,9 @@ export default [
     rules: {
       ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
-      "ccstate/signal-dollar-suffix": "warn",
+      "ccstate/signal-dollar-suffix": "error",
       "ccstate/no-export-state": "error",
-      "ccstate/signal-check-await": "warn",
+      "ccstate/signal-check-await": "error",
       "ccstate/tsx-in-views": "error",
     },
   },
