@@ -389,7 +389,8 @@ jobs:
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            # Skip network security test - requires rootfs with CA cert baked in
+            SKIP_NETWORK_SECURITY_TEST=1 RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
