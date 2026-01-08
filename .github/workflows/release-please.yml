@@ -157,6 +157,9 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           environment: production
           deployment-env: app
+          environment-variables: |
+            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            VITE_API_URL=https://www.vm0.ai
 
   publish-npm:
     needs: release-please

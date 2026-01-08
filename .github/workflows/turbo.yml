@@ -291,6 +291,8 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           environment: preview
           deployment-env: app
+          environment-variables: |
+            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
