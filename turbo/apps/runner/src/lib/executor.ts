@@ -552,9 +552,7 @@ export async function executeJob(
   } finally {
     // Clean up network security if it was enabled
     if (context.experimentalNetworkSecurity && guestIp) {
-      console.log(
-        `[Executor] Cleaning up network security for VM ${guestIp}`,
-      );
+      console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
       // Remove per-VM iptables rules first
       try {
