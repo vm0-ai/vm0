@@ -15,10 +15,10 @@ export const template = Template()
   .npmInstall("@anthropic-ai/claude-code@latest", { g: true })
   // Install GitHub CLI
   // https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-  .run(
+  .runCmd(
     "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg",
   )
-  .run(
+  .runCmd(
     'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null',
   )
-  .run("apt-get update && apt-get install -y gh");
+  .runCmd("apt-get update && apt-get install -y gh");
