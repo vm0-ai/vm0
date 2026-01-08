@@ -119,6 +119,8 @@ export const executionContextSchema = z.object({
   resumeSession: resumeSessionSchema.nullable(),
   secretValues: z.array(z.string()).nullable(),
   cliAgentType: z.string(),
+  // Network security mode flag
+  experimentalNetworkSecurity: z.boolean().optional(),
 });
 
 /**

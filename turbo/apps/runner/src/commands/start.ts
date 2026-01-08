@@ -16,7 +16,14 @@ import { executeJob as executeJobInVM } from "../lib/executor.js";
 import {
   checkNetworkPrerequisites,
   setupBridge,
+  setupProxyDnatRules,
+  removeProxyDnatRules,
 } from "../lib/firecracker/network.js";
+import {
+  initProxyManager,
+  initVMRegistry,
+  getProxyManager,
+} from "../lib/proxy/index.js";
 
 // Track active jobs for concurrency management
 const activeJobs = new Set<string>();
@@ -121,6 +128,30 @@ export const startCommand = new Command("start")
       // Set up bridge network
       console.log("Setting up network bridge...");
       await setupBridge();
+
+      // Initialize proxy for network security mode
+      // The proxy is always started but only used when experimentalNetworkSecurity is enabled
+      console.log("Initializing network proxy...");
+      initVMRegistry();
+      const proxyManager = initProxyManager({
+        apiUrl: config.server.url,
+      });
+
+      // Try to start proxy - if mitmproxy is not installed, continue without it
+      let proxyEnabled = false;
+      try {
+        await proxyManager.start();
+        await setupProxyDnatRules();
+        proxyEnabled = true;
+        console.log("Network proxy initialized successfully");
+      } catch (err) {
+        console.warn(
+          `Network proxy not available: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+        console.warn(
+          "Jobs with experimentalNetworkSecurity enabled will run without network interception",
+        );
+      }
 
       // Status file for external monitoring (Ansible drain support)
       const statusFilePath = join(dirname(options.config), "status.json");
@@ -264,6 +295,13 @@ export const startCommand = new Command("start")
           `Waiting for ${jobPromises.size} active job(s) to complete...`,
         );
         await Promise.all(jobPromises);
+      }
+
+      // Cleanup proxy
+      if (proxyEnabled) {
+        console.log("Stopping network proxy...");
+        await removeProxyDnatRules();
+        await getProxyManager().stop();
       }
 
       // Final status update

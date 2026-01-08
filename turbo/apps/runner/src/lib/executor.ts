@@ -12,6 +12,7 @@
  */
 
 import path from "path";
+import fs from "fs";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import {
   type SSHClient,
@@ -26,6 +27,7 @@ import type {
 import type { RunnerConfig } from "./config.js";
 import { getAllScripts } from "./scripts/utils.js";
 import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
+import { getVMRegistry } from "./proxy/index.js";
 
 /**
  * Execution result
@@ -114,6 +116,116 @@ function buildEnvironmentVariables(
  * Used by run-agent.py to load environment variables
  */
 const ENV_JSON_PATH = "/tmp/vm0-env.json";
+
+/**
+ * Network log entry from mitmproxy addon
+ */
+interface NetworkLogEntry {
+  timestamp: string;
+  method: string;
+  url: string;
+  status: number;
+  latency_ms: number;
+  request_size: number;
+  response_size: number;
+}
+
+/**
+ * Get the network log file path for a run
+ */
+function getNetworkLogPath(runId: string): string {
+  return `/tmp/vm0-network-${runId}.jsonl`;
+}
+
+/**
+ * Read network logs from the JSONL file
+ */
+function readNetworkLogs(runId: string): NetworkLogEntry[] {
+  const logPath = getNetworkLogPath(runId);
+
+  if (!fs.existsSync(logPath)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(logPath, "utf-8");
+    const lines = content.split("\n").filter((line) => line.trim());
+    return lines.map((line) => JSON.parse(line) as NetworkLogEntry);
+  } catch (err) {
+    console.error(
+      `[Executor] Failed to read network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+    );
+    return [];
+  }
+}
+
+/**
+ * Delete network log file after upload
+ */
+function cleanupNetworkLogs(runId: string): void {
+  const logPath = getNetworkLogPath(runId);
+
+  try {
+    if (fs.existsSync(logPath)) {
+      fs.unlinkSync(logPath);
+    }
+  } catch (err) {
+    console.error(
+      `[Executor] Failed to cleanup network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+    );
+  }
+}
+
+/**
+ * Upload network logs to telemetry endpoint
+ */
+async function uploadNetworkLogs(
+  apiUrl: string,
+  sandboxToken: string,
+  runId: string,
+): Promise<void> {
+  const networkLogs = readNetworkLogs(runId);
+
+  if (networkLogs.length === 0) {
+    console.log(`[Executor] No network logs to upload for ${runId}`);
+    return;
+  }
+
+  console.log(
+    `[Executor] Uploading ${networkLogs.length} network log entries for ${runId}`,
+  );
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${sandboxToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // Add Vercel bypass secret if available
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(`${apiUrl}/api/webhooks/agent/telemetry`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runId,
+      networkLogs,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[Executor] Failed to upload network logs: ${errorText}`);
+    return;
+  }
+
+  console.log(`[Executor] Network logs uploaded successfully for ${runId}`);
+
+  // Cleanup log file after successful upload
+  cleanupNetworkLogs(runId);
+}
 
 /**
  * Upload all scripts to VM individually via SSH
@@ -240,6 +352,7 @@ export async function executeJob(
   // This ensures no conflicts even across process restarts
   const vmId = getVmIdFromRunId(context.runId);
   let vm: FirecrackerVM | null = null;
+  let guestIp: string | null = null;
 
   console.log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
 
@@ -264,7 +377,7 @@ export async function executeJob(
     await vm.start();
 
     // Get VM IP for SSH connection
-    const guestIp = vm.getGuestIp();
+    guestIp = vm.getGuestIp();
     if (!guestIp) {
       throw new Error("VM started but no IP address available");
     }
@@ -279,6 +392,14 @@ export async function executeJob(
     await ssh.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
+
+    // Register VM in proxy registry if network security is enabled
+    if (context.experimentalNetworkSecurity) {
+      console.log(
+        `[Executor] Registering VM ${guestIp} for network security mode`,
+      );
+      getVMRegistry().register(guestIp, context.runId, context.sandboxToken);
+    }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot
     console.log(`[Executor] Configuring DNS...`);
@@ -383,6 +504,25 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
+    // Unregister VM from proxy registry if network security was enabled
+    if (context.experimentalNetworkSecurity && guestIp) {
+      console.log(`[Executor] Unregistering VM ${guestIp} from proxy registry`);
+      getVMRegistry().unregister(guestIp);
+
+      // Upload network logs to telemetry endpoint
+      try {
+        await uploadNetworkLogs(
+          config.server.url,
+          context.sandboxToken,
+          context.runId,
+        );
+      } catch (err) {
+        console.error(
+          `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    }
+
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
       console.log(`[Executor] Cleaning up VM ${vmId}...`);

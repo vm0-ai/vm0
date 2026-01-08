@@ -323,3 +323,75 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
     errors,
   };
 }
+
+/**
+ * Proxy DNAT configuration
+ */
+const PROXY_PORT = 8080;
+
+/**
+ * Set up iptables DNAT rules to redirect VM traffic to the proxy
+ * This enables transparent HTTPS interception for network security mode
+ */
+export async function setupProxyDnatRules(): Promise<void> {
+  console.log(
+    `Setting up proxy DNAT rules: ${BRIDGE_CIDR} -> localhost:${PROXY_PORT}`,
+  );
+
+  // Redirect HTTP (port 80) from VM subnet to proxy
+  try {
+    await execCommand(
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTP already exists");
+  } catch {
+    await execCommand(
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTP added");
+  }
+
+  // Redirect HTTPS (port 443) from VM subnet to proxy
+  try {
+    await execCommand(
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTPS already exists");
+  } catch {
+    await execCommand(
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTPS added");
+  }
+
+  console.log("Proxy DNAT rules configured");
+}
+
+/**
+ * Remove iptables DNAT rules for the proxy
+ */
+export async function removeProxyDnatRules(): Promise<void> {
+  console.log("Removing proxy DNAT rules...");
+
+  // Remove HTTP rule
+  try {
+    await execCommand(
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTP removed");
+  } catch {
+    // Rule doesn't exist, that's fine
+  }
+
+  // Remove HTTPS rule
+  try {
+    await execCommand(
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${PROXY_PORT}`,
+    );
+    console.log("Proxy DNAT rule for HTTPS removed");
+  } catch {
+    // Rule doesn't exist, that's fine
+  }
+
+  console.log("Proxy DNAT rules cleanup complete");
+}
