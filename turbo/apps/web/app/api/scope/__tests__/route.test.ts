@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST, PUT } from "../route";
