@@ -441,6 +441,9 @@ export async function executeJob(
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
+    console.log(
+      `[Executor] Firewall config: ${JSON.stringify(firewallConfig)}`,
+    );
 
     if (firewallConfig?.enabled) {
       const mitmEnabled = firewallConfig.experimental_mitm ?? false;
