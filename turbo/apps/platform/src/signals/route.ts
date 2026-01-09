@@ -1,17 +1,11 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
+import { clerk$ } from "./auth.ts";
+import { pathname, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
-
-function pathname() {
-  return window.location.pathname;
-}
-
-function search() {
-  return window.location.search;
-}
 
 const reloadPathname$ = state(0);
 
@@ -185,5 +179,25 @@ export const setupPageWrapper = (
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
     await set(fn, signal);
+  });
+};
+
+/**
+ * Wraps a page setup function with authentication requirement.
+ * Opens sign-in dialog if user is not authenticated.
+ */
+export const setupAuthPageWrapper = (
+  fn: Command<Promise<void> | void, [AbortSignal]>,
+) => {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!clerk.user) {
+      clerk.openSignIn();
+      return;
+    }
+
+    await set(setupPageWrapper(fn), signal);
   });
 };

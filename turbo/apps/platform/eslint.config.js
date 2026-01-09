@@ -18,13 +18,41 @@ export default [
     rules: {
       ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
+      // Non-type-aware rules
       "ccstate/signal-dollar-suffix": "error",
       "ccstate/no-export-state": "error",
       "ccstate/signal-check-await": "error",
       "ccstate/tsx-in-views": "error",
+      "ccstate/no-catch-abort": "error",
+      "ccstate/test-context-in-hooks": "error",
+    },
+  },
+  // Type-aware rules (only for TypeScript files)
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      "ccstate/no-package-variable": [
+        "error",
+        {
+          allowedMutableTypes: [
+            { from: "package", name: "State", package: "ccstate" },
+            { from: "package", name: "Computed", package: "ccstate" },
+            { from: "package", name: "Command", package: "ccstate" },
+          ],
+        },
+      ],
+      "ccstate/no-get-signal": "error",
+      "ccstate/computed-const-args-package-scope": "error",
+      "ccstate/no-store-in-params": "error",
     },
   },
   {
-    ignores: ["dist/**"],
+    ignores: ["dist/**", "vite.config.ts", "vitest.config.ts"],
   },
 ];
