@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=storybook",
+  "buildCommand": "cd ../.. && pnpm run build --filter=@vm0/storybook",
   "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": "storybook-static"
 }
