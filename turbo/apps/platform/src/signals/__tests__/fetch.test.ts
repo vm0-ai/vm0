@@ -33,9 +33,7 @@ vi.mock("@clerk/clerk-js", () => {
           instance.user = user;
           for (const listener of listeners) listener();
         },
-        setSession(
-          session: { getToken: () => Promise<string | null> } | null,
-        ) {
+        setSession(session: { getToken: () => Promise<string | null> } | null) {
           instance.session = session;
           for (const listener of listeners) listener();
         },
