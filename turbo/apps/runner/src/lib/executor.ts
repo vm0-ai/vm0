@@ -112,6 +112,14 @@ function buildEnvironmentVariables(
     }
   }
 
+  // For network security mode, tell Node.js to trust the proxy CA certificate
+  // This is required because mitmproxy intercepts HTTPS traffic and re-signs
+  // certificates with its own CA. Without this, Node.js will reject the connection.
+  if (context.experimentalNetworkSecurity) {
+    envVars.NODE_EXTRA_CA_CERTS =
+      "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+  }
+
   return envVars;
 }
 
