@@ -7,14 +7,12 @@
  * - Stripe-style error responses
  * - Cursor-based pagination
  * - Rate limiting headers
- * - Self-service API token management
  *
  * URL Structure:
  * - /v1/agents - Agent management
  * - /v1/runs - Run execution and monitoring
  * - /v1/artifacts - Artifact storage (planned)
  * - /v1/volumes - Volume storage (planned)
- * - /v1/tokens - API token management
  */
 
 // Common schemas and utilities
@@ -114,21 +112,3 @@ export {
   type PublicRunMetricsContract,
   type PublicRunEventsContract,
 } from "./runs";
-
-// Token contracts
-export {
-  // Schemas
-  publicTokenSchema,
-  tokenCreatedResponseSchema,
-  paginatedTokensSchema,
-  createTokenRequestSchema,
-  // Contracts
-  publicTokensListContract,
-  publicTokenByIdContract,
-  // Types
-  type PublicToken,
-  type TokenCreatedResponse,
-  type CreateTokenRequest,
-  type PublicTokensListContract,
-  type PublicTokenByIdContract,
-} from "./tokens";

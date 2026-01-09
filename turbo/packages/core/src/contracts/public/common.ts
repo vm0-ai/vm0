@@ -200,10 +200,9 @@ export const ID_PREFIXES = {
 } as const;
 
 /**
- * API token prefix patterns
+ * Token prefix patterns
  */
 export const TOKEN_PREFIXES = {
-  API: "vm0_api_",
   CLI: "vm0_live_",
   TEST: "vm0_test_",
 } as const;
