@@ -18,12 +18,7 @@ import {
   ESLintUtils,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import {
-  SyntaxKind,
-  TypeFlags,
-  type Type,
-  type TypeChecker,
-} from "typescript";
+import { SyntaxKind, TypeFlags, type Type, type TypeChecker } from "typescript";
 import { createRule, isMutableObjectType } from "../utils.ts";
 
 // Performance optimization: Cache results to avoid repeated type checking

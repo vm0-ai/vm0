@@ -16,7 +16,10 @@ describe("AbortSignal.any polyfill", () => {
       const controller1 = new AbortController();
       const controller2 = new AbortController();
 
-      const combined = AbortSignal.any([controller1.signal, controller2.signal]);
+      const combined = AbortSignal.any([
+        controller1.signal,
+        controller2.signal,
+      ]);
 
       expect(combined.aborted).toBe(false);
     });
@@ -27,7 +30,10 @@ describe("AbortSignal.any polyfill", () => {
 
       controller1.abort("test reason");
 
-      const combined = AbortSignal.any([controller1.signal, controller2.signal]);
+      const combined = AbortSignal.any([
+        controller1.signal,
+        controller2.signal,
+      ]);
 
       expect(combined.aborted).toBe(true);
       expect(combined.reason).toBe("test reason");
@@ -37,7 +43,10 @@ describe("AbortSignal.any polyfill", () => {
       const controller1 = new AbortController();
       const controller2 = new AbortController();
 
-      const combined = AbortSignal.any([controller1.signal, controller2.signal]);
+      const combined = AbortSignal.any([
+        controller1.signal,
+        controller2.signal,
+      ]);
       const abortHandler = vi.fn();
       combined.addEventListener("abort", abortHandler);
 
@@ -72,7 +81,10 @@ describe("AbortSignal.any polyfill", () => {
       const controller1 = new AbortController();
       const controller2 = new AbortController();
 
-      const combined = AbortSignal.any([controller1.signal, controller2.signal]);
+      const combined = AbortSignal.any([
+        controller1.signal,
+        controller2.signal,
+      ]);
       const abortHandler = vi.fn();
       combined.addEventListener("abort", abortHandler);
 

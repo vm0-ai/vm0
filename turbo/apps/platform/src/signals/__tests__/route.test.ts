@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockLocation } from "../location.ts";
+import { describe, expect, it, vi } from "vitest";
+import { mockLocation, mockPushState } from "../location.ts";
 import {
   initRoutes$,
   navigate$,
@@ -15,21 +15,20 @@ const context = testContext();
 
 // Helper to create a pushState mock that updates mockLocation
 function createPushStateMock(signal: AbortSignal) {
-  return vi.fn((_data: unknown, _unused: string, url: unknown) => {
-    if (typeof url === "string") {
-      const urlObj = new URL(url, "http://localhost");
-      mockLocation(
-        { pathname: urlObj.pathname, search: urlObj.search },
-        signal,
-      );
-    }
-  });
+  const fn = vi.fn(
+    (_data: unknown, _unused: string, url?: string | URL | null) => {
+      if (typeof url === "string") {
+        const urlObj = new URL(url, "http://localhost");
+        mockLocation(
+          { pathname: urlObj.pathname, search: urlObj.search },
+          signal,
+        );
+      }
+    },
+  ) as unknown as typeof window.history.pushState;
+  mockPushState(fn, signal);
+  return fn;
 }
-
-afterEach(() => {
-  // Reset pushState mock to default after each test
-  vi.mocked(window.history.pushState).mockImplementation(() => {});
-});
 
 describe("route", () => {
   describe("searchParams$", () => {
@@ -72,10 +71,7 @@ describe("route", () => {
   describe("navigate$", () => {
     it("should navigate to new path", async () => {
       const { store, signal } = context;
-
-      // Setup pushState mock to update location
       const pushStateMock = createPushStateMock(signal);
-      vi.mocked(window.history.pushState).mockImplementation(pushStateMock);
 
       mockLocation({ pathname: "/", search: "" }, signal);
       const mockSetup = vi.fn();
@@ -108,10 +104,7 @@ describe("route", () => {
 
     it("should throw error when navigating to non-existent route", async () => {
       const { store, signal } = context;
-
-      // Setup pushState mock to update location
-      const pushStateMock = createPushStateMock(signal);
-      vi.mocked(window.history.pushState).mockImplementation(pushStateMock);
+      createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);
       const mockSetup$ = command(() => void 0);
@@ -137,10 +130,7 @@ describe("route", () => {
 
     it("should navigate to new path and update search parameters", async () => {
       const { store, signal } = context;
-
-      // Setup pushState mock to update location
       const pushStateMock = createPushStateMock(signal);
-      vi.mocked(window.history.pushState).mockImplementation(pushStateMock);
 
       mockLocation({ pathname: "/", search: "" }, signal);
       const mockSetup = vi.fn();
@@ -241,10 +231,7 @@ describe("route", () => {
     it("should navigate to root path when current path has no matching route", async () => {
       const { store, signal } = context;
       const trace = vi.fn();
-
-      // Setup pushState mock to update location
       const pushStateMock = createPushStateMock(signal);
-      vi.mocked(window.history.pushState).mockImplementation(pushStateMock);
 
       // Start with non-existent path, will be redirected to /
       mockLocation({ pathname: "/non-existent", search: "" }, signal);

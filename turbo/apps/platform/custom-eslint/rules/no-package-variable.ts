@@ -121,12 +121,7 @@ function checkDeclarator(
       allowedMutableTypes,
     );
   }
-  return checkIdentifier(
-    declarator.id,
-    services,
-    checker,
-    allowedMutableTypes,
-  );
+  return checkIdentifier(declarator.id, services, checker, allowedMutableTypes);
 }
 
 export default createRule<[Options] | [], "noPackageVariable">({

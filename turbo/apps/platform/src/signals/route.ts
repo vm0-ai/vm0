@@ -2,7 +2,7 @@ import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
 import { clerk$ } from "./auth.ts";
-import { pathname, search } from "./location.ts";
+import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
@@ -22,7 +22,7 @@ export const searchParams$ = computed((get) => {
 export const updateSearchParams$ = command(
   ({ set }, searchParams: URLSearchParams) => {
     const str = searchParams.toString();
-    window.history.pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
     set(reloadPathname$, (x) => x + 1);
   },
 );
@@ -89,7 +89,7 @@ const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
 
   if (!get(currentRoute$)) {
     set(reloadPathname$, (x) => x + 1);
-    window.history.pushState({}, "", "/");
+    pushState({}, "", "/");
   }
 });
 
@@ -126,7 +126,7 @@ export const navigate$ = command(
     const searchParams = options.searchParams
       ? `?${options.searchParams.toString()}`
       : "";
-    window.history.pushState({}, "", `${pathname}${searchParams}`);
+    pushState({}, "", `${pathname}${searchParams}`);
     set(reloadPathname$, (x) => x + 1);
     await set(loadRoute$, signal);
   },
