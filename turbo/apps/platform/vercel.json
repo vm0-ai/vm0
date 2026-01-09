@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=app",
+  "buildCommand": "cd ../.. && pnpm run build --filter=@vm0/platform",
   "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": "dist",
   "rewrites": [
