@@ -25,10 +25,7 @@ vi.mock("../github-skills", () => ({
 }));
 
 // Import mocked functions for setup
-import {
-  downloadGitHubSkill,
-  readSkillFrontmatter,
-} from "../github-skills";
+import { downloadGitHubSkill, readSkillFrontmatter } from "../github-skills";
 
 const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
 const mockReadSkillFrontmatter = vi.mocked(readSkillFrontmatter);
