@@ -164,4 +164,120 @@ describe("VMRegistry", () => {
       expect(writtenData.vms).toEqual({});
     });
   });
+
+  describe("register with firewall options", () => {
+    it("should register a VM with firewall rules", () => {
+      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+
+      const firewallRules = [
+        { domain: "*.anthropic.com", action: "ALLOW" as const },
+        { final: true, action: "DENY" as const },
+      ];
+
+      registry.register("172.16.0.2", "run-123", "token-abc", {
+        firewallRules,
+        mitmEnabled: true,
+        sealSecretsEnabled: true,
+      });
+
+      const firstCall = mockWriteFileSync.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const writtenData = JSON.parse(firstCall![1] as string);
+
+      expect(writtenData.vms["172.16.0.2"]).toMatchObject({
+        runId: "run-123",
+        sandboxToken: "token-abc",
+        firewallRules,
+        mitmEnabled: true,
+        sealSecretsEnabled: true,
+      });
+    });
+
+    it("should register a VM with firewall but without MITM", () => {
+      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+
+      const firewallRules = [
+        { domain: "httpbin.org", action: "ALLOW" as const },
+        { final: true, action: "DENY" as const },
+      ];
+
+      registry.register("172.16.0.2", "run-123", "token-abc", {
+        firewallRules,
+        mitmEnabled: false,
+        sealSecretsEnabled: false,
+      });
+
+      const firstCall = mockWriteFileSync.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const writtenData = JSON.parse(firstCall![1] as string);
+
+      expect(writtenData.vms["172.16.0.2"]).toMatchObject({
+        runId: "run-123",
+        firewallRules,
+        mitmEnabled: false,
+        sealSecretsEnabled: false,
+      });
+    });
+
+    it("should register a VM with IP CIDR rules", () => {
+      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+
+      const firewallRules = [
+        { ip: "10.0.0.0/8", action: "DENY" as const },
+        { ip: "8.8.8.8", action: "ALLOW" as const },
+        { final: true, action: "DENY" as const },
+      ];
+
+      registry.register("172.16.0.2", "run-123", "token-abc", {
+        firewallRules,
+        mitmEnabled: true,
+      });
+
+      const firstCall = mockWriteFileSync.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const writtenData = JSON.parse(firstCall![1] as string);
+
+      expect(writtenData.vms["172.16.0.2"].firewallRules).toEqual(
+        firewallRules,
+      );
+    });
+
+    it("should lookup VM with firewall options", () => {
+      const firewallRules = [
+        { domain: "*.vm0.ai", action: "ALLOW" as const },
+        { domain: "*.anthropic.com", action: "ALLOW" as const },
+        { final: true, action: "DENY" as const },
+      ];
+
+      registry.register("172.16.0.2", "run-123", "token-abc", {
+        firewallRules,
+        mitmEnabled: true,
+        sealSecretsEnabled: true,
+      });
+
+      const result = registry.lookup("172.16.0.2");
+
+      expect(result).toMatchObject({
+        runId: "run-123",
+        sandboxToken: "token-abc",
+        firewallRules,
+        mitmEnabled: true,
+        sealSecretsEnabled: true,
+      });
+    });
+
+    it("should handle registration without options (backwards compatibility)", () => {
+      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+
+      registry.register("172.16.0.2", "run-123", "token-abc");
+
+      const firstCall = mockWriteFileSync.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const writtenData = JSON.parse(firstCall![1] as string);
+
+      expect(writtenData.vms["172.16.0.2"].firewallRules).toBeUndefined();
+      expect(writtenData.vms["172.16.0.2"].mitmEnabled).toBeUndefined();
+      expect(writtenData.vms["172.16.0.2"].sealSecretsEnabled).toBeUndefined();
+    });
+  });
 });

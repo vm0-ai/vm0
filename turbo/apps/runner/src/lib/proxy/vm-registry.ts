@@ -10,12 +10,28 @@
 import fs from "fs";
 
 /**
+ * Firewall rule for VM network egress control
+ */
+export interface FirewallRule {
+  domain?: string;
+  ip?: string;
+  final?: boolean;
+  action: "ALLOW" | "DENY";
+}
+
+/**
  * VM registration data
  */
 export interface VMRegistration {
   runId: string;
   sandboxToken: string;
   registeredAt: number;
+  /** Firewall rules for network filtering (first-match-wins) */
+  firewallRules?: FirewallRule[];
+  /** Enable HTTPS inspection via MITM */
+  mitmEnabled?: boolean;
+  /** Encrypt secrets (requires MITM) */
+  sealSecretsEnabled?: boolean;
 }
 
 /**
@@ -75,14 +91,32 @@ export class VMRegistry {
   /**
    * Register a VM with its IP address
    */
-  register(vmIp: string, runId: string, sandboxToken: string): void {
+  register(
+    vmIp: string,
+    runId: string,
+    sandboxToken: string,
+    options?: {
+      firewallRules?: FirewallRule[];
+      mitmEnabled?: boolean;
+      sealSecretsEnabled?: boolean;
+    },
+  ): void {
     this.data.vms[vmIp] = {
       runId,
       sandboxToken,
       registeredAt: Date.now(),
+      firewallRules: options?.firewallRules,
+      mitmEnabled: options?.mitmEnabled,
+      sealSecretsEnabled: options?.sealSecretsEnabled,
     };
     this.save();
-    console.log(`[VMRegistry] Registered VM ${vmIp} for run ${runId}`);
+    const firewallInfo = options?.firewallRules
+      ? ` with ${options.firewallRules.length} firewall rules`
+      : "";
+    const mitmInfo = options?.mitmEnabled ? ", MITM enabled" : "";
+    console.log(
+      `[VMRegistry] Registered VM ${vmIp} for run ${runId}${firewallInfo}${mitmInfo}`,
+    );
   }
 
   /**

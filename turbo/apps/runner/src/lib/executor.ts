@@ -112,11 +112,14 @@ function buildEnvironmentVariables(
     }
   }
 
-  // For network security mode, tell Node.js to trust the proxy CA certificate
+  // For MITM mode, tell Node.js to trust the proxy CA certificate
   // This is required because mitmproxy intercepts HTTPS traffic and re-signs
   // certificates with its own CA. Without this, Node.js will reject the connection.
   // Note: Python and curl automatically use the system CA bundle after update-ca-certificates.
-  if (context.experimentalNetworkSecurity) {
+  const mitmEnabled =
+    context.experimentalNetworkSecurity ||
+    context.experimentalFirewall?.experimental_mitm;
+  if (mitmEnabled) {
     envVars.NODE_EXTRA_CA_CERTS =
       "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
   }
@@ -439,21 +442,42 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
-    // Register VM in proxy registry, set up iptables rules, and install CA if network security is enabled
-    if (context.experimentalNetworkSecurity) {
+    // Handle network security: legacy experimental_network_security OR new experimental_firewall
+    const firewallConfig = context.experimentalFirewall;
+    const useLegacyNetworkSecurity =
+      context.experimentalNetworkSecurity && !firewallConfig;
+    const useFirewall = firewallConfig?.enabled ?? false;
+
+    if (useLegacyNetworkSecurity || useFirewall) {
+      // Determine MITM mode
+      const mitmEnabled = useLegacyNetworkSecurity
+        ? true // Legacy mode always enables MITM
+        : (firewallConfig?.experimental_mitm ?? false);
+
+      const sealSecretsEnabled = useLegacyNetworkSecurity
+        ? true // Legacy mode always enables seal_secrets
+        : (firewallConfig?.experimental_seal_secrets ?? false);
+
       console.log(
-        `[Executor] Setting up network security mode for VM ${guestIp}`,
+        `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled}, firewall=${useFirewall})`,
       );
 
       // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
       // This must be done before the VM makes any network requests
       await setupVMProxyRules(guestIp, config.proxy.port);
 
-      // Register VM in the proxy registry so mitmproxy can associate requests
-      getVMRegistry().register(guestIp, context.runId, context.sandboxToken);
+      // Register VM in the proxy registry with firewall rules
+      getVMRegistry().register(guestIp, context.runId, context.sandboxToken, {
+        firewallRules: firewallConfig?.rules,
+        mitmEnabled,
+        sealSecretsEnabled,
+      });
 
-      // Install proxy CA certificate so VM trusts mitmproxy
-      await installProxyCA(ssh);
+      // Install proxy CA certificate only if MITM is enabled
+      // For SNI-only mode (filter without MITM), we don't need CA
+      if (mitmEnabled) {
+        await installProxyCA(ssh);
+      }
     }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot
@@ -559,8 +583,12 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // Clean up network security if it was enabled
-    if (context.experimentalNetworkSecurity && guestIp) {
+    // Clean up network security if it was enabled (legacy or firewall)
+    const networkSecurityEnabled =
+      (context.experimentalNetworkSecurity && !context.experimentalFirewall) ||
+      context.experimentalFirewall?.enabled;
+
+    if (networkSecurityEnabled && guestIp) {
       console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
       // Remove per-VM iptables rules first

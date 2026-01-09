@@ -80,6 +80,10 @@ function expandEnvironmentFromCompose(
   const experimentalNetworkSecurity =
     firstAgent.experimental_network_security ?? false;
 
+  // Check if seal_secrets is enabled via the new firewall config
+  const sealSecretsEnabled =
+    firstAgent.experimental_firewall?.experimental_seal_secrets ?? false;
+
   // Extract all variable references to determine what we need
   const refs = extractVariableReferences(environment);
   const grouped = groupVariablesBySource(refs);
@@ -108,10 +112,10 @@ function expandEnvironmentFromCompose(
       );
     }
 
-    // If network security is enabled, encrypt secrets into proxy tokens
-    if (experimentalNetworkSecurity) {
+    // If network security or seal_secrets is enabled, encrypt secrets into proxy tokens
+    if (experimentalNetworkSecurity || sealSecretsEnabled) {
       log.debug(
-        `Network security enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
+        `Seal secrets enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
       );
       secrets = {};
       for (const name of secretNames) {

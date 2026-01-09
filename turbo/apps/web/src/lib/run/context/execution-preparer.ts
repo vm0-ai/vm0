@@ -1,11 +1,110 @@
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import type {
+  AgentComposeYaml,
+  ExperimentalFirewall,
+  FirewallRule,
+} from "../../../types/agent-compose";
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import { storageService } from "../../storage/storage-service";
 import { BadRequestError } from "../../errors";
 import { logger } from "../../logger";
+import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 
 const log = logger("context:preparer");
+
+/**
+ * Provider to auto-injected domain mappings
+ * These domains are automatically allowed when firewall is enabled
+ */
+const PROVIDER_AUTO_DOMAINS: Record<string, string[]> = {
+  "claude-code": ["*.anthropic.com"],
+  openai: ["*.openai.com"],
+  gemini: ["*.googleapis.com", "*.google.com"],
+};
+
+/**
+ * Platform domains that are always auto-injected
+ */
+const PLATFORM_AUTO_DOMAINS = ["*.vm0.ai"];
+
+/**
+ * Extract and process firewall configuration from agent compose
+ * Auto-injects platform and provider domains
+ */
+export function processFirewallConfig(
+  agentCompose: unknown,
+): CoreExperimentalFirewall | null {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return null;
+
+  const agents = Object.values(compose.agents);
+  const firstAgent = agents[0];
+  if (!firstAgent?.experimental_firewall) return null;
+
+  const firewallConfig =
+    firstAgent.experimental_firewall as ExperimentalFirewall;
+  if (!firewallConfig.enabled) return null;
+
+  // Validate experimental_runner is configured (firewall requires runner)
+  if (!firstAgent.experimental_runner?.group) {
+    throw new BadRequestError(
+      "experimental_firewall requires experimental_runner to be configured",
+    );
+  }
+
+  // Validate experimental_seal_secrets requires experimental_mitm
+  if (
+    firewallConfig.experimental_seal_secrets &&
+    !firewallConfig.experimental_mitm
+  ) {
+    throw new BadRequestError(
+      "experimental_seal_secrets requires experimental_mitm to be enabled",
+    );
+  }
+
+  // Build auto-injected rules
+  const autoRules: FirewallRule[] = [];
+
+  // 1. Add platform domains (highest priority)
+  for (const domain of PLATFORM_AUTO_DOMAINS) {
+    autoRules.push({ domain, action: "ALLOW" });
+  }
+
+  // 2. Add provider-specific domains
+  const provider = firstAgent.provider;
+  const providerDomains = PROVIDER_AUTO_DOMAINS[provider];
+  if (providerDomains) {
+    for (const domain of providerDomains) {
+      autoRules.push({ domain, action: "ALLOW" });
+    }
+  }
+
+  // 3. Add user-defined rules
+  const userRules = firewallConfig.rules || [];
+
+  // 4. Check if user has a final rule, if not add default DENY
+  const hasFinalRule = userRules.some((rule) => rule.final === true);
+  const finalRule: FirewallRule = { final: true, action: "DENY" };
+
+  // Build complete rules array
+  const allRules: FirewallRule[] = [
+    ...autoRules,
+    ...userRules,
+    ...(hasFinalRule ? [] : [finalRule]),
+  ];
+
+  log.debug(
+    `Firewall config processed: ${autoRules.length} auto-injected, ${userRules.length} user rules, final=${hasFinalRule ? "user" : "default-deny"}`,
+  );
+
+  return {
+    enabled: true,
+    rules: allRules,
+    experimental_mitm: firewallConfig.experimental_mitm ?? false,
+    experimental_seal_secrets:
+      firewallConfig.experimental_seal_secrets ?? false,
+  };
+}
 
 /**
  * Extract working directory from agent compose config
@@ -68,8 +167,11 @@ export async function prepareForExecution(
   const cliAgentType = extractCliAgentType(context.agentCompose);
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
 
+  // Process firewall configuration (validates and auto-injects rules)
+  const experimentalFirewall = processFirewallConfig(context.agentCompose);
+
   log.debug(
-    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}`,
+    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
   // Prepare storage manifest with presigned URLs
@@ -119,8 +221,11 @@ export async function prepareForExecution(
     artifactName: context.artifactName || null,
     artifactVersion: context.artifactVersion || null,
 
-    // Network security
+    // Network security (legacy)
     experimentalNetworkSecurity: context.experimentalNetworkSecurity || false,
+
+    // Experimental firewall configuration (processed with auto-injected rules)
+    experimentalFirewall,
 
     // Routing
     runnerGroup,

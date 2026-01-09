@@ -5,6 +5,26 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
+ * Firewall rule schema for network egress control
+ */
+export const firewallRuleSchema = z.object({
+  domain: z.string().optional(),
+  ip: z.string().optional(),
+  final: z.boolean().optional(),
+  action: z.enum(["ALLOW", "DENY"]),
+});
+
+/**
+ * Experimental firewall configuration schema
+ */
+export const experimentalFirewallSchema = z.object({
+  enabled: z.boolean(),
+  rules: z.array(firewallRuleSchema).optional(),
+  experimental_mitm: z.boolean().optional(),
+  experimental_seal_secrets: z.boolean().optional(),
+});
+
+/**
  * Runner group format: scope/name (e.g., "acme/production")
  */
 export const runnerGroupSchema = z
@@ -99,6 +119,7 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
   cliAgentType: z.string(),
   experimentalNetworkSecurity: z.boolean().optional(),
+  experimentalFirewall: experimentalFirewallSchema.optional(),
 });
 
 /**
@@ -119,8 +140,10 @@ export const executionContextSchema = z.object({
   resumeSession: resumeSessionSchema.nullable(),
   secretValues: z.array(z.string()).nullable(),
   cliAgentType: z.string(),
-  // Network security mode flag
+  // Network security mode flag (legacy)
   experimentalNetworkSecurity: z.boolean().optional(),
+  // Experimental firewall configuration
+  experimentalFirewall: experimentalFirewallSchema.optional(),
 });
 
 /**
@@ -160,3 +183,5 @@ export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+export type FirewallRule = z.infer<typeof firewallRuleSchema>;
+export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;

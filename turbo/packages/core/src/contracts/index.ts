@@ -164,6 +164,8 @@ export {
   artifactEntrySchema,
   storageManifestSchema,
   resumeSessionSchema,
+  firewallRuleSchema,
+  experimentalFirewallSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type Job,
@@ -173,6 +175,8 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
+  type FirewallRule,
+  type ExperimentalFirewall,
 } from "./runners";
 
 // Public API v1 contracts (developer-friendly external API)
