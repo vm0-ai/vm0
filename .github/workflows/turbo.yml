@@ -377,12 +377,6 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
-      - name: Wait for Vercel deployment propagation
-        run: |
-          echo "⏳ Waiting 420 seconds (7 minutes) for Vercel deployment to propagate to edge nodes..."
-          sleep 420
-          echo "✅ Wait complete, proceeding with tests"
-
       - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
