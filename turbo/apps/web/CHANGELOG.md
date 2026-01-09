@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.4.0](https://github.com/vm0-ai/vm0/compare/web-v8.3.0...web-v8.4.0) (2026-01-09)
+
+
+### Features
+
+* **cli:** add vm0 agents list and inspect commands ([#1003](https://github.com/vm0-ai/vm0/issues/1003)) ([a214d3b](https://github.com/vm0-ai/vm0/commit/a214d3b08e5cb78d27033dc6b5e23601993472bc))
+* **public-api:** add tokens api for self-service token management ([#1019](https://github.com/vm0-ai/vm0/issues/1019)) ([63c2195](https://github.com/vm0-ai/vm0/commit/63c21958b94d8ba9cda78fa355e8f82cbeac2075))
+* **web:** add public api v1 foundation and infrastructure ([#997](https://github.com/vm0-ai/vm0/issues/997)) ([#1004](https://github.com/vm0-ai/vm0/issues/1004)) ([3a8dd44](https://github.com/vm0-ai/vm0/commit/3a8dd4400493a833f676441c0ebfef838cb18096))
+
+
+### Bug Fixes
+
+* **web:** add authorization check for scope access in composes list ([#1018](https://github.com/vm0-ai/vm0/issues/1018)) ([3ecb355](https://github.com/vm0-ai/vm0/commit/3ecb355d93c0819f159d88be0733c46b2f5d4d86)), closes [#1007](https://github.com/vm0-ai/vm0/issues/1007)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.3.0
+
 ## [8.3.0](https://github.com/vm0-ai/vm0/compare/web-v8.2.1...web-v8.3.0) (2026-01-09)
 
 

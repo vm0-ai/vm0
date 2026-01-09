@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.38.0](https://github.com/vm0-ai/vm0/compare/cli-v4.37.0...cli-v4.38.0) (2026-01-09)
+
+
+### Features
+
+* **cli:** add vm0 agents list and inspect commands ([#1003](https://github.com/vm0-ai/vm0/issues/1003)) ([a214d3b](https://github.com/vm0-ai/vm0/commit/a214d3b08e5cb78d27033dc6b5e23601993472bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.3.0
+
 ## [4.37.0](https://github.com/vm0-ai/vm0/compare/cli-v4.36.1...cli-v4.37.0) (2026-01-09)
 
 

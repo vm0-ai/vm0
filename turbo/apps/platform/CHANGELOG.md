@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/platform-v0.5.0...platform-v0.6.0) (2026-01-09)
+
+
+### Features
+
+* **platform:** migrate infrastructure components from uspark workspace ([#1014](https://github.com/vm0-ai/vm0/issues/1014)) ([29c3309](https://github.com/vm0-ai/vm0/commit/29c33097d81e027ce455f7ad51b9660a2ff40d39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.3.0
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/platform-v0.4.1...platform-v0.5.0) (2026-01-09)
 
 

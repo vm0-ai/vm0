@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.0](https://github.com/vm0-ai/vm0/compare/core-v3.2.0...core-v3.3.0) (2026-01-09)
+
+
+### Features
+
+* **cli:** add vm0 agents list and inspect commands ([#1003](https://github.com/vm0-ai/vm0/issues/1003)) ([a214d3b](https://github.com/vm0-ai/vm0/commit/a214d3b08e5cb78d27033dc6b5e23601993472bc))
+* **public-api:** add tokens api for self-service token management ([#1019](https://github.com/vm0-ai/vm0/issues/1019)) ([63c2195](https://github.com/vm0-ai/vm0/commit/63c21958b94d8ba9cda78fa355e8f82cbeac2075))
+* **web:** add public api v1 foundation and infrastructure ([#997](https://github.com/vm0-ai/vm0/issues/997)) ([#1004](https://github.com/vm0-ai/vm0/issues/1004)) ([3a8dd44](https://github.com/vm0-ai/vm0/commit/3a8dd4400493a833f676441c0ebfef838cb18096))
+
 ## [3.2.0](https://github.com/vm0-ai/vm0/compare/core-v3.1.1...core-v3.2.0) (2026-01-09)
 
 
