@@ -60,9 +60,10 @@ export interface AgentVariableSources {
  * Extract variable references from environment strings
  * Matches ${VAR_NAME} or $VAR_NAME patterns
  */
-function extractVariableReferences(
-  environment: Record<string, string>,
-): { secrets: string[]; vars: string[] } {
+function extractVariableReferences(environment: Record<string, string>): {
+  secrets: string[];
+  vars: string[];
+} {
   const secrets: string[] = [];
   const vars: string[] = [];
 

@@ -154,9 +154,7 @@ describe("GET /api/agent/composes/list", () => {
     expect(listData.composes).toHaveLength(2);
 
     // Check that both agents are in the list
-    const names = listData.composes.map(
-      (c: { name: string }) => c.name,
-    );
+    const names = listData.composes.map((c: { name: string }) => c.name);
     expect(names).toContain("test-list-agent-1");
     expect(names).toContain("test-list-agent-2");
 
@@ -221,9 +219,7 @@ describe("GET /api/agent/composes/list", () => {
 
     expect(listResponse.status).toBe(200);
     // Should not include other user's compose
-    const names = listData.composes.map(
-      (c: { name: string }) => c.name,
-    );
+    const names = listData.composes.map((c: { name: string }) => c.name);
     expect(names).not.toContain("test-other-agent");
 
     // Cleanup
@@ -277,9 +273,7 @@ describe("GET /api/agent/composes/list", () => {
     const listData = await listResponse.json();
 
     expect(listResponse.status).toBe(200);
-    const names = listData.composes.map(
-      (c: { name: string }) => c.name,
-    );
+    const names = listData.composes.map((c: { name: string }) => c.name);
     expect(names).toContain("test-scope-agent");
 
     // Cleanup
