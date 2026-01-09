@@ -24,7 +24,6 @@ export {
   invalidApiKeyError,
   expiredApiKeyError,
   missingApiKeyError,
-  insufficientScopeError,
   resourceNotFoundError,
   resourceAlreadyExistsError,
   internalServerError,

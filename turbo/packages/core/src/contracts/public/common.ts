@@ -14,7 +14,6 @@ export const publicApiErrorTypeSchema = z.enum([
   "api_error", // Internal server error (5xx)
   "invalid_request_error", // Bad parameters (400)
   "authentication_error", // Auth failure (401)
-  "authorization_error", // Permission denied (403)
   "not_found_error", // Resource missing (404)
   "conflict_error", // Resource conflict (409)
 ]);
@@ -57,10 +56,6 @@ export const PublicApiErrorCode = {
   REVOKED_API_KEY: "revoked_api_key",
   MISSING_API_KEY: "missing_api_key",
 
-  // Authorization errors
-  INSUFFICIENT_SCOPE: "insufficient_scope",
-  RESOURCE_ACCESS_DENIED: "resource_access_denied",
-
   // Resource errors
   RESOURCE_NOT_FOUND: "resource_not_found",
   RESOURCE_ALREADY_EXISTS: "resource_already_exists",
@@ -68,14 +63,9 @@ export const PublicApiErrorCode = {
   // Validation errors
   INVALID_PARAMETER: "invalid_parameter",
   MISSING_PARAMETER: "missing_parameter",
-  PARAMETER_OUT_OF_RANGE: "parameter_out_of_range",
-
-  // Idempotency
-  IDEMPOTENCY_KEY_IN_USE: "idempotency_key_in_use",
 
   // Server errors
   INTERNAL_ERROR: "internal_error",
-  SERVICE_UNAVAILABLE: "service_unavailable",
 } as const;
 
 export type PublicApiErrorCodeType =
@@ -108,7 +98,6 @@ export const errorTypeToStatus: Record<PublicApiErrorType, number> = {
   api_error: 500,
   invalid_request_error: 400,
   authentication_error: 401,
-  authorization_error: 403,
   not_found_error: 404,
   conflict_error: 409,
 };

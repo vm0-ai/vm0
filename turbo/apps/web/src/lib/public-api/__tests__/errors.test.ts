@@ -5,7 +5,6 @@ import {
   missingParameterError,
   invalidApiKeyError,
   missingApiKeyError,
-  insufficientScopeError,
   resourceNotFoundError,
   resourceAlreadyExistsError,
   internalServerError,
@@ -56,10 +55,6 @@ describe("Public API Errors", () => {
       expect(errorTypeToStatus.authentication_error).toBe(401);
     });
 
-    it("should map authorization_error to 403", () => {
-      expect(errorTypeToStatus.authorization_error).toBe(403);
-    });
-
     it("should map not_found_error to 404", () => {
       expect(errorTypeToStatus.not_found_error).toBe(404);
     });
@@ -88,11 +83,6 @@ describe("Public API Errors", () => {
     it("missingApiKeyError should return 401", () => {
       const response = missingApiKeyError();
       expect(response.status).toBe(401);
-    });
-
-    it("insufficientScopeError should return 403", () => {
-      const response = insufficientScopeError("read:agents");
-      expect(response.status).toBe(403);
     });
 
     it("resourceNotFoundError should return 404", () => {

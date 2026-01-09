@@ -85,18 +85,7 @@ export function missingApiKeyError(): TsRestResponse {
   return createPublicApiErrorResponse(
     "authentication_error",
     PublicApiErrorCode.MISSING_API_KEY,
-    "No API key provided. Include Authorization: Bearer vm0_api_xxx header.",
-  );
-}
-
-/**
- * 403 Forbidden - Insufficient scope
- */
-export function insufficientScopeError(requiredScope: string): TsRestResponse {
-  return createPublicApiErrorResponse(
-    "authorization_error",
-    PublicApiErrorCode.INSUFFICIENT_SCOPE,
-    `This endpoint requires the '${requiredScope}' scope`,
+    "No API key provided. Include Authorization: Bearer vm0_live_xxx header.",
   );
 }
 

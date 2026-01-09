@@ -72,13 +72,10 @@ export function createPublicApiHandler<T extends AppRouter>(
 
 /**
  * Middleware context for public API handlers.
- * Can be extended with auth info, etc.
  */
 export interface PublicApiContext {
   requestId: string;
   userId: string | null;
-  tokenId: string | null;
-  scopes: string[];
 }
 
 /**
@@ -87,13 +84,9 @@ export interface PublicApiContext {
 export function createPublicApiContext(
   requestId: string,
   userId: string | null = null,
-  tokenId: string | null = null,
-  scopes: string[] = [],
 ): PublicApiContext {
   return {
     requestId,
     userId,
-    tokenId,
-    scopes,
   };
 }
