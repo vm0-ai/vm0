@@ -49,7 +49,7 @@ agents:
     provider: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
-      group: acme/production
+      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       rules:
@@ -78,7 +78,7 @@ agents:
     provider: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
-      group: acme/production
+      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       experimental_mitm: true
@@ -105,7 +105,7 @@ agents:
     provider: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
-      group: acme/production
+      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       experimental_mitm: false
