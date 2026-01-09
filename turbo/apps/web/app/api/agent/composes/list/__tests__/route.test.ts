@@ -242,6 +242,36 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.error.message).toContain("Scope not found");
   });
 
+  it("should return 403 when user tries to access another user's scope", async () => {
+    // Create another user's scope
+    const otherUserId = "test-user-unauthorized";
+    const otherScopeId = randomUUID();
+    const otherScopeSlug = `test-unauth-${otherScopeId.slice(0, 8)}`;
+
+    await globalThis.services.db.insert(scopes).values({
+      id: otherScopeId,
+      slug: otherScopeSlug,
+      type: "personal",
+      ownerId: otherUserId,
+    });
+
+    // Try to access other user's scope as test user
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/list?scope=${otherScopeSlug}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error.code).toBe("FORBIDDEN");
+    expect(data.error.message).toContain("don't have access");
+
+    // Cleanup
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, otherScopeId));
+  });
+
   it("should list composes by specified scope slug", async () => {
     // Create a compose first
     const config = {

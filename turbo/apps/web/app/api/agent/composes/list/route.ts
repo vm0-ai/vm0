@@ -7,6 +7,7 @@ import { eq, desc } from "drizzle-orm";
 import {
   getUserScopeByClerkId,
   getScopeBySlug,
+  canAccessScope,
 } from "../../../../../src/lib/scope/scope-service";
 
 const router = tsr.router(composesListContract, {
@@ -38,6 +39,21 @@ const router = tsr.router(composesListContract, {
           },
         };
       }
+
+      // Check if user has access to this scope
+      const hasAccess = await canAccessScope(userId, scope.id);
+      if (!hasAccess) {
+        return {
+          status: 403 as const,
+          body: {
+            error: {
+              message: "You don't have access to this scope",
+              code: "FORBIDDEN",
+            },
+          },
+        };
+      }
+
       scopeId = scope.id;
     } else {
       const userScope = await getUserScopeByClerkId(userId);
