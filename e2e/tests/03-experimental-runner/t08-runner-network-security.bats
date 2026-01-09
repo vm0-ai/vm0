@@ -162,7 +162,7 @@ EOF
     # Use a unique secret value that we can search for
     export TEST_SECRET_VALUE="e2e-test-secret-$(date +%s%3N)-$RANDOM"
 
-    echo "# Step 1: Create agent config with secrets"
+    echo "# Step 1: Create agent config with secrets in environment block"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -174,8 +174,8 @@ agents:
     experimental_runner:
       group: ${RUNNER_GROUP}
     experimental_network_security: true
-    secrets:
-      - TEST_API_KEY
+    environment:
+      TEST_API_KEY: "\${{ secrets.TEST_API_KEY }}"
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -236,7 +236,7 @@ EOF
     # Use a unique secret value that we can search for in logs
     export TEST_SECRET_VALUE="e2e-secret-leak-test-$(date +%s%3N)-$RANDOM"
 
-    echo "# Step 1: Create agent config with secrets"
+    echo "# Step 1: Create agent config with secrets in environment block"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -248,8 +248,8 @@ agents:
     experimental_runner:
       group: ${RUNNER_GROUP}
     experimental_network_security: true
-    secrets:
-      - LEAK_TEST_KEY
+    environment:
+      LEAK_TEST_KEY: "\${{ secrets.LEAK_TEST_KEY }}"
 EOF
 
     echo "# Step 2: Create and push artifact"
