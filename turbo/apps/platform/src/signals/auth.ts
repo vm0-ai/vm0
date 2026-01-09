@@ -1,4 +1,4 @@
-import { Clerk } from "@clerk/clerk-js";
+import { Clerk } from "@clerk/clerk-js/headless";
 import { command, computed, state } from "ccstate";
 
 const reload$ = state(0);
