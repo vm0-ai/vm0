@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/platform-v0.6.0...platform-v0.7.0) (2026-01-09)
+
+
+### Features
+
+* **platform:** migrate phase 2 infrastructure from uspark workspace ([#1033](https://github.com/vm0-ai/vm0/issues/1033)) ([f494d34](https://github.com/vm0-ai/vm0/commit/f494d34f9ae7018eff735f873066a21cf128f3c2))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/platform-v0.5.0...platform-v0.6.0) (2026-01-09)
 
 
