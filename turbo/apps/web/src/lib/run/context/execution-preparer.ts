@@ -28,6 +28,14 @@ const PROVIDER_AUTO_DOMAINS: Record<string, string[]> = {
 const PLATFORM_AUTO_DOMAINS = ["*.vm0.ai"];
 
 /**
+ * Storage domains that are always auto-injected
+ * Required for downloading volumes/artifacts from cloud storage
+ */
+const STORAGE_AUTO_DOMAINS = [
+  "*.cloudflarestorage.com", // Cloudflare R2
+];
+
+/**
  * Extract and process firewall configuration from agent compose
  * Auto-injects platform and provider domains
  */
@@ -70,7 +78,12 @@ export function processFirewallConfig(
     autoRules.push({ domain, action: "ALLOW" });
   }
 
-  // 2. Add provider-specific domains
+  // 2. Add storage domains (required for volume/artifact downloads)
+  for (const domain of STORAGE_AUTO_DOMAINS) {
+    autoRules.push({ domain, action: "ALLOW" });
+  }
+
+  // 3. Add provider-specific domains
   const provider = firstAgent.provider;
   const providerDomains = PROVIDER_AUTO_DOMAINS[provider];
   if (providerDomains) {
@@ -79,10 +92,10 @@ export function processFirewallConfig(
     }
   }
 
-  // 3. Add user-defined rules
+  // 4. Add user-defined rules
   const userRules = firewallConfig.rules || [];
 
-  // 4. Check if user has a final rule, if not add default DENY
+  // 5. Check if user has a final rule, if not add default DENY
   const hasFinalRule = userRules.some((rule) => rule.final !== undefined);
   const finalRule: FirewallRule = { final: "DENY" };
 
