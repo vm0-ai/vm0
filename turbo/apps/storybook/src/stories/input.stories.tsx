@@ -144,7 +144,9 @@ export const WithError: Story = {
         className="border-red-500 focus-visible:ring-red-500"
         defaultValue="invalid-email"
       />
-      <p className="text-sm text-red-500">Please enter a valid email address.</p>
+      <p className="text-sm text-red-500">
+        Please enter a valid email address.
+      </p>
     </div>
   ),
 };

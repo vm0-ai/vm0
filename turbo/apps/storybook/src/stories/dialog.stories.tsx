@@ -76,10 +76,17 @@ export const WithForm: Story = {
             <Input id="name" defaultValue="John Doe" className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <label htmlFor="username" className="text-right text-sm font-medium">
+            <label
+              htmlFor="username"
+              className="text-right text-sm font-medium"
+            >
               Username
             </label>
-            <Input id="username" defaultValue="@johndoe" className="col-span-3" />
+            <Input
+              id="username"
+              defaultValue="@johndoe"
+              className="col-span-3"
+            />
           </div>
         </div>
         <DialogFooter>
@@ -126,7 +133,9 @@ export const CustomContent: Story = {
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Order Details</DialogTitle>
-          <DialogDescription>Order #12345 - Placed on Jan 1, 2024</DialogDescription>
+          <DialogDescription>
+            Order #12345 - Placed on Jan 1, 2024
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg border p-4">
@@ -169,7 +178,8 @@ export const SimpleAlert: Story = {
         <DialogHeader>
           <DialogTitle>Welcome!</DialogTitle>
           <DialogDescription>
-            Thank you for signing up. Your account has been created successfully.
+            Thank you for signing up. Your account has been created
+            successfully.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="sm:justify-center">

@@ -88,9 +88,7 @@ export const Complete: Story = {
     <Card className="w-[400px]">
       <CardHeader>
         <CardTitle>Create Project</CardTitle>
-        <CardDescription>
-          Deploy your new project in one-click.
-        </CardDescription>
+        <CardDescription>Deploy your new project in one-click.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4">
