@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.37.0](https://github.com/vm0-ai/vm0/compare/cli-v4.36.1...cli-v4.37.0) (2026-01-09)
+
+
+### Features
+
+* **runner:** move network security proxy to runner host level ([#964](https://github.com/vm0-ai/vm0/issues/964)) ([6a77a51](https://github.com/vm0-ai/vm0/commit/6a77a51f8bec551b3ff8dec278456a2a53cd3aac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.2.0
+
 ## [4.36.1](https://github.com/vm0-ai/vm0/compare/cli-v4.36.0...cli-v4.36.1) (2026-01-09)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.3.0](https://github.com/vm0-ai/vm0/compare/web-v8.2.1...web-v8.3.0) (2026-01-09)
+
+
+### Features
+
+* **runner:** move network security proxy to runner host level ([#964](https://github.com/vm0-ai/vm0/issues/964)) ([6a77a51](https://github.com/vm0-ai/vm0/commit/6a77a51f8bec551b3ff8dec278456a2a53cd3aac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.2.0
+
 ## [8.2.1](https://github.com/vm0-ai/vm0/compare/web-v8.2.0...web-v8.2.1) (2026-01-09)
 
 

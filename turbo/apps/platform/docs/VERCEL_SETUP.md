@@ -1,6 +1,6 @@
-# Vercel Setup for App Subproject
+# Vercel Setup for Platform Subproject
 
-This document describes how to set up the Vercel project for the `turbo/apps/app` subproject.
+This document describes how to set up the Vercel project for the `turbo/apps/platform` subproject.
 
 ## Prerequisites
 
@@ -14,19 +14,19 @@ This document describes how to set up the Vercel project for the `turbo/apps/app
 3. Import from GitHub repository
 4. Configure the following settings:
 
-| Setting          | Value                                 |
-| ---------------- | ------------------------------------- |
-| Framework Preset | Vite                                  |
-| Root Directory   | `turbo/apps/app`                      |
-| Build Command    | `cd ../.. && pnpm build --filter=app` |
-| Output Directory | `dist`                                |
-| Install Command  | `cd ../.. && pnpm install`            |
+| Setting          | Value                                           |
+| ---------------- | ----------------------------------------------- |
+| Framework Preset | Vite                                            |
+| Root Directory   | `turbo/apps/platform`                           |
+| Build Command    | `cd ../.. && pnpm build --filter=@vm0/platform` |
+| Output Directory | `dist`                                          |
+| Install Command  | `cd ../.. && pnpm install`                      |
 
 ## Step 2: Configure GitHub Repository Variable
 
 1. Go to GitHub repository Settings > Secrets and variables > Actions > Variables
 2. Add new repository variable:
-   - Name: `VERCEL_PROJECT_ID_APP`
+   - Name: `VERCEL_PROJECT_ID_PLATFORM`
    - Value: (copy from Vercel project settings)
 
 To find the Vercel Project ID:
@@ -37,7 +37,7 @@ To find the Vercel Project ID:
 
 ## Step 3: Verify SPA Configuration
 
-The app already includes `vercel.json` with SPA rewrites:
+The platform already includes `vercel.json` with SPA rewrites:
 
 ```json
 {
@@ -49,8 +49,8 @@ This ensures client-side routing works correctly.
 
 ## Step 4: Test Deployment
 
-1. Create a PR with changes to `turbo/apps/app`
-2. Verify the `deploy-app` job triggers in CI
+1. Create a PR with changes to `turbo/apps/platform`
+2. Verify the `deploy-platform` job triggers in CI
 3. Check that preview URL is posted to PR
 
 ## Environment Variables (Optional)
@@ -71,10 +71,10 @@ For future features, these variables may be needed:
 
 ### Preview URL Not Posted
 
-- Verify `VERCEL_PROJECT_ID_APP` is set correctly
+- Verify `VERCEL_PROJECT_ID_PLATFORM` is set correctly
 - Check `VERCEL_TOKEN` and `VERCEL_TEAM_ID` secrets/variables exist
 
 ### 404 on Client-Side Routes
 
-- Verify `vercel.json` is in the app root directory
+- Verify `vercel.json` is in the platform root directory
 - Check that rewrites are correctly configured
