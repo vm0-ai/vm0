@@ -39,12 +39,8 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
       request.nextUrl.pathname,
     )
   ) {
-    // Handle Public API v1 routes - skip Clerk, handle CORS
-    if (request.nextUrl.pathname.startsWith("/v1/")) {
-      return handleCors(request);
-    }
-
-    if (request.nextUrl.pathname.startsWith("/api/")) {
+    if (request.nextUrl.pathname.startsWith("/api/") ||
+        request.nextUrl.pathname.startsWith("/v1/")) {
       // Check if this might be a CLI token request BEFORE handling CORS
       const authHeader = request.headers.get("Authorization");
       const hasCliToken = authHeader && authHeader.includes("vm0_live_");
