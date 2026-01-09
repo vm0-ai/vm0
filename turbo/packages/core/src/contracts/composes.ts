@@ -261,9 +261,45 @@ export const composesVersionsContract = c.router({
   },
 });
 
+/**
+ * Compose list item schema (used in list response)
+ */
+const composeListItemSchema = z.object({
+  name: z.string(),
+  headVersionId: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
+/**
+ * Composes list route contract (/api/agent/composes/list)
+ */
+export const composesListContract = c.router({
+  /**
+   * GET /api/agent/composes/list?scope={scope}
+   * List all agent composes for a scope
+   * If scope is not provided, uses the authenticated user's default scope
+   */
+  list: {
+    method: "GET",
+    path: "/api/agent/composes/list",
+    query: z.object({
+      scope: z.string().optional(),
+    }),
+    responses: {
+      200: z.object({
+        composes: z.array(composeListItemSchema),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+    },
+    summary: "List all agent composes for a scope",
+  },
+});
+
 export type ComposesMainContract = typeof composesMainContract;
 export type ComposesByIdContract = typeof composesByIdContract;
 export type ComposesVersionsContract = typeof composesVersionsContract;
+export type ComposesListContract = typeof composesListContract;
 
 // Export schemas for reuse
 export {
@@ -273,4 +309,5 @@ export {
   agentComposeContentSchema,
   composeResponseSchema,
   createComposeResponseSchema,
+  composeListItemSchema,
 };
