@@ -1,0 +1,12 @@
+{
+  "extends": "@vm0/typescript-config/react-library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "include": [".storybook/**/*", "src/**/*"],
+  "exclude": ["node_modules", "dist", "storybook-static"]
+}
