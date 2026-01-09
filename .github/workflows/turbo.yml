@@ -379,8 +379,8 @@ jobs:
 
       - name: Wait for Vercel deployment propagation
         run: |
-          echo "⏳ Waiting 180 seconds for Vercel deployment to propagate to edge nodes..."
-          sleep 180
+          echo "⏳ Waiting 420 seconds (7 minutes) for Vercel deployment to propagate to edge nodes..."
+          sleep 420
           echo "✅ Wait complete, proceeding with tests"
 
       - name: Authenticate CLI
