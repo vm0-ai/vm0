@@ -11,4 +11,4 @@ import { Template } from "e2b";
 export const template = Template()
   .fromNodeImage("24")
   .aptInstall(["curl", "git", "ripgrep", "jq", "file"])
-  .npmInstall("@openai/codex@latest", { g: true });
+  .npmInstall("@openai/codex@0.79.0", { g: true });
