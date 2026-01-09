@@ -59,7 +59,6 @@ export enum Level {
   Fatal = "fatal",
 }
 
-// eslint-disable-next-line custom/no-package-variable
 const LOGGERS: Partial<Record<string, ConsoleLogger>> = {};
 
 /**

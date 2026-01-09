@@ -1,8 +1,5 @@
-// eslint-disable-next-line custom/no-package-variable
 let _pathname: string | undefined = undefined;
-// eslint-disable-next-line custom/no-package-variable
 let _search: string | undefined = undefined;
-// eslint-disable-next-line custom/no-package-variable
 let _origin: string | undefined = undefined;
 
 export const setPathname = (pathname: string) => {

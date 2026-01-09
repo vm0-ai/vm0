@@ -29,9 +29,7 @@ export function detach<T>(
   if (isPromise) {
     silencePromise = (async () => {
       try {
-        // eslint-disable-next-line custom/signal-check-await
         await promise;
-        // eslint-disable-next-line custom/no-catch-abort
       } catch (error) {
         throwIfNotAbort(error);
       }
@@ -65,7 +63,6 @@ export async function clearAllDetached() {
     const description = promiseDescription.get(promise);
     L.debug(`Await promise: ${reason ?? "unknown"} ${description ?? ""}`);
     try {
-      // eslint-disable-next-line custom/signal-check-await
       const result = await promise;
       settledResult.push({
         promise,
@@ -73,7 +70,6 @@ export async function clearAllDetached() {
         description: promiseDescription.get(promise),
         result,
       });
-      // eslint-disable-next-line custom/no-catch-abort
     } catch (error) {
       throwIfNotAbort(error);
       settledResult.push({
