@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { experimentalFirewallSchema } from "./runners";
 
 const c = initContract();
 
@@ -128,6 +129,12 @@ const agentDefinitionSchema = z.object({
         ),
     })
     .optional(),
+  /**
+   * Experimental firewall configuration for network egress control.
+   * Requires experimental_runner to be configured.
+   * When enabled, filters outbound traffic by domain/IP rules.
+   */
+  experimental_firewall: experimentalFirewallSchema.optional(),
 });
 
 /**
