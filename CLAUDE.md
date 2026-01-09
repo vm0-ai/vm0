@@ -171,6 +171,20 @@ export async function GET() {
 
 **All pull requests must pass CI checks before merging.** These checks are defined in `.github/workflows/turbo.yml` and run automatically on every PR, including lint, test, deploy, and cli-e2e.
 
+### Zero Tolerance for Skipping Tests
+
+**NEVER skip tests to make CI pass.** All tests must execute and pass:
+- Do not add `skip` flags or environment variables to bypass tests
+- Do not modify CI workflow to skip tests that are timing out or failing
+- If tests are slow or timing out, **fix the underlying issue** - either optimize the tests or fix the code
+- The purpose of tests is to validate functionality - skipping them defeats that purpose
+- Especially critical: **never skip tests for the feature being developed in the PR**
+
+If tests timeout, investigate why:
+1. Is there a bug in the code causing infinite loops or hangs?
+2. Are there network issues or external service dependencies?
+3. Is the test itself poorly designed and needs optimization?
+
 ### CLI E2E Timeout
 
 The `cli-e2e` job has a **20-minute timeout**. If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
