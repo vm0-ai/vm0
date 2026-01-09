@@ -171,3 +171,6 @@ export {
   type StorageManifest,
   type ResumeSession,
 } from "./runners";
+
+// Public API v1 contracts (developer-friendly external API)
+export * from "./public";
