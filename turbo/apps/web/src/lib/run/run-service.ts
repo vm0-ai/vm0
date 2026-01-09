@@ -35,23 +35,22 @@ const log = logger("service:run");
  */
 interface ExpandedEnvironmentResult {
   environment?: Record<string, string>;
-  experimentalNetworkSecurity: boolean;
+  sealSecretsEnabled: boolean;
 }
 
 /**
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
- * When experimental_network_security is enabled:
+ * When experimental_firewall.experimental_seal_secrets is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
- * - The experimentalNetworkSecurity flag is set to true for e2b-service
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
  * @param userId User ID for token binding
- * @param runId Run ID for token binding (required for network security)
- * @returns Expanded environment variables and security flag
+ * @param runId Run ID for token binding (required for seal_secrets)
+ * @returns Expanded environment variables and seal_secrets flag
  */
 function expandEnvironmentFromCompose(
   agentCompose: unknown,
@@ -62,27 +61,25 @@ function expandEnvironmentFromCompose(
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    return { environment: undefined, experimentalNetworkSecurity: false };
+    return { environment: undefined, sealSecretsEnabled: false };
   }
 
   // Get first agent's environment (currently only one agent supported)
   const agents = Object.values(compose.agents);
   const firstAgent = agents[0];
+
+  // Check if seal_secrets is enabled via firewall config
+  const sealSecretsEnabled =
+    firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
+
   if (!firstAgent?.environment) {
     return {
       environment: undefined,
-      experimentalNetworkSecurity:
-        firstAgent?.experimental_network_security ?? false,
+      sealSecretsEnabled,
     };
   }
 
   const environment = firstAgent.environment;
-  const experimentalNetworkSecurity =
-    firstAgent.experimental_network_security ?? false;
-
-  // Check if seal_secrets is enabled via the new firewall config
-  const sealSecretsEnabled =
-    firstAgent.experimental_firewall?.experimental_seal_secrets ?? false;
 
   // Extract all variable references to determine what we need
   const refs = extractVariableReferences(environment);
@@ -112,8 +109,8 @@ function expandEnvironmentFromCompose(
       );
     }
 
-    // If network security or seal_secrets is enabled, encrypt secrets into proxy tokens
-    if (experimentalNetworkSecurity || sealSecretsEnabled) {
+    // If seal_secrets is enabled, encrypt secrets into proxy tokens
+    if (sealSecretsEnabled) {
       log.debug(
         `Seal secrets enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
       );
@@ -168,7 +165,7 @@ function expandEnvironmentFromCompose(
     );
   }
 
-  return { environment: result, experimentalNetworkSecurity };
+  return { environment: result, sealSecretsEnabled };
 }
 
 /**
@@ -842,15 +839,14 @@ export class RunService {
     }
 
     // Step 4: Expand environment variables from compose config using vars and secrets
-    // When experimental_network_security is enabled, secrets are encrypted into proxy tokens
-    const { environment, experimentalNetworkSecurity } =
-      expandEnvironmentFromCompose(
-        agentCompose,
-        vars,
-        secrets,
-        params.userId,
-        params.runId,
-      );
+    // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
+    const { environment } = expandEnvironmentFromCompose(
+      agentCompose,
+      vars,
+      secrets,
+      params.userId,
+      params.runId,
+    );
 
     // Build final execution context
     return {
@@ -867,7 +863,6 @@ export class RunService {
       artifactVersion,
       volumeVersions,
       environment,
-      experimentalNetworkSecurity,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

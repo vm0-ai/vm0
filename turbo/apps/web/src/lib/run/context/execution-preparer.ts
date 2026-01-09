@@ -83,8 +83,8 @@ export function processFirewallConfig(
   const userRules = firewallConfig.rules || [];
 
   // 4. Check if user has a final rule, if not add default DENY
-  const hasFinalRule = userRules.some((rule) => rule.final === true);
-  const finalRule: FirewallRule = { final: true, action: "DENY" };
+  const hasFinalRule = userRules.some((rule) => rule.final !== undefined);
+  const finalRule: FirewallRule = { final: "DENY" };
 
   // Build complete rules array
   const allRules: FirewallRule[] = [
@@ -220,9 +220,6 @@ export async function prepareForExecution(
     // Artifact settings
     artifactName: context.artifactName || null,
     artifactVersion: context.artifactVersion || null,
-
-    // Network security (legacy)
-    experimentalNetworkSecurity: context.experimentalNetworkSecurity || false,
 
     // Experimental firewall configuration (processed with auto-injected rules)
     experimentalFirewall,

@@ -181,7 +181,6 @@ const router = tsr.router(runnersJobClaimContract, {
         resumeSession: storedContext.resumeSession,
         secretValues, // Decrypted secrets
         cliAgentType: storedContext.cliAgentType,
-        experimentalNetworkSecurity: storedContext.experimentalNetworkSecurity,
         experimentalFirewall: storedContext.experimentalFirewall,
       },
     };

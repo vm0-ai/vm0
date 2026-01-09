@@ -171,7 +171,7 @@ describe("VMRegistry", () => {
 
       const firewallRules = [
         { domain: "*.anthropic.com", action: "ALLOW" as const },
-        { final: true, action: "DENY" as const },
+        { final: "DENY" as const },
       ];
 
       registry.register("172.16.0.2", "run-123", "token-abc", {
@@ -198,7 +198,7 @@ describe("VMRegistry", () => {
 
       const firewallRules = [
         { domain: "httpbin.org", action: "ALLOW" as const },
-        { final: true, action: "DENY" as const },
+        { final: "DENY" as const },
       ];
 
       registry.register("172.16.0.2", "run-123", "token-abc", {
@@ -225,7 +225,7 @@ describe("VMRegistry", () => {
       const firewallRules = [
         { ip: "10.0.0.0/8", action: "DENY" as const },
         { ip: "8.8.8.8", action: "ALLOW" as const },
-        { final: true, action: "DENY" as const },
+        { final: "DENY" as const },
       ];
 
       registry.register("172.16.0.2", "run-123", "token-abc", {
@@ -246,7 +246,7 @@ describe("VMRegistry", () => {
       const firewallRules = [
         { domain: "*.vm0.ai", action: "ALLOW" as const },
         { domain: "*.anthropic.com", action: "ALLOW" as const },
-        { final: true, action: "DENY" as const },
+        { final: "DENY" as const },
       ];
 
       registry.register("172.16.0.2", "run-123", "token-abc", {

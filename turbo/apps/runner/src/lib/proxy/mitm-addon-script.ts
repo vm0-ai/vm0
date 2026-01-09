@@ -163,14 +163,19 @@ def evaluate_rules(rules: list, hostname: str, ip_str: str = None) -> tuple[str,
     Returns (action, matched_rule_description).
 
     Rule evaluation is first-match-wins (top to bottom).
+
+    Rule formats:
+    - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
+    - Terminal rule: { final: "DENY" }
     """
     if not rules:
         return ("ALLOW", None)  # No rules = allow all
 
     for rule in rules:
-        # Final/terminal rule
-        if rule.get("final"):
-            return (rule.get("action", "DENY"), "final")
+        # Final/terminal rule - value is the action
+        final_action = rule.get("final")
+        if final_action:
+            return (final_action, "final")
 
         # Domain rule
         domain = rule.get("domain")

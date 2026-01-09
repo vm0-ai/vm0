@@ -13,16 +13,20 @@ export interface VolumeConfig {
 
 /**
  * Firewall rule for network egress control
+ *
+ * Rules can be either:
+ * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
+ * - Terminal rule: { final: "DENY" }
  */
 export interface FirewallRule {
   /** Domain pattern (e.g., "github.com", "*.anthropic.com") */
   domain?: string;
   /** IP address or CIDR range (e.g., "1.2.3.4", "10.0.0.0/8") */
   ip?: string;
-  /** Final/terminal rule marker */
-  final?: boolean;
-  /** Action to take when rule matches */
-  action: "ALLOW" | "DENY";
+  /** Terminal rule - value is the action (ALLOW or DENY) */
+  final?: "ALLOW" | "DENY";
+  /** Action for domain/ip rules */
+  action?: "ALLOW" | "DENY";
 }
 
 /**

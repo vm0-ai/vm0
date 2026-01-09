@@ -59,8 +59,7 @@ agents:
           action: ALLOW
         - ip: "10.0.0.0/8"
           action: DENY
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -86,8 +85,7 @@ agents:
       rules:
         - domain: "*.anthropic.com"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -112,8 +110,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -145,8 +142,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -204,8 +200,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -264,8 +259,7 @@ agents:
       rules:
         - domain: "*.github.com"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -326,8 +320,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
     environment:
       TEST_API_KEY: "\${{ secrets.TEST_API_KEY }}"
 EOF
@@ -398,8 +391,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -458,8 +450,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -521,8 +512,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
     environment:
       TEST_API_KEY: "\${{ secrets.TEST_API_KEY }}"
 EOF
@@ -587,8 +577,7 @@ agents:
       rules:
         - domain: "httpbin.org"
           action: ALLOW
-        - final: true
-          action: DENY
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"

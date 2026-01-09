@@ -6,12 +6,18 @@ const c = initContract();
 
 /**
  * Firewall rule schema for network egress control
+ *
+ * Rules can be either:
+ * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
+ * - Terminal rule: { final: "DENY" }
  */
 export const firewallRuleSchema = z.object({
   domain: z.string().optional(),
   ip: z.string().optional(),
-  final: z.boolean().optional(),
-  action: z.enum(["ALLOW", "DENY"]),
+  /** Terminal rule - value is the action (ALLOW or DENY) */
+  final: z.enum(["ALLOW", "DENY"]).optional(),
+  /** Action for domain/ip rules */
+  action: z.enum(["ALLOW", "DENY"]).optional(),
 });
 
 /**
@@ -118,7 +124,6 @@ export const storedExecutionContextSchema = z.object({
   resumeSession: resumeSessionSchema.nullable(),
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
   cliAgentType: z.string(),
-  experimentalNetworkSecurity: z.boolean().optional(),
   experimentalFirewall: experimentalFirewallSchema.optional(),
 });
 
@@ -140,8 +145,6 @@ export const executionContextSchema = z.object({
   resumeSession: resumeSessionSchema.nullable(),
   secretValues: z.array(z.string()).nullable(),
   cliAgentType: z.string(),
-  // Network security mode flag (legacy)
-  experimentalNetworkSecurity: z.boolean().optional(),
   // Experimental firewall configuration
   experimentalFirewall: experimentalFirewallSchema.optional(),
 });

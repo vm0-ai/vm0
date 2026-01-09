@@ -116,10 +116,7 @@ function buildEnvironmentVariables(
   // This is required because mitmproxy intercepts HTTPS traffic and re-signs
   // certificates with its own CA. Without this, Node.js will reject the connection.
   // Note: Python and curl automatically use the system CA bundle after update-ca-certificates.
-  const mitmEnabled =
-    context.experimentalNetworkSecurity ||
-    context.experimentalFirewall?.experimental_mitm;
-  if (mitmEnabled) {
+  if (context.experimentalFirewall?.experimental_mitm) {
     envVars.NODE_EXTRA_CA_CERTS =
       "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
   }
@@ -442,24 +439,16 @@ export async function executeJob(
 
     console.log(`[Executor] SSH ready on ${guestIp}`);
 
-    // Handle network security: legacy experimental_network_security OR new experimental_firewall
+    // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
-    const useLegacyNetworkSecurity =
-      context.experimentalNetworkSecurity && !firewallConfig;
-    const useFirewall = firewallConfig?.enabled ?? false;
 
-    if (useLegacyNetworkSecurity || useFirewall) {
-      // Determine MITM mode
-      const mitmEnabled = useLegacyNetworkSecurity
-        ? true // Legacy mode always enables MITM
-        : (firewallConfig?.experimental_mitm ?? false);
-
-      const sealSecretsEnabled = useLegacyNetworkSecurity
-        ? true // Legacy mode always enables seal_secrets
-        : (firewallConfig?.experimental_seal_secrets ?? false);
+    if (firewallConfig?.enabled) {
+      const mitmEnabled = firewallConfig.experimental_mitm ?? false;
+      const sealSecretsEnabled =
+        firewallConfig.experimental_seal_secrets ?? false;
 
       console.log(
-        `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled}, firewall=${useFirewall})`,
+        `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
       // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
@@ -583,12 +572,8 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // Clean up network security if it was enabled (legacy or firewall)
-    const networkSecurityEnabled =
-      (context.experimentalNetworkSecurity && !context.experimentalFirewall) ||
-      context.experimentalFirewall?.enabled;
-
-    if (networkSecurityEnabled && guestIp) {
+    // Clean up network security if firewall was enabled
+    if (context.experimentalFirewall?.enabled && guestIp) {
       console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
       // Remove per-VM iptables rules first

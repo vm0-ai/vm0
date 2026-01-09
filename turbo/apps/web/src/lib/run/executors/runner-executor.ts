@@ -51,7 +51,6 @@ export class RunnerExecutor implements Executor {
       resumeSession: context.resumeSession,
       encryptedSecrets,
       cliAgentType: context.cliAgentType,
-      experimentalNetworkSecurity: context.experimentalNetworkSecurity,
       experimentalFirewall: context.experimentalFirewall ?? undefined,
     };
 

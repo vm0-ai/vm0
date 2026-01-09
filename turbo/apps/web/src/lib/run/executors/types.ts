@@ -39,9 +39,6 @@ export interface PreparedContext {
   artifactName: string | null;
   artifactVersion: string | null;
 
-  // Network security mode (legacy)
-  experimentalNetworkSecurity: boolean;
-
   // Experimental firewall configuration
   experimentalFirewall: ExperimentalFirewall | null;
 

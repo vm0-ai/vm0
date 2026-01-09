@@ -11,12 +11,18 @@ import fs from "fs";
 
 /**
  * Firewall rule for VM network egress control
+ *
+ * Rules can be either:
+ * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
+ * - Terminal rule: { final: "DENY" } - value is the action
  */
 export interface FirewallRule {
   domain?: string;
   ip?: string;
-  final?: boolean;
-  action: "ALLOW" | "DENY";
+  /** Terminal rule - value is the action (ALLOW or DENY) */
+  final?: "ALLOW" | "DENY";
+  /** Action for domain/ip rules */
+  action?: "ALLOW" | "DENY";
 }
 
 /**

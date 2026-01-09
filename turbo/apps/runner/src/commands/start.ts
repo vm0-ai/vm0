@@ -128,7 +128,7 @@ export const startCommand = new Command("start")
       await setupBridge();
 
       // Initialize proxy for network security mode
-      // The proxy is always started but only used when experimentalNetworkSecurity is enabled
+      // The proxy is always started but only used when experimentalFirewall is enabled
       console.log("Initializing network proxy...");
       initVMRegistry();
       const proxyManager = initProxyManager({
@@ -138,7 +138,7 @@ export const startCommand = new Command("start")
 
       // Try to start proxy - if mitmproxy is not installed, continue without it
       // Note: Per-VM iptables rules are set up in executor.ts when a job with
-      // experimentalNetworkSecurity is executed, not globally here.
+      // experimentalFirewall is executed, not globally here.
       let proxyEnabled = false;
       try {
         await proxyManager.start();
@@ -149,7 +149,7 @@ export const startCommand = new Command("start")
           `Network proxy not available: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
         console.warn(
-          "Jobs with experimentalNetworkSecurity enabled will run without network interception",
+          "Jobs with experimentalFirewall enabled will run without network interception",
         );
       }
 
