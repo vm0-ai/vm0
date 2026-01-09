@@ -42,8 +42,10 @@ teardown() {
         skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
     fi
 
+    echo "# [DEBUG] Test started at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# Using shared runner with group: ${RUNNER_GROUP}"
 
+    echo "# [DEBUG] Step 1 starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# Step 1: Create agent config with experimental_firewall and MITM"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -64,17 +66,23 @@ agents:
         - final: DENY
 EOF
 
+    echo "# [DEBUG] Step 2 starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# Step 2: Create and push artifact"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content for network security" > test.txt
+    echo "# [DEBUG] About to push artifact at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     $CLI_COMMAND artifact push >/dev/null 2>&1
+    echo "# [DEBUG] Artifact push done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+    echo "# [DEBUG] Step 3 starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# Step 3: Compose the agent"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    echo "# [DEBUG] Compose done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     assert_success
 
+    echo "# [DEBUG] Step 4 starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# Step 4: Run the agent (runner should pick it up with network security)"
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
