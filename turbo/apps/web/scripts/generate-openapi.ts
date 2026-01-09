@@ -42,14 +42,6 @@ Authorization: Bearer vm0_live_xxxxxxxxxxxx
 You can create and manage API tokens at [vm0.dev/settings/tokens](https://vm0.dev/settings/tokens)
 or via the \`/v1/tokens\` endpoints.
 
-## Rate Limits
-
-API requests are rate limited. Current limits are returned in response headers:
-
-- \`X-RateLimit-Limit\`: Maximum requests per hour
-- \`X-RateLimit-Remaining\`: Remaining requests in current window
-- \`X-RateLimit-Reset\`: Unix timestamp when the limit resets
-
 ## Error Handling
 
 All errors follow a consistent format:
