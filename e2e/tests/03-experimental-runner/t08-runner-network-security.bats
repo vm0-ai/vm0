@@ -2,7 +2,7 @@
 
 # Test runner network security mode (host-level proxy)
 # This test verifies that:
-# 1. Agent runs with experimental_network_security enabled on self-hosted runner
+# 1. Agent runs with experimental_firewall enabled on self-hosted runner
 # 2. The mitmproxy on the runner host intercepts VM traffic
 # 3. Network logs are captured and uploaded to telemetry endpoint
 # 4. The vm0 logs --network command retrieves network logs
@@ -44,7 +44,7 @@ teardown() {
 
     echo "# Using shared runner with group: ${RUNNER_GROUP}"
 
-    echo "# Step 1: Create agent config with experimental_runner and network_security"
+    echo "# Step 1: Create agent config with experimental_firewall and MITM"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -55,7 +55,13 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_network_security: true
+    experimental_firewall:
+      enabled: true
+      experimental_mitm: true
+      rules:
+        - domain: "*.vm0.ai"
+          action: ALLOW
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -132,19 +138,25 @@ EOF
     echo "# Network logs contain /api/webhooks/agent/events requests"
 }
 
-@test "runner network security: compose accepts experimental_network_security with runner" {
-    echo "# Create config with both experimental_runner and experimental_network_security"
+@test "runner network security: compose accepts experimental_firewall with runner" {
+    echo "# Create config with both experimental_runner and experimental_firewall"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   network-runner-agent:
-    description: "Test agent with runner and network security"
+    description: "Test agent with runner and firewall"
     provider: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
-      group: acme/production
-    experimental_network_security: true
+      group: ${RUNNER_GROUP}
+    experimental_firewall:
+      enabled: true
+      experimental_mitm: true
+      rules:
+        - domain: "*.anthropic.com"
+          action: ALLOW
+        - final: DENY
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -159,7 +171,7 @@ EOF
 
     echo "# Using shared runner with group: ${RUNNER_GROUP}"
 
-    echo "# Step 1: Create agent config with network security"
+    echo "# Step 1: Create agent config with firewall allowing httpbin.org"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -170,7 +182,13 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_network_security: true
+    experimental_firewall:
+      enabled: true
+      experimental_mitm: true
+      rules:
+        - domain: "httpbin.org"
+          action: ALLOW
+        - final: DENY
 EOF
 
     echo "# Step 2: Create and push artifact"
@@ -220,7 +238,7 @@ EOF
     # Use a unique secret value that we can search for
     export TEST_SECRET_VALUE="e2e-test-secret-$(date +%s%3N)-$RANDOM"
 
-    echo "# Step 1: Create agent config with secrets in environment block"
+    echo "# Step 1: Create agent config with firewall and seal_secrets"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -231,7 +249,14 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_network_security: true
+    experimental_firewall:
+      enabled: true
+      experimental_mitm: true
+      experimental_seal_secrets: true
+      rules:
+        - domain: "*.vm0.ai"
+          action: ALLOW
+        - final: DENY
     environment:
       TEST_API_KEY: "\${{ secrets.TEST_API_KEY }}"
 EOF
@@ -294,7 +319,7 @@ EOF
     # Use a unique secret value that we can search for in logs
     export TEST_SECRET_VALUE="e2e-secret-leak-test-$(date +%s%3N)-$RANDOM"
 
-    echo "# Step 1: Create agent config with secrets in environment block"
+    echo "# Step 1: Create agent config with firewall and seal_secrets"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -305,7 +330,14 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_network_security: true
+    experimental_firewall:
+      enabled: true
+      experimental_mitm: true
+      experimental_seal_secrets: true
+      rules:
+        - domain: "*.vm0.ai"
+          action: ALLOW
+        - final: DENY
     environment:
       LEAK_TEST_KEY: "\${{ secrets.LEAK_TEST_KEY }}"
 EOF
