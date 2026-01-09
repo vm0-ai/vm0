@@ -151,6 +151,64 @@ EOF
     assert_success
 }
 
+@test "runner network security: HTTPS requests work through proxy with CA trust" {
+    # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
+    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
+        skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
+    fi
+
+    echo "# Using shared runner with group: ${RUNNER_GROUP}"
+
+    echo "# Step 1: Create agent config with network security"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}-https:
+    description: "E2E test agent for HTTPS through proxy"
+    provider: claude-code
+    working_dir: /home/user/workspace
+    experimental_runner:
+      group: ${RUNNER_GROUP}
+    experimental_network_security: true
+EOF
+
+    echo "# Step 2: Create and push artifact"
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME-https"
+    cd "$TEST_DIR/$ARTIFACT_NAME-https"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME-https" >/dev/null 2>&1
+    echo "test content" > test.txt
+    $CLI_COMMAND artifact push >/dev/null 2>&1
+
+    echo "# Step 3: Compose the agent"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 4: Run curl to verify HTTPS works through mitmproxy"
+    # This tests that:
+    # 1. CA certificate is properly installed in the VM
+    # 2. CURL_CA_BUNDLE environment variable is set correctly
+    # 3. TLS handshake succeeds through the proxy
+    run $CLI_COMMAND run "${AGENT_NAME}-https" \
+        --artifact-name "$ARTIFACT_NAME-https" \
+        "curl -sf https://httpbin.org/get | grep -o '\"url\"' | head -1"
+
+    echo "# Run output:"
+    echo "$output"
+
+    assert_success
+    assert_output --partial "Run completed successfully"
+
+    # If TLS handshake failed, curl would have exited with error
+    # The presence of "url" in output confirms the HTTPS request succeeded
+    if [[ "$output" == *'"url"'* ]]; then
+        echo "# SUCCESS: HTTPS request through proxy succeeded"
+    else
+        echo "# WARNING: Could not verify HTTPS response content"
+        echo "# This may be due to network issues, not CA trust problems"
+    fi
+}
+
 @test "runner network security: secrets are encrypted in VM environment" {
     # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
     if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then

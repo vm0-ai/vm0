@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.1](https://github.com/vm0-ai/vm0/compare/runner-v2.3.0...runner-v2.3.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **runner:** set NODE_EXTRA_CA_CERTS for network security mode ([#1005](https://github.com/vm0-ai/vm0/issues/1005)) ([8a6690c](https://github.com/vm0-ai/vm0/commit/8a6690c0f9abee6153efd3c41ee9ce9e7848b4b2))
+
 ## [2.3.0](https://github.com/vm0-ai/vm0/compare/runner-v2.2.2...runner-v2.3.0) (2026-01-09)
 
 
