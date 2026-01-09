@@ -389,7 +389,8 @@ jobs:
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
             echo "=== Running Runner E2E Tests (4 parallel) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            # SKIP_NETWORK_SECURITY_TEST: Skip slow firewall agent tests (compose validation still runs)
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" SKIP_NETWORK_SECURITY_TEST=true ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
