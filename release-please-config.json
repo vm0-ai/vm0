@@ -17,6 +17,9 @@
         },
         "turbo/apps/platform": {
             "releaseType": "node"
+        },
+        "turbo/apps/storybook": {
+            "releaseType": "node"
         }
     },
     "plugins": [
