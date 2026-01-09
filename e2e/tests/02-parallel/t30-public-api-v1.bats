@@ -8,10 +8,17 @@ load '../../helpers/setup'
 # Helper function to make authenticated API requests
 api_get() {
     local endpoint="$1"
-    curl -s \
+    local result
+    result=$(curl -s \
         -H "Authorization: Bearer $VM0_TOKEN" \
         -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET:-}" \
-        "${VM0_API_URL}${endpoint}"
+        -H "x-vercel-set-bypass-cookie: true" \
+        "${VM0_API_URL}${endpoint}")
+    # Debug: show first 200 chars of response if not JSON
+    if ! echo "$result" | jq -e '.' > /dev/null 2>&1; then
+        echo "# Non-JSON response (first 200 chars): ${result:0:200}" >&3
+    fi
+    echo "$result"
 }
 
 setup() {
