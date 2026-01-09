@@ -159,6 +159,9 @@ settings.local.json
 # Code reviews
 codereviews/
 
+# Storybook build output
+storybook-static/
+
 # Runner proxy CA certificates (generated per-deployment)
 turbo/scripts/deploy-runner/proxy-ca/
 

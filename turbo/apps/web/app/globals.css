@@ -1,12 +1,4 @@
-:root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
-[data-theme="light"] {
-  --background: #fafafa;
-  --foreground: #171717;
-}
+@import "@vm0/ui/styles/globals.css";
 
 html,
 body {
