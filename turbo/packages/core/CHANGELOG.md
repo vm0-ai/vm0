@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/vm0-ai/vm0/compare/core-v3.1.0...core-v3.1.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
 ## [3.1.0](https://github.com/vm0-ai/vm0/compare/core-v3.0.2...core-v3.1.0) (2026-01-08)
 
 

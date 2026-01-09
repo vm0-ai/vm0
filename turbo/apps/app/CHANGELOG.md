@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/app-v0.2.0...app-v0.3.0) (2026-01-09)
+
+
+### Features
+
+* **app:** add custom eslint rules for ccstate patterns ([#990](https://github.com/vm0-ai/vm0/issues/990)) ([a4df947](https://github.com/vm0-ai/vm0/commit/a4df947959891de24425e2f7dbc134fcf8d663f7))
+* **app:** add msw for api mocking in tests and development ([#992](https://github.com/vm0-ai/vm0/issues/992)) ([0d2b2ad](https://github.com/vm0-ai/vm0/commit/0d2b2ad2cd80bc80c3b37d15dae304be26b8c5c1))
+* **app:** add type-safe environment configuration ([#987](https://github.com/vm0-ai/vm0/issues/987)) ([99ecb46](https://github.com/vm0-ai/vm0/commit/99ecb4659d2fb4222c1a6e176eb559fc3c49f1a7))
+
+
+### Bug Fixes
+
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.1.1
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/app-v0.1.0...app-v0.2.0) (2026-01-08)
 
 

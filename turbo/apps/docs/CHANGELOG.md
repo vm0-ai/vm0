@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.10](https://github.com/vm0-ai/vm0/compare/docs-v0.13.9...docs-v0.13.10) (2026-01-09)
+
+
+### Bug Fixes
+
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
 ## [0.13.9](https://github.com/vm0-ai/vm0/compare/docs-v0.13.8...docs-v0.13.9) (2026-01-04)
 
 

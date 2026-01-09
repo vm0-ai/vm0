@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.36.1](https://github.com/vm0-ai/vm0/compare/cli-v4.36.0...cli-v4.36.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.1.1
+
 ## [4.36.0](https://github.com/vm0-ai/vm0/compare/cli-v4.35.3...cli-v4.36.0) (2026-01-08)
 
 

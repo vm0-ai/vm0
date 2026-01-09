@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.2.2](https://github.com/vm0-ai/vm0/compare/runner-v2.2.1...runner-v2.2.2) (2026-01-09)
+
+
+### Bug Fixes
+
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.1.1
+
 ## [2.2.1](https://github.com/vm0-ai/vm0/compare/runner-v2.2.0...runner-v2.2.1) (2026-01-08)
 
 
