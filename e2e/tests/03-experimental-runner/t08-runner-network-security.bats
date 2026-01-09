@@ -150,3 +150,161 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 }
+
+@test "runner network security: secrets are encrypted in VM environment" {
+    # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
+    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
+        skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
+    fi
+
+    echo "# Using shared runner with group: ${RUNNER_GROUP}"
+
+    # Use a unique secret value that we can search for
+    export TEST_SECRET_VALUE="e2e-test-secret-$(date +%s%3N)-$RANDOM"
+
+    echo "# Step 1: Create agent config with secrets"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}-secrets:
+    description: "E2E test agent for secret encryption"
+    provider: claude-code
+    working_dir: /home/user/workspace
+    experimental_runner:
+      group: ${RUNNER_GROUP}
+    experimental_network_security: true
+    secrets:
+      - TEST_API_KEY
+EOF
+
+    echo "# Step 2: Create and push artifact"
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME-secrets"
+    cd "$TEST_DIR/$ARTIFACT_NAME-secrets"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME-secrets" >/dev/null 2>&1
+    echo "test content" > test.txt
+    $CLI_COMMAND artifact push >/dev/null 2>&1
+
+    echo "# Step 3: Compose the agent"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 4: Run the agent and print the secret environment variable"
+    # The task prints the TEST_API_KEY env var - it should be encrypted
+    run $CLI_COMMAND run "${AGENT_NAME}-secrets" \
+        --artifact-name "$ARTIFACT_NAME-secrets" \
+        --secrets "TEST_API_KEY=$TEST_SECRET_VALUE" \
+        "echo \"SECRET_VALUE=\$TEST_API_KEY\""
+
+    echo "# Run output:"
+    echo "$output"
+
+    assert_success
+    assert_output --partial "Run completed successfully"
+
+    # Step 5: Verify the secret in VM is encrypted (starts with vm0_enc_)
+    echo "# Step 5: Verifying secret is encrypted in VM..."
+
+    # The output should contain vm0_enc_ prefix (encrypted token)
+    if [[ "$output" == *"SECRET_VALUE=vm0_enc_"* ]]; then
+        echo "# SUCCESS: Secret is encrypted in VM environment (vm0_enc_ prefix found)"
+    else
+        echo "# FAILED: Secret encryption check"
+        echo "# Expected: SECRET_VALUE=vm0_enc_..."
+        fail "Secret should be encrypted with vm0_enc_ prefix in VM environment"
+    fi
+
+    # Step 6: Verify the original secret value is NOT in the output
+    echo "# Step 6: Verifying original secret is not leaked..."
+
+    if [[ "$output" == *"$TEST_SECRET_VALUE"* ]]; then
+        echo "# FAILED: Original secret value found in output!"
+        fail "Original secret value should NOT appear in VM output"
+    else
+        echo "# SUCCESS: Original secret value is not leaked in output"
+    fi
+}
+
+@test "runner network security: network logs do not contain original secrets" {
+    # Skip this test if SKIP_NETWORK_SECURITY_TEST is set
+    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
+        skip "Network security test skipped (SKIP_NETWORK_SECURITY_TEST set)"
+    fi
+
+    echo "# Using shared runner with group: ${RUNNER_GROUP}"
+
+    # Use a unique secret value that we can search for in logs
+    export TEST_SECRET_VALUE="e2e-secret-leak-test-$(date +%s%3N)-$RANDOM"
+
+    echo "# Step 1: Create agent config with secrets"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}-leak:
+    description: "E2E test agent for secret leak detection"
+    provider: claude-code
+    working_dir: /home/user/workspace
+    experimental_runner:
+      group: ${RUNNER_GROUP}
+    experimental_network_security: true
+    secrets:
+      - LEAK_TEST_KEY
+EOF
+
+    echo "# Step 2: Create and push artifact"
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME-leak"
+    cd "$TEST_DIR/$ARTIFACT_NAME-leak"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME-leak" >/dev/null 2>&1
+    echo "test content" > test.txt
+    $CLI_COMMAND artifact push >/dev/null 2>&1
+
+    echo "# Step 3: Compose the agent"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 4: Run the agent with secret"
+    run $CLI_COMMAND run "${AGENT_NAME}-leak" \
+        --artifact-name "$ARTIFACT_NAME-leak" \
+        --secrets "LEAK_TEST_KEY=$TEST_SECRET_VALUE" \
+        "echo 'network security leak test'"
+
+    echo "# Run output:"
+    echo "$output"
+
+    assert_success
+    assert_output --partial "Run completed successfully"
+
+    # Step 5: Extract Run ID
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    echo "# Run ID: $RUN_ID"
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID from output"
+        return 1
+    }
+
+    # Step 6: Fetch network logs and verify secret is not leaked
+    echo "# Step 6: Fetching network logs to check for secret leaks..."
+
+    # Wait for Axiom ingestion
+    sleep 5
+
+    run $CLI_COMMAND logs "$RUN_ID" --network --tail 200
+
+    echo "# Network logs output:"
+    echo "$output"
+
+    # Step 7: Verify original secret is NOT in network logs
+    echo "# Step 7: Verifying secret is not in network logs..."
+
+    if [[ "$output" == *"$TEST_SECRET_VALUE"* ]]; then
+        echo "# FAILED: Original secret value found in network logs!"
+        fail "Original secret value should NOT appear in network logs"
+    else
+        echo "# SUCCESS: Original secret value is not leaked in network logs"
+    fi
+
+    # Also verify vm0_enc_ tokens are not fully exposed (only prefix should be visible if at all)
+    # The encrypted token itself is fine to log since it can't be decrypted without the key
+    echo "# Network logs security check passed"
+}
