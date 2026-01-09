@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/app-v0.3.0...app-v0.4.0) (2026-01-09)
+
+
+### Features
+
+* **app:** update homepage to display hello world ([#995](https://github.com/vm0-ai/vm0/issues/995)) ([c02b1b6](https://github.com/vm0-ai/vm0/commit/c02b1b6dc179659026c0d10f3b8d7ab59b16f8a8))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/app-v0.2.0...app-v0.3.0) (2026-01-09)
 
 
