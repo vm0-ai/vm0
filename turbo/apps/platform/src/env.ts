@@ -1,8 +1,8 @@
 /**
  * Type-safe environment variables for the app.
  *
- * All environment variables are optional in development mode.
- * In production, VITE_API_URL is required.
+ * Environment variables are optional until they are actually used.
+ * Add validation only when a variable is required by the application.
  */
 
 interface EnvConfig {
@@ -28,19 +28,4 @@ function getEnv(): EnvConfig {
   };
 }
 
-/**
- * Validate that required environment variables are set.
- * Throws an error in production if required vars are missing.
- */
-function validateEnv(config: EnvConfig): void {
-  if (config.PROD) {
-    if (!config.VITE_API_URL) {
-      throw new Error("VITE_API_URL is required in production mode");
-    }
-  }
-}
-
-const envConfig = getEnv();
-validateEnv(envConfig);
-
-export const env = envConfig;
+export const env = getEnv();

@@ -21,17 +21,15 @@ describe("env", () => {
     expect(typeof env.PROD).toBe("boolean");
   });
 
-  it("should allow missing optional vars in development", async () => {
-    import.meta.env.DEV = true;
-    import.meta.env.PROD = false;
+  it("should handle missing optional vars", async () => {
     delete import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
     delete import.meta.env.VITE_API_URL;
 
     const { env } = await import("../env");
 
-    // In development, missing vars should not throw
-    expect(env.DEV).toBe(true);
-    expect(env.PROD).toBe(false);
+    // Missing vars should be undefined, not throw
+    expect(env.VITE_CLERK_PUBLISHABLE_KEY).toBeUndefined();
+    expect(env.VITE_API_URL).toBeUndefined();
   });
 
   it("should read VITE_ prefixed variables", async () => {
