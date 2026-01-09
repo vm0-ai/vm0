@@ -3,7 +3,6 @@
  *
  * Unified handler creation for public API routes with:
  * - Request ID tracking
- * - Rate limiting headers
  * - Standardized error handling
  * - Automatic log flushing
  */
@@ -39,7 +38,6 @@ interface CreatePublicApiHandlerOptions {
  *
  * This wrapper provides:
  * - Request ID generation and tracking
- * - Rate limiting header support
  * - Standardized error handling (Stripe-style)
  * - Automatic log flushing
  *
@@ -74,7 +72,7 @@ export function createPublicApiHandler<T extends AppRouter>(
 
 /**
  * Middleware context for public API handlers.
- * Can be extended with auth info, rate limit info, etc.
+ * Can be extended with auth info, etc.
  */
 export interface PublicApiContext {
   requestId: string;

@@ -4,7 +4,6 @@
  * This file defines standardized response types following industry best practices:
  * - Stripe-style error responses
  * - Cursor-based pagination
- * - Rate limit information
  */
 import { z } from "zod";
 
@@ -17,7 +16,6 @@ export const publicApiErrorTypeSchema = z.enum([
   "authentication_error", // Auth failure (401)
   "authorization_error", // Permission denied (403)
   "not_found_error", // Resource missing (404)
-  "rate_limit_error", // Too many requests (429)
   "conflict_error", // Resource conflict (409)
 ]);
 
@@ -72,9 +70,6 @@ export const PublicApiErrorCode = {
   MISSING_PARAMETER: "missing_parameter",
   PARAMETER_OUT_OF_RANGE: "parameter_out_of_range",
 
-  // Rate limiting
-  RATE_LIMIT_EXCEEDED: "rate_limit_exceeded",
-
   // Idempotency
   IDEMPOTENCY_KEY_IN_USE: "idempotency_key_in_use",
 
@@ -115,7 +110,6 @@ export const errorTypeToStatus: Record<PublicApiErrorType, number> = {
   authentication_error: 401,
   authorization_error: 403,
   not_found_error: 404,
-  rate_limit_error: 429,
   conflict_error: 409,
 };
 
@@ -159,21 +153,6 @@ export const listQuerySchema = z.object({
 });
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
-
-/**
- * Rate limit info schema
- * Returned in response headers:
- * - X-RateLimit-Limit
- * - X-RateLimit-Remaining
- * - X-RateLimit-Reset
- */
-export const rateLimitInfoSchema = z.object({
-  limit: z.number(),
-  remaining: z.number(),
-  reset: z.number(), // Unix timestamp
-});
-
-export type RateLimitInfo = z.infer<typeof rateLimitInfoSchema>;
 
 /**
  * Request ID schema

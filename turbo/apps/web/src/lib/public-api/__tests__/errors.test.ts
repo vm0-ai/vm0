@@ -8,7 +8,6 @@ import {
   insufficientScopeError,
   resourceNotFoundError,
   resourceAlreadyExistsError,
-  rateLimitExceededError,
   internalServerError,
   isPublicApiError,
 } from "../errors";
@@ -65,10 +64,6 @@ describe("Public API Errors", () => {
       expect(errorTypeToStatus.not_found_error).toBe(404);
     });
 
-    it("should map rate_limit_error to 429", () => {
-      expect(errorTypeToStatus.rate_limit_error).toBe(429);
-    });
-
     it("should map conflict_error to 409", () => {
       expect(errorTypeToStatus.conflict_error).toBe(409);
     });
@@ -108,12 +103,6 @@ describe("Public API Errors", () => {
     it("resourceAlreadyExistsError should return 409", () => {
       const response = resourceAlreadyExistsError("agent", "my-agent");
       expect(response.status).toBe(409);
-    });
-
-    it("rateLimitExceededError should return 429 with Retry-After header", () => {
-      const response = rateLimitExceededError(60);
-      expect(response.status).toBe(429);
-      expect(response.headers.get("Retry-After")).toBe("60");
     });
 
     it("internalServerError should return 500", () => {

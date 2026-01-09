@@ -129,21 +129,6 @@ export function resourceAlreadyExistsError(
 }
 
 /**
- * 429 Too Many Requests - Rate limit exceeded
- */
-export function rateLimitExceededError(retryAfter: number): TsRestResponse {
-  const response = createPublicApiErrorResponse(
-    "rate_limit_error",
-    PublicApiErrorCode.RATE_LIMIT_EXCEEDED,
-    "Rate limit exceeded. Please slow down your requests.",
-  );
-
-  // Add Retry-After header
-  response.headers.set("Retry-After", String(retryAfter));
-  return response;
-}
-
-/**
  * 500 Internal Server Error
  */
 export function internalServerError(message?: string): TsRestResponse {

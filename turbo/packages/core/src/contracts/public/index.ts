@@ -6,7 +6,6 @@
  * - Developer-friendly naming (e.g., "agents" not "composes")
  * - Stripe-style error responses
  * - Cursor-based pagination
- * - Rate limiting headers
  *
  * URL Structure:
  * - /v1/agents - Agent management
@@ -32,9 +31,6 @@ export {
   listQuerySchema,
   type Pagination,
   type ListQuery,
-  // Rate limiting
-  rateLimitInfoSchema,
-  type RateLimitInfo,
   // Common types
   requestIdSchema,
   timestampSchema,
