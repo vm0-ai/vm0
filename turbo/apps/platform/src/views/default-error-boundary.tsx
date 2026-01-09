@@ -6,7 +6,7 @@ interface ErrorFallbackProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function DefaultErrorFallback(_: ErrorFallbackProps) {
+export function DefaultErrorFallback(_props: ErrorFallbackProps) {
   return (
     <div className="flex h-screen items-center justify-center bg-white">
       <div className="flex flex-col items-center">

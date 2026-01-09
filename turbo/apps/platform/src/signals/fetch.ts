@@ -68,12 +68,10 @@ export const fetch$ = computed((get) => {
     } else {
       const autoHeaders: Record<string, string> = {};
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { headers, ...restOptions } = options ?? {};
       finalInit = {
         credentials: "include",
         method: "GET",
-        ...restOptions,
+        ...options,
         headers: mergeHeadersWithAutoIds(
           authHeaders,
           options?.headers,
