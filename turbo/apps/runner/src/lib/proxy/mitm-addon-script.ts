@@ -221,6 +221,24 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     run_id = vm_info.get("runId", "")
     rules = vm_info.get("firewallRules", [])
 
+    # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
+    if API_URL and sni:
+        parsed_api = urllib.parse.urlparse(API_URL)
+        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+        sni_lower = sni.lower()
+        if api_hostname and (sni_lower == api_hostname or sni_lower.endswith(f".{api_hostname}")):
+            ctx.log.info(f"[{run_id}] SNI-only auto-allow VM0 API: {sni}")
+            log_network_entry(run_id, {
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+                "mode": "sni",
+                "action": "ALLOW",
+                "host": sni,
+                "port": 443,
+                "rule_matched": "vm0-api",
+            })
+            data.ignore_connection = True  # Pass through without MITM
+            return
+
     if not sni:
         # No SNI, can't determine target - block for security
         ctx.log.warn(f"[{run_id}] SNI-only: No SNI in ClientHello, blocking")
@@ -299,6 +317,20 @@ def request(flow: http.HTTPFlow) -> None:
 
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
+
+    # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
+    # This is checked before user firewall rules to ensure agent functionality
+    if API_URL:
+        parsed_api = urllib.parse.urlparse(API_URL)
+        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+        if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
+            ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
+            flow.metadata["firewall_action"] = "ALLOW"
+            flow.metadata["firewall_rule"] = "vm0-api"
+            # Continue to skip rewrite check below
+            flow.metadata["original_url"] = get_original_url(flow)
+            flow.metadata["skip_rewrite"] = True
+            return
 
     # Evaluate firewall rules
     action, matched_rule = evaluate_rules(rules, hostname)
