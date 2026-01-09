@@ -592,9 +592,11 @@ EOF
     assert_success
 
     echo "# Step 4: Run agent making network requests"
+    # Use retry and ignore curl errors - the test is about verifying network logs,
+    # not about curl success. httpbin.org may rate limit after many requests.
     run $CLI_COMMAND run "${AGENT_NAME}-logs" \
         --artifact-name "$ARTIFACT_NAME-logs" \
-        "curl -sf https://httpbin.org/get > /dev/null && echo 'request_done'"
+        "curl --retry 3 --retry-delay 1 -sf https://httpbin.org/get > /dev/null 2>&1 || echo 'curl_failed'; echo 'request_attempted'"
 
     echo "# Run output:"
     echo "$output"
