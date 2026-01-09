@@ -167,6 +167,19 @@ export async function GET() {
 4. Use proper conventional commit message format
 5. These checks help maintain the high standards defined in our design principles
 
+## PR Checks
+
+**All pull requests must pass CI checks before merging.** These checks are defined in `.github/workflows/turbo.yml` and run automatically on every PR, including lint, test, deploy, and cli-e2e.
+
+### CLI E2E Timeout
+
+The `cli-e2e` job has a **20-minute timeout**. If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
+
+### Merge Requirements
+
+- All required checks must show **green (passed)**
+- "Cancelled" status does **not** satisfy the requirement
+
 ## Language Standard
 
 **All project content must be written in English.** This ensures accessibility for international contributors and maintains consistency across the codebase.
