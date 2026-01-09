@@ -112,12 +112,20 @@ function buildEnvironmentVariables(
     }
   }
 
-  // For network security mode, tell Node.js to trust the proxy CA certificate
+  // For network security mode, configure CA certificates so all tools trust the proxy
   // This is required because mitmproxy intercepts HTTPS traffic and re-signs
-  // certificates with its own CA. Without this, Node.js will reject the connection.
+  // certificates with its own CA. The system CA bundle at /etc/ssl/certs/ca-certificates.crt
+  // is updated by update-ca-certificates to include the mitmproxy CA.
   if (context.experimentalNetworkSecurity) {
-    envVars.NODE_EXTRA_CA_CERTS =
-      "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+    const systemCaBundle = "/etc/ssl/certs/ca-certificates.crt";
+    // Node.js (Claude Code)
+    envVars.NODE_EXTRA_CA_CERTS = systemCaBundle;
+    // Python requests library
+    envVars.REQUESTS_CA_BUNDLE = systemCaBundle;
+    // Python ssl module
+    envVars.SSL_CERT_FILE = systemCaBundle;
+    // curl
+    envVars.CURL_CA_BUNDLE = systemCaBundle;
   }
 
   return envVars;
