@@ -27,7 +27,7 @@ const intlMiddleware = createIntlMiddleware({
 });
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  // Skip i18n for API routes, static files, CLI auth, sign-up, and Next.js internals
+  // Skip i18n for API routes (including /v1), static files, CLI auth, sign-up, and Next.js internals
   if (
     request.nextUrl.pathname.startsWith("/api/") ||
     request.nextUrl.pathname.startsWith("/v1/") ||
