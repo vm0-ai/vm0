@@ -5,7 +5,6 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.tsx",
     "./components/ui/*": "./src/components/ui/*.tsx",
     "./lib/utils": "./src/lib/utils.ts",
     "./styles/globals.css": "./src/styles/globals.css"
