@@ -10,18 +10,11 @@ api_get() {
     local endpoint="$1"
     local result
 
-    # Only add Vercel bypass headers if the secret is set and non-empty
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        result=$(curl -s \
-            -H "Authorization: Bearer $VM0_TOKEN" \
-            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-            -H "x-vercel-set-bypass-cookie: true" \
-            "${VM0_API_URL}${endpoint}")
-    else
-        result=$(curl -s \
-            -H "Authorization: Bearer $VM0_TOKEN" \
-            "${VM0_API_URL}${endpoint}")
-    fi
+    result=$(curl -s \
+        -H "Authorization: Bearer $VM0_TOKEN" \
+        -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+        -H "x-vercel-set-bypass-cookie: true" \
+        "${VM0_API_URL}${endpoint}")
 
     # Debug: show first 200 chars of response if not JSON
     if ! echo "$result" | jq -e '.' > /dev/null 2>&1; then
@@ -31,6 +24,13 @@ api_get() {
 }
 
 setup() {
+    # Verify VERCEL_AUTOMATION_BYPASS_SECRET is set
+    if [[ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        echo "ERROR: VERCEL_AUTOMATION_BYPASS_SECRET is not set or empty" >&2
+        echo "This test requires a valid Vercel bypass secret for preview deployments" >&2
+        exit 1
+    fi
+
     # Get token from config file if not in environment
     if [[ -z "$VM0_TOKEN" ]]; then
         VM0_TOKEN=$(cat ~/.vm0/config.json | jq -r '.token')
