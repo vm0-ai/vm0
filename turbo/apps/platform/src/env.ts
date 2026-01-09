@@ -5,6 +5,29 @@
  * In production, VITE_API_URL is required.
  */
 
+declare global {
+  interface Window {
+    __vitest_index__?: boolean;
+  }
+}
+
+/**
+ * Detect if running in Vitest environment.
+ * Used for test-specific behavior like promise tracking.
+ */
+export const IN_VITEST =
+  typeof window !== "undefined" && Boolean(window.__vitest_index__);
+
+/**
+ * Parse DEBUG environment variable for logger filtering.
+ * Only available in Node.js environment (tests).
+ */
+const IN_NODE = typeof process !== "undefined" && process.versions?.node;
+
+export const DEBUG: readonly string[] = IN_NODE
+  ? (process.env.DEBUG?.split(",") ?? [])
+  : [];
+
 interface EnvConfig {
   /** Clerk publishable key for authentication */
   VITE_CLERK_PUBLISHABLE_KEY: string | undefined;

@@ -1,4 +1,9 @@
 import { command, state, type Command } from "ccstate";
+import type { CSSProperties } from "react";
+import { IN_VITEST } from "../env.ts";
+import { logger } from "./log.ts";
+
+const L = logger("Promise");
 
 export enum Reason {
   DomCallback = "dom_callback",
@@ -6,9 +11,6 @@ export enum Reason {
   Deferred = "deferred",
   Daemon = "daemon",
 }
-
-const IN_VITEST =
-  typeof process !== "undefined" && process.env.VITEST === "true";
 
 const collectedPromise = new Set<Promise<unknown>>();
 const promiseReason = new Map<Promise<unknown>, Reason>();
@@ -19,13 +21,17 @@ export function detach<T>(
   reason: Reason,
   description?: string,
 ): void {
+  L.debug("Detach promise", reason, description);
+
   const isPromise = promise instanceof Promise;
   let silencePromise: Promise<void> | undefined;
 
   if (isPromise) {
     silencePromise = (async () => {
       try {
+        // eslint-disable-next-line custom/signal-check-await
         await promise;
+        // eslint-disable-next-line custom/no-catch-abort
       } catch (error) {
         throwIfNotAbort(error);
       }
@@ -49,11 +55,17 @@ export async function clearAllDetached() {
     return [];
   }
 
+  L.debug("Clear all detached promises");
+
   const settledResult = [];
 
+  L.debugGroup("Detached promises");
   for (const promise of collectedPromise) {
     const reason = promiseReason.get(promise);
+    const description = promiseDescription.get(promise);
+    L.debug(`Await promise: ${reason ?? "unknown"} ${description ?? ""}`);
     try {
+      // eslint-disable-next-line custom/signal-check-await
       const result = await promise;
       settledResult.push({
         promise,
@@ -61,6 +73,7 @@ export async function clearAllDetached() {
         description: promiseDescription.get(promise),
         result,
       });
+      // eslint-disable-next-line custom/no-catch-abort
     } catch (error) {
       throwIfNotAbort(error);
       settledResult.push({
@@ -71,6 +84,7 @@ export async function clearAllDetached() {
       });
     }
   }
+  L.debugGroupEnd();
 
   collectedPromise.clear();
   promiseReason.clear();
@@ -146,4 +160,121 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
       ctrl.abort();
     };
   });
+}
+
+/**
+ * Create a deferred promise that can be resolved/rejected externally.
+ * The promise is automatically rejected when the abort signal is triggered.
+ */
+export function createDeferredPromise<T>(signal: AbortSignal): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+  settled: () => boolean;
+} {
+  let _resolve: ((value: T) => void) | undefined;
+  let _reject: ((reason?: unknown) => void) | undefined;
+  let settled = false;
+
+  const promise = new Promise<T>((resolve, reject) => {
+    _resolve = (value: T) => {
+      if (settled) {
+        throw new Error("Deferred promise already settled");
+      }
+      settled = true;
+      resolve(value);
+    };
+    _reject = (reason?: unknown) => {
+      if (settled) {
+        throw new Error("Deferred promise already settled");
+      }
+      settled = true;
+      reject(reason);
+    };
+  });
+
+  detach(promise, Reason.Deferred);
+
+  signal.addEventListener("abort", () => {
+    if (!settled) {
+      _reject?.(signal.reason);
+    }
+  });
+
+  return {
+    promise,
+    resolve: _resolve as unknown as (value: T) => void,
+    reject: _reject as unknown as (reason?: unknown) => void,
+    settled: () => settled,
+  };
+}
+
+type GeometryStyle = Pick<
+  CSSProperties,
+  | "width"
+  | "height"
+  | "left"
+  | "top"
+  | "right"
+  | "bottom"
+  | "maxWidth"
+  | "maxHeight"
+  | "minWidth"
+  | "minHeight"
+  | "transform"
+>;
+
+/**
+ * Convert numeric geometry values to CSS style object.
+ */
+export function geometryStyle(geometry: {
+  width?: number;
+  height?: number;
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  minWidth?: number;
+  minHeight?: number;
+  scale?: number;
+}): GeometryStyle {
+  const ret: GeometryStyle = {};
+
+  if (geometry.width !== undefined) {
+    ret.width = `${String(geometry.width)}px`;
+  }
+  if (geometry.height !== undefined) {
+    ret.height = `${String(geometry.height)}px`;
+  }
+  if (geometry.left !== undefined) {
+    ret.left = `${String(geometry.left)}px`;
+  }
+  if (geometry.top !== undefined) {
+    ret.top = `${String(geometry.top)}px`;
+  }
+  if (geometry.right !== undefined) {
+    ret.right = `${String(geometry.right)}px`;
+  }
+  if (geometry.bottom !== undefined) {
+    ret.bottom = `${String(geometry.bottom)}px`;
+  }
+  if (geometry.maxWidth !== undefined) {
+    ret.maxWidth = `${String(geometry.maxWidth)}px`;
+  }
+  if (geometry.maxHeight !== undefined) {
+    ret.maxHeight = `${String(geometry.maxHeight)}px`;
+  }
+  if (geometry.minWidth !== undefined) {
+    ret.minWidth = `${String(geometry.minWidth)}px`;
+  }
+  if (geometry.minHeight !== undefined) {
+    ret.minHeight = `${String(geometry.minHeight)}px`;
+  }
+  if (geometry.scale !== undefined) {
+    ret.transform = `scale(${String(geometry.scale)})`;
+  }
+
+  return ret;
 }

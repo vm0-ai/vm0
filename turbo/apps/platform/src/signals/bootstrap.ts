@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { initRoutes$, setupPageWrapper } from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
@@ -19,6 +20,9 @@ export const bootstrap$ = command(
     set(setRootSignal$, signal);
 
     render();
+
+    await set(setupClerk$, signal);
+    signal.throwIfAborted();
 
     await set(setupRoutes$, signal);
     signal.throwIfAborted();

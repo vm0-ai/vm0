@@ -12,6 +12,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^5.92.1",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "ccstate": "^5.0.0",
