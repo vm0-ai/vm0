@@ -1,17 +1,11 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
+import { clerk$ } from "./auth.ts";
+import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
-
-function pathname() {
-  return window.location.pathname;
-}
-
-function search() {
-  return window.location.search;
-}
 
 const reloadPathname$ = state(0);
 
@@ -28,7 +22,7 @@ export const searchParams$ = computed((get) => {
 export const updateSearchParams$ = command(
   ({ set }, searchParams: URLSearchParams) => {
     const str = searchParams.toString();
-    window.history.pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
     set(reloadPathname$, (x) => x + 1);
   },
 );
@@ -95,7 +89,7 @@ const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
 
   if (!get(currentRoute$)) {
     set(reloadPathname$, (x) => x + 1);
-    window.history.pushState({}, "", "/");
+    pushState({}, "", "/");
   }
 });
 
@@ -132,7 +126,7 @@ export const navigate$ = command(
     const searchParams = options.searchParams
       ? `?${options.searchParams.toString()}`
       : "";
-    window.history.pushState({}, "", `${pathname}${searchParams}`);
+    pushState({}, "", `${pathname}${searchParams}`);
     set(reloadPathname$, (x) => x + 1);
     await set(loadRoute$, signal);
   },
@@ -185,5 +179,25 @@ export const setupPageWrapper = (
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
     await set(fn, signal);
+  });
+};
+
+/**
+ * Wraps a page setup function with authentication requirement.
+ * Opens sign-in dialog if user is not authenticated.
+ */
+export const setupAuthPageWrapper = (
+  fn: Command<Promise<void> | void, [AbortSignal]>,
+) => {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!clerk.user) {
+      clerk.openSignIn();
+      return;
+    }
+
+    await set(setupPageWrapper(fn), signal);
   });
 };

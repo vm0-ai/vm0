@@ -1,3 +1,4 @@
+import "./polyfill.ts";
 import { createStore, type Store } from "ccstate";
 import { createRoot } from "react-dom/client";
 import { bootstrap$ } from "./signals/bootstrap.ts";

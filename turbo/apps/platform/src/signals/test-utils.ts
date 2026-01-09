@@ -92,7 +92,7 @@ export class MockClerk {
 }
 
 export function setupMock() {
-  vi.mock("@clerk/clerk-js", () => ({
+  vi.mock("@clerk/clerk-js/headless", () => ({
     Clerk: MockClerk,
   }));
 }
