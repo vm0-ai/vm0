@@ -205,3 +205,4 @@ The `cli-e2e` job has a **20-minute timeout**. If tests exceed this limit, GitHu
 - **Pull requests** - PR titles, descriptions, and review comments
 - **Issues** - Bug reports, feature requests, and discussions
 - **Documentation** - README, guides, and all markdown files
+
