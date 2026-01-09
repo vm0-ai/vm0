@@ -196,7 +196,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${agentId}`,
       );
 
-      const response = await getAgent(request, { params: { id: agentId } });
+      const response = await getAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -211,7 +211,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${fakeId}`,
       );
 
-      const response = await getAgent(request, { params: { id: fakeId } });
+      const response = await getAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -254,7 +254,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         },
       );
 
-      const response = await updateAgent(request, { params: { id: agentId } });
+      const response = await updateAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -275,7 +275,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         },
       );
 
-      const response = await updateAgent(request, { params: { id: fakeId } });
+      const response = await updateAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -301,7 +301,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${agentId}/versions`,
       );
 
-      const response = await listVersions(request, { params: { id: agentId } });
+      const response = await listVersions(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -324,7 +324,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${fakeId}/versions`,
       );
 
-      const response = await listVersions(request, { params: { id: fakeId } });
+      const response = await listVersions(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -365,9 +365,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         { method: "DELETE" },
       );
 
-      const response = await deleteAgent(request, {
-        params: { id: agentIdToDelete },
-      });
+      const response = await deleteAgent(request);
 
       expect(response.status).toBe(204);
 
@@ -376,9 +374,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${agentIdToDelete}`,
       );
 
-      const getResponse = await getAgent(getRequest, {
-        params: { id: agentIdToDelete },
-      });
+      const getResponse = await getAgent(getRequest);
 
       expect(getResponse.status).toBe(404);
     });
@@ -390,7 +386,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         { method: "DELETE" },
       );
 
-      const response = await deleteAgent(request, { params: { id: fakeId } });
+      const response = await deleteAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -405,7 +401,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         `http://localhost:3000/v1/agents/${fakeId}`,
       );
 
-      const response = await getAgent(request, { params: { id: fakeId } });
+      const response = await getAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
