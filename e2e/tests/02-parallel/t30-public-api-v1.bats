@@ -13,7 +13,6 @@ api_get() {
     result=$(curl -s \
         -H "Authorization: Bearer $VM0_TOKEN" \
         -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-        -H "x-vercel-set-bypass-cookie: true" \
         "${VM0_API_URL}${endpoint}")
 
     # Debug: show first 200 chars of response if not JSON
