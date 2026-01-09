@@ -59,8 +59,9 @@ export interface AgentVariableSources {
 /**
  * Extract variable references from environment strings
  * Matches ${VAR_NAME} or $VAR_NAME patterns
+ * @internal Exported for testing
  */
-function extractVariableReferences(environment: Record<string, string>): {
+export function extractVariableReferences(environment: Record<string, string>): {
   secrets: string[];
   vars: string[];
 } {
