@@ -9,6 +9,7 @@ import { artifactCommand } from "./commands/artifact";
 import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
 import { scopeCommand } from "./commands/scope";
+import { agentsCommand } from "./commands/agents";
 import { initCommand } from "./commands/init";
 import { setupGithubCommand } from "./commands/setup-github";
 
@@ -73,6 +74,7 @@ program.addCommand(artifactCommand);
 program.addCommand(cookCommand);
 program.addCommand(logsCommand);
 program.addCommand(scopeCommand);
+program.addCommand(agentsCommand);
 program.addCommand(initCommand);
 program.addCommand(setupGithubCommand);
 
