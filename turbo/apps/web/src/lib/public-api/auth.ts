@@ -8,13 +8,9 @@
 import { headers } from "next/headers";
 import { validateApiToken } from "../api-token";
 import { getUserId } from "../auth/get-user-id";
-import { TOKEN_PREFIXES, type ApiScope } from "@vm0/core";
+import { TOKEN_PREFIXES } from "@vm0/core";
 import { logger } from "../logger";
-import {
-  missingApiKeyError,
-  invalidApiKeyError,
-  insufficientScopeError,
-} from "./errors";
+import { missingApiKeyError, invalidApiKeyError } from "./errors";
 import type { TsRestResponse } from "@ts-rest/serverless";
 
 const log = logger("public-api:auth");
@@ -25,7 +21,6 @@ const log = logger("public-api:auth");
 export interface PublicApiAuth {
   userId: string;
   tokenId: string | null; // null for CLI tokens
-  scopes: ApiScope[];
   tokenType: "api" | "cli";
 }
 
@@ -53,8 +48,7 @@ export async function authenticatePublicApi(): Promise<
     const result = await validateApiToken(token);
 
     if (!result) {
-      // Token is invalid, expired, or revoked
-      // We can't distinguish between invalid and expired without extra DB query
+      // Token is invalid or expired
       return invalidApiKeyError();
     }
 
@@ -66,7 +60,6 @@ export async function authenticatePublicApi(): Promise<
     return {
       userId: result.userId,
       tokenId: result.id,
-      scopes: result.scopes,
       tokenType: "api",
     };
   }
@@ -81,13 +74,9 @@ export async function authenticatePublicApi(): Promise<
 
     log.debug("Authenticated with CLI token", { userId });
 
-    // CLI tokens have all scopes by default
     return {
       userId,
       tokenId: null,
-      scopes: Object.keys(
-        await import("@vm0/core").then((m) => m.API_SCOPES),
-      ) as ApiScope[],
       tokenType: "cli",
     };
   }
@@ -97,86 +86,10 @@ export async function authenticatePublicApi(): Promise<
 }
 
 /**
- * Check if the authenticated user has the required scope
- *
- * @returns true if authorized, TsRestResponse error if not
- */
-export function requireScope(
-  auth: PublicApiAuth,
-  requiredScope: ApiScope,
-): true | TsRestResponse {
-  if (!auth.scopes.includes(requiredScope)) {
-    log.warn("Insufficient scope", {
-      userId: auth.userId,
-      tokenId: auth.tokenId,
-      requiredScope,
-      availableScopes: auth.scopes,
-    });
-    return insufficientScopeError(requiredScope);
-  }
-  return true;
-}
-
-/**
- * Check if the authenticated user has any of the required scopes
- *
- * @returns true if authorized, TsRestResponse error if not
- */
-export function requireAnyScope(
-  auth: PublicApiAuth,
-  requiredScopes: ApiScope[],
-): true | TsRestResponse {
-  const hasAny = requiredScopes.some((scope) => auth.scopes.includes(scope));
-  if (!hasAny) {
-    log.warn("Insufficient scope (any)", {
-      userId: auth.userId,
-      tokenId: auth.tokenId,
-      requiredScopes,
-      availableScopes: auth.scopes,
-    });
-    return insufficientScopeError(requiredScopes.join(" or "));
-  }
-  return true;
-}
-
-/**
- * Check if the authenticated user has all of the required scopes
- *
- * @returns true if authorized, TsRestResponse error if not
- */
-export function requireAllScopes(
-  auth: PublicApiAuth,
-  requiredScopes: ApiScope[],
-): true | TsRestResponse {
-  const hasAll = requiredScopes.every((scope) => auth.scopes.includes(scope));
-  if (!hasAll) {
-    const missingScopes = requiredScopes.filter(
-      (scope) => !auth.scopes.includes(scope),
-    );
-    log.warn("Insufficient scope (all)", {
-      userId: auth.userId,
-      tokenId: auth.tokenId,
-      requiredScopes,
-      missingScopes,
-      availableScopes: auth.scopes,
-    });
-    return insufficientScopeError(missingScopes.join(", "));
-  }
-  return true;
-}
-
-/**
  * Type guard to check if result is an authentication success
  */
 export function isAuthSuccess(
   result: PublicApiAuth | TsRestResponse,
 ): result is PublicApiAuth {
   return "userId" in result && typeof result.userId === "string";
-}
-
-/**
- * Type guard to check if result is an authorization success
- */
-export function isAuthorized(result: true | TsRestResponse): result is true {
-  return result === true;
 }

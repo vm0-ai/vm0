@@ -57,10 +57,6 @@ export {
 // Authentication
 export {
   authenticatePublicApi,
-  requireScope,
-  requireAnyScope,
-  requireAllScopes,
   isAuthSuccess,
-  isAuthorized,
   type PublicApiAuth,
 } from "./auth";

@@ -207,32 +207,3 @@ export const TOKEN_PREFIXES = {
   CLI: "vm0_live_",
   TEST: "vm0_test_",
 } as const;
-
-/**
- * API token scopes
- */
-export const API_SCOPES = {
-  // Agent scopes
-  "read:agents": "Read agent definitions",
-  "write:agents": "Create and update agents",
-
-  // Run scopes
-  "read:runs": "Read run status and logs",
-  "write:runs": "Create and cancel runs",
-
-  // Storage scopes
-  "read:artifacts": "Read artifacts",
-  "write:artifacts": "Create and upload artifacts",
-  "read:volumes": "Read volumes",
-  "write:volumes": "Create and upload volumes",
-
-  // Token scopes
-  "read:tokens": "Read API tokens",
-  "write:tokens": "Create and revoke tokens",
-} as const;
-
-export type ApiScope = keyof typeof API_SCOPES;
-
-export const apiScopeSchema = z.enum(
-  Object.keys(API_SCOPES) as [ApiScope, ...ApiScope[]],
-);

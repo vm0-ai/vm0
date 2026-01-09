@@ -2,13 +2,13 @@
  * API Token Service
  *
  * Manages API tokens for the public API v1.
- * Tokens are prefixed with `vm0_api_` and stored as SHA-256 hashes.
+ * Reuses the existing cli_tokens table with vm0_api_ prefix.
  */
-import { createHash, randomBytes } from "crypto";
-import { eq, and, isNull, gt, desc } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { eq, and, gt, desc } from "drizzle-orm";
 import { initServices } from "../init-services";
-import { apiTokens } from "../../db/schema/api-tokens";
-import { TOKEN_PREFIXES, type ApiScope } from "@vm0/core";
+import { cliTokens } from "../../db/schema/cli-tokens";
+import { TOKEN_PREFIXES } from "@vm0/core";
 import { logger } from "../logger";
 
 const log = logger("api-token");
@@ -19,11 +19,9 @@ const log = logger("api-token");
 const TOKEN_RANDOM_BYTES = 32; // 64 hex chars
 
 /**
- * Hash a token using SHA-256
+ * Default token expiration: 90 days
  */
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+const DEFAULT_EXPIRATION_DAYS = 90;
 
 /**
  * Generate a new API token
@@ -37,11 +35,21 @@ function generateToken(): string {
 /**
  * Parse expiration string to Date
  */
-function parseExpiration(expiresIn: string): Date | null {
-  if (expiresIn === "never") return null;
+function parseExpiration(expiresIn: string): Date {
+  if (expiresIn === "never") {
+    // Set to 100 years from now for "never"
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + 100);
+    return date;
+  }
 
   const match = expiresIn.match(/^(\d+)([dhmy])$/);
-  if (!match) return null;
+  if (!match) {
+    // Default to 90 days
+    const date = new Date();
+    date.setDate(date.getDate() + DEFAULT_EXPIRATION_DAYS);
+    return date;
+  }
 
   const value = parseInt(match[1]!, 10);
   const unit = match[2];
@@ -61,7 +69,7 @@ function parseExpiration(expiresIn: string): Date | null {
       now.setFullYear(now.getFullYear() + value);
       break;
     default:
-      return null;
+      now.setDate(now.getDate() + DEFAULT_EXPIRATION_DAYS);
   }
 
   return now;
@@ -75,32 +83,25 @@ function parseExpiration(expiresIn: string): Date | null {
 export async function createApiToken(
   userId: string,
   name: string,
-  scopes: ApiScope[],
   expiresIn: string = "90d",
 ): Promise<{
   id: string;
   name: string;
   token: string;
-  tokenPrefix: string;
-  scopes: ApiScope[];
-  expiresAt: Date | null;
+  expiresAt: Date;
   createdAt: Date;
 }> {
   initServices();
 
   const token = generateToken();
-  const tokenHash = hashToken(token);
-  const tokenPrefix = token.substring(0, 12); // "vm0_api_xxxx"
   const expiresAt = parseExpiration(expiresIn);
 
   const [result] = await globalThis.services.db
-    .insert(apiTokens)
+    .insert(cliTokens)
     .values({
       userId,
       name,
-      tokenHash,
-      tokenPrefix,
-      scopes: JSON.stringify(scopes),
+      token,
       expiresAt,
     })
     .returning();
@@ -109,14 +110,15 @@ export async function createApiToken(
     throw new Error("Failed to create API token");
   }
 
-  log.debug("Created API token", { userId, tokenPrefix, scopes });
+  log.debug("Created API token", {
+    userId,
+    tokenPrefix: token.substring(0, 12),
+  });
 
   return {
     id: result.id,
     name: result.name,
     token, // Full token value - ONLY returned here!
-    tokenPrefix: result.tokenPrefix,
-    scopes,
     expiresAt: result.expiresAt,
     createdAt: result.createdAt,
   };
@@ -125,12 +127,11 @@ export async function createApiToken(
 /**
  * Validate an API token
  *
- * @returns Token details if valid, null if invalid/expired/revoked
+ * @returns Token details if valid, null if invalid/expired
  */
 export async function validateApiToken(token: string): Promise<{
   id: string;
   userId: string;
-  scopes: ApiScope[];
 } | null> {
   if (!token.startsWith(TOKEN_PREFIXES.API)) {
     return null;
@@ -138,37 +139,26 @@ export async function validateApiToken(token: string): Promise<{
 
   initServices();
 
-  const tokenHash = hashToken(token);
-
   const [result] = await globalThis.services.db
     .select()
-    .from(apiTokens)
-    .where(and(eq(apiTokens.tokenHash, tokenHash), isNull(apiTokens.revokedAt)))
+    .from(cliTokens)
+    .where(and(eq(cliTokens.token, token), gt(cliTokens.expiresAt, new Date())))
     .limit(1);
 
   if (!result) {
     return null;
   }
 
-  // Check expiration
-  if (result.expiresAt && result.expiresAt < new Date()) {
-    log.debug("API token expired", { tokenId: result.id });
-    return null;
-  }
-
   // Update last used timestamp (non-blocking)
   globalThis.services.db
-    .update(apiTokens)
+    .update(cliTokens)
     .set({ lastUsedAt: new Date() })
-    .where(eq(apiTokens.id, result.id))
+    .where(eq(cliTokens.id, result.id))
     .catch((err) => log.error("Failed to update token lastUsedAt:", err));
-
-  const scopes = JSON.parse(result.scopes) as ApiScope[];
 
   return {
     id: result.id,
     userId: result.userId,
-    scopes,
   };
 }
 
@@ -186,9 +176,8 @@ export async function listApiTokens(
     id: string;
     name: string;
     tokenPrefix: string;
-    scopes: ApiScope[];
     lastUsedAt: Date | null;
-    expiresAt: Date | null;
+    expiresAt: Date;
     createdAt: Date;
   }>;
   hasMore: boolean;
@@ -199,30 +188,32 @@ export async function listApiTokens(
   const limit = options?.limit ?? 20;
   const cursor = options?.cursor;
 
-  const query = globalThis.services.db
+  // Only list API tokens (vm0_api_*), not CLI tokens (vm0_live_*)
+  const results = await globalThis.services.db
     .select()
-    .from(apiTokens)
+    .from(cliTokens)
     .where(
       and(
-        eq(apiTokens.userId, userId),
-        isNull(apiTokens.revokedAt),
-        cursor ? gt(apiTokens.id, cursor) : undefined,
+        eq(cliTokens.userId, userId),
+        cursor ? gt(cliTokens.id, cursor) : undefined,
       ),
     )
-    .orderBy(desc(apiTokens.createdAt))
-    .limit(limit + 1); // Fetch one extra to check if there are more
+    .orderBy(desc(cliTokens.createdAt))
+    .limit(limit + 1);
 
-  const results = await query;
+  // Filter to only API tokens
+  const apiTokenResults = results.filter((t) =>
+    t.token.startsWith(TOKEN_PREFIXES.API),
+  );
 
-  const hasMore = results.length > limit;
-  const tokens = results.slice(0, limit);
+  const hasMore = apiTokenResults.length > limit;
+  const tokens = apiTokenResults.slice(0, limit);
 
   return {
     tokens: tokens.map((t) => ({
       id: t.id,
       name: t.name,
-      tokenPrefix: t.tokenPrefix,
-      scopes: JSON.parse(t.scopes) as ApiScope[],
+      tokenPrefix: t.token.substring(0, 12), // "vm0_api_xxxx"
       lastUsedAt: t.lastUsedAt,
       expiresAt: t.expiresAt,
       createdAt: t.createdAt,
@@ -243,34 +234,31 @@ export async function getApiToken(
   id: string;
   name: string;
   tokenPrefix: string;
-  scopes: ApiScope[];
   lastUsedAt: Date | null;
-  expiresAt: Date | null;
+  expiresAt: Date;
   createdAt: Date;
 } | null> {
   initServices();
 
   const [result] = await globalThis.services.db
     .select()
-    .from(apiTokens)
-    .where(
-      and(
-        eq(apiTokens.id, tokenId),
-        eq(apiTokens.userId, userId),
-        isNull(apiTokens.revokedAt),
-      ),
-    )
+    .from(cliTokens)
+    .where(and(eq(cliTokens.id, tokenId), eq(cliTokens.userId, userId)))
     .limit(1);
 
   if (!result) {
     return null;
   }
 
+  // Only return API tokens
+  if (!result.token.startsWith(TOKEN_PREFIXES.API)) {
+    return null;
+  }
+
   return {
     id: result.id,
     name: result.name,
-    tokenPrefix: result.tokenPrefix,
-    scopes: JSON.parse(result.scopes) as ApiScope[],
+    tokenPrefix: result.token.substring(0, 12),
     lastUsedAt: result.lastUsedAt,
     expiresAt: result.expiresAt,
     createdAt: result.createdAt,
@@ -278,7 +266,7 @@ export async function getApiToken(
 }
 
 /**
- * Revoke an API token
+ * Revoke (delete) an API token
  */
 export async function revokeApiToken(
   tokenId: string,
@@ -286,17 +274,16 @@ export async function revokeApiToken(
 ): Promise<boolean> {
   initServices();
 
+  // First check if it's an API token
+  const existing = await getApiToken(tokenId, userId);
+  if (!existing) {
+    return false;
+  }
+
   const result = await globalThis.services.db
-    .update(apiTokens)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(
-        eq(apiTokens.id, tokenId),
-        eq(apiTokens.userId, userId),
-        isNull(apiTokens.revokedAt),
-      ),
-    )
-    .returning({ id: apiTokens.id });
+    .delete(cliTokens)
+    .where(and(eq(cliTokens.id, tokenId), eq(cliTokens.userId, userId)))
+    .returning({ id: cliTokens.id });
 
   if (result.length > 0) {
     log.debug("Revoked API token", { tokenId, userId });
@@ -304,34 +291,4 @@ export async function revokeApiToken(
   }
 
   return false;
-}
-
-/**
- * Check if a token has a specific scope
- */
-export function hasScope(
-  tokenScopes: ApiScope[],
-  requiredScope: ApiScope,
-): boolean {
-  return tokenScopes.includes(requiredScope);
-}
-
-/**
- * Check if a token has any of the required scopes
- */
-export function hasAnyScope(
-  tokenScopes: ApiScope[],
-  requiredScopes: ApiScope[],
-): boolean {
-  return requiredScopes.some((scope) => tokenScopes.includes(scope));
-}
-
-/**
- * Check if a token has all required scopes
- */
-export function hasAllScopes(
-  tokenScopes: ApiScope[],
-  requiredScopes: ApiScope[],
-): boolean {
-  return requiredScopes.every((scope) => tokenScopes.includes(scope));
 }

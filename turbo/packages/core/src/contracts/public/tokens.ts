@@ -10,7 +10,6 @@ import {
   createPaginatedResponseSchema,
   listQuerySchema,
   timestampSchema,
-  apiScopeSchema,
 } from "./common";
 
 const c = initContract();
@@ -21,10 +20,9 @@ const c = initContract();
 export const publicTokenSchema = z.object({
   id: z.string(),
   name: z.string(),
-  token_prefix: z.string(), // First 8 chars for identification (e.g., "vm0_api_")
-  scopes: z.array(apiScopeSchema),
+  token_prefix: z.string(), // First 12 chars for identification (e.g., "vm0_api_xxxx")
   last_used_at: timestampSchema.nullable(),
-  expires_at: timestampSchema.nullable(),
+  expires_at: timestampSchema,
   created_at: timestampSchema,
 });
 
@@ -53,10 +51,6 @@ export const createTokenRequestSchema = z.object({
     .string()
     .min(1, "Token name is required")
     .max(100, "Token name must be 100 characters or less"),
-  scopes: z
-    .array(apiScopeSchema)
-    .min(1, "At least one scope is required")
-    .default(["read:agents", "read:runs"]),
   expires_in: z
     .enum(["7d", "30d", "90d", "365d", "never"])
     .default("90d")

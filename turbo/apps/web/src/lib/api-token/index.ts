@@ -9,7 +9,4 @@ export {
   listApiTokens,
   getApiToken,
   revokeApiToken,
-  hasScope,
-  hasAnyScope,
-  hasAllScopes,
 } from "./api-token-service";

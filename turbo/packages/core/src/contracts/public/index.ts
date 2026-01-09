@@ -43,9 +43,6 @@ export {
   // Constants
   ID_PREFIXES,
   TOKEN_PREFIXES,
-  API_SCOPES,
-  apiScopeSchema,
-  type ApiScope,
 } from "./common";
 
 // Agent contracts
