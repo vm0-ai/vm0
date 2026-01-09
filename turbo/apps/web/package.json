@@ -14,7 +14,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx scripts/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "generate-openapi": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.936.0",
@@ -28,6 +29,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@ts-rest/core": "3.53.0-rc.1",
+    "@ts-rest/open-api": "3.53.0-rc.1",
     "@ts-rest/serverless": "3.53.0-rc.1",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",

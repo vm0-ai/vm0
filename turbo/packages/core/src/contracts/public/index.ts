@@ -150,6 +150,9 @@ export {
   type PublicArtifactDownloadContract,
 } from "./artifacts";
 
+// OpenAPI combined contract
+export { publicApiContract, type PublicApiContract } from "./openapi";
+
 // Volume contracts
 export {
   // Schemas
