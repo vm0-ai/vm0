@@ -10,6 +10,13 @@ api_get() {
     local endpoint="$1"
     local result
 
+    # Debug: verify bypass secret is available
+    if [[ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        echo "# WARNING: VERCEL_AUTOMATION_BYPASS_SECRET is empty in api_get()" >&3
+    else
+        echo "# DEBUG: VERCEL_AUTOMATION_BYPASS_SECRET length: ${#VERCEL_AUTOMATION_BYPASS_SECRET}" >&3
+    fi
+
     result=$(curl -s \
         -H "Authorization: Bearer $VM0_TOKEN" \
         -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
