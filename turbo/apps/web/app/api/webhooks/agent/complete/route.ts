@@ -149,7 +149,14 @@ const router = tsr.router(webhookCompleteContract, {
         .where(eq(agentRuns.id, body.runId));
 
       finalStatus = "completed";
-      log.debug(`Run ${body.runId} completed successfully`);
+
+      // Verify the update happened
+      const [verifyRun] = await globalThis.services.db
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, body.runId))
+        .limit(1);
+      log.info(`Run ${body.runId} completed - verified status: ${verifyRun?.status ?? 'NOT_FOUND'}`);
     } else {
       // Failure: store error in run table
       const errorMessage =
