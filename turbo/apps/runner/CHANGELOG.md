@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.0](https://github.com/vm0-ai/vm0/compare/runner-v2.4.2...runner-v2.5.0) (2026-01-10)
+
+
+### Features
+
+* **ci:** add multi-metal ci deployment with availability-based selection ([#1054](https://github.com/vm0-ai/vm0/issues/1054)) ([867b8f8](https://github.com/vm0-ai/vm0/commit/867b8f85b2c71868b05c87fb62f689c4714bc284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.1.0
+
 ## [2.4.2](https://github.com/vm0-ai/vm0/compare/runner-v2.4.1...runner-v2.4.2) (2026-01-10)
 
 

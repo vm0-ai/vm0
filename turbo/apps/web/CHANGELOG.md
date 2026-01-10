@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.0](https://github.com/vm0-ai/vm0/compare/web-v9.0.0...web-v9.1.0) (2026-01-10)
+
+
+### Features
+
+* remove v1 API create and delete endpoints for agents, volumes, artifacts ([#1062](https://github.com/vm0-ai/vm0/issues/1062)) ([b54697f](https://github.com/vm0-ai/vm0/commit/b54697fdfbee82e28de43d74bc2ac63403ea9ebe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.1.0
+
 ## [9.0.0](https://github.com/vm0-ai/vm0/compare/web-v8.5.0...web-v9.0.0) (2026-01-10)
 
 

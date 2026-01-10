@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/vm0-ai/vm0/compare/core-v4.0.0...core-v4.1.0) (2026-01-10)
+
+
+### Features
+
+* remove v1 API create and delete endpoints for agents, volumes, artifacts ([#1062](https://github.com/vm0-ai/vm0/issues/1062)) ([b54697f](https://github.com/vm0-ai/vm0/commit/b54697fdfbee82e28de43d74bc2ac63403ea9ebe))
+
 ## [4.0.0](https://github.com/vm0-ai/vm0/compare/core-v3.4.0...core-v4.0.0) (2026-01-10)
 
 
