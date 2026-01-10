@@ -569,23 +569,27 @@ jobs:
           NUM_HOSTS=${#HOSTS[@]}
           echo "Found $NUM_HOSTS metal hosts"
 
-          # Setup SSH
-          mkdir -p ~/.ssh
+          # Setup SSH - use $HOME explicitly for consistency
+          SSH_DIR="$HOME/.ssh"
+          SSH_KEY_FILE="$SSH_DIR/metal.pem"
+          mkdir -p "$SSH_DIR"
           if [ -z "$SSH_KEY" ]; then
             echo "ERROR: SSH_KEY secret is empty!"
             exit 1
           fi
-          echo "$SSH_KEY" > ~/.ssh/metal.pem
-          chmod 600 ~/.ssh/metal.pem
+          echo "$SSH_KEY" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
 
           # Verify SSH key file was created
-          if [ ! -f ~/.ssh/metal.pem ]; then
+          if [ ! -f "$SSH_KEY_FILE" ]; then
             echo "ERROR: Failed to create SSH key file!"
             exit 1
           fi
-          echo "SSH key file created at ~/.ssh/metal.pem ($(wc -c < ~/.ssh/metal.pem) bytes)"
+          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
+          echo "HOME=$HOME, SSH_DIR=$SSH_DIR"
+          ls -la "$SSH_DIR"
 
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
 
           # Function to check if host is available (lock doesn't exist or is stale)
           check_and_acquire() {
