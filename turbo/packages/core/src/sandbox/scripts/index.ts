@@ -10,4 +10,4 @@ export {
   MOCK_CLAUDE_SCRIPT,
   DOWNLOAD_SCRIPT,
   SCRIPT_PATHS,
-} from "./scripts.js";
+} from "./scripts";
