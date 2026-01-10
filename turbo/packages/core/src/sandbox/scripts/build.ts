@@ -64,7 +64,7 @@ async function build(): Promise<void> {
       bundle: true,
       platform: "node",
       target: "node24",
-      format: "esm",
+      format: "cjs", // CommonJS for standalone execution without package.json
       outfile,
       minify: false, // Keep readable for debugging
       sourcemap: false, // No source maps in sandbox
