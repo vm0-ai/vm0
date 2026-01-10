@@ -48,10 +48,6 @@ cat AGENTS.md # check the workflow which your agent will run
 vm0 cook "run your workflow"
 ```
 
-## Resources
-
-[Skills](https://github.com/vm0-ai/vm0-skills)
-
 ## License
 
 See [LICENSE](./LICENSE) for details.
