@@ -477,50 +477,22 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-      - name: Release metal host lock
-        if: always()
-        env:
-          METAL_HOST: ${{ needs.deploy-runner.outputs.metal-host }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          if [ -n "$METAL_HOST" ]; then
-            mkdir -p ~/.ssh
-            echo "$SSH_KEY" > ~/.ssh/metal.pem
-            chmod 600 ~/.ssh/metal.pem
-            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem ${METAL_USER}@${METAL_HOST} "rm -rf /opt/vm0-runner/.lock" || true
-            echo "Released lock on $METAL_HOST"
-          else
-            echo "No metal host to release (runner was not deployed)"
-          fi
-
-  # Deploy runner on Metal instance (PR-specific isolation)
-  deploy-runner:
+  # Lock runner host before deployment (PR-specific isolation)
+  lock-runner-host:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web]
-    # Run whenever cli-e2e would run (CLI, web, or runner changed) so we can output runner status
     if: |
       (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
     outputs:
-      runner-deployed: ${{ steps.deploy.outputs.runner-deployed || steps.skip.outputs.runner-deployed }}
-      runner-dir: ${{ steps.deploy.outputs.runner-dir || steps.skip.outputs.runner-dir }}
-      metal-host: ${{ steps.select-host.outputs.host }}
+      runner-host: ${{ steps.lock.outputs.host }}
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
       - name: Check if deployment needed
         id: check
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           RUNNER_CHANGED: ${{ needs.change-detection.outputs.runner-changed }}
         run: |
-          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
-          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-
           if [ "$RUNNER_CHANGED" != "true" ]; then
             echo "Runner code not changed, skipping deployment"
             echo "should-deploy=false" >> $GITHUB_OUTPUT
@@ -529,33 +501,8 @@ jobs:
             echo "should-deploy=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install Ansible
-        if: steps.check.outputs.should-deploy == 'true'
-        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
-
-      - name: Build runner bundle
-        if: steps.check.outputs.should-deploy == 'true'
-        run: |
-          # Build runner
-          cd turbo && pnpm --filter @vm0/runner build
-          cd ..
-
-          # Create staging directory with built files
-          STAGING_DIR="/tmp/vm0-runner-bundle"
-          rm -rf "$STAGING_DIR"
-          mkdir -p "$STAGING_DIR"
-          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
-
-          # Install production dependencies
-          cd "$STAGING_DIR" && npm install --omit=dev
-          cd -
-
-          # Create tarball
-          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
-          echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
-
-      - name: Select available metal host
-        id: select-host
+      - name: Lock runner host
+        id: lock
         if: steps.check.outputs.should-deploy == 'true'
         shell: bash
         env:
@@ -567,46 +514,35 @@ jobs:
           # Parse hosts into array
           IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
           NUM_HOSTS=${#HOSTS[@]}
-          echo "Found $NUM_HOSTS metal hosts"
+          echo "Found $NUM_HOSTS runner hosts"
 
-          # Setup SSH - use $HOME explicitly for consistency
-          SSH_DIR="$HOME/.ssh"
-          SSH_KEY_FILE="$SSH_DIR/metal.pem"
-          mkdir -p "$SSH_DIR"
+          # Setup SSH
+          mkdir -p ~/.ssh
           if [ -z "$SSH_KEY" ]; then
             echo "ERROR: SSH_KEY secret is empty!"
             exit 1
           fi
-          echo "$SSH_KEY" > "$SSH_KEY_FILE"
-          chmod 600 "$SSH_KEY_FILE"
+          echo "$SSH_KEY" > ~/.ssh/runner.pem
+          chmod 600 ~/.ssh/runner.pem
+          echo "SSH key file created ($(wc -c < ~/.ssh/runner.pem) bytes)"
 
-          # Verify SSH key file was created
-          if [ ! -f "$SSH_KEY_FILE" ]; then
-            echo "ERROR: Failed to create SSH key file!"
-            exit 1
-          fi
-          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
-
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem"
 
           # Function to check if host is available (lock doesn't exist or is stale)
           check_and_acquire() {
             local host=$1
 
-            # Debug: Show current lock state on the host
             echo "  Checking lock state on $host..."
             ssh $SSH_OPTS ${METAL_USER}@${host} "ls -la /opt/vm0-runner/.lock 2>&1 || echo '  (no lock directory)'" 2>/dev/null || echo "  (SSH failed)"
 
-            # First check if lock directory exists
+            # Check if lock directory exists
             lock_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/.lock && echo 'yes'" 2>/dev/null || echo "")
 
             if [ "$lock_exists" = "yes" ]; then
-              # Lock directory exists, read details
               lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
               lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "unknown")
 
               if [ -n "$lock_time" ]; then
-                # Check if stale (>30 min = 1800 seconds)
                 now=$(date +%s)
                 age=$((now - lock_time))
                 if [ $age -gt 1800 ]; then
@@ -626,7 +562,6 @@ jobs:
 
             # Ensure parent directory exists and try atomic mkdir to acquire lock
             echo "  Attempting to create lock..."
-            # First ensure parent directory exists (may need sudo on some systems)
             if ! ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner" 2>/dev/null; then
               echo "  Creating /opt/vm0-runner directory..."
               ssh $SSH_OPTS ${METAL_USER}@${host} "sudo mkdir -p /opt/vm0-runner && sudo chown ${METAL_USER}:${METAL_USER} /opt/vm0-runner" 2>&1 || {
@@ -636,7 +571,6 @@ jobs:
             fi
             mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
             if [ "$mkdir_result" = "SUCCESS" ]; then
-              # Write PR number and timestamp
               ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${PR_NUMBER} > /opt/vm0-runner/.lock/pr && date +%s > /opt/vm0-runner/.lock/timestamp"
               echo "  Lock acquired!"
               return 0
@@ -692,39 +626,68 @@ jobs:
 
           echo ""
           echo "ERROR: Could not acquire lock on any host after 4 attempts (~14 minutes)"
-          echo "All metal hosts are busy. Please try again later or check for stale locks."
+          echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
+
+  # Deploy runner on locked host
+  deploy-runner:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web, lock-runner-host]
+    if: needs.lock-runner-host.outputs.should-deploy == 'true'
+    outputs:
+      runner-deployed: ${{ steps.deploy.outputs.runner-deployed }}
+      runner-dir: ${{ steps.deploy.outputs.runner-dir }}
+      runner-host: ${{ needs.lock-runner-host.outputs.runner-host }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install Ansible
+        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
+
+      - name: Build runner bundle
+        run: |
+          cd turbo && pnpm --filter @vm0/runner build
+          cd ..
+
+          STAGING_DIR="/tmp/vm0-runner-bundle"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
+          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
+
+          cd "$STAGING_DIR" && npm install --omit=dev
+          cd -
+
+          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
+          echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
       - name: Deploy runner with Ansible
         id: deploy
-        if: steps.check.outputs.should-deploy == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOST: ${{ steps.select-host.outputs.host }}
+          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
-          # Calculate unique proxy port for this PR (8080-9079 range)
           PROXY_PORT=$((8080 + PR_NUMBER % 1000))
 
-          # Setup SSH key
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/metal.pem
-          chmod 600 ~/.ssh/metal.pem
+          echo "$SSH_KEY" > ~/.ssh/runner.pem
+          chmod 600 ~/.ssh/runner.pem
 
-          echo "Deploying to metal host: ${METAL_HOST}"
+          echo "Deploying to runner host: ${RUNNER_HOST}"
 
-          # Run Ansible playbook for CI deployment
-          # Enable drain mode to test the same code path as production
           cd ansible
           ansible-playbook \
-            -i "${METAL_HOST}," \
+            -i "${RUNNER_HOST}," \
             playbooks/deploy-runner.yml \
-            --private-key ~/.ssh/metal.pem \
+            --private-key ~/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "runner_group=vm0/development-pr-${PR_NUMBER}" \
@@ -742,11 +705,22 @@ jobs:
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
           echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-          echo "Runner deployed with Ansible to ${RUNNER_DIR} on ${METAL_HOST}"
+          echo "Runner deployed to ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-      - name: Set outputs for skipped deployment
-        if: steps.check.outputs.should-deploy != 'true'
-        id: skip
+  # Release runner host lock after cli-e2e completes (or fails/times out)
+  unlock-runner-host:
+    runs-on: ubuntu-latest
+    needs: [lock-runner-host, cli-e2e]
+    if: always() && needs.lock-runner-host.outputs.runner-host != ''
+    steps:
+      - name: Unlock runner host
+        env:
+          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          echo "runner-deployed=false" >> $GITHUB_OUTPUT
-          echo "runner-dir=${{ steps.check.outputs.runner-dir }}" >> $GITHUB_OUTPUT
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/runner.pem
+          chmod 600 ~/.ssh/runner.pem
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+          echo "Unlocked runner host: $RUNNER_HOST"
