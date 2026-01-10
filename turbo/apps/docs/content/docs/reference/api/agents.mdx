@@ -19,11 +19,19 @@ Returns a paginated list of your agents.
 |-----------|------|---------|-------------|
 | `limit` | integer | 20 | Items per page (1-100) |
 | `cursor` | string | - | Pagination cursor |
+| `name` | string | - | Filter by agent name |
 
 ### Request
 
 ```bash
 curl https://www.vm0.ai/v1/agents \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+Filter by name:
+
+```bash
+curl "https://www.vm0.ai/v1/agents?name=my-agent" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
