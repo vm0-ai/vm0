@@ -433,7 +433,7 @@ jobs:
             # TODO: Re-enable firewall tests (t09-firewall-sni.bats, t10-firewall-mitm.bats) after fixing
             # mitmproxy SNI-only DENY path hanging issue. See PR #1067 for details.
             # Running serially to debug timeout issues
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats --no-parallelize-within-files \
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats \
               $(find ./e2e/tests/03-experimental-runner -name '*.bats' -not -name 't09-*' -not -name 't10-*' | sort) || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
