@@ -27,7 +27,7 @@
 
 ---
 
-## What You Get
+## Skill workflows, while you sleep
 
 - **Cloud sandbox** — Run Claude Code or Codex agents in isolated containers
 - **60+ skills** — GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills)
