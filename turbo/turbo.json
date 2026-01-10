@@ -31,8 +31,12 @@
     "AXIOM_TOKEN"
   ],
   "tasks": {
+    "build:scripts": {
+      "outputs": ["src/sandbox/scripts/dist/**"],
+      "cache": true
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build:scripts"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [
         ".next/**",
@@ -42,10 +46,10 @@
       ]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint", "build:scripts"]
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^check-types", "build:scripts"]
     },
     "dev": {
       "cache": false,
