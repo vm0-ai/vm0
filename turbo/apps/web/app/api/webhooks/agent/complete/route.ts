@@ -59,7 +59,8 @@ const router = tsr.router(webhookCompleteContract, {
 
     const sandboxId = run.sandboxId ?? undefined;
 
-    // Idempotency check: if run is already completed/failed, return early
+    // Early check: if run is already completed/failed, return the existing status
+    // Note: We still do atomic updates below to handle race conditions
     if (run.status === "completed" || run.status === "failed") {
       log.debug(
         `Run ${body.runId} already ${run.status}, skipping duplicate completion`,
@@ -84,15 +85,36 @@ const router = tsr.router(webhookCompleteContract, {
         .limit(1);
 
       if (!checkpoint) {
-        // Update run status to failed
-        await globalThis.services.db
+        // Atomic update: only update if status is still "running"
+        const updateResult = await globalThis.services.db
           .update(agentRuns)
           .set({
             status: "failed",
             completedAt: new Date(),
             error: "Checkpoint for run not found",
           })
-          .where(eq(agentRuns.id, body.runId));
+          .where(
+            and(eq(agentRuns.id, body.runId), eq(agentRuns.status, "running")),
+          )
+          .returning({ id: agentRuns.id });
+
+        if (updateResult.length === 0) {
+          // Run was already completed/failed by another request
+          log.debug(`Run ${body.runId} already completed by another request`);
+          const [currentRun] = await globalThis.services.db
+            .select({ status: agentRuns.status })
+            .from(agentRuns)
+            .where(eq(agentRuns.id, body.runId))
+            .limit(1);
+          return {
+            status: 200 as const,
+            body: {
+              success: true,
+              status:
+                (currentRun?.status as "completed" | "failed") ?? "failed",
+            },
+          };
+        }
 
         if (sandboxId) {
           await e2bService.killSandbox(sandboxId);
@@ -138,41 +160,77 @@ const router = tsr.router(webhookCompleteContract, {
         };
       }
 
-      // Update run status and result
-      await globalThis.services.db
+      // Atomic update: only update if status is still "running"
+      // This prevents race conditions where multiple completion requests arrive
+      const updateResult = await globalThis.services.db
         .update(agentRuns)
         .set({
           status: "completed",
           completedAt: new Date(),
           result,
         })
-        .where(eq(agentRuns.id, body.runId));
+        .where(
+          and(eq(agentRuns.id, body.runId), eq(agentRuns.status, "running")),
+        )
+        .returning({ id: agentRuns.id });
+
+      if (updateResult.length === 0) {
+        // Run was already completed/failed by another request
+        log.debug(`Run ${body.runId} already completed by another request`);
+        const [currentRun] = await globalThis.services.db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, body.runId))
+          .limit(1);
+        return {
+          status: 200 as const,
+          body: {
+            success: true,
+            status:
+              (currentRun?.status as "completed" | "failed") ?? "completed",
+          },
+        };
+      }
 
       finalStatus = "completed";
-
-      // Verify the update happened
-      const [verifyRun] = await globalThis.services.db
-        .select({ status: agentRuns.status })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, body.runId))
-        .limit(1);
-      log.debug(
-        `Run ${body.runId} completed - verified status: ${verifyRun?.status ?? "NOT_FOUND"}`,
-      );
+      log.debug(`Run ${body.runId} completed successfully`);
     } else {
       // Failure: store error in run table
       const errorMessage =
         body.error || `Agent exited with code ${body.exitCode}`;
 
-      // Update run status and error
-      await globalThis.services.db
+      // Atomic update: only update if status is still "running"
+      // This prevents overwriting a successful completion with a failure
+      const updateResult = await globalThis.services.db
         .update(agentRuns)
         .set({
           status: "failed",
           completedAt: new Date(),
           error: errorMessage,
         })
-        .where(eq(agentRuns.id, body.runId));
+        .where(
+          and(eq(agentRuns.id, body.runId), eq(agentRuns.status, "running")),
+        )
+        .returning({ id: agentRuns.id });
+
+      if (updateResult.length === 0) {
+        // Run was already completed/failed by another request
+        log.debug(
+          `Run ${body.runId} already completed by another request, ignoring failure: ${errorMessage}`,
+        );
+        const [currentRun] = await globalThis.services.db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, body.runId))
+          .limit(1);
+        return {
+          status: 200 as const,
+          body: {
+            success: true,
+            status: (currentRun?.status as "completed" | "failed") ?? "failed",
+          },
+        };
+      }
 
       finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
