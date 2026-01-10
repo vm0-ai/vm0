@@ -63,23 +63,6 @@ export const paginatedAgentVersionsSchema =
   createPaginatedResponseSchema(agentVersionSchema);
 
 /**
- * Create agent request schema
- */
-export const createAgentRequestSchema = z.object({
-  name: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(
-      /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/,
-      "Name must be lowercase alphanumeric with hyphens, not starting or ending with hyphen",
-    ),
-  config: z.unknown(), // Agent YAML configuration
-});
-
-export type CreateAgentRequest = z.infer<typeof createAgentRequestSchema>;
-
-/**
  * Update agent request schema
  */
 export const updateAgentRequestSchema = z.object({
@@ -103,20 +86,6 @@ export const publicAgentsListContract = c.router({
     },
     summary: "List agents",
     description: "List all agents in the current scope with pagination",
-  },
-  create: {
-    method: "POST",
-    path: "/v1/agents",
-    body: createAgentRequestSchema,
-    responses: {
-      201: publicAgentDetailSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      409: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Create agent",
-    description: "Create a new agent with the given configuration",
   },
 });
 

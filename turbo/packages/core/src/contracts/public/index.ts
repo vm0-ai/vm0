@@ -47,7 +47,6 @@ export {
   agentVersionSchema,
   paginatedAgentsSchema,
   paginatedAgentVersionsSchema,
-  createAgentRequestSchema,
   updateAgentRequestSchema,
   // Contracts
   publicAgentsListContract,
@@ -57,7 +56,6 @@ export {
   type PublicAgent,
   type PublicAgentDetail,
   type AgentVersion,
-  type CreateAgentRequest,
   type UpdateAgentRequest,
   type PublicAgentsListContract,
   type PublicAgentByIdContract,
