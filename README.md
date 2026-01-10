@@ -36,7 +36,7 @@
 
 **Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, self-hosted runner
 
-## Quick Start
+## [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
 ```bash
 npm install -g @vm0/cli
