@@ -22,7 +22,7 @@
   <a href="https://www.vm0.ai">Website</a> •
   <a href="https://docs.vm0.ai">Documentation</a> •
   <a href="https://www.vm0.ai/sign-up">Join Waitlist</a> •
-  <a href="https://discord.gg/WMpAmHFfp6">Discord</a> •
+  <a href="https://discord.gg/WMpAmHFfp6">Discord</a>
 </p>
 
 ---
@@ -38,7 +38,7 @@
 
 ## [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
-From zero to agent in 5 minutes
+From zero to workflow agent in 5 minutes
 
 ```bash
 npm install -g @vm0/cli
@@ -49,6 +49,8 @@ vm0 init
 cat AGENTS.md # check the workflow which your agent will run
 vm0 cook "run your workflow"
 ```
+
+![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
 
 ## License
 
