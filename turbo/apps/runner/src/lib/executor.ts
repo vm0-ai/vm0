@@ -539,7 +539,8 @@ export async function executeJob(
       // Check if exit code file exists
       const checkResult = await ssh.exec(`cat ${exitCodeFile} 2>/dev/null`);
       if (checkResult.exitCode === 0 && checkResult.stdout.trim()) {
-        exitCode = parseInt(checkResult.stdout.trim(), 10) || 1;
+        const parsed = parseInt(checkResult.stdout.trim(), 10);
+        exitCode = isNaN(parsed) ? 1 : parsed;
         completed = true;
         break;
       }
