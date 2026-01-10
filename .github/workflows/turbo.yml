@@ -429,11 +429,15 @@ jobs:
           # Step 2: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
-            echo "=== Skipping Runner E2E Tests (temporarily disabled for debugging) ==="
-            # Runner tests are timing out even with t02-only tests
-            # Issue appears to be related to runner process state across CI runs
-            # TODO: Investigate and fix runner test infrastructure
-            echo "Runner tests skipped - see PR #1067 for debugging status"
+            echo "=== Running Runner E2E Tests (8 parallel) ==="
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+
+            if [ $RUNNER_EXIT -ne 0 ]; then
+              echo ""
+              echo "❌ Runner tests failed - skipping parallel tests"
+              exit 1
+            fi
+            echo "✅ Runner tests passed"
           else
             echo ""
             echo "Skipping runner tests (runner not deployed)"
