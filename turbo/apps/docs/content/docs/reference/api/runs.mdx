@@ -1,0 +1,387 @@
+---
+title: Runs
+description: Agent execution and monitoring endpoints
+---
+
+Execute agents and monitor run status, logs, and metrics.
+
+## Run Status Values
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Run is queued, waiting to start |
+| `running` | Agent is currently executing |
+| `completed` | Run finished successfully |
+| `failed` | Run encountered an error |
+| `timeout` | Run exceeded time limit |
+| `cancelled` | Run was cancelled by user |
+
+---
+
+## List Runs
+
+```
+GET /v1/runs
+```
+
+Returns a paginated list of runs.
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer | 20 | Items per page (1-100) |
+| `cursor` | string | - | Pagination cursor |
+| `agent_id` | string | - | Filter by agent ID |
+| `status` | string | - | Filter by status |
+| `since` | string | - | Filter by start time (ISO 8601) |
+
+### Request
+
+```bash
+curl "https://www.vm0.ai/v1/runs?status=completed&limit=10" \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "run_abc123",
+      "agent_id": "ag_xyz789",
+      "agent_name": "my-agent",
+      "status": "completed",
+      "prompt": "Research AI trends",
+      "created_at": "2024-01-15T10:00:00Z",
+      "started_at": "2024-01-15T10:00:05Z",
+      "completed_at": "2024-01-15T10:15:00Z"
+    }
+  ],
+  "pagination": {
+    "has_more": false,
+    "next_cursor": null
+  }
+}
+```
+
+---
+
+## Create Run
+
+```
+POST /v1/runs
+```
+
+Starts a new agent execution. Returns immediately with run details; the agent executes asynchronously.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent` | string | * | Agent name |
+| `agent_id` | string | * | Agent ID |
+| `session_id` | string | * | Continue existing session |
+| `checkpoint_id` | string | * | Resume from checkpoint |
+| `agent_version` | string | No | Version specifier (default: `latest`) |
+| `prompt` | string | Yes | Task prompt for the agent |
+| `variables` | object | No | Environment variables |
+| `secrets` | object | No | Secret environment variables |
+| `volumes` | object | No | Volume mounts (name -> version) |
+| `artifacts` | object | No | Artifact mounts (name -> version) |
+
+*One of `agent`, `agent_id`, `session_id`, or `checkpoint_id` is required.
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/runs \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent": "my-agent",
+    "prompt": "Research the latest AI trends and create a summary report",
+    "variables": {
+      "OUTPUT_FORMAT": "markdown"
+    }
+  }'
+```
+
+### Response (202 Accepted)
+
+```json
+{
+  "id": "run_def456",
+  "agent_id": "ag_xyz789",
+  "agent_name": "my-agent",
+  "status": "pending",
+  "prompt": "Research the latest AI trends and create a summary report",
+  "output": null,
+  "error": null,
+  "execution_time_ms": null,
+  "checkpoint_id": null,
+  "session_id": "sess_abc123",
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": null,
+  "completed_at": null
+}
+```
+
+---
+
+## Get Run
+
+```
+GET /v1/runs/:id
+```
+
+Retrieves run details including output and execution metrics.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Run ID |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/runs/run_abc123 \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "id": "run_abc123",
+  "agent_id": "ag_xyz789",
+  "agent_name": "my-agent",
+  "status": "completed",
+  "prompt": "Research AI trends",
+  "output": "# AI Trends Report\n\n...",
+  "error": null,
+  "execution_time_ms": 900000,
+  "checkpoint_id": "chk_xyz789",
+  "session_id": "sess_abc123",
+  "artifacts": {
+    "output": "v1_abc123"
+  },
+  "volumes": {},
+  "created_at": "2024-01-15T10:00:00Z",
+  "started_at": "2024-01-15T10:00:05Z",
+  "completed_at": "2024-01-15T10:15:00Z"
+}
+```
+
+---
+
+## Cancel Run
+
+```
+POST /v1/runs/:id/cancel
+```
+
+Cancels a pending or running execution.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Run ID |
+
+### Request
+
+```bash
+curl -X POST https://www.vm0.ai/v1/runs/run_abc123/cancel \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+Returns the updated run object with `status: "cancelled"`.
+
+---
+
+## Stream Events
+
+```
+GET /v1/runs/:id/events
+```
+
+Streams real-time events using Server-Sent Events (SSE).
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Run ID |
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `last_event_id` | string | Resume from event ID |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/runs/run_abc123/events \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Accept: text/event-stream"
+```
+
+### Event Types
+
+| Event | Description |
+|-------|-------------|
+| `status` | Run status changed |
+| `output` | Agent produced output |
+| `error` | Error occurred |
+| `complete` | Run finished |
+| `heartbeat` | Keep-alive signal |
+
+### Event Format
+
+```
+event: status
+data: {"status": "running"}
+id: evt_123
+
+event: output
+data: {"content": "Starting research..."}
+id: evt_124
+
+event: complete
+data: {"status": "completed", "execution_time_ms": 900000}
+id: evt_125
+```
+
+---
+
+## Get Logs
+
+```
+GET /v1/runs/:id/logs
+```
+
+Retrieves unified logs from the run.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Run ID |
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | string | `all` | Log type: `all`, `agent`, `system`, `network` |
+| `since` | string | - | Start time (ISO 8601) |
+| `until` | string | - | End time (ISO 8601) |
+| `order` | string | `asc` | Sort order: `asc`, `desc` |
+| `limit` | integer | 20 | Items per page |
+| `cursor` | string | - | Pagination cursor |
+
+### Request
+
+```bash
+curl "https://www.vm0.ai/v1/runs/run_abc123/logs?type=agent&limit=50" \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "timestamp": "2024-01-15T10:00:05Z",
+      "type": "agent",
+      "level": "info",
+      "message": "Starting execution",
+      "metadata": {}
+    },
+    {
+      "timestamp": "2024-01-15T10:00:10Z",
+      "type": "agent",
+      "level": "info",
+      "message": "Searching for AI trends...",
+      "metadata": {"tool": "web_search"}
+    }
+  ],
+  "pagination": {
+    "has_more": true,
+    "next_cursor": "xxx"
+  }
+}
+```
+
+---
+
+## Get Metrics
+
+```
+GET /v1/runs/:id/metrics
+```
+
+Retrieves resource usage metrics for a run.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Run ID |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/runs/run_abc123/metrics \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "timestamp": "2024-01-15T10:00:05Z",
+      "cpu_percent": 25.5,
+      "memory_used_mb": 512,
+      "memory_total_mb": 2048,
+      "disk_used_mb": 100,
+      "disk_total_mb": 1000
+    }
+  ],
+  "summary": {
+    "avg_cpu_percent": 30.0,
+    "max_memory_used_mb": 1024,
+    "total_duration_ms": 900000
+  }
+}
+```
+
+---
+
+## Run Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique run identifier (prefix: `run_`) |
+| `agent_id` | string | Agent that was executed |
+| `agent_name` | string | Agent name |
+| `status` | string | Current status |
+| `prompt` | string | Task prompt |
+| `output` | string | Agent output (when completed) |
+| `error` | string | Error message (when failed) |
+| `execution_time_ms` | integer | Total execution time |
+| `checkpoint_id` | string | Checkpoint for resuming |
+| `session_id` | string | Session identifier |
+| `artifacts` | object | Output artifact versions |
+| `volumes` | object | Input volume versions |
+| `created_at` | string | ISO 8601 creation timestamp |
+| `started_at` | string | ISO 8601 start timestamp |
+| `completed_at` | string | ISO 8601 completion timestamp |

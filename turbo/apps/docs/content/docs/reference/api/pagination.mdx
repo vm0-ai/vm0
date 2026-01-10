@@ -1,0 +1,90 @@
+---
+title: Pagination
+description: Navigating paginated API responses
+---
+
+List endpoints in the VM0 API use cursor-based pagination to efficiently handle large result sets.
+
+## Response Format
+
+Paginated responses include a `pagination` object:
+
+```json
+{
+  "data": [
+    { "id": "ag_abc", "name": "agent-1", ... },
+    { "id": "ag_def", "name": "agent-2", ... }
+  ],
+  "pagination": {
+    "has_more": true,
+    "next_cursor": "eyJpZCI6ImFnX2RlZiJ9"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `has_more` | boolean | Whether more results exist |
+| `next_cursor` | string | Cursor for the next page (null if no more results) |
+
+## Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer | 20 | Number of items per page (1-100) |
+| `cursor` | string | - | Cursor from previous response |
+
+## Basic Usage
+
+### First Page
+
+Request the first page without a cursor:
+
+```bash
+curl "https://www.vm0.ai/v1/agents?limit=10" \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Next Page
+
+Use the `next_cursor` from the previous response:
+
+```bash
+curl "https://www.vm0.ai/v1/agents?limit=10&cursor=eyJpZCI6ImFnX2RlZiJ9" \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+## Iterating Through All Results
+
+Continue fetching until `has_more` is `false`:
+
+```bash
+cursor=""
+while true; do
+  if [ -z "$cursor" ]; then
+    response=$(curl -s "https://www.vm0.ai/v1/agents?limit=20" \
+      -H "Authorization: Bearer vm0_live_xxx")
+  else
+    response=$(curl -s "https://www.vm0.ai/v1/agents?limit=20&cursor=$cursor" \
+      -H "Authorization: Bearer vm0_live_xxx")
+  fi
+
+  # Process data
+  echo "$response" | jq '.data'
+
+  # Check for more results
+  has_more=$(echo "$response" | jq -r '.pagination.has_more')
+  if [ "$has_more" != "true" ]; then
+    break
+  fi
+
+  cursor=$(echo "$response" | jq -r '.pagination.next_cursor')
+done
+```
+
+## Best Practices
+
+- **Use reasonable limits**: Start with the default (20) and adjust based on your needs
+- **Don't store cursors long-term**: Cursors may become invalid over time
+- **Handle empty results**: The first page may return an empty `data` array
+- **Check `has_more`**: Always check this field rather than assuming based on result count

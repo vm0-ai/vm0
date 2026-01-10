@@ -1,0 +1,100 @@
+---
+title: API Overview
+description: Introduction to the VM0 Public API v1
+---
+
+The VM0 Public API allows you to programmatically manage agents, execute runs, and work with storage resources.
+
+## Base URL
+
+All API requests should be made to:
+
+```
+https://www.vm0.ai/v1/
+```
+
+## Quick Start
+
+List your agents with a single curl command:
+
+```bash
+curl https://www.vm0.ai/v1/agents \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+## Authentication
+
+All API requests require authentication using a Bearer token. See [Authentication](/docs/reference/api/authentication) for details on obtaining and using API tokens.
+
+## Resources
+
+The API provides access to the following resources:
+
+<Cards>
+  <Card
+    title="Tokens"
+    href="/docs/reference/api/tokens"
+    description="Create and manage API tokens"
+  />
+  <Card
+    title="Agents"
+    href="/docs/reference/api/agents"
+    description="Create, update, and manage agent configurations"
+  />
+  <Card
+    title="Runs"
+    href="/docs/reference/api/runs"
+    description="Execute agents and monitor run status"
+  />
+  <Card
+    title="Volumes"
+    href="/docs/reference/api/volumes"
+    description="Manage input storage for agents"
+  />
+  <Card
+    title="Artifacts"
+    href="/docs/reference/api/artifacts"
+    description="Access output files from agent runs"
+  />
+</Cards>
+
+## Response Format
+
+All responses are returned in JSON format. List endpoints return paginated results:
+
+```json
+{
+  "data": [...],
+  "pagination": {
+    "has_more": true,
+    "next_cursor": "xxx"
+  }
+}
+```
+
+See [Pagination](/docs/reference/api/pagination) for details on navigating paginated results.
+
+## Error Handling
+
+The API uses standard HTTP status codes and returns structured error responses:
+
+```json
+{
+  "error": {
+    "type": "invalid_request_error",
+    "code": "resource_not_found",
+    "message": "No such agent: 'xxx'"
+  }
+}
+```
+
+See [Errors](/docs/reference/api/errors) for the complete list of error types and codes.
+
+## Response Headers
+
+Every response includes these headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-Request-Id` | Unique request identifier for debugging |
+| `X-API-Version` | API version (currently `v1`) |

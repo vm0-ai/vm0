@@ -1,0 +1,386 @@
+---
+title: Volumes
+description: Input storage management endpoints
+---
+
+Volumes provide input storage for agents. Use volumes to provide data files, configuration, or other resources that agents need during execution.
+
+## List Volumes
+
+```
+GET /v1/volumes
+```
+
+Returns a paginated list of your volumes.
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer | 20 | Items per page (1-100) |
+| `cursor` | string | - | Pagination cursor |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "vol_abc123",
+      "name": "training-data",
+      "current_version_id": "v1_xyz789",
+      "size": 1048576,
+      "file_count": 10,
+      "created_at": "2024-01-15T00:00:00Z",
+      "updated_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "has_more": false,
+    "next_cursor": null
+  }
+}
+```
+
+---
+
+## Create Volume
+
+```
+POST /v1/volumes
+```
+
+Creates a new empty volume container.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Volume name (lowercase alphanumeric with hyphens) |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "training-data"}'
+```
+
+### Response
+
+```json
+{
+  "id": "vol_def456",
+  "name": "training-data",
+  "current_version_id": null,
+  "size": 0,
+  "file_count": 0,
+  "current_version": null,
+  "created_at": "2024-01-15T00:00:00Z",
+  "updated_at": "2024-01-15T00:00:00Z"
+}
+```
+
+---
+
+## Get Volume
+
+```
+GET /v1/volumes/:id
+```
+
+Retrieves volume details including current version information.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Volume ID |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes/vol_abc123 \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "id": "vol_abc123",
+  "name": "training-data",
+  "current_version_id": "v1_xyz789",
+  "size": 1048576,
+  "file_count": 10,
+  "current_version": {
+    "id": "v1_xyz789",
+    "volume_id": "vol_abc123",
+    "size": 1048576,
+    "file_count": 10,
+    "message": "Added new dataset",
+    "created_by": "user_abc",
+    "created_at": "2024-01-15T10:30:00Z"
+  },
+  "created_at": "2024-01-15T00:00:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+## Delete Volume
+
+```
+DELETE /v1/volumes/:id
+```
+
+Deletes a volume and all its versions.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Volume ID |
+
+### Request
+
+```bash
+curl -X DELETE https://www.vm0.ai/v1/volumes/vol_abc123 \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+Returns `204 No Content` on success.
+
+---
+
+## List Volume Versions
+
+```
+GET /v1/volumes/:id/versions
+```
+
+Returns a paginated list of all versions for a volume.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Volume ID |
+
+### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes/vol_abc123/versions \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "v1_xyz789",
+      "volume_id": "vol_abc123",
+      "size": 1048576,
+      "file_count": 10,
+      "message": "Added new dataset",
+      "created_by": "user_abc",
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "has_more": false,
+    "next_cursor": null
+  }
+}
+```
+
+---
+
+## Upload Files
+
+Uploading files to a volume is a three-step process:
+
+1. **Prepare upload** - Get presigned URLs
+2. **Upload files** - Upload directly to storage
+3. **Commit** - Finalize and create a new version
+
+### Step 1: Prepare Upload
+
+```
+POST /v1/volumes/:id/upload
+```
+
+Gets presigned URLs for direct file upload.
+
+#### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `files` | array | Yes | List of files to upload |
+| `files[].path` | string | Yes | File path within the volume |
+| `files[].size` | integer | Yes | File size in bytes |
+| `files[].hash` | string | No | SHA-256 hash of file content |
+| `message` | string | No | Version commit message |
+
+#### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes/vol_abc123/upload \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "files": [
+      {"path": "data/file1.txt", "size": 1024},
+      {"path": "data/file2.txt", "size": 2048}
+    ],
+    "message": "Initial upload"
+  }'
+```
+
+#### Response
+
+```json
+{
+  "upload_session_id": "sess_upload_abc123",
+  "files": [
+    {
+      "path": "data/file1.txt",
+      "upload_url": "https://storage.example.com/presigned-url-1",
+      "upload_id": "upload_1"
+    },
+    {
+      "path": "data/file2.txt",
+      "upload_url": "https://storage.example.com/presigned-url-2",
+      "upload_id": "upload_2"
+    }
+  ],
+  "expires_at": "2024-01-15T11:00:00Z"
+}
+```
+
+### Step 2: Upload Files
+
+Upload each file to its presigned URL:
+
+```bash
+curl -X PUT "https://storage.example.com/presigned-url-1" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @file1.txt
+```
+
+### Step 3: Commit Upload
+
+```
+POST /v1/volumes/:id/commit
+```
+
+Finalizes the upload and creates a new volume version.
+
+#### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `upload_session_id` | string | Yes | Session ID from prepare step |
+| `message` | string | No | Version commit message |
+
+#### Request
+
+```bash
+curl https://www.vm0.ai/v1/volumes/vol_abc123/commit \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"upload_session_id": "sess_upload_abc123"}'
+```
+
+#### Response
+
+Returns the new version object.
+
+---
+
+## Download Files
+
+```
+GET /v1/volumes/:id/download
+```
+
+Gets presigned URLs for downloading volume files.
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Volume ID |
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `version_id` | string | Specific version (defaults to current) |
+
+### Request
+
+```bash
+curl "https://www.vm0.ai/v1/volumes/vol_abc123/download" \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+### Response
+
+```json
+{
+  "version_id": "v1_xyz789",
+  "files": [
+    {
+      "path": "data/file1.txt",
+      "size": 1024,
+      "download_url": "https://storage.example.com/download-url-1"
+    },
+    {
+      "path": "data/file2.txt",
+      "size": 2048,
+      "download_url": "https://storage.example.com/download-url-2"
+    }
+  ],
+  "expires_at": "2024-01-15T11:00:00Z"
+}
+```
+
+---
+
+## Volume Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique volume identifier (prefix: `vol_`) |
+| `name` | string | Volume name |
+| `current_version_id` | string | ID of the current version |
+| `size` | integer | Total size in bytes |
+| `file_count` | integer | Number of files |
+| `created_at` | string | ISO 8601 creation timestamp |
+| `updated_at` | string | ISO 8601 last update timestamp |
+
+## Version Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique version identifier |
+| `volume_id` | string | Parent volume ID |
+| `size` | integer | Version size in bytes |
+| `file_count` | integer | Number of files in version |
+| `message` | string | Commit message |
+| `created_by` | string | User who created the version |
+| `created_at` | string | ISO 8601 creation timestamp |

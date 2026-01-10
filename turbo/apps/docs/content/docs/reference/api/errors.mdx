@@ -1,0 +1,140 @@
+---
+title: Errors
+description: Error handling in the VM0 API
+---
+
+The VM0 API uses standard HTTP status codes and returns structured error responses to help you handle errors gracefully.
+
+## Error Response Format
+
+All errors follow this structure:
+
+```json
+{
+  "error": {
+    "type": "invalid_request_error",
+    "code": "resource_not_found",
+    "message": "No such agent: 'my-agent'",
+    "param": "agent_id"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Category of the error |
+| `code` | string | Specific error code |
+| `message` | string | Human-readable error description |
+| `param` | string | Parameter that caused the error (when applicable) |
+
+## Error Types
+
+| Type | HTTP Status | Description |
+|------|-------------|-------------|
+| `authentication_error` | 401 | Authentication failed |
+| `invalid_request_error` | 400 | Invalid parameters or request body |
+| `not_found_error` | 404 | Requested resource doesn't exist |
+| `conflict_error` | 409 | Resource conflict (e.g., duplicate name) |
+| `api_error` | 500 | Internal server error |
+
+## Error Codes
+
+### Authentication Errors (401)
+
+| Code | Description |
+|------|-------------|
+| `missing_api_key` | No Authorization header provided |
+| `invalid_api_key` | Token is malformed or doesn't exist |
+| `expired_api_key` | Token has expired |
+| `revoked_api_key` | Token was revoked |
+
+### Request Errors (400)
+
+| Code | Description |
+|------|-------------|
+| `invalid_parameter` | A parameter value is invalid |
+| `missing_parameter` | A required parameter is missing |
+
+### Resource Errors (404, 409)
+
+| Code | Description |
+|------|-------------|
+| `resource_not_found` | The requested resource doesn't exist |
+| `resource_already_exists` | A resource with this name already exists |
+
+### Server Errors (500)
+
+| Code | Description |
+|------|-------------|
+| `internal_error` | An unexpected error occurred |
+
+## Example Error Responses
+
+### Missing Authentication
+
+```bash
+curl https://www.vm0.ai/v1/agents
+```
+
+```json
+{
+  "error": {
+    "type": "authentication_error",
+    "code": "missing_api_key",
+    "message": "No API key provided. Include Authorization: Bearer vm0_live_xxx header."
+  }
+}
+```
+
+### Resource Not Found
+
+```bash
+curl https://www.vm0.ai/v1/agents/nonexistent \
+  -H "Authorization: Bearer vm0_live_xxx"
+```
+
+```json
+{
+  "error": {
+    "type": "not_found_error",
+    "code": "resource_not_found",
+    "message": "No such agent: 'nonexistent'"
+  }
+}
+```
+
+### Invalid Parameter
+
+```bash
+curl https://www.vm0.ai/v1/agents \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Invalid Name!"}'
+```
+
+```json
+{
+  "error": {
+    "type": "invalid_request_error",
+    "code": "invalid_parameter",
+    "message": "Name must be lowercase alphanumeric with hyphens",
+    "param": "name"
+  }
+}
+```
+
+## Handling Errors
+
+Check the HTTP status code first, then parse the error response for details:
+
+```bash
+response=$(curl -s -w "\n%{http_code}" https://www.vm0.ai/v1/agents/test \
+  -H "Authorization: Bearer vm0_live_xxx")
+
+status=$(echo "$response" | tail -n1)
+body=$(echo "$response" | head -n-1)
+
+if [ "$status" != "200" ]; then
+  echo "Error: $body"
+fi
+```

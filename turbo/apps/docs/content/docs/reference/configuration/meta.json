@@ -1,0 +1,4 @@
+{
+  "title": "Configuration",
+  "pages": ["vm0-yaml", "storage-yaml"]
+}
