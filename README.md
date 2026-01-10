@@ -29,10 +29,10 @@
 
 ## Skill workflows, while you sleep
 
-- **Cloud sandbox** — Run Claude Code or Codex agents in isolated containers
-- **60+ skills** — GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills)
-- **Persistence** — Continue chat, resume, fork, and version your workflow sessions
-- **Observability** — Logs, metrics, and network visibility for every run
+- **Cloud sandbox**, run Claude Code or Codex agents in isolated containers
+- **60+ skills**, GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills)
+- **Persistence**, continue chat, resume, fork, and version your workflow sessions
+- **Observability**, logs, metrics, and network visibility for every run
 
 **Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, self-hosted runner
 
