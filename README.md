@@ -6,16 +6,12 @@
   <br>
   <br>
   <p>
-    <a href="https://deepwiki.com/vm0-ai/vm0">
-      <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
-    </a>
+    <a href="https://deepwiki.com/vm0-ai/vm0"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
     <img src="https://img.shields.io/npm/types/@vm0/cli" alt="NPM Type Definitions" />
     <img src="https://img.shields.io/npm/v/@vm0/cli" alt="NPM Version" />
     <img src="https://img.shields.io/bundlejs/size/@vm0/cli" alt="Bundle Size" />
-    <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml">
-    <img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg"
-    alt="CI" />
-    </a>
+    <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml"><img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg"
+    alt="CI" /></a>
   </p>
 </h2>
 
