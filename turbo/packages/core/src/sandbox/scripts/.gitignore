@@ -1,0 +1,3 @@
+# Auto-generated build output
+# Run `pnpm build:scripts` to regenerate
+dist/
