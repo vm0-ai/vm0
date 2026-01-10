@@ -593,6 +593,10 @@ jobs:
           check_and_acquire() {
             local host=$1
 
+            # Debug: Show current lock state on the host
+            echo "  Checking lock state on $host..."
+            ssh $SSH_OPTS ${METAL_USER}@${host} "ls -la /opt/vm0-runner/.lock 2>&1 || echo '  (no lock directory)'" 2>/dev/null || echo "  (SSH failed)"
+
             # First check if lock directory exists
             lock_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/.lock && echo 'yes'" 2>/dev/null || echo "")
 
@@ -616,16 +620,20 @@ jobs:
                 echo "  Lock directory exists but no timestamp (corrupt lock?), removing..."
                 ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
               fi
+            else
+              echo "  No existing lock found"
             fi
 
             # Try atomic mkdir to acquire lock
-            if ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>/dev/null"; then
+            echo "  Attempting to create lock..."
+            mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
+            if [ "$mkdir_result" = "SUCCESS" ]; then
               # Write PR number and timestamp
               ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${PR_NUMBER} > /opt/vm0-runner/.lock/pr && date +%s > /opt/vm0-runner/.lock/timestamp"
               echo "  Lock acquired!"
               return 0
             else
-              echo "  Failed to acquire lock (race condition)"
+              echo "  mkdir failed: $mkdir_result"
               return 1
             fi
           }
