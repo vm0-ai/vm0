@@ -10,6 +10,13 @@ const config: StorybookConfig = {
   docs: {
     autodocs: "tag",
   },
+  viteFinal: (config) => {
+    config.server = {
+      ...config.server,
+      allowedHosts: ["storybook.vm7.ai"],
+    };
+    return config;
+  },
 };
 
 export default config;
