@@ -581,11 +581,19 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
+    // CRITICAL: Kill VM first to release resources and job slot
+    // Network cleanup can be done after (and can safely fail/timeout)
+    if (vm) {
+      console.log(`[Executor] Cleaning up VM ${vmId}...`);
+      await vm.kill();
+    }
+
     // Clean up network security if firewall was enabled
+    // This happens after VM kill to ensure job slot is released even if cleanup hangs
     if (context.experimentalFirewall?.enabled && guestIp) {
       console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
-      // Remove per-VM iptables rules first
+      // Remove per-VM iptables rules
       try {
         await removeVMProxyRules(guestIp, config.proxy.port);
       } catch (err) {
@@ -597,24 +605,26 @@ export async function executeJob(
       // Unregister from proxy registry
       getVMRegistry().unregister(guestIp);
 
-      // Upload network logs to telemetry endpoint
+      // Upload network logs to telemetry endpoint with timeout
+      // Use Promise.race to prevent hanging indefinitely
       try {
-        await uploadNetworkLogs(
+        const uploadPromise = uploadNetworkLogs(
           config.server.url,
           context.sandboxToken,
           context.runId,
         );
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Network log upload timed out after 10s")),
+            10000,
+          ),
+        );
+        await Promise.race([uploadPromise, timeoutPromise]);
       } catch (err) {
         console.error(
           `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
       }
-    }
-
-    // Always cleanup VM - let errors propagate (fail-fast principle)
-    if (vm) {
-      console.log(`[Executor] Cleaning up VM ${vmId}...`);
-      await vm.kill();
     }
   }
 }
