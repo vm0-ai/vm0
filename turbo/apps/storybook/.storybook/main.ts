@@ -10,12 +10,15 @@ const config: StorybookConfig = {
   docs: {
     autodocs: "tag",
   },
-  viteFinal: (config) => {
-    config.server = {
-      ...config.server,
-      allowedHosts: ["storybook.vm7.ai"],
-    };
-    return config;
+  async viteFinal(config) {
+    const { mergeConfig } = await import("vite");
+    const { default: tailwindcss } = await import("@tailwindcss/vite");
+    return mergeConfig(config, {
+      plugins: [tailwindcss()],
+      server: {
+        allowedHosts: ["storybook.vm7.ai"],
+      },
+    });
   },
 };
 
