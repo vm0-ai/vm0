@@ -624,8 +624,9 @@ jobs:
               echo "  No existing lock found"
             fi
 
-            # Try atomic mkdir to acquire lock
+            # Ensure parent directory exists and try atomic mkdir to acquire lock
             echo "  Attempting to create lock..."
+            ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir -p /opt/vm0-runner" 2>/dev/null || true
             mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
             if [ "$mkdir_result" = "SUCCESS" ]; then
               # Write PR number and timestamp
