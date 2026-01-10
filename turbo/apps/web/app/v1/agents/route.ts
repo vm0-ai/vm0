@@ -60,6 +60,11 @@ const router = tsr.router(publicAgentsListContract, {
     // Build query conditions
     const conditions = [eq(agentComposes.scopeId, userScope.id)];
 
+    // Filter by name if provided (case-insensitive - normalize to lowercase)
+    if (query.name) {
+      conditions.push(eq(agentComposes.name, query.name.toLowerCase()));
+    }
+
     // Handle cursor-based pagination
     if (query.cursor) {
       conditions.push(gt(agentComposes.id, query.cursor));

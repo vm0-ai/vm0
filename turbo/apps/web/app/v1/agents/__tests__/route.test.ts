@@ -175,6 +175,64 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data.length).toBeLessThanOrEqual(1);
     });
+
+    it("should filter by name when name parameter provided", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/v1/agents?name=test-agent-v1",
+      );
+
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeInstanceOf(Array);
+      expect(data.data.length).toBe(1);
+      expect(data.data[0].name).toBe("test-agent-v1");
+      expect(data.pagination.has_more).toBe(false);
+    });
+
+    it("should return empty array when name not found", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/v1/agents?name=nonexistent-agent",
+      );
+
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeInstanceOf(Array);
+      expect(data.data.length).toBe(0);
+      expect(data.pagination.has_more).toBe(false);
+      expect(data.pagination.next_cursor).toBeNull();
+    });
+
+    it("should filter by name case-insensitively", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/v1/agents?name=TEST-AGENT-V1",
+      );
+
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeInstanceOf(Array);
+      expect(data.data.length).toBe(1);
+      expect(data.data[0].name).toBe("test-agent-v1");
+    });
+
+    it("should filter by name combined with limit", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/v1/agents?name=test-agent-v1&limit=10",
+      );
+
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeInstanceOf(Array);
+      expect(data.data.length).toBe(1);
+      expect(data.data[0].name).toBe("test-agent-v1");
+    });
   });
 
   describe("GET /v1/agents/:id - Get Agent", () => {
