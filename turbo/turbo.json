@@ -43,13 +43,20 @@
       ]
     },
     "lint": {
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^lint"]
     },
     "check-types": {
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^check-types"]
     },
-    "test": {
-      "dependsOn": ["^build", "build"]
+    "test": {},
+    "@vm0/core#lint": {
+      "dependsOn": ["build"]
+    },
+    "@vm0/core#check-types": {
+      "dependsOn": ["build"]
+    },
+    "@vm0/core#test": {
+      "dependsOn": ["build"]
     },
     "dev": {
       "cache": false,
