@@ -112,6 +112,7 @@ export function httpPutPresigned(
 
     try {
       // Use curl for reliable large file uploads
+      // Quote the presigned URL to prevent shell interpretation of & characters
       const curlCmd = [
         "curl",
         "-f",
@@ -126,12 +127,13 @@ export function httpPutPresigned(
         "--max-time",
         String(HTTP_MAX_TIME_UPLOAD),
         "--silent",
-        presignedUrl,
+        `"${presignedUrl}"`,
       ];
 
       execSync(curlCmd.join(" "), {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: HTTP_MAX_TIME_UPLOAD * 1000,
+        shell: "/bin/bash",
       });
 
       return true;

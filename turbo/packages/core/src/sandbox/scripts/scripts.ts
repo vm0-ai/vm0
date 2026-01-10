@@ -73,7 +73,9 @@ function logError(msg) {
 }
 function logDebug(msg) {
   if (process.env.VM0_DEBUG === "1") {
-    console.error(\`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
+    console.error(
+      \`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`
+    );
   }
 }
 
@@ -156,11 +158,12 @@ function httpPutPresigned(presignedUrl, filePath, contentType = "application/oct
         "--max-time",
         String(HTTP_MAX_TIME_UPLOAD),
         "--silent",
-        presignedUrl
+        \`"\${presignedUrl}"\`
       ];
       execSync(curlCmd.join(" "), {
         stdio: ["pipe", "pipe", "pipe"],
-        timeout: HTTP_MAX_TIME_UPLOAD * 1e3
+        timeout: HTTP_MAX_TIME_UPLOAD * 1e3,
+        shell: "/bin/bash"
       });
       return true;
     } catch (err) {
@@ -1452,7 +1455,9 @@ function logError(msg) {
 }
 function logDebug(msg) {
   if (process.env.VM0_DEBUG === "1") {
-    console.error(\`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
+    console.error(
+      \`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`
+    );
   }
 }
 
