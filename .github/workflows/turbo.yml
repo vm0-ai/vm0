@@ -536,8 +536,8 @@ jobs:
       - name: Build runner bundle
         if: steps.check.outputs.should-deploy == 'true'
         run: |
-          # Build runner
-          cd turbo && pnpm --filter @vm0/runner build
+          # Build runner (use turbo to ensure dependencies are built first)
+          cd turbo && pnpm turbo run build --filter=@vm0/runner
           cd ..
 
           # Create staging directory with built files
