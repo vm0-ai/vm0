@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <strong>Build agents and automate workflows with natural language</strong>
+  <strong>Skill workflows, while you sleep</strong>
 </p>
 
 <p align="center">
@@ -27,76 +27,35 @@
 
 ---
 
-## What is VM0?
+## What You Get
 
-VM0 helps you build agents and automated workflows using natural language.
+- **Cloud sandbox** — Run Claude Code or Codex agents in isolated containers
+- **60+ skills** — GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills)
+- **Persistence** — Continue chat, resume, fork, and version your workflow sessions
+- **Observability** — Logs, metrics, and network visibility for every run
 
-It also provides a full agent runtime with:
-- Secure cloud sandbox: isolated execution environments for running agents safely
-- Versioned storage: track, reproduce, and roll back agent state and artifacts
-- Persistent execution: resume, fork, and iterate on agent runs with full history
-- Complete observability: logs, metrics, and network visibility for every run
-
-You can build and extend agents using:
-- Natural language workflows: define agent behavior in plain text, without complex graphs or pipelines
-- Pluggable skills: add capabilities through reusable [agent skills](https://github.com/vm0-ai/vm0-skills)
-  
-**Supported agents:**
-- Claude Code
-- OpenAI Codex (in beta)
-- Gemini CLI (coming soon)
-- More coming soon...
-
-## Installation
-
-```bash
-npm install -g @vm0/cli
-```
-
-> VM0 is in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to get access.
+**Supported**: Claude Code, Codex (beta) · **Coming soon**: Gemini CLI, self-hosted runner
 
 ## Quick Start
 
 ```bash
-# 1. Login
+npm install -g @vm0/cli
 vm0 auth login
-
-# 2. Create project directory
 mkdir my-agent && cd my-agent
-
-# 3. Initialize project
 vm0 init
-
-# 4. Get Claude Code token and save to .env
-claude setup-token
-echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
-
-# 5. Run your agent
-vm0 cook "let's start working."
-# Agent follows AGENTS.md: curates AI news from HackerNews and writes to content.md
 ```
 
-### What just happened?
+Set up your token ([instructions](https://docs.vm0.ai/docs/quick-start#initialize-token)), then:
 
-- `vm0 init` created `vm0.yaml` (agent config) and `AGENTS.md` (agent instructions)
-- `vm0 cook` initialized storage, composed the agent, and ran your prompt
-- Results are in the `artifact/` directory
+```bash
+vm0 cook "let's start working"
+```
 
-### Next steps
-
-- Edit `AGENTS.md` to customize agent instructions
-- Edit `vm0.yaml` to configure [agent skills](https://github.com/vm0-ai/vm0-skills)
-
-> For full documentation, visit [docs.vm0.ai](https://docs.vm0.ai/docs).
+> VM0 is in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to get access. For full documentation, visit [docs.vm0.ai](https://docs.vm0.ai/docs).
 
 ## Resources
 
-- [vm0-cookbooks](https://github.com/vm0-ai/vm0-cookbooks) - Ready-to-run examples
-- [vm0-skills](https://github.com/vm0-ai/vm0-skills) - Agent skills library
-- [Contributing guide](./CONTRIBUTING.md) - Development setup
-- [Website](https://www.vm0.ai) - Official website
-- [Discord](https://discord.gg/WMpAmHFfp6) - Join our community
-- [Email](mailto:ethan@vm0.ai) - Questions and support
+[Documentation](https://docs.vm0.ai) · [Cookbooks](https://github.com/vm0-ai/vm0-cookbooks) · [Skills](https://github.com/vm0-ai/vm0-skills) · [Discord](https://discord.gg/WMpAmHFfp6)
 
 ## License
 
