@@ -36,7 +36,7 @@
       "cache": true
     },
     "build": {
-      "dependsOn": ["^build", "build:sandbox-scripts"],
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [
         ".next/**",
