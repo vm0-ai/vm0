@@ -626,7 +626,14 @@ jobs:
 
             # Ensure parent directory exists and try atomic mkdir to acquire lock
             echo "  Attempting to create lock..."
-            ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir -p /opt/vm0-runner" 2>/dev/null || true
+            # First ensure parent directory exists (may need sudo on some systems)
+            if ! ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner" 2>/dev/null; then
+              echo "  Creating /opt/vm0-runner directory..."
+              ssh $SSH_OPTS ${METAL_USER}@${host} "sudo mkdir -p /opt/vm0-runner && sudo chown ${METAL_USER}:${METAL_USER} /opt/vm0-runner" 2>&1 || {
+                echo "  ERROR: Failed to create /opt/vm0-runner directory"
+                return 1
+              }
+            fi
             mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
             if [ "$mkdir_result" = "SUCCESS" ]; then
               # Write PR number and timestamp
