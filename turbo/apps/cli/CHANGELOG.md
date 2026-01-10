@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.0.0](https://github.com/vm0-ai/vm0/compare/cli-v4.38.2...cli-v5.0.0) (2026-01-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* experimental_network_security field removed from agent compose schema
+
+### Code Refactoring
+
+* remove deprecated experimental_network_security feature ([#1057](https://github.com/vm0-ai/vm0/issues/1057)) ([457864b](https://github.com/vm0-ai/vm0/commit/457864bcea4665b302f9f0df265233aa3f9270d5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.0.0
+
 ## [4.38.2](https://github.com/vm0-ai/vm0/compare/cli-v4.38.1...cli-v4.38.2) (2026-01-10)
 
 
