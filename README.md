@@ -34,7 +34,7 @@
 - **Persistence** — Continue chat, resume, fork, and version your workflow sessions
 - **Observability** — Logs, metrics, and network visibility for every run
 
-**Supported**: Claude Code, Codex (beta) · **Coming soon**: Gemini CLI, self-hosted runner
+**Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, self-hosted runner
 
 ## Quick Start
 
