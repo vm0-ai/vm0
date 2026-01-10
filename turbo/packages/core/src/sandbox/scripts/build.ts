@@ -57,14 +57,14 @@ async function build(): Promise<void> {
 
     console.log(`  Bundling ${name}...`);
 
-    const outfile = path.join(DIST_DIR, `${name}.js`);
+    const outfile = path.join(DIST_DIR, `${name}.mjs`);
 
     await esbuild.build({
       entryPoints: [entryPath],
       bundle: true,
       platform: "node",
       target: "node24",
-      format: "cjs", // CommonJS for standalone execution without package.json
+      format: "esm", // ESM with .mjs extension for standalone execution without package.json
       outfile,
       minify: false, // Keep readable for debugging
       sourcemap: false, // No source maps in sandbox
@@ -107,9 +107,9 @@ async function build(): Promise<void> {
  */
 export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
-  runAgent: "/usr/local/bin/vm0-agent/run-agent.js",
-  mockClaude: "/usr/local/bin/vm0-agent/mock-claude.js",
-  download: "/usr/local/bin/vm0-agent/download.js",
+  runAgent: "/usr/local/bin/vm0-agent/run-agent.mjs",
+  mockClaude: "/usr/local/bin/vm0-agent/mock-claude.mjs",
+  download: "/usr/local/bin/vm0-agent/download.mjs",
 } as const;`);
 
   const output = `/**

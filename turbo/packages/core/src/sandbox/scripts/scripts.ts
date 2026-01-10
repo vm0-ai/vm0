@@ -6,33 +6,10 @@
  */
 
 export const RUN_AGENT_SCRIPT = `#!/usr/bin/env node
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
 
 // src/sandbox/scripts/src/run-agent.ts
-var fs6 = __toESM(require("fs"), 1);
-var import_child_process4 = require("child_process");
+import * as fs6 from "fs";
+import { spawn } from "child_process";
 
 // src/sandbox/scripts/src/lib/common.ts
 var RUN_ID = process.env.VM0_RUN_ID ?? "";
@@ -102,10 +79,10 @@ function logDebug(msg) {
 }
 
 // src/sandbox/scripts/src/lib/events.ts
-var fs = __toESM(require("fs"), 1);
+import * as fs from "fs";
 
 // src/sandbox/scripts/src/lib/http-client.ts
-var import_child_process = require("child_process");
+import { execSync } from "child_process";
 async function httpPostJson(url, data, maxRetries = HTTP_MAX_RETRIES) {
   const headers = {
     "Content-Type": "application/json",
@@ -182,7 +159,7 @@ function httpPutPresigned(presignedUrl, filePath, contentType = "application/oct
         "--silent",
         \`"\${presignedUrl}"\`
       ];
-      (0, import_child_process.execSync)(curlCmd.join(" "), {
+      execSync(curlCmd.join(" "), {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: HTTP_MAX_TIME_UPLOAD * 1e3,
         shell: "/bin/bash"
@@ -349,14 +326,14 @@ async function sendEvent(event, sequenceNumber) {
 }
 
 // src/sandbox/scripts/src/lib/checkpoint.ts
-var fs3 = __toESM(require("fs"), 1);
-var path2 = __toESM(require("path"), 1);
+import * as fs3 from "fs";
+import * as path2 from "path";
 
 // src/sandbox/scripts/src/lib/direct-upload.ts
-var fs2 = __toESM(require("fs"), 1);
-var path = __toESM(require("path"), 1);
-var crypto = __toESM(require("crypto"), 1);
-var import_child_process2 = require("child_process");
+import * as fs2 from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
+import { execSync as execSync2 } from "child_process";
 function computeFileHash(filePath) {
   const hash = crypto.createHash("sha256");
   const content = fs2.readFileSync(filePath);
@@ -409,12 +386,12 @@ function createArchive(dirPath, tarPath) {
     process.chdir(dirPath);
     const items = fs2.readdirSync(".").filter((item) => item !== ".git" && item !== ".vm0");
     if (items.length === 0) {
-      (0, import_child_process2.execSync)(\`tar czf "\${tarPath}" --files-from /dev/null\`, {
+      execSync2(\`tar czf "\${tarPath}" --files-from /dev/null\`, {
         stdio: ["pipe", "pipe", "pipe"]
       });
     } else {
       const itemsStr = items.map((i) => \`"\${i}"\`).join(" ");
-      (0, import_child_process2.execSync)(\`tar czf "\${tarPath}" \${itemsStr}\`, {
+      execSync2(\`tar czf "\${tarPath}" \${itemsStr}\`, {
         stdio: ["pipe", "pipe", "pipe"],
         shell: "/bin/bash"
       });
@@ -735,8 +712,8 @@ async function createCheckpoint() {
 }
 
 // src/sandbox/scripts/src/lib/metrics.ts
-var fs4 = __toESM(require("fs"), 1);
-var import_child_process3 = require("child_process");
+import * as fs4 from "fs";
+import { execSync as execSync3 } from "child_process";
 function getCpuPercent() {
   try {
     const content = fs4.readFileSync("/proc/stat", "utf-8");
@@ -763,7 +740,7 @@ function getCpuPercent() {
 }
 function getMemoryInfo() {
   try {
-    const result = (0, import_child_process3.execSync)("free -b", {
+    const result = execSync3("free -b", {
       encoding: "utf-8",
       timeout: 5e3,
       stdio: ["pipe", "pipe", "pipe"]
@@ -785,7 +762,7 @@ function getMemoryInfo() {
 }
 function getDiskInfo() {
   try {
-    const result = (0, import_child_process3.execSync)("df -B1 /", {
+    const result = execSync3("df -B1 /", {
       encoding: "utf-8",
       timeout: 5e3,
       stdio: ["pipe", "pipe", "pipe"]
@@ -857,7 +834,7 @@ function startMetricsCollector() {
 }
 
 // src/sandbox/scripts/src/lib/upload-telemetry.ts
-var fs5 = __toESM(require("fs"), 1);
+import * as fs5 from "fs";
 function readFileFromPosition(filePath, posFile) {
   let lastPos = 0;
   if (fs5.existsSync(posFile)) {
@@ -1144,7 +1121,7 @@ async function run() {
   let logFile = null;
   try {
     logFile = fs6.createWriteStream(AGENT_LOG_FILE);
-    const proc = (0, import_child_process4.spawn)(cmd, args, {
+    const proc = spawn(cmd, args, {
       cwd: WORKING_DIR,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -1267,34 +1244,11 @@ main().then((code) => {
 `;
 
 export const MOCK_CLAUDE_SCRIPT = `#!/usr/bin/env node
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
 
 // src/sandbox/scripts/src/mock-claude.ts
-var fs = __toESM(require("fs"), 1);
-var path = __toESM(require("path"), 1);
-var import_child_process = require("child_process");
+import * as fs from "fs";
+import * as path from "path";
+import { spawn } from "child_process";
 function createSessionHistory(sessionId, cwd) {
   const projectName = cwd.replace(/^\\//, "").replace(/\\//g, "-");
   const homeDir = process.env.HOME ?? "/home/user";
@@ -1398,7 +1352,7 @@ async function main() {
     let exitCode = 0;
     try {
       const result = await new Promise((resolve) => {
-        const proc = (0, import_child_process.spawn)("bash", ["-c", prompt], {
+        const proc = spawn("bash", ["-c", prompt], {
           stdio: ["pipe", "pipe", "pipe"]
         });
         let stdout = "";
@@ -1457,7 +1411,7 @@ async function main() {
     fs.writeFileSync(sessionHistoryFile, sessionContent);
     process.exit(exitCode);
   } else {
-    const proc = (0, import_child_process.spawn)("bash", ["-c", prompt], {
+    const proc = spawn("bash", ["-c", prompt], {
       stdio: "inherit"
     });
     proc.on("close", (code) => {
@@ -1476,44 +1430,10 @@ main().catch((e) => {
 `;
 
 export const DOWNLOAD_SCRIPT = `#!/usr/bin/env node
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/sandbox/scripts/src/lib/download.ts
-var download_exports = {};
-__export(download_exports, {
-  downloadStorage: () => downloadStorage,
-  main: () => main
-});
-module.exports = __toCommonJS(download_exports);
-var fs = __toESM(require("fs"), 1);
-var import_child_process2 = require("child_process");
+import * as fs from "fs";
+import { execSync as execSync2 } from "child_process";
 
 // src/sandbox/scripts/src/lib/log.ts
 var SCRIPT_NAME = process.env.LOG_SCRIPT_NAME ?? "run-agent";
@@ -1538,7 +1458,7 @@ function logDebug(msg) {
 }
 
 // src/sandbox/scripts/src/lib/http-client.ts
-var import_child_process = require("child_process");
+import { execSync } from "child_process";
 
 // src/sandbox/scripts/src/lib/common.ts
 var RUN_ID = process.env.VM0_RUN_ID ?? "";
@@ -1581,7 +1501,7 @@ function httpDownload(url, destPath, maxRetries = HTTP_MAX_RETRIES) {
     logDebug(\`HTTP download attempt \${attempt}/\${maxRetries} from \${url}\`);
     try {
       const curlCmd = ["curl", "-fsSL", "-o", destPath, \`"\${url}"\`];
-      (0, import_child_process.execSync)(curlCmd.join(" "), {
+      execSync(curlCmd.join(" "), {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: HTTP_MAX_TIME_UPLOAD * 1e3,
         shell: "/bin/bash"
@@ -1617,7 +1537,7 @@ function downloadStorage(mountPath, archiveUrl) {
     }
     fs.mkdirSync(mountPath, { recursive: true });
     try {
-      (0, import_child_process2.execSync)(\`tar xzf "\${tempTar}" -C "\${mountPath}"\`, {
+      execSync2(\`tar xzf "\${tempTar}" -C "\${mountPath}"\`, {
         stdio: ["pipe", "pipe", "pipe"]
       });
     } catch {
@@ -1674,11 +1594,10 @@ function main() {
   logInfo("All storages downloaded successfully");
 }
 main();
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
+export {
   downloadStorage,
   main
-});
+};
 `;
 
 /**
@@ -1687,7 +1606,7 @@ main();
  */
 export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
-  runAgent: "/usr/local/bin/vm0-agent/run-agent.js",
-  mockClaude: "/usr/local/bin/vm0-agent/mock-claude.js",
-  download: "/usr/local/bin/vm0-agent/download.js",
+  runAgent: "/usr/local/bin/vm0-agent/run-agent.mjs",
+  mockClaude: "/usr/local/bin/vm0-agent/mock-claude.mjs",
+  download: "/usr/local/bin/vm0-agent/download.mjs",
 } as const;
