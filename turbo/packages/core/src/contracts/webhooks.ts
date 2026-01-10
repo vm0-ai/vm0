@@ -266,7 +266,7 @@ const metricDataSchema = z.object({
 const networkLogSchema = z.object({
   // Common fields (required for all modes)
   timestamp: z.string(),
-  mode: z.enum(["sni", "mitm", "filter"]).default("mitm"),
+  mode: z.enum(["sni", "mitm"]).default("mitm"),
   action: z.enum(["ALLOW", "DENY"]).default("ALLOW"),
   host: z.string(),
   port: z.number().default(443),

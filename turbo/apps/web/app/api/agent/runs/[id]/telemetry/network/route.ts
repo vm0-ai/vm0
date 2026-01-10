@@ -19,7 +19,7 @@ interface AxiomNetworkEvent {
   runId: string;
   userId: string;
   // Common fields (present in all modes)
-  mode?: "sni" | "mitm" | "filter";
+  mode?: "sni" | "mitm";
   action?: "ALLOW" | "DENY";
   host?: string;
   port?: number;

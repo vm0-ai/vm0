@@ -137,7 +137,7 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
 interface NetworkLogEntry {
   // Common fields (required for all modes)
   timestamp: string;
-  mode: "sni" | "mitm" | "filter";
+  mode: "sni" | "mitm";
   action: "ALLOW" | "DENY";
   host: string;
   port: number;

@@ -129,7 +129,7 @@ export interface GetAgentEventsResponse {
 export interface NetworkLogEntry {
   // Common fields (required for all modes)
   timestamp: string;
-  mode: "sni" | "mitm" | "filter";
+  mode: "sni" | "mitm";
   action: "ALLOW" | "DENY";
   host: string;
   port: number;
