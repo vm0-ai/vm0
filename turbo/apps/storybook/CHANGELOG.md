@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/vm0-ai/vm0/compare/storybook-v0.1.0...storybook-v0.1.1) (2026-01-10)
+
+
+### Bug Fixes
+
+* disable DTS generation in watch mode to prevent memory crashes ([#1048](https://github.com/vm0-ai/vm0/issues/1048)) ([a26bc34](https://github.com/vm0-ai/vm0/commit/a26bc34ace19fc6d6dec5d3300f5551a6ddf4b60)), closes [#1041](https://github.com/vm0-ai/vm0/issues/1041)
+
 ## [0.1.0](https://github.com/vm0-ai/vm0/compare/storybook-v0.0.1...storybook-v0.1.0) (2026-01-09)
 
 
