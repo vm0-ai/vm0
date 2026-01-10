@@ -58,22 +58,22 @@ function validateConfig() {
 }
 
 // src/sandbox/scripts/src/lib/log.ts
-var SCRIPT_NAME = "sandbox";
+var SCRIPT_NAME = process.env.LOG_SCRIPT_NAME ?? "run-agent";
 function getTimestamp() {
-  return (/* @__PURE__ */ new Date()).toISOString();
+  return (/* @__PURE__ */ new Date()).toISOString().replace(/\\.\\d{3}Z$/, "Z");
 }
 function logInfo(msg) {
-  console.error(\`[\${getTimestamp()}] [INFO] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [INFO] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logWarn(msg) {
-  console.error(\`[\${getTimestamp()}] [WARN] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [WARN] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logError(msg) {
-  console.error(\`[\${getTimestamp()}] [ERROR] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [ERROR] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logDebug(msg) {
   if (process.env.VM0_DEBUG === "1") {
-    console.error(\`[\${getTimestamp()}] [DEBUG] [\${SCRIPT_NAME}] \${msg}\`);
+    console.error(\`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
   }
 }
 
@@ -460,7 +460,10 @@ async function createDirectUploadSnapshot(mountPath, storageName, storageType = 
     if (runId) {
       commitPayload.runId = runId;
     }
-    const commitResponse = await httpPostJson(STORAGE_COMMIT_URL, commitPayload);
+    const commitResponse = await httpPostJson(
+      STORAGE_COMMIT_URL,
+      commitPayload
+    );
     if (!commitResponse || !commitResponse.success) {
       logError(\`Failed to update HEAD: \${JSON.stringify(commitResponse)}\`);
       return null;
@@ -494,12 +497,20 @@ async function createDirectUploadSnapshot(mountPath, storageName, storageType = 
       return null;
     }
     logInfo("Uploading archive to S3...");
-    if (!httpPutPresigned(archiveInfo.presignedUrl, archivePath, "application/gzip")) {
+    if (!httpPutPresigned(
+      archiveInfo.presignedUrl,
+      archivePath,
+      "application/gzip"
+    )) {
       logError("Failed to upload archive to S3");
       return null;
     }
     logInfo("Uploading manifest to S3...");
-    if (!httpPutPresigned(manifestInfo.presignedUrl, manifestPath, "application/json")) {
+    if (!httpPutPresigned(
+      manifestInfo.presignedUrl,
+      manifestPath,
+      "application/json"
+    )) {
       logError("Failed to upload manifest to S3");
       return null;
     }
@@ -516,7 +527,10 @@ async function createDirectUploadSnapshot(mountPath, storageName, storageType = 
     if (message) {
       commitPayload.message = message;
     }
-    const commitResponse = await httpPostJson(STORAGE_COMMIT_URL, commitPayload);
+    const commitResponse = await httpPostJson(
+      STORAGE_COMMIT_URL,
+      commitPayload
+    );
     if (!commitResponse) {
       logError("Failed to call commit endpoint");
       return null;
@@ -538,9 +552,7 @@ async function createDirectUploadSnapshot(mountPath, storageName, storageType = 
 // src/sandbox/scripts/src/lib/checkpoint.ts
 function findCodexSessionFile(sessionsDir, sessionId) {
   const files = findFilesRecursive(sessionsDir, ".jsonl");
-  logInfo(
-    \`Searching for Codex session \${sessionId} in \${files.length} files\`
-  );
+  logInfo(\`Searching for Codex session \${sessionId} in \${files.length} files\`);
   for (const filepath of files) {
     const filename = path2.basename(filepath);
     if (filename.includes(sessionId) || filename.replace(/-/g, "").includes(sessionId.replace(/-/g, ""))) {
@@ -556,7 +568,9 @@ function findCodexSessionFile(sessionsDir, sessionId) {
     });
     const mostRecent = files[0] ?? null;
     if (mostRecent) {
-      logInfo(\`Session ID not found in filenames, using most recent: \${mostRecent}\`);
+      logInfo(
+        \`Session ID not found in filenames, using most recent: \${mostRecent}\`
+      );
     }
     return mostRecent;
   }
@@ -668,7 +682,9 @@ async function createCheckpoint() {
       \`VAS artifact snapshot created: \${ARTIFACT_VOLUME_NAME}@\${artifactVersion}\`
     );
   } else {
-    logInfo("No artifact configured, creating checkpoint without artifact snapshot");
+    logInfo(
+      "No artifact configured, creating checkpoint without artifact snapshot"
+    );
   }
   logInfo("Calling checkpoint API...");
   const checkpointPayload = {
@@ -686,7 +702,9 @@ async function createCheckpoint() {
     logInfo(\`Checkpoint created successfully: \${checkpointId}\`);
     return true;
   } else {
-    logError(\`Checkpoint API returned invalid response: \${JSON.stringify(result)}\`);
+    logError(
+      \`Checkpoint API returned invalid response: \${JSON.stringify(result)}\`
+    );
     return false;
   }
 }
@@ -1334,27 +1352,25 @@ async function main() {
     let output = "";
     let exitCode = 0;
     try {
-      const result = await new Promise(
-        (resolve) => {
-          const proc = spawn("bash", ["-c", prompt], {
-            stdio: ["pipe", "pipe", "pipe"]
-          });
-          let stdout = "";
-          let stderr = "";
-          proc.stdout.on("data", (chunk) => {
-            stdout += chunk.toString();
-          });
-          proc.stderr.on("data", (chunk) => {
-            stderr += chunk.toString();
-          });
-          proc.on("close", (code) => {
-            resolve({ stdout, stderr, code: code ?? 1 });
-          });
-          proc.on("error", (err) => {
-            resolve({ stdout: "", stderr: err.message, code: 1 });
-          });
-        }
-      );
+      const result = await new Promise((resolve) => {
+        const proc = spawn("bash", ["-c", prompt], {
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        proc.stdout.on("data", (chunk) => {
+          stdout += chunk.toString();
+        });
+        proc.stderr.on("data", (chunk) => {
+          stderr += chunk.toString();
+        });
+        proc.on("close", (code) => {
+          resolve({ stdout, stderr, code: code ?? 1 });
+        });
+        proc.on("error", (err) => {
+          resolve({ stdout: "", stderr: err.message, code: 1 });
+        });
+      });
       output = result.stdout + result.stderr;
       exitCode = result.code;
     } catch (e) {
@@ -1421,22 +1437,22 @@ import * as fs from "fs";
 import { execSync as execSync2 } from "child_process";
 
 // src/sandbox/scripts/src/lib/log.ts
-var SCRIPT_NAME = "sandbox";
+var SCRIPT_NAME = process.env.LOG_SCRIPT_NAME ?? "run-agent";
 function getTimestamp() {
-  return (/* @__PURE__ */ new Date()).toISOString();
+  return (/* @__PURE__ */ new Date()).toISOString().replace(/\\.\\d{3}Z$/, "Z");
 }
 function logInfo(msg) {
-  console.error(\`[\${getTimestamp()}] [INFO] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [INFO] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logWarn(msg) {
-  console.error(\`[\${getTimestamp()}] [WARN] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [WARN] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logError(msg) {
-  console.error(\`[\${getTimestamp()}] [ERROR] [\${SCRIPT_NAME}] \${msg}\`);
+  console.error(\`[\${getTimestamp()}] [ERROR] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
 }
 function logDebug(msg) {
   if (process.env.VM0_DEBUG === "1") {
-    console.error(\`[\${getTimestamp()}] [DEBUG] [\${SCRIPT_NAME}] \${msg}\`);
+    console.error(\`[\${getTimestamp()}] [DEBUG] [sandbox:\${SCRIPT_NAME}] \${msg}\`);
   }
 }
 
