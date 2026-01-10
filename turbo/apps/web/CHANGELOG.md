@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.4.1](https://github.com/vm0-ai/vm0/compare/web-v8.4.0...web-v8.4.1) (2026-01-10)
+
+
+### Bug Fixes
+
+* add v1 api routes to middleware and e2e tests ([#1035](https://github.com/vm0-ai/vm0/issues/1035)) ([73d5dd3](https://github.com/vm0-ai/vm0/commit/73d5dd3d411fc2a69df8ec9c9433334cb92a31ea))
+
 ## [8.4.0](https://github.com/vm0-ai/vm0/compare/web-v8.3.0...web-v8.4.0) (2026-01-09)
 
 
