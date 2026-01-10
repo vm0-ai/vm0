@@ -99,13 +99,6 @@ const agentDefinitionSchema = z.object({
   working_dir: z.string().optional(), // Optional when provider supports auto-config
   environment: z.record(z.string(), z.string()).optional(),
   /**
-   * Enable network security mode for secrets.
-   * When true, secrets are encrypted into proxy tokens and all traffic
-   * is routed through mitmproxy -> VM0 Proxy for decryption.
-   * Default: false (plaintext secrets in env vars)
-   */
-  experimental_network_security: z.boolean().optional().default(false),
-  /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */

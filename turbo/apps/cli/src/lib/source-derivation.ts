@@ -19,7 +19,6 @@ interface AgentDefinition {
   volumes?: string[];
   working_dir?: string;
   environment?: Record<string, string>;
-  experimental_network_security?: boolean;
   instructions?: string;
   skills?: string[];
   experimental_runner?: {

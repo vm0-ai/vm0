@@ -44,9 +44,6 @@ PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
 STORAGE_PREPARE_URL = f"{API_URL}/api/webhooks/agent/storages/prepare"
 STORAGE_COMMIT_URL = f"{API_URL}/api/webhooks/agent/storages/commit"
 
-# Proxy configuration (for experimental_network_security feature)
-PROXY_ENABLED = os.environ.get("VM0_PROXY_ENABLED", "false").lower() == "true"
-
 # Heartbeat configuration
 HEARTBEAT_INTERVAL = 60  # seconds
 
