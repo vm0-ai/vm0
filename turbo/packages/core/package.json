@@ -10,6 +10,7 @@
     }
   },
   "scripts": {
+    "build:scripts": "tsx src/sandbox/scripts/build.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings 0",
@@ -18,7 +19,9 @@
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
+    "esbuild": "^0.25.0",
     "eslint": "^9.34.0",
+    "tsx": "^4.19.4",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"
   },

@@ -20,6 +20,9 @@ importers:
       e2b:
         specifier: ^2.7.0
         version: 2.7.0
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.9
       knip:
         specifier: ^5.63.1
         version: 5.69.1(@types/node@24.3.0)(typescript@5.9.2)
@@ -510,9 +513,15 @@ importers:
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.9
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
+      tsx:
+        specifier: ^4.19.4
+        version: 4.20.6
       typescript:
         specifier: 5.9.2
         version: 5.9.2
@@ -8409,7 +8418,6 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
-    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-fetch@3.6.20:
     resolution: {integrity: sha512-EqhiFU6daOA8kpjOWTL0olhVOF3i7OrFzSYiGsEMB8GcXS+RrzauAERX65xMeNWVqxA6HXH2m69Z9LaKKdisfg==}
@@ -12712,7 +12720,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(jiti@2.6.1)(jsdom@26.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(lightningcss@1.30.2)(msw@2.12.7(@types/node@22.18.0)(typescript@5.9.2))(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(jiti@2.6.1)(jsdom@26.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.2))(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
 
   '@vitest/utils@2.0.5':
     dependencies:
@@ -16883,7 +16891,7 @@ snapshots:
 
   rpc-websockets@9.3.2:
     dependencies:
-      '@swc/helpers': 0.5.18
+      '@swc/helpers': 0.5.15
       '@types/uuid': 8.3.4
       '@types/ws': 8.18.1
       buffer: 6.0.3

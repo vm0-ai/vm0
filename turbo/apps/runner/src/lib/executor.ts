@@ -5,7 +5,7 @@
  * Handles VM lifecycle, script injection via SSH, and job completion.
  *
  * This executor achieves E2B parity by:
- * - Uploading the same Python scripts used by E2B
+ * - Uploading the same JavaScript scripts used by E2B
  * - Setting the same environment variables
  * - Supporting storage download and artifact upload
  * - Supporting checkpoint/resume functionality
@@ -248,9 +248,7 @@ async function uploadScripts(ssh: SSHClient): Promise<void> {
   const scripts = getAllScripts();
 
   // Create directories first (requires sudo for /usr/local/bin)
-  await ssh.execOrThrow(
-    `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
-  );
+  await ssh.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
 
   // Write each script file individually using sudo tee
   for (const script of scripts) {
@@ -259,7 +257,7 @@ async function uploadScripts(ssh: SSHClient): Promise<void> {
 
   // Set executable permissions (requires sudo)
   await ssh.execOrThrow(
-    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
+    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.js ${SCRIPT_PATHS.baseDir}/*.sh 2>/dev/null || true`,
   );
 }
 
@@ -288,7 +286,7 @@ async function downloadStorages(
 
   // Run download script
   const result = await ssh.exec(
-    `python3 ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
+    `node ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
   );
 
   if (result.exitCode !== 0) {
@@ -473,7 +471,7 @@ export async function executeJob(
     console.log(`[Executor] Configuring DNS...`);
     await configureDNS(ssh);
 
-    // Upload all Python scripts
+    // Upload all JavaScript scripts
     console.log(`[Executor] Uploading scripts...`);
     await uploadScripts(ssh);
     console.log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
@@ -503,7 +501,7 @@ export async function executeJob(
     );
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
-    // Execute env-loader.py which loads environment from JSON, then runs run-agent.py
+    // Execute env-loader.js which loads environment from JSON, then runs run-agent.js
     // Use nohup to run in background (like E2B) so SSH doesn't block
     const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
     const exitCodeFile = `/tmp/vm0-exit-${context.runId}`;
@@ -512,9 +510,8 @@ export async function executeJob(
 
     // Start agent in background using nohup
     // Write exit code to file when done so we can poll for completion
-    // Use python3 -u for unbuffered output
     await ssh.exec(
-      `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
+      `nohup sh -c 'bash ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
     );
     console.log(`[Executor] Agent started in background`);
 
