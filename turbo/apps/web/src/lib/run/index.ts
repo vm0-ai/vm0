@@ -13,7 +13,7 @@ export type { PreparedContext, ExecutorResult, Executor } from "./executors";
 // Context preparation exports
 export {
   prepareForExecution,
-  extractWorkingDir,
+  getWorkingDir,
   extractCliAgentType,
   resolveRunnerGroup,
 } from "./context";

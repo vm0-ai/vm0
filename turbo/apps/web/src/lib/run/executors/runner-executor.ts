@@ -52,6 +52,7 @@ export class RunnerExecutor implements Executor {
       encryptedSecrets,
       cliAgentType: context.cliAgentType,
       experimentalFirewall: context.experimentalFirewall ?? undefined,
+      postCreateCommand: context.postCreateCommand,
     };
 
     // Insert into runner job queue

@@ -53,8 +53,14 @@ export interface AgentDefinition {
   image?: string; // Optional when provider supports auto-config
   provider: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
-  working_dir?: string; // Optional when provider supports auto-config
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
+  /**
+   * Command to execute after working directory creation, before CLI agent starts.
+   * Follows Dev Container lifecycle naming convention.
+   * Executes via /bin/bash -c, supports background processes via &.
+   * If command fails (non-zero exit), the entire run fails.
+   */
+  postCreateCommand?: string;
   /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md

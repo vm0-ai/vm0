@@ -88,6 +88,11 @@ function buildEnvironmentVariables(
     envVars.VM0_ARTIFACT_VERSION_ID = artifact.vasVersionId;
   }
 
+  // Add postCreateCommand lifecycle hook if specified
+  if (context.postCreateCommand) {
+    envVars.VM0_POST_CREATE_COMMAND = context.postCreateCommand;
+  }
+
   // Add resume session ID if present
   if (context.resumeSession) {
     envVars.VM0_RESUME_SESSION_ID = context.resumeSession.sessionId;
