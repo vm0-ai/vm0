@@ -48,6 +48,19 @@ vm0 init
 Set up your token ([instructions](https://docs.vm0.ai/docs/quick-start#initialize-token)), then:
 
 ```bash
+cat > AGENTS.md << 'EOF'
+# Agent Instructions
+
+You are a HackerNews AI content curator.
+
+## Workflow
+
+1. Go to HackerNews and read the top 10 articles
+2. Find and extract AI-related content from these articles
+3. Summarize the findings into a X (Twitter) post format
+4. Write the summary to content.md
+EOF
+
 vm0 cook "let's start working"
 ```
 
