@@ -10,7 +10,7 @@
     }
   },
   "scripts": {
-    "build:scripts": "tsx src/sandbox/scripts/build.ts",
+    "build:sandbox-scripts": "tsx src/sandbox/scripts/build.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings 0",
