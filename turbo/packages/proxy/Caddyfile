@@ -27,6 +27,12 @@ platform.vm7.ai:8443 {
   reverse_proxy localhost:3002
 }
 
+# Storybook application
+storybook.vm7.ai:8443 {
+  tls ../../../.certs/storybook.vm7.ai.pem ../../../.certs/storybook.vm7.ai-key.pem
+  reverse_proxy localhost:6006
+}
+
 # HTTP redirects to HTTPS
 http://vm7.ai:8080 {
   redir https://www.vm7.ai:8443{uri} permanent
@@ -42,4 +48,8 @@ http://docs.vm7.ai:8080 {
 
 http://platform.vm7.ai:8080 {
   redir https://platform.vm7.ai:8443{uri} permanent
+}
+
+http://storybook.vm7.ai:8080 {
+  redir https://storybook.vm7.ai:8443{uri} permanent
 }

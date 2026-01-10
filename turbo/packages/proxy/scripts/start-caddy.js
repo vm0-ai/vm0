@@ -54,11 +54,15 @@ caddy.on("exit", (code) => {
 setTimeout(() => {
   console.log("\n✅ Caddy is running!");
   console.log("\n📱 Available at:");
-  console.log("   Web:  https://www.vm7.ai:8443");
-  console.log("   Docs: https://docs.vm7.ai:8443");
+  console.log("   Web:       https://www.vm7.ai:8443");
+  console.log("   Docs:      https://docs.vm7.ai:8443");
+  console.log("   Platform:  https://platform.vm7.ai:8443");
+  console.log("   Storybook: https://storybook.vm7.ai:8443");
   console.log("\n💡 Make sure your applications are running:");
-  console.log("   Web:  pnpm --filter web dev (port 3000)");
-  console.log("   Docs: pnpm --filter docs dev (port 3001)");
+  console.log("   Web:       pnpm --filter web dev (port 3000)");
+  console.log("   Docs:      pnpm --filter docs dev (port 3001)");
+  console.log("   Platform:  pnpm --filter @vm0/platform dev (port 3002)");
+  console.log("   Storybook: pnpm --filter @vm0/storybook dev (port 6006)");
   console.log("\n🛑 Press Ctrl+C to stop Caddy\n");
 }, 1000);
 
