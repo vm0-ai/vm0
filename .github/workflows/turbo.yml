@@ -571,8 +571,20 @@ jobs:
 
           # Setup SSH
           mkdir -p ~/.ssh
+          if [ -z "$SSH_KEY" ]; then
+            echo "ERROR: SSH_KEY secret is empty!"
+            exit 1
+          fi
           echo "$SSH_KEY" > ~/.ssh/metal.pem
           chmod 600 ~/.ssh/metal.pem
+
+          # Verify SSH key file was created
+          if [ ! -f ~/.ssh/metal.pem ]; then
+            echo "ERROR: Failed to create SSH key file!"
+            exit 1
+          fi
+          echo "SSH key file created at ~/.ssh/metal.pem ($(wc -c < ~/.ssh/metal.pem) bytes)"
+
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem"
 
           # Function to check if host is available (lock doesn't exist or is stale)
