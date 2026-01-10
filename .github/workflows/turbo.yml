@@ -308,7 +308,7 @@ jobs:
     if: |
       (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -388,34 +388,15 @@ jobs:
           # Step 2: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
-            echo "=== Running Runner E2E Tests (excluding firewall) ==="
-            # Run non-firewall tests first (t02-t07)
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files \
-              ./e2e/tests/03-experimental-runner/t02*.bats \
-              ./e2e/tests/03-experimental-runner/t03*.bats \
-              ./e2e/tests/03-experimental-runner/t04*.bats \
-              ./e2e/tests/03-experimental-runner/t05*.bats \
-              ./e2e/tests/03-experimental-runner/t06*.bats \
-              ./e2e/tests/03-experimental-runner/t07*.bats || RUNNER_EXIT=$?
+            echo "=== Running Runner E2E Tests (4 parallel) ==="
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
-              echo "❌ Runner tests failed - skipping firewall tests"
+              echo "❌ Runner tests failed - skipping parallel tests"
               exit 1
             fi
             echo "✅ Runner tests passed"
-
-            # Step 2b: Run firewall tests separately (t09)
-            echo ""
-            echo "=== Running Firewall E2E Tests ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats --verbose-run ./e2e/tests/03-experimental-runner/t09*.bats || FIREWALL_EXIT=$?
-
-            if [ $FIREWALL_EXIT -ne 0 ]; then
-              echo ""
-              echo "❌ Firewall tests failed"
-              exit 1
-            fi
-            echo "✅ Firewall tests passed"
           else
             echo ""
             echo "Skipping runner tests (runner not deployed)"
