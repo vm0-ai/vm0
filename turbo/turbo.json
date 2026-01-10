@@ -51,6 +51,9 @@
     "check-types": {
       "dependsOn": ["^check-types", "build:sandbox-scripts"]
     },
+    "test": {
+      "dependsOn": ["build:sandbox-scripts"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
