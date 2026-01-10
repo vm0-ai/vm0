@@ -23,7 +23,7 @@ Returns a paginated list of your volumes.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes \
+curl https://api.vm0.ai/v1/volumes \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -68,7 +68,7 @@ Creates a new empty volume container.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes \
+curl https://api.vm0.ai/v1/volumes \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{"name": "training-data"}'
@@ -108,7 +108,7 @@ Retrieves volume details including current version information.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes/vol_abc123 \
+curl https://api.vm0.ai/v1/volumes/vol_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -154,7 +154,7 @@ Deletes a volume and all its versions.
 ### Request
 
 ```bash
-curl -X DELETE https://www.vm0.ai/v1/volumes/vol_abc123 \
+curl -X DELETE https://api.vm0.ai/v1/volumes/vol_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -181,7 +181,7 @@ Returns a paginated list of all versions for a volume.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes/vol_abc123/versions \
+curl https://api.vm0.ai/v1/volumes/vol_abc123/versions \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -238,7 +238,7 @@ Gets presigned URLs for direct file upload.
 #### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes/vol_abc123/upload \
+curl https://api.vm0.ai/v1/volumes/vol_abc123/upload \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -299,7 +299,7 @@ Finalizes the upload and creates a new volume version.
 #### Request
 
 ```bash
-curl https://www.vm0.ai/v1/volumes/vol_abc123/commit \
+curl https://api.vm0.ai/v1/volumes/vol_abc123/commit \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{"upload_session_id": "sess_upload_abc123"}'
@@ -334,7 +334,7 @@ Gets presigned URLs for downloading volume files.
 ### Request
 
 ```bash
-curl "https://www.vm0.ai/v1/volumes/vol_abc123/download" \
+curl "https://api.vm0.ai/v1/volumes/vol_abc123/download" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 

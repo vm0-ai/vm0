@@ -10,7 +10,7 @@ The VM0 Public API allows you to programmatically manage agents, execute runs, a
 All API requests should be made to:
 
 ```
-https://www.vm0.ai/v1/
+https://api.vm0.ai/v1/
 ```
 
 ## Resources
@@ -62,7 +62,7 @@ vm0_live_<64 hex characters>
 Include your token in the `Authorization` header with the `Bearer` prefix:
 
 ```bash
-curl https://www.vm0.ai/v1/agents \
+curl https://api.vm0.ai/v1/agents \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -87,7 +87,7 @@ vm0 auth setup-token
 You can also create tokens programmatically using an existing token:
 
 ```bash
-curl https://www.vm0.ai/v1/tokens \
+curl https://api.vm0.ai/v1/tokens \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-new-token", "expires_in_days": 90}'
@@ -209,14 +209,14 @@ Paginated responses include a `pagination` object:
 Request the first page without a cursor:
 
 ```bash
-curl "https://www.vm0.ai/v1/agents?limit=10" \
+curl "https://api.vm0.ai/v1/agents?limit=10" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
 Use the `next_cursor` from the previous response for subsequent pages:
 
 ```bash
-curl "https://www.vm0.ai/v1/agents?limit=10&cursor=eyJpZCI6ImFnX2RlZiJ9" \
+curl "https://api.vm0.ai/v1/agents?limit=10&cursor=eyJpZCI6ImFnX2RlZiJ9" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 

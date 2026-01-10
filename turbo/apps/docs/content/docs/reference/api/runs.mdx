@@ -39,7 +39,7 @@ Returns a paginated list of runs.
 ### Request
 
 ```bash
-curl "https://www.vm0.ai/v1/runs?status=completed&limit=10" \
+curl "https://api.vm0.ai/v1/runs?status=completed&limit=10" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -96,7 +96,7 @@ Starts a new agent execution. Returns immediately with run details; the agent ex
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/runs \
+curl https://api.vm0.ai/v1/runs \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -147,7 +147,7 @@ Retrieves run details including output and execution metrics.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/runs/run_abc123 \
+curl https://api.vm0.ai/v1/runs/run_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -194,7 +194,7 @@ Cancels a pending or running execution.
 ### Request
 
 ```bash
-curl -X POST https://www.vm0.ai/v1/runs/run_abc123/cancel \
+curl -X POST https://api.vm0.ai/v1/runs/run_abc123/cancel \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -227,7 +227,7 @@ Streams real-time events using Server-Sent Events (SSE).
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/runs/run_abc123/events \
+curl https://api.vm0.ai/v1/runs/run_abc123/events \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Accept: text/event-stream"
 ```
@@ -288,7 +288,7 @@ Retrieves unified logs from the run.
 ### Request
 
 ```bash
-curl "https://www.vm0.ai/v1/runs/run_abc123/logs?type=agent&limit=50" \
+curl "https://api.vm0.ai/v1/runs/run_abc123/logs?type=agent&limit=50" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -338,7 +338,7 @@ Retrieves resource usage metrics for a run.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/runs/run_abc123/metrics \
+curl https://api.vm0.ai/v1/runs/run_abc123/metrics \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 

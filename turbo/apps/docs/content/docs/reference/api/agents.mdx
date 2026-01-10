@@ -24,14 +24,14 @@ Returns a paginated list of your agents.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/agents \
+curl https://api.vm0.ai/v1/agents \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
 Filter by name:
 
 ```bash
-curl "https://www.vm0.ai/v1/agents?name=my-agent" \
+curl "https://api.vm0.ai/v1/agents?name=my-agent" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -81,7 +81,7 @@ Creates a new agent with the specified configuration.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/agents \
+curl https://api.vm0.ai/v1/agents \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -138,7 +138,7 @@ Retrieves an agent and its current configuration.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/agents/ag_abc123 \
+curl https://api.vm0.ai/v1/agents/ag_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -188,7 +188,7 @@ Updates an agent's configuration. Creates a new version if the config changes.
 ### Request
 
 ```bash
-curl -X PUT https://www.vm0.ai/v1/agents/ag_abc123 \
+curl -X PUT https://api.vm0.ai/v1/agents/ag_abc123 \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -237,7 +237,7 @@ Deletes an agent and all its versions.
 ### Request
 
 ```bash
-curl -X DELETE https://www.vm0.ai/v1/agents/ag_abc123 \
+curl -X DELETE https://api.vm0.ai/v1/agents/ag_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -271,7 +271,7 @@ Returns a paginated list of all versions for an agent.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/agents/ag_abc123/versions \
+curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 

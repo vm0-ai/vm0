@@ -23,7 +23,7 @@ Returns a paginated list of your API tokens.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/tokens \
+curl https://api.vm0.ai/v1/tokens \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -72,7 +72,7 @@ Creates a new API token.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/tokens \
+curl https://api.vm0.ai/v1/tokens \
   -H "Authorization: Bearer vm0_live_xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -114,7 +114,7 @@ Retrieves details of a specific token.
 ### Request
 
 ```bash
-curl https://www.vm0.ai/v1/tokens/tok_abc123 \
+curl https://api.vm0.ai/v1/tokens/tok_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
@@ -150,7 +150,7 @@ Permanently revokes a token. This action cannot be undone.
 ### Request
 
 ```bash
-curl -X DELETE https://www.vm0.ai/v1/tokens/tok_abc123 \
+curl -X DELETE https://api.vm0.ai/v1/tokens/tok_abc123 \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
