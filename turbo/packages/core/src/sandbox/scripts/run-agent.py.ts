@@ -101,6 +101,13 @@ def _cleanup(exit_code: int, error_message: str):
     else:
         log_info(f"✗ Sandbox failed (exit code {exit_code})")
 
+    # Final telemetry upload after complete API to capture complete API logs
+    # This helps debug issues where complete API fails
+    try:
+        final_telemetry_upload()
+    except Exception as e:
+        log_error(f"Post-completion telemetry upload failed: {e}")
+
 
 def _run() -> tuple[int, str]:
     """
