@@ -44,17 +44,13 @@ vm0 auth login
 ```
 
 ```bash
-mkdir my-agent && cd my-agent
-vm0 init
-cat > AGENTS.md << 'EOF'
+cat << 'EOF' | vm0 cook -
 # Workflow
 1. Go to HackerNews and read the top 10 articles
 2. Find and extract AI-related content from these articles
 3. Summarize the findings into a X (Twitter) post format
 4. Write the summary to content.md
 EOF
-
-vm0 cook "follow your workflow"
 ```
 
 ## Resources
