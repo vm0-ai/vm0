@@ -18,12 +18,19 @@ interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
-  method: string;
-  url: string;
-  status: number;
-  latency_ms: number;
-  request_size: number;
-  response_size: number;
+  // Common fields (present in all modes)
+  mode?: "sni" | "mitm" | "filter";
+  action?: "ALLOW" | "DENY";
+  host?: string;
+  port?: number;
+  rule_matched?: string | null;
+  // MITM-only fields
+  method?: string;
+  url?: string;
+  status?: number;
+  latency_ms?: number;
+  request_size?: number;
+  response_size?: number;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -88,8 +95,16 @@ ${sinceFilter}
     const records = hasMore ? events.slice(0, limit) : events;
 
     // Transform to API response format
+    // Include all fields - client will handle formatting based on mode
     const networkLogs = records.map((e) => ({
       timestamp: e._time,
+      // Common fields (defaults for backward compatibility with old MITM logs)
+      mode: e.mode ?? "mitm",
+      action: e.action ?? "ALLOW",
+      host: e.host ?? new URL(e.url ?? "https://unknown").hostname,
+      port: e.port ?? 443,
+      rule_matched: e.rule_matched ?? null,
+      // MITM-only fields
       method: e.method,
       url: e.url,
       status: e.status,

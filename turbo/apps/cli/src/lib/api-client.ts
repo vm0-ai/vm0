@@ -122,14 +122,25 @@ export interface GetAgentEventsResponse {
   provider: string;
 }
 
+/**
+ * Network log entry from mitmproxy addon
+ * Supports both SNI-only mode and MITM mode logs
+ */
 export interface NetworkLogEntry {
+  // Common fields (required for all modes)
   timestamp: string;
-  method: string;
-  url: string;
-  status: number;
-  latency_ms: number;
-  request_size: number;
-  response_size: number;
+  mode: "sni" | "mitm" | "filter";
+  action: "ALLOW" | "DENY";
+  host: string;
+  port: number;
+  rule_matched: string | null;
+  // MITM-only fields (optional)
+  method?: string;
+  url?: string;
+  status?: number;
+  latency_ms?: number;
+  request_size?: number;
+  response_size?: number;
 }
 
 export interface GetNetworkLogsResponse {

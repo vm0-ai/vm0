@@ -98,6 +98,8 @@ const router = tsr.router(webhookTelemetryContract, {
     }
 
     // Ingest network logs to Axiom (fire-and-forget)
+    // Supports both SNI-only mode (mode, action, host, port, rule_matched)
+    // and MITM mode (additional: method, url, status, latency_ms, sizes)
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       // Network logs are already masked by client
@@ -105,6 +107,13 @@ const router = tsr.router(webhookTelemetryContract, {
         _time: netLog.timestamp,
         runId: body.runId,
         userId: auth.userId,
+        // Common fields
+        mode: netLog.mode,
+        action: netLog.action,
+        host: netLog.host,
+        port: netLog.port,
+        rule_matched: netLog.rule_matched,
+        // MITM-only fields (may be undefined for SNI)
         method: netLog.method,
         url: netLog.url,
         status: netLog.status,

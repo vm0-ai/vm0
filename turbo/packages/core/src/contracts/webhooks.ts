@@ -261,15 +261,24 @@ const metricDataSchema = z.object({
 
 /**
  * Network log entry schema (from mitmproxy addon)
+ * Supports both SNI-only mode and MITM mode logs
  */
 const networkLogSchema = z.object({
+  // Common fields (required for all modes)
   timestamp: z.string(),
-  method: z.string(),
-  url: z.string(),
-  status: z.number(),
-  latency_ms: z.number(),
-  request_size: z.number(),
-  response_size: z.number(),
+  mode: z.enum(["sni", "mitm", "filter"]).default("mitm"),
+  action: z.enum(["ALLOW", "DENY"]).default("ALLOW"),
+  host: z.string(),
+  port: z.number().default(443),
+  rule_matched: z.string().nullable().default(null),
+
+  // MITM-only fields (optional)
+  method: z.string().optional(),
+  url: z.string().optional(),
+  status: z.number().optional(),
+  latency_ms: z.number().optional(),
+  request_size: z.number().optional(),
+  response_size: z.number().optional(),
 });
 
 /**
