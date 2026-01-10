@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.1](https://github.com/vm0-ai/vm0/compare/cli-v5.0.0...cli-v5.0.1) (2026-01-10)
+
+
+### Bug Fixes
+
+* **cli:** update network logs error message to reference experimental_runner ([#1066](https://github.com/vm0-ai/vm0/issues/1066)) ([3013ba2](https://github.com/vm0-ai/vm0/commit/3013ba2d13887e415c67501236dd58205f159da4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.1.0
+
 ## [5.0.0](https://github.com/vm0-ai/vm0/compare/cli-v4.38.2...cli-v5.0.0) (2026-01-10)
 
 

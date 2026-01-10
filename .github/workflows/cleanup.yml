@@ -13,10 +13,10 @@ jobs:
       - name: Check if cleanup needed
         id: check
         env:
-          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOST" ]; then
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
             echo "Metal secrets not available, skipping runner cleanup"
             echo "should-cleanup=false" >> $GITHUB_OUTPUT
           else
@@ -27,28 +27,64 @@ jobs:
         if: steps.check.outputs.should-cleanup == 'true'
         run: pip install ansible
 
-      - name: Cleanup Runner with Ansible
+      - name: Cleanup Runner with Ansible (Brute Force)
         if: steps.check.outputs.should-cleanup == 'true'
+        shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           # Setup SSH key
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/metal.pem
           chmod 600 ~/.ssh/metal.pem
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem"
 
-          # Run Ansible cleanup playbook
-          cd ansible
-          ansible-playbook \
-            -i "${METAL_HOST}," \
-            playbooks/cleanup-runner.yml \
-            --private-key ~/.ssh/metal.pem \
-            -e "ansible_user=${METAL_USER}" \
-            -e "pr_number=${PR_NUMBER}" \
-            -v
+          # Parse hosts into array
+          IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
+          echo "Checking ${#HOSTS[@]} metal hosts for PR $PR_NUMBER..."
+
+          # Check each host for this PR's lock or runner directory
+          for host in "${HOSTS[@]}"; do
+            echo ""
+            echo "Checking host: $host"
+
+            # Check if lock exists for this PR
+            lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "")
+
+            # Also check if runner directory exists for this PR
+            runner_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/pr-${PR_NUMBER} && echo 'yes'" || echo "")
+
+            if [ "$lock_pr" = "$PR_NUMBER" ] || [ "$runner_exists" = "yes" ]; then
+              echo "Found PR $PR_NUMBER on $host, cleaning up..."
+
+              # Run Ansible cleanup
+              cd ansible
+              ansible-playbook \
+                -i "${host}," \
+                playbooks/cleanup-runner.yml \
+                --private-key ~/.ssh/metal.pem \
+                -e "ansible_user=${METAL_USER}" \
+                -e "pr_number=${PR_NUMBER}" \
+                -v || true
+              cd ..
+
+              # Release lock if it belongs to this PR
+              if [ "$lock_pr" = "$PR_NUMBER" ]; then
+                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" || true
+                echo "Released lock on $host"
+              fi
+
+              echo "Cleanup complete on $host"
+            else
+              echo "PR $PR_NUMBER not found on $host (lock_pr='$lock_pr', runner_exists='$runner_exists')"
+            fi
+          done
+
+          echo ""
+          echo "Brute force cleanup complete"
 
   cleanup-database:
     runs-on: ubuntu-latest

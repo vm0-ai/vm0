@@ -429,8 +429,8 @@ jobs:
           # Step 2: Run runner tests if runner was deployed
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
-            echo "=== Running Runner E2E Tests (4 parallel) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            echo "=== Running Runner E2E Tests (8 parallel) ==="
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
@@ -477,6 +477,23 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
+      - name: Release metal host lock
+        if: always()
+        env:
+          METAL_HOST: ${{ needs.deploy-runner.outputs.metal-host }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          if [ -n "$METAL_HOST" ]; then
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/metal.pem
+            chmod 600 ~/.ssh/metal.pem
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem ${METAL_USER}@${METAL_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+            echo "Released lock on $METAL_HOST"
+          else
+            echo "No metal host to release (runner was not deployed)"
+          fi
+
   # Deploy runner on Metal instance (PR-specific isolation)
   deploy-runner:
     runs-on: ubuntu-latest
@@ -490,6 +507,7 @@ jobs:
     outputs:
       runner-deployed: ${{ steps.deploy.outputs.runner-deployed || steps.skip.outputs.runner-deployed }}
       runner-dir: ${{ steps.deploy.outputs.runner-dir || steps.skip.outputs.runner-dir }}
+      metal-host: ${{ steps.select-host.outputs.host }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -536,13 +554,154 @@ jobs:
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
           echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
+      - name: Select available metal host
+        id: select-host
+        if: steps.check.outputs.should-deploy == 'true'
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          # Parse hosts into array
+          IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
+          NUM_HOSTS=${#HOSTS[@]}
+          echo "Found $NUM_HOSTS metal hosts"
+
+          # Setup SSH - use $HOME explicitly for consistency
+          SSH_DIR="$HOME/.ssh"
+          SSH_KEY_FILE="$SSH_DIR/metal.pem"
+          mkdir -p "$SSH_DIR"
+          if [ -z "$SSH_KEY" ]; then
+            echo "ERROR: SSH_KEY secret is empty!"
+            exit 1
+          fi
+          echo "$SSH_KEY" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+
+          # Verify SSH key file was created
+          if [ ! -f "$SSH_KEY_FILE" ]; then
+            echo "ERROR: Failed to create SSH key file!"
+            exit 1
+          fi
+          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
+
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
+
+          # Function to check if host is available (lock doesn't exist or is stale)
+          check_and_acquire() {
+            local host=$1
+
+            # Debug: Show current lock state on the host
+            echo "  Checking lock state on $host..."
+            ssh $SSH_OPTS ${METAL_USER}@${host} "ls -la /opt/vm0-runner/.lock 2>&1 || echo '  (no lock directory)'" 2>/dev/null || echo "  (SSH failed)"
+
+            # First check if lock directory exists
+            lock_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/.lock && echo 'yes'" 2>/dev/null || echo "")
+
+            if [ "$lock_exists" = "yes" ]; then
+              # Lock directory exists, read details
+              lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
+              lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "unknown")
+
+              if [ -n "$lock_time" ]; then
+                # Check if stale (>30 min = 1800 seconds)
+                now=$(date +%s)
+                age=$((now - lock_time))
+                if [ $age -gt 1800 ]; then
+                  echo "  Stale lock found (PR $lock_pr, ${age}s old), removing..."
+                  ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
+                else
+                  echo "  Host is locked by PR $lock_pr (lock age: ${age}s)"
+                  return 1
+                fi
+              else
+                echo "  Lock directory exists but no timestamp (corrupt lock?), removing..."
+                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
+              fi
+            else
+              echo "  No existing lock found"
+            fi
+
+            # Ensure parent directory exists and try atomic mkdir to acquire lock
+            echo "  Attempting to create lock..."
+            # First ensure parent directory exists (may need sudo on some systems)
+            if ! ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner" 2>/dev/null; then
+              echo "  Creating /opt/vm0-runner directory..."
+              ssh $SSH_OPTS ${METAL_USER}@${host} "sudo mkdir -p /opt/vm0-runner && sudo chown ${METAL_USER}:${METAL_USER} /opt/vm0-runner" 2>&1 || {
+                echo "  ERROR: Failed to create /opt/vm0-runner directory"
+                return 1
+              }
+            fi
+            mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
+            if [ "$mkdir_result" = "SUCCESS" ]; then
+              # Write PR number and timestamp
+              ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${PR_NUMBER} > /opt/vm0-runner/.lock/pr && date +%s > /opt/vm0-runner/.lock/timestamp"
+              echo "  Lock acquired!"
+              return 0
+            else
+              echo "  mkdir failed: $mkdir_result"
+              return 1
+            fi
+          }
+
+          # Preferred host based on PR number
+          PREFERRED_INDEX=$((PR_NUMBER % NUM_HOSTS))
+          echo "Preferred host index: $PREFERRED_INDEX (PR $PR_NUMBER % $NUM_HOSTS)"
+
+          # Exponential backoff: 0, 2min, 4min, 8min
+          BACKOFF_TIMES=(0 120 240 480)
+
+          for attempt in 0 1 2 3; do
+            if [ $attempt -gt 0 ]; then
+              wait_time=${BACKOFF_TIMES[$attempt]}
+              echo ""
+              echo "All hosts busy. Waiting ${wait_time} seconds before retry (attempt $((attempt+1))/4)..."
+              sleep $wait_time
+            fi
+
+            echo ""
+            echo "=== Attempt $((attempt+1))/4 ==="
+
+            # Try preferred host first
+            host=${HOSTS[$PREFERRED_INDEX]}
+            echo "Trying preferred host: $host"
+            if check_and_acquire "$host"; then
+              echo "host=$host" >> $GITHUB_OUTPUT
+              echo ""
+              echo "SUCCESS: Acquired lock on $host"
+              exit 0
+            fi
+
+            # Try other hosts in order
+            for i in $(seq 0 $((NUM_HOSTS-1))); do
+              if [ $i -eq $PREFERRED_INDEX ]; then
+                continue
+              fi
+              host=${HOSTS[$i]}
+              echo "Trying fallback host: $host"
+              if check_and_acquire "$host"; then
+                echo "host=$host" >> $GITHUB_OUTPUT
+                echo ""
+                echo "SUCCESS: Acquired lock on $host"
+                exit 0
+              fi
+            done
+          done
+
+          echo ""
+          echo "ERROR: Could not acquire lock on any host after 4 attempts (~14 minutes)"
+          echo "All metal hosts are busy. Please try again later or check for stale locks."
+          exit 1
+
       - name: Deploy runner with Ansible
         id: deploy
         if: steps.check.outputs.should-deploy == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOST }}
+          METAL_HOST: ${{ steps.select-host.outputs.host }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -556,6 +715,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/metal.pem
           chmod 600 ~/.ssh/metal.pem
+
+          echo "Deploying to metal host: ${METAL_HOST}"
 
           # Run Ansible playbook for CI deployment
           # Enable drain mode to test the same code path as production
@@ -574,13 +735,14 @@ jobs:
             -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
             -e "force_rebuild_rootfs=true" \
             -e "proxy_port=${PROXY_PORT}" \
+            -e "max_concurrent=8" \
             -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
           echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-          echo "Runner deployed with Ansible to ${RUNNER_DIR}"
+          echo "Runner deployed with Ansible to ${RUNNER_DIR} on ${METAL_HOST}"
 
       - name: Set outputs for skipped deployment
         if: steps.check.outputs.should-deploy != 'true'

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/vm0-ai/vm0/compare/storybook-v0.1.1...storybook-v0.1.2) (2026-01-10)
+
+
+### Bug Fixes
+
+* **storybook:** add storybook.vm7.ai to vite allowed hosts ([#1060](https://github.com/vm0-ai/vm0/issues/1060)) ([375c9ef](https://github.com/vm0-ai/vm0/commit/375c9efe07d27b03e9a65b5b8ddb0416dae001e5))
+* **storybook:** switch to @tailwindcss/vite for proper CSS processing ([#1065](https://github.com/vm0-ai/vm0/issues/1065)) ([f4d7f43](https://github.com/vm0-ai/vm0/commit/f4d7f430dad06168edc25189bd9f470be3cb8201))
+
 ## [0.1.1](https://github.com/vm0-ai/vm0/compare/storybook-v0.1.0...storybook-v0.1.1) (2026-01-10)
 
 
