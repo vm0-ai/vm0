@@ -90,7 +90,7 @@ export const publicAgentsListContract = c.router({
 });
 
 /**
- * Agent by ID contract - GET/PUT/DELETE /v1/agents/:id
+ * Agent by ID contract - GET/PUT /v1/agents/:id
  */
 export const publicAgentByIdContract = c.router({
   get: {
@@ -125,22 +125,6 @@ export const publicAgentByIdContract = c.router({
     summary: "Update agent",
     description:
       "Update agent configuration. Creates a new version if config changes.",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/v1/agents/:id",
-    pathParams: z.object({
-      id: z.string().min(1, "Agent ID is required"),
-    }),
-    body: z.undefined(),
-    responses: {
-      204: z.undefined(),
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Delete agent",
-    description: "Archive an agent (soft delete)",
   },
 });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listArtifacts, POST as createArtifact } from "../route";
-import { GET as getArtifact, DELETE as deleteArtifact } from "../[id]/route";
+import { GET as getArtifact } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
@@ -215,59 +215,6 @@ describe("Public API v1 - Artifacts Endpoints", () => {
       );
 
       const response = await listVersions(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error.type).toBe("not_found_error");
-    });
-  });
-
-  describe("DELETE /v1/artifacts/:id - Delete Artifact", () => {
-    let artifactIdToDelete: string;
-
-    beforeAll(async () => {
-      // Create a new artifact to delete
-      const request = createTestRequest("http://localhost:3000/v1/artifacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-artifact-delete",
-        }),
-      });
-
-      const response = await createArtifact(request);
-      const data = await response.json();
-      artifactIdToDelete = data.id;
-    });
-
-    it("should delete artifact", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/v1/artifacts/${artifactIdToDelete}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteArtifact(request);
-
-      expect(response.status).toBe(204);
-
-      // Verify artifact is deleted
-      const getRequest = createTestRequest(
-        `http://localhost:3000/v1/artifacts/${artifactIdToDelete}`,
-      );
-
-      const getResponse = await getArtifact(getRequest);
-
-      expect(getResponse.status).toBe(404);
-    });
-
-    it("should return 404 for non-existent artifact", async () => {
-      const fakeId = randomUUID();
-      const request = createTestRequest(
-        `http://localhost:3000/v1/artifacts/${fakeId}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteArtifact(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);

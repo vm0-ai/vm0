@@ -185,7 +185,7 @@ export const publicVolumesListContract = c.router({
 });
 
 /**
- * Volume by ID contract - GET/DELETE /v1/volumes/:id
+ * Volume by ID contract - GET /v1/volumes/:id
  */
 export const publicVolumeByIdContract = c.router({
   get: {
@@ -202,22 +202,6 @@ export const publicVolumeByIdContract = c.router({
     },
     summary: "Get volume",
     description: "Get volume details by ID",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/v1/volumes/:id",
-    pathParams: z.object({
-      id: z.string().min(1, "Volume ID is required"),
-    }),
-    body: z.undefined(),
-    responses: {
-      204: z.undefined(),
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Delete volume",
-    description: "Delete a volume and all its versions",
   },
 });
 

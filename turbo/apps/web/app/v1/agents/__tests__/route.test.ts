@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listAgents } from "../route";
-import {
-  GET as getAgent,
-  PUT as updateAgent,
-  DELETE as deleteAgent,
-} from "../[id]/route";
+import { GET as getAgent, PUT as updateAgent } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -268,63 +264,6 @@ describe("Public API v1 - Agents Endpoints", () => {
       );
 
       const response = await listVersions(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error.type).toBe("not_found_error");
-    });
-  });
-
-  describe("DELETE /v1/agents/:id - Delete Agent", () => {
-    let agentIdToDelete: string;
-
-    beforeAll(async () => {
-      // Create a new agent to delete via direct DB insertion
-      const { id } = await createTestAgent(
-        testUserId,
-        testScopeId,
-        "test-agent-delete",
-        {
-          version: "1.0",
-          agents: {
-            "test-agent-delete": {
-              image: "vm0/claude-code:dev",
-              provider: "claude-code",
-            },
-          },
-        },
-      );
-      agentIdToDelete = id;
-    });
-
-    it("should delete agent", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/v1/agents/${agentIdToDelete}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteAgent(request);
-
-      expect(response.status).toBe(204);
-
-      // Verify agent is deleted
-      const getRequest = createTestRequest(
-        `http://localhost:3000/v1/agents/${agentIdToDelete}`,
-      );
-
-      const getResponse = await getAgent(getRequest);
-
-      expect(getResponse.status).toBe(404);
-    });
-
-    it("should return 404 for non-existent agent", async () => {
-      const fakeId = randomUUID();
-      const request = createTestRequest(
-        `http://localhost:3000/v1/agents/${fakeId}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteAgent(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
