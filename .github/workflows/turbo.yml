@@ -557,6 +557,7 @@ jobs:
       - name: Select available metal host
         id: select-host
         if: steps.check.outputs.should-deploy == 'true'
+        shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
