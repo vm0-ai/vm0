@@ -268,6 +268,14 @@
       meta: reset_connection
       when: kvm_group_result.changed
 
+    # Kill PM2 daemon so it restarts with new group membership
+    # PM2 child processes inherit the daemon's groups, not the shell's groups
+    - name: Kill PM2 daemon to pick up kvm group
+      command: pm2 kill
+      become: no
+      ignore_errors: yes
+      when: kvm_group_result.changed
+
     # ========================================
     # Phase 5: Configure and Start
     # ========================================
