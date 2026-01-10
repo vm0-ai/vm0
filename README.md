@@ -34,7 +34,7 @@
 - **Persistence**, continue chat, resume, fork, and version your workflow sessions
 - **Observability**, logs, metrics, and network visibility for every run
 
-**Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, self-hosted runner
+**Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, DeepAgent CLI, OpenCode
 
 ## [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
