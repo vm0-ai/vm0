@@ -2,20 +2,24 @@
   <a href="https://vm0.ai"><img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="500"></a>
   <br>
   <br>
-  skill workflows, while you sleep
+  Skill workflows, while you sleep
   <br>
   <br>
+  <p>
     <a href="https://deepwiki.com/vm0-ai/vm0">
-  <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
-  </a>
-  <img src="https://img.shields.io/npm/types/@vm0/cli" alt="NPM Type Definitions" />
-  <img src="https://img.shields.io/npm/v/@vm0/cli" alt="NPM Version" />
-  <img src="https://img.shields.io/bundlejs/size/@vm0/cli" alt="Bundle Size" />
-  <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml">
-  <img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg"
-  alt="CI" />
-  </a>
+      <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
+    </a>
+    <img src="https://img.shields.io/npm/types/@vm0/cli" alt="NPM Type Definitions" />
+    <img src="https://img.shields.io/npm/v/@vm0/cli" alt="NPM Version" />
+    <img src="https://img.shields.io/bundlejs/size/@vm0/cli" alt="Bundle Size" />
+    <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml">
+    <img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg"
+    alt="CI" />
+    </a>
+  </p>
 </h2>
+
+[Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Join Waitlist](https://www.vm0.ai/sign-up) / [Discord](https://discord.gg/WMpAmHFfp6)
 
 `VM0` is the easiest way to run natural language-described workflows automatically, on schedule, and securely in remote sandbox environments.
 
@@ -46,17 +50,11 @@ cat AGENTS.md # check the workflow which your agent will run
 vm0 cook "run your workflow"
 ```
 
-## 📖 Documentation & Resources
-
-[Documentation](https://docs.vm0.ai) • [Website](https://www.vm0.ai) • [Join Waitlist](https://www.vm0.ai/sign-up) • [Discord](https://discord.gg/WMpAmHFfp6)
-
 ## 🤝 Contribute
 
-See [CONTRIBUTING](./CONTRIBUTING.md) for details.
-
-<a href="https://github.com/vm0-ai/vm0/graphs/contributors">
+<p><a href="https://github.com/vm0-ai/vm0/blob/main/CONTRIBUTING.md">
   <img src="https://contrib.rocks/image?repo=vm0-ai/vm0" />
-</a>
+</a></p>
 
 ![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
 
