@@ -38,6 +38,8 @@
 
 ## [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
+From zero to agent in 5 minutes
+
 ```bash
 npm install -g @vm0/cli
 vm0 auth login
