@@ -586,8 +586,6 @@ jobs:
             exit 1
           fi
           echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
-          echo "HOME=$HOME, SSH_DIR=$SSH_DIR"
-          ls -la "$SSH_DIR"
 
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
 
@@ -595,19 +593,28 @@ jobs:
           check_and_acquire() {
             local host=$1
 
-            # Try to read lock timestamp
-            lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
+            # First check if lock directory exists
+            lock_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/.lock && echo 'yes'" 2>/dev/null || echo "")
 
-            if [ -n "$lock_time" ]; then
-              # Lock exists, check if stale (>30 min = 1800 seconds)
-              now=$(date +%s)
-              age=$((now - lock_time))
-              if [ $age -gt 1800 ]; then
-                echo "  Stale lock found (${age}s old), removing..."
-                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
+            if [ "$lock_exists" = "yes" ]; then
+              # Lock directory exists, read details
+              lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
+              lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "unknown")
+
+              if [ -n "$lock_time" ]; then
+                # Check if stale (>30 min = 1800 seconds)
+                now=$(date +%s)
+                age=$((now - lock_time))
+                if [ $age -gt 1800 ]; then
+                  echo "  Stale lock found (PR $lock_pr, ${age}s old), removing..."
+                  ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
+                else
+                  echo "  Host is locked by PR $lock_pr (lock age: ${age}s)"
+                  return 1
+                fi
               else
-                echo "  Host is locked (lock age: ${age}s)"
-                return 1
+                echo "  Lock directory exists but no timestamp (corrupt lock?), removing..."
+                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
               fi
             fi
 
@@ -618,7 +625,7 @@ jobs:
               echo "  Lock acquired!"
               return 0
             else
-              echo "  Failed to acquire lock (race condition or already locked)"
+              echo "  Failed to acquire lock (race condition)"
               return 1
             fi
           }
