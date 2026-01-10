@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.0](https://github.com/vm0-ai/vm0/compare/runner-v2.3.2...runner-v2.4.0) (2026-01-10)
+
+
+### Features
+
+* **runner:** add experimental_firewall configuration with domain/IP rules ([#1027](https://github.com/vm0-ai/vm0/issues/1027)) ([18be77e](https://github.com/vm0-ai/vm0/commit/18be77e69f437e1f4cc536f7caf438bdf3321948))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.4.0
+
 ## [2.3.2](https://github.com/vm0-ai/vm0/compare/runner-v2.3.1...runner-v2.3.2) (2026-01-09)
 
 

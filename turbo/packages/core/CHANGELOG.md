@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.0](https://github.com/vm0-ai/vm0/compare/core-v3.3.0...core-v3.4.0) (2026-01-10)
+
+
+### Features
+
+* **api:** add name query parameter to GET /v1/agents ([#1044](https://github.com/vm0-ai/vm0/issues/1044)) ([8339227](https://github.com/vm0-ai/vm0/commit/83392274a34deb966d71dea8d2aaf0f3bb05671b)), closes [#1043](https://github.com/vm0-ai/vm0/issues/1043)
+* **runner:** add experimental_firewall configuration with domain/IP rules ([#1027](https://github.com/vm0-ai/vm0/issues/1027)) ([18be77e](https://github.com/vm0-ai/vm0/commit/18be77e69f437e1f4cc536f7caf438bdf3321948))
+
 ## [3.3.0](https://github.com/vm0-ai/vm0/compare/core-v3.2.0...core-v3.3.0) (2026-01-09)
 
 
