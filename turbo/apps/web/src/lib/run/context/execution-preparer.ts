@@ -18,8 +18,7 @@ const log = logger("context:preparer");
  */
 const PROVIDER_AUTO_DOMAINS: Record<string, string[]> = {
   "claude-code": ["*.anthropic.com"],
-  openai: ["*.openai.com"],
-  gemini: ["*.googleapis.com", "*.google.com"],
+  codex: ["*.openai.com"],
 };
 
 /**
