@@ -106,7 +106,7 @@ const router = tsr.router(runEventsContract, {
     };
 
     // Log status for debugging
-    log.info(`Run ${params.id} status: ${runWithCompose.status}`);
+    log.debug(`Run ${params.id} status: ${runWithCompose.status}`);
 
     // Include result if completed
     if (runWithCompose.status === "completed" && runWithCompose.result) {
