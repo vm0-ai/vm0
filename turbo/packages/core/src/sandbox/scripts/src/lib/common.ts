@@ -38,10 +38,6 @@ export const PROXY_URL = `${API_URL}/api/webhooks/agent/proxy`;
 export const STORAGE_PREPARE_URL = `${API_URL}/api/webhooks/agent/storages/prepare`;
 export const STORAGE_COMMIT_URL = `${API_URL}/api/webhooks/agent/storages/commit`;
 
-// Proxy configuration (for experimental_network_security feature)
-export const PROXY_ENABLED =
-  (process.env.VM0_PROXY_ENABLED ?? "false").toLowerCase() === "true";
-
 // Heartbeat configuration
 export const HEARTBEAT_INTERVAL = 60; // seconds
 

@@ -25,7 +25,6 @@ import {
   HEARTBEAT_URL,
   HEARTBEAT_INTERVAL,
   AGENT_LOG_FILE,
-  PROXY_ENABLED,
   CLI_AGENT_TYPE,
   OPENAI_MODEL,
   validateConfig,
@@ -141,13 +140,6 @@ async function run(): Promise<[number, string]> {
   const initStartTime = Date.now();
 
   logInfo(`Working directory: ${WORKING_DIR}`);
-
-  // Log proxy mode status
-  // NOTE: Proxy setup is done as root by e2b-service.ts BEFORE this script starts
-  // This ensures mitmproxy is running and nftables rules are in place
-  if (PROXY_ENABLED) {
-    logInfo("Network security mode enabled (proxy configured by e2b-service)");
-  }
 
   // Start heartbeat loop
   heartbeatLoop();

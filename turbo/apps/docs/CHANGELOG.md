@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/docs-v0.13.10...docs-v0.14.0) (2026-01-10)
+
+
+### Features
+
+* **docs:** add vm0 public api v1 reference documentation ([#1046](https://github.com/vm0-ai/vm0/issues/1046)) ([5bc813c](https://github.com/vm0-ai/vm0/commit/5bc813cf2dd1c6b9d4ec1567808ab4e175c04e4f))
+
 ## [0.13.10](https://github.com/vm0-ai/vm0/compare/docs-v0.13.9...docs-v0.13.10) (2026-01-09)
 
 

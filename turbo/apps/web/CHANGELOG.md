@@ -1,5 +1,38 @@
 # Changelog
 
+## [9.0.0](https://github.com/vm0-ai/vm0/compare/web-v8.5.0...web-v9.0.0) (2026-01-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* experimental_network_security field removed from agent compose schema
+
+### Code Refactoring
+
+* remove deprecated experimental_network_security feature ([#1057](https://github.com/vm0-ai/vm0/issues/1057)) ([457864b](https://github.com/vm0-ai/vm0/commit/457864bcea4665b302f9f0df265233aa3f9270d5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.0.0
+
+## [8.5.0](https://github.com/vm0-ai/vm0/compare/web-v8.4.1...web-v8.5.0) (2026-01-10)
+
+
+### Features
+
+* **api:** add name query parameter to GET /v1/agents ([#1044](https://github.com/vm0-ai/vm0/issues/1044)) ([8339227](https://github.com/vm0-ai/vm0/commit/83392274a34deb966d71dea8d2aaf0f3bb05671b)), closes [#1043](https://github.com/vm0-ai/vm0/issues/1043)
+* **runner:** add experimental_firewall configuration with domain/IP rules ([#1027](https://github.com/vm0-ai/vm0/issues/1027)) ([18be77e](https://github.com/vm0-ai/vm0/commit/18be77e69f437e1f4cc536f7caf438bdf3321948))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.4.0
+
 ## [8.4.1](https://github.com/vm0-ai/vm0/compare/web-v8.4.0...web-v8.4.1) (2026-01-10)
 
 

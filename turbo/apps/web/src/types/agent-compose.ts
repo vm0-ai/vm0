@@ -56,13 +56,6 @@ export interface AgentDefinition {
   working_dir?: string; // Optional when provider supports auto-config
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
-   * Enable network security mode for secrets.
-   * When true, secrets are encrypted into proxy tokens and all traffic
-   * is routed through mitmproxy -> VM0 Proxy for decryption.
-   * Default: false (plaintext secrets in env vars)
-   */
-  experimental_network_security?: boolean;
-  /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */

@@ -17,7 +17,6 @@ interface AgentDefinition {
   volumes?: string[];
   working_dir?: string;
   environment?: Record<string, string>;
-  experimental_network_security?: boolean;
   instructions?: string;
   skills?: string[];
   experimental_runner?: {
@@ -122,11 +121,6 @@ function formatComposeOutput(
     // Show runner configuration if defined
     if (agent.experimental_runner) {
       console.log(`    Runner: ${agent.experimental_runner.group}`);
-    }
-
-    // Show network security mode if enabled
-    if (agent.experimental_network_security) {
-      console.log(`    Network Security: enabled`);
     }
   }
 }

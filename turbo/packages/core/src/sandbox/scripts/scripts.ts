@@ -33,7 +33,6 @@ var TELEMETRY_URL = \`\${API_URL}/api/webhooks/agent/telemetry\`;
 var PROXY_URL = \`\${API_URL}/api/webhooks/agent/proxy\`;
 var STORAGE_PREPARE_URL = \`\${API_URL}/api/webhooks/agent/storages/prepare\`;
 var STORAGE_COMMIT_URL = \`\${API_URL}/api/webhooks/agent/storages/commit\`;
-var PROXY_ENABLED = (process.env.VM0_PROXY_ENABLED ?? "false").toLowerCase() === "true";
 var HEARTBEAT_INTERVAL = 60;
 var TELEMETRY_INTERVAL = 30;
 var HTTP_CONNECT_TIMEOUT = 10;
@@ -1026,9 +1025,6 @@ async function run() {
   logInfo("\\u25B7 Initialization");
   const initStartTime = Date.now();
   logInfo(\`Working directory: \${WORKING_DIR}\`);
-  if (PROXY_ENABLED) {
-    logInfo("Network security mode enabled (proxy configured by e2b-service)");
-  }
   heartbeatLoop();
   logInfo("Heartbeat thread started");
   startMetricsCollector();
@@ -1486,7 +1482,6 @@ var TELEMETRY_URL = \`\${API_URL}/api/webhooks/agent/telemetry\`;
 var PROXY_URL = \`\${API_URL}/api/webhooks/agent/proxy\`;
 var STORAGE_PREPARE_URL = \`\${API_URL}/api/webhooks/agent/storages/prepare\`;
 var STORAGE_COMMIT_URL = \`\${API_URL}/api/webhooks/agent/storages/commit\`;
-var PROXY_ENABLED = (process.env.VM0_PROXY_ENABLED ?? "false").toLowerCase() === "true";
 var HTTP_MAX_TIME_UPLOAD = 60;
 var HTTP_MAX_RETRIES = 3;
 var SESSION_ID_FILE = \`/tmp/vm0-session-\${RUN_ID}.txt\`;
@@ -1604,6 +1599,7 @@ export {
   main
 };
 `;
+
 
 /**
  * Script paths in the sandbox/VM

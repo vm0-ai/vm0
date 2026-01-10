@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.4.2](https://github.com/vm0-ai/vm0/compare/runner-v2.4.1...runner-v2.4.2) (2026-01-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.0.0
+
+## [2.4.1](https://github.com/vm0-ai/vm0/compare/runner-v2.4.0...runner-v2.4.1) (2026-01-10)
+
+
+### Bug Fixes
+
+* disable DTS generation in watch mode to prevent memory crashes ([#1048](https://github.com/vm0-ai/vm0/issues/1048)) ([a26bc34](https://github.com/vm0-ai/vm0/commit/a26bc34ace19fc6d6dec5d3300f5551a6ddf4b60)), closes [#1041](https://github.com/vm0-ai/vm0/issues/1041)
+
+## [2.4.0](https://github.com/vm0-ai/vm0/compare/runner-v2.3.2...runner-v2.4.0) (2026-01-10)
+
+
+### Features
+
+* **runner:** add experimental_firewall configuration with domain/IP rules ([#1027](https://github.com/vm0-ai/vm0/issues/1027)) ([18be77e](https://github.com/vm0-ai/vm0/commit/18be77e69f437e1f4cc536f7caf438bdf3321948))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 3.4.0
+
 ## [2.3.2](https://github.com/vm0-ai/vm0/compare/runner-v2.3.1...runner-v2.3.2) (2026-01-09)
 
 

@@ -89,20 +89,30 @@ export const updateAgentRequestSchema = z.object({
 export type UpdateAgentRequest = z.infer<typeof updateAgentRequestSchema>;
 
 /**
+ * Agent list query parameters
+ */
+export const agentListQuerySchema = listQuerySchema.extend({
+  name: z.string().optional(),
+});
+
+export type AgentListQuery = z.infer<typeof agentListQuerySchema>;
+
+/**
  * Agents list contract - GET /v1/agents
  */
 export const publicAgentsListContract = c.router({
   list: {
     method: "GET",
     path: "/v1/agents",
-    query: listQuerySchema,
+    query: agentListQuerySchema,
     responses: {
       200: paginatedAgentsSchema,
       401: publicApiErrorSchema,
       500: publicApiErrorSchema,
     },
     summary: "List agents",
-    description: "List all agents in the current scope with pagination",
+    description:
+      "List all agents in the current scope with pagination. Use the `name` query parameter to filter by agent name.",
   },
   create: {
     method: "POST",
