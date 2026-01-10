@@ -19,6 +19,9 @@ import type {
   RunResult,
   RunState,
 } from "../../../../../../src/lib/run/types";
+import { logger } from "../../../../../../src/lib/logger";
+
+const log = logger("api:run-events");
 
 interface AxiomAgentEvent {
   _time: string;
@@ -101,6 +104,9 @@ const router = tsr.router(runEventsContract, {
     const runState: RunState = {
       status: runWithCompose.status as RunStatus,
     };
+
+    // Log status for debugging
+    log.info(`Run ${params.id} status: ${runWithCompose.status}`);
 
     // Include result if completed
     if (runWithCompose.status === "completed" && runWithCompose.result) {
