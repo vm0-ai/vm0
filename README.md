@@ -20,9 +20,9 @@
 
 <p align="center">
   <a href="https://www.vm0.ai">Website</a> •
+  <a href="https://docs.vm0.ai">Documentation</a> •
   <a href="https://www.vm0.ai/sign-up">Join Waitlist</a> •
   <a href="https://discord.gg/WMpAmHFfp6">Discord</a> •
-  <a href="mailto:ethan@vm0.ai">Contact</a>
 </p>
 
 ---
@@ -50,7 +50,7 @@ vm0 cook "run your workflow"
 
 ## Resources
 
-[Documentation](https://docs.vm0.ai) · [Skills](https://github.com/vm0-ai/vm0-skills) · [Discord](https://discord.gg/WMpAmHFfp6)
+[Skills](https://github.com/vm0-ai/vm0-skills)
 
 ## License
 
