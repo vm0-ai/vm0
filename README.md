@@ -1,8 +1,8 @@
-<p align="center">
+<p>
   <img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="120" />
 </p>
 
-<p align="center">
+<p>
   <a href="https://deepwiki.com/vm0-ai/vm0">
     <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
   </a>
@@ -14,16 +14,16 @@
   </a>
 </p>
 
-<p align="center">
-  <strong>Skill workflows, while you sleep</strong>
-</p>
-
-<p align="center">
+<p>
   <a href="https://www.vm0.ai">Website</a> •
   <a href="https://docs.vm0.ai">Documentation</a> •
   <a href="https://www.vm0.ai/sign-up">Join Waitlist</a> •
   <a href="https://discord.gg/WMpAmHFfp6">Discord</a>
 </p>
+
+---
+
+![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
 
 ---
 
@@ -49,8 +49,6 @@ vm0 init
 cat AGENTS.md # check the workflow which your agent will run
 vm0 cook "run your workflow"
 ```
-
-![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
 
 ## License
 
