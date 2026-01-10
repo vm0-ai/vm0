@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.2.0](https://github.com/vm0-ai/vm0/compare/web-v9.1.0...web-v9.2.0) (2026-01-10)
+
+
+### Features
+
+* **web:** update og image with new branding ([#1076](https://github.com/vm0-ai/vm0/issues/1076)) ([5ad2596](https://github.com/vm0-ai/vm0/commit/5ad25966a15e3fb743f1b1398a49cf28c8e7648a))
+
 ## [9.1.0](https://github.com/vm0-ai/vm0/compare/web-v9.0.0...web-v9.1.0) (2026-01-10)
 
 
