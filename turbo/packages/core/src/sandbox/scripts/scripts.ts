@@ -1600,7 +1600,6 @@ export {
 };
 `;
 
-
 /**
  * Script paths in the sandbox/VM
  * These are the paths where scripts will be deployed and executed
