@@ -31,10 +31,6 @@
     "AXIOM_TOKEN"
   ],
   "tasks": {
-    "build:sandbox-scripts": {
-      "outputs": ["src/sandbox/scripts/dist/**"],
-      "cache": true
-    },
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
@@ -42,17 +38,18 @@
         ".next/**",
         "!.next/cache/**",
         "dist/**",
-        "storybook-static/**"
+        "storybook-static/**",
+        "src/sandbox/scripts/dist/**"
       ]
     },
     "lint": {
-      "dependsOn": ["^lint", "build:sandbox-scripts"]
+      "dependsOn": ["^build", "build"]
     },
     "check-types": {
-      "dependsOn": ["^check-types", "build:sandbox-scripts"]
+      "dependsOn": ["^build", "build"]
     },
     "test": {
-      "dependsOn": ["build:sandbox-scripts"]
+      "dependsOn": ["^build", "build"]
     },
     "dev": {
       "cache": false,
