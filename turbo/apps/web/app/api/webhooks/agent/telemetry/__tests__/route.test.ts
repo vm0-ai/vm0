@@ -368,6 +368,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const testNetworkLogs = [
         {
           timestamp: "2025-12-09T10:00:00Z",
+          mode: "mitm" as const,
+          action: "ALLOW" as const,
+          host: "api.example.com",
+          port: 443,
+          rule_matched: null,
           method: "GET",
           url: "https://api.example.com/data",
           status: 200,
@@ -398,13 +403,20 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify Axiom was called with network logs
+      // Verify Axiom was called with network logs (including new SNI fields)
       expect(mockIngestToAxiom).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-network-dev",
         expect.arrayContaining([
           expect.objectContaining({
             runId: testRunId,
             userId: testUserId,
+            // Common fields
+            mode: "mitm",
+            action: "ALLOW",
+            host: "api.example.com",
+            port: 443,
+            rule_matched: null,
+            // MITM fields
             method: "GET",
             url: "https://api.example.com/data",
             status: 200,
