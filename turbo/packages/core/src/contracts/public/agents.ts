@@ -63,23 +63,6 @@ export const paginatedAgentVersionsSchema =
   createPaginatedResponseSchema(agentVersionSchema);
 
 /**
- * Create agent request schema
- */
-export const createAgentRequestSchema = z.object({
-  name: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(
-      /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/,
-      "Name must be lowercase alphanumeric with hyphens, not starting or ending with hyphen",
-    ),
-  config: z.unknown(), // Agent YAML configuration
-});
-
-export type CreateAgentRequest = z.infer<typeof createAgentRequestSchema>;
-
-/**
  * Update agent request schema
  */
 export const updateAgentRequestSchema = z.object({
@@ -114,24 +97,10 @@ export const publicAgentsListContract = c.router({
     description:
       "List all agents in the current scope with pagination. Use the `name` query parameter to filter by agent name.",
   },
-  create: {
-    method: "POST",
-    path: "/v1/agents",
-    body: createAgentRequestSchema,
-    responses: {
-      201: publicAgentDetailSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      409: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Create agent",
-    description: "Create a new agent with the given configuration",
-  },
 });
 
 /**
- * Agent by ID contract - GET/PUT/DELETE /v1/agents/:id
+ * Agent by ID contract - GET/PUT /v1/agents/:id
  */
 export const publicAgentByIdContract = c.router({
   get: {
@@ -166,22 +135,6 @@ export const publicAgentByIdContract = c.router({
     summary: "Update agent",
     description:
       "Update agent configuration. Creates a new version if config changes.",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/v1/agents/:id",
-    pathParams: z.object({
-      id: z.string().min(1, "Agent ID is required"),
-    }),
-    body: z.undefined(),
-    responses: {
-      204: z.undefined(),
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Delete agent",
-    description: "Archive an agent (soft delete)",
   },
 });
 

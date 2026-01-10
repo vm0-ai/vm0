@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listVolumes, POST as createVolume } from "../route";
-import { GET as getVolume, DELETE as deleteVolume } from "../[id]/route";
+import { GET as getVolume } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
@@ -211,59 +211,6 @@ describe("Public API v1 - Volumes Endpoints", () => {
       );
 
       const response = await listVersions(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error.type).toBe("not_found_error");
-    });
-  });
-
-  describe("DELETE /v1/volumes/:id - Delete Volume", () => {
-    let volumeIdToDelete: string;
-
-    beforeAll(async () => {
-      // Create a new volume to delete
-      const request = createTestRequest("http://localhost:3000/v1/volumes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-volume-delete",
-        }),
-      });
-
-      const response = await createVolume(request);
-      const data = await response.json();
-      volumeIdToDelete = data.id;
-    });
-
-    it("should delete volume", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/v1/volumes/${volumeIdToDelete}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteVolume(request);
-
-      expect(response.status).toBe(204);
-
-      // Verify volume is deleted
-      const getRequest = createTestRequest(
-        `http://localhost:3000/v1/volumes/${volumeIdToDelete}`,
-      );
-
-      const getResponse = await getVolume(getRequest);
-
-      expect(getResponse.status).toBe(404);
-    });
-
-    it("should return 404 for non-existent volume", async () => {
-      const fakeId = randomUUID();
-      const request = createTestRequest(
-        `http://localhost:3000/v1/volumes/${fakeId}`,
-        { method: "DELETE" },
-      );
-
-      const response = await deleteVolume(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);

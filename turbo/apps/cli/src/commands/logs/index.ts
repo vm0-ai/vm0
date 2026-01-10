@@ -292,7 +292,7 @@ async function showNetworkLogs(
   if (response.networkLogs.length === 0) {
     console.log(
       chalk.yellow(
-        "No network logs found for this run. Network logs are only captured when experimental_firewall is enabled on a self-hosted runner.",
+        "No network logs found for this run. Network logs are only captured when experimental_firewall is enabled on an experimental_runner.",
       ),
     );
     return;

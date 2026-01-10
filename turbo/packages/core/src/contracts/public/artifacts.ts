@@ -186,7 +186,7 @@ export const publicArtifactsListContract = c.router({
 });
 
 /**
- * Artifact by ID contract - GET/DELETE /v1/artifacts/:id
+ * Artifact by ID contract - GET /v1/artifacts/:id
  */
 export const publicArtifactByIdContract = c.router({
   get: {
@@ -203,22 +203,6 @@ export const publicArtifactByIdContract = c.router({
     },
     summary: "Get artifact",
     description: "Get artifact details by ID",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/v1/artifacts/:id",
-    pathParams: z.object({
-      id: z.string().min(1, "Artifact ID is required"),
-    }),
-    body: z.undefined(),
-    responses: {
-      204: z.undefined(),
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Delete artifact",
-    description: "Delete an artifact and all its versions",
   },
 });
 

@@ -2,7 +2,6 @@
  * Public API v1 - Agents Endpoints
  *
  * GET /v1/agents - List agents
- * POST /v1/agents - Create agent
  */
 import { initServices } from "../../../src/lib/init-services";
 import {
@@ -15,13 +14,8 @@ import {
   isAuthSuccess,
 } from "../../../src/lib/public-api/auth";
 import { getUserScopeByClerkId } from "../../../src/lib/scope/scope-service";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../src/db/schema/agent-compose";
 import { eq, and, desc, gt } from "drizzle-orm";
-import { computeComposeVersionId } from "../../../src/lib/agent-compose/content-hash";
-import type { AgentComposeYaml } from "../../../src/types/agent-compose";
 
 const router = tsr.router(publicAgentsListContract, {
   list: async ({ query }) => {
@@ -103,121 +97,8 @@ const router = tsr.router(publicAgentsListContract, {
       },
     };
   },
-
-  create: async ({ body }) => {
-    initServices();
-
-    const auth = await authenticatePublicApi();
-    if (!isAuthSuccess(auth)) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message: "Invalid API key provided",
-          },
-        },
-      };
-    }
-
-    // Get user's scope
-    const userScope = await getUserScopeByClerkId(auth.userId);
-    if (!userScope) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message:
-              "Please set up your scope first. Login again with: vm0 login",
-          },
-        },
-      };
-    }
-
-    const { name, config } = body;
-
-    // Check if agent with this name already exists in user's scope
-    const existing = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.scopeId, userScope.id),
-          eq(agentComposes.name, name),
-        ),
-      )
-      .limit(1);
-
-    if (existing.length > 0) {
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            type: "conflict_error" as const,
-            code: "resource_already_exists",
-            message: `An agent with this identifier already exists: '${name}'`,
-          },
-        },
-      };
-    }
-
-    // Compute content-addressable version ID
-    const versionId = computeComposeVersionId(config as AgentComposeYaml);
-
-    // Create the agent compose
-    const [created] = await globalThis.services.db
-      .insert(agentComposes)
-      .values({
-        userId: auth.userId,
-        scopeId: userScope.id,
-        name,
-      })
-      .returning();
-
-    if (!created) {
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            type: "api_error" as const,
-            code: "internal_error",
-            message: "Failed to create agent",
-          },
-        },
-      };
-    }
-
-    // Create the initial version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: created.id,
-      content: config,
-      createdBy: auth.userId,
-    });
-
-    // Update HEAD pointer
-    await globalThis.services.db
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, created.id));
-
-    return {
-      status: 201 as const,
-      body: {
-        id: created.id,
-        name: created.name,
-        current_version_id: versionId,
-        created_at: created.createdAt.toISOString(),
-        updated_at: created.updatedAt.toISOString(),
-        config,
-      },
-    };
-  },
 });
 
 const handler = createPublicApiHandler(publicAgentsListContract, router);
 
-export { handler as GET, handler as POST };
+export { handler as GET };
