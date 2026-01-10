@@ -41,34 +41,25 @@
 ```bash
 npm install -g @vm0/cli
 vm0 auth login
-mkdir my-agent && cd my-agent
-vm0 init
 ```
 
-Set up your token ([instructions](https://docs.vm0.ai/docs/quick-start#initialize-token)), then:
-
 ```bash
+mkdir my-agent && cd my-agent
+vm0 init
 cat > AGENTS.md << 'EOF'
-# Agent Instructions
-
-You are a HackerNews AI content curator.
-
-## Workflow
-
+# Workflow
 1. Go to HackerNews and read the top 10 articles
 2. Find and extract AI-related content from these articles
 3. Summarize the findings into a X (Twitter) post format
 4. Write the summary to content.md
 EOF
 
-vm0 cook "let's start working"
+vm0 cook "follow your workflow"
 ```
-
-> VM0 is in beta. [Join the waitlist](https://www.vm0.ai/sign-up) to get access. For full documentation, visit [docs.vm0.ai](https://docs.vm0.ai/docs).
 
 ## Resources
 
-[Documentation](https://docs.vm0.ai) · [Cookbooks](https://github.com/vm0-ai/vm0-cookbooks) · [Skills](https://github.com/vm0-ai/vm0-skills) · [Discord](https://discord.gg/WMpAmHFfp6)
+[Documentation](https://docs.vm0.ai) · [Skills](https://github.com/vm0-ai/vm0-skills) · [Discord](https://discord.gg/WMpAmHFfp6)
 
 ## License
 
