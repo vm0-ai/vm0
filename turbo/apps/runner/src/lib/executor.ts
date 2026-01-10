@@ -2,7 +2,7 @@
  * Job Executor
  *
  * Executes agent jobs inside Firecracker VMs.
- * Handles VM lifecycle, script injection via SSH, and job completion.
+ * Handles VM lifecycle, script injection via SSH, and job completion tracking.
  *
  * This executor achieves E2B parity by:
  * - Uploading the same Python scripts used by E2B
