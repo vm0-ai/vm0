@@ -363,7 +363,7 @@ jobs:
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
       - name: Build CLI
-        run: cd turbo && pnpm --filter @vm0/cli build
+        run: cd turbo && pnpm turbo run build --filter=@vm0/cli
 
       - name: Setup CLI globally
         run: cd turbo/apps/cli && pnpm link --global
