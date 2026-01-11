@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.2](https://github.com/vm0-ai/vm0/compare/cli-v5.0.1...cli-v5.0.2) (2026-01-11)
+
+
+### Bug Fixes
+
+* **runner:** support SNI-only mode network logs in experimental_firewall ([#1088](https://github.com/vm0-ai/vm0/issues/1088)) ([c8308ef](https://github.com/vm0-ai/vm0/commit/c8308ef3490b03069b2a65253ab2209c9ba30eac)), closes [#1063](https://github.com/vm0-ai/vm0/issues/1063)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.1.1
+
 ## [5.0.1](https://github.com/vm0-ai/vm0/compare/cli-v5.0.0...cli-v5.0.1) (2026-01-10)
 
 

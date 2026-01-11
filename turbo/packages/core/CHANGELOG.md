@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.1](https://github.com/vm0-ai/vm0/compare/core-v4.1.0...core-v4.1.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **runner:** support SNI-only mode network logs in experimental_firewall ([#1088](https://github.com/vm0-ai/vm0/issues/1088)) ([c8308ef](https://github.com/vm0-ai/vm0/commit/c8308ef3490b03069b2a65253ab2209c9ba30eac)), closes [#1063](https://github.com/vm0-ai/vm0/issues/1063)
+
 ## [4.1.0](https://github.com/vm0-ai/vm0/compare/core-v4.0.0...core-v4.1.0) (2026-01-10)
 
 
