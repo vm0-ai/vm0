@@ -39,15 +39,28 @@ function formatMetric(metric: TelemetryMetric): string {
 
 /**
  * Format a single network log entry
+ * Supports two modes:
+ * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
+ * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
  */
 function formatNetworkLog(entry: NetworkLogEntry): string {
+  // SNI-only mode: show connection info
+  if (entry.mode === "sni" || !entry.method) {
+    const actionColor = entry.action === "ALLOW" ? chalk.green : chalk.red;
+    const host = entry.host || "unknown";
+    const port = entry.port || 443;
+    return `[${entry.timestamp}] ${chalk.cyan("SNI")} ${actionColor(entry.action || "ALLOW")} ${host}:${port} ${chalk.dim(entry.rule_matched || "")}`;
+  }
+
+  // MITM mode: show full HTTP details
   // Color status code based on HTTP status
   let statusColor: typeof chalk.green;
-  if (entry.status >= 200 && entry.status < 300) {
+  const status = entry.status || 0;
+  if (status >= 200 && status < 300) {
     statusColor = chalk.green;
-  } else if (entry.status >= 300 && entry.status < 400) {
+  } else if (status >= 300 && status < 400) {
     statusColor = chalk.yellow;
-  } else if (entry.status >= 400) {
+  } else if (status >= 400) {
     statusColor = chalk.red;
   } else {
     statusColor = chalk.gray;
@@ -55,15 +68,21 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
 
   // Format latency with color
   let latencyColor: typeof chalk.green;
-  if (entry.latency_ms < 500) {
+  const latencyMs = entry.latency_ms || 0;
+  if (latencyMs < 500) {
     latencyColor = chalk.green;
-  } else if (entry.latency_ms < 2000) {
+  } else if (latencyMs < 2000) {
     latencyColor = chalk.yellow;
   } else {
     latencyColor = chalk.red;
   }
 
-  return `[${entry.timestamp}] ${entry.method.padEnd(6)} ${statusColor(entry.status)} ${latencyColor(entry.latency_ms + "ms")} ${formatBytes(entry.request_size)}/${formatBytes(entry.response_size)} ${chalk.dim(entry.url)}`;
+  const method = entry.method || "???";
+  const requestSize = entry.request_size || 0;
+  const responseSize = entry.response_size || 0;
+  const url = entry.url || entry.host || "unknown";
+
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}`;
 }
 
 /**

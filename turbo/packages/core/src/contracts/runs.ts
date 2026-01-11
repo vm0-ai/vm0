@@ -226,15 +226,26 @@ const agentEventsResponseSchema = z.object({
 
 /**
  * Network log entry schema
+ *
+ * Supports two modes:
+ * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
+ * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
  */
 const networkLogEntrySchema = z.object({
   timestamp: z.string(),
-  method: z.string(),
-  url: z.string(),
-  status: z.number(),
-  latency_ms: z.number(),
-  request_size: z.number(),
-  response_size: z.number(),
+  // Common fields (all modes)
+  mode: z.enum(["mitm", "sni"]).optional(),
+  action: z.enum(["ALLOW", "DENY"]).optional(),
+  host: z.string().optional(),
+  port: z.number().optional(),
+  rule_matched: z.string().nullable().optional(),
+  // MITM-only fields (optional)
+  method: z.string().optional(),
+  url: z.string().optional(),
+  status: z.number().optional(),
+  latency_ms: z.number().optional(),
+  request_size: z.number().optional(),
+  response_size: z.number().optional(),
 });
 
 /**
