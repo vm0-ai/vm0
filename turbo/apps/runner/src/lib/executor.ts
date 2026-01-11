@@ -581,17 +581,15 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // CRITICAL: Kill VM first to release resources and job slot
-    // Network cleanup can be done after (and can safely fail/timeout)
-    if (vm) {
-      console.log(`[Executor] Cleaning up VM ${vmId}...`);
-      await vm.kill();
-    }
-
     // Clean up network security if firewall was enabled
-    // This happens after VM kill to ensure job slot is released even if cleanup hangs
+    // This must happen BEFORE killing the VM to avoid mitmproxy hanging
+    // on active connections to a VM that no longer exists
     if (context.experimentalFirewall?.enabled && guestIp) {
       console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
+
+      // Unregister from proxy registry FIRST
+      // This tells mitmproxy to stop handling connections from this VM
+      getVMRegistry().unregister(guestIp);
 
       // Remove per-VM iptables rules
       try {
@@ -601,9 +599,6 @@ export async function executeJob(
           `[Executor] Failed to remove VM proxy rules: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
       }
-
-      // Unregister from proxy registry
-      getVMRegistry().unregister(guestIp);
 
       // Upload network logs to telemetry endpoint with timeout
       // Use Promise.race to prevent hanging indefinitely
@@ -625,6 +620,13 @@ export async function executeJob(
           `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
       }
+    }
+
+    // Always cleanup VM AFTER network cleanup
+    // Let errors propagate (fail-fast principle)
+    if (vm) {
+      console.log(`[Executor] Cleaning up VM ${vmId}...`);
+      await vm.kill();
     }
   }
 }
