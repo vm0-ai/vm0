@@ -427,12 +427,10 @@ jobs:
           export RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
 
           # Step 2: Run runner tests if runner was deployed
-          # NOTE: Running sequentially (-j 1) to debug MITM test hanging issue
-          # The issue may be related to shared mitmproxy state when tests run in parallel
           if [ "$RUNNER_DEPLOYED" = "true" ]; then
             echo ""
-            echo "=== Running Runner E2E Tests (sequential) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 1 ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+            echo "=== Running Runner E2E Tests (4 parallel) ==="
+            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
             if [ $RUNNER_EXIT -ne 0 ]; then
               echo ""
