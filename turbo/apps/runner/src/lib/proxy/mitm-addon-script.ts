@@ -250,9 +250,9 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
             "port": 443,
             "rule_matched": "no-sni",
         })
-        # Raise TLS error to close connection immediately
-        from mitmproxy.proxy.layers.tls import TlsProtocolException
-        raise TlsProtocolException("Blocked by firewall: no SNI")
+        # Don't set ignore_connection - mitmproxy will attempt MITM handshake
+        # Since VM doesn't have CA cert (SNI-only mode), TLS will fail immediately
+        return
 
     # Evaluate rules
     action, matched_rule = evaluate_rules(rules, sni)
@@ -272,12 +272,12 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
         ctx.log.info(f"[{run_id}] SNI-only ALLOW: {sni} (rule: {matched_rule})")
         data.ignore_connection = True
     else:
-        # Block the connection by raising a TLS error
-        # This causes mitmproxy to close the connection immediately
-        # instead of hanging while trying to complete a MITM handshake
+        # Block the connection by NOT setting ignore_connection
+        # mitmproxy will attempt MITM handshake, but since VM doesn't have
+        # our CA certificate installed (SNI-only mode), the TLS handshake
+        # will fail immediately with a certificate error.
         ctx.log.warn(f"[{run_id}] SNI-only DENY: {sni} (rule: {matched_rule})")
-        from mitmproxy.proxy.layers.tls import TlsProtocolException
-        raise TlsProtocolException(f"Blocked by firewall: {sni}")
+        # Client will see: SSL certificate problem / certificate verify failed
 
 
 # ============================================================================
