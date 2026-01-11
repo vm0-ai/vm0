@@ -451,7 +451,7 @@ def response(flow: http.HTTPFlow) -> None:
     if run_id:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-            "mode": "mitm",  # This function only runs in MITM mode
+            "mode": "mitm" if mitm_enabled else "filter",
             "action": firewall_action,
             "host": host,
             "port": port,

@@ -137,7 +137,7 @@ const ENV_JSON_PATH = "/tmp/vm0-env.json";
 interface NetworkLogEntry {
   // Common fields (required for all modes)
   timestamp: string;
-  mode: "sni" | "mitm";
+  mode: "sni" | "mitm" | "filter";
   action: "ALLOW" | "DENY";
   host: string;
   port: number;
@@ -582,16 +582,10 @@ export async function executeJob(
     };
   } finally {
     // Clean up network security if firewall was enabled
-    // This must happen BEFORE killing the VM to avoid mitmproxy hanging
-    // on active connections to a VM that no longer exists
     if (context.experimentalFirewall?.enabled && guestIp) {
       console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
-      // Unregister from proxy registry FIRST
-      // This tells mitmproxy to stop handling connections from this VM
-      getVMRegistry().unregister(guestIp);
-
-      // Remove per-VM iptables rules
+      // Remove per-VM iptables rules first
       try {
         await removeVMProxyRules(guestIp, config.proxy.port);
       } catch (err) {
@@ -600,21 +594,16 @@ export async function executeJob(
         );
       }
 
-      // Upload network logs to telemetry endpoint with timeout
-      // Use Promise.race to prevent hanging indefinitely
+      // Unregister from proxy registry
+      getVMRegistry().unregister(guestIp);
+
+      // Upload network logs to telemetry endpoint
       try {
-        const uploadPromise = uploadNetworkLogs(
+        await uploadNetworkLogs(
           config.server.url,
           context.sandboxToken,
           context.runId,
         );
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Network log upload timed out after 10s")),
-            10000,
-          ),
-        );
-        await Promise.race([uploadPromise, timeoutPromise]);
       } catch (err) {
         console.error(
           `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
@@ -622,8 +611,7 @@ export async function executeJob(
       }
     }
 
-    // Always cleanup VM AFTER network cleanup
-    // Let errors propagate (fail-fast principle)
+    // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
       console.log(`[Executor] Cleaning up VM ${vmId}...`);
       await vm.kill();
