@@ -43,14 +43,15 @@ describe("ApiClient", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/composes",
-        {
+        expect.objectContaining({
           method: "POST",
           headers: {
             Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ content: mockConfig }),
-        },
+          signal: expect.any(AbortSignal),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -166,14 +167,15 @@ describe("ApiClient", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/runs",
-        {
+        expect.objectContaining({
           method: "POST",
           headers: {
             Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify(mockRequest),
-        },
+          signal: expect.any(AbortSignal),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -337,13 +339,14 @@ describe("ApiClient", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
-        {
+        expect.objectContaining({
           method: "GET",
           headers: {
             Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
-        },
+          signal: expect.any(AbortSignal),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
