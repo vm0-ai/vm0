@@ -231,6 +231,38 @@ class ApiClient {
     return apiUrl;
   }
 
+  /**
+   * HTTP timeout configuration (matches sandbox scripts in @vm0/core)
+   */
+  private static readonly HTTP_TIMEOUT_MS = 30000; // 30s for normal requests
+
+  /**
+   * Fetch with timeout to prevent hanging on network issues.
+   * Uses AbortController to abort requests that exceed the timeout.
+   */
+  private async fetchWithTimeout(
+    url: string,
+    options: RequestInit,
+    timeoutMs: number = ApiClient.HTTP_TIMEOUT_MS,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async getComposeByName(
     name: string,
     scope?: string,
@@ -243,7 +275,7 @@ class ApiClient {
       params.append("scope", scope);
     }
 
-    const response = await fetch(
+    const response = await this.fetchWithTimeout(
       `${baseUrl}/api/agent/composes?${params.toString()}`,
       {
         method: "GET",
@@ -263,10 +295,13 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/composes/${id}`, {
-      method: "GET",
-      headers,
-    });
+    const response = await this.fetchWithTimeout(
+      `${baseUrl}/api/agent/composes/${id}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
@@ -287,7 +322,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(
+    const response = await this.fetchWithTimeout(
       `${baseUrl}/api/agent/composes/versions?composeId=${encodeURIComponent(composeId)}&version=${encodeURIComponent(version)}`,
       {
         method: "GET",
@@ -309,11 +344,14 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/composes`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const response = await this.fetchWithTimeout(
+      `${baseUrl}/api/agent/composes`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      },
+    );
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
@@ -347,7 +385,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/runs`, {
+    const response = await this.fetchWithTimeout(`${baseUrl}/api/agent/runs`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -372,7 +410,7 @@ class ApiClient {
     const since = options?.since ?? 0;
     const limit = options?.limit ?? 100;
 
-    const response = await fetch(
+    const response = await this.fetchWithTimeout(
       `${baseUrl}/api/agent/runs/${runId}/events?since=${since}&limit=${limit}`,
       {
         method: "GET",
@@ -392,7 +430,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(
+    const response = await this.fetchWithTimeout(
       `${baseUrl}/api/agent/runs/${runId}/telemetry`,
       {
         method: "GET",
@@ -429,7 +467,7 @@ class ApiClient {
     const queryString = params.toString();
     const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/system-log${queryString ? `?${queryString}` : ""}`;
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers,
     });
@@ -463,7 +501,7 @@ class ApiClient {
     const queryString = params.toString();
     const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/metrics${queryString ? `?${queryString}` : ""}`;
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers,
     });
@@ -497,7 +535,7 @@ class ApiClient {
     const queryString = params.toString();
     const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/agent${queryString ? `?${queryString}` : ""}`;
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers,
     });
@@ -531,7 +569,7 @@ class ApiClient {
     const queryString = params.toString();
     const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/network${queryString ? `?${queryString}` : ""}`;
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers,
     });
@@ -552,7 +590,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/images`, {
+    const response = await this.fetchWithTimeout(`${baseUrl}/api/images`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -573,7 +611,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
+    const response = await this.fetchWithTimeout(`${baseUrl}/api/scope`, {
       method: "GET",
       headers,
     });
@@ -596,7 +634,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
+    const response = await this.fetchWithTimeout(`${baseUrl}/api/scope`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -620,7 +658,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
+    const response = await this.fetchWithTimeout(`${baseUrl}/api/scope`, {
       method: "PUT",
       headers,
       body: JSON.stringify(body),
@@ -642,10 +680,13 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/sessions/${sessionId}`, {
-      method: "GET",
-      headers,
-    });
+    const response = await this.fetchWithTimeout(
+      `${baseUrl}/api/agent/sessions/${sessionId}`,
+      {
+        method: "GET",
+        headers,
+      },
+    );
 
     if (!response.ok) {
       const error = (await response.json()) as ApiError;
@@ -665,7 +706,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(
+    const response = await this.fetchWithTimeout(
       `${baseUrl}/api/agent/checkpoints/${checkpointId}`,
       {
         method: "GET",
