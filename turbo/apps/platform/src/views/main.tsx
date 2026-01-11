@@ -49,7 +49,9 @@ function I18nWrapper({ children }: { children: React.ReactNode }) {
       }
     }
 
-    initializeI18n();
+    initializeI18n().catch((error) => {
+      console.error("Failed to initialize i18n:", error);
+    });
   }, []);
 
   if (isLoading) {

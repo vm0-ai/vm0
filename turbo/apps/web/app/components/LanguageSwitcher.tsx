@@ -101,7 +101,11 @@ export default function LanguageSwitcher({
           {locales.map((loc) => (
             <button
               key={loc}
-              onClick={() => handleLanguageChange(loc)}
+              onClick={() => {
+                handleLanguageChange(loc).catch((error) => {
+                  console.error("Failed to change language:", error);
+                });
+              }}
               className={`language-switcher-option ${
                 locale === loc ? "active" : ""
               }`}
