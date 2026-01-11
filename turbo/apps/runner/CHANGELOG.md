@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/vm0-ai/vm0/compare/runner-v2.5.0...runner-v2.5.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **ansible:** kill pm2 daemon after adding user to kvm group ([#1082](https://github.com/vm0-ai/vm0/issues/1082)) ([7d0b723](https://github.com/vm0-ai/vm0/commit/7d0b72308ae776b1f635d9e6c9fc7f94d90518c1))
+
 ## [2.5.0](https://github.com/vm0-ai/vm0/compare/runner-v2.4.2...runner-v2.5.0) (2026-01-10)
 
 
