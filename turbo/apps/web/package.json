@@ -36,12 +36,12 @@
     "drizzle-orm": "^0.44.5",
     "nanoid": "^5.1.6",
     "next": "^15.5.7",
-    "next-intl": "^4.6.1",
     "p-limit": "^7.2.0",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",
+    "react-intl": "^6.8.9",
     "server-only": "^0.0.1",
     "tar": "^7.5.2",
     "zod": "^4.1.5"

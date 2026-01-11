@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Link } from "../../navigation";
-import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useIntl } from "react-intl";
 import { useTheme } from "./ThemeProvider";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function Navbar() {
   const { theme } = useTheme();
-  const t = useTranslations("nav");
+  const intl = useIntl();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close mobile menu on resize to desktop
@@ -66,7 +66,7 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="nav-link"
             >
-              {t("docs")}
+              {intl.formatMessage({ id: 'nav.docs' })}
             </a>
             <a
               href="https://blog.vm0.ai"
@@ -74,10 +74,10 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="nav-link"
             >
-              {t("blog")}
+              {intl.formatMessage({ id: 'nav.blog' })}
             </a>
             <Link href="/skills" className="nav-link">
-              {t("skills")}
+              {intl.formatMessage({ id: 'nav.skills' })}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
@@ -85,7 +85,7 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="nav-link"
             >
-              {t("github")}
+              {intl.formatMessage({ id: 'nav.github' })}
             </a>
           </div>
 
@@ -97,11 +97,11 @@ export default function Navbar() {
               rel="noopener noreferrer"
               className="btn-try-demo nav-desktop"
             >
-              {t("contact")}
+              {intl.formatMessage({ id: 'nav.contact' })}
             </a>
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/sign-up" className="btn-get-access">
-              {t("joinWaitlist")}
+              {intl.formatMessage({ id: 'nav.joinWaitlist' })}
             </a>
 
             {/* Hamburger Menu Button */}
@@ -136,7 +136,7 @@ export default function Navbar() {
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("docs")}
+              {intl.formatMessage({ id: 'nav.docs' })}
             </a>
             <a
               href="https://blog.vm0.ai"
@@ -145,14 +145,14 @@ export default function Navbar() {
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("blog")}
+              {intl.formatMessage({ id: 'nav.blog' })}
             </a>
             <Link
               href="/skills"
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("skills")}
+              {intl.formatMessage({ id: 'nav.skills' })}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
@@ -161,7 +161,7 @@ export default function Navbar() {
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("github")}
+              {intl.formatMessage({ id: 'nav.github' })}
             </a>
             <a
               href="https://calendar.app.google/csdygPrHHyNgxpTPA"
@@ -170,7 +170,7 @@ export default function Navbar() {
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("contact")}
+              {intl.formatMessage({ id: 'nav.contact' })}
             </a>
           </div>
           <div className="mobile-menu-controls">

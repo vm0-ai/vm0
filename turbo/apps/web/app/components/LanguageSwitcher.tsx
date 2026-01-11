@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useLocale } from "next-intl";
-import { usePathname, useRouter } from "../../navigation";
+import { useIntl } from "react-intl";
+import { usePathname, useRouter } from "next/navigation";
 import { locales, languageNames, type Locale } from "../../i18n";
 
 interface LanguageSwitcherProps {
@@ -14,7 +14,8 @@ export default function LanguageSwitcher({
 }: LanguageSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const locale = useLocale();
+  const intl = useIntl();
+  const locale = intl.locale as Locale;
   const pathname = usePathname();
   const router = useRouter();
 
@@ -33,11 +34,25 @@ export default function LanguageSwitcher({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLanguageChange = (newLocale: Locale) => {
-    // next-intl's usePathname returns pathname without locale prefix
-    // router.push with locale option will handle the locale prefix
-    router.push(pathname, { locale: newLocale });
+  const handleLanguageChange = async (newLocale: Locale) => {
+    // Remove current locale from pathname
+    const pathnameWithoutLocale = pathname.replace(/^\/(en|de|ja|es)/, '');
+
+    // Navigate to new locale
+    router.push(`/${newLocale}${pathnameWithoutLocale || ''}`);
     setIsOpen(false);
+
+    // Update Clerk metadata (fire and forget, don't block UI)
+    try {
+      await fetch('/api/user/locale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locale: newLocale }),
+      });
+    } catch (error) {
+      console.error('Failed to update locale in Clerk:', error);
+      // Non-critical error, don't show to user
+    }
   };
 
   return (

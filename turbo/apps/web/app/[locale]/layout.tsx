@@ -1,8 +1,17 @@
 import { ReactNode } from "react";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "react-intl";
 import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
 import type { Metadata } from "next";
+
+// Type workaround for React 19 compatibility with react-intl
+// react-intl has React 18 types but works fine with React 19 runtime
+const IntlProviderCompat = IntlProvider as unknown as React.ComponentType<{
+  locale: string;
+  messages: Record<string, string>;
+  defaultLocale?: string;
+  children: ReactNode;
+}>;
 
 type Props = {
   children: ReactNode;
@@ -55,8 +64,8 @@ export default async function LocaleLayout(props: Props) {
   const messages = (await import(`../../messages/${locale}.json`)).default;
 
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <IntlProviderCompat locale={locale} messages={messages} defaultLocale="en">
       {props.children}
-    </NextIntlClientProvider>
+    </IntlProviderCompat>
   );
 }

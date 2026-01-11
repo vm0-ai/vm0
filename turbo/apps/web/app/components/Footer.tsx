@@ -2,14 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useIntl } from "react-intl";
 import { useTheme } from "./ThemeProvider";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function Footer() {
   const { theme } = useTheme();
-  const t = useTranslations("footer");
+  const intl = useIntl();
 
   return (
     <footer className="footer">
@@ -28,19 +28,19 @@ export default function Footer() {
                 height={28}
               />
             </div>
-            <p className="footer-tagline">{t("tagline")}</p>
+            <p className="footer-tagline">{intl.formatMessage({ id: 'footer.tagline' })}</p>
           </div>
         </div>
         <div className="footer-bottom">
           <div className="footer-left">
-            <p className="footer-copyright">{t("copyright")}</p>
+            <p className="footer-copyright">{intl.formatMessage({ id: 'footer.copyright' })}</p>
             <div className="footer-legal-links">
               <Link href="/terms-of-use" className="footer-legal-link">
-                {t("termsOfUse")}
+                {intl.formatMessage({ id: 'footer.termsOfUse' })}
               </Link>
               <span className="footer-legal-separator">•</span>
               <Link href="/privacy-policy" className="footer-legal-link">
-                {t("privacyPolicy")}
+                {intl.formatMessage({ id: 'footer.privacyPolicy' })}
               </Link>
             </div>
           </div>

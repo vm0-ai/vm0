@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useIntl } from "react-intl";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import { useTheme } from "./ThemeProvider";
@@ -10,12 +10,7 @@ import { useTheme } from "./ThemeProvider";
 export default function LandingPage() {
   const sandboxRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
-  const t = useTranslations("hero");
-  const tBuild = useTranslations("build");
-  const tCliAgents = useTranslations("cliAgents");
-  const tFeatures = useTranslations("features");
-  const tInfra = useTranslations("infrastructure");
-  const tCta = useTranslations("cta");
+  const intl = useIntl();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -127,12 +122,12 @@ export default function LandingPage() {
         <div className="container">
           <div className="hero-grid">
             <div className="hero-text">
-              <h1 className="hero-title">{t("title")}</h1>
-              <p className="hero-description">{t("subtitle")}</p>
+              <h1 className="hero-title">{intl.formatMessage({ id: 'hero.title' })}</h1>
+              <p className="hero-description">{intl.formatMessage({ id: 'hero.subtitle' })}</p>
               <div className="hero-buttons">
                 {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a href="/sign-up" className="btn-primary-large">
-                  {t("joinWaitlist")}
+                  {intl.formatMessage({ id: 'hero.joinWaitlist' })}
                 </a>
                 <a
                   href="https://github.com/vm0-ai/vm0"
@@ -140,7 +135,7 @@ export default function LandingPage() {
                   rel="noopener noreferrer"
                   className="btn-secondary-large"
                 >
-                  {t("github")}
+                  {intl.formatMessage({ id: 'hero.github' })}
                 </a>
               </div>
             </div>
@@ -232,8 +227,8 @@ export default function LandingPage() {
       {/* Build Agents Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">{tBuild("title")}</h2>
-          <p className="section-description">{tBuild("description")}</p>
+          <h2 className="section-title">{intl.formatMessage({ id: 'build.title' })}</h2>
+          <p className="section-description">{intl.formatMessage({ id: 'build.description' })}</p>
 
           <div className="comparison-wrapper">
             <div className="comparison-content">
@@ -334,7 +329,7 @@ export default function LandingPage() {
                     loading="lazy"
                   />
                 </div>
-                <p className="vm0-tagline">{tBuild("vm0Tagline")}</p>
+                <p className="vm0-tagline">{intl.formatMessage({ id: 'build.vm0Tagline' })}</p>
               </div>
             </div>
           </div>
@@ -344,8 +339,8 @@ export default function LandingPage() {
       {/* CLI Agents Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">{tCliAgents("title")}</h2>
-          <p className="section-description">{tCliAgents("description")}</p>
+          <h2 className="section-title">{intl.formatMessage({ id: 'cliAgents.title' })}</h2>
+          <p className="section-description">{intl.formatMessage({ id: 'cliAgents.description' })}</p>
 
           <div className="cli-section-wrapper">
             <div className="cli-tools-row">
@@ -448,10 +443,10 @@ export default function LandingPage() {
                   />
                 </div>
                 <h3 className="use-case-title">
-                  {tCliAgents("marketingAgent.title")}
+                  {intl.formatMessage({ id: 'cliAgents.marketingAgent.title' })}
                 </h3>
                 <p className="use-case-desc">
-                  {tCliAgents("marketingAgent.description")}
+                  {intl.formatMessage({ id: 'cliAgents.marketingAgent.description' })}
                 </p>
               </div>
               <div className="use-case-item">
@@ -465,10 +460,10 @@ export default function LandingPage() {
                   />
                 </div>
                 <h3 className="use-case-title">
-                  {tCliAgents("productivityAgent.title")}
+                  {intl.formatMessage({ id: 'cliAgents.productivityAgent.title' })}
                 </h3>
                 <p className="use-case-desc">
-                  {tCliAgents("productivityAgent.description")}
+                  {intl.formatMessage({ id: 'cliAgents.productivityAgent.description' })}
                 </p>
               </div>
               <div className="use-case-item">
@@ -482,10 +477,10 @@ export default function LandingPage() {
                   />
                 </div>
                 <h3 className="use-case-title">
-                  {tCliAgents("researchAgent.title")}
+                  {intl.formatMessage({ id: 'cliAgents.researchAgent.title' })}
                 </h3>
                 <p className="use-case-desc">
-                  {tCliAgents("researchAgent.description")}
+                  {intl.formatMessage({ id: 'cliAgents.researchAgent.description' })}
                 </p>
               </div>
               <div className="use-case-item">
@@ -499,10 +494,10 @@ export default function LandingPage() {
                   />
                 </div>
                 <h3 className="use-case-title">
-                  {tCliAgents("codingAgent.title")}
+                  {intl.formatMessage({ id: 'cliAgents.codingAgent.title' })}
                 </h3>
                 <p className="use-case-desc">
-                  {tCliAgents("codingAgent.description")}
+                  {intl.formatMessage({ id: 'cliAgents.codingAgent.description' })}
                 </p>
               </div>
               <div className="use-case-item">
@@ -516,10 +511,10 @@ export default function LandingPage() {
                   />
                 </div>
                 <h3 className="use-case-title">
-                  {tCliAgents("personalizedAgent.title")}
+                  {intl.formatMessage({ id: 'cliAgents.personalizedAgent.title' })}
                 </h3>
                 <p className="use-case-desc">
-                  {tCliAgents("personalizedAgent.description")}
+                  {intl.formatMessage({ id: 'cliAgents.personalizedAgent.description' })}
                 </p>
               </div>
             </div>
@@ -530,16 +525,16 @@ export default function LandingPage() {
       {/* Features Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">{tFeatures("title")}</h2>
+          <h2 className="section-title">{intl.formatMessage({ id: 'features.title' })}</h2>
 
           <div className="features-stack">
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  {tFeatures("noWorkflows.title")}
+                  {intl.formatMessage({ id: 'features.noWorkflows.title' })}
                 </h3>
                 <p className="feature-text">
-                  {tFeatures("noWorkflows.description")}
+                  {intl.formatMessage({ id: 'features.noWorkflows.description' })}
                 </p>
               </div>
               <div className="feature-visual prompt-visual">
@@ -557,10 +552,10 @@ export default function LandingPage() {
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  {tFeatures("purposeBuilt.title")}
+                  {intl.formatMessage({ id: 'features.purposeBuilt.title' })}
                 </h3>
                 <p className="feature-text">
-                  {tFeatures("purposeBuilt.description")}
+                  {intl.formatMessage({ id: 'features.purposeBuilt.description' })}
                 </p>
               </div>
               <div className="feature-visual agent-visual">
@@ -578,10 +573,10 @@ export default function LandingPage() {
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  {tFeatures("observable.title")}
+                  {intl.formatMessage({ id: 'features.observable.title' })}
                 </h3>
                 <p className="feature-text">
-                  {tFeatures("observable.description")}
+                  {intl.formatMessage({ id: 'features.observable.description' })}
                 </p>
               </div>
               <div className="feature-visual observable-visual">
@@ -599,10 +594,10 @@ export default function LandingPage() {
             <div className="feature-card">
               <div className="feature-content">
                 <h3 className="feature-title">
-                  {tFeatures("reproducible.title")}
+                  {intl.formatMessage({ id: 'features.reproducible.title' })}
                 </h3>
                 <p className="feature-text">
-                  {tFeatures("reproducible.description")}
+                  {intl.formatMessage({ id: 'features.reproducible.description' })}
                 </p>
               </div>
               <div className="feature-visual persistent-visual">
@@ -623,36 +618,36 @@ export default function LandingPage() {
       {/* Infrastructure Section */}
       <section className="section-spacing">
         <div className="container">
-          <h2 className="section-title">{tInfra("title")}</h2>
+          <h2 className="section-title">{intl.formatMessage({ id: 'infrastructure.title' })}</h2>
 
           <div className="infra-grid">
             <div className="infra-item">
               <h3 className="infra-title">
-                {tInfra("versionedStorage.title")}
+                {intl.formatMessage({ id: 'infrastructure.versionedStorage.title' })}
               </h3>
               <p className="infra-desc">
-                {tInfra("versionedStorage.description")}
+                {intl.formatMessage({ id: 'infrastructure.versionedStorage.description' })}
               </p>
             </div>
             <div className="infra-item">
               <h3 className="infra-title">
-                {tInfra("sessionContinuity.title")}
+                {intl.formatMessage({ id: 'infrastructure.sessionContinuity.title' })}
               </h3>
               <p className="infra-desc">
-                {tInfra("sessionContinuity.description")}
+                {intl.formatMessage({ id: 'infrastructure.sessionContinuity.description' })}
               </p>
             </div>
             <div className="infra-item">
               <h3 className="infra-title">
-                {tInfra("structuredObservability.title")}
+                {intl.formatMessage({ id: 'infrastructure.structuredObservability.title' })}
               </h3>
               <p className="infra-desc">
-                {tInfra("structuredObservability.description")}
+                {intl.formatMessage({ id: 'infrastructure.structuredObservability.description' })}
               </p>
             </div>
             <div className="infra-item">
-              <h3 className="infra-title">{tInfra("checkpoint.title")}</h3>
-              <p className="infra-desc">{tInfra("checkpoint.description")}</p>
+              <h3 className="infra-title">{intl.formatMessage({ id: 'infrastructure.checkpoint.title' })}</h3>
+              <p className="infra-desc">{intl.formatMessage({ id: 'infrastructure.checkpoint.description' })}</p>
             </div>
           </div>
         </div>
@@ -663,11 +658,11 @@ export default function LandingPage() {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">{tCta("title")}</h2>
-            <p className="cta-subtitle">{tCta("subtitle")}</p>
+            <h2 className="cta-title">{intl.formatMessage({ id: 'cta.title' })}</h2>
+            <p className="cta-subtitle">{intl.formatMessage({ id: 'cta.subtitle' })}</p>
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/sign-up" className="btn-primary-large">
-              {tCta("button")}
+              {intl.formatMessage({ id: 'cta.button' })}
             </a>
           </div>
         </div>
