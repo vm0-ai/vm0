@@ -7,6 +7,15 @@ import { Router } from "./router.tsx";
 import "./css/index.css";
 import { detectLocale, loadMessages, DEFAULT_LOCALE } from "../lib/locale.ts";
 import type { Locale } from "../lib/locale.ts";
+import type React from "react";
+
+// Type workaround for React 19 compatibility with react-intl
+const IntlProviderCompat = IntlProvider as unknown as React.ComponentType<{
+  locale: string;
+  messages: Record<string, string>;
+  defaultLocale?: string;
+  children: React.ReactNode;
+}>;
 
 function I18nWrapper({ children }: { children: React.ReactNode }) {
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
@@ -48,9 +57,9 @@ function I18nWrapper({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <IntlProvider locale={locale} messages={messages} defaultLocale="en">
+    <IntlProviderCompat locale={locale} messages={messages} defaultLocale="en">
       {children}
-    </IntlProvider>
+    </IntlProviderCompat>
   );
 }
 

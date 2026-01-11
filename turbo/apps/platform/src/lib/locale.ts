@@ -1,11 +1,9 @@
-import type { UserResource } from "@clerk/clerk-js";
-
 export const SUPPORTED_LOCALES = ["en", "de", "ja", "es"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
 export async function detectLocale(
-  user: UserResource | null | undefined,
+  user: any | null | undefined,
 ): Promise<Locale> {
   // Priority 1: Clerk metadata
   if (user?.publicMetadata?.locale) {

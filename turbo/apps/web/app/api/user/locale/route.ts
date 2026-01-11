@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Invalid locale", details: error.errors },
+        { error: "Invalid locale", details: error.issues },
         { status: 400 },
       );
     }
