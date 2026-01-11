@@ -36,21 +36,21 @@ export default function LanguageSwitcher({
 
   const handleLanguageChange = async (newLocale: Locale) => {
     // Remove current locale from pathname
-    const pathnameWithoutLocale = pathname.replace(/^\/(en|de|ja|es)/, '');
+    const pathnameWithoutLocale = pathname.replace(/^\/(en|de|ja|es)/, "");
 
     // Navigate to new locale
-    router.push(`/${newLocale}${pathnameWithoutLocale || ''}`);
+    router.push(`/${newLocale}${pathnameWithoutLocale || ""}`);
     setIsOpen(false);
 
     // Update Clerk metadata (fire and forget, don't block UI)
     try {
-      await fetch('/api/user/locale', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/user/locale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ locale: newLocale }),
       });
     } catch (error) {
-      console.error('Failed to update locale in Clerk:', error);
+      console.error("Failed to update locale in Clerk:", error);
       // Non-critical error, don't show to user
     }
   };

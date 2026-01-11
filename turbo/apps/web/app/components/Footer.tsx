@@ -28,19 +28,23 @@ export default function Footer() {
                 height={28}
               />
             </div>
-            <p className="footer-tagline">{intl.formatMessage({ id: 'footer.tagline' })}</p>
+            <p className="footer-tagline">
+              {intl.formatMessage({ id: "footer.tagline" })}
+            </p>
           </div>
         </div>
         <div className="footer-bottom">
           <div className="footer-left">
-            <p className="footer-copyright">{intl.formatMessage({ id: 'footer.copyright' })}</p>
+            <p className="footer-copyright">
+              {intl.formatMessage({ id: "footer.copyright" })}
+            </p>
             <div className="footer-legal-links">
               <Link href="/terms-of-use" className="footer-legal-link">
-                {intl.formatMessage({ id: 'footer.termsOfUse' })}
+                {intl.formatMessage({ id: "footer.termsOfUse" })}
               </Link>
               <span className="footer-legal-separator">•</span>
               <Link href="/privacy-policy" className="footer-legal-link">
-                {intl.formatMessage({ id: 'footer.privacyPolicy' })}
+                {intl.formatMessage({ id: "footer.privacyPolicy" })}
               </Link>
             </div>
           </div>

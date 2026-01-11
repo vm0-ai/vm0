@@ -68,8 +68,12 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
       <section className="hero-section" style={{ paddingBottom: "80px" }}>
         <div className="container">
           <div>
-            <h1 className="hero-title">{intl.formatMessage({ id: 'skills.hero.title' })}</h1>
-            <p className="hero-description">{intl.formatMessage({ id: 'skills.hero.description' })}</p>
+            <h1 className="hero-title">
+              {intl.formatMessage({ id: "skills.hero.title" })}
+            </h1>
+            <p className="hero-description">
+              {intl.formatMessage({ id: "skills.hero.description" })}
+            </p>
 
             {/* Stats */}
             <div
@@ -130,7 +134,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 <div style={{ position: "relative" }}>
                   <input
                     type="text"
-                    placeholder={intl.formatMessage({ id: 'skills.search.placeholder' })}
+                    placeholder={intl.formatMessage({
+                      id: "skills.search.placeholder",
+                    })}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="skills-search-input"
@@ -192,8 +198,12 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                     {categories.map((category) => (
                       <option key={category} value={category}>
                         {category === "all"
-                          ? intl.formatMessage({ id: 'skills.search.allCategories' })
-                          : intl.formatMessage({ id: `skills.categories.${category}` })}
+                          ? intl.formatMessage({
+                              id: "skills.search.allCategories",
+                            })
+                          : intl.formatMessage({
+                              id: `skills.categories.${category}`,
+                            })}
                       </option>
                     ))}
                   </select>
@@ -232,8 +242,8 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
               }}
             >
               {filteredSkills.length === skillsData.total
-                ? `${intl.formatMessage({ id: 'skills.search.showing' })} ${filteredSkills.length} ${intl.formatMessage({ id: 'skills.search.results' })}`
-                : `${intl.formatMessage({ id: 'skills.search.found' })} ${filteredSkills.length} ${intl.formatMessage({ id: 'skills.search.results' })}`}
+                ? `${intl.formatMessage({ id: "skills.search.showing" })} ${filteredSkills.length} ${intl.formatMessage({ id: "skills.search.results" })}`
+                : `${intl.formatMessage({ id: "skills.search.found" })} ${filteredSkills.length} ${intl.formatMessage({ id: "skills.search.results" })}`}
             </p>
           </div>
         </div>
@@ -252,7 +262,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 fontSize: "16px",
               }}
             >
-              <p>{intl.formatMessage({ id: 'skills.search.noResults' })}</p>
+              <p>{intl.formatMessage({ id: "skills.search.noResults" })}</p>
             </div>
           ) : (
             <div
@@ -408,7 +418,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                         fontWeight: 500,
                       }}
                     >
-                      {intl.formatMessage({ id: 'skills.viewDocs' })}
+                      {intl.formatMessage({ id: "skills.viewDocs" })}
                       <svg
                         width="16"
                         height="16"
@@ -434,8 +444,12 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
         <div className="container">
           <div className="cta-card">
             <div className="cta-ellipse"></div>
-            <h2 className="cta-title">{intl.formatMessage({ id: 'skills.cta.title' })}</h2>
-            <p className="cta-subtitle">{intl.formatMessage({ id: 'skills.cta.subtitle' })}</p>
+            <h2 className="cta-title">
+              {intl.formatMessage({ id: "skills.cta.title" })}
+            </h2>
+            <p className="cta-subtitle">
+              {intl.formatMessage({ id: "skills.cta.subtitle" })}
+            </p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               <a
                 href="https://github.com/vm0-ai/vm0-skills/issues/new"
@@ -443,7 +457,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 rel="noopener noreferrer"
                 className="btn-primary-large"
               >
-                {intl.formatMessage({ id: 'skills.cta.requestSkill' })}
+                {intl.formatMessage({ id: "skills.cta.requestSkill" })}
               </a>
               <a
                 href="https://github.com/vm0-ai/vm0-skills"
@@ -451,7 +465,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                 rel="noopener noreferrer"
                 className="btn-secondary-large"
               >
-                {intl.formatMessage({ id: 'skills.cta.contribute' })}
+                {intl.formatMessage({ id: "skills.cta.contribute" })}
               </a>
             </div>
           </div>
