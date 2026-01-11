@@ -35,6 +35,39 @@ interface ApiErrorResponse {
 }
 
 /**
+ * HTTP timeout configuration (matches sandbox scripts in @vm0/core)
+ */
+const HTTP_TIMEOUT_MS = 30000; // 30s for normal requests
+const HTTP_UPLOAD_TIMEOUT_MS = 60000; // 60s for uploads/completions
+
+/**
+ * Fetch with timeout to prevent hanging on network issues.
+ * Uses AbortController to abort requests that exceed the timeout.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = HTTP_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Get authentication headers
  * Includes Vercel bypass secret if available (for CI/preview deployments)
  */
@@ -66,7 +99,7 @@ export async function pollForJob(
 ): Promise<Job | null> {
   const headers = getAuthHeaders(server.token);
 
-  const response = await fetch(`${server.url}/api/runners/poll`, {
+  const response = await fetchWithTimeout(`${server.url}/api/runners/poll`, {
     method: "POST",
     headers,
     body: JSON.stringify({ group }),
@@ -93,7 +126,7 @@ export async function claimJob(
 ): Promise<ExecutionContext> {
   const headers = getAuthHeaders(server.token);
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${server.url}/api/runners/jobs/${runId}/claim`,
     {
       method: "POST",
@@ -139,15 +172,19 @@ export async function completeJob(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(`${apiUrl}/api/webhooks/agent/complete`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      runId: context.runId,
-      exitCode,
-      error,
-    }),
-  });
+  const response = await fetchWithTimeout(
+    `${apiUrl}/api/webhooks/agent/complete`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        runId: context.runId,
+        exitCode,
+        error,
+      }),
+    },
+    HTTP_UPLOAD_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     const errorData = (await response.json()) as ApiErrorResponse;

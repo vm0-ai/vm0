@@ -34,6 +34,37 @@ import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 
 /**
+ * HTTP timeout for upload operations (60s, matches sandbox scripts)
+ */
+const HTTP_UPLOAD_TIMEOUT_MS = 60000;
+
+/**
+ * Fetch with timeout to prevent hanging on network issues.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Execution result
  */
 export interface ExecutionResult {
@@ -227,14 +258,18 @@ async function uploadNetworkLogs(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(`${apiUrl}/api/webhooks/agent/telemetry`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      runId,
-      networkLogs,
-    }),
-  });
+  const response = await fetchWithTimeout(
+    `${apiUrl}/api/webhooks/agent/telemetry`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        runId,
+        networkLogs,
+      }),
+    },
+    HTTP_UPLOAD_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
