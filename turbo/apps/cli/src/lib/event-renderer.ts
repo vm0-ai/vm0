@@ -294,7 +294,10 @@ export class EventRenderer {
       if (status === "running") {
         const command = String(event.data.command || "");
         console.log(
-          prefix + chalk.cyan("[lifecycle]") + suffix + " Running postCreateCommand",
+          prefix +
+            chalk.cyan("[lifecycle]") +
+            suffix +
+            " Running postCreateCommand",
         );
         console.log(`  ${chalk.dim(command)}`);
       } else if (status === "completed") {

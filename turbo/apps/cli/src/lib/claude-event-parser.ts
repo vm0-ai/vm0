@@ -207,7 +207,9 @@ export class ClaudeEventParser {
     };
   }
 
-  private static parseLifecycleEvent(event: LifecycleEvent): ParsedEvent | null {
+  private static parseLifecycleEvent(
+    event: LifecycleEvent,
+  ): ParsedEvent | null {
     return {
       type: "lifecycle",
       timestamp: new Date(),
