@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
-import { locales, type Locale } from "../../i18n";
+import { locales, type Locale } from "@vm0/i18n";
 import type { Metadata } from "next";
 
 type Props = {
@@ -51,8 +51,8 @@ export default async function LocaleLayout(props: Props) {
     notFound();
   }
 
-  // Load messages directly for the current locale
-  const messages = (await import(`../../messages/${locale}.json`)).default;
+  // Load messages from shared i18n package
+  const messages = (await import(`@vm0/i18n/messages/${locale}.json`)).default;
 
   return (
     <NextIntlClientProvider locale={locale} messages={messages}>

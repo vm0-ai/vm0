@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocale } from "next-intl";
 import { usePathname, useRouter } from "../../navigation";
-import { locales, languageNames, type Locale } from "../../i18n";
+import { locales, languageNames, type Locale } from "@vm0/i18n";
 
 interface LanguageSwitcherProps {
   openDirection?: "up" | "down";

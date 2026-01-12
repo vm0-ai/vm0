@@ -394,6 +394,9 @@ importers:
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@vm0/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui

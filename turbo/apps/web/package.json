@@ -30,6 +30,7 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@ts-rest/serverless": "3.53.0-rc.1",
     "@vm0/core": "workspace:*",
+    "@vm0/i18n": "workspace:*",
     "@vm0/ui": "workspace:*",
     "archiver": "^7.0.1",
     "dotenv": "^17.2.1",

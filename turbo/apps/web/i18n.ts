@@ -1,27 +1,17 @@
 import { getRequestConfig } from "next-intl/server";
-import { notFound } from "next/navigation";
+import { locales, defaultLocale, type Locale } from "@vm0/i18n";
 
-// Supported locales
-export const locales = ["en", "de", "ja", "es"] as const;
-export type Locale = (typeof locales)[number];
-
-// Default locale
-export const defaultLocale: Locale = "en";
-
-// Language names for the language switcher
-export const languageNames: Record<Locale, string> = {
-  en: "English",
-  de: "Deutsch",
-  ja: "日本語",
-  es: "Español",
-};
+// Re-export from @vm0/i18n for backward compatibility
+export { locales, defaultLocale, languageNames, type Locale } from "@vm0/i18n";
 
 export default getRequestConfig(async ({ locale }) => {
   // Fallback to default locale if undefined
-  const resolvedLocale = locale || defaultLocale;
+  const resolvedLocale = (locale || defaultLocale) as Locale;
 
+  // Import from shared package
+  const messages = await import(`@vm0/i18n/messages/${resolvedLocale}.json`);
   return {
     locale: resolvedLocale,
-    messages: (await import(`./messages/${resolvedLocale}.json`)).default,
+    messages: messages.default,
   };
 });
