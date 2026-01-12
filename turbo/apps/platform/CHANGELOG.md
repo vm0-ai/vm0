@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/platform-v0.8.0...platform-v0.9.0) (2026-01-12)
+
+
+### Features
+
+* **platform:** add environment variable sync and require vite_api_url ([#1119](https://github.com/vm0-ai/vm0/issues/1119)) ([9e9b025](https://github.com/vm0-ai/vm0/commit/9e9b0254c46bfe3b1bfcb6a12f8079e127008f41))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/platform-v0.7.5...platform-v0.8.0) (2026-01-12)
 
 
