@@ -3,7 +3,7 @@ pre-commit:
   commands:
     lint:
       root: turbo/
-      run: pnpm turbo run lint
+      run: pnpm lint
       glob: "turbo/**/*.{js,ts,tsx,jsx,mjs,cjs}"
     prettier:
       root: turbo/

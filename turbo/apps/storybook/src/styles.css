@@ -1,5 +1,0 @@
-@import "tailwindcss";
-@import "@vm0/ui/styles/globals.css";
-
-/* Tell Tailwind to scan UI package components for class usage */
-@source "../../../packages/ui/src/**/*.tsx";

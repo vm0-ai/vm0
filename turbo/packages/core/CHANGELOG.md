@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.2.0](https://github.com/vm0-ai/vm0/compare/core-v4.1.1...core-v4.2.0) (2026-01-12)
+
+
+### Features
+
+* **lifecycle:** add postCreateCommand hook and hardcode working_dir ([#1077](https://github.com/vm0-ai/vm0/issues/1077)) ([86f7077](https://github.com/vm0-ai/vm0/commit/86f70777701d2d8715edec620e804c9ceeea0bad))
+
+## [4.1.1](https://github.com/vm0-ai/vm0/compare/core-v4.1.0...core-v4.1.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **runner:** support SNI-only mode network logs in experimental_firewall ([#1088](https://github.com/vm0-ai/vm0/issues/1088)) ([c8308ef](https://github.com/vm0-ai/vm0/commit/c8308ef3490b03069b2a65253ab2209c9ba30eac)), closes [#1063](https://github.com/vm0-ai/vm0/issues/1063)
+
 ## [4.1.0](https://github.com/vm0-ai/vm0/compare/core-v4.0.0...core-v4.1.0) (2026-01-10)
 
 

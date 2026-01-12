@@ -1,5 +1,45 @@
 # Changelog
 
+## [9.4.0](https://github.com/vm0-ai/vm0/compare/web-v9.3.0...web-v9.4.0) (2026-01-12)
+
+
+### Features
+
+* optimize skills metadata and documentation ([#1114](https://github.com/vm0-ai/vm0/issues/1114)) ([5babe6e](https://github.com/vm0-ai/vm0/commit/5babe6e74feb42b47db5a21457bda030fb6c7f14))
+
+
+### Performance Improvements
+
+* **web:** skip eslint during vercel build ([#1111](https://github.com/vm0-ai/vm0/issues/1111)) ([e2d3619](https://github.com/vm0-ai/vm0/commit/e2d36194345afda06588cdef6bd773573f30b02b))
+
+## [9.3.0](https://github.com/vm0-ai/vm0/compare/web-v9.2.1...web-v9.3.0) (2026-01-12)
+
+
+### Features
+
+* **lifecycle:** add postCreateCommand hook and hardcode working_dir ([#1077](https://github.com/vm0-ai/vm0/issues/1077)) ([86f7077](https://github.com/vm0-ai/vm0/commit/86f70777701d2d8715edec620e804c9ceeea0bad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.0
+
+## [9.2.1](https://github.com/vm0-ai/vm0/compare/web-v9.2.0...web-v9.2.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **runner:** support SNI-only mode network logs in experimental_firewall ([#1088](https://github.com/vm0-ai/vm0/issues/1088)) ([c8308ef](https://github.com/vm0-ai/vm0/commit/c8308ef3490b03069b2a65253ab2209c9ba30eac)), closes [#1063](https://github.com/vm0-ai/vm0/issues/1063)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.1.1
+
 ## [9.2.0](https://github.com/vm0-ai/vm0/compare/web-v9.1.0...web-v9.2.0) (2026-01-10)
 
 

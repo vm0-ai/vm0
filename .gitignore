@@ -159,12 +159,10 @@ settings.local.json
 # Code reviews
 codereviews/
 
-# Storybook build output
-storybook-static/
-
 # Runner proxy CA certificates (generated per-deployment)
 turbo/scripts/deploy-runner/proxy-ca/
 
 # SSH private keys and certificates (should never be committed)
 *.pem
 .mozilla
+turbo/apps/storybook/storybook-static/

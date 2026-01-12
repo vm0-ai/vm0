@@ -24,7 +24,8 @@ interface RunResult {
   output?: string;
   checkpointId?: string;
   agentSessionId?: string;
-  artifact?: Record<string, string>;
+  artifactName?: string;
+  artifactVersion?: string;
   volumes?: Record<string, string>;
 }
 
@@ -159,7 +160,8 @@ const router = tsr.router(publicRunCancelContract, {
         execution_time_ms: executionTimeMs,
         checkpoint_id: runResult?.checkpointId ?? null,
         session_id: runResult?.agentSessionId ?? null,
-        artifacts: runResult?.artifact,
+        artifact_name: runResult?.artifactName ?? null,
+        artifact_version: runResult?.artifactVersion ?? null,
         volumes: runResult?.volumes,
       },
     };

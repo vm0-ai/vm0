@@ -14,16 +14,28 @@ import {
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
 
+/**
+ * Axiom network event supports two modes:
+ * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
+ * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
+ */
 interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
-  method: string;
-  url: string;
-  status: number;
-  latency_ms: number;
-  request_size: number;
-  response_size: number;
+  // Common fields (all modes)
+  mode?: "mitm" | "sni";
+  action?: "ALLOW" | "DENY";
+  host?: string;
+  port?: number;
+  rule_matched?: string | null;
+  // MITM-only fields (optional)
+  method?: string;
+  url?: string;
+  status?: number;
+  latency_ms?: number;
+  request_size?: number;
+  response_size?: number;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -87,9 +99,16 @@ ${sinceFilter}
     const hasMore = events.length > limit;
     const records = hasMore ? events.slice(0, limit) : events;
 
-    // Transform to API response format
+    // Transform to API response format (supports both SNI-only and MITM modes)
     const networkLogs = records.map((e) => ({
       timestamp: e._time,
+      // Common fields (all modes)
+      mode: e.mode,
+      action: e.action,
+      host: e.host,
+      port: e.port,
+      rule_matched: e.rule_matched,
+      // MITM-only fields (may be undefined for SNI-only mode)
       method: e.method,
       url: e.url,
       status: e.status,

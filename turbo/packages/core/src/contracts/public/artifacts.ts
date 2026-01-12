@@ -68,93 +68,7 @@ export const paginatedArtifactVersionsSchema = createPaginatedResponseSchema(
 );
 
 /**
- * Create artifact request schema
- */
-export const createArtifactRequestSchema = z.object({
-  name: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(
-      /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/,
-      "Name must be lowercase alphanumeric with hyphens, not starting or ending with hyphen",
-    ),
-});
-
-export type CreateArtifactRequest = z.infer<typeof createArtifactRequestSchema>;
-
-/**
- * File entry for upload
- */
-export const fileEntrySchema = z.object({
-  path: z.string(),
-  size: z.number(),
-  hash: z.string().optional(), // SHA-256 hash of file content
-});
-
-export type FileEntry = z.infer<typeof fileEntrySchema>;
-
-/**
- * Prepare upload request - get presigned URLs
- */
-export const prepareUploadRequestSchema = z.object({
-  files: z.array(fileEntrySchema),
-  message: z.string().optional(), // Optional commit message
-});
-
-export type PrepareUploadRequest = z.infer<typeof prepareUploadRequestSchema>;
-
-/**
- * Presigned upload URL response
- */
-export const presignedUploadSchema = z.object({
-  path: z.string(),
-  upload_url: z.string(), // Presigned S3 URL
-  upload_id: z.string(), // For multi-part uploads
-});
-
-export type PresignedUpload = z.infer<typeof presignedUploadSchema>;
-
-/**
- * Prepare upload response
- */
-export const prepareUploadResponseSchema = z.object({
-  upload_session_id: z.string(),
-  files: z.array(presignedUploadSchema),
-  expires_at: timestampSchema,
-});
-
-export type PrepareUploadResponse = z.infer<typeof prepareUploadResponseSchema>;
-
-/**
- * Commit upload request - finalize the upload
- */
-export const commitUploadRequestSchema = z.object({
-  upload_session_id: z.string(),
-  message: z.string().optional(),
-});
-
-export type CommitUploadRequest = z.infer<typeof commitUploadRequestSchema>;
-
-/**
- * Download response with presigned URLs
- */
-export const downloadResponseSchema = z.object({
-  version_id: z.string(),
-  files: z.array(
-    z.object({
-      path: z.string(),
-      size: z.number(),
-      download_url: z.string(), // Presigned S3 URL
-    }),
-  ),
-  expires_at: timestampSchema,
-});
-
-export type DownloadResponse = z.infer<typeof downloadResponseSchema>;
-
-/**
- * Artifacts list contract - GET /v1/artifacts, POST /v1/artifacts
+ * Artifacts list contract - GET /v1/artifacts
  */
 export const publicArtifactsListContract = c.router({
   list: {
@@ -168,20 +82,6 @@ export const publicArtifactsListContract = c.router({
     },
     summary: "List artifacts",
     description: "List all artifacts in the current scope with pagination",
-  },
-  create: {
-    method: "POST",
-    path: "/v1/artifacts",
-    body: createArtifactRequestSchema,
-    responses: {
-      201: publicArtifactDetailSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      409: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Create artifact",
-    description: "Create a new empty artifact container",
   },
 });
 
@@ -229,55 +129,8 @@ export const publicArtifactVersionsContract = c.router({
 });
 
 /**
- * Artifact upload contract - POST /v1/artifacts/:id/upload
- */
-export const publicArtifactUploadContract = c.router({
-  prepareUpload: {
-    method: "POST",
-    path: "/v1/artifacts/:id/upload",
-    pathParams: z.object({
-      id: z.string().min(1, "Artifact ID is required"),
-    }),
-    body: prepareUploadRequestSchema,
-    responses: {
-      200: prepareUploadResponseSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Prepare artifact upload",
-    description:
-      "Get presigned URLs for direct S3 upload. Returns upload URLs for each file.",
-  },
-});
-
-/**
- * Artifact commit contract - POST /v1/artifacts/:id/commit
- */
-export const publicArtifactCommitContract = c.router({
-  commitUpload: {
-    method: "POST",
-    path: "/v1/artifacts/:id/commit",
-    pathParams: z.object({
-      id: z.string().min(1, "Artifact ID is required"),
-    }),
-    body: commitUploadRequestSchema,
-    responses: {
-      200: artifactVersionSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Commit artifact upload",
-    description:
-      "Finalize an upload session and create a new artifact version.",
-  },
-});
-
-/**
  * Artifact download contract - GET /v1/artifacts/:id/download
+ * Returns 302 redirect to presigned URL for archive.tar.gz
  */
 export const publicArtifactDownloadContract = c.router({
   download: {
@@ -290,14 +143,14 @@ export const publicArtifactDownloadContract = c.router({
       version_id: z.string().optional(), // Defaults to current version
     }),
     responses: {
-      200: downloadResponseSchema,
+      302: z.undefined(), // Redirect to presigned URL
       401: publicApiErrorSchema,
       404: publicApiErrorSchema,
       500: publicApiErrorSchema,
     },
     summary: "Download artifact",
     description:
-      "Get presigned URLs for downloading artifact files. Defaults to current version.",
+      "Redirect to presigned URL for downloading artifact as tar.gz archive. Defaults to current version.",
   },
 });
 
@@ -305,7 +158,5 @@ export type PublicArtifactsListContract = typeof publicArtifactsListContract;
 export type PublicArtifactByIdContract = typeof publicArtifactByIdContract;
 export type PublicArtifactVersionsContract =
   typeof publicArtifactVersionsContract;
-export type PublicArtifactUploadContract = typeof publicArtifactUploadContract;
-export type PublicArtifactCommitContract = typeof publicArtifactCommitContract;
 export type PublicArtifactDownloadContract =
   typeof publicArtifactDownloadContract;

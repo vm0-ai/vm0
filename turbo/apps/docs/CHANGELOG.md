@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/docs-v0.15.0...docs-v0.16.0) (2026-01-12)
+
+
+### Features
+
+* optimize skills metadata and documentation ([#1114](https://github.com/vm0-ai/vm0/issues/1114)) ([5babe6e](https://github.com/vm0-ai/vm0/commit/5babe6e74feb42b47db5a21457bda030fb6c7f14))
+
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/docs-v0.14.0...docs-v0.15.0) (2026-01-11)
+
+
+### Features
+
+* **docs:** add essential SEO configuration ([#1086](https://github.com/vm0-ai/vm0/issues/1086)) ([d6293a1](https://github.com/vm0-ai/vm0/commit/d6293a1fc8a62b8beb5056ac390c2be3b1d1b436)), closes [#1084](https://github.com/vm0-ai/vm0/issues/1084)
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/docs-v0.13.10...docs-v0.14.0) (2026-01-10)
 
 

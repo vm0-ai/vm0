@@ -5,6 +5,8 @@ import { bootstrap$ } from "./signals/bootstrap.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
+// pass store here is allowed because main is an entrance point
+// eslint-disable-next-line ccstate/no-store-in-params
 async function main(rootEl: HTMLDivElement, store: Store, signal: AbortSignal) {
   await store.set(
     bootstrap$,
