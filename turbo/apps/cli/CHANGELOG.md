@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.1](https://github.com/vm0-ai/vm0/compare/cli-v5.1.0...cli-v5.1.1) (2026-01-12)
+
+
+### Bug Fixes
+
+* limit lint concurrency to prevent OOM ([#1096](https://github.com/vm0-ai/vm0/issues/1096)) ([a3c7dde](https://github.com/vm0-ai/vm0/commit/a3c7dde4f74f50bb2d1a925393f7f430699e3980))
+
 ## [5.1.0](https://github.com/vm0-ai/vm0/compare/cli-v5.0.2...cli-v5.1.0) (2026-01-12)
 
 

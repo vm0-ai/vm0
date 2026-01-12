@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/docs-v0.15.0...docs-v0.16.0) (2026-01-12)
+
+
+### Features
+
+* optimize skills metadata and documentation ([#1114](https://github.com/vm0-ai/vm0/issues/1114)) ([5babe6e](https://github.com/vm0-ai/vm0/commit/5babe6e74feb42b47db5a21457bda030fb6c7f14))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/docs-v0.14.0...docs-v0.15.0) (2026-01-11)
 
 
