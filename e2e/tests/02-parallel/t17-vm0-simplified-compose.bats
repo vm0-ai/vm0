@@ -469,3 +469,59 @@ EOF
     run $CLI_COMMAND compose vm0.yaml
     assert_failure
 }
+
+# ============================================
+# postCreateCommand tests
+# ============================================
+
+@test "vm0 compose accepts postCreateCommand" {
+    echo "# Creating config with postCreateCommand..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    postCreateCommand: "echo hello"
+EOF
+
+    echo "# Running vm0 compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+    assert_output --partial "Compose"
+}
+
+@test "vm0 run executes postCreateCommand before agent" {
+    echo "# Creating config with postCreateCommand that creates a marker file..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    postCreateCommand: "echo 'POST_CREATE_MARKER_12345' > /tmp/post-create-test.txt"
+EOF
+
+    echo "# Running vm0 compose..."
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Initializing artifact..."
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $CLI_COMMAND artifact push
+    assert_success
+
+    echo "# Running agent - mock-claude will read the file created by postCreateCommand..."
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "cat /tmp/post-create-test.txt"
+
+    assert_success
+
+    echo "# Verifying postCreateCommand executed (mock-claude can read the marker file)..."
+    assert_output --partial "POST_CREATE_MARKER_12345"
+}
