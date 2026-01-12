@@ -141,10 +141,24 @@ def _run() -> tuple[int, str]:
     except OSError as e:
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
 
+    # Initialize event sequence counter for lifecycle events
+    # These events are sent before Claude CLI starts, using negative sequence numbers
+    # to ensure they appear before Claude CLI events (which start at 1)
+    lifecycle_sequence = -100
+
     # Execute postCreateCommand if specified (lifecycle hook)
     # This runs after working directory is created but before agent execution
     if POST_CREATE_COMMAND:
         log_info(f"Running postCreateCommand: {POST_CREATE_COMMAND}")
+        # Send lifecycle event to indicate postCreateCommand is starting
+        send_event({
+            "type": "lifecycle",
+            "subtype": "postCreateCommand",
+            "status": "running",
+            "command": POST_CREATE_COMMAND
+        }, lifecycle_sequence)
+        lifecycle_sequence += 1
+
         try:
             result = subprocess.run(
                 ["/bin/bash", "-c", POST_CREATE_COMMAND],
@@ -154,11 +168,33 @@ def _run() -> tuple[int, str]:
             )
             if result.returncode != 0:
                 stderr_output = result.stderr.strip() if result.stderr else "No error output"
+                # Send failure event
+                send_event({
+                    "type": "lifecycle",
+                    "subtype": "postCreateCommand",
+                    "status": "failed",
+                    "exitCode": result.returncode,
+                    "error": stderr_output
+                }, lifecycle_sequence)
                 raise RuntimeError(f"postCreateCommand failed with exit code {result.returncode}: {stderr_output}")
             if result.stdout:
                 log_info(f"postCreateCommand output: {result.stdout.strip()}")
             log_info("postCreateCommand completed successfully")
+            # Send success event
+            send_event({
+                "type": "lifecycle",
+                "subtype": "postCreateCommand",
+                "status": "completed",
+                "output": result.stdout.strip() if result.stdout else None
+            }, lifecycle_sequence)
         except subprocess.SubprocessError as e:
+            # Send failure event for subprocess errors
+            send_event({
+                "type": "lifecycle",
+                "subtype": "postCreateCommand",
+                "status": "failed",
+                "error": str(e)
+            }, lifecycle_sequence)
             raise RuntimeError(f"Failed to execute postCreateCommand: {e}") from e
 
     # Set up Codex configuration if using Codex CLI

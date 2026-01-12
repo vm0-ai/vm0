@@ -108,6 +108,9 @@ export class EventRenderer {
       case "result":
         this.renderResult(event, timestampPrefix, elapsedSuffix);
         break;
+      case "lifecycle":
+        this.renderLifecycle(event, timestampPrefix, elapsedSuffix);
+        break;
     }
   }
 
@@ -275,6 +278,51 @@ export class EventRenderer {
         `  Tokens: ${chalk.dim(
           `input=${formatTokens(inputTokens)} output=${formatTokens(outputTokens)}`,
         )}`,
+      );
+    }
+  }
+
+  private static renderLifecycle(
+    event: ParsedEvent,
+    prefix: string,
+    suffix: string,
+  ): void {
+    const subtype = String(event.data.subtype || "");
+    const status = String(event.data.status || "");
+
+    if (subtype === "postCreateCommand") {
+      if (status === "running") {
+        const command = String(event.data.command || "");
+        console.log(
+          prefix + chalk.cyan("[lifecycle]") + suffix + " Running postCreateCommand",
+        );
+        console.log(`  ${chalk.dim(command)}`);
+      } else if (status === "completed") {
+        console.log(
+          prefix +
+            chalk.green("[lifecycle]") +
+            suffix +
+            " ✓ postCreateCommand completed",
+        );
+        const output = event.data.output as string | undefined;
+        if (output) {
+          console.log(`  ${chalk.dim(output)}`);
+        }
+      } else if (status === "failed") {
+        const error = String(event.data.error || "Unknown error");
+        const exitCode = event.data.exitCode as number | undefined;
+        console.log(
+          prefix +
+            chalk.red("[lifecycle]") +
+            suffix +
+            ` ✗ postCreateCommand failed${exitCode !== undefined ? ` (exit ${exitCode})` : ""}`,
+        );
+        console.log(`  ${chalk.red(error)}`);
+      }
+    } else {
+      // Generic lifecycle event
+      console.log(
+        prefix + chalk.cyan("[lifecycle]") + suffix + ` ${subtype}: ${status}`,
       );
     }
   }

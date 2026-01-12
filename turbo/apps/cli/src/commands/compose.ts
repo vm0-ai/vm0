@@ -166,14 +166,6 @@ export const composeCommand = new Command()
               );
             }
           }
-          if (!agent.working_dir) {
-            agent.working_dir = defaults.workingDir;
-            console.log(
-              chalk.dim(
-                `  Auto-configured working_dir: ${defaults.workingDir}`,
-              ),
-            );
-          }
         }
       }
 

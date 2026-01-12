@@ -7,7 +7,7 @@
  */
 
 export interface ParsedEvent {
-  type: "init" | "text" | "tool_use" | "tool_result" | "result";
+  type: "init" | "text" | "tool_use" | "tool_result" | "result" | "lifecycle";
   timestamp: Date;
   data: Record<string, unknown>;
 }
@@ -63,11 +63,22 @@ interface ResultEvent {
   usage: Record<string, unknown>;
 }
 
+interface LifecycleEvent {
+  type: "lifecycle";
+  subtype: string;
+  status: "running" | "completed" | "failed";
+  command?: string;
+  output?: string;
+  error?: string;
+  exitCode?: number;
+}
+
 type RawEvent =
   | SystemEvent
   | AssistantEvent
   | UserEvent
   | ResultEvent
+  | LifecycleEvent
   | Record<string, unknown>;
 
 export class ClaudeEventParser {
@@ -92,6 +103,9 @@ export class ClaudeEventParser {
 
       case "result":
         return this.parseResultEvent(rawEvent as ResultEvent);
+
+      case "lifecycle":
+        return this.parseLifecycleEvent(rawEvent as LifecycleEvent);
 
       default:
         return null;
@@ -189,6 +203,21 @@ export class ClaudeEventParser {
         numTurns: event.num_turns,
         cost: event.total_cost_usd,
         usage: event.usage,
+      },
+    };
+  }
+
+  private static parseLifecycleEvent(event: LifecycleEvent): ParsedEvent | null {
+    return {
+      type: "lifecycle",
+      timestamp: new Date(),
+      data: {
+        subtype: event.subtype,
+        status: event.status,
+        ...(event.command && { command: event.command }),
+        ...(event.output && { output: event.output }),
+        ...(event.error && { error: event.error }),
+        ...(event.exitCode !== undefined && { exitCode: event.exitCode }),
       },
     };
   }

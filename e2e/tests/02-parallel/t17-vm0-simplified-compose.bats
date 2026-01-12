@@ -19,8 +19,8 @@ teardown() {
 # Provider auto-configuration tests
 # ============================================
 
-@test "vm0 compose with provider auto-config (image and working_dir)" {
-    echo "# Creating config without image or working_dir..."
+@test "vm0 compose with provider auto-config (image)" {
+    echo "# Creating config without image..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -34,14 +34,13 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying image and working_dir were auto-configured..."
+    echo "# Verifying image was auto-configured..."
     assert_output --partial "Auto-configured image"
-    assert_output --partial "Auto-configured working_dir"
     assert_output --partial "Compose created"
 }
 
 @test "vm0 compose with explicit image shows deprecation warning" {
-    echo "# Creating config with explicit image but without working_dir..."
+    echo "# Creating config with explicit image..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -56,32 +55,10 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying deprecation warning and working_dir auto-configured..."
+    echo "# Verifying deprecation warning..."
     assert_output --partial "deprecated"
     refute_output --partial "Auto-configured image"
-    assert_output --partial "Auto-configured working_dir"
     assert_output --partial "Compose"
-}
-
-@test "vm0 compose with explicit working_dir skips working_dir auto-config" {
-    echo "# Creating config with explicit image and working_dir..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with explicit config"
-    provider: claude-code
-    image: vm0/claude-code-github:dev
-    working_dir: /custom/path
-EOF
-
-    echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Verifying no auto-configuration..."
-    refute_output --partial "Auto-configured"
 }
 
 @test "vm0 compose with apps selects github image variant" {
