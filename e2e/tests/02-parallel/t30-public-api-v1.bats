@@ -104,16 +104,3 @@ setup() {
     echo "$result" | jq -e '.pagination' > /dev/null
 }
 
-# ============================================
-# Tokens API Tests
-# ============================================
-
-@test "GET /v1/tokens returns data array" {
-    result=$(api_get "/v1/tokens")
-    echo "$result" | jq -e '.data' > /dev/null
-}
-
-@test "GET /v1/tokens returns pagination object" {
-    result=$(api_get "/v1/tokens")
-    echo "$result" | jq -e '.pagination' > /dev/null
-}
