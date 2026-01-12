@@ -48,7 +48,7 @@ export default function Navbar() {
                     ? "/assets/vm0-logo-dark.svg"
                     : "/assets/vm0-logo.svg"
                 }
-                alt="VM0 - Modern Runtime for Agent Development"
+                alt="VM0 - Build agents and automate workflows with natural language"
                 width={120}
                 height={30}
               />

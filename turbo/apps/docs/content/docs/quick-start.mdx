@@ -53,11 +53,23 @@ You can also use other LLM providers instead of Claude, like Moonshot (Kimi), Mi
 
 ## Run Your Agent
 
-Start the agent with a prompt:
+Before running your agent, check what it does by reviewing the instructions:
 
 ```bash
-vm0 cook "let's start working."
+cat AGENTS.md
 ```
+
+By default, your agent is a **HackerNews AI content curator** that reads top articles, extracts AI-related content, and creates summaries.
+
+Now run your agent with a prompt that matches this workflow:
+
+```bash
+vm0 cook "Summarize today's AI news from HackerNews"
+```
+
+<Callout type="tip">
+  **Understanding the workflow:** `AGENTS.md` defines what your agent can do (its capabilities and workflow).
+</Callout>
 
 This command displays the agent's execution logs in real-time. When the agent finishes, any files it created or modified will be downloaded to the `artifact` directory in your project.
 
