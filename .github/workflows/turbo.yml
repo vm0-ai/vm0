@@ -378,36 +378,36 @@ jobs:
           fi
           echo "✅ Serial tests passed"
 
+          # Step 2: Run parallel tests with -j 10
+          echo ""
+          echo "=== Running Parallel E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
+
+          if [ $PARALLEL_EXIT -ne 0 ]; then
+            echo ""
+            echo "❌ Parallel tests failed - skipping runner tests"
+            exit 1
+          fi
+          echo "✅ Parallel tests passed"
+
           # Runner is started in deploy-runner job with official token
           # Set RUNNER_GROUP for runner tests
           export RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
 
-          # Step 2: Run runner tests
+          # Step 3: Run runner tests
           echo ""
           echo "=== Running Runner E2E Tests (8 parallel) ==="
           RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
-
-          if [ $RUNNER_EXIT -ne 0 ]; then
-            echo ""
-            echo "❌ Runner tests failed - skipping parallel tests"
-            exit 1
-          fi
-          echo "✅ Runner tests passed"
-
-          # Step 4: Run parallel tests with -j 10
-          echo ""
-          echo "=== Running Parallel E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
 
           # Report results and exit with failure if any suite failed
           echo ""
           echo "=== Test Results ==="
           echo "Serial tests: PASSED"
-          echo "Runner tests: PASSED"
-          echo "Parallel tests: $([ $PARALLEL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
+          echo "Parallel tests: PASSED"
+          echo "Runner tests: $([ $RUNNER_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
 
-          # Exit with failure if parallel tests failed
-          if [ $PARALLEL_EXIT -ne 0 ]; then
+          # Exit with failure if runner tests failed
+          if [ $RUNNER_EXIT -ne 0 ]; then
             exit 1
           fi
         env:
