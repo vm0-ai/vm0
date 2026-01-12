@@ -284,7 +284,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection]
+    needs: [change-detection, deploy-web]
     # Only deploy if it's a PR and platform changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
     permissions:

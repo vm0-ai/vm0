@@ -137,7 +137,7 @@ jobs:
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
-    needs: release-please
+    needs: [release-please, deploy-web-production]
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
