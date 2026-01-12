@@ -53,6 +53,12 @@ export default [
     },
   },
   {
-    ignores: ["dist/**", "vite.config.ts", "vitest.config.ts"],
+    ignores: [
+      "dist/**",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "custom-eslint/**",
+      "src/mocks/**",
+    ],
   },
 ];
