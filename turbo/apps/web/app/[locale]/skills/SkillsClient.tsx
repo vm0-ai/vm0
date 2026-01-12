@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "./Particles";
+import styles from "./skills.module.css";
 
 interface SkillMetadata {
   name: string;
@@ -133,7 +134,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                     placeholder={t("search.placeholder")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="skills-search-input"
+                    className={styles.searchInput}
                     style={{
                       width: "100%",
                       padding: "10px 16px",
@@ -174,7 +175,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="skills-category-select"
+                    className={styles.categorySelect}
                     style={{
                       width: "100%",
                       padding: "10px 40px 10px 16px",
@@ -265,7 +266,7 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
               {filteredSkills.map((skill) => (
                 <div
                   key={skill.name}
-                  className="skill-card"
+                  className={styles.skillCard}
                   style={{
                     background: "var(--card-bg)",
                     border: "1px solid var(--border-light)",
@@ -459,27 +460,6 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
       </section>
 
       <Footer />
-
-      {/* eslint-disable-next-line react/no-unknown-property */}
-      <style jsx>{`
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-        .skill-card:hover {
-          border-color: var(--primary);
-          transform: translateY(-2px);
-        }
-        .skills-search-input:focus {
-          outline: none;
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-        .skills-category-select:focus {
-          outline: none;
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-      `}</style>
     </>
   );
 }

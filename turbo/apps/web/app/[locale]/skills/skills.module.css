@@ -1,0 +1,20 @@
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.skillCard:hover {
+  border-color: var(--primary) !important;
+  transform: translateY(-2px);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.categorySelect:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
