@@ -99,6 +99,13 @@ const agentDefinitionSchema = z.object({
   working_dir: z.string().optional(), // Optional when provider supports auto-config
   environment: z.record(z.string(), z.string()).optional(),
   /**
+   * Command to execute after working directory creation, before CLI agent starts.
+   * Follows Dev Container lifecycle naming convention.
+   * Executes via /bin/bash -c, supports background processes via &.
+   * If command fails (non-zero exit), the entire run fails.
+   */
+  postCreateCommand: z.string().optional(),
+  /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */
