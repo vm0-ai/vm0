@@ -38,14 +38,14 @@ export function NavLink({ item, isActive }: NavLinkProps) {
       onClick={() => {
         navigate(item.path);
       }}
-      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+      className={`flex w-full items-center gap-2 h-8 p-2 rounded-lg text-sm leading-5 transition-colors ${
         isActive
           ? "bg-sidebar-active text-sidebar-primary font-medium"
           : "text-sidebar-foreground hover:bg-sidebar-accent"
       }`}
     >
-      {IconComponent && <IconComponent className="h-4 w-4" />}
-      <span>{item.label}</span>
+      {IconComponent && <IconComponent className="size-4 shrink-0" />}
+      <span className="truncate">{item.label}</span>
     </button>
   );
 }
