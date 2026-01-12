@@ -164,3 +164,4 @@ turbo/scripts/deploy-runner/proxy-ca/
 
 # SSH private keys and certificates (should never be committed)
 *.pem
+turbo/apps/storybook/storybook-static/
