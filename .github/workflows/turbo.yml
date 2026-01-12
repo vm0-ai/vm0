@@ -246,7 +246,6 @@ jobs:
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             USE_MOCK_CLAUDE=true
-            DEBUG=*
             CRON_SECRET=${{ secrets.CRON_SECRET }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
