@@ -1,4 +1,4 @@
-import { useGet } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
 import { MoreVertical } from "lucide-react";
 import {
   NAVIGATION_CONFIG,
@@ -6,7 +6,7 @@ import {
   GET_STARTED_ITEM,
   activeNavItem$,
 } from "../../signals/layout/navigation.ts";
-import { clerkCache$, userCache$ } from "../../signals/auth.ts";
+import { clerk$, user$ } from "../../signals/auth.ts";
 import { NavLink } from "./nav-link.tsx";
 
 export function Sidebar() {
@@ -95,12 +95,15 @@ export function Sidebar() {
 }
 
 function UserProfile() {
-  const clerk = useGet(clerkCache$);
-  const user = useGet(userCache$);
+  const clerkLoadable = useLoadable(clerk$);
+  const userLoadable = useLoadable(user$);
 
-  if (!user) {
+  if (userLoadable.state !== "hasData" || !userLoadable.data) {
     return null;
   }
+
+  const user = userLoadable.data;
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
 
   const handleClick = () => {
     void clerk?.openUserProfile();
