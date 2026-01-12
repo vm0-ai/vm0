@@ -167,3 +167,4 @@ turbo/scripts/deploy-runner/proxy-ca/
 
 # SSH private keys and certificates (should never be committed)
 *.pem
+.mozilla
