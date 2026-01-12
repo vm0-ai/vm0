@@ -1,12 +1,13 @@
 import { useSet } from "ccstate-react";
 import {
   Bot,
-  Key,
-  Package,
-  ScrollText,
+  CircleDot,
+  FileBarChart,
+  List,
   KeyRound,
   Receipt,
-  BookOpen,
+  HelpCircle,
+  Rocket,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "../../types/navigation.ts";
@@ -14,12 +15,13 @@ import { navigateInReact$ } from "../../signals/route.ts";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Bot,
-  Key,
-  Package,
-  ScrollText,
+  CircleDot,
+  FileBarChart,
+  List,
   KeyRound,
   Receipt,
-  BookOpen,
+  HelpCircle,
+  Rocket,
 };
 
 interface NavLinkProps {

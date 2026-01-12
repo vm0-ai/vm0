@@ -2,24 +2,32 @@ import { computed } from "ccstate";
 import type { NavGroup, NavItem } from "../../types/navigation.ts";
 import { pathname$ } from "../route.ts";
 
+// Standalone "Get started" item (shown at the top, outside groups)
+export const GET_STARTED_ITEM: NavItem = {
+  id: "get-started",
+  label: "Get started",
+  icon: "Rocket",
+  path: "/",
+};
+
 // Static navigation configuration - no signal needed (YAGNI)
 export const NAVIGATION_CONFIG: NavGroup[] = [
   {
     label: "Your agents",
     items: [
       { id: "agents", label: "Agents", icon: "Bot", path: "/" },
-      { id: "secrets", label: "Secrets", icon: "Key", path: "/" },
+      { id: "secrets", label: "Secrets", icon: "CircleDot", path: "/" },
     ],
   },
   {
     label: "Content",
     items: [
-      { id: "artifacts", label: "Artifacts", icon: "Package", path: "/" },
+      { id: "artifacts", label: "Artificats", icon: "FileBarChart", path: "/" },
     ],
   },
   {
     label: "Observation",
-    items: [{ id: "logs", label: "Logs", icon: "ScrollText", path: "/logs" }],
+    items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
   },
   {
     label: "Developers",
@@ -30,7 +38,7 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 // Footer navigation items (non-grouped)
 export const FOOTER_NAV_ITEMS: NavItem[] = [
   { id: "bill", label: "Bill", icon: "Receipt", path: "/" },
-  { id: "docs", label: "Documentation", icon: "BookOpen", path: "/" },
+  { id: "docs", label: "Documentation", icon: "HelpCircle", path: "/" },
 ];
 
 // Derived signal: active navigation item based on current pathname
