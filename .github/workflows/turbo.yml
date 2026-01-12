@@ -292,6 +292,7 @@ jobs:
           deployment-env: platform
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 

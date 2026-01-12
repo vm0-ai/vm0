@@ -1,15 +1,16 @@
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock the environment variables BEFORE any module imports
+// Using vi.hoisted to ensure these run before module evaluation
+const TEST_API_BASE = vi.hoisted(() => "http://localhost:3005");
+vi.hoisted(() => {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_API_URL", "http://localhost:3005");
+});
+
+// Now import modules that depend on env vars
 import { clerk$ } from "../auth";
 import { fetch$ } from "../fetch";
-import { setOrigin } from "../location";
 import { testContext } from "./test-helpers";
 
 // Store mock instance at module level
@@ -58,9 +59,6 @@ vi.mock("@clerk/clerk-js/headless", () => {
   };
 });
 
-// Mock the environment variable
-vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
-
 function getMockClerk(): MockClerkType | null {
   return mockClerkInstance;
 }
@@ -73,11 +71,6 @@ function resetMockAuth(): void {
 }
 
 const context = testContext();
-const TEST_API_BASE = "http://localhost:3005";
-
-beforeAll(() => {
-  setOrigin(TEST_API_BASE);
-});
 
 function getLastRequestHeaders(
   traceFetch: ReturnType<typeof vi.fn>,

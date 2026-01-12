@@ -1,9 +1,34 @@
 import { computed } from "ccstate";
 import { clerk$ } from "./auth.ts";
-import { origin } from "./location.ts";
+
+function getConfiguredApiUrl(): string {
+  const url = import.meta.env.VITE_API_URL as string | undefined;
+  if (!url) {
+    throw new Error("Missing VITE_API_URL environment variable");
+  }
+  return url;
+}
+
+const CONFIGURED_API_URL = getConfiguredApiUrl();
+
+/**
+ * Resolves the API base URL.
+ * If VITE_API_URL is http://localhost:3000, derives the URL from the current browser origin
+ * by replacing "platform" with "www" in the hostname.
+ * Otherwise, uses VITE_API_URL directly.
+ */
+function resolveApiBase(): string {
+  if (CONFIGURED_API_URL === "http://localhost:3000") {
+    const currentOrigin = location.origin;
+    const url = new URL(currentOrigin);
+    url.hostname = url.hostname.replace("platform", "www");
+    return url.origin;
+  }
+  return CONFIGURED_API_URL;
+}
 
 const apiBase$ = computed(() => {
-  return origin();
+  return resolveApiBase();
 });
 
 function mergeHeadersWithAutoIds(
