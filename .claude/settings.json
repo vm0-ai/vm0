@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
     "pr-review-toolkit@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true
+    "code-simplifier@claude-plugins-official": true,
+    "figma@claude-plugins-official": true
   }
 }
