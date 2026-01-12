@@ -2,6 +2,9 @@
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
   "globalEnv": [
+    "MODE",
+    "DEV",
+    "PROD",
     "DATABASE_URL",
     "DEBUG",
     "NODE_ENV",
