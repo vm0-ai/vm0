@@ -35,18 +35,15 @@ export const agentVersionSchema = z.object({
   id: z.string(),
   agent_id: z.string(),
   version_number: z.number(),
-  config: z.unknown(), // Agent YAML configuration
   created_at: timestampSchema,
 });
 
 export type AgentVersion = z.infer<typeof agentVersionSchema>;
 
 /**
- * Agent detail schema (includes config)
+ * Agent detail schema
  */
-export const publicAgentDetailSchema = publicAgentSchema.extend({
-  config: z.unknown().optional(),
-});
+export const publicAgentDetailSchema = publicAgentSchema;
 
 export type PublicAgentDetail = z.infer<typeof publicAgentDetailSchema>;
 
@@ -61,15 +58,6 @@ export const paginatedAgentsSchema =
  */
 export const paginatedAgentVersionsSchema =
   createPaginatedResponseSchema(agentVersionSchema);
-
-/**
- * Update agent request schema
- */
-export const updateAgentRequestSchema = z.object({
-  config: z.unknown(), // New agent configuration (creates new version)
-});
-
-export type UpdateAgentRequest = z.infer<typeof updateAgentRequestSchema>;
 
 /**
  * Agent list query parameters
@@ -100,7 +88,7 @@ export const publicAgentsListContract = c.router({
 });
 
 /**
- * Agent by ID contract - GET/PUT /v1/agents/:id
+ * Agent by ID contract - GET /v1/agents/:id
  */
 export const publicAgentByIdContract = c.router({
   get: {
@@ -117,24 +105,6 @@ export const publicAgentByIdContract = c.router({
     },
     summary: "Get agent",
     description: "Get agent details by ID",
-  },
-  update: {
-    method: "PUT",
-    path: "/v1/agents/:id",
-    pathParams: z.object({
-      id: z.string().min(1, "Agent ID is required"),
-    }),
-    body: updateAgentRequestSchema,
-    responses: {
-      200: publicAgentDetailSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Update agent",
-    description:
-      "Update agent configuration. Creates a new version if config changes.",
   },
 });
 

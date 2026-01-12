@@ -1,4 +1,4 @@
 {
   "title": "API Reference",
-  "pages": ["index", "agents", "artifacts", "runs", "tokens", "volumes"]
+  "pages": ["index", "agents", "artifacts", "runs", "volumes"]
 }

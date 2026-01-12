@@ -22,7 +22,6 @@ export interface PreparedContext {
   agentCompose: unknown;
   cliAgentType: string;
   workingDir: string;
-  postCreateCommand: string | null;
 
   // Storage (prepared once, used by both executors)
   storageManifest: StorageManifest | null;

@@ -123,7 +123,6 @@ const router = tsr.router(publicAgentVersionsContract, {
           id: version.id,
           agent_id: agent.id,
           version_number: versionNumberMap.get(version.id) ?? 1,
-          config: version.content,
           created_at: version.createdAt.toISOString(),
         })),
         pagination: {

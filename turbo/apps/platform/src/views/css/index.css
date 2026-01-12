@@ -1,16 +1,27 @@
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@theme {
+  --color-sidebar: #f9f4ef;
+  --color-sidebar-foreground: #231f1b;
+  --color-sidebar-border: #eed5cb;
+  --color-sidebar-active: #fde7df;
+  --color-sidebar-primary: #de3f00;
+  --color-sidebar-accent: #f5ebe4;
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-    Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+      Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }

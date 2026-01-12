@@ -89,7 +89,8 @@ Starts a new agent execution. Returns immediately with run details; the agent ex
 | `variables` | object | No | Environment variables |
 | `secrets` | object | No | Secret environment variables |
 | `volumes` | object | No | Volume mounts (name -> version) |
-| `artifacts` | object | No | Artifact mounts (name -> version) |
+| `artifact_name` | string | No | Artifact name to mount |
+| `artifact_version` | string | No | Artifact version (defaults to latest) |
 
 *One of `agent`, `agent_id`, `session_id`, or `checkpoint_id` is required.
 
@@ -103,7 +104,7 @@ curl https://api.vm0.ai/v1/runs \
     "agent": "my-agent",
     "prompt": "Research the latest AI trends and create a summary report",
     "variables": {
-      "OUTPUT_FORMAT": "markdown"
+      "SLACK_CHANNEL_ID": "C0123456789"
     }
   }'
 ```
@@ -117,11 +118,12 @@ curl https://api.vm0.ai/v1/runs \
   "agent_name": "my-agent",
   "status": "pending",
   "prompt": "Research the latest AI trends and create a summary report",
-  "output": null,
   "error": null,
   "execution_time_ms": null,
   "checkpoint_id": null,
   "session_id": "sess_abc123",
+  "artifact_name": null,
+  "artifact_version": null,
   "created_at": "2024-01-15T10:00:00Z",
   "started_at": null,
   "completed_at": null
@@ -136,7 +138,7 @@ curl https://api.vm0.ai/v1/runs \
 GET /v1/runs/:id
 ```
 
-Retrieves run details including output and execution metrics.
+Retrieves run details including execution metrics.
 
 ### Path Parameters
 
@@ -160,14 +162,12 @@ curl https://api.vm0.ai/v1/runs/run_abc123 \
   "agent_name": "my-agent",
   "status": "completed",
   "prompt": "Research AI trends",
-  "output": "# AI Trends Report\n\n...",
   "error": null,
   "execution_time_ms": 900000,
   "checkpoint_id": "chk_xyz789",
   "session_id": "sess_abc123",
-  "artifacts": {
-    "output": "v1_abc123"
-  },
+  "artifact_name": "research-output",
+  "artifact_version": "v1_abc123",
   "volumes": {},
   "created_at": "2024-01-15T10:00:00Z",
   "started_at": "2024-01-15T10:00:05Z",
@@ -375,12 +375,12 @@ curl https://api.vm0.ai/v1/runs/run_abc123/metrics \
 | `agent_name` | string | Agent name |
 | `status` | string | Current status |
 | `prompt` | string | Task prompt |
-| `output` | string | Agent output (when completed) |
 | `error` | string | Error message (when failed) |
 | `execution_time_ms` | integer | Total execution time |
 | `checkpoint_id` | string | Checkpoint for resuming |
 | `session_id` | string | Session identifier |
-| `artifacts` | object | Output artifact versions |
+| `artifact_name` | string | Output artifact name |
+| `artifact_version` | string | Output artifact version |
 | `volumes` | object | Input volume versions |
 | `created_at` | string | ISO 8601 creation timestamp |
 | `started_at` | string | ISO 8601 start timestamp |

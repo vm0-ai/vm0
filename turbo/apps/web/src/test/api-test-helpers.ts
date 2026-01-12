@@ -52,6 +52,7 @@ export function createDefaultComposeConfig(
       [agentName]: {
         image: "vm0/claude-code:dev",
         provider: "claude-code",
+        working_dir: "/home/user/workspace",
         ...overrides,
       },
     },

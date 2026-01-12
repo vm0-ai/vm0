@@ -1,9 +1,9 @@
 ---
 title: Agents
-description: Agent management endpoints
+description: Agent listing and retrieval endpoints
 ---
 
-Create, update, and manage agent configurations.
+List and retrieve agent information.
 
 ## List Agents
 
@@ -57,77 +57,13 @@ curl "https://api.vm0.ai/v1/agents?name=my-agent" \
 
 ---
 
-## Create Agent
-
-```
-POST /v1/agents
-```
-
-Creates a new agent with the specified configuration.
-
-### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Agent name (lowercase alphanumeric with hyphens) |
-| `config` | object | Yes | Agent configuration (vm0.yaml content) |
-
-### Name Requirements
-
-- Lowercase letters, numbers, and hyphens only
-- Cannot start or end with a hyphen
-- 1-100 characters
-
-### Request
-
-```bash
-curl https://api.vm0.ai/v1/agents \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "research-agent",
-    "config": {
-      "version": "1.0",
-      "agents": {
-        "research-agent": {
-          "provider": "claude-code",
-          "instructions": "AGENTS.md"
-        }
-      }
-    }
-  }'
-```
-
-### Response
-
-```json
-{
-  "id": "ag_def456",
-  "name": "research-agent",
-  "current_version_id": "v1_abc123",
-  "config": {
-    "version": "1.0",
-    "agents": {
-      "research-agent": {
-        "provider": "claude-code",
-        "instructions": "AGENTS.md"
-      }
-    }
-  },
-  "created_at": "2024-01-15T00:00:00Z",
-  "updated_at": "2024-01-15T00:00:00Z"
-}
-```
-
----
-
 ## Get Agent
 
 ```
 GET /v1/agents/:id
 ```
 
-Retrieves an agent and its current configuration.
+Retrieves an agent's details.
 
 ### Path Parameters
 
@@ -149,101 +85,10 @@ curl https://api.vm0.ai/v1/agents/ag_abc123 \
   "id": "ag_abc123",
   "name": "my-agent",
   "current_version_id": "v1_xyz789",
-  "config": {
-    "version": "1.0",
-    "agents": {
-      "my-agent": {
-        "provider": "claude-code",
-        "instructions": "AGENTS.md"
-      }
-    }
-  },
   "created_at": "2024-01-15T00:00:00Z",
   "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
-
----
-
-## Update Agent
-
-```
-PUT /v1/agents/:id
-```
-
-Updates an agent's configuration. Creates a new version if the config changes.
-
-### Path Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Agent ID |
-
-### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `config` | object | Yes | New agent configuration |
-
-### Request
-
-```bash
-curl -X PUT https://api.vm0.ai/v1/agents/ag_abc123 \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config": {
-      "version": "1.0",
-      "agents": {
-        "my-agent": {
-          "provider": "claude-code",
-          "instructions": "AGENTS.md",
-          "skills": ["https://github.com/vm0-ai/vm0-skills/tree/main/github"]
-        }
-      }
-    }
-  }'
-```
-
-### Response
-
-```json
-{
-  "id": "ag_abc123",
-  "name": "my-agent",
-  "current_version_id": "v1_new456",
-  "config": { ... },
-  "created_at": "2024-01-15T00:00:00Z",
-  "updated_at": "2024-01-15T12:00:00Z"
-}
-```
-
----
-
-## Delete Agent
-
-```
-DELETE /v1/agents/:id
-```
-
-Deletes an agent and all its versions.
-
-### Path Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Agent ID |
-
-### Request
-
-```bash
-curl -X DELETE https://api.vm0.ai/v1/agents/ag_abc123 \
-  -H "Authorization: Bearer vm0_live_xxx"
-```
-
-### Response
-
-Returns `204 No Content` on success.
 
 ---
 
@@ -284,14 +129,12 @@ curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
       "id": "v1_xyz789",
       "agent_id": "ag_abc123",
       "version_number": 2,
-      "config": { ... },
       "created_at": "2024-01-15T10:30:00Z"
     },
     {
       "id": "v1_abc123",
       "agent_id": "ag_abc123",
       "version_number": 1,
-      "config": { ... },
       "created_at": "2024-01-15T00:00:00Z"
     }
   ],
@@ -311,7 +154,6 @@ curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
 | `id` | string | Unique agent identifier (prefix: `ag_`) |
 | `name` | string | Agent name |
 | `current_version_id` | string | ID of the current version |
-| `config` | object | Agent configuration |
 | `created_at` | string | ISO 8601 creation timestamp |
 | `updated_at` | string | ISO 8601 last update timestamp |
 
@@ -322,5 +164,4 @@ curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
 | `id` | string | Unique version identifier |
 | `agent_id` | string | Parent agent ID |
 | `version_number` | integer | Sequential version number |
-| `config` | object | Configuration for this version |
 | `created_at` | string | ISO 8601 creation timestamp |

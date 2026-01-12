@@ -27,7 +27,6 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      storybook-changed: ${{ steps.detect.outputs.storybook-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,7 +46,6 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
             echo "platform-changed=false" >> $GITHUB_OUTPUT
-            echo "storybook-changed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -59,7 +57,6 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
             echo "platform-changed=true" >> $GITHUB_OUTPUT
-            echo "storybook-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -128,16 +125,6 @@ jobs:
             echo "platform-changed=true" >> $GITHUB_OUTPUT
           fi
 
-          # Check storybook
-          cd /__w/vm0/vm0/turbo/apps/storybook
-          if npx turbo-ignore 2>/dev/null; then
-            echo "No changes detected in storybook"
-            echo "storybook-changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "Changes detected in storybook"
-            echo "storybook-changed=true" >> $GITHUB_OUTPUT
-          fi
-
   lint:
     runs-on: ubuntu-latest
     container:
@@ -197,10 +184,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
     # Deploy if:
-    # - It's a PR and web, CLI, or runner changed (all need web deployment for E2E tests)
+    # - It's a PR and web, CLI, runner, or platform changed (all need web deployment)
     # - It's a workflow_dispatch with run_cli_e2e enabled
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
@@ -246,7 +233,6 @@ jobs:
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             USE_MOCK_CLAUDE=true
-            DEBUG=*
             CRON_SECRET=${{ secrets.CRON_SECRET }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
@@ -284,7 +270,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection]
+    needs: [change-detection, deploy-web]
     # Only deploy if it's a PR and platform changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
     permissions:
@@ -306,34 +292,6 @@ jobs:
           deployment-env: platform
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          meta-branch: ${{ github.head_ref }}
-          meta-pr: ${{ github.event.pull_request.number }}
-
-  # Deploy storybook
-  deploy-storybook:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection]
-    # Only deploy if it's a PR and storybook changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.storybook-changed == 'true'
-    permissions:
-      contents: read
-      pull-requests: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Deploy Storybook to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_STORYBOOK }}
-          environment: preview
-          deployment-env: storybook
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 

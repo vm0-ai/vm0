@@ -1,8 +1,7 @@
 /**
- * Public API v1 - Artifacts Endpoints
+ * Public API v1 - Artifacts Endpoint
  *
  * GET /v1/artifacts - List artifacts
- * POST /v1/artifacts - Create artifact
  */
 import { initServices } from "../../../src/lib/init-services";
 import {
@@ -100,108 +99,8 @@ const router = tsr.router(publicArtifactsListContract, {
       },
     };
   },
-
-  create: async ({ body }) => {
-    initServices();
-
-    const auth = await authenticatePublicApi();
-    if (!isAuthSuccess(auth)) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message: "Invalid API key provided",
-          },
-        },
-      };
-    }
-
-    // Get user's scope
-    const userScope = await getUserScopeByClerkId(auth.userId);
-    if (!userScope) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message:
-              "Please set up your scope first. Login again with: vm0 login",
-          },
-        },
-      };
-    }
-
-    // Check if artifact with same name exists
-    const [existing] = await globalThis.services.db
-      .select()
-      .from(storages)
-      .where(
-        and(
-          eq(storages.userId, auth.userId),
-          eq(storages.name, body.name),
-          eq(storages.type, STORAGE_TYPE),
-        ),
-      )
-      .limit(1);
-
-    if (existing) {
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            type: "conflict_error" as const,
-            code: "resource_already_exists",
-            message: `Artifact '${body.name}' already exists`,
-          },
-        },
-      };
-    }
-
-    // Create new artifact
-    const [artifact] = await globalThis.services.db
-      .insert(storages)
-      .values({
-        userId: auth.userId,
-        name: body.name,
-        type: STORAGE_TYPE,
-        s3Prefix: `${auth.userId}/${STORAGE_TYPE}/${body.name}`,
-        size: 0,
-        fileCount: 0,
-      })
-      .returning();
-
-    if (!artifact) {
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            type: "api_error" as const,
-            code: "internal_error",
-            message: "Failed to create artifact",
-          },
-        },
-      };
-    }
-
-    return {
-      status: 201 as const,
-      body: {
-        id: artifact.id,
-        name: artifact.name,
-        current_version_id: artifact.headVersionId,
-        size: Number(artifact.size),
-        file_count: artifact.fileCount,
-        created_at: artifact.createdAt.toISOString(),
-        updated_at: artifact.updatedAt.toISOString(),
-        current_version: null,
-      },
-    };
-  },
 });
 
 const handler = createPublicApiHandler(publicArtifactsListContract, router);
 
-export { handler as GET, handler as POST };
+export { handler as GET };
