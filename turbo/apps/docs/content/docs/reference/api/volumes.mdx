@@ -1,9 +1,9 @@
 ---
 title: Volumes
-description: Input storage management endpoints
+description: Input storage retrieval endpoints
 ---
 
-Volumes provide input storage for agents. Use volumes to provide data files, configuration, or other resources that agents need during execution.
+Volumes provide input storage for agents. Use these endpoints to list and retrieve data files, configuration, or other resources that agents need during execution.
 
 ## List Volumes
 
@@ -46,46 +46,6 @@ curl https://api.vm0.ai/v1/volumes \
     "has_more": false,
     "next_cursor": null
   }
-}
-```
-
----
-
-## Create Volume
-
-```
-POST /v1/volumes
-```
-
-Creates a new empty volume container.
-
-### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Volume name (lowercase alphanumeric with hyphens) |
-
-### Request
-
-```bash
-curl https://api.vm0.ai/v1/volumes \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "training-data"}'
-```
-
-### Response
-
-```json
-{
-  "id": "vol_def456",
-  "name": "training-data",
-  "current_version_id": null,
-  "size": 0,
-  "file_count": 0,
-  "current_version": null,
-  "created_at": "2024-01-15T00:00:00Z",
-  "updated_at": "2024-01-15T00:00:00Z"
 }
 ```
 
@@ -137,33 +97,6 @@ curl https://api.vm0.ai/v1/volumes/vol_abc123 \
 
 ---
 
-## Delete Volume
-
-```
-DELETE /v1/volumes/:id
-```
-
-Deletes a volume and all its versions.
-
-### Path Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Volume ID |
-
-### Request
-
-```bash
-curl -X DELETE https://api.vm0.ai/v1/volumes/vol_abc123 \
-  -H "Authorization: Bearer vm0_live_xxx"
-```
-
-### Response
-
-Returns `204 No Content` on success.
-
----
-
 ## List Volume Versions
 
 ```
@@ -209,115 +142,13 @@ curl https://api.vm0.ai/v1/volumes/vol_abc123/versions \
 
 ---
 
-## Upload Files
-
-Uploading files to a volume is a three-step process:
-
-1. **Prepare upload** - Get presigned URLs
-2. **Upload files** - Upload directly to storage
-3. **Commit** - Finalize and create a new version
-
-### Step 1: Prepare Upload
-
-```
-POST /v1/volumes/:id/upload
-```
-
-Gets presigned URLs for direct file upload.
-
-#### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `files` | array | Yes | List of files to upload |
-| `files[].path` | string | Yes | File path within the volume |
-| `files[].size` | integer | Yes | File size in bytes |
-| `files[].hash` | string | No | SHA-256 hash of file content |
-| `message` | string | No | Version commit message |
-
-#### Request
-
-```bash
-curl https://api.vm0.ai/v1/volumes/vol_abc123/upload \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "files": [
-      {"path": "data/file1.txt", "size": 1024},
-      {"path": "data/file2.txt", "size": 2048}
-    ],
-    "message": "Initial upload"
-  }'
-```
-
-#### Response
-
-```json
-{
-  "upload_session_id": "sess_upload_abc123",
-  "files": [
-    {
-      "path": "data/file1.txt",
-      "upload_url": "https://storage.example.com/presigned-url-1",
-      "upload_id": "upload_1"
-    },
-    {
-      "path": "data/file2.txt",
-      "upload_url": "https://storage.example.com/presigned-url-2",
-      "upload_id": "upload_2"
-    }
-  ],
-  "expires_at": "2024-01-15T11:00:00Z"
-}
-```
-
-### Step 2: Upload Files
-
-Upload each file to its presigned URL:
-
-```bash
-curl -X PUT "https://storage.example.com/presigned-url-1" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @file1.txt
-```
-
-### Step 3: Commit Upload
-
-```
-POST /v1/volumes/:id/commit
-```
-
-Finalizes the upload and creates a new volume version.
-
-#### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `upload_session_id` | string | Yes | Session ID from prepare step |
-| `message` | string | No | Version commit message |
-
-#### Request
-
-```bash
-curl https://api.vm0.ai/v1/volumes/vol_abc123/commit \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{"upload_session_id": "sess_upload_abc123"}'
-```
-
-#### Response
-
-Returns the new version object.
-
----
-
-## Download Files
+## Download Volume
 
 ```
 GET /v1/volumes/:id/download
 ```
 
-Gets presigned URLs for downloading volume files.
+Returns a 302 redirect to a presigned URL for downloading the volume as a tar.gz archive.
 
 ### Path Parameters
 
@@ -334,29 +165,18 @@ Gets presigned URLs for downloading volume files.
 ### Request
 
 ```bash
-curl "https://api.vm0.ai/v1/volumes/vol_abc123/download" \
-  -H "Authorization: Bearer vm0_live_xxx"
+curl -L "https://api.vm0.ai/v1/volumes/vol_abc123/download" \
+  -H "Authorization: Bearer vm0_live_xxx" \
+  -o volume.tar.gz
 ```
 
 ### Response
 
-```json
-{
-  "version_id": "v1_xyz789",
-  "files": [
-    {
-      "path": "data/file1.txt",
-      "size": 1024,
-      "download_url": "https://storage.example.com/download-url-1"
-    },
-    {
-      "path": "data/file2.txt",
-      "size": 2048,
-      "download_url": "https://storage.example.com/download-url-2"
-    }
-  ],
-  "expires_at": "2024-01-15T11:00:00Z"
-}
+Returns `302 Found` with a `Location` header pointing to the presigned download URL.
+
+```
+HTTP/1.1 302 Found
+Location: https://storage.example.com/presigned-url-for-archive.tar.gz
 ```
 
 ---
