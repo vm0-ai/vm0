@@ -5,6 +5,11 @@ set -e
 
 echo "🚀 Setting up dev container..."
 
+# Get the workspace directory dynamically
+# Script is in .devcontainer/setup.sh, so workspace is parent directory
+WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+echo "📁 Workspace directory: $WORKSPACE_DIR"
+
 # Setup PostgreSQL (handled by postgresql feature)
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true
@@ -16,7 +21,7 @@ sudo update-locale LANG=en_US.UTF-8 2>/dev/null || true
 echo "✓ Locale configured"
 
 # Setup directories - fix ownership for all mounted volumes
-# Note: NSS database is created in /workspaces/vm01/.mozilla (not ~/.pki)
+# Note: NSS database is created in $WORKSPACE_DIR/.mozilla (not ~/.pki)
 # to avoid BTRFS + nodatacow compatibility issues
 sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki
@@ -32,7 +37,7 @@ fi
 
 # Create NSS database in project directory (uses host filesystem, not BTRFS volume)
 # This avoids BTRFS + nodatacow compatibility issues with SQLite
-NSS_DIR="/workspaces/vm01/.mozilla/firefox/mkcert.default"
+NSS_DIR="$WORKSPACE_DIR/.mozilla/firefox/mkcert.default"
 if [ ! -d "$NSS_DIR" ] || [ ! -f "$NSS_DIR/cert9.db" ]; then
   echo "🔧 Creating NSS database for browser certificate trust..."
   mkdir -p "$NSS_DIR"
@@ -44,7 +49,7 @@ if [ ! -d "$NSS_DIR" ] || [ ! -f "$NSS_DIR/cert9.db" ]; then
   rm -f "$PWFILE"
 
   # Create Firefox profiles.ini
-  cat > "/workspaces/vm01/.mozilla/firefox/profiles.ini" << 'EOF'
+  cat > "$WORKSPACE_DIR/.mozilla/firefox/profiles.ini" << 'EOF'
 [General]
 StartWithLastProfile=1
 
@@ -61,12 +66,12 @@ fi
 # Create symlink from ~/.mozilla to project directory for easy access
 if [ ! -L "$HOME/.mozilla" ]; then
   rm -rf "$HOME/.mozilla"
-  ln -s "/workspaces/vm01/.mozilla" "$HOME/.mozilla"
+  ln -s "$WORKSPACE_DIR/.mozilla" "$HOME/.mozilla"
   echo "✓ Linked ~/.mozilla to project directory"
 fi
 
 # Install mkcert CA if certificates exist
-if [ -d "/workspaces/vm01/.certs" ] && [ "$(ls -A /workspaces/vm01/.certs 2>/dev/null)" ]; then
+if [ -d "$WORKSPACE_DIR/.certs" ] && [ "$(ls -A $WORKSPACE_DIR/.certs 2>/dev/null)" ]; then
   echo "🔐 Installing mkcert CA..."
 
   if command -v mkcert &> /dev/null; then
