@@ -139,7 +139,6 @@ export default function RootLayout({
           src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
           data-domain="vm0.ai"
           strategy="afterInteractive"
-          async
         />
         <Script id="plausible-init" strategy="afterInteractive">
           {`
