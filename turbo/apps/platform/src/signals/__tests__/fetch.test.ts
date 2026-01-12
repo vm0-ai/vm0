@@ -7,8 +7,13 @@ import {
   it,
   vi,
 } from "vitest";
+import { clerk$ } from "../auth";
+import { fetch$ } from "../fetch";
+import { setOrigin } from "../location";
+import { testContext } from "./test-helpers";
 
 // Store mock instance at module level
+// eslint-disable-next-line ccstate/no-package-variable
 let mockClerkInstance: MockClerkType | null = null;
 
 interface MockClerkType {
@@ -55,11 +60,6 @@ vi.mock("@clerk/clerk-js/headless", () => {
 
 // Mock the environment variable
 vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
-
-import { clerk$ } from "../auth";
-import { fetch$ } from "../fetch";
-import { setOrigin } from "../location";
-import { testContext } from "./test-helpers";
 
 function getMockClerk(): MockClerkType | null {
   return mockClerkInstance;

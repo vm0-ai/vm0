@@ -12,8 +12,16 @@ export enum Reason {
   Daemon = "daemon",
 }
 
+// we use dynamic set to collect detached promises in vitest environment
+// eslint-disable-next-line ccstate/no-package-variable
 const collectedPromise = new Set<Promise<unknown>>();
+
+// we use dynamic set to collect detached promises in vitest environment
+// eslint-disable-next-line ccstate/no-package-variable
 const promiseReason = new Map<Promise<unknown>, Reason>();
+
+// we use dynamic set to collect detached promises in vitest environment
+// eslint-disable-next-line ccstate/no-package-variable
 const promiseDescription = new Map<Promise<unknown>, string>();
 
 export function detach<T>(
@@ -30,6 +38,8 @@ export function detach<T>(
     silencePromise = (async () => {
       try {
         await promise;
+        // here is an allow case for no-catch-abort because we want to rethrow non-abort errors
+        // eslint-disable-next-line ccstate/no-catch-abort
       } catch (error) {
         throwIfNotAbort(error);
       }
@@ -70,6 +80,8 @@ export async function clearAllDetached() {
         description: promiseDescription.get(promise),
         result,
       });
+      // we only want to collect abort abort errors here
+      // eslint-disable-next-line ccstate/no-catch-abort
     } catch (error) {
       throwIfNotAbort(error);
       settledResult.push({

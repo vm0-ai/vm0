@@ -44,6 +44,8 @@ export default [
             { from: "package", name: "State", package: "ccstate" },
             { from: "package", name: "Computed", package: "ccstate" },
             { from: "package", name: "Command", package: "ccstate" },
+            { from: "file", name: "ConsoleLogger" },
+            { from: "file", name: "TestContext" },
           ],
         },
       ],

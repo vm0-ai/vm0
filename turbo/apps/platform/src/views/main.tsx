@@ -6,6 +6,8 @@ import { Router } from "./router.tsx";
 import "./css/index.css";
 
 export const setupRouter = (
+  // this eslint disable is allowed because setupRouter is an entrance point
+  // eslint-disable-next-line ccstate/no-store-in-params
   store: Store,
   render: (children: React.ReactNode) => void,
 ) => {
