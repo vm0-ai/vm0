@@ -20,6 +20,7 @@ describe("content-hash", () => {
           "test-agent": {
             image: "test-image",
             provider: "claude-code",
+            working_dir: "/workspace",
           },
         },
       };
@@ -37,6 +38,7 @@ describe("content-hash", () => {
           "my-agent": {
             image: "ubuntu",
             provider: "claude-code",
+            working_dir: "/home",
           },
         },
       };
@@ -47,6 +49,7 @@ describe("content-hash", () => {
           "my-agent": {
             image: "ubuntu",
             provider: "claude-code",
+            working_dir: "/home",
           },
         },
       };
@@ -62,6 +65,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
+            working_dir: "/workspace",
             image: "test",
             provider: "claude-code",
           },
@@ -71,8 +75,9 @@ describe("content-hash", () => {
       const content2 = {
         agents: {
           agent1: {
-            provider: "claude-code",
             image: "test",
+            provider: "claude-code",
+            working_dir: "/workspace",
           },
         },
         version: "1.0",
@@ -90,6 +95,7 @@ describe("content-hash", () => {
           agent1: {
             image: "image-a",
             provider: "claude-code",
+            working_dir: "/workspace",
           },
         },
       };
@@ -100,6 +106,7 @@ describe("content-hash", () => {
           agent1: {
             image: "image-b",
             provider: "claude-code",
+            working_dir: "/workspace",
           },
         },
       };
@@ -116,6 +123,7 @@ describe("content-hash", () => {
           agent1: {
             image: "test",
             provider: "claude-code",
+            working_dir: "/workspace",
             environment: {
               FOO: "bar",
               BAZ: "qux",
@@ -132,6 +140,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
+            working_dir: "/workspace",
             provider: "claude-code",
             image: "test",
             environment: {

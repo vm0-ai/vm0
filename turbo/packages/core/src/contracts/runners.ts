@@ -125,7 +125,6 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
   cliAgentType: z.string(),
   experimentalFirewall: experimentalFirewallSchema.optional(),
-  postCreateCommand: z.string().nullable().optional(), // Lifecycle hook
 });
 
 /**
@@ -148,8 +147,6 @@ export const executionContextSchema = z.object({
   cliAgentType: z.string(),
   // Experimental firewall configuration
   experimentalFirewall: experimentalFirewallSchema.optional(),
-  // Lifecycle hook - command to run after working dir creation
-  postCreateCommand: z.string().nullable().optional(),
 });
 
 /**
