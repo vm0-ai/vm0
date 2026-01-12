@@ -1,0 +1,257 @@
+import { z } from "zod";
+import { initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
+
+/**
+ * Schedule trigger type - either cron (recurring) or at (one-time)
+ */
+const scheduleTriggerSchema = z
+  .object({
+    cron: z.string().optional(),
+    at: z.string().optional(),
+    timezone: z.string().default("UTC"),
+  })
+  .refine((data) => (data.cron && !data.at) || (!data.cron && data.at), {
+    message: "Exactly one of 'cron' or 'at' must be specified",
+  });
+
+/**
+ * Schedule run configuration - what to execute
+ */
+const scheduleRunConfigSchema = z.object({
+  agent: z.string().min(1, "Agent reference required"),
+  prompt: z.string().min(1, "Prompt required"),
+  vars: z.record(z.string(), z.string()).optional(),
+  secrets: z.record(z.string(), z.string()).optional(),
+  artifactName: z.string().optional(),
+  artifactVersion: z.string().optional(),
+  volumeVersions: z.record(z.string(), z.string()).optional(),
+});
+
+/**
+ * Single schedule definition in YAML
+ */
+const scheduleDefinitionSchema = z.object({
+  on: scheduleTriggerSchema,
+  run: scheduleRunConfigSchema,
+});
+
+/**
+ * Full schedule.yaml schema
+ */
+export const scheduleYamlSchema = z.object({
+  version: z.literal("1.0"),
+  schedules: z.record(z.string(), scheduleDefinitionSchema),
+});
+
+/**
+ * Deploy schedule request - sent from CLI to API
+ */
+const deployScheduleRequestSchema = z.object({
+  name: z.string().min(1).max(64, "Schedule name max 64 chars"),
+  cronExpression: z.string().optional(),
+  atTime: z.string().optional(),
+  timezone: z.string().default("UTC"),
+  prompt: z.string().min(1, "Prompt required"),
+  vars: z.record(z.string(), z.string()).optional(),
+  secrets: z.record(z.string(), z.string()).optional(),
+  artifactName: z.string().optional(),
+  artifactVersion: z.string().optional(),
+  volumeVersions: z.record(z.string(), z.string()).optional(),
+  // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
+  composeId: z.string().uuid("Invalid compose ID"),
+});
+
+/**
+ * Schedule response - returned from API
+ */
+const scheduleResponseSchema = z.object({
+  id: z.string().uuid(),
+  composeId: z.string().uuid(),
+  composeName: z.string(),
+  scopeSlug: z.string(),
+  name: z.string(),
+  cronExpression: z.string().nullable(),
+  atTime: z.string().nullable(),
+  timezone: z.string(),
+  prompt: z.string(),
+  vars: z.record(z.string(), z.string()).nullable(),
+  // Secrets are never returned in responses
+  hasSecrets: z.boolean(),
+  artifactName: z.string().nullable(),
+  artifactVersion: z.string().nullable(),
+  volumeVersions: z.record(z.string(), z.string()).nullable(),
+  enabled: z.boolean(),
+  nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  lastRunId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+/**
+ * List of schedules response
+ */
+const scheduleListResponseSchema = z.object({
+  schedules: z.array(scheduleResponseSchema),
+});
+
+/**
+ * Deploy result response
+ */
+const deployScheduleResponseSchema = z.object({
+  schedule: scheduleResponseSchema,
+  created: z.boolean(), // true if created, false if updated
+});
+
+/**
+ * Schedules main route contract (/api/agent/schedules)
+ * Handles POST deploy, GET list
+ */
+export const schedulesMainContract = c.router({
+  /**
+   * POST /api/agent/schedules
+   * Deploy (create or update) a schedule
+   */
+  deploy: {
+    method: "POST",
+    path: "/api/agent/schedules",
+    body: deployScheduleRequestSchema,
+    responses: {
+      200: deployScheduleResponseSchema, // Updated
+      201: deployScheduleResponseSchema, // Created
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema, // Schedule limit reached
+    },
+    summary: "Deploy schedule (create or update)",
+  },
+
+  /**
+   * GET /api/agent/schedules
+   * List all schedules for the user
+   */
+  list: {
+    method: "GET",
+    path: "/api/agent/schedules",
+    responses: {
+      200: scheduleListResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "List all schedules",
+  },
+});
+
+/**
+ * Schedules by name route contract (/api/agent/schedules/[name])
+ * Uses name for user-friendly URLs (e.g., vm0 schedule delete daily-report)
+ */
+export const schedulesByNameContract = c.router({
+  /**
+   * GET /api/agent/schedules/:name
+   * Get schedule by name
+   */
+  getByName: {
+    method: "GET",
+    path: "/api/agent/schedules/:name",
+    pathParams: z.object({
+      name: z.string().min(1, "Schedule name required"),
+    }),
+    query: z.object({
+      composeId: z.string().uuid("Compose ID required"),
+    }),
+    responses: {
+      200: scheduleResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get schedule by name",
+  },
+
+  /**
+   * DELETE /api/agent/schedules/:name
+   * Delete schedule by name
+   */
+  delete: {
+    method: "DELETE",
+    path: "/api/agent/schedules/:name",
+    pathParams: z.object({
+      name: z.string().min(1, "Schedule name required"),
+    }),
+    query: z.object({
+      composeId: z.string().uuid("Compose ID required"),
+    }),
+    responses: {
+      204: z.undefined(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete schedule",
+  },
+});
+
+/**
+ * Schedule enable/disable route contract
+ */
+export const schedulesEnableContract = c.router({
+  /**
+   * POST /api/agent/schedules/:name/enable
+   * Enable a disabled schedule
+   */
+  enable: {
+    method: "POST",
+    path: "/api/agent/schedules/:name/enable",
+    pathParams: z.object({
+      name: z.string().min(1, "Schedule name required"),
+    }),
+    body: z.object({
+      composeId: z.string().uuid("Compose ID required"),
+    }),
+    responses: {
+      200: scheduleResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Enable schedule",
+  },
+
+  /**
+   * POST /api/agent/schedules/:name/disable
+   * Disable an enabled schedule
+   */
+  disable: {
+    method: "POST",
+    path: "/api/agent/schedules/:name/disable",
+    pathParams: z.object({
+      name: z.string().min(1, "Schedule name required"),
+    }),
+    body: z.object({
+      composeId: z.string().uuid("Compose ID required"),
+    }),
+    responses: {
+      200: scheduleResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Disable schedule",
+  },
+});
+
+// Type exports
+export type SchedulesMainContract = typeof schedulesMainContract;
+export type SchedulesByNameContract = typeof schedulesByNameContract;
+export type SchedulesEnableContract = typeof schedulesEnableContract;
+
+// Schema exports for reuse
+export {
+  scheduleTriggerSchema,
+  scheduleRunConfigSchema,
+  scheduleDefinitionSchema,
+  deployScheduleRequestSchema,
+  scheduleResponseSchema,
+  scheduleListResponseSchema,
+  deployScheduleResponseSchema,
+};

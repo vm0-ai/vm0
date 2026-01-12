@@ -12,6 +12,7 @@ import { scopeCommand } from "./commands/scope";
 import { agentsCommand } from "./commands/agents";
 import { initCommand } from "./commands/init";
 import { setupGithubCommand } from "./commands/setup-github";
+import { scheduleCommand } from "./commands/schedule";
 
 const program = new Command();
 
@@ -77,6 +78,7 @@ program.addCommand(scopeCommand);
 program.addCommand(agentsCommand);
 program.addCommand(initCommand);
 program.addCommand(setupGithubCommand);
+program.addCommand(scheduleCommand);
 
 export { program };
 

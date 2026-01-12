@@ -20,6 +20,9 @@ export const agentRuns = pgTable("agent_runs", {
     .references(() => agentComposeVersions.id)
     .notNull(),
   resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
+  // References agent_schedules.id if this run was triggered by a schedule
+  // No FK constraint to avoid circular dependency with agent_schedules
+  scheduleId: uuid("schedule_id"),
   status: varchar("status", { length: 20 }).notNull(),
   prompt: text("prompt").notNull(),
   vars: jsonb("vars"),

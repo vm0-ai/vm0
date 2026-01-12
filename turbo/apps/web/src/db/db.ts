@@ -13,6 +13,7 @@ import * as imageSchema from "./schema/image";
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
+import * as agentScheduleSchema from "./schema/agent-schedule";
 
 export const schema = {
   ...userSchema,
@@ -30,4 +31,5 @@ export const schema = {
   ...sandboxTelemetrySchema,
   ...scopeSchema,
   ...runnerSchema,
+  ...agentScheduleSchema,
 };

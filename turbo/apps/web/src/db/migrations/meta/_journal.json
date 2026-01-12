@@ -351,6 +351,13 @@
       "when": 1767400000000,
       "tag": "0049_create_runner_job_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1767500000000,
+      "tag": "0050_add_agent_schedules",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,7 @@
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "archiver": "^7.0.1",
+    "croner": "^9.1.0",
     "dotenv": "^17.2.1",
     "drizzle-orm": "^0.44.5",
     "nanoid": "^5.1.6",

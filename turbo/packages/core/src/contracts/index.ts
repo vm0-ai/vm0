@@ -179,5 +179,22 @@ export {
   type ExperimentalFirewall,
 } from "./runners";
 
+export {
+  schedulesMainContract,
+  schedulesByNameContract,
+  schedulesEnableContract,
+  scheduleYamlSchema,
+  scheduleTriggerSchema,
+  scheduleRunConfigSchema,
+  scheduleDefinitionSchema,
+  deployScheduleRequestSchema,
+  scheduleResponseSchema,
+  scheduleListResponseSchema,
+  deployScheduleResponseSchema,
+  type SchedulesMainContract,
+  type SchedulesByNameContract,
+  type SchedulesEnableContract,
+} from "./schedules";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";
