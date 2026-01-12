@@ -86,17 +86,6 @@ else
   GENERATED_COUNT=$((GENERATED_COUNT + 1))
 fi
 
-# Storybook app
-if [ -f "storybook.vm7.ai.pem" ] && [ -f "storybook.vm7.ai-key.pem" ]; then
-  echo -e "  - storybook.vm7.ai ${YELLOW}(skipped - already exists)${NC}"
-  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-else
-  echo "  - storybook.vm7.ai"
-  mkcert -cert-file storybook.vm7.ai.pem -key-file storybook.vm7.ai-key.pem \
-    "storybook.vm7.ai" "localhost" "127.0.0.1" "::1"
-  GENERATED_COUNT=$((GENERATED_COUNT + 1))
-fi
-
 if [ $GENERATED_COUNT -gt 0 ]; then
   echo -e "${GREEN}✓ Generated ${GENERATED_COUNT} certificate(s) in ${CERTS_DIR}/${NC}"
 else

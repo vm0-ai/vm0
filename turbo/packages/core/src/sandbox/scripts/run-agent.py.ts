@@ -31,7 +31,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     EVENT_ERROR_FLAG, HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
-    CLI_AGENT_TYPE, OPENAI_MODEL, POST_CREATE_COMMAND, validate_config
+    CLI_AGENT_TYPE, OPENAI_MODEL, validate_config
 )
 from log import log_info, log_error, log_warn
 from events import send_event
@@ -140,26 +140,6 @@ def _run() -> tuple[int, str]:
         os.chdir(WORKING_DIR)
     except OSError as e:
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
-
-    # Execute postCreateCommand if specified (lifecycle hook)
-    # This runs after working directory is created but before agent execution
-    if POST_CREATE_COMMAND:
-        log_info(f"Running postCreateCommand: {POST_CREATE_COMMAND}")
-        try:
-            result = subprocess.run(
-                ["/bin/bash", "-c", POST_CREATE_COMMAND],
-                cwd=WORKING_DIR,
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                stderr_output = result.stderr.strip() if result.stderr else "No error output"
-                raise RuntimeError(f"postCreateCommand failed with exit code {result.returncode}: {stderr_output}")
-            if result.stdout:
-                log_info(f"postCreateCommand output: {result.stdout.strip()}")
-            log_info("postCreateCommand completed successfully")
-        except subprocess.SubprocessError as e:
-            raise RuntimeError(f"Failed to execute postCreateCommand: {e}") from e
 
     # Set up Codex configuration if using Codex CLI
     # Claude Code uses ~/.claude by default (no configuration needed)
