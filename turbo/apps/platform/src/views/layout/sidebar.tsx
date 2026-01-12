@@ -1,13 +1,12 @@
 import { useGet } from "ccstate-react";
 import { MoreVertical } from "lucide-react";
-import { Suspense, use } from "react";
 import {
   NAVIGATION_CONFIG,
   FOOTER_NAV_ITEMS,
   GET_STARTED_ITEM,
   activeNavItem$,
 } from "../../signals/layout/navigation.ts";
-import { clerk$, user$ } from "../../signals/auth.ts";
+import { clerkCache$, userCache$ } from "../../signals/auth.ts";
 import { NavLink } from "./nav-link.tsx";
 
 export function Sidebar() {
@@ -90,63 +89,47 @@ export function Sidebar() {
       </div>
 
       {/* User profile section - padding: 8px */}
-      <div className="p-2">
-        <Suspense fallback={<UserProfileSkeleton />}>
-          <UserProfile />
-        </Suspense>
-      </div>
+      <UserProfile />
     </aside>
   );
 }
 
-function UserProfileSkeleton() {
-  return (
-    <div className="flex w-full items-center gap-2 p-2 h-12">
-      <div className="h-8 w-8 rounded-lg bg-sidebar-accent animate-pulse shrink-0" />
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="h-4 w-24 bg-sidebar-accent animate-pulse rounded" />
-        <div className="h-3 w-32 bg-sidebar-accent animate-pulse rounded" />
-      </div>
-    </div>
-  );
-}
-
 function UserProfile() {
-  const clerkPromise = useGet(clerk$);
-  const userPromise = useGet(user$);
-  const clerk = use(clerkPromise);
-  const user = use(userPromise);
+  const clerk = useGet(clerkCache$);
+  const user = useGet(userCache$);
+
+  if (!user) {
+    return null;
+  }
 
   const handleClick = () => {
-    void clerk.openUserProfile();
+    void clerk?.openUserProfile();
   };
 
   return (
-    <button
-      onClick={handleClick}
-      className="flex w-full items-center gap-2 p-2 h-12 rounded-lg hover:bg-sidebar-accent transition-colors"
-    >
-      <div className="h-8 w-8 rounded-lg bg-sidebar-accent overflow-hidden shrink-0">
-        {user?.imageUrl ? (
+    <div className="p-2">
+      <button
+        onClick={handleClick}
+        className="flex w-full items-center gap-2 p-2 h-12 rounded-lg hover:bg-sidebar-accent transition-colors"
+      >
+        <div className="h-8 w-8 rounded-lg bg-sidebar-accent overflow-hidden shrink-0">
           <img
             src={user.imageUrl}
-            alt={user.fullName ?? "User avatar"}
+            alt={user.fullName ?? ""}
             className="h-full w-full object-cover"
           />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-amber-200 to-orange-300" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0 text-left">
-        <div className="text-sm leading-5 text-sidebar-foreground truncate">
-          {user?.fullName ?? "User"}
         </div>
-        <div className="text-xs leading-4 text-sidebar-foreground/70 truncate">
-          {user?.primaryEmailAddress?.emailAddress ?? ""}
+        <div className="flex-1 min-w-0 text-left">
+          <div className="text-sm leading-5 text-sidebar-foreground truncate">
+            {user.fullName}
+          </div>
+          <div className="text-xs leading-4 text-sidebar-foreground/70 truncate">
+            {user.primaryEmailAddress?.emailAddress}
+          </div>
         </div>
-      </div>
-      <MoreVertical className="h-4 w-4 text-sidebar-foreground shrink-0" />
-    </button>
+        <MoreVertical className="h-4 w-4 text-sidebar-foreground shrink-0" />
+      </button>
+    </div>
   );
 }
 

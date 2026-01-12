@@ -4,6 +4,16 @@ import { command, computed, state } from "ccstate";
 const reload$ = state(0);
 
 /**
+ * Cached Clerk instance (synchronous access after initialization)
+ */
+export const clerkCache$ = state<Clerk | null>(null);
+
+/**
+ * Cached user data (synchronous access after initialization)
+ */
+export const userCache$ = state<Clerk["user"] | null>(null);
+
+/**
  * Clerk instance signal that initializes the Clerk SDK with the publishable key.
  * The VITE_CLERK_PUBLISHABLE_KEY environment variable must be set at build time
  * via .env.production.local file for production deployments.
@@ -25,15 +35,20 @@ export const clerk$ = computed(async () => {
 /**
  * Command to setup Clerk authentication listeners.
  * This command initializes the Clerk instance and sets up a listener
- * for authentication state changes.
+ * for authentication state changes. Also updates the cache signals.
  */
 export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
+    // Update cache signals
+    set(clerkCache$, clerk);
+    set(userCache$, clerk.user ?? null);
+
     const unsubscribe = clerk.addListener(() => {
       set(reload$, (x) => x + 1);
+      set(userCache$, clerk.user ?? null);
     });
     signal.addEventListener("abort", unsubscribe);
   },
