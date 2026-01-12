@@ -5,7 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "dev:tunnel": "bash scripts/dev-with-tunnel.sh",
-    "lint": "turbo run lint",
+    "lint": "turbo run lint --concurrency=2",
     "format": "prettier --write --ignore-unknown .",
     "check-types": "turbo run check-types",
     "test": "vitest --run",
