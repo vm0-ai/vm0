@@ -1,23 +1,14 @@
 import { ReactNode } from "react";
-import { IntlProvider } from "react-intl";
 import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
 import type { Metadata } from "next";
+import { IntlProviderWrapper } from "../components/IntlProviderWrapper";
 
 // Static imports for all message files to ensure proper bundling
 import enMessages from "../../messages/en.json";
 import deMessages from "../../messages/de.json";
 import jaMessages from "../../messages/ja.json";
 import esMessages from "../../messages/es.json";
-
-// Type workaround for React 19 compatibility with react-intl
-// react-intl has React 18 types but works fine with React 19 runtime
-const IntlProviderCompat = IntlProvider as unknown as React.ComponentType<{
-  locale: string;
-  messages: Record<string, string>;
-  defaultLocale?: string;
-  children: ReactNode;
-}>;
 
 // Static message map for reliable bundling
 const messagesByLocale: Record<Locale, Record<string, string>> = {
@@ -78,8 +69,8 @@ export default async function LocaleLayout(props: Props) {
   const messages = messagesByLocale[locale as Locale];
 
   return (
-    <IntlProviderCompat locale={locale} messages={messages} defaultLocale="en">
+    <IntlProviderWrapper locale={locale} messages={messages}>
       {props.children}
-    </IntlProviderCompat>
+    </IntlProviderWrapper>
   );
 }
