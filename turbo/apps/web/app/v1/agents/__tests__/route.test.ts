@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listAgents } from "../route";
-import { GET as getAgent, PUT as updateAgent } from "../[id]/route";
+import { GET as getAgent } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -223,7 +223,6 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBe(testAgentId);
       expect(data.name).toBe("test-agent-v1");
-      expect(data.config).toBeDefined();
     });
 
     it("should return 404 for non-existent agent", async () => {
@@ -238,57 +237,6 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(404);
       expect(data.error.type).toBe("not_found_error");
       expect(data.error.code).toBe("resource_not_found");
-    });
-  });
-
-  describe("PUT /v1/agents/:id - Update Agent", () => {
-    it("should update agent config and create new version", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/v1/agents/${testAgentId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            config: {
-              version: "1.1",
-              agents: {
-                "test-agent-v1": {
-                  image: "vm0/claude-code:dev",
-                  provider: "claude-code",
-                  description: "Updated description",
-                },
-              },
-            },
-          }),
-        },
-      );
-
-      const response = await updateAgent(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.id).toBe(testAgentId);
-      expect(data.config.version).toBe("1.1");
-    });
-
-    it("should return 404 for non-existent agent", async () => {
-      const fakeId = randomUUID();
-      const request = createTestRequest(
-        `http://localhost:3000/v1/agents/${fakeId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            config: { version: "1.0", agents: {} },
-          }),
-        },
-      );
-
-      const response = await updateAgent(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error.type).toBe("not_found_error");
     });
   });
 
@@ -311,7 +259,6 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(version.id).toBeDefined();
       expect(version.agent_id).toBe(testAgentId);
       expect(version.version_number).toBeDefined();
-      expect(version.config).toBeDefined();
       expect(version.created_at).toBeDefined();
     });
 
