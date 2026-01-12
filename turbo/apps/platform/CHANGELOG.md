@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/platform-v0.7.5...platform-v0.8.0) (2026-01-12)
+
+
+### Features
+
+* **platform:** implement dashboard layout system with sidebar and navbar ([#1097](https://github.com/vm0-ai/vm0/issues/1097)) ([b0b8061](https://github.com/vm0-ai/vm0/commit/b0b806158e1f040e4f45f658512651764ad74c2a))
+* **platform:** require authentication for home page ([#1112](https://github.com/vm0-ai/vm0/issues/1112)) ([8d3b669](https://github.com/vm0-ai/vm0/commit/8d3b6699d8680a88a230da6f43560baffbb0d5b6))
+
+
+### Bug Fixes
+
+* **platform:** reduce eslint warnings from 42 to 21 ([#1110](https://github.com/vm0-ai/vm0/issues/1110)) ([dd48461](https://github.com/vm0-ai/vm0/commit/dd48461b8250a419d84fc53e0427f501cbef92a4))
+
 ## [0.7.5](https://github.com/vm0-ai/vm0/compare/platform-v0.7.4...platform-v0.7.5) (2026-01-12)
 
 

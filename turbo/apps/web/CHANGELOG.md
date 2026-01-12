@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.4.0](https://github.com/vm0-ai/vm0/compare/web-v9.3.0...web-v9.4.0) (2026-01-12)
+
+
+### Features
+
+* optimize skills metadata and documentation ([#1114](https://github.com/vm0-ai/vm0/issues/1114)) ([5babe6e](https://github.com/vm0-ai/vm0/commit/5babe6e74feb42b47db5a21457bda030fb6c7f14))
+
+
+### Performance Improvements
+
+* **web:** skip eslint during vercel build ([#1111](https://github.com/vm0-ai/vm0/issues/1111)) ([e2d3619](https://github.com/vm0-ai/vm0/commit/e2d36194345afda06588cdef6bd773573f30b02b))
+
 ## [9.3.0](https://github.com/vm0-ai/vm0/compare/web-v9.2.1...web-v9.3.0) (2026-01-12)
 
 

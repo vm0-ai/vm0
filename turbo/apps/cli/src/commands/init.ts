@@ -132,5 +132,7 @@ export const initCommand = new Command()
     );
     console.log(`  2. Set the environment variable (or add to .env file):`);
     console.log(chalk.dim(`     export CLAUDE_CODE_OAUTH_TOKEN=<your-token>`));
-    console.log(`  3. Run your agent: ${chalk.cyan('vm0 cook "your prompt"')}`);
+    console.log(
+      `  3. Run your agent: ${chalk.cyan(`vm0 cook "let's start working."`)}`,
+    );
   });

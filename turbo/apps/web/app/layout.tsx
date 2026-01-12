@@ -30,7 +30,7 @@ const firaMono = Fira_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://vm0.ai"),
   title: {
-    default: "VM0 - The Modern Runtime for Agent-Native Development",
+    default: "VM0 - Build agents and automate workflows with natural language",
     template: "%s | VM0",
   },
   description:
@@ -72,7 +72,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://vm0.ai",
-    title: "VM0 - The Modern Runtime for Agent-Native Development",
+    title: "VM0 - Build agents and automate workflows with natural language",
     description:
       "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
     siteName: "VM0",
@@ -81,13 +81,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "VM0 - The Modern Runtime for Agent-Native Development",
+        alt: "VM0 - Build agents and automate workflows with natural language",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "VM0 - The Modern Runtime for Agent-Native Development",
+    title: "VM0 - Build agents and automate workflows with natural language",
     description:
       "Infrastructure for AI agents, not workflows. Build and iterate on modern agents with VM0's built-in sandbox.",
     images: ["/og-image.png"],
@@ -162,7 +162,7 @@ export default function RootLayout({
               url: "https://vm0.ai",
               logo: "https://vm0.ai/assets/vm0-logo.svg",
               description:
-                "The modern runtime for agent-native development. Infrastructure for AI agents, not workflows.",
+                "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
               email: "contact@vm0.ai",
               foundingDate: "2025",
               sameAs: [
@@ -187,7 +187,8 @@ export default function RootLayout({
               "@type": "WebSite",
               name: "VM0",
               url: "https://vm0.ai",
-              description: "The modern runtime for agent-native development",
+              description:
+                "Build agents and automate workflows with natural language",
             }),
           }}
         />
@@ -207,7 +208,7 @@ export default function RootLayout({
                 priceCurrency: "USD",
               },
               description:
-                "The modern runtime for agent-native development. Infrastructure for AI agents, not workflows.",
+                "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
               url: "https://vm0.ai",
               image: "https://vm0.ai/og-image.png",
             }),
