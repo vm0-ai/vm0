@@ -48,12 +48,12 @@ export type PublicRun = z.infer<typeof publicRunSchema>;
  * Run detail schema with full results
  */
 export const publicRunDetailSchema = publicRunSchema.extend({
-  output: z.string().nullable(),
   error: z.string().nullable(),
   execution_time_ms: z.number().nullable(),
   checkpoint_id: z.string().nullable(),
   session_id: z.string().nullable(),
-  artifacts: z.record(z.string(), z.string()).optional(),
+  artifact_name: z.string().nullable(),
+  artifact_version: z.string().nullable(),
   volumes: z.record(z.string(), z.string()).optional(),
 });
 
@@ -86,7 +86,8 @@ export const createRunRequestSchema = z.object({
   // Optional configuration
   variables: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
-  artifacts: z.record(z.string(), z.string()).optional(), // artifact_name -> version
+  artifact_name: z.string().optional(), // Artifact name to mount
+  artifact_version: z.string().optional(), // Artifact version (defaults to latest)
   volumes: z.record(z.string(), z.string()).optional(), // volume_name -> version
 });
 
