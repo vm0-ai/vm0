@@ -27,10 +27,11 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
@@ -46,6 +47,7 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
             echo "platform-changed=false" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -57,6 +59,7 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
             echo "platform-changed=true" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -85,24 +88,23 @@ jobs:
 
           # Check CLI app
           cd ../cli
-          CLI_CODE_CHANGED=false
           if ! npx turbo-ignore; then
             echo "Changes detected in CLI code"
-            CLI_CODE_CHANGED=true
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected in CLI app"
+            echo "cli-changed=false" >> $GITHUB_OUTPUT
           fi
 
           # Check E2E tests directory (outside turbo workspace)
+          # Use origin/main...HEAD to compare entire PR branch against main
           cd /__w/vm0/vm0
-          if git diff --name-only HEAD~1 HEAD | grep -q "^e2e/"; then
+          if git diff --name-only origin/main...HEAD | grep -q "^e2e/"; then
             echo "Changes detected in E2E tests"
-            CLI_CODE_CHANGED=true
-          fi
-
-          if [ "$CLI_CODE_CHANGED" = true ]; then
-            echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
           else
-            echo "No changes detected in CLI app or E2E tests"
-            echo "cli-changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected in E2E tests"
+            echo "e2e-changed=false" >> $GITHUB_OUTPUT
           fi
 
           # Check runner app
@@ -184,10 +186,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
     # Deploy if:
-    # - It's a PR and web, CLI, runner, or platform changed (all need web deployment)
+    # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
     # - It's a workflow_dispatch with run_cli_e2e enabled
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
@@ -301,12 +303,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web, deploy-runner, lint, test]
-    # Run if:
-    # - It's a PR, (CLI, web, or runner) changed, and web deployment succeeded
-    # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
-    if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
+    # Runs when all dependencies succeed and preview-url is available
+    if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -371,7 +369,7 @@ jobs:
           # Step 1: Run serial tests sequentially (establishes e2e-stable scope)
           # MUST run first so runner can use e2e-stable scope
           echo "=== Running Serial E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
+          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
 
           if [ $SERIAL_EXIT -ne 0 ]; then
             echo ""
@@ -384,35 +382,28 @@ jobs:
           # Set RUNNER_GROUP for runner tests
           export RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
 
-          # Step 2: Run runner tests if runner was deployed
-          if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo ""
-            echo "=== Running Runner E2E Tests (8 parallel) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
+          # Step 2: Run runner tests
+          echo ""
+          echo "=== Running Runner E2E Tests (8 parallel) ==="
+          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
 
-            if [ $RUNNER_EXIT -ne 0 ]; then
-              echo ""
-              echo "❌ Runner tests failed - skipping parallel tests"
-              exit 1
-            fi
-            echo "✅ Runner tests passed"
-          else
+          if [ $RUNNER_EXIT -ne 0 ]; then
             echo ""
-            echo "Skipping runner tests (runner not deployed)"
+            echo "❌ Runner tests failed - skipping parallel tests"
+            exit 1
           fi
+          echo "✅ Runner tests passed"
 
           # Step 4: Run parallel tests with -j 10
           echo ""
           echo "=== Running Parallel E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
+          ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
 
           # Report results and exit with failure if any suite failed
           echo ""
           echo "=== Test Results ==="
           echo "Serial tests: PASSED"
-          if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo "Runner tests: PASSED"
-          fi
+          echo "Runner tests: PASSED"
           echo "Parallel tests: $([ $PARALLEL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
 
           # Exit with failure if parallel tests failed
@@ -423,7 +414,6 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
-          RUNNER_DEPLOYED: ${{ needs.deploy-runner.outputs.runner-deployed }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 
@@ -440,28 +430,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [change-detection, deploy-web]
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
-      should-deploy: ${{ steps.check.outputs.should-deploy }}
     steps:
-      - name: Check if deployment needed
-        id: check
-        env:
-          RUNNER_CHANGED: ${{ needs.change-detection.outputs.runner-changed }}
-        run: |
-          if [ "$RUNNER_CHANGED" != "true" ]; then
-            echo "Runner code not changed, skipping deployment"
-            echo "should-deploy=false" >> $GITHUB_OUTPUT
-          else
-            echo "Runner code changed, will deploy"
-            echo "should-deploy=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Lock runner host
         id: lock
-        if: steps.check.outputs.should-deploy == 'true'
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -593,7 +568,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web, lock-runner-host]
-    if: needs.lock-runner-host.outputs.should-deploy == 'true'
+    # Runs whenever lock-runner-host succeeds (no conditional)
     outputs:
       runner-deployed: ${{ steps.deploy.outputs.runner-deployed }}
       runner-dir: ${{ steps.deploy.outputs.runner-dir }}

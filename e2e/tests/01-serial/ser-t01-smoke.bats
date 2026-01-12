@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 # Smoke tests for CLI basic functionality
+# Note: Tests run with -T flag to display execution timing
 
 load '../../helpers/setup'
 
