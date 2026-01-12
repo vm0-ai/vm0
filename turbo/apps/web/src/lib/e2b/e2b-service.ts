@@ -2,6 +2,7 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
 import type { RunResult } from "./types";
 import { storageService } from "../storage/storage-service";
+import { BadRequestError } from "../errors";
 import { resolveImageAlias } from "../image/image-service";
 import type {
   AgentVolumeConfig,
@@ -75,11 +76,15 @@ export class E2BService {
       | undefined;
 
     try {
-      // Get agent config for provider and image settings
+      // Get mount path from agent compose (used for resume artifact)
+      // working_dir is required - no fallback allowed
       const firstAgent = getFirstAgent(agentComposeYaml);
-
-      // Hardcoded working directory (artifact mount path)
-      const artifactMountPath = "/home/user/workspace";
+      if (!firstAgent?.working_dir) {
+        throw new BadRequestError(
+          "Agent must have working_dir configured (no default allowed)",
+        );
+      }
+      const artifactMountPath = firstAgent.working_dir;
       // Prepare storage manifest with presigned URLs for direct download to sandbox
       // This works for both new runs and resume scenarios
       const storageManifest = await storageService.prepareStorageManifest(
@@ -188,7 +193,7 @@ export class E2BService {
 
       // Set CLI_AGENT_TYPE based on provider (defaults to "claude-code")
       // This is used by run-agent.py to determine which CLI to invoke
-      const provider = firstAgent?.provider || "claude-code";
+      const provider = firstAgent.provider || "claude-code";
       sandboxEnvVars.CLI_AGENT_TYPE = provider;
       log.debug(`CLI_AGENT_TYPE set to: ${provider}`);
 

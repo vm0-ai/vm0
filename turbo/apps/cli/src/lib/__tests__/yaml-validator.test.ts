@@ -111,6 +111,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -128,6 +129,7 @@ describe("validateAgentCompose", () => {
             description: "Test description",
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
             volumes: ["claude-files:/home/user/.config/claude"],
           },
         },
@@ -150,21 +152,7 @@ describe("validateAgentCompose", () => {
           "My-Test-Agent-123": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
-          },
-        },
-      };
-
-      const result = validateAgentCompose(config);
-      expect(result.valid).toBe(true);
-    });
-
-    it("should accept config with postCreateCommand", () => {
-      const config = {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            provider: "claude-code",
-            postCreateCommand: "cloudflared tunnel run my-tunnel",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -199,6 +187,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -247,10 +236,12 @@ describe("validateAgentCompose", () => {
           "agent-1": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/workspace",
           },
           "agent-2": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/workspace",
           },
         },
       };
@@ -270,6 +261,7 @@ describe("validateAgentCompose", () => {
             // Too short
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -286,6 +278,7 @@ describe("validateAgentCompose", () => {
           "-invalid": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -302,6 +295,7 @@ describe("validateAgentCompose", () => {
           my_agent: {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -311,12 +305,29 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("Invalid agent name format");
     });
 
+    it("should reject config with missing working_dir when provider not supported", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            image: "custom-image",
+            provider: "custom-provider",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("agent.working_dir");
+    });
+
     it("should reject config with missing image when provider not supported", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             provider: "custom-provider",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -332,6 +343,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
+            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -348,6 +360,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
             volumes: ["missing-vol:/path"],
           },
         },
@@ -371,6 +384,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
         },
@@ -393,6 +407,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             image: "vm0/claude-code:dev",
             provider: "claude-code",
+            working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
         },
@@ -407,41 +422,24 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(false);
       expect(result.error).toContain("'version' field");
     });
-
-    it("should reject postCreateCommand that is not a string", () => {
-      const config = {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            provider: "claude-code",
-            postCreateCommand: 123,
-          },
-        },
-      };
-
-      const result = validateAgentCompose(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("postCreateCommand must be a string");
-    });
-
-    it("should reject empty postCreateCommand", () => {
-      const config = {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            provider: "claude-code",
-            postCreateCommand: "",
-          },
-        },
-      };
-
-      const result = validateAgentCompose(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("postCreateCommand cannot be empty");
-    });
   });
 
   describe("provider auto-config", () => {
+    it("should accept config without working_dir when provider is claude-code", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            image: "vm0/claude-code:dev",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(true);
+    });
+
     it("should accept config without image when provider is claude-code (auto-configurable)", () => {
       const config = {
         version: "1.0",

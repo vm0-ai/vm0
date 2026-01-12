@@ -32,9 +32,6 @@ ARTIFACT_MOUNT_PATH = os.environ.get("VM0_ARTIFACT_MOUNT_PATH", "")
 ARTIFACT_VOLUME_NAME = os.environ.get("VM0_ARTIFACT_VOLUME_NAME", "")
 ARTIFACT_VERSION_ID = os.environ.get("VM0_ARTIFACT_VERSION_ID", "")
 
-# Lifecycle hook - command to execute after working directory creation
-POST_CREATE_COMMAND = os.environ.get("VM0_POST_CREATE_COMMAND", "")
-
 # Construct webhook endpoint URLs
 WEBHOOK_URL = f"{API_URL}/api/webhooks/agent/events"
 CHECKPOINT_URL = f"{API_URL}/api/webhooks/agent/checkpoints"

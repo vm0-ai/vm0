@@ -247,11 +247,6 @@ export class E2BExecutor implements Executor {
       sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
     }
 
-    // Add postCreateCommand lifecycle hook if specified
-    if (context.postCreateCommand) {
-      sandboxEnvVars.VM0_POST_CREATE_COMMAND = context.postCreateCommand;
-    }
-
     // Add user-defined environment variables
     if (context.environment) {
       for (const [key, value] of Object.entries(context.environment)) {

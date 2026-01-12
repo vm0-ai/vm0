@@ -8,6 +8,7 @@ agents:
     volumes:
       - test-volume:/home/user/data
       - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
 
 volumes:
   test-volume:
