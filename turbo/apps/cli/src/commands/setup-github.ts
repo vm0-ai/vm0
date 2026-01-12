@@ -605,7 +605,9 @@ export const setupGithubCommand = new Command()
             failedSecrets.push(s.name);
           }
         } else {
-          console.log(`  ${chalk.yellow("⚠")} ${s.name} (skipped - not found)`);
+          console.log(
+            `  ${chalk.yellow("⚠")} ${s.name} (skipped - not found)`,
+          );
         }
       }
 
