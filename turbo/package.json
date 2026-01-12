@@ -35,6 +35,15 @@
     "typescript": "5.9.2",
     "vitest": "^3.2.4"
   },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "react-native",
+        "@solana/web3.js",
+        "fastestsmallesttextencoderdecoder"
+      ]
+    }
+  },
   "packageManager": "pnpm@10.15.0",
   "engines": {
     "node": ">=20"
