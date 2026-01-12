@@ -9,6 +9,21 @@ type Props = {
   params: Promise<{ locale: string }>;
 };
 
+async function getMessages(locale: Locale) {
+  switch (locale) {
+    case "en":
+      return (await import("@vm0/i18n/messages/en.json")).default;
+    case "de":
+      return (await import("@vm0/i18n/messages/de.json")).default;
+    case "ja":
+      return (await import("@vm0/i18n/messages/ja.json")).default;
+    case "es":
+      return (await import("@vm0/i18n/messages/es.json")).default;
+    default:
+      return (await import("@vm0/i18n/messages/en.json")).default;
+  }
+}
+
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
   const locale = params.locale;
@@ -52,7 +67,7 @@ export default async function LocaleLayout(props: Props) {
   }
 
   // Load messages from shared i18n package
-  const messages = (await import(`@vm0/i18n/messages/${locale}.json`)).default;
+  const messages = await getMessages(locale as Locale);
 
   return (
     <NextIntlClientProvider locale={locale} messages={messages}>

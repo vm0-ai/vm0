@@ -5,7 +5,10 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./messages/*": "./messages/*.json"
+    "./messages/en.json": "./messages/en.json",
+    "./messages/de.json": "./messages/de.json",
+    "./messages/ja.json": "./messages/ja.json",
+    "./messages/es.json": "./messages/es.json"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

@@ -12,10 +12,35 @@ export const languageNames: Record<Locale, string> = {
   es: "Español",
 };
 
-// Re-export message loading utilities
+// Message loading utility (uses switch for bundler compatibility)
 export async function loadMessages(
   locale: Locale,
 ): Promise<Record<string, unknown>> {
-  const messages = await import(`../messages/${locale}.json`);
-  return messages.default as Record<string, unknown>;
+  switch (locale) {
+    case "en":
+      return (await import("../messages/en.json")).default as Record<
+        string,
+        unknown
+      >;
+    case "de":
+      return (await import("../messages/de.json")).default as Record<
+        string,
+        unknown
+      >;
+    case "ja":
+      return (await import("../messages/ja.json")).default as Record<
+        string,
+        unknown
+      >;
+    case "es":
+      return (await import("../messages/es.json")).default as Record<
+        string,
+        unknown
+      >;
+    default:
+      return (await import("../messages/en.json")).default as Record<
+        string,
+        unknown
+      >;
+  }
 }
