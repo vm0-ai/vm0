@@ -16,7 +16,7 @@ export function Sidebar() {
       {/* Logo header - height: 49px, padding: 8px */}
       <div className="h-[49px] flex flex-col justify-center p-2 border-b border-sidebar-border">
         <div className="flex items-center gap-2.5 p-1.5 h-8">
-          <img src="/logo_light.svg" alt="VM0" className="h-5 w-auto" />
+          <img src="/logo_light.svg" alt="VM0" width={82} height={20} />
           <span className="text-2xl font-medium leading-8 text-sidebar-foreground">
             Platform
           </span>
