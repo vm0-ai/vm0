@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.1.0](https://github.com/vm0-ai/vm0/compare/cli-v5.0.2...cli-v5.1.0) (2026-01-12)
+
+
+### Features
+
+* **lifecycle:** add postCreateCommand hook and hardcode working_dir ([#1077](https://github.com/vm0-ai/vm0/issues/1077)) ([86f7077](https://github.com/vm0-ai/vm0/commit/86f70777701d2d8715edec620e804c9ceeea0bad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.0
+
 ## [5.0.2](https://github.com/vm0-ai/vm0/compare/cli-v5.0.1...cli-v5.0.2) (2026-01-11)
 
 

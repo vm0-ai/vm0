@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.3.0](https://github.com/vm0-ai/vm0/compare/web-v9.2.1...web-v9.3.0) (2026-01-12)
+
+
+### Features
+
+* **lifecycle:** add postCreateCommand hook and hardcode working_dir ([#1077](https://github.com/vm0-ai/vm0/issues/1077)) ([86f7077](https://github.com/vm0-ai/vm0/commit/86f70777701d2d8715edec620e804c9ceeea0bad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.0
+
 ## [9.2.1](https://github.com/vm0-ai/vm0/compare/web-v9.2.0...web-v9.2.1) (2026-01-11)
 
 
