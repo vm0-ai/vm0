@@ -119,24 +119,27 @@ export function processFirewallConfig(
 }
 
 /**
- * Extract working directory from agent compose config
- * This is required for resume and storage operations
+ * Hardcoded working directory for all agents
  */
-export function extractWorkingDir(agentCompose: unknown): string {
+const WORKING_DIR = "/home/user/workspace";
+
+/**
+ * Get working directory - now hardcoded for all agents
+ * This simplifies configuration and ensures consistency
+ */
+export function getWorkingDir(): string {
+  return WORKING_DIR;
+}
+
+/**
+ * Extract postCreateCommand from agent compose config
+ * Returns null if not specified
+ */
+export function extractPostCreateCommand(agentCompose: unknown): string | null {
   const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) {
-    throw new BadRequestError(
-      "Agent must have working_dir configured (no default allowed)",
-    );
-  }
+  if (!compose?.agents) return null;
   const agents = Object.values(compose.agents);
-  const workingDir = agents[0]?.working_dir;
-  if (!workingDir) {
-    throw new BadRequestError(
-      "Agent must have working_dir configured (no default allowed)",
-    );
-  }
-  return workingDir;
+  return agents[0]?.postCreateCommand ?? null;
 }
 
 /**
@@ -175,15 +178,16 @@ export async function prepareForExecution(
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
   // Extract configuration from agent compose
-  const workingDir = extractWorkingDir(context.agentCompose);
+  const workingDir = getWorkingDir();
   const cliAgentType = extractCliAgentType(context.agentCompose);
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
+  const postCreateCommand = extractPostCreateCommand(context.agentCompose);
 
   // Process firewall configuration (validates and auto-injects rules)
   const experimentalFirewall = processFirewallConfig(context.agentCompose);
 
   log.debug(
-    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
+    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}, postCreateCommand=${postCreateCommand ? "set" : "none"}`,
   );
 
   // Prepare storage manifest with presigned URLs
@@ -216,6 +220,7 @@ export async function prepareForExecution(
     agentCompose: context.agentCompose,
     cliAgentType,
     workingDir,
+    postCreateCommand,
 
     // Storage
     storageManifest,

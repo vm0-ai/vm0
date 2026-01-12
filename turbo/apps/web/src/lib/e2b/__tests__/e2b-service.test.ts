@@ -99,7 +99,7 @@ describe("E2B Service - mocked unit tests", () => {
   });
 
   /**
-   * Helper function to create a valid agent compose with working_dir
+   * Helper function to create a valid agent compose
    */
   const createValidAgentCompose = (overrides = {}) => ({
     version: "1.0",
@@ -107,7 +107,6 @@ describe("E2B Service - mocked unit tests", () => {
       "test-agent": {
         image: "test-image",
         provider: "claude-code",
-        working_dir: "/workspace",
         ...overrides,
       },
     },
@@ -332,7 +331,7 @@ describe("E2B Service - mocked unit tests", () => {
       expect(mockSandbox.kill).not.toHaveBeenCalled();
     });
 
-    it("should pass working_dir to sandbox when configured", async () => {
+    it("should pass hardcoded working_dir to sandbox", async () => {
       // Arrange
       const mockSandbox = createMockSandbox();
       vi.mocked(Sandbox.create).mockResolvedValue(
@@ -346,10 +345,9 @@ describe("E2B Service - mocked unit tests", () => {
           version: "1.0",
           agents: {
             "test-agent": {
-              description: "Test agent with working dir",
+              description: "Test agent",
               image: "test-image",
               provider: "claude-code",
-              working_dir: "/home/user/workspace",
             },
           },
         },
@@ -363,7 +361,7 @@ describe("E2B Service - mocked unit tests", () => {
       // Assert - fire-and-forget returns "running"
       expect(result.status).toBe("running");
 
-      // Verify sandbox was created with environment variables including working_dir
+      // Verify sandbox was created with hardcoded working_dir
       // NOTE: VM0_WORKING_DIR is passed at sandbox creation time, not via commands.run({ envs })
       // because E2B's background mode doesn't pass envs to the background process
       expect(Sandbox.create).toHaveBeenCalled();
@@ -372,39 +370,6 @@ describe("E2B Service - mocked unit tests", () => {
       expect(createCall?.[1]?.envs?.VM0_WORKING_DIR).toBe(
         "/home/user/workspace",
       );
-    });
-
-    it("should fail when working_dir is not configured", async () => {
-      // Arrange
-      const mockSandbox = createMockSandbox();
-      vi.mocked(Sandbox.create).mockResolvedValue(
-        mockSandbox as unknown as Sandbox,
-      );
-
-      const context: ExecutionContext = {
-        runId: "test-run-007",
-        agentComposeVersionId: "test-version-007",
-        agentCompose: {
-          version: "1.0",
-          agents: {
-            "test-agent": {
-              description: "Test agent without working dir",
-              image: "test-image",
-              provider: "claude-code",
-              working_dir: "",
-            },
-          },
-        },
-        sandboxToken: "vm0_live_test_token",
-        prompt: "Read files",
-      };
-
-      // Act
-      const result = await e2bService.execute(context);
-
-      // Assert - should fail because working_dir is required
-      expect(result.status).toBe("failed");
-      expect(result.error).toContain("working_dir");
     });
   });
 
@@ -482,7 +447,6 @@ describe("E2B Service - mocked unit tests", () => {
               description: "Test agent with custom image",
               image: "custom-template-name",
               provider: "claude-code",
-              working_dir: "/workspace",
             },
           },
         },

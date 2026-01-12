@@ -5,7 +5,6 @@ agents:
     description: "Test agent for template variable validation"
     provider: claude-code
     image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
     volumes:
       - user-data:/home/user/data
 

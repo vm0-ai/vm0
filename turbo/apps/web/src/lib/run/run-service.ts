@@ -249,24 +249,10 @@ export class RunService {
   }
 
   /**
-   * Extract working directory from agent config
-   * Throws BadRequestError if working_dir is not configured
+   * Get working directory (hardcoded value)
    */
-  private extractWorkingDir(config: unknown): string {
-    const compose = config as AgentComposeYaml | undefined;
-    if (!compose?.agents) {
-      throw new BadRequestError(
-        "Agent compose must have agents configured with working_dir",
-      );
-    }
-    const agents = Object.values(compose.agents);
-    const firstAgent = agents[0];
-    if (!firstAgent?.working_dir) {
-      throw new BadRequestError(
-        "Agent must have working_dir configured (no default allowed)",
-      );
-    }
-    return firstAgent.working_dir;
+  private getWorkingDir(): string {
+    return "/home/user/workspace";
   }
 
   /**
@@ -357,7 +343,7 @@ export class RunService {
       conversationId: checkpoint.conversationId,
       agentComposeVersionId,
       agentCompose,
-      workingDir: this.extractWorkingDir(agentCompose),
+      workingDir: this.getWorkingDir(),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: sessionHistory,
@@ -447,7 +433,7 @@ export class RunService {
       conversationId: session.conversationId,
       agentComposeVersionId: versionId,
       agentCompose: version.content,
-      workingDir: this.extractWorkingDir(version.content),
+      workingDir: this.getWorkingDir(),
       conversationData: {
         cliAgentSessionId: session.conversation.cliAgentSessionId,
         cliAgentSessionHistory: sessionHistory,
@@ -517,7 +503,7 @@ export class RunService {
       conversationId,
       agentComposeVersionId,
       agentCompose: version.content,
-      workingDir: this.extractWorkingDir(version.content),
+      workingDir: this.getWorkingDir(),
       conversationData: {
         cliAgentSessionId: conversation.cliAgentSessionId,
         cliAgentSessionHistory: sessionHistory,

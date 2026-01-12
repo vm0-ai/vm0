@@ -149,22 +149,20 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Check agent.working_dir (optional when provider is supported)
-  if (
-    agent.working_dir !== undefined &&
-    typeof agent.working_dir !== "string"
-  ) {
-    return {
-      valid: false,
-      error: "agent.working_dir must be a string if provided",
-    };
-  }
-  if (!agent.working_dir && !providerIsSupported) {
-    return {
-      valid: false,
-      error:
-        "Missing agent.working_dir (required when provider is not auto-configured)",
-    };
+  // Validate postCreateCommand if present (must be a non-empty string)
+  if (agent.postCreateCommand !== undefined) {
+    if (typeof agent.postCreateCommand !== "string") {
+      return {
+        valid: false,
+        error: "agent.postCreateCommand must be a string",
+      };
+    }
+    if (agent.postCreateCommand.length === 0) {
+      return {
+        valid: false,
+        error: "agent.postCreateCommand cannot be empty",
+      };
+    }
   }
 
   // Validate instructions if present (must be a relative file path)

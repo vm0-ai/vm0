@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/vm0-ai/vm0/compare/core-v4.1.1...core-v4.2.0) (2026-01-12)
+
+
+### Features
+
+* **lifecycle:** add postCreateCommand hook and hardcode working_dir ([#1077](https://github.com/vm0-ai/vm0/issues/1077)) ([86f7077](https://github.com/vm0-ai/vm0/commit/86f70777701d2d8715edec620e804c9ceeea0bad))
+
 ## [4.1.1](https://github.com/vm0-ai/vm0/compare/core-v4.1.0...core-v4.1.1) (2026-01-11)
 
 

@@ -1,6 +1,6 @@
 export {
   prepareForExecution,
-  extractWorkingDir,
+  getWorkingDir,
   extractCliAgentType,
   resolveRunnerGroup,
 } from "./execution-preparer";
