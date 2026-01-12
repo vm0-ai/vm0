@@ -4,6 +4,12 @@ import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
 import type { Metadata } from "next";
 
+// Static imports for all message files to ensure proper bundling
+import enMessages from "../../messages/en.json";
+import deMessages from "../../messages/de.json";
+import jaMessages from "../../messages/ja.json";
+import esMessages from "../../messages/es.json";
+
 // Type workaround for React 19 compatibility with react-intl
 // react-intl has React 18 types but works fine with React 19 runtime
 const IntlProviderCompat = IntlProvider as unknown as React.ComponentType<{
@@ -12,6 +18,14 @@ const IntlProviderCompat = IntlProvider as unknown as React.ComponentType<{
   defaultLocale?: string;
   children: ReactNode;
 }>;
+
+// Static message map for reliable bundling
+const messagesByLocale: Record<Locale, Record<string, string>> = {
+  en: enMessages,
+  de: deMessages,
+  ja: jaMessages,
+  es: esMessages,
+};
 
 type Props = {
   children: ReactNode;
@@ -60,8 +74,8 @@ export default async function LocaleLayout(props: Props) {
     notFound();
   }
 
-  // Load messages directly for the current locale
-  const messages = (await import(`../../messages/${locale}.json`)).default;
+  // Get messages from static map
+  const messages = messagesByLocale[locale as Locale];
 
   return (
     <IntlProviderCompat locale={locale} messages={messages} defaultLocale="en">
