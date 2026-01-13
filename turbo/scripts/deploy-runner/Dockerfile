@@ -83,6 +83,10 @@ RUN systemctl enable ssh
 # Create working directory for agent scripts
 RUN mkdir -p /opt/vm0-scripts/lib
 
+# Create directories for overlay-init (squashfs is read-only at boot)
+# These are needed by /sbin/overlay-init to set up overlayfs
+RUN mkdir -p /rom /rw /mnt/root
+
 # Set default target for systemd
 RUN systemctl set-default multi-user.target
 
