@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.4.1](https://github.com/vm0-ai/vm0/compare/web-v9.4.0...web-v9.4.1) (2026-01-13)
+
+
+### Performance Improvements
+
+* improve lcp performance for landing page ([#1138](https://github.com/vm0-ai/vm0/issues/1138)) ([9f29297](https://github.com/vm0-ai/vm0/commit/9f2929764ad008158f7ae89bc2b7a0498d1f12d0))
+
 ## [9.4.0](https://github.com/vm0-ai/vm0/compare/web-v9.3.0...web-v9.4.0) (2026-01-12)
 
 
