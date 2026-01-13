@@ -90,10 +90,10 @@ If pre-commit hooks take an unusually long time or `pnpm lint` times out, try cl
 
 ```bash
 # Delete all node_modules directories
-find /workspaces/vm06/turbo -name "node_modules" -type d -prune -exec rm -rf {} +
+find turbo -name "node_modules" -type d -prune -exec rm -rf {} +
 
 # Reinstall dependencies
-cd /workspaces/vm06/turbo && pnpm install
+cd turbo && pnpm install
 ```
 
 This often resolves performance issues caused by corrupted or inconsistent dependency caches.
