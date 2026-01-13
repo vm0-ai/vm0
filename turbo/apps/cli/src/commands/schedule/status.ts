@@ -21,7 +21,7 @@ interface ScheduleResponse {
   timezone: string;
   prompt: string;
   vars: Record<string, string> | null;
-  hasSecrets: boolean;
+  secretNames: string[] | null;
   artifactName: string | null;
   artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
@@ -97,7 +97,6 @@ function formatTrigger(schedule: ScheduleResponse): string {
 
 export const statusCommand = new Command()
   .name("status")
-  .alias("show")
   .description("Show detailed status of a schedule")
   .argument("<name>", "Schedule name")
   .action(async (name: string) => {
@@ -175,7 +174,9 @@ export const statusCommand = new Command()
       }
 
       // Secrets
-      console.log(`${"Has Secrets:".padEnd(16)}${schedule.hasSecrets ? "yes" : "no"}`);
+      if (schedule.secretNames && schedule.secretNames.length > 0) {
+        console.log(`${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`);
+      }
 
       // Artifact
       if (schedule.artifactName) {

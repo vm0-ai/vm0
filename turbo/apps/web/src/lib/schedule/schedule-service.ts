@@ -26,7 +26,7 @@ export interface ScheduleResponse {
   timezone: string;
   prompt: string;
   vars: Record<string, string> | null;
-  hasSecrets: boolean;
+  secretNames: string[] | null;
   artifactName: string | null;
   artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
@@ -80,6 +80,18 @@ export class ScheduleService {
     composeName: string,
     scopeSlug: string,
   ): ScheduleResponse {
+    // Extract secret names from encrypted secrets (values are never returned)
+    let secretNames: string[] | null = null;
+    if (schedule.encryptedSecrets) {
+      const secrets = decryptSecretsMap(
+        schedule.encryptedSecrets,
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+      if (secrets) {
+        secretNames = Object.keys(secrets);
+      }
+    }
+
     return {
       id: schedule.id,
       composeId: schedule.composeId,
@@ -91,7 +103,7 @@ export class ScheduleService {
       timezone: schedule.timezone,
       prompt: schedule.prompt,
       vars: schedule.vars,
-      hasSecrets: !!schedule.encryptedSecrets,
+      secretNames,
       artifactName: schedule.artifactName,
       artifactVersion: schedule.artifactVersion,
       volumeVersions: schedule.volumeVersions,

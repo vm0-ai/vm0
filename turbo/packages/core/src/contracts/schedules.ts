@@ -78,8 +78,8 @@ const scheduleResponseSchema = z.object({
   timezone: z.string(),
   prompt: z.string(),
   vars: z.record(z.string(), z.string()).nullable(),
-  // Secrets are never returned in responses
-  hasSecrets: z.boolean(),
+  // Secret names only (values are never returned)
+  secretNames: z.array(z.string()).nullable(),
   artifactName: z.string().nullable(),
   artifactVersion: z.string().nullable(),
   volumeVersions: z.record(z.string(), z.string()).nullable(),
