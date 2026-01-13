@@ -51,7 +51,10 @@ export async function cloneStorage(
 
   let url = `/api/storages/download?name=${encodeURIComponent(name)}&type=${type}`;
   if (options.version) {
-    url += `&version=${encodeURIComponent(options.version)}`;
+    // Quote version as JSON string to prevent ts-rest's jsonQuery from
+    // parsing hex strings like "52999e37" as scientific notation numbers
+    const quotedVersion = JSON.stringify(options.version);
+    url += `&version=${encodeURIComponent(quotedVersion)}`;
   }
 
   const response = await apiClient.get(url);

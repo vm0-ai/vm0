@@ -250,14 +250,33 @@ teardown() {
     # from environment variables when not provided via --secrets flag.
     # This is the fix for issue #845.
 
-    # Use the env-expansion fixture which has secrets defined
-    export ENV_EXPANSION_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
+    # Create env-expansion config dynamically with unique agent name
+    local ENV_AGENT_NAME="e2e-env-continue-$(date +%s%3N)-$RANDOM"
+    local ENV_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$ENV_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${ENV_AGENT_NAME}:
+    description: "Test agent for environment variable expansion"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      TEST_VAR: "\${{ vars.testVar }}"
+      TEST_SECRET: "\${{ secrets.TEST_SECRET }}"
+    volumes:
+      - claude-files:/home/user/.claude
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 
     # Step 1: Build the config with secrets
     echo "# Step 1: Building config with secrets..."
-    run $CLI_COMMAND compose "$ENV_EXPANSION_CONFIG"
+    run $CLI_COMMAND compose "$ENV_CONFIG"
     assert_success
-    assert_output --partial "vm0-env-expansion"
+    assert_output --partial "$ENV_AGENT_NAME"
 
     # Step 2: Create artifact
     echo "# Step 2: Creating artifact..."
@@ -272,7 +291,7 @@ teardown() {
     # Step 3: Run agent WITH secrets to create session
     # The env-expansion config has: TEST_VAR and TEST_SECRET
     echo "# Step 3: Running agent with secrets to create session..."
-    run $CLI_COMMAND run "vm0-env-expansion" \
+    run $CLI_COMMAND run "$ENV_AGENT_NAME" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -289,6 +308,9 @@ teardown() {
         echo "$output"
         return 1
     }
+
+    # Clean up config file
+    rm -f "$ENV_CONFIG"
 
     # Step 4: Continue WITHOUT --secrets flag, but WITH env var set
     # This is the key test: secrets should be loaded from environment
@@ -311,12 +333,31 @@ teardown() {
     # from environment variables when not provided via --secrets flag.
     # This is the fix for issue #845.
 
-    # Use the env-expansion fixture which has secrets defined
-    export ENV_EXPANSION_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
+    # Create env-expansion config dynamically with unique agent name
+    local ENV_AGENT_NAME="e2e-env-resume-$(date +%s%3N)-$RANDOM"
+    local ENV_CONFIG="$(mktemp --suffix=.yaml)"
+    cat > "$ENV_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${ENV_AGENT_NAME}:
+    description: "Test agent for environment variable expansion"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      TEST_VAR: "\${{ vars.testVar }}"
+      TEST_SECRET: "\${{ secrets.TEST_SECRET }}"
+    volumes:
+      - claude-files:/home/user/.claude
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 
     # Step 1: Build the config with secrets
     echo "# Step 1: Building config with secrets..."
-    run $CLI_COMMAND compose "$ENV_EXPANSION_CONFIG"
+    run $CLI_COMMAND compose "$ENV_CONFIG"
     assert_success
 
     # Step 2: Create artifact
@@ -331,7 +372,7 @@ teardown() {
 
     # Step 3: Run agent WITH secrets to create checkpoint
     echo "# Step 3: Running agent with secrets to create checkpoint..."
-    run $CLI_COMMAND run "vm0-env-expansion" \
+    run $CLI_COMMAND run "$ENV_AGENT_NAME" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -348,6 +389,9 @@ teardown() {
         echo "$output"
         return 1
     }
+
+    # Clean up config file
+    rm -f "$ENV_CONFIG"
 
     # Step 4: Resume WITHOUT --secrets flag, but WITH env var set
     # This is the key test: secrets should be loaded from environment

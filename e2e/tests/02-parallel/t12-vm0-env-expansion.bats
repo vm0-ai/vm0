@@ -3,13 +3,38 @@
 load '../../helpers/setup'
 
 setup() {
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-env-expansion.yaml"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export SECRET_VALUE="secret-value-${UNIQUE_ID}"
     export VAR_VALUE="var-value-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-env-test-${UNIQUE_ID}"
+    export AGENT_NAME="vm0-env-expansion-${UNIQUE_ID}"
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export TEST_ENV_DIR="$(mktemp -d)"
+    export TEST_CONFIG="$TEST_ARTIFACT_DIR/vm0-env-expansion.yaml"
+}
+
+# Helper to create config dynamically
+create_env_expansion_config() {
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}:
+    description: "Test agent for environment variable expansion"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      TEST_VAR: "\${{ vars.testVar }}"
+      TEST_SECRET: "\${{ secrets.TEST_SECRET }}"
+    volumes:
+      - claude-files:/home/user/.claude
+
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 }
 
 teardown() {
@@ -24,6 +49,8 @@ teardown() {
 
 # Helper to create artifact for tests
 setup_artifact() {
+    # Create config dynamically (each test needs its own due to parallel execution)
+    create_env_expansion_config
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
@@ -42,7 +69,7 @@ setup_artifact() {
     assert_success
 
     echo "# Step 3: Run with --vars and --secrets flags"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -69,7 +96,7 @@ setup_artifact() {
     echo "# Step 3: Run with secret in environment variable"
     # Export the secret as an environment variable (CLI will pick it up)
     export TEST_SECRET="${SECRET_VALUE}"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
@@ -91,7 +118,7 @@ setup_artifact() {
     echo "# Step 3: Run with var in environment variable"
     # Export the var as an environment variable (CLI will pick it up)
     export testVar="${VAR_VALUE}"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
@@ -115,7 +142,7 @@ setup_artifact() {
     echo "TEST_SECRET=${SECRET_VALUE}" > .env
 
     echo "# Step 4: Run from directory with .env file"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
@@ -138,7 +165,7 @@ setup_artifact() {
     export TEST_SECRET="env-var-value-${UNIQUE_ID}"
     local CLI_SECRET="cli-secret-value-${UNIQUE_ID}"
 
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${CLI_SECRET}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -165,7 +192,7 @@ setup_artifact() {
     # Ensure no TEST_SECRET in environment
     unset TEST_SECRET
 
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=somevalue" \
         --artifact-name "e2e-env-test-missing-${UNIQUE_ID}" \
         "echo hello"
@@ -183,7 +210,7 @@ setup_artifact() {
     assert_success
 
     echo "# Step 3: Try to run without --vars - should fail"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "e2e-env-test-missing-vars-${UNIQUE_ID}" \
         "echo hello"
@@ -253,7 +280,7 @@ EOF
     assert_success
 
     echo "# Step 3: Run initial session with secrets"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -297,7 +324,7 @@ EOF
     assert_success
 
     echo "# Step 3: Run initial session with secrets"
-    run $CLI_COMMAND run vm0-env-expansion \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \

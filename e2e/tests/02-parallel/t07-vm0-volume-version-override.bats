@@ -13,11 +13,13 @@ load '../../helpers/setup'
 setup() {
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
-    # Use unique test names with timestamp
-    # Volume name must match the config's volume name for --volume-version to work
-    export VOLUME_NAME="test-volume"
-    export ARTIFACT_NAME="e2e-art-override-$(date +%s%3N)-$RANDOM"
-    export TEST_CONFIG="${TEST_ROOT}/fixtures/configs/vm0-volume-override.yaml"
+    # Use unique test names with timestamp to avoid conflicts in parallel runs
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export VOLUME_NAME="e2e-vol-override-${UNIQUE_ID}"
+    export ARTIFACT_NAME="e2e-art-override-${UNIQUE_ID}"
+    export AGENT_NAME="vm0-vol-override-${UNIQUE_ID}"
+    # Config will be created dynamically in the test
+    export TEST_CONFIG="$TEST_DIR/vm0-volume-override.yaml"
 }
 
 teardown() {
@@ -27,40 +29,66 @@ teardown() {
     fi
 }
 
-@test "Build VM0 volume override test agent configuration" {
-    # First create the config fixture if it doesn't exist
-    if [ ! -f "$TEST_CONFIG" ]; then
-        mkdir -p "$(dirname "$TEST_CONFIG")"
-        cat > "$TEST_CONFIG" <<'EOF'
+# Helper function to create and compose the agent config
+create_and_compose_agent() {
+    cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 
 agents:
-  vm0-volume-override:
+  ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
     provider: claude-code
     image: "vm0/claude-code:dev"
     volumes:
-      - test-volume:/home/user/data
+      - ${VOLUME_NAME}:/home/user/data
       - claude-files:/home/user/.config/claude
     working_dir: /home/user/workspace
 
 volumes:
-  test-volume:
-    name: test-volume
+  ${VOLUME_NAME}:
+    name: ${VOLUME_NAME}
     version: latest
   claude-files:
     name: claude-files
     version: latest
 EOF
-    fi
+    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+}
+
+@test "Build VM0 volume override test agent configuration" {
+    # Create config dynamically with unique names to avoid parallel test conflicts
+    cat > "$TEST_CONFIG" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}:
+    description: "Test agent with volume for override testing"
+    provider: claude-code
+    image: "vm0/claude-code:dev"
+    volumes:
+      - ${VOLUME_NAME}:/home/user/data
+      - claude-files:/home/user/.config/claude
+    working_dir: /home/user/workspace
+
+volumes:
+  ${VOLUME_NAME}:
+    name: ${VOLUME_NAME}
+    version: latest
+  claude-files:
+    name: claude-files
+    version: latest
+EOF
 
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
-    assert_output --partial "vm0-volume-override"
+    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 volume version override: --volume-version overrides volume at runtime" {
     # This test verifies that --volume-version flag overrides the default volume version
+
+    # Step 0: Create and compose agent (each test needs its own agent due to parallel execution)
+    create_and_compose_agent
 
     # Step 1: Create test volume with multiple versions
     echo "# Step 1: Creating test volume with version 1..."
@@ -102,7 +130,7 @@ EOF
     # Step 3: Run agent WITH --volume-version to override to version 1
     # The volume should have version-1 content instead of version-3-head (latest)
     echo "# Step 3: Running agent with --volume-version override..."
-    run $CLI_COMMAND run vm0-volume-override \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --volume-version "$VOLUME_NAME=$VERSION1" \
         "cat /home/user/data/data.txt"
@@ -121,6 +149,9 @@ EOF
 
 @test "VM0 volume version override: checkpoint resume with --volume-version" {
     # This test verifies that --volume-version can override stored checkpoint volume versions
+
+    # Step 0: Create and compose agent (each test needs its own agent due to parallel execution)
+    create_and_compose_agent
 
     # Step 1: Create test volume
     echo "# Step 1: Creating test volume..."
@@ -144,7 +175,7 @@ EOF
     run $CLI_COMMAND artifact push
     assert_success
 
-    run $CLI_COMMAND run vm0-volume-override \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'first run'"
 
@@ -187,6 +218,9 @@ EOF
 @test "VM0 volume version override: continue session with --volume-version" {
     # This test verifies that --volume-version works with session continue
 
+    # Step 0: Create and compose agent (each test needs its own agent due to parallel execution)
+    create_and_compose_agent
+
     # Step 1: Create test volume with initial version
     echo "# Step 1: Creating test volume..."
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
@@ -209,7 +243,7 @@ EOF
     run $CLI_COMMAND artifact push
     assert_success
 
-    run $CLI_COMMAND run vm0-volume-override \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'creating session'"
 

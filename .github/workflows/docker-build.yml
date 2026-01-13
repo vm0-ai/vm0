@@ -6,6 +6,10 @@ on:
       - '.docker/toolchain/**'
       - '.github/workflows/docker-*.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
