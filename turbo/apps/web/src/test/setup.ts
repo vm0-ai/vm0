@@ -21,3 +21,4 @@ vi.mock("@clerk/nextjs/server", () => ({
 process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY =
   "pk_test_mock_instance.clerk.accounts.dev$";
 process.env.CLERK_SECRET_KEY = "sk_test_mock_secret_key_for_testing";
+process.env.AXIOM_DATASET_SUFFIX = "dev";
