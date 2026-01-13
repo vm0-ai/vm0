@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/docs-v0.16.0...docs-v0.16.1) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/docs-v0.15.0...docs-v0.16.0) (2026-01-12)
 
 

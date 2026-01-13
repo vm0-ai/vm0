@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/vm0-ai/vm0/compare/core-v4.2.0...core-v4.2.1) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+
 ## [4.2.0](https://github.com/vm0-ai/vm0/compare/core-v4.1.1...core-v4.2.0) (2026-01-12)
 
 

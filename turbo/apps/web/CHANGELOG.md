@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.4.2](https://github.com/vm0-ai/vm0/compare/web-v9.4.1...web-v9.4.2) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.1
+
 ## [9.4.1](https://github.com/vm0-ai/vm0/compare/web-v9.4.0...web-v9.4.1) (2026-01-13)
 
 
