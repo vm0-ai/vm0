@@ -806,12 +806,7 @@ jobs:
           echo ""
 
           # Create minimal benchmark config (only firecracker paths needed)
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cat > ${RUNNER_DIR}/benchmark.yaml << 'EOF'
-firecracker:
-  binary: /usr/bin/firecracker
-  kernel: /opt/vm0-runner/vmlinux
-  rootfs: ${RUNNER_DIR}/rootfs.ext4
-EOF"
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml && echo '  binary: /usr/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml && echo '  kernel: /opt/vm0-runner/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml && echo '  rootfs: ${RUNNER_DIR}/rootfs.ext4' >> ${RUNNER_DIR}/benchmark.yaml"
 
           # Run benchmark command with a simple echo test
           ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'echo VM boot test successful'" 2>&1 || {
