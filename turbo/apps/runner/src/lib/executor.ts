@@ -33,7 +33,6 @@ import { getAllScripts } from "./scripts/utils.js";
 import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import {
-  withRunnerTiming,
   withSandboxTiming,
   recordRunnerOperation,
 } from "./metrics/index.js";
