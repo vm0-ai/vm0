@@ -84,3 +84,159 @@ jobs:
 ```
 
 See [GitHub Actions](/docs/usage/github-actions) for more details on setting up automated workflows.
+
+## Frequently Asked Questions
+
+<Accordions className="faq-accordions">
+
+<Accordion title="How do I get the Run ID and Session ID?">
+
+When you run an agent with `vm0 run` or `vm0 cook`, the CLI automatically displays these IDs in the output:
+
+**Run ID** is shown when the run starts:
+```
+▶ Run started
+  Run ID:   11007483-20b2-42b1-8f2a-b42a10186810
+  Sandbox:  sbx_def456uvw
+```
+
+**Session ID** is shown when the run completes:
+```
+✓ Run completed successfully
+  Checkpoint:    61cddb1f-b83a-4b89-8785-97df099fe61f
+  Session:       9907d243-c38a-442b-84ee-efefd4eaff44
+  Conversation:  conv_abc123
+```
+
+You can use the Run ID to view logs:
+```bash
+vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810
+```
+
+And use the Session ID to continue the conversation:
+```bash
+vm0 run continue 9907d243-c38a-442b-84ee-efefd4eaff44 "next task"
+```
+
+</Accordion>
+
+<Accordion title="What's the difference between Session ID and Checkpoint ID?">
+
+- **Session ID**: References the entire conversation history and latest artifact state. Use `vm0 run continue <session-id>` to continue working with full context.
+
+- **Checkpoint ID**: References a specific point in time during a run. Use `vm0 run resume <checkpoint-id>` to restart from that exact checkpoint.
+
+**Example:**
+```bash
+# Continue session (uses latest state)
+vm0 run continue 9907d243-c38a-442b-84ee-efefd4eaff44 "add new feature"
+
+# Resume from checkpoint (goes back to that point)
+vm0 run resume 61cddb1f-b83a-4b89-8785-97df099fe61f "try different approach"
+```
+
+</Accordion>
+
+<Accordion title="How do I list all my previous runs?">
+
+Currently, there's no dedicated CLI command to list runs. However, you can:
+
+1. **Check your artifacts** to see what agents have produced:
+   ```bash
+   vm0 artifact list
+   ```
+
+2. **Use the API** to query runs:
+   ```bash
+   curl -H "Authorization: Bearer $VM0_TOKEN" \
+     https://api.vm0.ai/v1/runs
+   ```
+
+3. **View in the web dashboard** at [vm0.ai](https://vm0.ai)
+
+</Accordion>
+
+<Accordion title="Can I run an agent without waiting for it to complete?">
+
+Yes! You can run the agent in the background by adding `&` at the end:
+
+```bash
+vm0 run my-agent "long task" &
+```
+
+The Run ID will be displayed immediately. You can then check the logs later:
+
+```bash
+vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810
+```
+
+Or use the API to check the run status:
+
+```bash
+curl -H "Authorization: Bearer $VM0_TOKEN" \
+  https://api.vm0.ai/v1/runs/11007483-20b2-42b1-8f2a-b42a10186810
+```
+
+</Accordion>
+
+<Accordion title="How do I pass multiple environment variables?">
+
+You can pass multiple `--vars` and `--secrets` flags:
+
+```bash
+vm0 run my-agent "deploy" \
+  --vars ENV=production \
+  --vars REGION=us-west \
+  --vars DEBUG=false \
+  --secrets API_KEY=sk-xxx \
+  --secrets DB_PASSWORD=pwd123
+```
+
+Or use a `.env` file with `vm0 cook`:
+
+```bash title=".env"
+ENV=production
+REGION=us-west
+API_KEY=sk-xxx
+```
+
+```bash
+vm0 cook "deploy to production"
+```
+
+See [Environment Variables](/docs/core-concept/environment-variable) for more details.
+
+</Accordion>
+
+<Accordion title="What happens if my agent run fails?">
+
+When a run fails, you'll see an error message:
+
+```
+✗ Run failed
+  Error: Connection timeout
+  (use "vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --system" to view system logs)
+```
+
+To debug:
+
+1. **Check system logs**:
+   ```bash
+   vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --system
+   ```
+
+2. **Review the full output**:
+   ```bash
+   vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810
+   ```
+
+3. **Resume from last checkpoint** (if available):
+   ```bash
+   vm0 run resume 61cddb1f-b83a-4b89-8785-97df099fe61f "continue"
+   ```
+
+See [Debugging](/docs/usage/debugging) for detailed troubleshooting steps.
+
+</Accordion>
+
+</Accordions>

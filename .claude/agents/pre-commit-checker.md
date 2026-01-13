@@ -81,3 +81,19 @@ If any check fails after auto-fix attempts:
 4. Ask if you should fix the remaining issues automatically
 
 Your goal is to ensure the code is production-ready before every commit, maintaining the high quality standards defined in the project's guidelines.
+
+## Troubleshooting
+
+### Slow Pre-commit Hooks or Lint Timeout
+
+If pre-commit hooks take an unusually long time or `pnpm lint` times out, try clearing the node_modules cache:
+
+```bash
+# Delete all node_modules directories
+find turbo -name "node_modules" -type d -prune -exec rm -rf {} +
+
+# Reinstall dependencies
+cd turbo && pnpm install
+```
+
+This often resolves performance issues caused by corrupted or inconsistent dependency caches.

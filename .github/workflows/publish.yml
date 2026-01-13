@@ -6,6 +6,10 @@ on:
     paths:
       - '.vm0/agents/docs-writer/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: .vm0/agents/docs-writer

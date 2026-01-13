@@ -11,6 +11,10 @@ on:
         required: false
         default: 'do the job'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: .vm0/agents/docs-writer

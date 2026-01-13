@@ -58,7 +58,10 @@ export const pullCommand = new Command()
 
       let url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=volume`;
       if (versionId) {
-        url += `&version=${encodeURIComponent(versionId)}`;
+        // Quote version as JSON string to prevent ts-rest's jsonQuery from
+        // parsing hex strings like "52999e37" as scientific notation numbers
+        const quotedVersion = JSON.stringify(versionId);
+        url += `&version=${encodeURIComponent(quotedVersion)}`;
       }
 
       const response = await apiClient.get(url);

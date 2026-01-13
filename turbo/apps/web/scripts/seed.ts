@@ -1,6 +1,5 @@
 #!/usr/bin/env tsx
 
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 /**
@@ -12,7 +11,6 @@ async function seed() {
   }
 
   const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-  const db = drizzle(sql);
 
   try {
     // Add seed data here if needed

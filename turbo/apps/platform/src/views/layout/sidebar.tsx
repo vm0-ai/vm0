@@ -8,6 +8,7 @@ import {
 } from "../../signals/layout/navigation.ts";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { NavLink } from "./nav-link.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export function Sidebar() {
   const activeItem = useGet(activeNavItem$);
@@ -106,7 +107,7 @@ function UserProfile() {
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
 
   const handleClick = () => {
-    void clerk?.openUserProfile();
+    detach(clerk?.openUserProfile(), Reason.DomCallback);
   };
 
   return (

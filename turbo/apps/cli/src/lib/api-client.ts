@@ -288,8 +288,11 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
+    // Quote the version as JSON string to prevent ts-rest's jsonQuery from
+    // parsing hex strings like "52999e37" as scientific notation numbers
+    const quotedVersion = JSON.stringify(version);
     const response = await fetch(
-      `${baseUrl}/api/agent/composes/versions?composeId=${encodeURIComponent(composeId)}&version=${encodeURIComponent(version)}`,
+      `${baseUrl}/api/agent/composes/versions?composeId=${encodeURIComponent(composeId)}&version=${encodeURIComponent(quotedVersion)}`,
       {
         method: "GET",
         headers,

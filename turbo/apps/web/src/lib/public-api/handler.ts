@@ -14,7 +14,7 @@ import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "../logger";
 import { REQUEST_ID_HEADER, generateRequestId } from "./request-id";
 import { publicApiErrorHandler } from "./errors";
-import { recordApiRequest, pathToTemplate, flushMetrics } from "../metrics";
+import { recordApiRequest, flushMetrics } from "../metrics";
 
 // Re-export tsr for convenience
 export { tsr };
@@ -81,7 +81,7 @@ export function createPublicApiHandler<T extends AppRouter>(
           const url = new URL(request.url);
           recordApiRequest({
             method: request.method,
-            pathTemplate: pathToTemplate(url.pathname),
+            pathTemplate: request.route,
             statusCode: response.status,
             host: url.host,
             durationMs: Date.now() - startTime,
