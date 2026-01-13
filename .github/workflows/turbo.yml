@@ -782,12 +782,52 @@ jobs:
           echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
           echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
+  # Run benchmark command to test VM boot performance (runs after prepare, before start)
+  deploy-runner-benchmark:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+    needs: [deploy-runner-prepare]
+    if: needs.deploy-runner-prepare.outputs.runner-host != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run benchmark command for VM performance testing
+        env:
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+
+          echo "=== Running VM Benchmark on ${RUNNER_HOST} ==="
+          echo "Runner directory: ${RUNNER_DIR}"
+          echo ""
+
+          # Create minimal benchmark config (paths match runner.yaml.j2 template)
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml && echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml && echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml && echo '  rootfs: ${RUNNER_DIR}/rootfs.ext4' >> ${RUNNER_DIR}/benchmark.yaml"
+
+          # Run benchmark command with a simple echo test
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'echo VM boot test successful'" 2>&1 || {
+            echo "Benchmark command failed (exit code: $?)"
+            echo "This may indicate issues with VM boot or Firecracker setup"
+            exit 1
+          }
+
+          echo ""
+          echo "=== VM Benchmark Complete ==="
+
   # Start runner after deploy-web provides preview URL
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
-    needs: [change-detection, deploy-web, deploy-runner-prepare]
+    needs: [change-detection, deploy-web, deploy-runner-prepare, deploy-runner-benchmark]
     if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
     outputs:
       runner-deployed: ${{ steps.start.outputs.runner-deployed }}

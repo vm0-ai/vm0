@@ -23,7 +23,11 @@ function getApiInstruments() {
       unit: "ms",
     });
   }
-  return { httpRequestTotal, httpRequestErrorsTotal, httpRequestDuration };
+  return {
+    httpRequestTotal: httpRequestTotal!,
+    httpRequestErrorsTotal: httpRequestErrorsTotal!,
+    httpRequestDuration: httpRequestDuration!,
+  };
 }
 
 function getSandboxInstruments() {
@@ -47,9 +51,9 @@ function getSandboxInstruments() {
     );
   }
   return {
-    sandboxOperationTotal,
-    sandboxOperationErrorsTotal,
-    sandboxOperationDuration,
+    sandboxOperationTotal: sandboxOperationTotal!,
+    sandboxOperationErrorsTotal: sandboxOperationErrorsTotal!,
+    sandboxOperationDuration: sandboxOperationDuration!,
   };
 }
 

@@ -43,6 +43,27 @@ export interface ExecutionResult {
 }
 
 /**
+ * Execution options for customizing job execution behavior
+ */
+export interface ExecutionOptions {
+  /**
+   * Benchmark mode for local VM performance testing without API server:
+   * - Runs prompt directly as bash command (skips run-agent.py)
+   * - Skips network log upload
+   * - Skips telemetry reporting
+   * Used by the benchmark command
+   */
+  benchmarkMode?: boolean;
+
+  /**
+   * Custom logger function for execution output.
+   * If provided, executor will use this instead of console.log.
+   * Useful for adding timestamps or custom prefixes.
+   */
+  logger?: (message: string) => void;
+}
+
+/**
  * Extract short VM ID from runId (UUID)
  * Uses first 8 characters of UUID for unique identification
  */
@@ -405,6 +426,7 @@ nameserver 1.1.1.1`;
 export async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,
+  options: ExecutionOptions = {},
 ): Promise<ExecutionResult> {
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
@@ -412,7 +434,10 @@ export async function executeJob(
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
 
-  console.log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
+  // Use custom logger if provided, otherwise default to console.log
+  const log = options.logger ?? ((msg: string) => console.log(msg));
+
+  log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
 
   try {
     // Create VM configuration
@@ -430,7 +455,7 @@ export async function executeJob(
     };
 
     // Create and start VM
-    console.log(`[Executor] Creating VM ${vmId}...`);
+    log(`[Executor] Creating VM ${vmId}...`);
     vm = new FirecrackerVM(vmConfig);
     await withSandboxTiming("vm_create", () => vm!.start());
 
@@ -439,19 +464,19 @@ export async function executeJob(
     if (!guestIp) {
       throw new Error("VM started but no IP address available");
     }
-    console.log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
+    log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
     // Create SSH client and wait for SSH to become available
     // Connect as 'user' (not root) to match E2B behavior
     // Privileged operations use sudo
     const privateKeyPath = getRunnerSSHKeyPath();
     const ssh = createVMSSHClient(guestIp, "user", privateKeyPath || undefined);
-    console.log(`[Executor] Waiting for SSH on ${guestIp}...`);
+    log(`[Executor] Waiting for SSH on ${guestIp}...`);
     await withSandboxTiming("ssh_wait", () =>
       ssh.waitUntilReachable(120000, 2000),
     ); // 2 minute timeout, check every 2s
 
-    console.log(`[Executor] SSH ready on ${guestIp}`);
+    log(`[Executor] SSH ready on ${guestIp}`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
@@ -461,7 +486,7 @@ export async function executeJob(
       const sealSecretsEnabled =
         firewallConfig.experimental_seal_secrets ?? false;
 
-      console.log(
+      log(
         `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
@@ -484,13 +509,13 @@ export async function executeJob(
     }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot
-    console.log(`[Executor] Configuring DNS...`);
+    log(`[Executor] Configuring DNS...`);
     await configureDNS(ssh);
 
     // Upload all Python scripts
-    console.log(`[Executor] Uploading scripts...`);
+    log(`[Executor] Uploading scripts...`);
     await withSandboxTiming("script_upload", () => uploadScripts(ssh));
-    console.log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
+    log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
@@ -516,25 +541,32 @@ export async function executeJob(
     // API URL comes from runner config, not from claim response
     const envVars = buildEnvironmentVariables(context, config.server.url);
     const envJson = JSON.stringify(envVars);
-    console.log(
+    log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
-    // Execute env-loader.py which loads environment from JSON, then runs run-agent.py
-    // Use nohup to run in background (like E2B) so SSH doesn't block
+    // Execute agent or direct command based on mode
     const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
     const exitCodeFile = `/tmp/vm0-exit-${context.runId}`;
-    console.log(`[Executor] Running agent via env-loader (background)...`);
     const startTime = Date.now();
 
-    // Start agent in background using nohup
-    // Write exit code to file when done so we can poll for completion
-    // Use python3 -u for unbuffered output
-    await ssh.exec(
-      `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
-    );
-    console.log(`[Executor] Agent started in background`);
+    if (options.benchmarkMode) {
+      // Benchmark mode: run prompt directly as bash command (skip run-agent.py)
+      // This avoids API dependencies while still testing the full VM setup pipeline
+      log(`[Executor] Running command directly (benchmark mode)...`);
+      await ssh.exec(
+        `nohup sh -c '${context.prompt}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
+      );
+      log(`[Executor] Command started in background`);
+    } else {
+      // Production mode: run env-loader.py which loads environment and runs run-agent.py
+      log(`[Executor] Running agent via env-loader (background)...`);
+      await ssh.exec(
+        `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
+      );
+      log(`[Executor] Agent started in background`);
+    }
 
     // Poll for completion by checking if exit code file exists
     // Timeout after 24 hours (same as E2B sandbox timeout)
@@ -549,7 +581,8 @@ export async function executeJob(
       // Check if exit code file exists
       const checkResult = await ssh.exec(`cat ${exitCodeFile} 2>/dev/null`);
       if (checkResult.exitCode === 0 && checkResult.stdout.trim()) {
-        exitCode = parseInt(checkResult.stdout.trim(), 10) || 1;
+        const parsed = parseInt(checkResult.stdout.trim(), 10);
+        exitCode = Number.isNaN(parsed) ? 1 : parsed;
         completed = true;
         break;
       }
@@ -559,7 +592,7 @@ export async function executeJob(
     const duration = Math.round(durationMs / 1000);
 
     if (!completed) {
-      console.log(`[Executor] Agent timed out after ${duration}s`);
+      log(`[Executor] Agent timed out after ${duration}s`);
       // Record agent_execute metric for timeout
       recordRunnerOperation({
         actionType: "agent_execute",
@@ -579,14 +612,12 @@ export async function executeJob(
       success: exitCode === 0,
     });
 
-    console.log(
-      `[Executor] Agent finished in ${duration}s with exit code ${exitCode}`,
-    );
+    log(`[Executor] Agent finished in ${duration}s with exit code ${exitCode}`);
 
     // Read log file for debugging output
     const logResult = await ssh.exec(`tail -100 ${systemLogFile} 2>/dev/null`);
     if (logResult.stdout) {
-      console.log(
+      log(
         `[Executor] Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
       );
     }
@@ -606,7 +637,7 @@ export async function executeJob(
   } finally {
     // Clean up network security if firewall was enabled
     if (context.experimentalFirewall?.enabled && guestIp) {
-      console.log(`[Executor] Cleaning up network security for VM ${guestIp}`);
+      log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
       // Remove per-VM iptables rules first
       try {
@@ -620,23 +651,25 @@ export async function executeJob(
       // Unregister from proxy registry
       getVMRegistry().unregister(guestIp);
 
-      // Upload network logs to telemetry endpoint
-      try {
-        await uploadNetworkLogs(
-          config.server.url,
-          context.sandboxToken,
-          context.runId,
-        );
-      } catch (err) {
-        console.error(
-          `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
+      // Upload network logs to telemetry endpoint (skip in devMode)
+      if (!options.benchmarkMode) {
+        try {
+          await uploadNetworkLogs(
+            config.server.url,
+            context.sandboxToken,
+            context.runId,
+          );
+        } catch (err) {
+          console.error(
+            `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+          );
+        }
       }
     }
 
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
-      console.log(`[Executor] Cleaning up VM ${vmId}...`);
+      log(`[Executor] Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }
   }

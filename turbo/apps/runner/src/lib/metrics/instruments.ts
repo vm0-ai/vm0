@@ -30,9 +30,9 @@ function getRunnerInstruments() {
     );
   }
   return {
-    runnerOperationTotal,
-    runnerOperationErrorsTotal,
-    runnerOperationDuration,
+    runnerOperationTotal: runnerOperationTotal!,
+    runnerOperationErrorsTotal: runnerOperationErrorsTotal!,
+    runnerOperationDuration: runnerOperationDuration!,
   };
 }
 
@@ -57,9 +57,9 @@ function getSandboxInstruments() {
     );
   }
   return {
-    sandboxOperationTotal,
-    sandboxOperationErrorsTotal,
-    sandboxOperationDuration,
+    sandboxOperationTotal: sandboxOperationTotal!,
+    sandboxOperationErrorsTotal: sandboxOperationErrorsTotal!,
+    sandboxOperationDuration: sandboxOperationDuration!,
   };
 }
 
