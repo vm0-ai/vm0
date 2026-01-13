@@ -31,16 +31,17 @@ mkdir -p /mnt/root
 mount -t overlay overlay -o lowerdir=/rom,upperdir=/rw/upper,workdir=/rw/work /mnt/root
 
 # Move mount points into new root so they remain accessible
-mkdir -p /mnt/root/rom /mnt/root/rw
+mkdir -p /mnt/root/rom /mnt/root/rw /mnt/root/oldroot
 mount --move /rom /mnt/root/rom
 mount --move /rw /mnt/root/rw
 
 # Switch to new root filesystem
+# Use /oldroot for old root (not /rom, which already has squashfs mounted)
 cd /mnt/root
-pivot_root . rom
+pivot_root . oldroot
 
-# Clean up old root reference (now at /rom after pivot)
-umount -l /rom/mnt/root 2>/dev/null || true
+# Clean up old root reference (now at /oldroot after pivot)
+umount -l /oldroot 2>/dev/null || true
 
 # Start the real init (systemd)
 exec /lib/systemd/systemd "$@"
