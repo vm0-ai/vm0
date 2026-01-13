@@ -133,9 +133,13 @@ export async function initServices(): Promise<void> {
     configurable: true,
   });
 
-  // Eagerly initialize PGlite and run migrations when no DATABASE_URL
+  // Eagerly initialize database connection
+  // For PGlite: run migrations on in-memory database
+  // For PostgreSQL: establish connection pool to catch connection errors early
   if (!process.env.DATABASE_URL) {
     void _services.db;
     await _pgliteReady;
+  } else {
+    void _services.db;
   }
 }
