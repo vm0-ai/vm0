@@ -305,8 +305,6 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
-    outputs:
-      vm0-token: ${{ steps.auth.outputs.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -331,20 +329,22 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
-      - name: Authenticate and output token
-        id: auth
+      - name: Authenticate CLI
         run: |
           echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
           cd e2e && npm run auth
-          # Extract token and output it (masked for security)
-          TOKEN=$(cat ~/.vm0/config.json | jq -r '.token')
-          echo "::add-mask::$TOKEN"
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Upload auth config
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm0-auth-config
+          path: ~/.vm0/config.json
+          retention-days: 1
 
   # Run API E2E tests (lightweight, fast)
   api-e2e:
@@ -352,12 +352,18 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [e2e-auth, deploy-web]
-    if: needs.deploy-web.outputs.preview-url != '' && needs.e2e-auth.outputs.vm0-token != ''
+    if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive # For BATS test framework
+
+      - name: Download auth config
+        uses: actions/download-artifact@v4
+        with:
+          name: vm0-auth-config
+          path: ~/.vm0
 
       - name: Run API E2E Tests
         run: |
@@ -365,7 +371,6 @@ jobs:
           ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VM0_TOKEN: ${{ needs.e2e-auth.outputs.vm0-token }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Run CLI E2E tests
@@ -375,7 +380,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection, deploy-web, deploy-runner, e2e-auth, lint, test]
     # Runs when all dependencies succeed and preview-url is available
-    if: needs.deploy-web.outputs.preview-url != '' && needs.e2e-auth.outputs.vm0-token != ''
+    if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -398,10 +403,11 @@ jobs:
       - name: Install GNU parallel for bats
         run: apt-get update && apt-get install -y parallel
 
-      - name: Setup authentication
-        run: |
-          mkdir -p ~/.vm0
-          echo '{"token":"${{ needs.e2e-auth.outputs.vm0-token }}"}' > ~/.vm0/config.json
+      - name: Download auth config
+        uses: actions/download-artifact@v4
+        with:
+          name: vm0-auth-config
+          path: ~/.vm0
 
       - name: Setup VM0 test volumes
         run: ./e2e/scripts/setup-vm0-volumes.sh
