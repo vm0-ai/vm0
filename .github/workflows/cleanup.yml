@@ -7,6 +7,8 @@ on:
 jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +24,6 @@ jobs:
           else
             echo "should-cleanup=true" >> $GITHUB_OUTPUT
           fi
-
-      - name: Install Ansible
-        if: steps.check.outputs.should-cleanup == 'true'
-        run: pip install ansible
 
       - name: Cleanup Runner with Ansible (Brute Force)
         if: steps.check.outputs.should-cleanup == 'true'
@@ -89,7 +87,7 @@ jobs:
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     steps:
       - uses: actions/checkout@v4
 

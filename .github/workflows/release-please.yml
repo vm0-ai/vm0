@@ -37,7 +37,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     permissions:
       contents: read
     steps:
@@ -67,7 +67,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     permissions:
       contents: read
       deployments: write
@@ -116,7 +116,7 @@ jobs:
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     permissions:
       contents: read
       deployments: write
@@ -140,7 +140,7 @@ jobs:
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     permissions:
       contents: read
       deployments: write
@@ -227,15 +227,12 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Install Ansible
-        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
 
       - name: Build runner bundle
         run: |
