@@ -87,17 +87,15 @@ export function initServices(): void {
   if (!_metricsInitialized) {
     _metricsInitialized = true;
     const envVars = _services.env;
-    // Use explicit AXIOM_DATASET_SUFFIX if provided, otherwise infer from environment
-    const datasetSuffix =
-      envVars.AXIOM_DATASET_SUFFIX ??
-      (process.env.VERCEL_ENV === "production" ||
-      process.env.NODE_ENV === "production"
-        ? "prod"
-        : "dev");
+    if (!envVars.AXIOM_DATASET_SUFFIX) {
+      throw new Error(
+        "AXIOM_DATASET_SUFFIX is required. Set to 'dev' or 'prod'.",
+      );
+    }
     initMetrics({
       serviceName: "vm0-web",
       axiomToken: envVars.AXIOM_TOKEN,
-      environment: datasetSuffix,
+      environment: envVars.AXIOM_DATASET_SUFFIX,
     });
   }
 }

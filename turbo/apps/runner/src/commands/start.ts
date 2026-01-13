@@ -120,10 +120,15 @@ export const startCommand = new Command("start")
       console.log("Config valid");
 
       // Initialize metrics (from AXIOM_TOKEN env var)
-      // Use explicit AXIOM_DATASET_SUFFIX if provided, otherwise infer from NODE_ENV
-      const datasetSuffix =
-        (process.env.AXIOM_DATASET_SUFFIX as "dev" | "prod" | undefined) ??
-        (process.env.NODE_ENV === "production" ? "prod" : "dev");
+      const datasetSuffix = process.env.AXIOM_DATASET_SUFFIX as
+        | "dev"
+        | "prod"
+        | undefined;
+      if (!datasetSuffix) {
+        throw new Error(
+          "AXIOM_DATASET_SUFFIX is required. Set to 'dev' or 'prod'.",
+        );
+      }
       initMetrics({
         serviceName: "vm0-runner",
         runnerLabel: config.name,
