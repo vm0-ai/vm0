@@ -7,7 +7,7 @@ describe("debugConfigSchema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -29,7 +29,7 @@ describe("debugConfigSchema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
       sandbox: {
         vcpu: 4,
@@ -52,7 +52,7 @@ describe("debugConfigSchema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
       server: {
         url: "https://custom.example.com",
@@ -73,7 +73,7 @@ describe("debugConfigSchema", () => {
       firecracker: {
         binary: "",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -86,7 +86,7 @@ describe("debugConfigSchema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 

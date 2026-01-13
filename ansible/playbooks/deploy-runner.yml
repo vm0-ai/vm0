@@ -68,7 +68,7 @@
     drain_timeout: 86400  # 24 hours
     extra_env: {}
     # Rootfs configuration - CI should override for per-PR isolation
-    rootfs_path: /opt/firecracker/rootfs.ext4
+    rootfs_path: /opt/firecracker/rootfs.squashfs
     force_rebuild_rootfs: false
     # Proxy port - CI should override for per-PR isolation (8080 + PR_NUMBER % 1000)
     proxy_port: 8080
