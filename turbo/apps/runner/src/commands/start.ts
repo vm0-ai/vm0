@@ -22,6 +22,12 @@ import {
   initVMRegistry,
   getProxyManager,
 } from "../lib/proxy/index.js";
+import {
+  initMetrics,
+  withRunnerTiming,
+  flushMetrics,
+  shutdownMetrics,
+} from "../lib/metrics/index.js";
 
 // Track active jobs for concurrency management
 const activeJobs = new Set<string>();
@@ -112,6 +118,14 @@ export const startCommand = new Command("start")
       validateFirecrackerPaths(config.firecracker);
 
       console.log("Config valid");
+
+      // Initialize metrics (from AXIOM_TOKEN env var)
+      initMetrics({
+        serviceName: "vm0-runner",
+        runnerLabel: config.name,
+        axiomToken: process.env.AXIOM_TOKEN,
+        environment: process.env.NODE_ENV === "production" ? "prod" : "dev",
+      });
 
       // Check network prerequisites
       const networkCheck = checkNetworkPrerequisites();
@@ -237,7 +251,9 @@ export const startCommand = new Command("start")
 
         try {
           // Poll for pending jobs
-          const job = await pollForJob(config.server, config.group);
+          const job = await withRunnerTiming("poll", () =>
+            pollForJob(config.server, config.group),
+          );
 
           if (!job) {
             // No job found, wait before polling again
@@ -252,7 +268,9 @@ export const startCommand = new Command("start")
 
           // Claim the job
           try {
-            const context = await claimJob(config.server, job.runId);
+            const context = await withRunnerTiming("claim", () =>
+              claimJob(config.server, job.runId),
+            );
             console.log(`Claimed job: ${context.runId}`);
 
             // Track and execute in background
@@ -302,6 +320,11 @@ export const startCommand = new Command("start")
         console.log("Stopping network proxy...");
         await getProxyManager().stop();
       }
+
+      // Flush and shutdown metrics
+      console.log("Flushing metrics...");
+      await flushMetrics();
+      await shutdownMetrics();
 
       // Final status update
       state.mode = "stopped";
