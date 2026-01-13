@@ -4,4 +4,4 @@ extends:
 commit-msg:
   commands:
     commitlint:
-      run: npx -y commitlint --config commitlint.config.mjs --edit "{1}"
+      run: ./turbo/node_modules/.bin/commitlint --config commitlint.config.mjs --edit "{1}"
