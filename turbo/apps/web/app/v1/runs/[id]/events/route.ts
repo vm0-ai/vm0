@@ -75,7 +75,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  initServices();
+  await initServices();
 
   const auth = await authenticatePublicApi();
   if (!isAuthSuccess(auth)) {

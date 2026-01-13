@@ -40,7 +40,7 @@ interface AxiomNetworkEvent {
 
 const router = tsr.router(runNetworkLogsContract, {
   getNetworkLogs: async ({ params, query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

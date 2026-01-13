@@ -32,7 +32,7 @@ export async function getUserId(): Promise<string | null> {
 
     // Check for CLI token format (vm0_live_)
     if (token.startsWith("vm0_live_")) {
-      initServices();
+      await initServices();
 
       const [tokenRecord] = await globalThis.services.db
         .select()

@@ -29,7 +29,7 @@ describe("BlobService", () => {
   let blobService: InstanceType<typeof BlobService>;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
     // Dynamically import to avoid env() being called before initServices
     const blobModule = await import("../blob-service");
     BlobService = blobModule.BlobService;

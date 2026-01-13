@@ -3,16 +3,18 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-/**
- * Seed database with initial data
- */
 async function seed() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL environment variable is not set");
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    console.log("No DATABASE_URL set, skipping seeding (PGlite is in-memory)");
+    return;
   }
 
-  const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+  console.log("Seeding with PostgreSQL...");
+  const sql = postgres(databaseUrl, { max: 1 });
   const db = drizzle(sql);
+  void db; // Placeholder for future seed operations
 
   try {
     // Add seed data here if needed

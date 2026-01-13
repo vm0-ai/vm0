@@ -57,7 +57,7 @@ interface LogEntry {
 
 const router = tsr.router(publicRunLogsContract, {
   getLogs: async ({ params, query }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

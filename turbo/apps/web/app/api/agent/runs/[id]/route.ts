@@ -11,7 +11,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 
 const router = tsr.router(runsByIdContract, {
   getById: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

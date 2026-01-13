@@ -15,7 +15,7 @@ const log = logger("webhook:checkpoints");
 
 const router = tsr.router(webhookCheckpointsContract, {
   create: async ({ body }) => {
-    initServices();
+    await initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
     const auth = await getSandboxAuthForRun(body.runId);

@@ -39,7 +39,7 @@ const TEST_PREFIX = "test-download-";
 
 describe("GET /api/storages/download", () => {
   beforeAll(async () => {
-    initServices();
+    await initServices();
   });
 
   beforeEach(async () => {

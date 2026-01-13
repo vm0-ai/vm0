@@ -31,7 +31,7 @@ interface AxiomAgentEvent {
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

@@ -34,7 +34,7 @@ interface AxiomMetricEvent {
 
 const router = tsr.router(publicRunMetricsContract, {
   getMetrics: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

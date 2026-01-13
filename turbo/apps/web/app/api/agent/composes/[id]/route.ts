@@ -15,7 +15,7 @@ import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 
 const router = tsr.router(composesByIdContract, {
   getById: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

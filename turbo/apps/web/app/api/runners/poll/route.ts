@@ -19,7 +19,7 @@ const log = logger("api:runners:poll");
 
 const router = tsr.router(runnersPollContract, {
   poll: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const auth = await getRunnerAuth();
     if (!auth) {

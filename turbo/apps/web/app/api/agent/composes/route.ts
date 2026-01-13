@@ -21,7 +21,7 @@ import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {
@@ -119,7 +119,7 @@ const router = tsr.router(composesMainContract, {
   },
 
   create: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

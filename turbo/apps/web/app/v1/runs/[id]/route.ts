@@ -30,7 +30,7 @@ interface RunResult {
 
 const router = tsr.router(publicRunByIdContract, {
   get: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

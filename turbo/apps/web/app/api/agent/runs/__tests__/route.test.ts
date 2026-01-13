@@ -67,7 +67,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     vi.clearAllMocks();
 
     // Initialize services
-    initServices();
+    await initServices();
 
     // Mock headers() - not needed for this endpoint since we use Clerk auth
     mockHeaders.mockResolvedValue({

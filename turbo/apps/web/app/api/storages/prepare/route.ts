@@ -22,7 +22,7 @@ const log = logger("api:storages:prepare");
 
 const router = tsr.router(storagesPrepareContract, {
   prepare: async ({ body }) => {
-    initServices();
+    await initServices();
 
     // Authenticate user
     const userId = await getUserId();

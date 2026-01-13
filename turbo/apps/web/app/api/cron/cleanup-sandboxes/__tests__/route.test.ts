@@ -51,7 +51,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    await initServices();
 
     // Set CRON_SECRET for tests
     process.env.CRON_SECRET = cronSecret;

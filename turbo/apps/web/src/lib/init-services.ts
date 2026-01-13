@@ -1,31 +1,59 @@
 import { Pool as PgPool } from "pg";
 import { Pool as NeonPool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
+import { join } from "path";
+import { readdirSync, readFileSync } from "fs";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { Services } from "../types/global";
+import type { Database, Services } from "../types/global";
+
+// Migrations directory
+const MIGRATIONS_DIR = join(__dirname, "../db/migrations");
 
 // Private variables for singleton instances
 let _env: Env | undefined;
 let _pool: PgPool | NeonPool | undefined;
-let _db: NodePgDatabase<typeof schema> | undefined;
+let _pglite: PGlite | undefined;
+let _db: Database | undefined;
 let _services: Services | undefined;
+let _pgliteReady: Promise<void> | undefined;
+
+/**
+ * Run migrations on PGlite instance
+ */
+async function runPgliteMigrations(client: PGlite): Promise<void> {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+
+  for (const file of files) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf-8");
+    await client.exec(sql);
+  }
+}
 
 /**
  * Initialize global services
  * Call this at the entry point of serverless functions
  *
+ * Environment selection:
+ * - No DATABASE_URL: Use PGlite (in-memory for tests, file-based for dev)
+ * - DATABASE_URL + VERCEL: Use Neon serverless driver
+ * - DATABASE_URL only: Use pg driver
+ *
  * @example
  * // In API Route
  * export async function GET() {
- *   initServices();
+ *   await initServices();
  *   const users = await services.db.select().from(users);
  * }
  */
-export function initServices(): void {
+export async function initServices(): Promise<void> {
   // Already initialized
   if (_services) {
+    await _pgliteReady;
     return;
   }
 
@@ -39,21 +67,28 @@ export function initServices(): void {
       return _env;
     },
     get pool() {
+      const databaseUrl = this.env.DATABASE_URL;
+
+      // PGlite mode - no pool available
+      if (!databaseUrl) {
+        return undefined;
+      }
+
       if (!_pool) {
         if (isVercel) {
           // Use Neon serverless driver for Vercel
           // This driver is optimized for Neon's connection pooler and serverless environments
           // See: https://vercel.com/guides/connection-pooling-with-functions
           _pool = new NeonPool({
-            connectionString: this.env.DATABASE_URL,
+            connectionString: databaseUrl,
             max: 10,
             idleTimeoutMillis: 10000,
             connectionTimeoutMillis: 10000,
           });
         } else {
-          // Use regular pg driver for local development
+          // Use regular pg driver for local development with DATABASE_URL
           _pool = new PgPool({
-            connectionString: this.env.DATABASE_URL,
+            connectionString: databaseUrl,
             max: 10,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 10000,
@@ -64,7 +99,24 @@ export function initServices(): void {
     },
     get db() {
       if (!_db) {
-        _db = drizzle(this.pool, { schema });
+        const databaseUrl = this.env.DATABASE_URL;
+
+        if (!databaseUrl) {
+          // Use PGlite in-memory mode for local development/tests
+          if (!_pglite) {
+            _pglite = new PGlite();
+            // Auto-run migrations for in-memory database
+            _pgliteReady = runPgliteMigrations(_pglite);
+          }
+          // PGlite is API-compatible with NodePgDatabase at runtime
+          _db = drizzlePglite({
+            client: _pglite,
+            schema,
+          }) as unknown as Database;
+        } else {
+          // PostgreSQL with DATABASE_URL (Neon on Vercel, pg locally)
+          _db = drizzleNodePg(this.pool!, { schema });
+        }
       }
       return _db;
     },
@@ -80,4 +132,10 @@ export function initServices(): void {
     },
     configurable: true,
   });
+
+  // Eagerly initialize PGlite and run migrations when no DATABASE_URL
+  if (!process.env.DATABASE_URL) {
+    void _services.db;
+    await _pgliteReady;
+  }
 }

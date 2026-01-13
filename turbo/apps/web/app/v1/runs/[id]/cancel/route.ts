@@ -33,7 +33,7 @@ const CANCELLABLE_STATUSES = ["pending", "running"];
 
 const router = tsr.router(publicRunCancelContract, {
   cancel: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

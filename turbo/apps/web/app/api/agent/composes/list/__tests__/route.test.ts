@@ -38,7 +38,7 @@ describe("GET /api/agent/composes/list", () => {
   const testScopeSlug = `test-list-${testScopeId.slice(0, 8)}`;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

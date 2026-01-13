@@ -29,7 +29,7 @@ interface CleanupResult {
 
 const router = tsr.router(cronCleanupSandboxesContract, {
   cleanup: async () => {
-    initServices();
+    await initServices();
 
     // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
     const headersList = await headers();

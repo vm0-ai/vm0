@@ -22,7 +22,7 @@ const router = tsr.router(webhookTelemetryContract, {
     const startTime = Date.now();
     log.debug(`[telemetry] START runId=${body.runId}`);
 
-    initServices();
+    await initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
     const authStart = Date.now();

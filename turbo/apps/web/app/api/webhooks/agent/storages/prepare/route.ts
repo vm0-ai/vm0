@@ -25,7 +25,7 @@ const log = logger("webhook:storages:prepare");
 
 const router = tsr.router(webhookStoragesPrepareContract, {
   prepare: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const {
       runId,

@@ -76,7 +76,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     vi.clearAllMocks();
 
     // Initialize services
-    initServices();
+    await initServices();
 
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);

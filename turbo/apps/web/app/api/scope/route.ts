@@ -25,7 +25,7 @@ const router = tsr.router(scopeContract, {
    * GET /api/scope - Get current user's scope
    */
   get: async () => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {
@@ -57,7 +57,7 @@ const router = tsr.router(scopeContract, {
    * POST /api/scope - Create user's scope
    */
   create: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {
@@ -103,7 +103,7 @@ const router = tsr.router(scopeContract, {
    * PUT /api/scope - Update user's scope slug
    */
   update: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

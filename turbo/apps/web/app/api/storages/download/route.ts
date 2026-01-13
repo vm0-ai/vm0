@@ -17,7 +17,7 @@ const log = logger("api:storages:download");
 
 const router = tsr.router(storagesDownloadContract, {
   download: async ({ query }) => {
-    initServices();
+    await initServices();
 
     // Authenticate user
     const userId = await getUserId();

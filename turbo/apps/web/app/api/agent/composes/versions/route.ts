@@ -14,7 +14,7 @@ import { eq, and, like } from "drizzle-orm";
 
 const router = tsr.router(composesVersionsContract, {
   resolveVersion: async ({ query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

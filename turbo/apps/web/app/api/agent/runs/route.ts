@@ -23,7 +23,7 @@ const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
   create: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

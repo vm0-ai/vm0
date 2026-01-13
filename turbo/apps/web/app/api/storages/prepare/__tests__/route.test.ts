@@ -42,7 +42,7 @@ const TEST_PREFIX = "test-prepare-";
 
 describe("POST /api/storages/prepare", () => {
   beforeAll(async () => {
-    initServices();
+    await initServices();
   });
 
   beforeEach(async () => {

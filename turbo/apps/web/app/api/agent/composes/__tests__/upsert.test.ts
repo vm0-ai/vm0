@@ -38,7 +38,7 @@ describe("Agent Compose Upsert Behavior", () => {
   const testScopeId = randomUUID();
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

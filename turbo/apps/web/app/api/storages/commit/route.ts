@@ -21,7 +21,7 @@ const log = logger("api:storages:commit");
 
 const router = tsr.router(storagesCommitContract, {
   commit: async ({ body }) => {
-    initServices();
+    await initServices();
 
     // Authenticate user
     const userId = await getUserId();

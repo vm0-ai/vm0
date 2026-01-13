@@ -14,7 +14,7 @@ const log = logger("webhooks:heartbeat");
 
 const router = tsr.router(webhookHeartbeatContract, {
   send: async ({ body }) => {
-    initServices();
+    await initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
     const auth = await getSandboxAuthForRun(body.runId);

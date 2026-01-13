@@ -7,7 +7,7 @@ function initEnv() {
 
   return createEnv({
     server: {
-      DATABASE_URL: z.string().min(1),
+      DATABASE_URL: z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),

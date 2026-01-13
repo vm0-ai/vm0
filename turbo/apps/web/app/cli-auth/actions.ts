@@ -17,7 +17,7 @@ export async function verifyDeviceAction(code: string): Promise<VerifyResult> {
     return { success: false, error: "Not authenticated" };
   }
 
-  initServices();
+  await initServices();
 
   // Normalize code (remove spaces, ensure uppercase)
   const normalizedCode = code.replace(/\s/g, "").toUpperCase();

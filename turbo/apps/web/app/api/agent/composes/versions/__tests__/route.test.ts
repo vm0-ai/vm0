@@ -43,7 +43,7 @@ describe("GET /api/agent/composes/versions", () => {
   let testVersionId: string;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

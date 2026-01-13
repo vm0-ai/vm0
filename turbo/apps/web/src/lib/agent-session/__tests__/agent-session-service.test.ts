@@ -42,7 +42,7 @@ describe("AgentSessionService", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    await initServices();
     service = new AgentSessionService();
 
     // Mock Clerk auth for compose API

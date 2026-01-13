@@ -20,7 +20,7 @@ const STORAGE_TYPE = "artifact";
 
 const router = tsr.router(publicArtifactByIdContract, {
   get: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

@@ -39,7 +39,7 @@ describe("Public API v1 - Artifacts Endpoints", () => {
   let testArtifactId: string;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

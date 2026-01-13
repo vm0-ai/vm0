@@ -27,7 +27,7 @@ interface AxiomMetricEvent {
 
 const router = tsr.router(runMetricsContract, {
   getMetrics: async ({ params, query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

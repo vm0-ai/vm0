@@ -14,7 +14,7 @@ const log = logger("api:storages:list");
 
 const router = tsr.router(storagesListContract, {
   list: async ({ query }) => {
-    initServices();
+    await initServices();
 
     // Authenticate user
     const userId = await getUserId();

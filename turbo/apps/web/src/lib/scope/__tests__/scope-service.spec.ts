@@ -75,8 +75,8 @@ describe("Scope Service", () => {
     const testUserId = "test-scope-service-user";
     const testSlug = `test-scope-${Date.now()}`;
 
-    beforeAll(() => {
-      initServices();
+    beforeAll(async () => {
+      await initServices();
     });
 
     afterAll(async () => {

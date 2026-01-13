@@ -21,7 +21,7 @@ const log = logger("api:cli:auth:token");
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const { device_code } = body;
 

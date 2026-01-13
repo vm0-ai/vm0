@@ -25,7 +25,7 @@ const log = logger("api:runners:jobs:claim");
 
 const router = tsr.router(runnersJobClaimContract, {
   claim: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await getRunnerAuth();
     if (!auth) {

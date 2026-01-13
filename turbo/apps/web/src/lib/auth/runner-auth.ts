@@ -32,8 +32,10 @@ export type RunnerAuthContext =
 /**
  * Validate official runner secret using timing-safe comparison
  */
-function validateOfficialRunnerSecret(providedSecret: string): boolean {
-  initServices();
+async function validateOfficialRunnerSecret(
+  providedSecret: string,
+): Promise<boolean> {
+  await initServices();
   const expectedSecret = globalThis.services.env.OFFICIAL_RUNNER_SECRET;
 
   if (!expectedSecret) {
@@ -92,7 +94,7 @@ export async function getRunnerAuth(): Promise<RunnerAuthContext | null> {
   if (token.startsWith(OFFICIAL_RUNNER_TOKEN_PREFIX)) {
     const secret = token.substring(OFFICIAL_RUNNER_TOKEN_PREFIX.length);
 
-    if (validateOfficialRunnerSecret(secret)) {
+    if (await validateOfficialRunnerSecret(secret)) {
       log.debug("Official runner authenticated");
       return { type: "official-runner" };
     }
@@ -103,7 +105,7 @@ export async function getRunnerAuth(): Promise<RunnerAuthContext | null> {
 
   // Check for CLI token format (vm0_live_)
   if (token.startsWith("vm0_live_")) {
-    initServices();
+    await initServices();
 
     const [tokenRecord] = await globalThis.services.db
       .select()

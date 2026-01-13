@@ -15,8 +15,8 @@ describe("/api/scope", () => {
   const testUserId = "test-user-scope-api";
   const testUserId2 = "test-user-scope-api-2";
 
-  beforeAll(() => {
-    initServices();
+  beforeAll(async () => {
+    await initServices();
   });
 
   afterAll(async () => {

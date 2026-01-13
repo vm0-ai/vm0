@@ -23,7 +23,7 @@ const STORAGE_TYPE = "volume";
 
 const router = tsr.router(publicVolumeVersionsContract, {
   list: async ({ params, query }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

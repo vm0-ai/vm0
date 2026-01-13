@@ -79,7 +79,7 @@ describe("Public API v1 - Agents Endpoints", () => {
   let testAgentId: string;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

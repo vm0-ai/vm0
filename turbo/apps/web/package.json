@@ -25,6 +25,7 @@
     "@axiomhq/nextjs": "^0.1.6",
     "@clerk/nextjs": "^6.35.1",
     "@e2b/code-interpreter": "^2.2.0",
+    "@electric-sql/pglite": "^0.3.14",
     "@neondatabase/serverless": "^1.0.1",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@ts-rest/core": "3.53.0-rc.1",

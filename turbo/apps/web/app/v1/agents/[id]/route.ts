@@ -19,7 +19,7 @@ import { eq, and } from "drizzle-orm";
 
 const router = tsr.router(publicAgentByIdContract, {
   get: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

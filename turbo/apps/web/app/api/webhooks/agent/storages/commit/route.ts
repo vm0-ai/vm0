@@ -24,7 +24,7 @@ const log = logger("webhook:storages:commit");
 
 const router = tsr.router(webhookStoragesCommitContract, {
   commit: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const { runId, storageName, storageType, versionId, files, message } = body;
 

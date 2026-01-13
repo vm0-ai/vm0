@@ -85,7 +85,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     vi.clearAllMocks();
 
     // Initialize services
-    initServices();
+    await initServices();
 
     // Mock Clerk auth to return the test user ID
     mockAuth.mockResolvedValue({

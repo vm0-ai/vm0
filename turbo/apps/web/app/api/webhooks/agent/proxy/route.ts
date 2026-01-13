@@ -21,7 +21,7 @@ const log = logger("webhook:proxy");
  * request method when forwarding through this proxy.
  */
 async function handleProxyRequest(request: Request) {
-  initServices();
+  await initServices();
 
   // 1. Extract runId from query params first (needed for JWT validation)
   const { searchParams } = new URL(request.url);

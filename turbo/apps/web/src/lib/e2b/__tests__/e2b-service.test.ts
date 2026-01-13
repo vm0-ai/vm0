@@ -68,7 +68,7 @@ let e2bService: typeof import("../e2b-service").e2bService;
 
 describe("E2B Service - mocked unit tests", () => {
   beforeAll(async () => {
-    initServices();
+    await initServices();
     const e2bModule = await import("../e2b-service");
     e2bService = e2bModule.e2bService;
   });

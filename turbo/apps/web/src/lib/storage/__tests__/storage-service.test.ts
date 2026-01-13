@@ -32,7 +32,7 @@ describe("StorageService", () => {
   let storageService: InstanceType<typeof StorageService>;
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
     const storageModule = await import("../storage-service");
     StorageService = storageModule.StorageService;
   });

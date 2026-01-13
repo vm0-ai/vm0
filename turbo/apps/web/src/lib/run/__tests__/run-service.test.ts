@@ -46,7 +46,7 @@ const TEST_SCOPE_ID = randomUUID();
 
 describe("run-service", () => {
   beforeAll(async () => {
-    initServices();
+    await initServices();
     const runServiceModule = await import("../run-service");
     calculateSessionHistoryPath = runServiceModule.calculateSessionHistoryPath;
     RunService = runServiceModule.RunService;

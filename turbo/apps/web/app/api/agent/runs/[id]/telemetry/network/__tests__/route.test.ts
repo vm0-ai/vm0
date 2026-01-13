@@ -97,7 +97,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    await initServices();
 
     mockAuth.mockResolvedValue({
       userId: testUserId,

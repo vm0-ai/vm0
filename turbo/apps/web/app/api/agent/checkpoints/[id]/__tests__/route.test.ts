@@ -61,7 +61,7 @@ describe("GET /api/agent/checkpoints/:id", () => {
   });
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data in correct order (respecting FK constraints)
     // 1. Delete checkpoints (depends on conversations, runs)

@@ -27,7 +27,7 @@ interface VolumeVersionsSnapshot {
 
 const router = tsr.router(checkpointsByIdContract, {
   getById: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

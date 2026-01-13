@@ -25,7 +25,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  initServices();
+  await initServices();
 
   const { id } = await params;
   const { searchParams } = new URL(request.url);

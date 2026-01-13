@@ -44,7 +44,7 @@ const TEST_PREFIX = "test-commit-";
 
 describe("POST /api/storages/commit", () => {
   beforeAll(async () => {
-    initServices();
+    await initServices();
   });
 
   beforeEach(async () => {

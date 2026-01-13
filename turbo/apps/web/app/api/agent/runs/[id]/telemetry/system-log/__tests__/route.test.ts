@@ -63,7 +63,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    await initServices();
 
     mockAuth.mockResolvedValue({
       userId: testUserId,

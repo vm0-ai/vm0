@@ -61,7 +61,7 @@ describe("POST /api/webhooks/agent/events", () => {
     vi.clearAllMocks();
 
     // Initialize services
-    initServices();
+    await initServices();
 
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);

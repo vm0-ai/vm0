@@ -27,7 +27,7 @@ interface TelemetryData {
 
 const router = tsr.router(runTelemetryContract, {
   getTelemetry: async ({ params }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

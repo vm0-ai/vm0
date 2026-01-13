@@ -19,7 +19,7 @@ const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
   send: async ({ body }) => {
-    initServices();
+    await initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
     const auth = await getSandboxAuthForRun(body.runId);

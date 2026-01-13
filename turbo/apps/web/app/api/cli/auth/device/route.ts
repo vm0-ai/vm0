@@ -24,7 +24,7 @@ function generateDeviceCode(): string {
 
 const router = tsr.router(cliAuthDeviceContract, {
   create: async () => {
-    initServices();
+    await initServices();
 
     const deviceCode = generateDeviceCode();
     const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes

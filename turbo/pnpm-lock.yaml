@@ -321,6 +321,9 @@ importers:
       '@e2b/code-interpreter':
         specifier: ^2.2.0
         version: 2.2.0
+      '@electric-sql/pglite':
+        specifier: ^0.3.14
+        version: 0.3.14
       '@neondatabase/serverless':
         specifier: ^1.0.1
         version: 1.0.1
@@ -347,7 +350,7 @@ importers:
         version: 17.2.1
       drizzle-orm:
         specifier: ^0.44.5
-        version: 0.44.5(@neondatabase/serverless@1.0.1)(@types/pg@8.15.5)(pg@8.16.3)(postgres@3.4.7)
+        version: 0.44.5(@electric-sql/pglite@0.3.14)(@neondatabase/serverless@1.0.1)(@types/pg@8.15.5)(pg@8.16.3)(postgres@3.4.7)
       nanoid:
         specifier: ^5.1.6
         version: 5.1.6
@@ -995,6 +998,9 @@ packages:
   '@e2b/code-interpreter@2.2.0':
     resolution: {integrity: sha512-j2XIhuuV+MvjCMJbwRCL3hZjkOTv4Jk1FygI4dCwaU9PggtAW+TXhyaVzzVPZroE9fqxLfrXGqY08P06Ei7MQA==}
     engines: {node: '>=20'}
+
+  '@electric-sql/pglite@0.3.14':
+    resolution: {integrity: sha512-3DB258dhqdsArOI1fIt7cb9RpUOgcDg5hXWVgVHAeqVQ/qxtFy605QKs4gx6mFq3jWsSPqDN8TgSEsqC3OfV9Q==}
 
   '@emnapi/core@1.7.1':
     resolution: {integrity: sha512-o1uhUASyo921r2XtHYOHy7gdkGLge8ghBEQHMWmyJFoXlpU58kIrhhN3w26lpQb6dspetweapMn2CSNwQ8I4wg==}
@@ -8038,6 +8044,8 @@ snapshots:
     dependencies:
       e2b: 2.8.3
 
+  '@electric-sql/pglite@0.3.14': {}
+
   '@emnapi/core@1.7.1':
     dependencies:
       '@emnapi/wasi-threads': 1.1.0
@@ -10630,7 +10638,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@22.18.0)(typescript@5.9.2))(tsx@4.20.6)(yaml@2.8.1)
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.2))(tsx@4.20.5)(yaml@2.8.1)
 
   '@vitest/utils@3.2.4':
     dependencies:
@@ -11412,8 +11420,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.44.5(@neondatabase/serverless@1.0.1)(@types/pg@8.15.5)(pg@8.16.3)(postgres@3.4.7):
+  drizzle-orm@0.44.5(@electric-sql/pglite@0.3.14)(@neondatabase/serverless@1.0.1)(@types/pg@8.15.5)(pg@8.16.3)(postgres@3.4.7):
     optionalDependencies:
+      '@electric-sql/pglite': 0.3.14
       '@neondatabase/serverless': 1.0.1
       '@types/pg': 8.15.5
       pg: 8.16.3

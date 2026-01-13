@@ -21,7 +21,7 @@ const STORAGE_TYPE = "artifact";
 
 const router = tsr.router(publicArtifactsListContract, {
   list: async ({ query }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

@@ -12,7 +12,7 @@ import {
 
 const router = tsr.router(composesListContract, {
   list: async ({ query }) => {
-    initServices();
+    await initServices();
 
     const userId = await getUserId();
     if (!userId) {

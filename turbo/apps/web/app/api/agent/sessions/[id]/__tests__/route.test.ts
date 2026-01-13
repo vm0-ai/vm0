@@ -49,7 +49,7 @@ describe("GET /api/agent/sessions/:id", () => {
   });
 
   beforeAll(async () => {
-    initServices();
+    await initServices();
 
     // Clean up any existing test data
     await globalThis.services.db

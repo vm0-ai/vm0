@@ -26,7 +26,7 @@ import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
 
 const router = tsr.router(publicRunsListContract, {
   list: async ({ query }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {
@@ -126,7 +126,7 @@ const router = tsr.router(publicRunsListContract, {
   },
 
   create: async ({ body }) => {
-    initServices();
+    await initServices();
 
     const auth = await authenticatePublicApi();
     if (!isAuthSuccess(auth)) {

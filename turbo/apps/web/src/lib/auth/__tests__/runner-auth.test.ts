@@ -52,11 +52,18 @@ const mockEnv = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Delete the existing read-only property if it exists
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).services = {
-    db: mockDb,
-    env: mockEnv,
-  };
+  delete (globalThis as any).services;
+  // Define a new writable property for testing
+  Object.defineProperty(globalThis, "services", {
+    value: {
+      db: mockDb,
+      env: mockEnv,
+    },
+    writable: true,
+    configurable: true,
+  });
 });
 
 afterEach(() => {
