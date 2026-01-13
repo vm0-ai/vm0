@@ -722,6 +722,8 @@ jobs:
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
+          PROXY_PORT=$((8080 + PR_NUMBER % 1000))
+
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
@@ -740,6 +742,8 @@ jobs:
             -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
+            -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
+            -e "proxy_port=${PROXY_PORT}" \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
