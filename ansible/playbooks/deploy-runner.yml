@@ -123,8 +123,9 @@
       tags: [prepare]
 
     # Production: Drain before stopping (wait for active jobs)
+    # Note: regex must match positive integers only (not '0' which would signal process group)
     - name: Enter maintenance mode (stop polling, wait for active jobs)
-      when: enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
+      when: enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
       tags: [prepare]
       block:
         - name: Signal runner to enter drain mode
@@ -168,7 +169,7 @@
 
     # CI: Just stop without drain (no long-running jobs)
     - name: Stop runner without drain
-      when: not enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
+      when: not enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
       command: pm2 delete {{ pm2_process_name }}
       ignore_errors: yes
       become: no
