@@ -1,7 +1,11 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import { initRoutes$, setupAuthPageWrapper, setupPageWrapper } from "./route.ts";
+import {
+  initRoutes$,
+  setupAuthPageWrapper,
+  setupPageWrapper,
+} from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 
