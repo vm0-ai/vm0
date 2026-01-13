@@ -23,6 +23,7 @@ jobs:
     # Run for all events, but only do actual detection for PRs
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
+      api-changed: ${{ steps.detect.outputs.api-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
@@ -43,6 +44,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run_cli_e2e }}" = "true" ]; then
             echo "Manual trigger with CLI E2E enabled"
             echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "api-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=false" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
@@ -55,6 +57,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "Not a PR, assuming all apps changed"
             echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "api-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
@@ -125,6 +128,16 @@ jobs:
           else
             echo "Changes detected in platform"
             echo "platform-changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check api app
+          cd /__w/vm0/vm0/turbo/apps/api
+          if npx turbo-ignore 2>/dev/null; then
+            echo "No changes detected in api app"
+            echo "api-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in api app"
+            echo "api-changed=true" >> $GITHUB_OUTPUT
           fi
 
   lint:

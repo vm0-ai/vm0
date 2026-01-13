@@ -9,6 +9,9 @@
         "turbo/apps/web": {
             "releaseType": "node"
         },
+        "turbo/apps/api": {
+            "releaseType": "node"
+        },
         "turbo/apps/docs": {
             "releaseType": "node"
         },
