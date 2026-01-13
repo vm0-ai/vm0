@@ -32,10 +32,7 @@ import type { RunnerConfig } from "./config.js";
 import { getAllScripts } from "./scripts/utils.js";
 import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
-import {
-  withSandboxTiming,
-  recordRunnerOperation,
-} from "./metrics/index.js";
+import { withSandboxTiming, recordRunnerOperation } from "./metrics/index.js";
 
 /**
  * Execution result
