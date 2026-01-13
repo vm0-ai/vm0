@@ -16,7 +16,7 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import type { TsRestResponse, TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
-import { recordApiRequest, pathToTemplate, flushMetrics } from "./metrics";
+import { recordApiRequest, flushMetrics } from "./metrics";
 
 // Re-export tsr for convenience
 export { tsr };
@@ -74,7 +74,7 @@ export function createHandler<T extends AppRouter>(
           const url = new URL(request.url);
           recordApiRequest({
             method: request.method,
-            pathTemplate: pathToTemplate(url.pathname),
+            pathTemplate: request.route,
             statusCode: response.status,
             host: url.host,
             durationMs: Date.now() - startTime,
