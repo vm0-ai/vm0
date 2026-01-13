@@ -59,6 +59,11 @@ Start the agent with a prompt:
 vm0 cook "let's start working."
 ```
 
+The `cook` command is a complete workflow that:
+1. Prepares artifacts from your local files
+2. Composes the agent using [`vm0.yaml`](/docs/reference/configuration/vm0-yaml) and [`AGENTS.md`](/docs/core-concept/instructions)
+3. Executes the agent with your prompt
+
 This command displays the agent's execution logs in real-time. When the agent finishes, any files it created or modified will be downloaded to the `artifact` directory in your project.
 
 ## Next Steps
