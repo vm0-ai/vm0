@@ -113,8 +113,9 @@ export class FirecrackerVM {
       // Create sparse overlay file for this VM
       // The base rootfs (squashfs) is shared read-only across all VMs
       // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
+      // Size matches the original rootfs size (2GB) to maintain same writable capacity
       console.log(`[VM ${this.config.vmId}] Creating sparse overlay file...`);
-      const overlaySize = 256 * 1024 * 1024; // 256MB sparse file
+      const overlaySize = 2 * 1024 * 1024 * 1024; // 2GB sparse file (same as original rootfs)
       const fd = fs.openSync(this.vmOverlayPath, "w");
       fs.ftruncateSync(fd, overlaySize);
       fs.closeSync(fd);
