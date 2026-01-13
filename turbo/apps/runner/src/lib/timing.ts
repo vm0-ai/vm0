@@ -1,5 +1,5 @@
 /**
- * Timing utility for debug command output
+ * Timing utility for benchmark command output
  */
 export class Timer {
   private startTime: number;
@@ -20,10 +20,10 @@ export class Timer {
   }
 
   /**
-   * Log message with timestamp
+   * Log message with [benchmark] prefix and timestamp
    */
   log(message: string): void {
-    console.log(`${this.elapsed()} ${message}`);
+    console.log(`[benchmark] ${this.elapsed()} ${message}`);
   }
 
   /**

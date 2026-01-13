@@ -433,10 +433,11 @@ export async function executeJob(
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
 
-  // Use custom logger if provided, otherwise default to console.log
-  const log = options.logger ?? ((msg: string) => console.log(msg));
+  // Use custom logger if provided, otherwise default to console.log with [Executor] prefix
+  const log =
+    options.logger ?? ((msg: string) => console.log(`[Executor] ${msg}`));
 
-  log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
+  log(`Starting job ${context.runId} in VM ${vmId}`);
 
   try {
     // Create VM configuration
@@ -451,10 +452,12 @@ export async function executeJob(
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
       workDir: path.join(workspacesDir, `vm0-${vmId}`),
+      // Pass logger to VM only in benchmark mode for timestamped output
+      logger: options.benchmarkMode ? options.logger : undefined,
     };
 
     // Create and start VM
-    log(`[Executor] Creating VM ${vmId}...`);
+    log(`Creating VM ${vmId}...`);
     vm = new FirecrackerVM(vmConfig);
     await vm.start();
 
@@ -463,17 +466,17 @@ export async function executeJob(
     if (!guestIp) {
       throw new Error("VM started but no IP address available");
     }
-    log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
+    log(`VM ${vmId} started, guest IP: ${guestIp}`);
 
     // Create SSH client and wait for SSH to become available
     // Connect as 'user' (not root) to match E2B behavior
     // Privileged operations use sudo
     const privateKeyPath = getRunnerSSHKeyPath();
     const ssh = createVMSSHClient(guestIp, "user", privateKeyPath || undefined);
-    log(`[Executor] Waiting for SSH on ${guestIp}...`);
+    log(`Waiting for SSH on ${guestIp}...`);
     await ssh.waitUntilReachable(120000, 2000); // 2 minute timeout, check every 2s
 
-    log(`[Executor] SSH ready on ${guestIp}`);
+    log(`SSH ready on ${guestIp}`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
@@ -484,7 +487,7 @@ export async function executeJob(
         firewallConfig.experimental_seal_secrets ?? false;
 
       log(
-        `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
+        `Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
       // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
@@ -506,13 +509,13 @@ export async function executeJob(
     }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot
-    log(`[Executor] Configuring DNS...`);
+    log(`Configuring DNS...`);
     await configureDNS(ssh);
 
     // Upload all Python scripts
-    log(`[Executor] Uploading scripts...`);
+    log(`Uploading scripts...`);
     await uploadScripts(ssh);
-    log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
+    log(`Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
@@ -534,9 +537,7 @@ export async function executeJob(
     // API URL comes from runner config, not from claim response
     const envVars = buildEnvironmentVariables(context, config.server.url);
     const envJson = JSON.stringify(envVars);
-    log(
-      `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
-    );
+    log(`Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`);
     await ssh.writeFile(ENV_JSON_PATH, envJson);
 
     // Execute agent or direct command based on mode
@@ -547,18 +548,18 @@ export async function executeJob(
     if (options.benchmarkMode) {
       // Benchmark mode: run prompt directly as bash command (skip run-agent.py)
       // This avoids API dependencies while still testing the full VM setup pipeline
-      log(`[Executor] Running command directly (benchmark mode)...`);
+      log(`Running command directly (benchmark mode)...`);
       await ssh.exec(
         `nohup sh -c '${context.prompt}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
-      log(`[Executor] Command started in background`);
+      log(`Command started in background`);
     } else {
       // Production mode: run env-loader.py which loads environment and runs run-agent.py
-      log(`[Executor] Running agent via env-loader (background)...`);
+      log(`Running agent via env-loader (background)...`);
       await ssh.exec(
         `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
-      log(`[Executor] Agent started in background`);
+      log(`Agent started in background`);
     }
 
     // Poll for completion by checking if exit code file exists
@@ -584,20 +585,20 @@ export async function executeJob(
     const duration = Math.round((Date.now() - startTime) / 1000);
 
     if (!completed) {
-      log(`[Executor] Agent timed out after ${duration}s`);
+      log(`Agent timed out after ${duration}s`);
       return {
         exitCode: 1,
         error: `Agent execution timed out after ${duration}s`,
       };
     }
 
-    log(`[Executor] Agent finished in ${duration}s with exit code ${exitCode}`);
+    log(`Agent finished in ${duration}s with exit code ${exitCode}`);
 
     // Read log file for debugging output
     const logResult = await ssh.exec(`tail -100 ${systemLogFile} 2>/dev/null`);
     if (logResult.stdout) {
       log(
-        `[Executor] Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
+        `Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
       );
     }
 
@@ -616,7 +617,7 @@ export async function executeJob(
   } finally {
     // Clean up network security if firewall was enabled
     if (context.experimentalFirewall?.enabled && guestIp) {
-      log(`[Executor] Cleaning up network security for VM ${guestIp}`);
+      log(`Cleaning up network security for VM ${guestIp}`);
 
       // Remove per-VM iptables rules first
       try {
@@ -648,7 +649,7 @@ export async function executeJob(
 
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
-      log(`[Executor] Cleaning up VM ${vmId}...`);
+      log(`Cleaning up VM ${vmId}...`);
       await vm.kill();
     }
   }
