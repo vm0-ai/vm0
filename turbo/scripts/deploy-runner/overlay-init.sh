@@ -30,17 +30,19 @@ mkdir -p /rw/upper /rw/work
 mkdir -p /mnt/root
 mount -t overlay overlay -o lowerdir=/rom,upperdir=/rw/upper,workdir=/rw/work /mnt/root
 
-# Move mount points into new root so they remain accessible
-mkdir -p /mnt/root/rom /mnt/root/rw /mnt/root/oldroot
-mount --move /rom /mnt/root/rom
-mount --move /rw /mnt/root/rw
+# Prepare new root for pivot
+mkdir -p /mnt/root/oldroot
 
 # Switch to new root filesystem
-# Use /oldroot for old root (not /rom, which already has squashfs mounted)
 cd /mnt/root
-pivot_root . oldroot
+/usr/sbin/pivot_root . oldroot
 
-# Clean up old root reference (now at /oldroot after pivot)
+# Now we're in the new root. Move mounts from old root to new locations.
+mkdir -p /rom /rw
+mount --move /oldroot/rom /rom
+mount --move /oldroot/rw /rw
+
+# Clean up old root reference
 umount -l /oldroot 2>/dev/null || true
 
 # Start the real init (systemd)
