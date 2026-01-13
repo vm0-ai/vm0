@@ -7,9 +7,12 @@ const httpRequestTotal = meter.createCounter("http_request_total", {
   description: "Total number of HTTP requests",
 });
 
-const httpRequestErrorsTotal = meter.createCounter("http_request_errors_total", {
-  description: "Total number of HTTP request errors (4xx/5xx)",
-});
+const httpRequestErrorsTotal = meter.createCounter(
+  "http_request_errors_total",
+  {
+    description: "Total number of HTTP request errors (4xx/5xx)",
+  },
+);
 
 // API Metrics - Histogram
 const httpRequestDuration = meter.createHistogram("http_request_duration_ms", {
@@ -26,7 +29,7 @@ const sandboxOperationErrorsTotal = meter.createCounter(
   "sandbox_operation_errors_total",
   {
     description: "Total number of sandbox operation errors",
-  }
+  },
 );
 
 // Sandbox Metrics - Histogram
@@ -35,7 +38,7 @@ const sandboxOperationDuration = meter.createHistogram(
   {
     description: "Sandbox operation duration in milliseconds",
     unit: "ms",
-  }
+  },
 );
 
 export function recordApiRequest(attrs: {
