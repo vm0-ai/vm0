@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.5.0](https://github.com/vm0-ai/vm0/compare/web-v9.4.2...web-v9.5.0) (2026-01-13)
+
+
+### Features
+
+* **runner:** add RED metrics infrastructure for runner operations ([#1168](https://github.com/vm0-ai/vm0/issues/1168)) ([0c46ee2](https://github.com/vm0-ai/vm0/commit/0c46ee224ac17a579aae53515588416987aa133e))
+* **web:** add RED metrics infrastructure for API and sandbox operations ([#1160](https://github.com/vm0-ai/vm0/issues/1160)) ([8083908](https://github.com/vm0-ai/vm0/commit/808390859c84fae3f424547b5ecea07d1e55ed53))
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+* **metrics:** require AXIOM_DATASET_SUFFIX environment variable ([#1176](https://github.com/vm0-ai/vm0/issues/1176)) ([8ffe664](https://github.com/vm0-ai/vm0/commit/8ffe6647b239d357dadd59cf693269d19f3ab78c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.3.0
+
 ## [9.4.2](https://github.com/vm0-ai/vm0/compare/web-v9.4.1...web-v9.4.2) (2026-01-13)
 
 

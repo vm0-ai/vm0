@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.3](https://github.com/vm0-ai/vm0/compare/docs-v0.16.2...docs-v0.16.3) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+
 ## [0.16.2](https://github.com/vm0-ai/vm0/compare/docs-v0.16.1...docs-v0.16.2) (2026-01-13)
 
 

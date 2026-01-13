@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.7.0](https://github.com/vm0-ai/vm0/compare/runner-v2.6.1...runner-v2.7.0) (2026-01-13)
+
+
+### Features
+
+* **runner:** add benchmark command for VM performance testing ([#1171](https://github.com/vm0-ai/vm0/issues/1171)) ([b7ab24f](https://github.com/vm0-ai/vm0/commit/b7ab24f1fa24bef883e662f1610fa69c5ee9d838))
+* **runner:** add RED metrics infrastructure for runner operations ([#1168](https://github.com/vm0-ai/vm0/issues/1168)) ([0c46ee2](https://github.com/vm0-ai/vm0/commit/0c46ee224ac17a579aae53515588416987aa133e))
+* **runner:** implement OverlayFS for rootfs to improve VM startup performance ([#1169](https://github.com/vm0-ai/vm0/issues/1169)) ([dca575b](https://github.com/vm0-ai/vm0/commit/dca575b43195656721126ddd378f478d5d986676))
+
+
+### Bug Fixes
+
+* **ci:** add shell: bash to cleanup runner step ([#1157](https://github.com/vm0-ai/vm0/issues/1157)) ([08d6c3e](https://github.com/vm0-ai/vm0/commit/08d6c3e8300196ead87bb40f97e37689637fd80a))
+* **ci:** fix SSH key handling in cleanup.yml ([#1153](https://github.com/vm0-ai/vm0/issues/1153)) ([407cac9](https://github.com/vm0-ai/vm0/commit/407cac9ce4d0ebec9157654ed9260c1d01ef5f7d))
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+* **metrics:** require AXIOM_DATASET_SUFFIX environment variable ([#1176](https://github.com/vm0-ai/vm0/issues/1176)) ([8ffe664](https://github.com/vm0-ai/vm0/commit/8ffe6647b239d357dadd59cf693269d19f3ab78c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.3.0
+
 ## [2.6.1](https://github.com/vm0-ai/vm0/compare/runner-v2.6.0...runner-v2.6.1) (2026-01-13)
 
 

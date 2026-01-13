@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.3.0](https://github.com/vm0-ai/vm0/compare/core-v4.2.1...core-v4.3.0) (2026-01-13)
+
+
+### Features
+
+* **runner:** add benchmark command for VM performance testing ([#1171](https://github.com/vm0-ai/vm0/issues/1171)) ([b7ab24f](https://github.com/vm0-ai/vm0/commit/b7ab24f1fa24bef883e662f1610fa69c5ee9d838))
+
+
+### Bug Fixes
+
+* **cli:** quote version parameter to prevent scientific notation parsing ([#1155](https://github.com/vm0-ai/vm0/issues/1155)) ([792dbc1](https://github.com/vm0-ai/vm0/commit/792dbc15714fe788d9ae519dd7be0e8061046506))
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+
 ## [4.2.1](https://github.com/vm0-ai/vm0/compare/core-v4.2.0...core-v4.2.1) (2026-01-13)
 
 
