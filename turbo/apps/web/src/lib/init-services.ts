@@ -87,13 +87,17 @@ export function initServices(): void {
   if (!_metricsInitialized) {
     _metricsInitialized = true;
     const envVars = _services.env;
-    const isProduction =
-      process.env.VERCEL_ENV === "production" ||
-      process.env.NODE_ENV === "production";
+    // Use explicit AXIOM_DATASET_SUFFIX if provided, otherwise infer from environment
+    const datasetSuffix =
+      envVars.AXIOM_DATASET_SUFFIX ??
+      (process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production"
+        ? "prod"
+        : "dev");
     initMetrics({
       serviceName: "vm0-web",
       axiomToken: envVars.AXIOM_TOKEN,
-      environment: isProduction ? "prod" : "dev",
+      environment: datasetSuffix,
     });
   }
 }

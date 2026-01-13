@@ -110,6 +110,7 @@ jobs:
             R2_USER_STORAGES_BUCKET_NAME=${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+            AXIOM_DATASET_SUFFIX=prod
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             DEBUG=*
@@ -281,5 +282,5 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-            -e '{"extra_env": {"AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'"}}' \
+            -e '{"extra_env": {"AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "prod"}}' \
             -v

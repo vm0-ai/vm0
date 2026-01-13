@@ -249,6 +249,7 @@ jobs:
             SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+            AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
           meta-branch: ${{ github.head_ref }}
@@ -872,7 +873,7 @@ jobs:
             -e "api_url=${PREVIEW_URL}" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
             -e "proxy_port=${PROXY_PORT}" \
-            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'"}}' \
+            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "dev"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT

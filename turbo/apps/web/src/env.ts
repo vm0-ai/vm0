@@ -24,6 +24,7 @@ function initEnv() {
       SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN: z.string().min(1).optional(),
+      AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -44,6 +45,7 @@ function initEnv() {
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       AXIOM_TOKEN: process.env.AXIOM_TOKEN,
+      AXIOM_DATASET_SUFFIX: process.env.AXIOM_DATASET_SUFFIX,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },
