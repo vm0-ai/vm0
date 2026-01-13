@@ -17,7 +17,7 @@ interface BenchmarkOptions {
 
 /**
  * Create a local ExecutionContext for benchmark mode
- * Sets USE_MOCK_CLAUDE=true so mock-claude executes the prompt as bash
+ * In benchmark mode, the prompt is executed directly as a bash command (run-agent.py is skipped)
  */
 function createBenchmarkContext(
   prompt: string,
@@ -33,9 +33,7 @@ function createBenchmarkContext(
     sandboxToken: "benchmark-token-not-used",
     workingDir: options.workingDir,
     storageManifest: null,
-    environment: {
-      USE_MOCK_CLAUDE: "true",
-    },
+    environment: null,
     resumeSession: null,
     secretValues: null,
     cliAgentType: options.agentType,
@@ -43,8 +41,10 @@ function createBenchmarkContext(
 }
 
 export const benchmarkCommand = new Command("benchmark")
-  .description("Run a VM performance benchmark (uses mock-claude)")
-  .argument("<prompt>", "The prompt/command to execute")
+  .description(
+    "Run a VM performance benchmark (executes bash command directly)",
+  )
+  .argument("<prompt>", "The bash command to execute in the VM")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--working-dir <path>", "Working directory in VM", "/home/user")
   .option("--agent-type <type>", "Agent type", "claude-code")
@@ -73,11 +73,14 @@ export const benchmarkCommand = new Command("benchmark")
       await setupBridge();
 
       // Create benchmark execution context
-      timer.log(`Executing prompt: ${prompt}`);
+      timer.log(`Executing command: ${prompt}`);
       const context = createBenchmarkContext(prompt, options);
 
-      // Execute job in dev mode (skip API calls)
-      const result = await executeJob(context, config, { devMode: true });
+      // Execute job in benchmark mode (runs bash command directly, skips run-agent.py)
+      const result = await executeJob(context, config, {
+        benchmarkMode: true,
+        logger: timer.log.bind(timer),
+      });
 
       // Output results
       timer.log(`Exit code: ${result.exitCode}`);
