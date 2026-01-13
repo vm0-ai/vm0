@@ -5,8 +5,10 @@ load '../../helpers/setup'
 setup() {
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
-    # Use unique names with timestamp to avoid conflicts
-    export AGENT_NAME="e2e-cook-$(date +%s%3N)-$RANDOM"
+    # Use unique names with timestamp to avoid conflicts in parallel runs
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export AGENT_NAME="e2e-cook-${UNIQUE_ID}"
+    export VOLUME_NAME="e2e-cook-vol-${UNIQUE_ID}"
 }
 
 teardown() {
@@ -34,18 +36,18 @@ agents:
     provider: claude-code
     image: "vm0/claude-code:dev"
     volumes:
-      - test-volume:/home/user/data
+      - ${VOLUME_NAME}:/home/user/data
     working_dir: /home/user/workspace
 
 volumes:
-  test-volume:
-    name: test-volume
+  ${VOLUME_NAME}:
+    name: ${VOLUME_NAME}
     version: latest
 EOF
 
     echo "# Step 2: Create volume directory with test file..."
-    mkdir -p test-volume
-    echo "test data" > test-volume/data.txt
+    mkdir -p "$VOLUME_NAME"
+    echo "test data" > "$VOLUME_NAME/data.txt"
 
     echo "# Step 3: Run cook without prompt (preparation only)..."
     run $CLI_COMMAND cook
@@ -55,14 +57,14 @@ EOF
     assert_output --partial "Reading config: vm0.yaml"
     assert_output --partial "Config validated"
     assert_output --partial "Processing volumes"
-    assert_output --partial "cd test-volume"
+    assert_output --partial "cd $VOLUME_NAME"
     assert_output --partial "vm0 volume push"
     assert_output --partial "Processing artifact"
     assert_output --partial "Composing agent"
     assert_output --partial "vm0 compose vm0.yaml"
 
     echo "# Step 5: Verify volume was initialized..."
-    [ -f "test-volume/.vm0/storage.yaml" ]
+    [ -f "$VOLUME_NAME/.vm0/storage.yaml" ]
 
     echo "# Step 6: Verify artifact directory was created..."
     [ -d "artifact" ]
