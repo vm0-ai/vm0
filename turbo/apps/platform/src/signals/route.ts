@@ -24,7 +24,7 @@ export const updateSearchParams$ = command(
     const str = searchParams.toString();
     pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
     set(reloadPathname$, (x) => x + 1);
-  }
+  },
 );
 
 interface Route {
@@ -69,7 +69,7 @@ const resetRouteSignal$ = resetSignal();
 const loadRoute$ = command(async ({ get, set }, signal?: AbortSignal) => {
   const routeSignal = set(
     resetRouteSignal$,
-    ...([signal].filter(Boolean) as AbortSignal[])
+    ...([signal].filter(Boolean) as AbortSignal[]),
   );
 
   const currentRoute = get(currentRoute$);
@@ -105,11 +105,11 @@ export const initRoutes$ = command(
         set(navigateToDefaultWhenInvalid$);
         await set(loadRoute$, signal);
       }),
-      { signal }
+      { signal },
     );
 
     await set(loadRoute$, signal);
-  }
+  },
 );
 
 interface NavigateOptions {
@@ -121,7 +121,7 @@ export const navigate$ = command(
     { set },
     pathname: string,
     options: NavigateOptions,
-    signal: AbortSignal
+    signal: AbortSignal,
   ) => {
     const searchParams = options.searchParams
       ? `?${options.searchParams.toString()}`
@@ -129,7 +129,7 @@ export const navigate$ = command(
     pushState({}, "", `${pathname}${searchParams}`);
     set(reloadPathname$, (x) => x + 1);
     await set(loadRoute$, signal);
-  }
+  },
 );
 
 export const navigateInReact$ = command(
@@ -139,7 +139,7 @@ export const navigateInReact$ = command(
     options?: {
       pathParams?: Parameters<typeof generateRouterPath>[1];
       searchParams?: URLSearchParams;
-    }
+    },
   ) => {
     // here is an exception case because we don't want use pass rootSignal$ in react component props
     // eslint-disable-next-line ccstate/no-get-signal
@@ -150,11 +150,11 @@ export const navigateInReact$ = command(
         navigate$,
         generateRouterPath(pathname, options?.pathParams),
         options ?? {},
-        signal
+        signal,
       ),
-      Reason.DomCallback
+      Reason.DomCallback,
     );
-  }
+  },
 );
 
 type ExtractParams<T extends string> = T extends `/${string}/:${infer Param}`
@@ -163,7 +163,7 @@ type ExtractParams<T extends string> = T extends `/${string}/:${infer Param}`
 
 export const generateRouterPath = <T extends RoutePath>(
   path: T,
-  pathParams?: ExtractParams<T>
+  pathParams?: ExtractParams<T>,
 ): string => {
   if (!pathParams || Object.keys(pathParams).length === 0) {
     return path;
@@ -176,7 +176,7 @@ export const generateRouterPath = <T extends RoutePath>(
 };
 
 export const setupPageWrapper = (
-  fn: Command<Promise<void> | void, [AbortSignal]>
+  fn: Command<Promise<void> | void, [AbortSignal]>,
 ) => {
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
@@ -189,7 +189,7 @@ export const setupPageWrapper = (
  * Opens sign-in dialog if user is not authenticated.
  */
 export const setupAuthPageWrapper = (
-  fn: Command<Promise<void> | void, [AbortSignal]>
+  fn: Command<Promise<void> | void, [AbortSignal]>,
 ) => {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);

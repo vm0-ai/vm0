@@ -27,7 +27,7 @@ interface MockClerkType {
 }
 
 // Setup Clerk mock BEFORE importing auth module
-vi.mock("@clerk/clerk-js/headless", () => {
+vi.mock("@clerk/clerk-js", () => {
   return {
     Clerk: function MockClerk() {
       const listeners: (() => void)[] = [];

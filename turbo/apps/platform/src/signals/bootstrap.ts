@@ -31,5 +31,5 @@ export const bootstrap$ = command(
 
     await set(setupRoutes$, signal);
     signal.throwIfAborted();
-  }
+  },
 );

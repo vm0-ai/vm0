@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Sidebar } from "./sidebar.tsx";
 import { Navbar } from "./navbar.tsx";
 import { PageHeader } from "./page-header.tsx";
-import { useLoadable } from "ccstate-react";
 
 interface AppShellProps {
   breadcrumb: string[];

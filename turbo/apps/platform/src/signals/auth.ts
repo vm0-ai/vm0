@@ -36,7 +36,7 @@ export const setupClerk$ = command(
       set(reload$, (x) => x + 1);
     });
     signal.addEventListener("abort", unsubscribe);
-  }
+  },
 );
 
 /**
