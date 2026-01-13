@@ -39,6 +39,7 @@ jobs:
 
       - name: Cleanup runner on metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
+        shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
