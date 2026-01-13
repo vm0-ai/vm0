@@ -1,4 +1,4 @@
-import { eq, and, lte } from "drizzle-orm";
+import { eq, and, lte, inArray } from "drizzle-orm";
 import { Cron } from "croner";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
@@ -296,7 +296,7 @@ export class ScheduleService {
     const scopeRows = await globalThis.services.db
       .select()
       .from(scopes)
-      .where(eq(scopes.id, scopeIds[0]!)); // Simplified for now
+      .where(inArray(scopes.id, scopeIds));
 
     const scopeMap = new Map(scopeRows.map((s) => [s.id, s.slug]));
 
@@ -305,7 +305,7 @@ export class ScheduleService {
     const schedules = await globalThis.services.db
       .select()
       .from(agentSchedules)
-      .where(eq(agentSchedules.composeId, composeIds[0]!)); // Simplified query
+      .where(inArray(agentSchedules.composeId, composeIds));
 
     // Build response with compose names
     const composeMap = new Map(userComposes.map((c) => [c.id, c]));
