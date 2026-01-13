@@ -3,7 +3,7 @@
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
-import { debugCommand } from "./commands/debug.js";
+import { benchmarkCommand } from "./commands/benchmark.js";
 
 // Version is injected at build time by tsup
 declare const __RUNNER_VERSION__: string;
@@ -17,6 +17,6 @@ program
 
 program.addCommand(startCommand);
 program.addCommand(statusCommand);
-program.addCommand(debugCommand);
+program.addCommand(benchmarkCommand);
 
 program.parse();

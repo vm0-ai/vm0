@@ -9,28 +9,28 @@ import {
 } from "../lib/firecracker/network.js";
 import { Timer } from "../lib/timing.js";
 
-interface DebugOptions {
+interface BenchmarkOptions {
   config: string;
   workingDir: string;
   agentType: string;
 }
 
 /**
- * Create a local ExecutionContext for debug mode
+ * Create a local ExecutionContext for benchmark mode
  * Sets USE_MOCK_CLAUDE=true so mock-claude executes the prompt as bash
  */
-function createDebugContext(
+function createBenchmarkContext(
   prompt: string,
-  options: DebugOptions,
+  options: BenchmarkOptions,
 ): ExecutionContext {
   return {
     runId: crypto.randomUUID(),
     prompt,
-    agentComposeVersionId: "debug-local",
+    agentComposeVersionId: "benchmark-local",
     vars: null,
     secretNames: null,
     checkpointId: null,
-    sandboxToken: "debug-token-not-used",
+    sandboxToken: "benchmark-token-not-used",
     workingDir: options.workingDir,
     storageManifest: null,
     environment: {
@@ -42,13 +42,13 @@ function createDebugContext(
   };
 }
 
-export const debugCommand = new Command("debug")
-  .description("Run a local test job in a VM (uses mock-claude)")
+export const benchmarkCommand = new Command("benchmark")
+  .description("Run a VM performance benchmark (uses mock-claude)")
   .argument("<prompt>", "The prompt/command to execute")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--working-dir <path>", "Working directory in VM", "/home/user")
   .option("--agent-type <type>", "Agent type", "claude-code")
-  .action(async (prompt: string, options: DebugOptions): Promise<void> => {
+  .action(async (prompt: string, options: BenchmarkOptions): Promise<void> => {
     const timer = new Timer();
 
     try {
@@ -72,11 +72,11 @@ export const debugCommand = new Command("debug")
       timer.log("Setting up network bridge...");
       await setupBridge();
 
-      // Create debug execution context
+      // Create benchmark execution context
       timer.log(`Executing prompt: ${prompt}`);
-      const context = createDebugContext(prompt, options);
+      const context = createBenchmarkContext(prompt, options);
 
-      // Execute job in dev mode
+      // Execute job in dev mode (skip API calls)
       const result = await executeJob(context, config, { devMode: true });
 
       // Output results
