@@ -9,3 +9,7 @@ pre-commit:
       root: turbo/
       run: pnpm prettier --list-different --ignore-unknown {staged_files}
       glob: "turbo/**/*"
+    check-types:
+      root: turbo/
+      run: pnpm check-types
+      glob: "turbo/**/*.{ts,tsx}"

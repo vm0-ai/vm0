@@ -1,9 +1,19 @@
 import type { RoutePath } from "./route.ts";
 
+export type NavIconName =
+  | "Bot"
+  | "CircleDot"
+  | "FileBarChart"
+  | "List"
+  | "KeyRound"
+  | "Receipt"
+  | "HelpCircle"
+  | "Rocket";
+
 export interface NavItem {
   id: string;
   label: string;
-  icon: string;
+  icon: NavIconName;
   path: RoutePath;
 }
 

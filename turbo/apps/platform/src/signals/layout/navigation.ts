@@ -46,6 +46,14 @@ export const FOOTER_NAV_ITEMS = [
 export const activeNavItem$ = computed((get) => {
   const pathname = get(pathname$);
 
+  // Check Get Started item
+  if (
+    pathname === GET_STARTED_ITEM.path ||
+    pathname.startsWith(GET_STARTED_ITEM.path + "/")
+  ) {
+    return GET_STARTED_ITEM.id;
+  }
+
   // Check main navigation
   for (const group of NAVIGATION_CONFIG) {
     for (const item of group.items) {
