@@ -833,54 +833,21 @@ jobs:
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
           echo "Runner started at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Cleanup runner after cli-e2e-03-runner completes (or fails/times out)
-  # Stops PM2 process, removes runner directory, and releases host lock
-  cleanup-runner:
+  # Release runner host lock after cli-e2e-03-runner completes (or fails/times out)
+  # Note: Runner cleanup happens in cleanup.yml when PR is closed (to allow reruns)
+  unlock-runner-host:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     needs: [deploy-runner-prepare, cli-e2e-03-runner]
     if: always() && needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH key
+      - name: Unlock runner host
         env:
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          SSH_DIR="$HOME/.ssh"
-          SSH_KEY_FILE="$SSH_DIR/runner.pem"
-          mkdir -p "$SSH_DIR"
-          if [ -z "$SSH_KEY" ]; then
-            echo "ERROR: SSH_KEY secret is empty!"
-            exit 1
-          fi
-          echo "$SSH_KEY" > "$SSH_KEY_FILE"
-          chmod 600 "$SSH_KEY_FILE"
-          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
-
-      - name: Cleanup runner
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-        run: |
-          echo "Cleaning up runner for PR $PR_NUMBER on $RUNNER_HOST"
-          cd ansible
-          ansible-playbook \
-            -i "${RUNNER_HOST}," \
-            playbooks/cleanup-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
-            -e "ansible_user=${METAL_USER}" \
-            -e "pr_number=${PR_NUMBER}" \
-            -v
-
-      - name: Release lock
-        if: always()
-        env:
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-        run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
-          echo "Lock released on $RUNNER_HOST"
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$HOME/.ssh/runner.pem" ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+          echo "Unlocked runner host: $RUNNER_HOST"
