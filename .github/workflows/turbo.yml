@@ -299,11 +299,11 @@ jobs:
           meta-pr: ${{ github.event.pull_request.number }}
 
   # Run CLI E2E tests
-  cli-e2e:
+  cli-e2e-test:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, deploy-runner, lint, test]
+    needs: [change-detection, deploy-web, deploy-runner-start, lint, test]
     # Runs when all dependencies succeed and preview-url is available
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 20
@@ -426,16 +426,22 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Lock runner host before deployment (PR-specific isolation)
-  lock-runner-host:
+  # Prepare runner: lock host, build bundle, install deps (runs parallel with deploy-web)
+  deploy-runner-prepare:
     runs-on: ubuntu-latest
-    needs: [change-detection, deploy-web]
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection]
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
+      runner-dir: ${{ steps.prepare.outputs.runner-dir }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
       - name: Lock runner host
         id: lock
         shell: bash
@@ -563,21 +569,6 @@ jobs:
           echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
 
-  # Deploy runner on locked host
-  deploy-runner:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, lock-runner-host]
-    # Runs whenever lock-runner-host succeeds (no conditional)
-    outputs:
-      runner-deployed: ${{ steps.deploy.outputs.runner-deployed }}
-      runner-dir: ${{ steps.deploy.outputs.runner-dir }}
-      runner-host: ${{ needs.lock-runner-host.outputs.runner-host }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
       - name: Install Ansible
         run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
 
@@ -597,16 +588,13 @@ jobs:
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
           echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
-      - name: Deploy runner with Ansible
-        id: deploy
+      - name: Prepare runner (deploy bundle, install deps)
+        id: prepare
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
+          RUNNER_HOST: ${{ steps.lock.outputs.host }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           PROXY_PORT=$((8080 + PR_NUMBER % 1000))
@@ -615,12 +603,68 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/runner.pem
           chmod 600 ~/.ssh/runner.pem
 
-          echo "Deploying to runner host: ${RUNNER_HOST}"
+          echo "Preparing runner on host: ${RUNNER_HOST}"
 
           cd ansible
           ansible-playbook \
             -i "${RUNNER_HOST}," \
             playbooks/deploy-runner.yml \
+            --tags prepare \
+            --private-key ~/.ssh/runner.pem \
+            -e "ansible_user=${METAL_USER}" \
+            -e "runner_base_dir=${RUNNER_DIR}" \
+            -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
+            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
+            -e "force_rebuild_rootfs=true" \
+            -e "proxy_port=${PROXY_PORT}" \
+            -e '{"enable_drain": true, "drain_timeout": 300}' \
+            -v
+
+          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
+          echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
+
+  # Start runner after deploy-web provides preview URL
+  deploy-runner-start:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web, deploy-runner-prepare]
+    if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
+    outputs:
+      runner-deployed: ${{ steps.start.outputs.runner-deployed }}
+      runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+      runner-host: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install Ansible
+        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
+
+      - name: Start runner (configure and launch)
+        id: start
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/runner.pem
+          chmod 600 ~/.ssh/runner.pem
+
+          echo "Starting runner on host: ${RUNNER_HOST}"
+
+          cd ansible
+          ansible-playbook \
+            -i "${RUNNER_HOST}," \
+            playbooks/deploy-runner.yml \
+            --tags start \
             --private-key ~/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
@@ -628,28 +672,21 @@ jobs:
             -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
-            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-            -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
-            -e "force_rebuild_rootfs=true" \
-            -e "proxy_port=${PROXY_PORT}" \
-            -e "max_concurrent=8" \
-            -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
-          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-          echo "Runner deployed to ${RUNNER_DIR} on ${RUNNER_HOST}"
+          echo "Runner started at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Release runner host lock after cli-e2e completes (or fails/times out)
+  # Release runner host lock after cli-e2e-test completes (or fails/times out)
   unlock-runner-host:
     runs-on: ubuntu-latest
-    needs: [lock-runner-host, cli-e2e]
-    if: always() && needs.lock-runner-host.outputs.runner-host != ''
+    needs: [deploy-runner-prepare, cli-e2e-test]
+    if: always() && needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
       - name: Unlock runner host
         env:
-          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
