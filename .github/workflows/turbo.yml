@@ -298,14 +298,84 @@ jobs:
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
+  # Authenticate for E2E tests (shared by cli-e2e and api-e2e)
+  e2e-auth:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
+    outputs:
+      vm0-token: ${{ steps.auth.outputs.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm install
+
+      - name: Install Playwright browsers
+        run: cd e2e && npx playwright install chromium
+
+      - name: Authenticate and output token
+        id: auth
+        run: |
+          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
+          cd e2e && npm run auth
+          # Extract token and output it (masked for security)
+          TOKEN=$(cat ~/.vm0/config.json | jq -r '.token')
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+  # Run API E2E tests (lightweight, fast)
+  api-e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [e2e-auth, deploy-web]
+    if: needs.deploy-web.outputs.preview-url != '' && needs.e2e-auth.outputs.vm0-token != ''
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # For BATS test framework
+
+      - name: Run API E2E Tests
+        run: |
+          echo "=== Running API E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_TOKEN: ${{ needs.e2e-auth.outputs.vm0-token }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
   # Run CLI E2E tests
   cli-e2e:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, deploy-runner, lint, test]
+    needs: [change-detection, deploy-web, deploy-runner, e2e-auth, lint, test]
     # Runs when all dependencies succeed and preview-url is available
-    if: needs.deploy-web.outputs.preview-url != ''
+    if: needs.deploy-web.outputs.preview-url != '' && needs.e2e-auth.outputs.vm0-token != ''
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -328,21 +398,10 @@ jobs:
       - name: Install GNU parallel for bats
         run: apt-get update && apt-get install -y parallel
 
-      - name: Install E2E dependencies
-        run: cd e2e && npm install
-
-      - name: Install Playwright browsers
-        run: cd e2e && npx playwright install chromium
-
-      - name: Authenticate CLI
+      - name: Setup authentication
         run: |
-          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
-          cd e2e && npm run auth
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          mkdir -p ~/.vm0
+          echo '{"token":"${{ needs.e2e-auth.outputs.vm0-token }}"}' > ~/.vm0/config.json
 
       - name: Setup VM0 test volumes
         run: ./e2e/scripts/setup-vm0-volumes.sh
