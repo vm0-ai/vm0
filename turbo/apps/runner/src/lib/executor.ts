@@ -42,6 +42,19 @@ export interface ExecutionResult {
 }
 
 /**
+ * Execution options for customizing job execution behavior
+ */
+export interface ExecutionOptions {
+  /**
+   * Dev mode skips API-related operations:
+   * - Network log upload
+   * - Telemetry reporting
+   * Used by the debug command for local testing
+   */
+  devMode?: boolean;
+}
+
+/**
  * Extract short VM ID from runId (UUID)
  * Uses first 8 characters of UUID for unique identification
  */
@@ -404,6 +417,7 @@ nameserver 1.1.1.1`;
 export async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,
+  options: ExecutionOptions = {},
 ): Promise<ExecutionResult> {
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
@@ -599,17 +613,19 @@ export async function executeJob(
       // Unregister from proxy registry
       getVMRegistry().unregister(guestIp);
 
-      // Upload network logs to telemetry endpoint
-      try {
-        await uploadNetworkLogs(
-          config.server.url,
-          context.sandboxToken,
-          context.runId,
-        );
-      } catch (err) {
-        console.error(
-          `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
+      // Upload network logs to telemetry endpoint (skip in devMode)
+      if (!options.devMode) {
+        try {
+          await uploadNetworkLogs(
+            config.server.url,
+            context.sandboxToken,
+            context.runId,
+          );
+        } catch (err) {
+          console.error(
+            `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+          );
+        }
       }
     }
 

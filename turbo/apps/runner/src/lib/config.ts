@@ -40,6 +40,64 @@ export const runnerConfigSchema = z.object({
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 
 /**
+ * Debug configuration schema (relaxed - only firecracker paths required)
+ * Used by the debug command for local testing without API server
+ */
+export const debugConfigSchema = z.object({
+  name: z.string().default("debug-runner"),
+  group: z.string().default("debug/local"),
+  server: z
+    .object({
+      url: z.string().url().default("http://localhost:3000"),
+      token: z.string().default("debug-token"),
+    })
+    .default({}),
+  sandbox: z
+    .object({
+      max_concurrent: z.number().int().min(1).default(1),
+      vcpu: z.number().int().min(1).default(2),
+      memory_mb: z.number().int().min(128).default(2048),
+      poll_interval_ms: z.number().int().min(1000).default(5000),
+    })
+    .default({}),
+  firecracker: z.object({
+    binary: z.string().min(1, "Firecracker binary path is required"),
+    kernel: z.string().min(1, "Kernel path is required"),
+    rootfs: z.string().min(1, "Rootfs path is required"),
+  }),
+  proxy: z
+    .object({
+      port: z.number().int().min(1024).max(65535).default(8080),
+    })
+    .default({}),
+});
+
+export type DebugConfig = z.infer<typeof debugConfigSchema>;
+
+/**
+ * Load and validate debug configuration from YAML file
+ * Only firecracker paths are required; everything else has defaults
+ */
+export function loadDebugConfig(configPath: string): DebugConfig {
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Config file not found: ${configPath}`);
+  }
+
+  const content = fs.readFileSync(configPath, "utf-8");
+  const raw: unknown = yaml.parse(content);
+
+  const result = debugConfigSchema.safeParse(raw);
+  if (!result.success) {
+    const errors = result.error.errors
+      .map((e) => `  - ${e.path.join(".")}: ${e.message}`)
+      .join("\n");
+    throw new Error(`Invalid configuration:\n${errors}`);
+  }
+
+  return result.data;
+}
+
+/**
  * Load and validate runner configuration from YAML file
  */
 export function loadConfig(configPath: string): RunnerConfig {
