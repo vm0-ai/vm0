@@ -1,7 +1,7 @@
 {
   "hero": {
     "title": "Build agents and automate workflows with natural language",
-    "subtitle": "From workflows to real agents. VM0 makes agent building accessible through natural language, backed by agent-native infrastructure.",
+    "subtitle": "From workflows to real agents. VM0 makes agent building accessible through natural language.",
     "joinWaitlist": "Join waitlist",
     "github": "GitHub"
   },
@@ -35,7 +35,7 @@
     }
   },
   "features": {
-    "title": "Everything you need to build agents, backed by solid infrastructure",
+    "title": "Everything you need to build agents",
     "noWorkflows": {
       "title": "Skip the node editor and workflow canvas, just write your intent",
       "description": "No drag-and-drop needed — write a prompt or any type of configure files, connect it to VM0, and your agent's core logic is ready."

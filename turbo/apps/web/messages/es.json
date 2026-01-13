@@ -1,7 +1,7 @@
 {
   "hero": {
     "title": "Construye agentes y automatiza flujos de trabajo con lenguaje natural",
-    "subtitle": "De flujos de trabajo a agentes reales. VM0 hace que la construcción de agentes sea accesible a través del lenguaje natural, respaldado por infraestructura nativa de agentes.",
+    "subtitle": "De flujos de trabajo a agentes reales. VM0 hace que la construcción de agentes sea accesible a través del lenguaje natural.",
     "joinWaitlist": "Unirse a lista de espera",
     "github": "GitHub"
   },
@@ -35,7 +35,7 @@
     }
   },
   "features": {
-    "title": "Todo lo que necesitas para construir agentes, respaldado por infraestructura sólida",
+    "title": "Todo lo que necesitas para construir agentes",
     "noWorkflows": {
       "title": "Omite el editor de nodos y el canvas de flujos de trabajo, solo escribe tu intención",
       "description": "No se necesita arrastrar y soltar: escribe un prompt o cualquier tipo de archivo de configuración, conéctalo a VM0 y la lógica central de tu agente está lista."
