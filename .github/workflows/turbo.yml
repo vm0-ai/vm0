@@ -298,12 +298,87 @@ jobs:
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
+  # Authenticate for E2E tests (shared by cli-e2e-test and api-e2e-test)
+  e2e-auth:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm install
+
+      - name: Install Playwright browsers
+        run: cd e2e && npx playwright install chromium
+
+      - name: Authenticate CLI
+        run: |
+          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
+          cd e2e && npm run auth
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Save auth config to cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+
+  # Run API E2E tests (lightweight, fast)
+  api-e2e-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [e2e-auth, deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # For BATS test framework
+
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Run API E2E Tests
+        run: |
+          echo "=== Running API E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
   # Run CLI E2E tests
   cli-e2e-test:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, deploy-runner-start, lint, test]
+    needs: [change-detection, deploy-web, deploy-runner-start, e2e-auth, lint, test]
     # Runs when all dependencies succeed and preview-url is available
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 20
@@ -328,21 +403,12 @@ jobs:
       - name: Install GNU parallel for bats
         run: apt-get update && apt-get install -y parallel
 
-      - name: Install E2E dependencies
-        run: cd e2e && npm install
-
-      - name: Install Playwright browsers
-        run: cd e2e && npx playwright install chromium
-
-      - name: Authenticate CLI
-        run: |
-          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
-          cd e2e && npm run auth
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Setup VM0 test volumes
         run: ./e2e/scripts/setup-vm0-volumes.sh

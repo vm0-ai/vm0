@@ -103,4 +103,3 @@ setup() {
     result=$(api_get "/v1/volumes")
     echo "$result" | jq -e '.pagination' > /dev/null
 }
-
