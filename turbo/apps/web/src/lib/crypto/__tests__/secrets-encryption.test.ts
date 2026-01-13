@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   encryptSecrets,
   decryptSecrets,
@@ -22,6 +22,10 @@ const TEST_KEY =
 describe("secrets-encryption", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe("encryptSecrets (array)", () => {
@@ -53,8 +57,7 @@ describe("secrets-encryption", () => {
     });
 
     it("should store unencrypted in dev mode when key not provided", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
       const secrets = ["API_KEY"];
       const result = encryptSecrets(secrets, undefined);
@@ -63,19 +66,14 @@ describe("secrets-encryption", () => {
       const parsed = JSON.parse(result!);
       expect(parsed.unencrypted).toBe(true);
       expect(parsed.data).toEqual(secrets);
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it("should throw in production when key not provided", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
 
       expect(() => encryptSecrets(["SECRET"], undefined)).toThrow(
         "SECRETS_ENCRYPTION_KEY must be set in production",
       );
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it("should throw for invalid key length", () => {
@@ -166,8 +164,7 @@ describe("secrets-encryption", () => {
     });
 
     it("should store unencrypted in dev mode when key not provided", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
       const secrets = { API_KEY: "secret123" };
       const result = encryptSecretsMap(secrets, undefined);
@@ -175,19 +172,14 @@ describe("secrets-encryption", () => {
       const parsed = JSON.parse(result!);
       expect(parsed.unencrypted).toBe(true);
       expect(parsed.data).toEqual(secrets);
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it("should throw in production when key not provided", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
 
       expect(() => encryptSecretsMap({ KEY: "value" }, undefined)).toThrow(
         "SECRETS_ENCRYPTION_KEY must be set in production",
       );
-
-      process.env.NODE_ENV = originalEnv;
     });
   });
 
