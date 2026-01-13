@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { agentSchedules } from "../../../db/schema/agent-schedule";
 import { agentComposes } from "../../../db/schema/agent-compose";
