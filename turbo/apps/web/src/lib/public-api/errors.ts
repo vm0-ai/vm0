@@ -150,8 +150,11 @@ export function publicApiErrorHandler(err: unknown): TsRestResponse | void {
     return invalidParameterError("unknown", "Invalid request parameters");
   }
 
-  // Let other errors bubble up
-  return undefined;
+  // Log unexpected errors for debugging
+  console.error("[public-api] Unhandled error:", err);
+
+  // Return 500 for unhandled errors
+  return internalServerError();
 }
 
 /**

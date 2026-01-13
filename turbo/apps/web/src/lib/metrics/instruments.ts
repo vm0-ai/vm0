@@ -1,45 +1,57 @@
 import { getMeter, isMetricsEnabled } from "./provider";
+import type { Counter, Histogram } from "@opentelemetry/api";
 
-const meter = getMeter("vm0-web");
+// Lazy-initialized instruments (created after initMetrics is called)
+let httpRequestTotal: Counter | null = null;
+let httpRequestErrorsTotal: Counter | null = null;
+let httpRequestDuration: Histogram | null = null;
+let sandboxOperationTotal: Counter | null = null;
+let sandboxOperationErrorsTotal: Counter | null = null;
+let sandboxOperationDuration: Histogram | null = null;
 
-// API Metrics - Counters
-const httpRequestTotal = meter.createCounter("http_request_total", {
-  description: "Total number of HTTP requests",
-});
+function getApiInstruments() {
+  if (!httpRequestTotal) {
+    const meter = getMeter("vm0-web");
+    httpRequestTotal = meter.createCounter("http_request_total", {
+      description: "Total number of HTTP requests",
+    });
+    httpRequestErrorsTotal = meter.createCounter("http_request_errors_total", {
+      description: "Total number of HTTP request errors (4xx/5xx)",
+    });
+    httpRequestDuration = meter.createHistogram("http_request_duration_ms", {
+      description: "HTTP request duration in milliseconds",
+      unit: "ms",
+    });
+  }
+  return { httpRequestTotal, httpRequestErrorsTotal, httpRequestDuration };
+}
 
-const httpRequestErrorsTotal = meter.createCounter(
-  "http_request_errors_total",
-  {
-    description: "Total number of HTTP request errors (4xx/5xx)",
-  },
-);
-
-// API Metrics - Histogram
-const httpRequestDuration = meter.createHistogram("http_request_duration_ms", {
-  description: "HTTP request duration in milliseconds",
-  unit: "ms",
-});
-
-// Sandbox Metrics - Counters
-const sandboxOperationTotal = meter.createCounter("sandbox_operation_total", {
-  description: "Total number of sandbox operations",
-});
-
-const sandboxOperationErrorsTotal = meter.createCounter(
-  "sandbox_operation_errors_total",
-  {
-    description: "Total number of sandbox operation errors",
-  },
-);
-
-// Sandbox Metrics - Histogram
-const sandboxOperationDuration = meter.createHistogram(
-  "sandbox_operation_duration_ms",
-  {
-    description: "Sandbox operation duration in milliseconds",
-    unit: "ms",
-  },
-);
+function getSandboxInstruments() {
+  if (!sandboxOperationTotal) {
+    const meter = getMeter("vm0-web");
+    sandboxOperationTotal = meter.createCounter("sandbox_operation_total", {
+      description: "Total number of sandbox operations",
+    });
+    sandboxOperationErrorsTotal = meter.createCounter(
+      "sandbox_operation_errors_total",
+      {
+        description: "Total number of sandbox operation errors",
+      },
+    );
+    sandboxOperationDuration = meter.createHistogram(
+      "sandbox_operation_duration_ms",
+      {
+        description: "Sandbox operation duration in milliseconds",
+        unit: "ms",
+      },
+    );
+  }
+  return {
+    sandboxOperationTotal,
+    sandboxOperationErrorsTotal,
+    sandboxOperationDuration,
+  };
+}
 
 export function recordApiRequest(attrs: {
   method: string;
@@ -49,6 +61,9 @@ export function recordApiRequest(attrs: {
   durationMs: number;
 }): void {
   if (!isMetricsEnabled()) return;
+
+  const { httpRequestTotal, httpRequestErrorsTotal, httpRequestDuration } =
+    getApiInstruments();
 
   const labels = {
     method: attrs.method,
@@ -81,6 +96,12 @@ export function recordSandboxOperation(attrs: {
   success: boolean;
 }): void {
   if (!isMetricsEnabled()) return;
+
+  const {
+    sandboxOperationTotal,
+    sandboxOperationErrorsTotal,
+    sandboxOperationDuration,
+  } = getSandboxInstruments();
 
   const labels = {
     sandbox_type: attrs.sandboxType,
