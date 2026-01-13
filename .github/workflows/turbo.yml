@@ -804,6 +804,7 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
           PROXY_PORT=$((8080 + PR_NUMBER % 1000))
 
@@ -827,7 +828,7 @@ jobs:
             -e "api_url=${PREVIEW_URL}" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
             -e "proxy_port=${PROXY_PORT}" \
-            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
+            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
