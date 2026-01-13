@@ -339,12 +339,11 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Upload auth config
-        uses: actions/upload-artifact@v4
+      - name: Save auth config to cache
+        uses: actions/cache/save@v4
         with:
-          name: vm0-auth-config
-          path: ~/.vm0/config.json
-          retention-days: 1
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
 
   # Run API E2E tests (lightweight, fast)
   api-e2e:
@@ -359,11 +358,12 @@ jobs:
         with:
           submodules: recursive # For BATS test framework
 
-      - name: Download auth config
-        uses: actions/download-artifact@v4
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
         with:
-          name: vm0-auth-config
           path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Run API E2E Tests
         run: |
@@ -403,11 +403,12 @@ jobs:
       - name: Install GNU parallel for bats
         run: apt-get update && apt-get install -y parallel
 
-      - name: Download auth config
-        uses: actions/download-artifact@v4
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
         with:
-          name: vm0-auth-config
           path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Setup VM0 test volumes
         run: ./e2e/scripts/setup-vm0-volumes.sh
