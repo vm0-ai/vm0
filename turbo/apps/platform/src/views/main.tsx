@@ -9,7 +9,7 @@ export const setupRouter = (
   // this eslint disable is allowed because setupRouter is an entrance point
   // eslint-disable-next-line ccstate/no-store-in-params
   store: Store,
-  render: (children: React.ReactNode) => void,
+  render: (children: React.ReactNode) => void
 ) => {
   render(
     <StrictMode>
@@ -18,6 +18,6 @@ export const setupRouter = (
           <Router />
         </ErrorBoundary>
       </StoreProvider>
-    </StrictMode>,
+    </StrictMode>
   );
 };

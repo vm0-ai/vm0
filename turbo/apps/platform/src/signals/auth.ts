@@ -1,4 +1,4 @@
-import { Clerk } from "@clerk/clerk-js/headless";
+import { Clerk } from "@clerk/clerk-js";
 import { command, computed, state } from "ccstate";
 
 const reload$ = state(0);
@@ -36,7 +36,7 @@ export const setupClerk$ = command(
       set(reload$, (x) => x + 1);
     });
     signal.addEventListener("abort", unsubscribe);
-  },
+  }
 );
 
 /**
