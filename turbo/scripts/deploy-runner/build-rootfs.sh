@@ -122,7 +122,7 @@ create_squashfs_image() {
 
     # Inject overlay-init script for OverlayFS boot
     echo "[INJECT] Adding overlay-init script..."
-    sudo cp "$SCRIPT_DIR/overlay-init" "$EXTRACT_DIR/sbin/overlay-init"
+    sudo cp "$SCRIPT_DIR/overlay-init.sh" "$EXTRACT_DIR/sbin/overlay-init"
     sudo chmod 755 "$EXTRACT_DIR/sbin/overlay-init"
 
     # Create squashfs with xz compression (best compression ratio)
