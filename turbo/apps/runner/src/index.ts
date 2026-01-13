@@ -1,5 +1,5 @@
 // VM0 Runner - Self-hosted runner for the VM0 platform
-// Connects to the VM0 API server to poll and execute jobs in isolated Firecracker microVMs
+// Polls the VM0 API server and executes jobs in isolated Firecracker microVMs
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
