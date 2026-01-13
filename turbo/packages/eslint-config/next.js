@@ -51,6 +51,7 @@ export const nextJsConfig = [
     ignores: [
       "next-env.d.ts",
       ".next/**",
+      ".source/**",
       "*.config.ts",
       "*.config.js",
       "*.config.mjs",
