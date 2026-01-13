@@ -28,7 +28,8 @@
     "OFFICIAL_RUNNER_SECRET",
     "USE_MOCK_CLAUDE",
     "CRON_SECRET",
-    "AXIOM_TOKEN"
+    "AXIOM_TOKEN",
+    "AXIOM_DATASET_SUFFIX"
   ],
   "tasks": {
     "build": {
