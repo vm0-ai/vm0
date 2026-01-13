@@ -47,6 +47,16 @@ export const nextJsConfig = [
     },
   },
   {
+    // Ignore Next.js generated files and config files (they're in tsconfig include)
+    ignores: [
+      "next-env.d.ts",
+      ".next/**",
+      "*.config.ts",
+      "*.config.js",
+      "*.config.mjs",
+    ],
+  },
+  {
     // Prevent log.info() from being committed - it's for development only
     // Exclude test files since they need to test info() functionality
     ignores: [
