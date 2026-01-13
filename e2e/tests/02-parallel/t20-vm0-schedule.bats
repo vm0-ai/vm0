@@ -64,7 +64,7 @@ teardown() {
 
     run $CLI_COMMAND schedule deploy schedule.yaml
     assert_success
-    assert_output --partial "Deployed schedule"
+    assert_output --partial "Created schedule"
     assert_output --partial "$SCHEDULE_NAME"
 }
 
