@@ -59,6 +59,8 @@ export enum Level {
   Fatal = "fatal",
 }
 
+// LOGGERS is mutable on purpose
+// eslint-disable-next-line ccstate/no-package-variable
 const LOGGERS: Partial<Record<string, ConsoleLogger>> = {};
 
 /**

@@ -1,6 +1,17 @@
+// we use mutable package variables to mock location properties
+// eslint-disable-next-line ccstate/no-package-variable
 let _pathname: string | undefined = undefined;
+
+// we use mutable package variables to mock location properties
+// eslint-disable-next-line ccstate/no-package-variable
 let _search: string | undefined = undefined;
+
+// we use mutable package variables to mock location properties
+// eslint-disable-next-line ccstate/no-package-variable
 let _origin: string | undefined = undefined;
+
+// we use mutable package variables to mock location properties
+// eslint-disable-next-line ccstate/no-package-variable
 let _pushState: typeof window.history.pushState | undefined = undefined;
 
 export const setPathname = (pathname: string) => {

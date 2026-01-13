@@ -67,93 +67,7 @@ export const paginatedVolumeVersionsSchema =
   createPaginatedResponseSchema(volumeVersionSchema);
 
 /**
- * Create volume request schema
- */
-export const createVolumeRequestSchema = z.object({
-  name: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(
-      /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/,
-      "Name must be lowercase alphanumeric with hyphens, not starting or ending with hyphen",
-    ),
-});
-
-export type CreateVolumeRequest = z.infer<typeof createVolumeRequestSchema>;
-
-/**
- * File entry for upload (reuse from artifacts)
- */
-export const fileEntrySchema = z.object({
-  path: z.string(),
-  size: z.number(),
-  hash: z.string().optional(), // SHA-256 hash of file content
-});
-
-export type FileEntry = z.infer<typeof fileEntrySchema>;
-
-/**
- * Prepare upload request - get presigned URLs
- */
-export const prepareUploadRequestSchema = z.object({
-  files: z.array(fileEntrySchema),
-  message: z.string().optional(), // Optional commit message
-});
-
-export type PrepareUploadRequest = z.infer<typeof prepareUploadRequestSchema>;
-
-/**
- * Presigned upload URL response
- */
-export const presignedUploadSchema = z.object({
-  path: z.string(),
-  upload_url: z.string(), // Presigned S3 URL
-  upload_id: z.string(), // For multi-part uploads
-});
-
-export type PresignedUpload = z.infer<typeof presignedUploadSchema>;
-
-/**
- * Prepare upload response
- */
-export const prepareUploadResponseSchema = z.object({
-  upload_session_id: z.string(),
-  files: z.array(presignedUploadSchema),
-  expires_at: timestampSchema,
-});
-
-export type PrepareUploadResponse = z.infer<typeof prepareUploadResponseSchema>;
-
-/**
- * Commit upload request - finalize the upload
- */
-export const commitUploadRequestSchema = z.object({
-  upload_session_id: z.string(),
-  message: z.string().optional(),
-});
-
-export type CommitUploadRequest = z.infer<typeof commitUploadRequestSchema>;
-
-/**
- * Download response with presigned URLs
- */
-export const downloadResponseSchema = z.object({
-  version_id: z.string(),
-  files: z.array(
-    z.object({
-      path: z.string(),
-      size: z.number(),
-      download_url: z.string(), // Presigned S3 URL
-    }),
-  ),
-  expires_at: timestampSchema,
-});
-
-export type DownloadResponse = z.infer<typeof downloadResponseSchema>;
-
-/**
- * Volumes list contract - GET /v1/volumes, POST /v1/volumes
+ * Volumes list contract - GET /v1/volumes
  */
 export const publicVolumesListContract = c.router({
   list: {
@@ -167,20 +81,6 @@ export const publicVolumesListContract = c.router({
     },
     summary: "List volumes",
     description: "List all volumes in the current scope with pagination",
-  },
-  create: {
-    method: "POST",
-    path: "/v1/volumes",
-    body: createVolumeRequestSchema,
-    responses: {
-      201: publicVolumeDetailSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      409: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Create volume",
-    description: "Create a new empty volume container",
   },
 });
 
@@ -228,54 +128,8 @@ export const publicVolumeVersionsContract = c.router({
 });
 
 /**
- * Volume upload contract - POST /v1/volumes/:id/upload
- */
-export const publicVolumeUploadContract = c.router({
-  prepareUpload: {
-    method: "POST",
-    path: "/v1/volumes/:id/upload",
-    pathParams: z.object({
-      id: z.string().min(1, "Volume ID is required"),
-    }),
-    body: prepareUploadRequestSchema,
-    responses: {
-      200: prepareUploadResponseSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Prepare volume upload",
-    description:
-      "Get presigned URLs for direct S3 upload. Returns upload URLs for each file.",
-  },
-});
-
-/**
- * Volume commit contract - POST /v1/volumes/:id/commit
- */
-export const publicVolumeCommitContract = c.router({
-  commitUpload: {
-    method: "POST",
-    path: "/v1/volumes/:id/commit",
-    pathParams: z.object({
-      id: z.string().min(1, "Volume ID is required"),
-    }),
-    body: commitUploadRequestSchema,
-    responses: {
-      200: volumeVersionSchema,
-      400: publicApiErrorSchema,
-      401: publicApiErrorSchema,
-      404: publicApiErrorSchema,
-      500: publicApiErrorSchema,
-    },
-    summary: "Commit volume upload",
-    description: "Finalize an upload session and create a new volume version.",
-  },
-});
-
-/**
  * Volume download contract - GET /v1/volumes/:id/download
+ * Returns 302 redirect to presigned URL for archive.tar.gz
  */
 export const publicVolumeDownloadContract = c.router({
   download: {
@@ -288,20 +142,18 @@ export const publicVolumeDownloadContract = c.router({
       version_id: z.string().optional(), // Defaults to current version
     }),
     responses: {
-      200: downloadResponseSchema,
+      302: z.undefined(), // Redirect to presigned URL
       401: publicApiErrorSchema,
       404: publicApiErrorSchema,
       500: publicApiErrorSchema,
     },
     summary: "Download volume",
     description:
-      "Get presigned URLs for downloading volume files. Defaults to current version.",
+      "Redirect to presigned URL for downloading volume as tar.gz archive. Defaults to current version.",
   },
 });
 
 export type PublicVolumesListContract = typeof publicVolumesListContract;
 export type PublicVolumeByIdContract = typeof publicVolumeByIdContract;
 export type PublicVolumeVersionsContract = typeof publicVolumeVersionsContract;
-export type PublicVolumeUploadContract = typeof publicVolumeUploadContract;
-export type PublicVolumeCommitContract = typeof publicVolumeCommitContract;
 export type PublicVolumeDownloadContract = typeof publicVolumeDownloadContract;

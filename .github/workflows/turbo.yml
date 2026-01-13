@@ -27,10 +27,11 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
@@ -46,6 +47,7 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
             echo "platform-changed=false" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -57,6 +59,7 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
             echo "platform-changed=true" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -85,24 +88,23 @@ jobs:
 
           # Check CLI app
           cd ../cli
-          CLI_CODE_CHANGED=false
           if ! npx turbo-ignore; then
             echo "Changes detected in CLI code"
-            CLI_CODE_CHANGED=true
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected in CLI app"
+            echo "cli-changed=false" >> $GITHUB_OUTPUT
           fi
 
           # Check E2E tests directory (outside turbo workspace)
+          # Use origin/main...HEAD to compare entire PR branch against main
           cd /__w/vm0/vm0
-          if git diff --name-only HEAD~1 HEAD | grep -q "^e2e/"; then
+          if git diff --name-only origin/main...HEAD | grep -q "^e2e/"; then
             echo "Changes detected in E2E tests"
-            CLI_CODE_CHANGED=true
-          fi
-
-          if [ "$CLI_CODE_CHANGED" = true ]; then
-            echo "cli-changed=true" >> $GITHUB_OUTPUT
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
           else
-            echo "No changes detected in CLI app or E2E tests"
-            echo "cli-changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected in E2E tests"
+            echo "e2e-changed=false" >> $GITHUB_OUTPUT
           fi
 
           # Check runner app
@@ -133,8 +135,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      # Run lint, check-types, and prettier directly (not via lefthook)
+      # lefthook's turbo filter uses git diff which doesn't work in CI
       - name: Lint
-        run: lefthook run pre-commit --all-files
+        working-directory: turbo
+        run: pnpm lint
+
+      - name: Type Check
+        working-directory: turbo
+        run: pnpm check-types
+
+      - name: Prettier
+        working-directory: turbo
+        run: pnpm prettier --check .
 
   test:
     runs-on: ubuntu-latest
@@ -184,10 +197,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
     needs: [change-detection]
     # Deploy if:
-    # - It's a PR and web, CLI, or runner changed (all need web deployment for E2E tests)
+    # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
     # - It's a workflow_dispatch with run_cli_e2e enabled
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
@@ -233,7 +246,6 @@ jobs:
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             USE_MOCK_CLAUDE=true
-            DEBUG=*
             CRON_SECRET=${{ secrets.CRON_SECRET }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
@@ -293,26 +305,21 @@ jobs:
           deployment-env: platform
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
-  # Run CLI E2E tests
-  cli-e2e:
+  # Authenticate for E2E tests (shared by cli-e2e jobs and api-e2e-test)
+  e2e-auth:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, deploy-runner, lint, test]
-    # Run if:
-    # - It's a PR, (CLI, web, or runner) changed, and web deployment succeeded
-    # - It's a workflow_dispatch with run_cli_e2e enabled and web deployment succeeded
-    if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
-    timeout-minutes: 20
+    needs: [deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive # For BATS test framework
+          submodules: recursive
       - uses: ./.github/actions/toolchain-init
 
       - name: Setup pnpm global directory
@@ -326,9 +333,6 @@ jobs:
 
       - name: Setup CLI globally
         run: cd turbo/apps/cli && pnpm link --global
-
-      - name: Install GNU parallel for bats
-        run: apt-get update && apt-get install -y parallel
 
       - name: Install E2E dependencies
         run: cd e2e && npm install
@@ -346,6 +350,73 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Save auth config to cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+
+  # Run API E2E tests (lightweight, fast)
+  api-e2e-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [e2e-auth, deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # For BATS test framework
+
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Run API E2E Tests
+        run: |
+          echo "=== Running API E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+  # Run CLI E2E tests - Phase 1: Serial tests (establishes e2e-stable scope)
+  cli-e2e-01-serial:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [e2e-auth, deploy-web, lint, test]
+    if: needs.deploy-web.outputs.preview-url != ''
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
+
       - name: Setup VM0 test volumes
         run: ./e2e/scripts/setup-vm0-volumes.sh
         env:
@@ -362,69 +433,143 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Run CLI E2E Tests
+      - name: Run Serial E2E Tests
         run: |
-          # Track exit codes
-          RUNNER_EXIT=0
-          SERIAL_EXIT=0
-          PARALLEL_EXIT=0
-
-          # Step 1: Run serial tests sequentially (establishes e2e-stable scope)
-          # MUST run first so runner can use e2e-stable scope
           echo "=== Running Serial E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats ./e2e/tests/01-serial/*.bats || SERIAL_EXIT=$?
-
-          if [ $SERIAL_EXIT -ne 0 ]; then
-            echo ""
-            echo "❌ Serial tests failed - skipping remaining tests"
-            exit 1
-          fi
+          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
-
-          # Runner is started in deploy-runner job with official token
-          # Set RUNNER_GROUP for runner tests
-          export RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}"
-
-          # Step 2: Run runner tests if runner was deployed
-          if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo ""
-            echo "=== Running Runner E2E Tests (8 parallel) ==="
-            RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats || RUNNER_EXIT=$?
-
-            if [ $RUNNER_EXIT -ne 0 ]; then
-              echo ""
-              echo "❌ Runner tests failed - skipping parallel tests"
-              exit 1
-            fi
-            echo "✅ Runner tests passed"
-          else
-            echo ""
-            echo "Skipping runner tests (runner not deployed)"
-          fi
-
-          # Step 4: Run parallel tests with -j 10
-          echo ""
-          echo "=== Running Parallel E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats || PARALLEL_EXIT=$?
-
-          # Report results and exit with failure if any suite failed
-          echo ""
-          echo "=== Test Results ==="
-          echo "Serial tests: PASSED"
-          if [ "$RUNNER_DEPLOYED" = "true" ]; then
-            echo "Runner tests: PASSED"
-          fi
-          echo "Parallel tests: $([ $PARALLEL_EXIT -eq 0 ] && echo 'PASSED' || echo 'FAILED')"
-
-          # Exit with failure if parallel tests failed
-          if [ $PARALLEL_EXIT -ne 0 ]; then
-            exit 1
-          fi
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
-          RUNNER_DEPLOYED: ${{ needs.deploy-runner.outputs.runner-deployed }}
+
+      - name: Stop Cron Simulator
+        if: always()
+        run: |
+          if [ -n "$CRON_SIMULATOR_PID" ]; then
+            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
+            echo "Cron simulator stopped"
+          fi
+
+  # Run CLI E2E tests - Phase 2: Parallel tests (does NOT need runner)
+  cli-e2e-02-parallel:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [cli-e2e-01-serial, deploy-web]
+    if: needs.deploy-web.outputs.preview-url != ''
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Install GNU parallel for bats
+        run: apt-get update && apt-get install -y parallel
+
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Start Cron Simulator
+        run: |
+          chmod +x ./e2e/scripts/cron-simulator.sh
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Run Parallel E2E Tests
+        run: |
+          echo "=== Running Parallel E2E Tests ==="
+          ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
+          echo "✅ Parallel tests passed"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          USE_MOCK_CLAUDE: "true"
+
+      - name: Stop Cron Simulator
+        if: always()
+        run: |
+          if [ -n "$CRON_SIMULATOR_PID" ]; then
+            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
+            echo "Cron simulator stopped"
+          fi
+
+  # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
+  cli-e2e-03-runner:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
+    if: needs.deploy-web.outputs.preview-url != ''
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Install GNU parallel for bats
+        run: apt-get update && apt-get install -y parallel
+
+      - name: Restore auth config from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vm0
+          key: e2e-auth-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Start Cron Simulator
+        run: |
+          chmod +x ./e2e/scripts/cron-simulator.sh
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Run Runner E2E Tests
+        run: |
+          echo "=== Running Runner E2E Tests (8 parallel) ==="
+          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+          echo "✅ Runner tests passed"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          USE_MOCK_CLAUDE: "true"
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 
@@ -436,33 +581,24 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Lock runner host before deployment (PR-specific isolation)
-  lock-runner-host:
+  # Prepare runner: lock host, build bundle, install deps (runs parallel with deploy-web)
+  deploy-runner-prepare:
     runs-on: ubuntu-latest
-    needs: [change-detection, deploy-web]
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection]
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true') && needs.deploy-web.outputs.preview-url != '') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true' && needs.deploy-web.outputs.preview-url != '')
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
-      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      runner-dir: ${{ steps.prepare.outputs.runner-dir }}
     steps:
-      - name: Check if deployment needed
-        id: check
-        env:
-          RUNNER_CHANGED: ${{ needs.change-detection.outputs.runner-changed }}
-        run: |
-          if [ "$RUNNER_CHANGED" != "true" ]; then
-            echo "Runner code not changed, skipping deployment"
-            echo "should-deploy=false" >> $GITHUB_OUTPUT
-          else
-            echo "Runner code changed, will deploy"
-            echo "should-deploy=true" >> $GITHUB_OUTPUT
-          fi
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
 
       - name: Lock runner host
         id: lock
-        if: steps.check.outputs.should-deploy == 'true'
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -475,17 +611,19 @@ jobs:
           NUM_HOSTS=${#HOSTS[@]}
           echo "Found $NUM_HOSTS runner hosts"
 
-          # Setup SSH
-          mkdir -p ~/.ssh
+          # Setup SSH (use $HOME instead of ~ for proper expansion in container)
+          SSH_DIR="$HOME/.ssh"
+          SSH_KEY_FILE="$SSH_DIR/runner.pem"
+          mkdir -p "$SSH_DIR"
           if [ -z "$SSH_KEY" ]; then
             echo "ERROR: SSH_KEY secret is empty!"
             exit 1
           fi
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
-          echo "SSH key file created ($(wc -c < ~/.ssh/runner.pem) bytes)"
+          echo "$SSH_KEY" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
 
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
 
           # Function to check if host is available (lock doesn't exist or is stale)
           check_and_acquire() {
@@ -588,21 +726,6 @@ jobs:
           echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
 
-  # Deploy runner on locked host
-  deploy-runner:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
-    needs: [change-detection, deploy-web, lock-runner-host]
-    if: needs.lock-runner-host.outputs.should-deploy == 'true'
-    outputs:
-      runner-deployed: ${{ steps.deploy.outputs.runner-deployed }}
-      runner-dir: ${{ steps.deploy.outputs.runner-dir }}
-      runner-host: ${{ needs.lock-runner-host.outputs.runner-host }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/toolchain-init
-
       - name: Install Ansible
         run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
 
@@ -622,64 +745,114 @@ jobs:
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
           echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
-      - name: Deploy runner with Ansible
-        id: deploy
+      - name: Prepare runner (deploy bundle, install deps)
+        id: prepare
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
+          RUNNER_HOST: ${{ steps.lock.outputs.host }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           PROXY_PORT=$((8080 + PR_NUMBER % 1000))
 
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
 
-          echo "Deploying to runner host: ${RUNNER_HOST}"
+          echo "Preparing runner on host: ${RUNNER_HOST}"
 
           cd ansible
           ansible-playbook \
             -i "${RUNNER_HOST}," \
             playbooks/deploy-runner.yml \
-            --private-key ~/.ssh/runner.pem \
+            --tags prepare \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "runner_base_dir=${RUNNER_DIR}" \
+            -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
+            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
+            -e "force_rebuild_rootfs=true" \
+            -e "proxy_port=${PROXY_PORT}" \
+            -e '{"enable_drain": true, "drain_timeout": 300}' \
+            -v
+
+          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
+          echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
+
+  # Start runner after deploy-web provides preview URL
+  deploy-runner-start:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+    needs: [change-detection, deploy-web, deploy-runner-prepare]
+    if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
+    outputs:
+      runner-deployed: ${{ steps.start.outputs.runner-deployed }}
+      runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+      runner-host: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install Ansible
+        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
+
+      - name: Start runner (configure and launch)
+        id: start
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          PROXY_PORT=$((8080 + PR_NUMBER % 1000))
+
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+          echo "Starting runner on host: ${RUNNER_HOST}"
+
+          cd ansible
+          ansible-playbook \
+            -i "${RUNNER_HOST}," \
+            playbooks/deploy-runner.yml \
+            --tags start \
+            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "runner_group=vm0/development-pr-${PR_NUMBER}" \
             -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
-            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.ext4" \
-            -e "force_rebuild_rootfs=true" \
             -e "proxy_port=${PROXY_PORT}" \
-            -e "max_concurrent=8" \
-            -e '{"enable_drain": true, "drain_timeout": 300}' \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
-          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-          echo "Runner deployed to ${RUNNER_DIR} on ${RUNNER_HOST}"
+          echo "Runner started at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Release runner host lock after cli-e2e completes (or fails/times out)
+  # Release runner host lock after cli-e2e-03-runner completes (or fails/times out)
   unlock-runner-host:
     runs-on: ubuntu-latest
-    needs: [lock-runner-host, cli-e2e]
-    if: always() && needs.lock-runner-host.outputs.runner-host != ''
+    needs: [deploy-runner-prepare, cli-e2e-03-runner]
+    if: always() && needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
       - name: Unlock runner host
         env:
-          RUNNER_HOST: ${{ needs.lock-runner-host.outputs.runner-host }}
+          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$HOME/.ssh/runner.pem" ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
           echo "Unlocked runner host: $RUNNER_HOST"

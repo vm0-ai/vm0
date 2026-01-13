@@ -10,6 +10,11 @@ export interface TestFixtureConfig {
   debugLoggers?: string[];
 }
 
+export interface TestContext {
+  readonly signal: AbortSignal;
+  readonly store: Store;
+}
+
 export function enableDebugLogger(...loggers: string[]): Record<string, Level> {
   const config: Record<string, Level> = {};
   for (const logger of loggers) {
@@ -18,11 +23,11 @@ export function enableDebugLogger(...loggers: string[]): Record<string, Level> {
   return config;
 }
 
-export function testContext() {
+export function testContext(): TestContext {
   let store: Store | null = null;
   let controller = new AbortController();
 
-  const context = {
+  const context: TestContext = {
     get signal(): AbortSignal {
       return controller.signal;
     },
@@ -46,5 +51,5 @@ export function testContext() {
     controller = new AbortController();
   });
 
-  return Object.freeze(context);
+  return context;
 }

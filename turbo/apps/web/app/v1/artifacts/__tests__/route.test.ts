@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { GET as listArtifacts, POST as createArtifact } from "../route";
+import { GET as listArtifacts } from "../route";
 import { GET as getArtifact } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
@@ -59,6 +59,19 @@ describe("Public API v1 - Artifacts Endpoints", () => {
       type: "personal",
       ownerId: testUserId,
     });
+
+    // Create test artifact directly in database
+    const [created] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: testUserId,
+        name: "test-artifact-v1",
+        type: "artifact",
+        s3Prefix: `${testUserId}/artifact/test-artifact-v1`,
+      })
+      .returning();
+
+    testArtifactId = created!.id;
   });
 
   afterAll(async () => {
@@ -72,69 +85,6 @@ describe("Public API v1 - Artifacts Endpoints", () => {
     await globalThis.services.db
       .delete(scopes)
       .where(eq(scopes.id, testScopeId));
-  });
-
-  describe("POST /v1/artifacts - Create Artifact", () => {
-    it("should create a new artifact", async () => {
-      const request = createTestRequest("http://localhost:3000/v1/artifacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-artifact-v1",
-        }),
-      });
-
-      const response = await createArtifact(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.id).toBeDefined();
-      expect(data.name).toBe("test-artifact-v1");
-      expect(data.current_version_id).toBeNull();
-      expect(data.size).toBe(0);
-      expect(data.file_count).toBe(0);
-      expect(data.created_at).toBeDefined();
-      expect(data.updated_at).toBeDefined();
-
-      testArtifactId = data.id;
-    });
-
-    it("should return 409 when artifact already exists", async () => {
-      const request = createTestRequest("http://localhost:3000/v1/artifacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-artifact-v1",
-        }),
-      });
-
-      const response = await createArtifact(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(409);
-      expect(data.error.type).toBe("conflict_error");
-      expect(data.error.code).toBe("resource_already_exists");
-    });
-
-    it("should return 401 for unauthenticated request", async () => {
-      mockUserId = "";
-
-      const request = createTestRequest("http://localhost:3000/v1/artifacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-artifact-unauth",
-        }),
-      });
-
-      const response = await createArtifact(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error.type).toBe("authentication_error");
-
-      mockUserId = testUserId;
-    });
   });
 
   describe("GET /v1/artifacts - List Artifacts", () => {
@@ -160,6 +110,20 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.data.length).toBeLessThanOrEqual(1);
+    });
+
+    it("should return 401 for unauthenticated request", async () => {
+      mockUserId = "";
+
+      const request = createTestRequest("http://localhost:3000/v1/artifacts");
+
+      const response = await listArtifacts(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.type).toBe("authentication_error");
+
+      mockUserId = testUserId;
     });
   });
 

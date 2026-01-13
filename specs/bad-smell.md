@@ -164,6 +164,9 @@ This document defines code quality issues and anti-patterns to identify during c
   - `// @ts-nocheck` - Never skip TypeScript checking for entire files
   - `// @ts-expect-error` - Don't expect errors, fix them
   - `// prettier-ignore` - Follow formatting rules consistently
+- **Prohibited plugins and configurations:**
+  - `eslint-plugin-only-warn` - Never convert errors to warnings globally
+  - Any ESLint plugin or configuration that downgrades error severity to bypass lint checks
 - **Why suppressions are harmful:**
   - They accumulate technical debt silently
   - Hide real problems that could cause runtime failures

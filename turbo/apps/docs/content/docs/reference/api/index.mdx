@@ -19,7 +19,7 @@ https://api.vm0.ai/v1/
   <Card
     title="Agents"
     href="/docs/reference/api/agents"
-    description="Create, update, and manage agent configurations"
+    description="List and retrieve agent information"
   />
   <Card
     title="Artifacts"
@@ -30,11 +30,6 @@ https://api.vm0.ai/v1/
     title="Runs"
     href="/docs/reference/api/runs"
     description="Execute agents and monitor run status"
-  />
-  <Card
-    title="Tokens"
-    href="/docs/reference/api/tokens"
-    description="Create and manage API tokens"
   />
   <Card
     title="Volumes"
@@ -81,19 +76,6 @@ This creates a token and stores it in your local configuration. To view your tok
 ```bash
 vm0 auth setup-token
 ```
-
-#### Via API
-
-You can also create tokens programmatically using an existing token:
-
-```bash
-curl https://api.vm0.ai/v1/tokens \
-  -H "Authorization: Bearer vm0_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-new-token", "expires_in_days": 90}'
-```
-
-See [Tokens API](/docs/reference/api/tokens) for full details.
 
 ### Token Security
 

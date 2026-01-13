@@ -44,6 +44,8 @@ export default [
             { from: "package", name: "State", package: "ccstate" },
             { from: "package", name: "Computed", package: "ccstate" },
             { from: "package", name: "Command", package: "ccstate" },
+            { from: "file", name: "ConsoleLogger" },
+            { from: "file", name: "TestContext" },
           ],
         },
       ],
@@ -53,6 +55,12 @@ export default [
     },
   },
   {
-    ignores: ["dist/**", "vite.config.ts", "vitest.config.ts"],
+    ignores: [
+      "dist/**",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "custom-eslint/**",
+      "src/mocks/**",
+    ],
   },
 ];

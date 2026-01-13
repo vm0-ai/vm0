@@ -30,7 +30,7 @@ export type PublicApiErrorType = z.infer<typeof publicApiErrorTypeSchema>;
  *     "code": "resource_missing",
  *     "message": "No such agent: 'xxx'",
  *     "param": "agent_id",
- *     "doc_url": "https://docs.vm0.dev/errors/resource_missing"
+ *     "doc_url": "https://docs.vm7.ai/errors/resource_missing"
  *   }
  * }
  */

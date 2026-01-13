@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { GET as listVolumes, POST as createVolume } from "../route";
+import { GET as listVolumes } from "../route";
 import { GET as getVolume } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
 import { initServices } from "../../../../src/lib/init-services";
@@ -57,6 +57,19 @@ describe("Public API v1 - Volumes Endpoints", () => {
       type: "personal",
       ownerId: testUserId,
     });
+
+    // Create test volume directly in database
+    const [created] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId: testUserId,
+        name: "test-volume-v1",
+        type: "volume",
+        s3Prefix: `${testUserId}/volume/test-volume-v1`,
+      })
+      .returning();
+
+    testVolumeId = created!.id;
   });
 
   afterAll(async () => {
@@ -68,69 +81,6 @@ describe("Public API v1 - Volumes Endpoints", () => {
     await globalThis.services.db
       .delete(scopes)
       .where(eq(scopes.id, testScopeId));
-  });
-
-  describe("POST /v1/volumes - Create Volume", () => {
-    it("should create a new volume", async () => {
-      const request = createTestRequest("http://localhost:3000/v1/volumes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-volume-v1",
-        }),
-      });
-
-      const response = await createVolume(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.id).toBeDefined();
-      expect(data.name).toBe("test-volume-v1");
-      expect(data.current_version_id).toBeNull();
-      expect(data.size).toBe(0);
-      expect(data.file_count).toBe(0);
-      expect(data.created_at).toBeDefined();
-      expect(data.updated_at).toBeDefined();
-
-      testVolumeId = data.id;
-    });
-
-    it("should return 409 when volume already exists", async () => {
-      const request = createTestRequest("http://localhost:3000/v1/volumes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-volume-v1",
-        }),
-      });
-
-      const response = await createVolume(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(409);
-      expect(data.error.type).toBe("conflict_error");
-      expect(data.error.code).toBe("resource_already_exists");
-    });
-
-    it("should return 401 for unauthenticated request", async () => {
-      mockUserId = "";
-
-      const request = createTestRequest("http://localhost:3000/v1/volumes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "test-volume-unauth",
-        }),
-      });
-
-      const response = await createVolume(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error.type).toBe("authentication_error");
-
-      mockUserId = testUserId;
-    });
   });
 
   describe("GET /v1/volumes - List Volumes", () => {
@@ -156,6 +106,20 @@ describe("Public API v1 - Volumes Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.data.length).toBeLessThanOrEqual(1);
+    });
+
+    it("should return 401 for unauthenticated request", async () => {
+      mockUserId = "";
+
+      const request = createTestRequest("http://localhost:3000/v1/volumes");
+
+      const response = await listVolumes(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.type).toBe("authentication_error");
+
+      mockUserId = testUserId;
     });
   });
 

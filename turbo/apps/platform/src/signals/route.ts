@@ -141,6 +141,8 @@ export const navigateInReact$ = command(
       searchParams?: URLSearchParams;
     },
   ) => {
+    // here is an exception case because we don't want use pass rootSignal$ in react component props
+    // eslint-disable-next-line ccstate/no-get-signal
     const signal = get(rootSignal$);
 
     detach(

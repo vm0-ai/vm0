@@ -3,7 +3,7 @@
 # This playbook deploys the VM0 runner to metal instances.
 # Supports both CI (PR testing) and Production deployments.
 #
-# CI Usage (single host, no drain):
+# CI Usage - Full deployment (single host, no drain):
 #   ansible-playbook -i "host," playbooks/deploy-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
@@ -13,6 +13,22 @@
 #     -e "api_url=https://preview-url.vercel.app" \
 #     -e "enable_drain=false"
 #
+# CI Usage - Prepare only (no api_url needed):
+#   ansible-playbook -i "host," playbooks/deploy-runner.yml --tags prepare \
+#     -e "ansible_user=ubuntu" \
+#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
+#     -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+#     -e "enable_drain=false"
+#
+# CI Usage - Start only (requires api_url):
+#   ansible-playbook -i "host," playbooks/deploy-runner.yml --tags start \
+#     -e "ansible_user=ubuntu" \
+#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
+#     -e "runner_group=vm0/development-pr-123" \
+#     -e "pm2_process_name=vm0-runner-pr-123" \
+#     -e "official_runner_secret=xxx" \
+#     -e "api_url=https://preview-url.vercel.app"
+#
 # Production Usage (multiple hosts, with drain):
 #   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
 #     -e "ansible_user=ubuntu" \
@@ -20,10 +36,15 @@
 #     -e "api_url=https://www.vm0.ai" \
 #     -e "enable_drain=true"
 #
+# Tags:
+#   - prepare: Phases 1-4 (stop, deploy bundle, install deps) - no api_url needed
+#   - start: Phases 5-6 (configure, start, health check) - requires api_url
+#   - (no tags): Run all phases
+#
 # Required Variables:
-#   - official_runner_secret: The OFFICIAL_RUNNER_SECRET for authentication
-#   - api_url: The API URL (preview URL for CI, production URL for prod)
-#   - runner_bundle_path: Path to pre-built runner bundle tarball
+#   - For prepare: runner_bundle_path
+#   - For start: official_runner_secret, api_url
+#   - For full: all of the above
 #
 # Optional Variables (with defaults):
 #   - runner_base_dir: Runner installation directory (default: /opt/vm0-runner/production)
@@ -56,23 +77,39 @@
     # ========================================
     # Phase 1: Pre-flight checks
     # ========================================
-    - name: Check required variables
+    - name: Check required variables for prepare phase
+      assert:
+        that:
+          - runner_bundle_path is defined
+        fail_msg: "Required variable for prepare: runner_bundle_path"
+      tags: [prepare]
+
+    - name: Check required variables for start phase
       assert:
         that:
           - official_runner_secret is defined
           - api_url is defined
-          - runner_bundle_path is defined
-        fail_msg: "Required variables: official_runner_secret, api_url, runner_bundle_path"
+        fail_msg: "Required variables for start: official_runner_secret, api_url"
+      tags: [start]
 
-    - name: Display deployment configuration
+    - name: Display prepare configuration
       debug:
         msg: |
-          Deploying runner:
+          Preparing runner:
+          - Directory: {{ runner_base_dir }}
+          - Bundle: {{ runner_bundle_path }}
+          - Drain enabled: {{ enable_drain }}
+      tags: [prepare]
+
+    - name: Display start configuration
+      debug:
+        msg: |
+          Starting runner:
           - Directory: {{ runner_base_dir }}
           - Group: {{ runner_group }}
           - Process: {{ pm2_process_name }}
           - API: {{ api_url }}
-          - Drain enabled: {{ enable_drain }}
+      tags: [start]
 
     # ========================================
     # Phase 2: Stop existing runner
@@ -83,10 +120,13 @@
       ignore_errors: yes
       changed_when: false
       become: no
+      tags: [prepare]
 
     # Production: Drain before stopping (wait for active jobs)
+    # Note: regex must match positive integers only (not '0' which would signal process group)
     - name: Enter maintenance mode (stop polling, wait for active jobs)
-      when: enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
+      when: enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
+      tags: [prepare]
       block:
         - name: Signal runner to enter drain mode
           command: kill -USR1 {{ pm2_pid.stdout }}
@@ -129,10 +169,11 @@
 
     # CI: Just stop without drain (no long-running jobs)
     - name: Stop runner without drain
-      when: not enable_drain and pm2_pid.stdout | regex_search('^[0-9]+$')
+      when: not enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
       command: pm2 delete {{ pm2_process_name }}
       ignore_errors: yes
       become: no
+      tags: [prepare]
 
     # ========================================
     # Phase 3: Deploy
@@ -144,9 +185,11 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
+      tags: [prepare]
 
     - name: Clean runner directory
       shell: rm -rf {{ runner_base_dir }}/*
+      tags: [prepare]
 
     - name: Extract runner bundle
       unarchive:
@@ -155,6 +198,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         extra_opts: [--strip-components=1]
+      tags: [prepare]
 
     - name: Ensure deploy-runner directory exists
       file:
@@ -163,6 +207,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
+      tags: [prepare]
 
     - name: Copy deploy scripts
       copy:
@@ -173,6 +218,7 @@
         mode: '0755'
       with_fileglob:
         - "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/*.sh"
+      tags: [prepare]
 
     - name: Copy Dockerfile for rootfs build
       copy:
@@ -181,6 +227,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0644'
+      tags: [prepare]
 
     # ========================================
     # Phase 4: Install Dependencies (if needed)
@@ -189,22 +236,26 @@
       stat:
         path: /usr/local/bin/firecracker
       register: firecracker_bin
+      tags: [prepare]
 
     - name: Install Firecracker
       command: "{{ runner_base_dir }}/deploy-runner/install-firecracker.sh"
       when: not firecracker_bin.stat.exists
+      tags: [prepare]
 
     - name: Check if mitmproxy is installed
       command: mitmdump --version
       register: mitmproxy_check
       ignore_errors: yes
       changed_when: false
+      tags: [prepare]
 
     - name: Install pipx for mitmproxy
       apt:
         name: pipx
         state: present
       when: mitmproxy_check.rc != 0
+      tags: [prepare]
 
     - name: Install mitmproxy via pipx
       command: pipx install mitmproxy
@@ -212,24 +263,29 @@
         PIPX_HOME: /opt/pipx
         PIPX_BIN_DIR: /usr/local/bin
       when: mitmproxy_check.rc != 0
+      tags: [prepare]
 
     - name: Check if rootfs exists
       stat:
         path: "{{ rootfs_path }}"
       register: rootfs_file
+      tags: [prepare]
 
     - name: Build rootfs
       command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
       when: not rootfs_file.stat.exists or force_rebuild_rootfs
+      tags: [prepare]
 
     - name: Check if proxy CA certificate exists
       stat:
         path: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
       register: proxy_ca_file
+      tags: [prepare]
 
     - name: Generate proxy CA certificate if not exists
       command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/deploy-runner/proxy-ca"
       when: not proxy_ca_file.stat.exists
+      tags: [prepare]
 
     - name: Ensure proxy CA directory exists
       file:
@@ -238,6 +294,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
+      tags: [prepare]
 
     - name: Copy proxy CA (cert+key) for mitmproxy
       copy:
@@ -247,6 +304,7 @@
         group: "{{ ansible_user }}"
         mode: '0600'
         remote_src: yes
+      tags: [prepare]
 
     - name: Copy proxy CA certificate (cert only) for VM installation
       copy:
@@ -256,6 +314,7 @@
         group: "{{ ansible_user }}"
         mode: '0644'
         remote_src: yes
+      tags: [prepare]
 
     - name: Ensure user is in kvm group for Firecracker
       user:
@@ -263,10 +322,12 @@
         groups: kvm
         append: yes
       register: kvm_group_result
+      tags: [prepare]
 
     - name: Reset connection to pick up new group membership
       meta: reset_connection
       when: kvm_group_result.changed
+      tags: [prepare]
 
     # Kill PM2 daemon so it restarts with new group membership
     # PM2 child processes inherit the daemon's groups, not the shell's groups
@@ -275,6 +336,7 @@
       become: no
       ignore_errors: yes
       when: kvm_group_result.changed
+      tags: [prepare]
 
     # ========================================
     # Phase 5: Configure and Start
@@ -286,6 +348,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0600'
+      tags: [start]
 
     - name: Create PM2 ecosystem file
       template:
@@ -294,6 +357,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0644'
+      tags: [start]
 
     - name: Start runner via PM2
       command: pm2 start ecosystem.config.cjs
@@ -301,10 +365,12 @@
         chdir: "{{ runner_base_dir }}"
       become: no
       environment: "{{ extra_env }}"
+      tags: [start]
 
     - name: Save PM2 process list
       command: pm2 save
       become: no
+      tags: [start]
 
     # ========================================
     # Phase 6: Health Check
@@ -314,12 +380,14 @@
         path: /tmp/{{ pm2_process_name }}.log
         search_regex: "Press Ctrl\\+C to stop"
         timeout: 120
+      tags: [start]
 
     - name: Verify runner is polling
       shell: pm2 jlist | jq -r '.[] | select(.name=="{{ pm2_process_name }}") | .pm2_env.status'
       register: pm2_status
       failed_when: pm2_status.stdout != "online"
       become: no
+      tags: [start]
 
     - name: Verify runner can connect to API
       command: node index.js status --config ./runner.yaml
@@ -331,6 +399,7 @@
       retries: 3
       delay: 5
       until: status_check.rc == 0
+      tags: [start]
 
     - name: Display deployment summary
       debug:
@@ -340,3 +409,4 @@
           - Group: {{ runner_group }}
           - API: {{ api_url }}
           - Directory: {{ runner_base_dir }}
+      tags: [start]

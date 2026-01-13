@@ -21,10 +21,10 @@ import {
 import { eq } from "drizzle-orm";
 
 interface RunResult {
-  output?: string;
   checkpointId?: string;
   agentSessionId?: string;
-  artifact?: Record<string, string>;
+  artifactName?: string;
+  artifactVersion?: string;
   volumes?: Record<string, string>;
 }
 
@@ -119,12 +119,12 @@ const router = tsr.router(publicRunByIdContract, {
         created_at: run.createdAt.toISOString(),
         started_at: run.startedAt?.toISOString() ?? null,
         completed_at: run.completedAt?.toISOString() ?? null,
-        output: runResult?.output ?? null,
         error: run.error ?? null,
         execution_time_ms: executionTimeMs,
         checkpoint_id: runResult?.checkpointId ?? null,
         session_id: runResult?.agentSessionId ?? null,
-        artifacts: runResult?.artifact,
+        artifact_name: runResult?.artifactName ?? null,
+        artifact_version: runResult?.artifactVersion ?? null,
         volumes: runResult?.volumes,
       },
     };

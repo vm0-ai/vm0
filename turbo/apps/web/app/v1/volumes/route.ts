@@ -1,8 +1,7 @@
 /**
- * Public API v1 - Volumes Endpoints
+ * Public API v1 - Volumes Endpoint
  *
  * GET /v1/volumes - List volumes
- * POST /v1/volumes - Create volume
  */
 import { initServices } from "../../../src/lib/init-services";
 import {
@@ -100,108 +99,8 @@ const router = tsr.router(publicVolumesListContract, {
       },
     };
   },
-
-  create: async ({ body }) => {
-    initServices();
-
-    const auth = await authenticatePublicApi();
-    if (!isAuthSuccess(auth)) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message: "Invalid API key provided",
-          },
-        },
-      };
-    }
-
-    // Get user's scope
-    const userScope = await getUserScopeByClerkId(auth.userId);
-    if (!userScope) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            type: "authentication_error" as const,
-            code: "invalid_api_key",
-            message:
-              "Please set up your scope first. Login again with: vm0 login",
-          },
-        },
-      };
-    }
-
-    // Check if volume with same name exists
-    const [existing] = await globalThis.services.db
-      .select()
-      .from(storages)
-      .where(
-        and(
-          eq(storages.userId, auth.userId),
-          eq(storages.name, body.name),
-          eq(storages.type, STORAGE_TYPE),
-        ),
-      )
-      .limit(1);
-
-    if (existing) {
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            type: "conflict_error" as const,
-            code: "resource_already_exists",
-            message: `Volume '${body.name}' already exists`,
-          },
-        },
-      };
-    }
-
-    // Create new volume
-    const [volume] = await globalThis.services.db
-      .insert(storages)
-      .values({
-        userId: auth.userId,
-        name: body.name,
-        type: STORAGE_TYPE,
-        s3Prefix: `${auth.userId}/${STORAGE_TYPE}/${body.name}`,
-        size: 0,
-        fileCount: 0,
-      })
-      .returning();
-
-    if (!volume) {
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            type: "api_error" as const,
-            code: "internal_error",
-            message: "Failed to create volume",
-          },
-        },
-      };
-    }
-
-    return {
-      status: 201 as const,
-      body: {
-        id: volume.id,
-        name: volume.name,
-        current_version_id: volume.headVersionId,
-        size: Number(volume.size),
-        file_count: volume.fileCount,
-        created_at: volume.createdAt.toISOString(),
-        updated_at: volume.updatedAt.toISOString(),
-        current_version: null,
-      },
-    };
-  },
 });
 
 const handler = createPublicApiHandler(publicVolumesListContract, router);
 
-export { handler as GET, handler as POST };
+export { handler as GET };
