@@ -8,7 +8,7 @@ jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     steps:
       - uses: actions/checkout@v4
 
@@ -87,7 +87,7 @@ jobs:
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     steps:
       - uses: actions/checkout@v4
 

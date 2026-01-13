@@ -37,7 +37,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
     steps:
@@ -67,7 +67,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -116,7 +116,7 @@ jobs:
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -140,7 +140,7 @@ jobs:
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -227,7 +227,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:90478dc
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
     steps:
