@@ -3,7 +3,8 @@ pre-commit:
   commands:
     lint:
       root: turbo/
-      run: pnpm lint
+      # Only lint packages affected by staged changes (much faster than full lint)
+      run: pnpm turbo run lint --filter='...[HEAD]'
       glob: "turbo/**/*.{js,ts,tsx,jsx,mjs,cjs}"
     prettier:
       root: turbo/
@@ -11,5 +12,6 @@ pre-commit:
       glob: "turbo/**/*"
     check-types:
       root: turbo/
-      run: pnpm check-types
+      # Only type-check packages affected by staged changes (much faster than full check)
+      run: pnpm turbo run check-types --filter='...[HEAD]'
       glob: "turbo/**/*.{ts,tsx}"
