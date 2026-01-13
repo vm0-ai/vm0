@@ -13,18 +13,24 @@ const notoSans = Noto_Sans({
   subsets: ["latin"],
   weight: ["400", "700"],
   variable: "--font-noto-sans",
+  display: "swap",
+  preload: true,
 });
 
 const firaCode = Fira_Code({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600"],
   variable: "--font-fira-code",
+  display: "swap",
+  preload: false,
 });
 
 const firaMono = Fira_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-fira-mono",
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -119,6 +125,13 @@ export default function RootLayout({
   const content = (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="dns-prefetch" href="https://plausible.io" />
         <script
           dangerouslySetInnerHTML={{
             __html: `

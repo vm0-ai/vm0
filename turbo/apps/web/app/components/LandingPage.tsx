@@ -18,98 +18,125 @@ export default function LandingPage() {
   const tCta = useTranslations("cta");
 
   useEffect(() => {
-    const handleScroll = () => {
-      const navbar = document.querySelector(".navbar") as HTMLElement;
-      const currentScroll = window.pageYOffset;
-      const isDarkMode =
-        document.documentElement.getAttribute("data-theme") !== "light";
+    // Defer non-critical animations to improve LCP
+    const initAnimations = () => {
+      const handleScroll = () => {
+        const navbar = document.querySelector(".navbar") as HTMLElement;
+        const currentScroll = window.pageYOffset;
+        const isDarkMode =
+          document.documentElement.getAttribute("data-theme") !== "light";
 
-      if (navbar) {
-        if (currentScroll > 50) {
-          navbar.style.background = isDarkMode
-            ? "rgba(10, 10, 10, 0.95)"
-            : "rgba(255, 255, 255, 0.95)";
-          navbar.style.backdropFilter = "blur(30px)";
-        } else {
-          navbar.style.background = isDarkMode
-            ? "rgba(10, 10, 10, 0.8)"
-            : "rgba(255, 255, 255, 0.8)";
-          navbar.style.backdropFilter = "blur(20px)";
+        if (navbar) {
+          if (currentScroll > 50) {
+            navbar.style.background = isDarkMode
+              ? "rgba(10, 10, 10, 0.95)"
+              : "rgba(255, 255, 255, 0.95)";
+            navbar.style.backdropFilter = "blur(30px)";
+          } else {
+            navbar.style.background = isDarkMode
+              ? "rgba(10, 10, 10, 0.8)"
+              : "rgba(255, 255, 255, 0.8)";
+            navbar.style.backdropFilter = "blur(20px)";
+          }
         }
-      }
 
-      const glow = document.querySelector(".sandbox-glow") as HTMLElement;
-      if (glow) {
-        glow.style.transform = `translate(-50%, calc(-50% + ${window.pageYOffset * 0.2}px))`;
-      }
-    };
-
-    const observerOptions = {
-      threshold: 0.1,
-      rootMargin: "0px 0px -50px 0px",
-    };
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          (entry.target as HTMLElement).style.opacity = "1";
-          (entry.target as HTMLElement).style.transform = "translateY(0)";
+        const glow = document.querySelector(".sandbox-glow") as HTMLElement;
+        if (glow) {
+          glow.style.transform = `translate(-50%, calc(-50% + ${window.pageYOffset * 0.2}px))`;
         }
+      };
+
+      const observerOptions = {
+        threshold: 0.1,
+        rootMargin: "0px 0px -50px 0px",
+      };
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            (entry.target as HTMLElement).style.opacity = "1";
+            (entry.target as HTMLElement).style.transform = "translateY(0)";
+          }
+        });
+      }, observerOptions);
+
+      const sections = document.querySelectorAll(
+        ".section-spacing, .feature-card, .infra-item, .cli-tool-item, .use-case-item",
+      );
+
+      sections.forEach((section) => {
+        const el = section as HTMLElement;
+        el.style.opacity = "0";
+        el.style.transform = "translateY(20px)";
+        el.style.transition = "opacity 0.6s ease, transform 0.6s ease";
+        observer.observe(section);
       });
-    }, observerOptions);
 
-    const sections = document.querySelectorAll(
-      ".section-spacing, .feature-card, .infra-item, .cli-tool-item, .use-case-item",
-    );
+      const hero = document.querySelector(".hero-section") as HTMLElement;
+      if (hero) {
+        hero.style.opacity = "1";
+        hero.style.transform = "translateY(0)";
+      }
 
-    sections.forEach((section) => {
-      const el = section as HTMLElement;
-      el.style.opacity = "0";
-      el.style.transform = "translateY(20px)";
-      el.style.transition = "opacity 0.6s ease, transform 0.6s ease";
-      observer.observe(section);
-    });
+      const sandboxContainer = sandboxRef.current;
+      const prefersFinePointer = window.matchMedia("(pointer: fine)").matches;
 
-    const hero = document.querySelector(".hero-section") as HTMLElement;
-    if (hero) {
-      hero.style.opacity = "1";
-      hero.style.transform = "translateY(0)";
-    }
+      if (sandboxContainer && prefersFinePointer) {
+        const setTilt = (xRatio: number, yRatio: number) => {
+          const tiltX = (xRatio * 20).toFixed(2);
+          const tiltY = (-yRatio * 20).toFixed(2);
+          sandboxContainer.style.setProperty("--tiltX", `${tiltX}deg`);
+          sandboxContainer.style.setProperty("--tiltY", `${tiltY}deg`);
+        };
 
-    const sandboxContainer = sandboxRef.current;
-    const prefersFinePointer = window.matchMedia("(pointer: fine)").matches;
+        const handlePointerMove = (event: PointerEvent) => {
+          const x = event.clientX / window.innerWidth - 0.5;
+          const y = event.clientY / window.innerHeight - 0.5;
+          setTilt(x * 2, y * 2);
+        };
 
-    if (sandboxContainer && prefersFinePointer) {
-      const setTilt = (xRatio: number, yRatio: number) => {
-        const tiltX = (xRatio * 20).toFixed(2);
-        const tiltY = (-yRatio * 20).toFixed(2);
-        sandboxContainer.style.setProperty("--tiltX", `${tiltX}deg`);
-        sandboxContainer.style.setProperty("--tiltY", `${tiltY}deg`);
-      };
+        window.addEventListener("pointermove", handlePointerMove);
 
-      const handlePointerMove = (event: PointerEvent) => {
-        const x = event.clientX / window.innerWidth - 0.5;
-        const y = event.clientY / window.innerHeight - 0.5;
-        setTilt(x * 2, y * 2);
-      };
+        return () => {
+          window.removeEventListener("pointermove", handlePointerMove);
+        };
+      }
 
-      window.addEventListener("pointermove", handlePointerMove);
-
+      window.addEventListener("scroll", handleScroll);
       return () => {
-        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("scroll", handleScroll);
+        observer.disconnect();
       };
-    }
-
-    window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      observer.disconnect();
     };
+
+    // Defer animations until after paint
+    if (typeof window !== "undefined") {
+      // Polyfill for requestIdleCallback
+      const rIC =
+        window.requestIdleCallback ||
+        function (cb: IdleRequestCallback) {
+          const start = Date.now();
+          return setTimeout(() => {
+            cb({
+              didTimeout: false,
+              timeRemaining: () => Math.max(0, 50 - (Date.now() - start)),
+            });
+          }, 1);
+        };
+
+      rIC(
+        () => {
+          initAnimations();
+        },
+        { timeout: 500 },
+      );
+    }
   }, []);
 
   const renderParticles = () => {
+    // Reduce particle count for better initial performance
     const particles = [];
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 20; i++) {
       const size = i % 3 === 0 ? "large" : i % 3 === 1 ? "medium" : "small";
       particles.push(
         <div key={i} className={`particle particle-${size}`}></div>,
