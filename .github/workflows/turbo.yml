@@ -456,17 +456,19 @@ jobs:
           NUM_HOSTS=${#HOSTS[@]}
           echo "Found $NUM_HOSTS runner hosts"
 
-          # Setup SSH
-          mkdir -p ~/.ssh
+          # Setup SSH (use $HOME instead of ~ for proper expansion in container)
+          SSH_DIR="$HOME/.ssh"
+          SSH_KEY_FILE="$SSH_DIR/runner.pem"
+          mkdir -p "$SSH_DIR"
           if [ -z "$SSH_KEY" ]; then
             echo "ERROR: SSH_KEY secret is empty!"
             exit 1
           fi
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
-          echo "SSH key file created ($(wc -c < ~/.ssh/runner.pem) bytes)"
+          echo "$SSH_KEY" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
 
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
 
           # Function to check if host is available (lock doesn't exist or is stale)
           check_and_acquire() {
@@ -599,9 +601,9 @@ jobs:
           RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
           PROXY_PORT=$((8080 + PR_NUMBER % 1000))
 
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
 
           echo "Preparing runner on host: ${RUNNER_HOST}"
 
@@ -610,7 +612,7 @@ jobs:
             -i "${RUNNER_HOST}," \
             playbooks/deploy-runner.yml \
             --tags prepare \
-            --private-key ~/.ssh/runner.pem \
+            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
@@ -654,9 +656,9 @@ jobs:
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
 
           echo "Starting runner on host: ${RUNNER_HOST}"
 
@@ -665,7 +667,7 @@ jobs:
             -i "${RUNNER_HOST}," \
             playbooks/deploy-runner.yml \
             --tags start \
-            --private-key ~/.ssh/runner.pem \
+            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "runner_group=vm0/development-pr-${PR_NUMBER}" \
@@ -690,8 +692,8 @@ jobs:
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/runner.pem
-          chmod 600 ~/.ssh/runner.pem
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/runner.pem ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$HOME/.ssh/runner.pem" ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
           echo "Unlocked runner host: $RUNNER_HOST"
