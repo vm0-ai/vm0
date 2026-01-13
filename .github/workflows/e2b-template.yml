@@ -16,6 +16,10 @@ on:
       - "turbo/scripts/e2b/vm0-codex/**"
       - ".github/workflows/e2b-template.yml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-e2b-template:
     runs-on: ubuntu-latest
