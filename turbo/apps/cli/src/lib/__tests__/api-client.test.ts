@@ -509,4 +509,73 @@ describe("ApiClient", () => {
       );
     });
   });
+
+  describe("getComposeVersion", () => {
+    it("should quote version parameter to prevent scientific notation parsing", async () => {
+      // Version strings like "52999e37" look like scientific notation to JSON.parse
+      // They must be quoted as JSON strings so the server receives the correct value
+      const scientificNotationVersion = "52999e37";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ versionId: "full-hash-123" }),
+      });
+
+      await apiClient.getComposeVersion(
+        "compose-123",
+        scientificNotationVersion,
+      );
+
+      // Verify the version is quoted (becomes "52999e37" with quotes)
+      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(scientificNotationVersion))}`;
+      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+    });
+
+    it("should also quote normal hex versions for consistency", async () => {
+      const normalVersion = "a1b2c3d4";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ versionId: "full-hash-456" }),
+      });
+
+      await apiClient.getComposeVersion("compose-123", normalVersion);
+
+      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(normalVersion))}`;
+      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+    });
+
+    it("should quote 'latest' tag", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ versionId: "head-version-id", tag: "latest" }),
+      });
+
+      await apiClient.getComposeVersion("compose-123", "latest");
+
+      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify("latest"))}`;
+      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+    });
+
+    it("should throw error when not authenticated", async () => {
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
+
+      await expect(
+        apiClient.getComposeVersion("compose-123", "version-123"),
+      ).rejects.toThrow("Not authenticated");
+    });
+
+    it("should throw error on version not found", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          error: { message: "Version not found: abc123", code: "NOT_FOUND" },
+        }),
+      });
+
+      await expect(
+        apiClient.getComposeVersion("compose-123", "abc123"),
+      ).rejects.toThrow("Version not found: abc123");
+    });
+  });
 });
