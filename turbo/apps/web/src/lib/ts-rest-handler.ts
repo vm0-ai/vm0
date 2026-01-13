@@ -13,9 +13,10 @@
  */
 import "server-only";
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
-import type { TsRestResponse } from "@ts-rest/serverless";
+import type { TsRestResponse, TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
+import { recordApiRequest, pathToTemplate, flushMetrics } from "./metrics";
 
 // Re-export tsr for convenience
 export { tsr };
@@ -37,6 +38,9 @@ interface CreateHandlerOptions {
   errorHandler?: (err: unknown) => TsRestResponse | void;
 }
 
+// WeakMap to store request start times
+const requestStartTimes = new WeakMap<TsRestRequest, number>();
+
 /**
  * Create a Next.js route handler with automatic log flushing.
  *
@@ -56,10 +60,30 @@ export function createHandler<T extends AppRouter>(
     handlerType: "app-router",
     jsonQuery: true,
     ...options,
+    requestMiddleware: [
+      (request) => {
+        // Record request start time
+        requestStartTimes.set(request, Date.now());
+      },
+    ],
     responseHandlers: [
-      async () => {
-        // Flush all pending logs to Axiom after each request
-        await flushLogs();
+      async (response, request) => {
+        // Record API metrics
+        const startTime = requestStartTimes.get(request);
+        if (startTime !== undefined) {
+          const url = new URL(request.url);
+          recordApiRequest({
+            method: request.method,
+            pathTemplate: pathToTemplate(url.pathname),
+            statusCode: response.status,
+            host: url.host,
+            durationMs: Date.now() - startTime,
+          });
+          requestStartTimes.delete(request);
+        }
+
+        // Flush all pending logs and metrics to Axiom after each request
+        await Promise.all([flushLogs(), flushMetrics()]);
       },
     ],
   });
