@@ -1,5 +1,4 @@
 pre-commit:
-  parallel: true
   commands:
     lint:
       root: turbo/

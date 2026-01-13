@@ -1,7 +1,7 @@
 {
   "hero": {
     "title": "Erstellen Sie Agenten und automatisieren Sie Workflows mit natürlicher Sprache",
-    "subtitle": "Von Workflows zu echten Agenten. VM0 macht die Entwicklung von Agenten durch natürliche Sprache zugänglich, unterstützt durch agentenbasierte Infrastruktur.",
+    "subtitle": "Von Workflows zu echten Agenten. VM0 macht die Entwicklung von Agenten durch natürliche Sprache zugänglich.",
     "joinWaitlist": "Warteliste beitreten",
     "github": "GitHub"
   },
@@ -35,7 +35,7 @@
     }
   },
   "features": {
-    "title": "Alles, was Sie zum Erstellen von Agenten benötigen, unterstützt durch solide Infrastruktur",
+    "title": "Alles, was Sie zum Erstellen von Agenten benötigen",
     "noWorkflows": {
       "title": "Überspringen Sie den Node-Editor und das Workflow-Canvas, schreiben Sie einfach Ihre Absicht",
       "description": "Kein Drag-and-Drop erforderlich – schreiben Sie einen Prompt oder beliebige Konfigurationsdateien, verbinden Sie diese mit VM0 und die Kernlogik Ihres Agenten ist fertig."

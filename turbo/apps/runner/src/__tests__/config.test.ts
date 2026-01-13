@@ -23,7 +23,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -48,7 +48,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -70,7 +70,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -90,7 +90,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -109,7 +109,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -128,7 +128,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -143,7 +143,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -162,7 +162,7 @@ describe("RunnerConfig Schema", () => {
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
-        rootfs: "/opt/rootfs.ext4",
+        rootfs: "/opt/rootfs.squashfs",
       },
     };
 
@@ -200,7 +200,7 @@ sandbox:
 firecracker:
   binary: /usr/bin/firecracker
   kernel: /opt/vmlinux
-  rootfs: /opt/rootfs.ext4
+  rootfs: /opt/rootfs.squashfs
 `;
     fs.writeFileSync(testConfigPath, yamlContent);
 
@@ -220,7 +220,7 @@ server:
 firecracker:
   binary: /usr/bin/firecracker
   kernel: /opt/vmlinux
-  rootfs: /opt/rootfs.ext4
+  rootfs: /opt/rootfs.squashfs
 `;
     fs.writeFileSync(testConfigPath, yamlContent);
 
@@ -244,7 +244,7 @@ describe("validateFirecrackerPaths", () => {
     const config = {
       binary: "/usr/bin/firecracker",
       kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.ext4",
+      rootfs: "/opt/rootfs.squashfs",
     };
 
     expect(() => validateFirecrackerPaths(config)).not.toThrow();
@@ -258,7 +258,7 @@ describe("validateFirecrackerPaths", () => {
     const config = {
       binary: "/usr/bin/firecracker",
       kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.ext4",
+      rootfs: "/opt/rootfs.squashfs",
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow(
@@ -274,7 +274,7 @@ describe("validateFirecrackerPaths", () => {
     const config = {
       binary: "/usr/bin/firecracker",
       kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.ext4",
+      rootfs: "/opt/rootfs.squashfs",
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow("Kernel not found");
@@ -282,13 +282,13 @@ describe("validateFirecrackerPaths", () => {
 
   it("should throw error when rootfs is missing", () => {
     vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path !== "/opt/rootfs.ext4";
+      return path !== "/opt/rootfs.squashfs";
     });
 
     const config = {
       binary: "/usr/bin/firecracker",
       kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.ext4",
+      rootfs: "/opt/rootfs.squashfs",
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow("Rootfs not found");

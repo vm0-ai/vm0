@@ -8,7 +8,7 @@
  * - Boot and shutdown
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -55,13 +55,13 @@ export class FirecrackerVM {
   private state: VMState = "created";
   private workDir: string;
   private socketPath: string;
-  private vmRootfsPath: string; // Per-VM copy of rootfs
+  private vmOverlayPath: string; // Per-VM sparse overlay for writes
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
-    this.vmRootfsPath = path.join(this.workDir, "rootfs.ext4");
+    this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
   }
 
   /**
@@ -110,11 +110,16 @@ export class FirecrackerVM {
         fs.unlinkSync(this.socketPath);
       }
 
-      // Copy rootfs to VM-local path for isolation
-      // Each VM needs its own writable copy to prevent corruption
-      // Note: In CI, each PR has its own rootfs at {runner_base_dir}/rootfs.ext4
-      console.log(`[VM ${this.config.vmId}] Copying rootfs for isolation...`);
-      fs.copyFileSync(this.config.rootfsPath, this.vmRootfsPath);
+      // Create sparse overlay file for this VM
+      // The base rootfs (squashfs) is shared read-only across all VMs
+      // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
+      // Size matches the original rootfs size (2GB) to maintain same writable capacity
+      console.log(`[VM ${this.config.vmId}] Creating sparse overlay file...`);
+      const overlaySize = 2 * 1024 * 1024 * 1024; // 2GB sparse file (same as original rootfs)
+      const fd = fs.openSync(this.vmOverlayPath, "w");
+      fs.ftruncateSync(fd, overlaySize);
+      fs.closeSync(fd);
+      execSync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`, { stdio: "ignore" });
 
       // Set up network first
       console.log(`[VM ${this.config.vmId}] Setting up network...`);
@@ -214,8 +219,9 @@ export class FirecrackerVM {
 
     // Configure boot source (kernel)
     // Add network configuration to boot args
+    // Use overlay-init as init to set up overlayfs before systemd
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
-    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off ${networkBootArgs}`;
+    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off init=/sbin/overlay-init ${networkBootArgs}`;
 
     console.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
     await this.client.setBootSource({
@@ -223,13 +229,27 @@ export class FirecrackerVM {
       boot_args: bootArgs,
     });
 
-    // Configure root drive (using VM-local copy for isolation)
-    console.log(`[VM ${this.config.vmId}] Rootfs: ${this.vmRootfsPath}`);
+    // Configure base drive (squashfs, read-only, shared across VMs)
+    // This is mounted as /dev/vda inside the VM
+    console.log(
+      `[VM ${this.config.vmId}] Base rootfs: ${this.config.rootfsPath}`,
+    );
     await this.client.setDrive({
       drive_id: "rootfs",
-      path_on_host: this.vmRootfsPath,
+      path_on_host: this.config.rootfsPath,
       is_root_device: true,
-      is_read_only: false, // Need write access for agent execution
+      is_read_only: true,
+    });
+
+    // Configure overlay drive (ext4, read-write, per-VM)
+    // This is mounted as /dev/vdb inside the VM
+    // The overlay-init script combines these using overlayfs
+    console.log(`[VM ${this.config.vmId}] Overlay: ${this.vmOverlayPath}`);
+    await this.client.setDrive({
+      drive_id: "overlay",
+      path_on_host: this.vmOverlayPath,
+      is_root_device: false,
+      is_read_only: false,
     });
 
     // Configure network interface

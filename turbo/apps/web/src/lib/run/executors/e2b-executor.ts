@@ -25,8 +25,33 @@ import { logger } from "../../logger";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import type { PreparedContext, ExecutorResult, Executor } from "./types";
+import { recordSandboxOperation } from "../../metrics";
 
 const log = logger("executor:e2b");
+
+/**
+ * Helper to wrap async operations with sandbox metrics recording
+ */
+async function withSandboxMetrics<T>(
+  actionType: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const startTime = Date.now();
+  let success = true;
+  try {
+    return await fn();
+  } catch (error) {
+    success = false;
+    throw error;
+  } finally {
+    recordSandboxOperation({
+      sandboxType: "e2b",
+      actionType,
+      durationMs: Date.now() - startTime,
+      success,
+    });
+  }
+}
 
 /**
  * Get the first agent from compose (currently only one agent is supported)
@@ -98,10 +123,8 @@ export class E2BExecutor implements Executor {
       );
 
       // Create sandbox
-      sandbox = await this.createSandbox(
-        sandboxEnvVars,
-        agentComposeYaml,
-        context.userId,
+      sandbox = await withSandboxMetrics("create", () =>
+        this.createSandbox(sandboxEnvVars, agentComposeYaml, context.userId),
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
@@ -117,30 +140,38 @@ export class E2BExecutor implements Executor {
 
       // Upload all scripts to sandbox
       log.debug(`[${context.runId}] Uploading scripts to sandbox...`);
-      await this.uploadAllScripts(sandbox);
+      await withSandboxMetrics("script_upload", () =>
+        this.uploadAllScripts(sandbox!),
+      );
       log.debug(`[${context.runId}] Scripts uploaded successfully`);
 
       // Download storages directly to sandbox
       if (storageManifest) {
         log.debug(`[${context.runId}] Downloading storages to sandbox...`);
-        await this.downloadStoragesDirectly(sandbox, storageManifest);
+        await withSandboxMetrics("storage_download", () =>
+          this.downloadStoragesDirectly(sandbox!, storageManifest),
+        );
         log.debug(`[${context.runId}] Storages downloaded successfully`);
       }
 
       // Restore session history for resume
       if (context.resumeSession) {
-        await this.restoreSessionHistory(
-          sandbox,
-          context.resumeSession.sessionId,
-          context.resumeSession.sessionHistory,
-          context.resumeSession.workingDir,
-          context.cliAgentType,
+        await withSandboxMetrics("session_restore", () =>
+          this.restoreSessionHistory(
+            sandbox!,
+            context.resumeSession!.sessionId,
+            context.resumeSession!.sessionHistory,
+            context.resumeSession!.workingDir,
+            context.cliAgentType,
+          ),
         );
       }
 
       // Start agent execution (fire-and-forget)
       log.debug(`[${context.runId}] Starting agent execution...`);
-      await this.startAgentExecution(sandbox, context.runId);
+      await withSandboxMetrics("agent_start", () =>
+        this.startAgentExecution(sandbox!, context.runId),
+      );
       log.debug(`[${context.runId}] Agent execution command sent`);
 
       const prepTimeMs = Date.now() - startTime;

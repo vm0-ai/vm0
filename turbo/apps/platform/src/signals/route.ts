@@ -196,7 +196,8 @@ export const setupAuthPageWrapper = (
     signal.throwIfAborted();
 
     if (!clerk.user) {
-      clerk.openSignIn();
+      await clerk.redirectToSignIn();
+      signal.throwIfAborted();
       return;
     }
 

@@ -2,34 +2,35 @@
 #
 # Build Firecracker rootfs from Dockerfile
 #
-# This script builds a Docker image and converts it to an ext4 rootfs
-# suitable for Firecracker VMs.
+# This script builds a Docker image and converts it to a squashfs rootfs
+# suitable for Firecracker VMs with OverlayFS support.
 #
 # Usage: ./build-rootfs.sh [output_path]
 #
 # Arguments:
-#   output_path  Path for the output rootfs.ext4 file (default: ./rootfs.ext4)
+#   output_path  Path for the output rootfs.squashfs file (default: ./rootfs.squashfs)
 #
 # Requirements:
 # - Docker
-# - Root privileges (sudo) for mounting ext4 image
-# - e2fsprogs (mkfs.ext4)
+# - Root privileges (sudo) for filesystem operations
+# - squashfs-tools (mksquashfs)
+#
+# The output squashfs is read-only and shared across all VMs.
+# Each VM creates a sparse ext4 overlay for writes (handled by vm.ts).
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_PATH="${1:-${SCRIPT_DIR}/rootfs.ext4}"
+OUTPUT_PATH="${1:-${SCRIPT_DIR}/rootfs.squashfs}"
 IMAGE_NAME="vm0-rootfs"
 CONTAINER_NAME="vm0-rootfs-tmp"
-ROOTFS_SIZE_MB="${ROOTFS_SIZE_MB:-2048}"
 
 # Docker command (may need sudo if user not in docker group)
 DOCKER="docker"
 
-echo "=== Firecracker Rootfs Builder ==="
+echo "=== Firecracker Rootfs Builder (OverlayFS) ==="
 echo "Output: ${OUTPUT_PATH}"
-echo "Size: ${ROOTFS_SIZE_MB}MB"
 echo ""
 
 # Check dependencies
@@ -48,9 +49,9 @@ check_dependencies() {
         DOCKER="sudo docker"
     fi
 
-    if ! command -v mkfs.ext4 &> /dev/null; then
-        echo "[INSTALL] Installing e2fsprogs..."
-        sudo apt-get update && sudo apt-get install -y e2fsprogs
+    if ! command -v mksquashfs &> /dev/null; then
+        echo "[INSTALL] Installing squashfs-tools..."
+        sudo apt-get update && sudo apt-get install -y squashfs-tools
     fi
 
     echo "[OK] All dependencies available"
@@ -86,11 +87,11 @@ export_filesystem() {
     echo "[OK] Filesystem exported to temporary tar: $EXPORTED_TAR" >&2
 }
 
-# Create ext4 image and populate with filesystem
-create_ext4_image() {
+# Create squashfs image from filesystem
+create_squashfs_image() {
     local tar_path="$1"
 
-    echo "[CREATE] Creating ext4 image (${ROOTFS_SIZE_MB}MB)..."
+    echo "[CREATE] Creating squashfs image..."
 
     # Ensure output directory exists with proper permissions
     OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
@@ -99,41 +100,37 @@ create_ext4_image() {
     # Remove existing output file
     sudo rm -f "$OUTPUT_PATH"
 
-    # Create sparse file (use sudo for protected directories like /opt)
-    sudo dd if=/dev/zero of="$OUTPUT_PATH" bs=1M count=0 seek="$ROOTFS_SIZE_MB" 2>/dev/null
-
-    # Format as ext4
-    sudo mkfs.ext4 -F -L "rootfs" "$OUTPUT_PATH" >/dev/null 2>&1
-
-    # Mount and extract
-    MOUNT_POINT=$(mktemp -d)
+    # Create temp directory for extraction
+    EXTRACT_DIR=$(mktemp -d)
 
     cleanup() {
         echo "[CLEANUP] Cleaning up..."
-        sudo umount "$MOUNT_POINT" 2>/dev/null || true
-        rmdir "$MOUNT_POINT" 2>/dev/null || true
+        sudo rm -rf "$EXTRACT_DIR" 2>/dev/null || true
         rm -f "$tar_path" 2>/dev/null || true
     }
     trap cleanup EXIT
 
-    echo "[MOUNT] Mounting ext4 image..."
-    sudo mount -o loop "$OUTPUT_PATH" "$MOUNT_POINT"
-
     echo "[EXTRACT] Extracting filesystem..."
-    sudo tar -xf "$tar_path" -C "$MOUNT_POINT"
+    sudo tar -xf "$tar_path" -C "$EXTRACT_DIR"
 
     # Ensure resolv.conf is a regular file (not a symlink)
     # This is important because systemd-resolved creates a symlink
-    sudo rm -f "$MOUNT_POINT/etc/resolv.conf"
-    echo "nameserver 8.8.8.8" | sudo tee "$MOUNT_POINT/etc/resolv.conf" > /dev/null
-    echo "nameserver 8.8.4.4" | sudo tee -a "$MOUNT_POINT/etc/resolv.conf" > /dev/null
-    echo "nameserver 1.1.1.1" | sudo tee -a "$MOUNT_POINT/etc/resolv.conf" > /dev/null
+    sudo rm -f "$EXTRACT_DIR/etc/resolv.conf"
+    echo "nameserver 8.8.8.8" | sudo tee "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
+    echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
+    echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    echo "[UNMOUNT] Unmounting..."
-    sudo umount "$MOUNT_POINT"
-    rmdir "$MOUNT_POINT"
+    # Inject overlay-init script for OverlayFS boot
+    echo "[INJECT] Adding overlay-init script..."
+    sudo cp "$SCRIPT_DIR/overlay-init.sh" "$EXTRACT_DIR/sbin/overlay-init"
+    sudo chmod 755 "$EXTRACT_DIR/sbin/overlay-init"
 
-    # Remove tar from cleanup since we're done with it
+    # Create squashfs with xz compression (best compression ratio)
+    echo "[SQUASH] Creating squashfs (this may take a moment)..."
+    sudo mksquashfs "$EXTRACT_DIR" "$OUTPUT_PATH" -comp xz -noappend -quiet
+
+    # Cleanup
+    sudo rm -rf "$EXTRACT_DIR"
     rm -f "$tar_path"
     trap - EXIT
 
@@ -151,13 +148,13 @@ verify_rootfs() {
     fi
 
     SIZE=$(stat -c%s "$OUTPUT_PATH")
-    if [ "$SIZE" -lt 100000000 ]; then
+    if [ "$SIZE" -lt 50000000 ]; then
         echo "WARNING: Rootfs seems too small (${SIZE} bytes)"
     fi
 
-    # Mount and check key files
+    # Mount squashfs and check key files
     MOUNT_POINT=$(mktemp -d)
-    sudo mount -o loop,ro "$OUTPUT_PATH" "$MOUNT_POINT"
+    sudo mount -t squashfs -o loop,ro "$OUTPUT_PATH" "$MOUNT_POINT"
 
     ERRORS=0
 
@@ -183,6 +180,13 @@ verify_rootfs() {
         echo "  systemd: installed"
     fi
 
+    if [ ! -f "$MOUNT_POINT/sbin/overlay-init" ]; then
+        echo "ERROR: overlay-init not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  overlay-init: installed"
+    fi
+
     sudo umount "$MOUNT_POINT"
     rmdir "$MOUNT_POINT"
 
@@ -199,17 +203,20 @@ main() {
     check_dependencies
     build_image
     export_filesystem
-    create_ext4_image "$EXPORTED_TAR"
+    create_squashfs_image "$EXPORTED_TAR"
     verify_rootfs
 
     echo ""
     echo "=== Build Complete ==="
     echo "Rootfs: ${OUTPUT_PATH}"
-    echo "Size: $(du -h "$OUTPUT_PATH" | cut -f1)"
+    echo "Size: $(du -h "$OUTPUT_PATH" | cut -f1) (compressed squashfs)"
     echo ""
     echo "To use with Firecracker, specify this path in runner.yaml:"
     echo "  firecracker:"
     echo "    rootfs: ${OUTPUT_PATH}"
+    echo ""
+    echo "Note: This squashfs is read-only. Each VM creates a sparse overlay"
+    echo "for writes, reducing disk usage from ~500MB/VM to only modified files."
 }
 
 main "$@"

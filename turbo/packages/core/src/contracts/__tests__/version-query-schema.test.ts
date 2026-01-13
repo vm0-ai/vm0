@@ -77,6 +77,16 @@ describe("versionQuerySchema (storages)", () => {
       );
     });
 
+    it("should reject scientific notation number (the flaky test root cause)", () => {
+      // JSON.parse("52999e37") returns 5.2999e+41 (not Infinity, but a large number)
+      // String(5.2999e+41) = "5.2999e+41" which is NOT valid hex
+      // This is the exact bug that caused the flaky cli-e2e-02-parallel test
+      const parsedNumber = JSON.parse("52999e37"); // 5.2999e+41
+      expect(() => versionQuerySchema.parse(parsedNumber)).toThrow(
+        "Version must be 8-64 hex characters",
+      );
+    });
+
     it("should convert plain number to string - valid if 8+ hex digits", () => {
       // JSON.parse("12345678") returns 12345678
       // String(12345678) = "12345678" which IS valid hex (0-9 are hex chars)
@@ -153,6 +163,16 @@ describe("composeVersionQuerySchema (composes)", () => {
   describe("invalid inputs - numbers from JSON.parse", () => {
     it("should convert Infinity to string and reject", () => {
       expect(() => composeVersionQuerySchema.parse(Infinity)).toThrow(
+        "Version must be 8-64 hex characters or 'latest'",
+      );
+    });
+
+    it("should reject scientific notation number (the flaky test root cause)", () => {
+      // JSON.parse("52999e37") returns 5.2999e+41 (not Infinity, but a large number)
+      // String(5.2999e+41) = "5.2999e+41" which is NOT valid hex
+      // This is the exact bug that caused the flaky cli-e2e-02-parallel test
+      const parsedNumber = JSON.parse("52999e37"); // 5.2999e+41
+      expect(() => composeVersionQuerySchema.parse(parsedNumber)).toThrow(
         "Version must be 8-64 hex characters or 'latest'",
       );
     });

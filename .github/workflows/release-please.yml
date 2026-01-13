@@ -7,6 +7,10 @@ on:
     types:
       - completed
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
@@ -37,7 +41,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
     steps:
@@ -67,7 +71,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -106,6 +110,7 @@ jobs:
             R2_USER_STORAGES_BUCKET_NAME=${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+            AXIOM_DATASET_SUFFIX=prod
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             DEBUG=*
@@ -116,7 +121,7 @@ jobs:
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -140,7 +145,7 @@ jobs:
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
       deployments: write
@@ -227,15 +232,12 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      - name: Install Ansible
-        run: apt-get update && apt-get install -y python3-pip && pip3 install ansible
 
       - name: Build runner bundle
         run: |
@@ -263,6 +265,7 @@ jobs:
           AWS_METAL_RUNNER_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
           AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
           # Setup SSH key
           mkdir -p ~/.ssh
@@ -279,4 +282,5 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -e '{"extra_env": {"AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "prod"}}' \
             -v

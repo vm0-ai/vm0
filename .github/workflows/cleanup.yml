@@ -4,9 +4,15 @@ on:
   pull_request_target:
     types: [closed]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +29,28 @@ jobs:
             echo "should-cleanup=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install Ansible
+      - name: Setup SSH key
         if: steps.check.outputs.should-cleanup == 'true'
-        run: pip install ansible
+        env:
+          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          SSH_DIR="$HOME/.ssh"
+          SSH_KEY_FILE="$SSH_DIR/metal.pem"
+          mkdir -p "$SSH_DIR"
+          echo "$SSH_KEY" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
 
-      - name: Cleanup Runner with Ansible (Brute Force)
+      - name: Cleanup runner on metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          # Setup SSH key
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/metal.pem
-          chmod 600 ~/.ssh/metal.pem
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ~/.ssh/metal.pem"
+          SSH_KEY_FILE="$HOME/.ssh/metal.pem"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
 
           # Parse hosts into array
           IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
@@ -65,7 +75,7 @@ jobs:
               ansible-playbook \
                 -i "${host}," \
                 playbooks/cleanup-runner.yml \
-                --private-key ~/.ssh/metal.pem \
+                --private-key "$SSH_KEY_FILE" \
                 -e "ansible_user=${METAL_USER}" \
                 -e "pr_number=${PR_NUMBER}" \
                 -v || true
@@ -84,12 +94,12 @@ jobs:
           done
 
           echo ""
-          echo "Brute force cleanup complete"
+          echo "Cleanup complete"
 
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:829341a
+      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     steps:
       - uses: actions/checkout@v4
 

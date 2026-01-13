@@ -1,5 +1,34 @@
 # Changelog
 
+## [5.1.3](https://github.com/vm0-ai/vm0/compare/cli-v5.1.2...cli-v5.1.3) (2026-01-13)
+
+
+### Bug Fixes
+
+* **cli:** quote version parameter to prevent scientific notation parsing ([#1155](https://github.com/vm0-ai/vm0/issues/1155)) ([792dbc1](https://github.com/vm0-ai/vm0/commit/792dbc15714fe788d9ae519dd7be0e8061046506))
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.3.0
+
+## [5.1.2](https://github.com/vm0-ai/vm0/compare/cli-v5.1.1...cli-v5.1.2) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.1
+
 ## [5.1.1](https://github.com/vm0-ai/vm0/compare/cli-v5.1.0...cli-v5.1.1) (2026-01-12)
 
 

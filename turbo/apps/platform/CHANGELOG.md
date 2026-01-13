@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/platform-v0.9.1...platform-v0.10.0) (2026-01-13)
+
+
+### Features
+
+* **auth:** update Clerk SDK and improve authentication page handling ([#1152](https://github.com/vm0-ai/vm0/issues/1152)) ([f096220](https://github.com/vm0-ai/vm0/commit/f0962202035241d006520f9bc9e1508414edcb7e))
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.3.0
+
+## [0.9.1](https://github.com/vm0-ai/vm0/compare/platform-v0.9.0...platform-v0.9.1) (2026-01-13)
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.2.1
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/platform-v0.8.0...platform-v0.9.0) (2026-01-12)
 
 

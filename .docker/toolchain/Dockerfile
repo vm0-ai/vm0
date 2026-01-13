@@ -28,11 +28,11 @@ RUN curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-am
 RUN npm install -g pnpm@10.15.0 lefthook@1.12.3 vercel@48.11.0 neonctl@2.15.0
 
 # Install Ansible for runner deployment
-# Using pipx for isolated installation (same pattern as mitmproxy in deploy scripts)
+# Using pip3 to ensure all ansible commands (ansible, ansible-playbook, etc.) are available
 RUN apt-get update && apt-get install -y \
-    pipx \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/* \
-    && PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ansible
+    && pip3 install ansible
 
 # Install Playwright system dependencies for Chromium
 # This is needed for e2e tests in CI

@@ -24,6 +24,7 @@
     "e2b:claude-code-github:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.dev.ts"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
     "@vitest/coverage-v8": "3.2.4",
     "@vitest/ui": "^3.2.4",
     "dotenv-cli": "^7.4.2",
