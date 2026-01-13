@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { agentSchedules } from "../../../db/schema/agent-schedule";
@@ -121,7 +129,9 @@ describe("ScheduleService", () => {
     });
 
     it("should create a new schedule with at time (one-time)", async () => {
-      const futureTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const futureTime = new Date(
+        Date.now() + 24 * 60 * 60 * 1000,
+      ).toISOString();
 
       const result = await scheduleService.deploy(TEST_USER_ID, {
         name: `${TEST_PREFIX}one-time`,
@@ -253,7 +263,11 @@ describe("ScheduleService", () => {
 
     it("should throw NotFoundError for non-existent schedule", async () => {
       await expect(
-        scheduleService.getByName(TEST_USER_ID, TEST_COMPOSE_ID, "non-existent"),
+        scheduleService.getByName(
+          TEST_USER_ID,
+          TEST_COMPOSE_ID,
+          "non-existent",
+        ),
       ).rejects.toThrow("not found");
     });
 

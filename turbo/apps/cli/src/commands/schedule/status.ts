@@ -78,7 +78,10 @@ function formatDateTime(dateStr: string | null): string {
     relative = isPast ? "just now" : "soon";
   }
 
-  const formatted = date.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  const formatted = date
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, " UTC");
   return `${formatted} ${chalk.dim(`(${relative})`)}`;
 }
 
@@ -144,14 +147,18 @@ export const statusCommand = new Command()
       console.log(`${"Status:".padEnd(16)}${statusText}`);
 
       // Agent
-      console.log(`${"Agent:".padEnd(16)}${schedule.composeName} ${chalk.dim(`(${schedule.scopeSlug})`)}`);
+      console.log(
+        `${"Agent:".padEnd(16)}${schedule.composeName} ${chalk.dim(`(${schedule.scopeSlug})`)}`,
+      );
 
       // Trigger
       console.log(`${"Trigger:".padEnd(16)}${formatTrigger(schedule)}`);
 
       // Next run (only if enabled)
       if (schedule.enabled) {
-        console.log(`${"Next Run:".padEnd(16)}${formatDateTime(schedule.nextRunAt)}`);
+        console.log(
+          `${"Next Run:".padEnd(16)}${formatDateTime(schedule.nextRunAt)}`,
+        );
       }
 
       // Last run
@@ -163,19 +170,24 @@ export const statusCommand = new Command()
       }
 
       // Prompt (truncated)
-      const promptPreview = schedule.prompt.length > 60
-        ? schedule.prompt.slice(0, 57) + "..."
-        : schedule.prompt;
+      const promptPreview =
+        schedule.prompt.length > 60
+          ? schedule.prompt.slice(0, 57) + "..."
+          : schedule.prompt;
       console.log(`${"Prompt:".padEnd(16)}${chalk.dim(promptPreview)}`);
 
       // Variables
       if (schedule.vars && Object.keys(schedule.vars).length > 0) {
-        console.log(`${"Variables:".padEnd(16)}${Object.keys(schedule.vars).join(", ")}`);
+        console.log(
+          `${"Variables:".padEnd(16)}${Object.keys(schedule.vars).join(", ")}`,
+        );
       }
 
       // Secrets
       if (schedule.secretNames && schedule.secretNames.length > 0) {
-        console.log(`${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`);
+        console.log(
+          `${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`,
+        );
       }
 
       // Artifact
@@ -187,14 +199,33 @@ export const statusCommand = new Command()
       }
 
       // Volume versions
-      if (schedule.volumeVersions && Object.keys(schedule.volumeVersions).length > 0) {
-        console.log(`${"Volumes:".padEnd(16)}${Object.keys(schedule.volumeVersions).join(", ")}`);
+      if (
+        schedule.volumeVersions &&
+        Object.keys(schedule.volumeVersions).length > 0
+      ) {
+        console.log(
+          `${"Volumes:".padEnd(16)}${Object.keys(schedule.volumeVersions).join(", ")}`,
+        );
       }
 
       // Timestamps
       console.log();
-      console.log(chalk.dim(`Created:  ${new Date(schedule.createdAt).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")}`));
-      console.log(chalk.dim(`Updated:  ${new Date(schedule.updatedAt).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")}`));
+      console.log(
+        chalk.dim(
+          `Created:  ${new Date(schedule.createdAt)
+            .toISOString()
+            .replace("T", " ")
+            .replace(/\.\d+Z$/, " UTC")}`,
+        ),
+      );
+      console.log(
+        chalk.dim(
+          `Updated:  ${new Date(schedule.updatedAt)
+            .toISOString()
+            .replace("T", " ")
+            .replace(/\.\d+Z$/, " UTC")}`,
+        ),
+      );
       console.log(chalk.dim(`ID:       ${schedule.id}`));
       console.log();
     } catch (error) {
@@ -202,7 +233,10 @@ export const statusCommand = new Command()
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.message.includes("not found") || error.message.includes("Not found")) {
+        } else if (
+          error.message.includes("not found") ||
+          error.message.includes("Not found")
+        ) {
           console.error(chalk.dim(`  Schedule "${name}" not found`));
         } else {
           console.error(chalk.dim(`  ${error.message}`));
