@@ -427,3 +427,19 @@ export {
   networkLogEntrySchema,
   networkLogsResponseSchema,
 };
+
+// Export inferred types for consumers
+export type RunStatus = z.infer<typeof runStatusSchema>;
+export type RunResult = z.infer<typeof runResultSchema>;
+export type RunState = z.infer<typeof runStateSchema>;
+export type RunEvent = z.infer<typeof runEventSchema>;
+export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
+export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
+export type EventsResponse = z.infer<typeof eventsResponseSchema>;
+export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
+export type TelemetryResponse = z.infer<typeof telemetryResponseSchema>;
+export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
+export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
+export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
+export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
+export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;

@@ -38,6 +38,10 @@ export {
   SUPPORTED_APP_TAGS,
   type SupportedApp,
   type SupportedAppTag,
+  // Inferred types
+  type ComposeResponse,
+  type CoreCreateComposeResponse,
+  type ComposeListItem,
 } from "./composes";
 export {
   runsMainContract,
@@ -53,6 +57,8 @@ export {
   createRunResponseSchema,
   getRunResponseSchema,
   runEventSchema,
+  runResultSchema,
+  runStateSchema,
   eventsResponseSchema,
   telemetryMetricSchema,
   telemetryResponseSchema,
@@ -69,6 +75,21 @@ export {
   type RunMetricsContract,
   type RunAgentEventsContract,
   type RunNetworkLogsContract,
+  // Inferred types
+  type RunStatus,
+  type RunResult,
+  type RunState,
+  type RunEvent,
+  type CreateRunResponse,
+  type GetRunResponse,
+  type EventsResponse,
+  type TelemetryMetric,
+  type TelemetryResponse,
+  type SystemLogResponse,
+  type MetricsResponse,
+  type AgentEventsResponse,
+  type NetworkLogEntry,
+  type NetworkLogsResponse,
 } from "./runs";
 export {
   storagesContract,
@@ -152,6 +173,12 @@ export {
   volumeVersionsSnapshotSchema,
   type SessionsByIdContract,
   type CheckpointsByIdContract,
+  // Inferred types
+  type SessionResponse,
+  type CheckpointResponse,
+  type AgentComposeSnapshot,
+  type ArtifactSnapshot,
+  type VolumeVersionsSnapshot,
 } from "./sessions";
 export {
   runnersPollContract,
