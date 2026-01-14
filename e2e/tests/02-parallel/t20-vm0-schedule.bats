@@ -480,8 +480,8 @@ EOF
     assert_success
     assert_output --partial "Created schedule"
 
-    # Verify in status
+    # Verify in status - one-time schedules show "(one-time)" in trigger
     run $CLI_COMMAND schedule status "$SCHEDULE_NAME"
     assert_success
-    assert_output --partial "At:"
+    assert_output --partial "(one-time)"
 }
