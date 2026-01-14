@@ -289,15 +289,9 @@ EOF
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || fail "Failed to extract Run ID"
 
-    # Fetch network logs with retries
-    for i in {1..5}; do
-        run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
-        if [[ "$output" == *"httpbin.org"* ]]; then
-            echo "Network logs found"
-            return 0
-        fi
-        sleep 2
-    done
-
-    fail "Network logs not found"
+    # Fetch network logs - logs should be available after run completes
+    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    echo "$output"
+    assert_success
+    assert_output --partial "httpbin.org"
 }
