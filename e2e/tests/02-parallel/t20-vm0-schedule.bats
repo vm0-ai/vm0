@@ -435,3 +435,53 @@ EOF
     assert_output --partial "Overwritten task"
     assert_output --partial "0 11 * * *"
 }
+
+@test "vm0 schedule init with --frequency once should require interactive mode" {
+    cd "$TEST_DIR"
+
+    rm -f schedule.yaml
+
+    # One-time schedules require interactive mode
+    run $CLI_COMMAND schedule init \
+        --name "$SCHEDULE_NAME" \
+        --frequency once \
+        --timezone "UTC" \
+        --prompt "One-time task" \
+        --no-vars
+    assert_failure
+    assert_output --partial "One-time schedules require interactive mode"
+}
+
+# ============================================================
+# One-time schedule (at: format) deploy tests
+# ============================================================
+
+@test "vm0 schedule deploy should handle at: format for one-time schedules" {
+    cd "$TEST_DIR"
+
+    # Calculate a future date (tomorrow)
+    local FUTURE_DATE=$(date -d "+1 day" "+%Y-%m-%d")
+
+    # Create schedule with at: format (human-readable)
+    cat > "$TEST_DIR/schedule-onetime.yaml" <<EOF
+version: "1.0"
+
+schedules:
+  ${SCHEDULE_NAME}:
+    on:
+      at: "${FUTURE_DATE} 14:30"
+      timezone: "UTC"
+    run:
+      agent: "${AGENT_NAME}"
+      prompt: "One-time scheduled task"
+EOF
+
+    run $CLI_COMMAND schedule deploy schedule-onetime.yaml
+    assert_success
+    assert_output --partial "Created schedule"
+
+    # Verify in status
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME"
+    assert_success
+    assert_output --partial "At:"
+}
