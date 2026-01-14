@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.9.1](https://github.com/vm0-ai/vm0/compare/web-v9.9.0...web-v9.9.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **ci:** use hash for even runner host distribution ([#1214](https://github.com/vm0-ai/vm0/issues/1214)) ([ec74840](https://github.com/vm0-ai/vm0/commit/ec7484080f32e0b16e81a451ca5447e7db1170e8))
+
 ## [9.9.0](https://github.com/vm0-ai/vm0/compare/web-v9.8.1...web-v9.9.0) (2026-01-14)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.8.3](https://github.com/vm0-ai/vm0/compare/runner-v2.8.2...runner-v2.8.3) (2026-01-14)
+
+
+### Bug Fixes
+
+* **ci:** use hash for even runner host distribution ([#1214](https://github.com/vm0-ai/vm0/issues/1214)) ([ec74840](https://github.com/vm0-ai/vm0/commit/ec7484080f32e0b16e81a451ca5447e7db1170e8))
+* **runner:** detect crashed agent process during polling ([#1213](https://github.com/vm0-ai/vm0/issues/1213)) ([24359b8](https://github.com/vm0-ai/vm0/commit/24359b81a136358593401b6909bc864c4c8989ad)), closes [#1205](https://github.com/vm0-ai/vm0/issues/1205)
+
 ## [2.8.2](https://github.com/vm0-ai/vm0/compare/runner-v2.8.1...runner-v2.8.2) (2026-01-14)
 
 
