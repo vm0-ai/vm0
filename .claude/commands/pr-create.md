@@ -158,3 +158,8 @@ gh pr view --json url -q .url
    gh pr checks
    gh pr status
    ```
+
+6. If pre-commit hook hangs or lint runs out of memory (OOM), try clearing and reinstalling dependencies:
+   ```bash
+   cd turbo && rm -rf node_modules && pnpm install
+   ```

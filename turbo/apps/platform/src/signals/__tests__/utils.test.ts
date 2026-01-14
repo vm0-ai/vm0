@@ -9,7 +9,7 @@ import {
 import { createStore } from "ccstate";
 
 describe("utils", () => {
-  describe("Reason enum", () => {
+  describe("reason enum", () => {
     it("should have correct values", () => {
       expect(Reason.DomCallback).toBe("dom_callback");
       expect(Reason.Entrance).toBe("entrance");
@@ -39,8 +39,8 @@ describe("utils", () => {
       const signal2 = store.set(reset$);
 
       expect(signal1).not.toBe(signal2);
-      expect(signal1.aborted).toBe(true);
-      expect(signal2.aborted).toBe(false);
+      expect(signal1.aborted).toBeTruthy();
+      expect(signal2.aborted).toBeFalsy();
     });
 
     it("should combine with provided signals", () => {
@@ -50,9 +50,9 @@ describe("utils", () => {
 
       const signal = store.set(reset$, controller.signal);
 
-      expect(signal.aborted).toBe(false);
+      expect(signal.aborted).toBeFalsy();
       controller.abort();
-      expect(signal.aborted).toBe(true);
+      expect(signal.aborted).toBeTruthy();
     });
   });
 

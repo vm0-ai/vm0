@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
-describe("AbortSignal.any polyfill", () => {
+describe("abortSignal.any polyfill", () => {
   it("should have AbortSignal.any available", async () => {
     // Import polyfill to ensure it's loaded
     await import("../polyfill.ts");
@@ -21,7 +21,7 @@ describe("AbortSignal.any polyfill", () => {
         controller2.signal,
       ]);
 
-      expect(combined.aborted).toBe(false);
+      expect(combined.aborted).toBeFalsy();
     });
 
     it("should return aborted signal when one is already aborted", () => {
@@ -35,7 +35,7 @@ describe("AbortSignal.any polyfill", () => {
         controller2.signal,
       ]);
 
-      expect(combined.aborted).toBe(true);
+      expect(combined.aborted).toBeTruthy();
       expect(combined.reason).toBe("test reason");
     });
 
@@ -50,11 +50,11 @@ describe("AbortSignal.any polyfill", () => {
       const abortHandler = vi.fn();
       combined.addEventListener("abort", abortHandler);
 
-      expect(combined.aborted).toBe(false);
+      expect(combined.aborted).toBeFalsy();
 
       controller2.abort("second signal aborted");
 
-      expect(combined.aborted).toBe(true);
+      expect(combined.aborted).toBeTruthy();
       expect(combined.reason).toBe("second signal aborted");
       expect(abortHandler).toHaveBeenCalledTimes(1);
     });
@@ -67,14 +67,14 @@ describe("AbortSignal.any polyfill", () => {
 
       const combined = AbortSignal.any([controller.signal]);
 
-      expect(combined.aborted).toBe(true);
+      expect(combined.aborted).toBeTruthy();
       expect(combined.reason).toBe(customError);
     });
 
     it("should handle empty signal array", () => {
       const combined = AbortSignal.any([]);
 
-      expect(combined.aborted).toBe(false);
+      expect(combined.aborted).toBeFalsy();
     });
 
     it("should only abort once even if multiple signals abort", () => {

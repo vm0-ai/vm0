@@ -15,7 +15,7 @@ export function Navbar({ breadcrumb }: NavbarProps) {
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground">
         {breadcrumb.map((item, index) => (
-          <span key={index} className="flex items-center gap-2">
+          <span key={item} className="flex items-center gap-2">
             {index > 0 && <span className="text-muted-foreground/50">/</span>}
             <span>{item}</span>
           </span>

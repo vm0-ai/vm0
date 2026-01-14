@@ -16,7 +16,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # Detect changes in apps to optimize CI pipeline
@@ -252,6 +252,7 @@ jobs:
             AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
+            DEBUG=*
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
@@ -527,7 +528,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: needs.deploy-web.outputs.preview-url != ''
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -568,8 +569,8 @@ jobs:
 
       - name: Run Runner E2E Tests
         run: |
-          echo "=== Running Runner E2E Tests (8 parallel) ==="
-          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+          echo "=== Running Runner E2E Tests (4 parallel) ==="
+          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -682,9 +683,10 @@ jobs:
             fi
           }
 
-          # Preferred host based on PR number
-          PREFERRED_INDEX=$((PR_NUMBER % NUM_HOSTS))
-          echo "Preferred host index: $PREFERRED_INDEX (PR $PR_NUMBER % $NUM_HOSTS)"
+          # Preferred host based on PR number (use hash for even distribution)
+          HASH=$(echo -n "$PR_NUMBER" | md5sum | cut -c1-8)
+          PREFERRED_INDEX=$((16#$HASH % NUM_HOSTS))
+          echo "Preferred host index: $PREFERRED_INDEX (hash of PR $PR_NUMBER % $NUM_HOSTS)"
 
           # Exponential backoff: 0, 2min, 4min, 8min
           BACKOFF_TIMES=(0 120 240 480)

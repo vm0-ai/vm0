@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.9.0](https://github.com/vm0-ai/vm0/compare/web-v9.8.1...web-v9.9.0) (2026-01-14)
+
+
+### Features
+
+* **web:** add debug configuration status utility ([#1223](https://github.com/vm0-ai/vm0/issues/1223)) ([0172112](https://github.com/vm0-ai/vm0/commit/0172112a3b818067110819980640267d8b3c86c8))
+
+## [9.8.1](https://github.com/vm0-ai/vm0/compare/web-v9.8.0...web-v9.8.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **metrics:** correct sandbox metrics dataset name ([#1209](https://github.com/vm0-ai/vm0/issues/1209)) ([f30ee0e](https://github.com/vm0-ai/vm0/commit/f30ee0e16321e421cff1763d8df93667e84deec1))
+
 ## [9.8.0](https://github.com/vm0-ai/vm0/compare/web-v9.7.0...web-v9.8.0) (2026-01-14)
 
 

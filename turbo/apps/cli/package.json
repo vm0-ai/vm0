@@ -21,7 +21,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "oxlint": "^1.14.0",
     "@types/prompts": "^2.4.9",
     "@types/tar": "^6.1.13",
     "@vm0/eslint-config": "workspace:*",
