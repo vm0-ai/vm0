@@ -111,8 +111,8 @@ export default function CliAuthPage(): React.JSX.Element {
   const isComplete = digits.every((d) => d !== "");
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f9f4ef] p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-[#e8e2dd] bg-white shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_0px_rgba(0,0,0,0.06),0px_0px_2px_0px_rgba(0,0,0,0.08)]">
+    <div className="flex min-h-screen items-center justify-center bg-sidebar p-6">
+      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_0px_rgba(0,0,0,0.06),0px_0px_2px_0px_rgba(0,0,0,0.08)]">
         <div className="flex flex-col items-center gap-8 p-10">
           {/* Header with Logo */}
           <div className="flex items-center gap-2.5">
@@ -123,15 +123,15 @@ export default function CliAuthPage(): React.JSX.Element {
               height={20}
               priority
             />
-            <span className="text-2xl text-[#231f1b]">Platform</span>
+            <span className="text-2xl text-foreground">Platform</span>
           </div>
 
           {/* Title and Description */}
           <div className="flex flex-col items-center gap-1 text-center">
-            <h1 className="text-lg font-medium leading-7 text-[#231f1b]">
+            <h1 className="text-lg font-medium leading-7 text-foreground">
               Authorize VM0 Platform CLI
             </h1>
-            <p className="text-sm leading-5 text-[#827d77]">
+            <p className="text-sm leading-5 text-muted-foreground">
               Enter the code displayed in your terminal to authorize the CLI
             </p>
           </div>
@@ -157,13 +157,13 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-[#e8e2dd] bg-white text-center text-base font-medium uppercase text-[#231f1b] outline-none transition-colors focus:border-[#ed4e01] focus:ring-1 focus:ring-[#ed4e01] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}
 
                 {/* Dash separator */}
-                <span className="px-1 text-sm text-[#827d77]">-</span>
+                <span className="px-1 text-sm text-muted-foreground">-</span>
 
                 {/* Last 4 boxes */}
                 {[4, 5, 6, 7].map((index) => (
@@ -181,7 +181,7 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-[#e8e2dd] bg-white text-center text-base font-medium uppercase text-[#231f1b] outline-none transition-colors focus:border-[#ed4e01] focus:ring-1 focus:ring-[#ed4e01] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}
@@ -189,7 +189,7 @@ export default function CliAuthPage(): React.JSX.Element {
 
               {/* Error Message */}
               {error && (
-                <div className="w-full rounded-md bg-red-50 p-2 text-center text-xs text-red-600">
+                <div className="w-full rounded-md bg-destructive/10 p-2 text-center text-xs text-destructive">
                   {error}
                 </div>
               )}
@@ -198,13 +198,13 @@ export default function CliAuthPage(): React.JSX.Element {
               <button
                 type="submit"
                 disabled={loading || !isComplete}
-                className="mt-4 h-9 w-full rounded-md bg-[#ed4e01] text-xs font-medium text-[#fffcf9] transition-colors hover:bg-[#d94500] disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 h-9 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? "Verifying..." : "Verify"}
               </button>
 
               {/* Footer Text */}
-              <p className="text-center text-xs text-[#827d77]">
+              <p className="text-center text-xs text-muted-foreground">
                 This will grant the CLI access to your account for 90 days.
               </p>
             </div>

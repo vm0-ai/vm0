@@ -5,13 +5,25 @@
   }
 }
 
+/*
+ * Landing Page Variables
+ * Note: Core design tokens are in @vm0/ui/styles/globals.css
+ * These are landing-page specific extensions.
+ *
+ * TODO: Migrate to use design system tokens where possible:
+ *   --primary -> hsl(var(--primary)) from design system
+ *   --bg-primary -> hsl(var(--background))
+ *   --text-primary -> hsl(var(--foreground))
+ */
+
 /* Root Variables - Dark Theme (Default) */
 :root {
+  /* Primary color variants (base --primary is in design system) */
   --primary: #ed4e01;
   --primary-hover: #ff6a1f;
   --primary-light: rgba(237, 78, 1, 0.1);
 
-  /* Dark theme colors */
+  /* Landing page backgrounds */
   --bg-primary: #0a0a0a;
   --bg-secondary: #222222;
   --bg-tertiary: #1a1a1a;

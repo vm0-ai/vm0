@@ -1,7 +1,16 @@
 @import "tailwindcss";
 
-/* Define theme colors for Tailwind v4 */
+/*
+ * VM0 Design System
+ * Based on Figma: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
+ *
+ * Typography: Noto Sans
+ * Primary Color: #ed4e01 (Orange)
+ */
+
+/* Define theme colors and typography for Tailwind v4 */
 @theme {
+  /* Colors */
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -21,57 +30,95 @@
   --color-popover-foreground: hsl(var(--popover-foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
+  --color-sidebar: hsl(var(--sidebar));
 
+  /* Radius */
+  --radius-xl: 14px;
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Font Size (from Figma) */
+  --font-size-2xl: 24px;
+  --font-size-lg: 18px;
+  --font-size-sm: 14px;
+  --font-size-xs: 12px;
+
+  /* Line Height (from Figma) */
+  --line-height-8: 32px;
+  --line-height-7: 28px;
+  --line-height-5: 20px;
+  --line-height-4: 16px;
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* VM0 Light Theme (from Figma) */
+    --background: 30 100% 99%; /* #fffcf9 - warm white */
+    --foreground: 20 12% 12%; /* #231f1b - warm dark */
+
+    --card: 0 0% 100%; /* #ffffff */
+    --card-foreground: 20 12% 12%; /* #231f1b */
+
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --popover-foreground: 20 12% 12%;
+
+    --primary: 16 97% 46%; /* #ed4e01 - VM0 orange */
+    --primary-foreground: 30 100% 99%; /* #fffcf9 */
+
+    --secondary: 28 20% 96%; /* warm gray */
+    --secondary-foreground: 20 12% 12%;
+
+    --muted: 28 20% 97%; /* #f7f7f7 */
+    --muted-foreground: 20 6% 49%; /* #827d77 */
+
+    --accent: 28 20% 96%;
+    --accent-foreground: 20 12% 12%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 28 18% 90%; /* #e8e2dd - warm border */
+    --input: 28 18% 90%;
+    --ring: 16 97% 46%; /* #ed4e01 */
+
+    --sidebar: 28 38% 95%; /* #f9f4ef - warm beige */
+
     --radius: 0.5rem;
   }
 
   .dark,
   [data-theme="dark"] {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* VM0 Dark Theme */
+    --background: 0 0% 4%; /* #0a0a0a */
+    --foreground: 0 0% 100%; /* #ffffff */
+
+    --card: 0 0% 13%; /* #222222 */
+    --card-foreground: 0 0% 100%;
+
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 16 97% 46%; /* #ed4e01 - same orange */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 13%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 0 0% 13%;
+    --muted-foreground: 0 0% 84%; /* #d5d5d5 */
+
+    --accent: 0 0% 13%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 20%; /* subtle border */
+    --input: 0 0% 20%;
+    --ring: 16 97% 46%;
+
+    --sidebar: 0 0% 10%; /* #1a1a1a */
   }
 }
 
