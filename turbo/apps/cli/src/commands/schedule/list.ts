@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
 import { formatRelativeTime } from "../../lib/domain/schedule-utils";
-import type { ScheduleResponse, ScheduleListResponse } from "@vm0/core";
+import type { ScheduleListResponse } from "@vm0/core";
 
 export const listCommand = new Command()
   .name("list")

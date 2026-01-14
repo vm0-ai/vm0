@@ -6,7 +6,6 @@ import { apiClient, type ApiError } from "../../lib/api/api-client";
 import {
   scheduleYamlSchema,
   type ScheduleDefinition,
-  type ScheduleResponse,
   type DeployScheduleResponse,
 } from "@vm0/core";
 import { toISODateTime } from "../../lib/domain/schedule-utils";
