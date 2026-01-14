@@ -2,40 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
 import { loadAgentName, formatDateTime } from "../../lib/domain/schedule-utils";
+import type {
+  ScheduleResponse,
+  RunSummary,
+  ScheduleRunsResponse,
+} from "@vm0/core";
 
-interface ScheduleResponse {
-  id: string;
-  name: string;
-  composeName: string;
-  scopeSlug: string;
-  cronExpression: string | null;
-  atTime: string | null;
-  timezone: string;
-  prompt: string;
-  vars: Record<string, string> | null;
-  secretNames: string[] | null;
-  artifactName: string | null;
-  artifactVersion: string | null;
-  volumeVersions: Record<string, string> | null;
-  enabled: boolean;
-  nextRunAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-type RunStatus = "pending" | "running" | "completed" | "failed" | "timeout";
-
-interface RunSummary {
-  id: string;
-  status: RunStatus;
-  createdAt: string;
-  completedAt: string | null;
-  error: string | null;
-}
-
-interface RunsResponse {
-  runs: RunSummary[];
-}
+// Re-export RunStatus type for local use (same as RunSummary['status'])
+type RunStatus = RunSummary["status"];
 
 /**
  * Format date with styled relative time (adds chalk formatting)
@@ -202,7 +176,7 @@ export const statusCommand = new Command()
         );
 
         if (runsResponse.ok) {
-          const { runs } = (await runsResponse.json()) as RunsResponse;
+          const { runs } = (await runsResponse.json()) as ScheduleRunsResponse;
 
           if (runs.length > 0) {
             console.log();

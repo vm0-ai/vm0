@@ -311,3 +311,16 @@ export {
   runSummarySchema,
   scheduleRunsResponseSchema,
 };
+
+// Export inferred types for consumers
+export type ScheduleTrigger = z.infer<typeof scheduleTriggerSchema>;
+export type ScheduleRunConfig = z.infer<typeof scheduleRunConfigSchema>;
+export type ScheduleDefinition = z.infer<typeof scheduleDefinitionSchema>;
+export type DeployScheduleRequest = z.infer<typeof deployScheduleRequestSchema>;
+export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
+export type ScheduleListResponse = z.infer<typeof scheduleListResponseSchema>;
+export type DeployScheduleResponse = z.infer<
+  typeof deployScheduleResponseSchema
+>;
+export type RunSummary = z.infer<typeof runSummarySchema>;
+export type ScheduleRunsResponse = z.infer<typeof scheduleRunsResponseSchema>;

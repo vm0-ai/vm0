@@ -225,6 +225,16 @@ export {
   type SchedulesByNameContract,
   type SchedulesEnableContract,
   type ScheduleRunsContract,
+  // Inferred types
+  type ScheduleTrigger,
+  type ScheduleRunConfig,
+  type ScheduleDefinition,
+  type DeployScheduleRequest,
+  type ScheduleResponse,
+  type ScheduleListResponse,
+  type DeployScheduleResponse,
+  type RunSummary,
+  type ScheduleRunsResponse,
 } from "./schedules";
 
 // Public API v1 contracts (developer-friendly external API)
