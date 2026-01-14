@@ -16,6 +16,7 @@ import type {
   SessionResponse,
   CheckpointResponse,
   AgentComposeSnapshot as CoreAgentComposeSnapshot,
+  ComposeResponse,
   ApiErrorResponse,
   ScopeResponse as CoreScopeResponse,
 } from "@vm0/core";
@@ -36,19 +37,10 @@ export type GetAgentEventsResponse = AgentEventsResponse;
 export type GetNetworkLogsResponse = NetworkLogsResponse;
 export type GetSessionResponse = SessionResponse;
 export type GetCheckpointResponse = CheckpointResponse;
+export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
 
 // CLI-specific types (not in @vm0/core or have different structure)
-// GetComposeResponse uses `unknown` for content to be flexible with any compose content
-// The @vm0/core ComposeResponse has stricter typing that would break existing tests
-export interface GetComposeResponse {
-  id: string;
-  name: string;
-  headVersionId: string | null;
-  content: unknown;
-  createdAt: string;
-  updatedAt: string;
-}
 export interface CreateComposeResponse {
   composeId: string;
   name: string;
