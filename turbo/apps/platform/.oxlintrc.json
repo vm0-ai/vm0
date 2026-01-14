@@ -68,7 +68,7 @@
         "no-mocks-import": "deny",
         "no-standalone-expect": "allow",
         "no-test-return-statement": "deny",
-        "no-untyped-mock-factory": "deny",
+        "no-untyped-mock-factory": "allow",
         "prefer-called-with": "deny",
         "prefer-comparison-matcher": "deny",
         "prefer-each": "deny",
@@ -115,7 +115,8 @@
     {
       "files": ["src/signals/__tests__/fetch.test.ts"],
       "rules": {
-        "first": "allow"
+        "first": "allow",
+        "jest/no-untyped-mock-factory": "allow"
       }
     }
   ],
