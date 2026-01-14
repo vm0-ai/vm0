@@ -171,6 +171,47 @@ EOF
     assert_output --partial "not found"
 }
 
+@test "vm0 schedule status should accept --limit option" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with --limit
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" --limit 10
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+}
+
+@test "vm0 schedule status should accept -l shorthand for limit" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with -l shorthand
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" -l 5
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+}
+
+@test "vm0 schedule status with --limit 0 should hide runs section" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with --limit 0
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" --limit 0
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+    # Should not show "Recent Runs" when limit is 0
+    refute_output --partial "Recent Runs:"
+}
+
 # ============================================================
 # Enable/Disable tests
 # ============================================================
