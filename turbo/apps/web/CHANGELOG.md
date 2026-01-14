@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.8.1](https://github.com/vm0-ai/vm0/compare/web-v9.8.0...web-v9.8.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **metrics:** correct sandbox metrics dataset name ([#1209](https://github.com/vm0-ai/vm0/issues/1209)) ([f30ee0e](https://github.com/vm0-ai/vm0/commit/f30ee0e16321e421cff1763d8df93667e84deec1))
+
 ## [9.8.0](https://github.com/vm0-ai/vm0/compare/web-v9.7.0...web-v9.8.0) (2026-01-14)
 
 
