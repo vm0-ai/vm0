@@ -1,13 +1,12 @@
 import type { Pool } from "pg";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { schema } from "../db/db";
 import type { Env } from "../env";
 
-// Database type supports both local (node-postgres) and Vercel (neon-http) modes
-export type Database =
-  | NodePgDatabase<typeof schema>
-  | NeonHttpDatabase<typeof schema>;
+// Use PgDatabase with any query result type to support both
+// node-postgres (local) and neon-http (Vercel serverless) modes
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Database = PgDatabase<any, typeof schema>;
 
 export type Services = {
   env: Env;
