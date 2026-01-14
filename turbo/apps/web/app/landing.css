@@ -1,8 +1,8 @@
-/* Reset */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Reset - wrapped in @layer base to not override Tailwind utilities */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 }
 
 /* Root Variables - Dark Theme (Default) */
