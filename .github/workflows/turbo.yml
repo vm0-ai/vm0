@@ -423,12 +423,6 @@ jobs:
           key: e2e-auth-${{ github.run_id }}
           fail-on-cache-miss: true
 
-      - name: Setup VM0 test volumes
-        run: ./e2e/scripts/setup-vm0-volumes.sh
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
       - name: Start Cron Simulator
         run: |
           chmod +x ./e2e/scripts/cron-simulator.sh

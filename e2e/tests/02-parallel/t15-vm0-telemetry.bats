@@ -14,6 +14,9 @@ load '../../helpers/setup'
 AGENT_NAME="e2e-t15"
 
 setup() {
+    # Create unique volume for this test
+    create_test_volume "e2e-vol-t15"
+
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-telemetry-test-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
@@ -30,7 +33,7 @@ agents:
     working_dir: /home/user/workspace
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 }
@@ -43,6 +46,8 @@ teardown() {
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 @test "Build VM0 telemetry test agent configuration" {

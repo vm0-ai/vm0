@@ -11,6 +11,10 @@
 load '../../helpers/setup'
 
 setup() {
+    # Create unique claude-files volume for this test
+    create_test_volume "e2e-vol-t07-claude"
+    export CLAUDE_VOLUME_NAME="$VOLUME_NAME"
+
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
     # Use unique test names with timestamp to avoid conflicts in parallel runs
@@ -27,6 +31,8 @@ teardown() {
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 # Helper function to create and compose the agent config
@@ -49,7 +55,7 @@ volumes:
     name: ${VOLUME_NAME}
     version: latest
   claude-files:
-    name: claude-files
+    name: $CLAUDE_VOLUME_NAME
     version: latest
 EOF
     $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
@@ -75,7 +81,7 @@ volumes:
     name: ${VOLUME_NAME}
     version: latest
   claude-files:
-    name: claude-files
+    name: $CLAUDE_VOLUME_NAME
     version: latest
 EOF
 
