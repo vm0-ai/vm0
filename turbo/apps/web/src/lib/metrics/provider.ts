@@ -60,7 +60,7 @@ export function initMetrics(config: MetricsConfig): void {
     url: "https://api.axiom.co/v1/metrics",
     headers: {
       Authorization: `Bearer ${config.axiomToken}`,
-      "X-Axiom-Dataset": `sandbox-metric-${env}`,
+      "X-Axiom-Dataset": `sandbox-metrics-${env}`,
     },
   });
 
