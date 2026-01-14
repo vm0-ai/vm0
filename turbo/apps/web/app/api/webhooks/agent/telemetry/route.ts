@@ -14,6 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/axiom";
+import { recordSandboxInternalOperation } from "../../../../../src/lib/metrics";
 
 const log = logger("webhooks:telemetry");
 
@@ -123,6 +124,19 @@ const router = tsr.router(webhookTelemetryContract, {
       ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
         log.error("Axiom network logs ingest failed:", err);
       });
+    }
+
+    // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
+    // Note: Currently only runner sandbox sends internal operations. E2B support can be added later.
+    if (body.sandboxOperations && body.sandboxOperations.length > 0) {
+      for (const op of body.sandboxOperations) {
+        recordSandboxInternalOperation({
+          actionType: op.action_type,
+          sandboxType: "runner",
+          durationMs: op.duration_ms,
+          success: op.success,
+        });
+      }
     }
 
     log.debug(

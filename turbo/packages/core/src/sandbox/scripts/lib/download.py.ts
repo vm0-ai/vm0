@@ -14,11 +14,12 @@ import sys
 import json
 import tarfile
 import tempfile
+import time
 
 # Add lib to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import validate_config
+from common import validate_config, record_sandbox_op
 from log import log_info, log_error
 from http_client import http_download
 
@@ -98,13 +99,21 @@ def main():
 
     log_info(f"Found {storage_count} storages, artifact: {has_artifact}")
 
+    # Track total download time
+    download_total_start = time.time()
+    download_success = True
+
     # Process storages
     for storage in storages:
         mount_path = storage.get("mountPath")
         archive_url = storage.get("archiveUrl")
 
         if archive_url and archive_url != "null":
-            download_storage(mount_path, archive_url)
+            storage_start = time.time()
+            success = download_storage(mount_path, archive_url)
+            record_sandbox_op("storage_download", int((time.time() - storage_start) * 1000), success)
+            if not success:
+                download_success = False
 
     # Process artifact
     if artifact:
@@ -112,8 +121,14 @@ def main():
         artifact_url = artifact.get("archiveUrl")
 
         if artifact_url and artifact_url != "null":
-            download_storage(artifact_mount, artifact_url)
+            artifact_start = time.time()
+            success = download_storage(artifact_mount, artifact_url)
+            record_sandbox_op("artifact_download", int((time.time() - artifact_start) * 1000), success)
+            if not success:
+                download_success = False
 
+    # Record total download time
+    record_sandbox_op("download_total", int((time.time() - download_total_start) * 1000), download_success)
     log_info("All storages downloaded successfully")
 
 

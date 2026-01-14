@@ -1,4 +1,4 @@
-import { getMeter, isMetricsEnabled } from "./provider";
+import { getMeter, getSandboxMeter, isMetricsEnabled } from "./provider";
 import type { Counter, Histogram } from "@opentelemetry/api";
 
 // Lazy-initialized instruments (created after initMetrics is called)
@@ -8,6 +8,11 @@ let httpRequestDuration: Histogram | null = null;
 let sandboxOperationTotal: Counter | null = null;
 let sandboxOperationErrorsTotal: Counter | null = null;
 let sandboxOperationDuration: Histogram | null = null;
+
+// Sandbox internal operation instruments (go to sandbox-metric-{env} dataset)
+let sandboxInternalOperationTotal: Counter | null = null;
+let sandboxInternalOperationErrorsTotal: Counter | null = null;
+let sandboxInternalOperationDuration: Histogram | null = null;
 
 function getApiInstruments() {
   if (!httpRequestTotal) {
@@ -125,4 +130,65 @@ export function recordSandboxOperation(attrs: {
     ...labels,
     success: String(attrs.success),
   });
+}
+
+function getSandboxInternalInstruments() {
+  if (!sandboxInternalOperationTotal) {
+    const meter = getSandboxMeter("vm0-sandbox");
+    sandboxInternalOperationTotal = meter.createCounter(
+      "sandbox_internal_operation_total",
+      {
+        description: "Total number of sandbox internal operations",
+      },
+    );
+    sandboxInternalOperationErrorsTotal = meter.createCounter(
+      "sandbox_internal_operation_errors_total",
+      {
+        description: "Total number of sandbox internal operation errors",
+      },
+    );
+    sandboxInternalOperationDuration = meter.createHistogram(
+      "sandbox_internal_operation_duration_ms",
+      {
+        description: "Sandbox internal operation duration in milliseconds",
+        unit: "ms",
+      },
+    );
+  }
+  return {
+    sandboxInternalOperationTotal: sandboxInternalOperationTotal!,
+    sandboxInternalOperationErrorsTotal: sandboxInternalOperationErrorsTotal!,
+    sandboxInternalOperationDuration: sandboxInternalOperationDuration!,
+  };
+}
+
+export function recordSandboxInternalOperation(attrs: {
+  actionType: string;
+  sandboxType: string;
+  durationMs: number;
+  success: boolean;
+}): void {
+  if (!isMetricsEnabled()) return;
+
+  const {
+    sandboxInternalOperationTotal,
+    sandboxInternalOperationErrorsTotal,
+    sandboxInternalOperationDuration,
+  } = getSandboxInternalInstruments();
+
+  const labels = {
+    action_type: attrs.actionType,
+    sandbox_type: attrs.sandboxType,
+  };
+
+  // Always increment total counter
+  sandboxInternalOperationTotal.add(1, labels);
+
+  // Increment error counter if failed
+  if (!attrs.success) {
+    sandboxInternalOperationErrorsTotal.add(1, labels);
+  }
+
+  // Always record duration histogram
+  sandboxInternalOperationDuration.record(attrs.durationMs, labels);
 }
