@@ -217,12 +217,12 @@
         group: "{{ ansible_user }}"
         mode: '0755'
       with_fileglob:
-        - "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/*.sh"
+        - "{{ playbook_dir }}/../../turbo/apps/runner/deploy/*.sh"
       tags: [prepare]
 
     - name: Copy Dockerfile for rootfs build
       copy:
-        src: "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/Dockerfile"
+        src: "{{ playbook_dir }}/../../turbo/apps/runner/deploy/Dockerfile"
         dest: "{{ runner_base_dir }}/deploy-runner/Dockerfile"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
