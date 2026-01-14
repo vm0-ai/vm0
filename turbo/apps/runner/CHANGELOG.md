@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.8.2](https://github.com/vm0-ai/vm0/compare/runner-v2.8.1...runner-v2.8.2) (2026-01-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.5.0
+
+## [2.8.1](https://github.com/vm0-ai/vm0/compare/runner-v2.8.0...runner-v2.8.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **runner:** add timeout parameter to SSH exec for proper timeout handling ([#1197](https://github.com/vm0-ai/vm0/issues/1197)) ([aa30f6c](https://github.com/vm0-ai/vm0/commit/aa30f6cfbd47e557762f7b60a2a4e9130fa1c634)), closes [#1193](https://github.com/vm0-ai/vm0/issues/1193)
+
 ## [2.8.0](https://github.com/vm0-ai/vm0/compare/runner-v2.7.1...runner-v2.8.0) (2026-01-14)
 
 

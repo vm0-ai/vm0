@@ -4,4 +4,8 @@ export {
   flushMetrics,
   shutdownMetrics,
 } from "./provider";
-export { recordApiRequest, recordSandboxOperation } from "./instruments";
+export {
+  recordApiRequest,
+  recordSandboxOperation,
+  recordSandboxInternalOperation,
+} from "./instruments";

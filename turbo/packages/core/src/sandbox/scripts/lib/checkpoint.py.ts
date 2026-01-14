@@ -11,12 +11,14 @@ Uses direct S3 upload exclusively (no fallback to legacy methods).
 """
 import os
 import glob
+import time
 from typing import Optional, Dict, Any
 
 from common import (
     RUN_ID, CHECKPOINT_URL,
     SESSION_ID_FILE, SESSION_HISTORY_PATH_FILE,
-    ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME
+    ARTIFACT_DRIVER, ARTIFACT_MOUNT_PATH, ARTIFACT_VOLUME_NAME,
+    record_sandbox_op
 )
 from log import log_info, log_error
 from http_client import http_post_json
@@ -72,19 +74,27 @@ def create_checkpoint() -> bool:
     Returns:
         True on success, False on failure
     """
+    checkpoint_start = time.time()
     log_info("Creating checkpoint...")
 
     # Read session ID from temp file
+    session_id_start = time.time()
     if not os.path.exists(SESSION_ID_FILE):
         log_error("No session ID found, checkpoint creation failed")
+        record_sandbox_op("session_id_read", int((time.time() - session_id_start) * 1000), False, "Session ID file not found")
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 
     with open(SESSION_ID_FILE) as f:
         cli_agent_session_id = f.read().strip()
+    record_sandbox_op("session_id_read", int((time.time() - session_id_start) * 1000), True)
 
     # Read session history path from temp file
+    session_history_start = time.time()
     if not os.path.exists(SESSION_HISTORY_PATH_FILE):
         log_error("No session history path found, checkpoint creation failed")
+        record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, "Session history path file not found")
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 
     with open(SESSION_HISTORY_PATH_FILE) as f:
@@ -95,6 +105,8 @@ def create_checkpoint() -> bool:
         parts = session_history_path_raw.split(":", 2)
         if len(parts) != 3:
             log_error(f"Invalid Codex search marker format: {session_history_path_raw}")
+            record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, "Invalid Codex search marker")
+            record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
             return False
         sessions_dir = parts[1]
         codex_session_id = parts[2]
@@ -102,6 +114,8 @@ def create_checkpoint() -> bool:
         session_history_path = find_codex_session_file(sessions_dir, codex_session_id)
         if not session_history_path:
             log_error(f"Could not find Codex session file for {codex_session_id} in {sessions_dir}")
+            record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, "Codex session file not found")
+            record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
             return False
     else:
         session_history_path = session_history_path_raw
@@ -109,6 +123,8 @@ def create_checkpoint() -> bool:
     # Check if session history file exists
     if not os.path.exists(session_history_path):
         log_error(f"Session history file not found at {session_history_path}, checkpoint creation failed")
+        record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, "Session history file not found")
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 
     # Read session history
@@ -117,14 +133,19 @@ def create_checkpoint() -> bool:
             cli_agent_session_history = f.read()
     except IOError as e:
         log_error(f"Failed to read session history: {e}")
+        record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, str(e))
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 
     if not cli_agent_session_history.strip():
         log_error("Session history is empty, checkpoint creation failed")
+        record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), False, "Session history empty")
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 
     line_count = len(cli_agent_session_history.strip().split("\\n"))
     log_info(f"Session history loaded ({line_count} lines)")
+    record_sandbox_op("session_history_read", int((time.time() - session_history_start) * 1000), True)
 
     # CLI agent type (default to claude-code)
     cli_agent_type = os.environ.get("CLI_AGENT_TYPE", "claude-code")
@@ -138,6 +159,7 @@ def create_checkpoint() -> bool:
 
         if ARTIFACT_DRIVER != "vas":
             log_error(f"Unknown artifact driver: {ARTIFACT_DRIVER} (only 'vas' is supported)")
+            record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
             return False
 
         # VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
@@ -154,12 +176,14 @@ def create_checkpoint() -> bool:
 
         if not snapshot:
             log_error("Failed to create VAS snapshot for artifact")
+            record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
             return False
 
         # Extract versionId from snapshot response
         artifact_version = snapshot.get("versionId")
         if not artifact_version:
             log_error("Failed to extract versionId from snapshot")
+            record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
             return False
 
         # Build artifact snapshot JSON with new format (artifactName + artifactVersion)
@@ -187,6 +211,7 @@ def create_checkpoint() -> bool:
         checkpoint_payload["artifactSnapshot"] = artifact_snapshot
 
     # Call checkpoint API
+    api_call_start = time.time()
     result = http_post_json(CHECKPOINT_URL, checkpoint_payload)
 
     # Validate response contains checkpointId to confirm checkpoint was actually created
@@ -194,8 +219,12 @@ def create_checkpoint() -> bool:
     if result and result.get("checkpointId"):
         checkpoint_id = result.get("checkpointId")
         log_info(f"Checkpoint created successfully: {checkpoint_id}")
+        record_sandbox_op("checkpoint_api_call", int((time.time() - api_call_start) * 1000), True)
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), True)
         return True
     else:
         log_error(f"Checkpoint API returned invalid response: {result}")
+        record_sandbox_op("checkpoint_api_call", int((time.time() - api_call_start) * 1000), False, "Invalid API response")
+        record_sandbox_op("checkpoint_total", int((time.time() - checkpoint_start) * 1000), False)
         return False
 `;

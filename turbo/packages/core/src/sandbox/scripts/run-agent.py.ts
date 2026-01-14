@@ -31,7 +31,7 @@ sys.path.insert(0, "/usr/local/bin/vm0-agent/lib")
 from common import (
     WORKING_DIR, PROMPT, RESUME_SESSION_ID, COMPLETE_URL, RUN_ID,
     EVENT_ERROR_FLAG, HEARTBEAT_URL, HEARTBEAT_INTERVAL, AGENT_LOG_FILE,
-    CLI_AGENT_TYPE, OPENAI_MODEL, validate_config
+    CLI_AGENT_TYPE, OPENAI_MODEL, validate_config, record_sandbox_op
 )
 from log import log_info, log_error, log_warn
 from events import send_event
@@ -67,10 +67,14 @@ def _cleanup(exit_code: int, error_message: str):
 
     # Perform final telemetry upload before completion
     # This ensures all remaining data is captured
+    telemetry_start = time.time()
+    telemetry_success = True
     try:
         final_telemetry_upload()
     except Exception as e:
+        telemetry_success = False
         log_error(f"Final telemetry upload failed: {e}")
+    record_sandbox_op("final_telemetry_upload", int((time.time() - telemetry_start) * 1000), telemetry_success)
 
     # Always call complete API at the end
     # This sends vm0_result (on success) or vm0_error (on failure) and kills the sandbox
@@ -83,13 +87,17 @@ def _cleanup(exit_code: int, error_message: str):
     if error_message:
         complete_payload["error"] = error_message
 
+    complete_start = time.time()
+    complete_success = False
     try:
         if http_post_json(COMPLETE_URL, complete_payload):
             log_info("Complete API called successfully")
+            complete_success = True
         else:
             log_error("Failed to call complete API (sandbox may not be cleaned up)")
     except Exception as e:
         log_error(f"Complete API call failed: {e}")
+    record_sandbox_op("complete_api_call", int((time.time() - complete_start) * 1000), complete_success)
 
     # Stop heartbeat thread
     shutdown_event.set()
@@ -121,25 +129,36 @@ def _run() -> tuple[int, str]:
     log_info(f"Working directory: {WORKING_DIR}")
 
     # Start heartbeat thread
+    heartbeat_start = time.time()
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
     log_info("Heartbeat thread started")
+    record_sandbox_op("heartbeat_start", int((time.time() - heartbeat_start) * 1000), True)
 
     # Start metrics collector thread
+    metrics_start = time.time()
     start_metrics_collector(shutdown_event)
     log_info("Metrics collector thread started")
+    record_sandbox_op("metrics_collector_start", int((time.time() - metrics_start) * 1000), True)
 
     # Start telemetry upload thread
+    telemetry_start = time.time()
     start_telemetry_upload(shutdown_event)
     log_info("Telemetry upload thread started")
+    record_sandbox_op("telemetry_upload_start", int((time.time() - telemetry_start) * 1000), True)
 
     # Create and change to working directory - raises RuntimeError if fails
     # Directory may not exist if no artifact/storage was downloaded (e.g., first run)
+    working_dir_start = time.time()
+    working_dir_success = True
     try:
         os.makedirs(WORKING_DIR, exist_ok=True)
         os.chdir(WORKING_DIR)
     except OSError as e:
+        working_dir_success = False
+        record_sandbox_op("working_dir_setup", int((time.time() - working_dir_start) * 1000), False, str(e))
         raise RuntimeError(f"Failed to create/change to working directory: {WORKING_DIR} - {e}") from e
+    record_sandbox_op("working_dir_setup", int((time.time() - working_dir_start) * 1000), working_dir_success)
 
     # Set up Codex configuration if using Codex CLI
     # Claude Code uses ~/.claude by default (no configuration needed)
@@ -152,6 +171,8 @@ def _run() -> tuple[int, str]:
         log_info(f"Codex home directory: {codex_home}")
 
         # Login with API key via stdin (recommended method)
+        codex_login_start = time.time()
+        codex_login_success = False
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if api_key:
             result = subprocess.run(
@@ -162,13 +183,16 @@ def _run() -> tuple[int, str]:
             )
             if result.returncode == 0:
                 log_info("Codex authenticated with API key")
+                codex_login_success = True
             else:
                 log_error(f"Codex login failed: {result.stderr}")
         else:
             log_error("OPENAI_API_KEY not set")
+        record_sandbox_op("codex_login", int((time.time() - codex_login_start) * 1000), codex_login_success)
 
-    init_duration = int(time.time() - init_start_time)
-    log_info(f"✓ Initialization complete ({init_duration}s)")
+    init_duration_ms = int((time.time() - init_start_time) * 1000)
+    record_sandbox_op("init_total", init_duration_ms, True)
+    log_info(f"✓ Initialization complete ({init_duration_ms // 1000}s)")
 
     # Lifecycle: Execution
     log_info("▷ Execution")
@@ -332,12 +356,13 @@ def _run() -> tuple[int, str]:
         final_exit_code = 1
         error_message = "Some events failed to send"
 
-    # Log execution result
-    exec_duration = int(time.time() - exec_start_time)
+    # Log execution result and record metric
+    exec_duration_ms = int((time.time() - exec_start_time) * 1000)
+    record_sandbox_op("cli_execution", exec_duration_ms, agent_exit_code == 0)
     if agent_exit_code == 0 and final_exit_code == 0:
-        log_info(f"✓ Execution complete ({exec_duration}s)")
+        log_info(f"✓ Execution complete ({exec_duration_ms // 1000}s)")
     else:
-        log_info(f"✗ Execution failed ({exec_duration}s)")
+        log_info(f"✗ Execution failed ({exec_duration_ms // 1000}s)")
 
     # Handle completion
     if agent_exit_code == 0 and final_exit_code == 0:
