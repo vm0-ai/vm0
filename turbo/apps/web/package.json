@@ -9,7 +9,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",
@@ -54,6 +54,7 @@
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.7.0",
+    "oxlint": "^1.14.0",
     "@testing-library/react": "^16.1.0",
     "@types/archiver": "^7.0.0",
     "@types/node": "^24.3.0",

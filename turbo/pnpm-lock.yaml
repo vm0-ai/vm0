@@ -90,6 +90,9 @@ importers:
       json:
         specifier: ^11.0.0
         version: 11.0.0
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       tsup:
         specifier: ^8.5.0
         version: 8.5.0(@swc/core@1.15.7(@swc/helpers@0.5.18))(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.2)(yaml@2.8.1)
@@ -148,6 +151,9 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       postcss:
         specifier: ^8.5.6
         version: 8.5.6
@@ -303,6 +309,9 @@ importers:
       json:
         specifier: ^11.0.0
         version: 11.0.0
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       tsup:
         specifier: ^8.5.0
         version: 8.5.0(@swc/core@1.15.7(@swc/helpers@0.5.18))(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.2)(yaml@2.8.1)
@@ -457,6 +466,9 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       tsx:
         specifier: ^4.20.5
         version: 4.20.5
@@ -488,6 +500,9 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       typescript:
         specifier: 5.9.2
         version: 5.9.2
@@ -595,6 +610,9 @@ importers:
       happy-dom:
         specifier: ^20.1.0
         version: 20.1.0
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
       postcss:
         specifier: ^8.5.3
         version: 8.5.6
@@ -11244,7 +11262,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@22.18.0)(typescript@5.9.2))(tsx@4.20.6)(yaml@2.8.1)
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.2))(tsx@4.20.6)(yaml@2.8.1)
 
   '@vitest/utils@3.2.4':
     dependencies:

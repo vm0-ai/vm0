@@ -12,13 +12,14 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
+    "oxlint": "^1.14.0",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"
   },
