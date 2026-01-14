@@ -1,8 +1,13 @@
-# Firecracker VM rootfs image
-# Based on Node.js 24 with Python 3.11+, SSH server, and Claude Code CLI
+# Firecracker VM rootfs image (Universal)
+# Based on Node.js 24 with Python 3.11+, SSH server, and agent CLIs
 #
-# This mirrors the e2b template configuration for consistency.
-# See: turbo/scripts/e2b/vm0-claude-code/template.ts
+# This is a universal image that supports all providers and apps:
+# - Claude Code CLI (@anthropic-ai/claude-code) for provider: claude-code
+# - Codex CLI (@openai/codex) for provider: codex
+# - GitHub CLI (gh) for apps: [github]
+#
+# This mirrors the e2b template configurations for consistency.
+# See: turbo/scripts/e2b/vm0-*/template.ts
 #
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
@@ -46,6 +51,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Claude Code CLI globally (matching e2b template)
 RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Install Codex CLI globally (matching e2b template)
+# See: turbo/scripts/e2b/vm0-codex/template.ts
+RUN npm install -g @openai/codex@latest
+
+# Install GitHub CLI (for apps: [github])
+# See: turbo/scripts/e2b/vm0-claude-code-github/template.ts
+# https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user

@@ -187,6 +187,20 @@ verify_rootfs() {
         echo "  overlay-init: installed"
     fi
 
+    # Check for Codex CLI (for provider: codex)
+    if ! sudo chroot "$MOUNT_POINT" /usr/bin/which codex > /dev/null 2>&1; then
+        echo "WARNING: Codex CLI not found in rootfs"
+    else
+        echo "  Codex CLI: installed"
+    fi
+
+    # Check for GitHub CLI (for apps: [github])
+    if ! sudo chroot "$MOUNT_POINT" /usr/bin/which gh > /dev/null 2>&1; then
+        echo "WARNING: GitHub CLI not found in rootfs"
+    else
+        echo "  GitHub CLI: installed"
+    fi
+
     sudo umount "$MOUNT_POINT"
     rmdir "$MOUNT_POINT"
 
