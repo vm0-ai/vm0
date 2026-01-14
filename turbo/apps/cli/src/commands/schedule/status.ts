@@ -23,9 +23,11 @@ interface ScheduleResponse {
   updatedAt: string;
 }
 
+type RunStatus = "pending" | "running" | "completed" | "failed" | "timeout";
+
 interface RunSummary {
   id: string;
-  status: string;
+  status: RunStatus;
   createdAt: string;
   completedAt: string | null;
   error: string | null;
@@ -61,7 +63,7 @@ function formatTrigger(schedule: ScheduleResponse): string {
 /**
  * Format run status with color
  */
-function formatRunStatus(status: string): string {
+function formatRunStatus(status: RunStatus): string {
   switch (status) {
     case "completed":
       return chalk.green(status);
@@ -219,6 +221,9 @@ export const statusCommand = new Command()
               console.log(`  ${id} ${status} ${created} ${errorMsg}`);
             }
           }
+        } else {
+          console.log();
+          console.log(chalk.dim("Recent Runs: (unable to fetch)"));
         }
       }
 
