@@ -569,8 +569,8 @@ jobs:
 
       - name: Run Runner E2E Tests
         run: |
-          echo "=== Running Runner E2E Tests (8 parallel) ==="
-          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 8 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+          echo "=== Running Runner E2E Tests (4 parallel) ==="
+          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
