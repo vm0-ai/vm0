@@ -4,7 +4,7 @@ import type { schema } from "../db/db";
 import type { Env } from "../env";
 
 // Use PgDatabase with any query result type to support both
-// node-postgres (local) and neon-http (Vercel serverless) modes
+// node-postgres (local) and neon-serverless (Vercel serverless) modes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Database = PgDatabase<any, typeof schema>;
 
