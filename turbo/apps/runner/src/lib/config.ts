@@ -24,7 +24,12 @@ export const runnerConfigSchema = z.object({
       memory_mb: z.number().int().min(128).default(2048),
       poll_interval_ms: z.number().int().min(1000).default(5000),
     })
-    .default({}),
+    .default({
+      max_concurrent: 1,
+      vcpu: 2,
+      memory_mb: 2048,
+      poll_interval_ms: 5000,
+    }),
   firecracker: z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
@@ -34,7 +39,9 @@ export const runnerConfigSchema = z.object({
     .object({
       port: z.number().int().min(1024).max(65535).default(8080),
     })
-    .default({}),
+    .default({
+      port: 8080,
+    }),
 });
 
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
@@ -51,7 +58,10 @@ export const debugConfigSchema = z.object({
       url: z.string().url().default("http://localhost:3000"),
       token: z.string().default("debug-token"),
     })
-    .default({}),
+    .default({
+      url: "http://localhost:3000",
+      token: "debug-token",
+    }),
   sandbox: z
     .object({
       max_concurrent: z.number().int().min(1).default(1),
@@ -59,7 +69,12 @@ export const debugConfigSchema = z.object({
       memory_mb: z.number().int().min(128).default(2048),
       poll_interval_ms: z.number().int().min(1000).default(5000),
     })
-    .default({}),
+    .default({
+      max_concurrent: 1,
+      vcpu: 2,
+      memory_mb: 2048,
+      poll_interval_ms: 5000,
+    }),
   firecracker: z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
@@ -69,7 +84,9 @@ export const debugConfigSchema = z.object({
     .object({
       port: z.number().int().min(1024).max(65535).default(8080),
     })
-    .default({}),
+    .default({
+      port: 8080,
+    }),
 });
 
 export type DebugConfig = z.infer<typeof debugConfigSchema>;
@@ -88,7 +105,7 @@ export function loadDebugConfig(configPath: string): DebugConfig {
 
   const result = debugConfigSchema.safeParse(raw);
   if (!result.success) {
-    const errors = result.error.errors
+    const errors = result.error.issues
       .map((e) => `  - ${e.path.join(".")}: ${e.message}`)
       .join("\n");
     throw new Error(`Invalid configuration:\n${errors}`);
@@ -110,7 +127,7 @@ export function loadConfig(configPath: string): RunnerConfig {
 
   const result = runnerConfigSchema.safeParse(raw);
   if (!result.success) {
-    const errors = result.error.errors
+    const errors = result.error.issues
       .map((e) => `  - ${e.path.join(".")}: ${e.message}`)
       .join("\n");
     throw new Error(`Invalid configuration:\n${errors}`);

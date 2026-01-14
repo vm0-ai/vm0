@@ -11,8 +11,7 @@ import { initMetrics } from "./metrics";
 
 // Private variables for singleton instances
 let _env: Env | undefined;
-let _pool: PgPool | undefined;
-let _neonPool: NeonPool | undefined;
+let _pool: PgPool | NeonPool | undefined;
 let _db:
   | NodePgDatabase<typeof schema>
   | NeonDatabase<typeof schema>
@@ -47,42 +46,41 @@ export function initServices(): void {
       return _env;
     },
     get pool() {
-      if (isVercel) {
-        // In Vercel serverless, use Neon WebSocket pool instead of pg pool
-        throw new Error(
-          "pg Pool is not available in Vercel serverless environment. " +
-            "Use services.db directly with Neon WebSocket mode.",
-        );
-      }
       if (!_pool) {
-        // Use regular pg driver for local development
-        _pool = new PgPool({
-          connectionString: this.env.DATABASE_URL,
-          max: 10,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-        });
+        if (isVercel) {
+          // Use Neon serverless driver for Vercel
+          // This driver is optimized for Neon's connection pooler and serverless environments
+          // See: https://vercel.com/guides/connection-pooling-with-functions
+          _pool = new NeonPool({
+            connectionString: this.env.DATABASE_URL,
+            max: 10,
+            idleTimeoutMillis: 10000,
+            connectionTimeoutMillis: 10000,
+          });
+        } else {
+          // Use regular pg driver for local development
+          _pool = new PgPool({
+            connectionString: this.env.DATABASE_URL,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          });
+        }
       }
       return _pool;
     },
     get db() {
       if (!_db) {
         if (isVercel) {
-          // Use Neon WebSocket mode for Vercel serverless environment
+          // Use Neon serverless driver with drizzle for Vercel
           // This supports interactive transactions (required for storage commit)
-          // See: https://neon.com/docs/serverless/serverless-driver
-          if (!_neonPool) {
-            _neonPool = new NeonPool({
-              connectionString: this.env.DATABASE_URL,
-              // Limit max connections to avoid exhausting Neon's connection pool
-              // Neon preview branches have ~5 connections by default
-              max: 3,
-            });
-          }
-          _db = drizzleNeonServerless({ client: _neonPool, schema });
+          _db = drizzleNeonServerless({
+            client: this.pool as NeonPool,
+            schema,
+          });
         } else {
-          // Use regular pg driver with pool for local development
-          _db = drizzleNodePg(this.pool, { schema });
+          // Use regular pg driver with drizzle for local development
+          _db = drizzleNodePg(this.pool as PgPool, { schema });
         }
       }
       return _db;

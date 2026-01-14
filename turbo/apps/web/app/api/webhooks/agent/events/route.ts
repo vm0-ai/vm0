@@ -59,13 +59,19 @@ const router = tsr.router(webhookEventsContract, {
 
     // Events are already masked client-side in the sandbox before sending
     // No server-side masking needed - secrets values are never stored
-    const axiomEvents = body.events.map((event) => ({
-      runId: body.runId,
-      userId,
-      sequenceNumber: event.sequenceNumber,
-      eventType: event.type,
-      eventData: event, // Already masked by client
-    }));
+    const axiomEvents = body.events.map(
+      (event: {
+        type: string;
+        sequenceNumber: number;
+        [key: string]: unknown;
+      }) => ({
+        runId: body.runId,
+        userId,
+        sequenceNumber: event.sequenceNumber,
+        eventType: event.type,
+        eventData: event, // Already masked by client
+      }),
+    );
 
     // Ingest events to Axiom
     const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
