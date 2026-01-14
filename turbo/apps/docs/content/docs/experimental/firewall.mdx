@@ -11,7 +11,7 @@ The network firewall controls outbound network traffic from your agent sandbox. 
 
 ## Prerequisites
 
-Network firewall requires a [self-hosted runner](/docs/experimental/runner). Add `experimental_runner` to your configuration before enabling the firewall.
+Network firewall requires the VM0 production runner. Add `experimental_runner` with `group: vm0/production` to your configuration before enabling the firewall.
 
 ## Quick Start
 
@@ -23,8 +23,8 @@ version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-    experimental_runner:
-      group: myorg/production
+    experimental_runner: # [!code highlight]
+      group: vm0/production # [!code highlight]
     experimental_firewall: # [!code highlight]
       enabled: true # [!code highlight]
       rules: # [!code highlight]
