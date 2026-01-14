@@ -9,7 +9,7 @@ import {
   validateSkillDirectory,
   readSkillFrontmatter,
   type SkillFrontmatter,
-} from "./github-skills";
+} from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
 import { getValidatedProvider } from "@vm0/core";
 

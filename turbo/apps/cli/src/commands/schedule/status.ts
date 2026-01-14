@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api-client";
-import { loadAgentName, formatDateTime } from "../../lib/schedule-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { loadAgentName, formatDateTime } from "../../lib/domain/schedule-utils";
 
 interface ScheduleResponse {
   id: string;

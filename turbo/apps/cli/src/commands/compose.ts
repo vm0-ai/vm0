@@ -10,17 +10,17 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
 } from "@vm0/core";
-import { apiClient } from "../lib/api-client";
-import { validateAgentCompose } from "../lib/yaml-validator";
+import { apiClient } from "../lib/api/api-client";
+import { validateAgentCompose } from "../lib/domain/yaml-validator";
 import {
   getProviderDefaults,
   getDefaultImageWithApps,
-} from "../lib/provider-config";
+} from "../lib/domain/provider-config";
 import {
   uploadInstructions,
   uploadSkill,
   type SkillUploadResult,
-} from "../lib/system-storage";
+} from "../lib/storage/system-storage";
 
 /**
  * Extract secret names from compose content using variable references.

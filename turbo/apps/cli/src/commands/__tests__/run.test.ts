@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runCommand } from "../run";
-import { apiClient } from "../../lib/api-client";
-import { parseEvent } from "../../lib/event-parser-factory";
-import { EventRenderer } from "../../lib/event-renderer";
+import { apiClient } from "../../lib/api/api-client";
+import { parseEvent } from "../../lib/events/event-parser-factory";
+import { EventRenderer } from "../../lib/events/event-renderer";
 import chalk from "chalk";
 
 // Mock dependencies
-vi.mock("../../lib/api-client");
-vi.mock("../../lib/event-parser-factory");
-vi.mock("../../lib/event-renderer");
+vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/events/event-parser-factory");
+vi.mock("../../lib/events/event-renderer");
 
 describe("run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

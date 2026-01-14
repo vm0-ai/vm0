@@ -4,10 +4,10 @@ import path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
-import { readStorageConfig } from "../../lib/storage-utils";
-import { apiClient, type ApiError } from "../../lib/api-client";
-import { listTarFiles, removeExtraFiles } from "../../lib/file-utils";
-import { handleEmptyStorageResponse } from "../../lib/pull-utils";
+import { readStorageConfig } from "../../lib/storage/storage-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { listTarFiles, removeExtraFiles } from "../../lib/utils/file-utils";
+import { handleEmptyStorageResponse } from "../../lib/storage/pull-utils";
 
 /**
  * Format bytes to human-readable format

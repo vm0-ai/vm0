@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { statusCommand } from "../volume/status";
-import * as storageUtils from "../../lib/storage-utils";
-import { apiClient } from "../../lib/api-client";
+import * as storageUtils from "../../lib/storage/storage-utils";
+import { apiClient } from "../../lib/api/api-client";
 
 // Mock dependencies
-vi.mock("../../lib/storage-utils");
-vi.mock("../../lib/api-client");
+vi.mock("../../lib/storage/storage-utils");
+vi.mock("../../lib/api/api-client");
 
 describe("volume status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

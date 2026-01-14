@@ -5,8 +5,8 @@ import {
   isValidStorageName,
   writeStorageConfig,
   readStorageConfig,
-} from "../../lib/storage-utils";
-import { promptText, isInteractive } from "../../lib/prompt-utils";
+} from "../../lib/storage/storage-utils";
+import { promptText, isInteractive } from "../../lib/utils/prompt-utils";
 
 export const initCommand = new Command()
   .name("init")

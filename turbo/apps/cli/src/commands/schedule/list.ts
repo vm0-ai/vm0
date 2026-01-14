@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api-client";
-import { formatRelativeTime } from "../../lib/schedule-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { formatRelativeTime } from "../../lib/domain/schedule-utils";
 
 /**
  * Schedule response from API

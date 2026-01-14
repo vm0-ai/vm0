@@ -6,8 +6,8 @@ import { execSync, spawnSync } from "child_process";
 import path from "path";
 import { parse as parseYaml } from "yaml";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import { getToken } from "../lib/config";
-import { promptConfirm } from "../lib/prompt-utils";
+import { getToken } from "../lib/api/config";
+import { promptConfirm } from "../lib/utils/prompt-utils";
 
 // ============================================================================
 // Prerequisite Checks

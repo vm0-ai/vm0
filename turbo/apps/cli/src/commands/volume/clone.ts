@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { cloneStorage } from "../../lib/clone-utils";
+import { cloneStorage } from "../../lib/storage/clone-utils";
 
 export const cloneCommand = new Command()
   .name("clone")

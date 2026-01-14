@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { removeExtraFiles } from "./file-utils";
+import { removeExtraFiles } from "../utils/file-utils";
 
 /**
  * Result of handling an empty storage response (HTTP 204).

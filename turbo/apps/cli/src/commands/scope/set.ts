@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api-client";
+import { apiClient } from "../../lib/api/api-client";
 
 export const setCommand = new Command()
   .name("set")

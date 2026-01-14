@@ -3,8 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as tar from "tar";
-import { apiClient } from "./api-client";
-import { excludeVm0Filter } from "./file-utils";
+import { apiClient } from "../api/api-client";
+import { excludeVm0Filter } from "../utils/file-utils";
 
 /**
  * File entry with pre-computed hash for direct upload

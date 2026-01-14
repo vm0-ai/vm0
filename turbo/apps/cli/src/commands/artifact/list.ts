@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api-client";
-import { formatBytes, formatRelativeTime } from "../../lib/file-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { formatBytes, formatRelativeTime } from "../../lib/utils/file-utils";
 
 /**
  * List response from /api/storages/list

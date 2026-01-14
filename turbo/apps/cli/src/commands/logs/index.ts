@@ -5,11 +5,11 @@ import {
   TelemetryMetric,
   RunEvent,
   NetworkLogEntry,
-} from "../../lib/api-client";
-import { parseTime } from "../../lib/time-parser";
-import { ClaudeEventParser } from "../../lib/claude-event-parser";
-import { EventRenderer } from "../../lib/event-renderer";
-import { CodexEventRenderer } from "../../lib/codex-event-renderer";
+} from "../../lib/api/api-client";
+import { parseTime } from "../../lib/utils/time-parser";
+import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
+import { EventRenderer } from "../../lib/events/event-renderer";
+import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 
 /**
  * Log type for mutually exclusive options
