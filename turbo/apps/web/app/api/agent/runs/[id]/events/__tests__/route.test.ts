@@ -44,7 +44,7 @@ vi.mock("../../../../../../../src/lib/axiom", () => ({
     AGENT_RUN_EVENTS: "agent-run-events",
     WEB_LOGS: "web-logs",
     REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log"
+    SANDBOX_OP_LOG: "sandbox-op-log",
   },
 }));
 
