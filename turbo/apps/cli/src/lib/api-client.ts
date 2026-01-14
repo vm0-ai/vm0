@@ -93,11 +93,6 @@ export interface TelemetryMetric {
   disk_total: number;
 }
 
-export interface GetTelemetryResponse {
-  systemLog: string;
-  metrics: TelemetryMetric[];
-}
-
 export interface GetSystemLogResponse {
   systemLog: string;
   hasMore: boolean;
@@ -147,13 +142,6 @@ export interface NetworkLogEntry {
 export interface GetNetworkLogsResponse {
   networkLogs: NetworkLogEntry[];
   hasMore: boolean;
-}
-
-export interface CreateImageResponse {
-  buildId: string;
-  imageId: string;
-  alias: string;
-  versionId: string;
 }
 
 export interface ScopeResponse {
@@ -392,26 +380,6 @@ class ApiClient {
     return (await response.json()) as GetEventsResponse;
   }
 
-  async getTelemetry(runId: string): Promise<GetTelemetryResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const response = await fetch(
-      `${baseUrl}/api/agent/runs/${runId}/telemetry`,
-      {
-        method: "GET",
-        headers,
-      },
-    );
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch telemetry");
-    }
-
-    return (await response.json()) as GetTelemetryResponse;
-  }
-
   async getSystemLog(
     runId: string,
     options?: { since?: number; limit?: number; order?: "asc" | "desc" },
@@ -546,28 +514,6 @@ class ApiClient {
     }
 
     return (await response.json()) as GetNetworkLogsResponse;
-  }
-
-  async createImage(body: {
-    dockerfile: string;
-    alias: string;
-    deleteExisting?: boolean;
-  }): Promise<CreateImageResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const response = await fetch(`${baseUrl}/api/images`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to create image");
-    }
-
-    return (await response.json()) as CreateImageResponse;
   }
 
   /**
