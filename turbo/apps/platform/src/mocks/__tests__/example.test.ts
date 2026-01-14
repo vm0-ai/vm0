@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { User, ApiError } from "../handlers/example.ts";
 
-describe("MSW Example Handlers", () => {
+describe("msw example handlers", () => {
   it("should return list of users", async () => {
     const response = await fetch("/api/users");
     const users = (await response.json()) as User[];
 
-    expect(response.ok).toBe(true);
+    expect(response.ok).toBeTruthy();
     expect(users).toHaveLength(2);
     expect(users[0]?.name).toBe("Alice");
     expect(users[1]?.name).toBe("Bob");
@@ -16,7 +16,7 @@ describe("MSW Example Handlers", () => {
     const response = await fetch("/api/users/1");
     const user = (await response.json()) as User;
 
-    expect(response.ok).toBe(true);
+    expect(response.ok).toBeTruthy();
     expect(user.id).toBe("1");
     expect(user.name).toBe("Alice");
     expect(user.email).toBe("alice@example.com");
@@ -26,7 +26,7 @@ describe("MSW Example Handlers", () => {
     const response = await fetch("/api/users/999");
     const error = (await response.json()) as ApiError;
 
-    expect(response.ok).toBe(false);
+    expect(response.ok).toBeFalsy();
     expect(response.status).toBe(404);
     expect(error.error).toBe("not_found");
   });
