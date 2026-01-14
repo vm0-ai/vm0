@@ -29,7 +29,10 @@ describe("run command", () => {
       id: testUuid,
       name: "test-agent",
       headVersionId: "version-123",
-      content: { version: "1", agents: { "test-agent": { provider: "claude" } } },
+      content: {
+        version: "1",
+        agents: { "test-agent": { provider: "claude" } },
+      },
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     });
@@ -116,7 +119,10 @@ describe("run command", () => {
         id: testUuid,
         name: "my-agent",
         headVersionId: "version-123",
-        content: { version: "1", agents: { "my-agent": { provider: "claude" } } },
+        content: {
+          version: "1",
+          agents: { "my-agent": { provider: "claude" } },
+        },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
