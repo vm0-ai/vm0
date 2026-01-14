@@ -10,7 +10,11 @@ import {
 import { eq } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { agentSchedules } from "../../../db/schema/agent-schedule";
-import { agentComposes } from "../../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../db/schema/agent-compose";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { scopes } from "../../../db/schema/scope";
 import { users } from "../../../db/schema/user";
 
@@ -31,6 +35,7 @@ vi.mock("../../auth/sandbox-token", () => ({
 const TEST_USER_ID = "00000000-0000-0000-0000-000000000099";
 const TEST_SCOPE_ID = "00000000-0000-0000-0000-000000000098";
 const TEST_COMPOSE_ID = "00000000-0000-0000-0000-000000000097";
+const TEST_VERSION_ID = "test-version-sha256-hash-for-schedule-tests";
 const TEST_PREFIX = "test-schedule-";
 
 // Import ScheduleService after mocks
@@ -75,8 +80,21 @@ describe("ScheduleService", () => {
         userId: TEST_USER_ID,
         scopeId: TEST_SCOPE_ID,
         name: "test-agent",
+        headVersionId: TEST_VERSION_ID,
         createdAt: new Date(),
         updatedAt: new Date(),
+      })
+      .onConflictDoNothing();
+
+    // Create test compose version (required for executeSchedule)
+    await globalThis.services.db
+      .insert(agentComposeVersions)
+      .values({
+        id: TEST_VERSION_ID,
+        composeId: TEST_COMPOSE_ID,
+        content: { agents: { "test-agent": { provider: "test" } } },
+        createdBy: TEST_USER_ID,
+        createdAt: new Date(),
       })
       .onConflictDoNothing();
   });
@@ -85,17 +103,31 @@ describe("ScheduleService", () => {
     scheduleService = new ScheduleService();
     vi.clearAllMocks();
 
-    // Clean up test schedules
+    // Clean up test schedules first (they reference runs via lastRunId)
     await globalThis.services.db
       .delete(agentSchedules)
       .where(eq(agentSchedules.composeId, TEST_COMPOSE_ID));
+
+    // Then clean up test runs
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
   });
 
   afterAll(async () => {
     // Clean up all test data (order matters due to foreign keys)
+    // Schedules reference runs via lastRunId, so delete schedules first
     await globalThis.services.db
       .delete(agentSchedules)
       .where(eq(agentSchedules.composeId, TEST_COMPOSE_ID));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, TEST_VERSION_ID));
 
     await globalThis.services.db
       .delete(agentComposes)
@@ -475,6 +507,257 @@ describe("ScheduleService", () => {
       });
 
       expect(result.schedule.secretNames).toBeNull();
+    });
+  });
+
+  describe("executeDueSchedules", () => {
+    it("should return zero when no schedules are due", async () => {
+      // Create a schedule with future nextRunAt
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}future-schedule`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Future schedule",
+      });
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(0);
+    });
+
+    it("should execute due schedules", async () => {
+      // Create a schedule and manually set nextRunAt to past
+      const deployResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}due-schedule`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Due schedule",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}due-schedule`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(1);
+      expect(result.skipped).toBe(0);
+
+      // Verify run was created
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.prompt).toBe("Due schedule");
+      expect(runs[0]!.status).toBe("pending");
+    });
+
+    it("should skip schedule when previous run is still pending", async () => {
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}pending-run`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule with pending run",
+      });
+
+      // Create a pending run and link it to the schedule
+      const [pendingRun] = await globalThis.services.db
+        .insert(agentRuns)
+        .values({
+          userId: TEST_USER_ID,
+          agentComposeVersionId: TEST_VERSION_ID,
+          status: "pending",
+          prompt: "Previous run",
+          createdAt: new Date(),
+        })
+        .returning();
+
+      // Update schedule to have past nextRunAt and link to pending run
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({
+          nextRunAt: new Date(Date.now() - 60000),
+          lastRunId: pendingRun!.id,
+        })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}pending-run`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(1);
+    });
+
+    it("should skip schedule when previous run is still running", async () => {
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}running-run`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule with running run",
+      });
+
+      // Create a running run and link it to the schedule
+      const [runningRun] = await globalThis.services.db
+        .insert(agentRuns)
+        .values({
+          userId: TEST_USER_ID,
+          agentComposeVersionId: TEST_VERSION_ID,
+          status: "running",
+          prompt: "Running run",
+          createdAt: new Date(),
+        })
+        .returning();
+
+      // Update schedule to have past nextRunAt and link to running run
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({
+          nextRunAt: new Date(Date.now() - 60000),
+          lastRunId: runningRun!.id,
+        })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}running-run`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(1);
+    });
+
+    it("should execute schedule when previous run is completed", async () => {
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}completed-run`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule with completed run",
+      });
+
+      // Create a completed run and link it to the schedule
+      const [completedRun] = await globalThis.services.db
+        .insert(agentRuns)
+        .values({
+          userId: TEST_USER_ID,
+          agentComposeVersionId: TEST_VERSION_ID,
+          status: "success",
+          prompt: "Completed run",
+          createdAt: new Date(),
+        })
+        .returning();
+
+      // Update schedule to have past nextRunAt and link to completed run
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({
+          nextRunAt: new Date(Date.now() - 60000),
+          lastRunId: completedRun!.id,
+        })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}completed-run`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(1);
+      expect(result.skipped).toBe(0);
+    });
+
+    it("should disable one-time schedule after execution", async () => {
+      // Create a one-time schedule with atTime
+      const futureTime = new Date(Date.now() + 1000).toISOString();
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}one-time`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "One-time schedule",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}one-time`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(1);
+
+      // Verify schedule was disabled
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}one-time`));
+
+      expect(schedule!.enabled).toBe(false);
+      expect(schedule!.nextRunAt).toBeNull();
+    });
+
+    it("should update nextRunAt for recurring cron schedule", async () => {
+      // Create a cron schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}recurring`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Recurring schedule",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}recurring`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify nextRunAt was updated to future
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}recurring`));
+
+      expect(schedule!.enabled).toBe(true);
+      expect(schedule!.nextRunAt).not.toBeNull();
+      expect(schedule!.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(schedule!.lastRunAt).not.toBeNull();
+      expect(schedule!.lastRunId).not.toBeNull();
+    });
+
+    it("should not execute disabled schedules", async () => {
+      // Create and disable a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}disabled`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Disabled schedule",
+      });
+
+      await scheduleService.disable(
+        TEST_USER_ID,
+        TEST_COMPOSE_ID,
+        `${TEST_PREFIX}disabled`,
+      );
+
+      // Even if we manually set nextRunAt to past, it shouldn't execute
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}disabled`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(0);
     });
   });
 });
