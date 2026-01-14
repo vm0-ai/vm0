@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/vm0-ai/vm0/compare/core-v4.5.0...core-v4.6.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add api endpoint to view schedule run history ([#1204](https://github.com/vm0-ai/vm0/issues/1204)) ([c53f1a6](https://github.com/vm0-ai/vm0/commit/c53f1a664ecbf460727217364f62089eff1cc408))
+
 ## [4.5.0](https://github.com/vm0-ai/vm0/compare/core-v4.4.0...core-v4.5.0) (2026-01-14)
 
 

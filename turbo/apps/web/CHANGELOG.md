@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.10.0](https://github.com/vm0-ai/vm0/compare/web-v9.9.1...web-v9.10.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add api endpoint to view schedule run history ([#1204](https://github.com/vm0-ai/vm0/issues/1204)) ([c53f1a6](https://github.com/vm0-ai/vm0/commit/c53f1a664ecbf460727217364f62089eff1cc408))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.0
+
 ## [9.9.1](https://github.com/vm0-ai/vm0/compare/web-v9.9.0...web-v9.9.1) (2026-01-14)
 
 
