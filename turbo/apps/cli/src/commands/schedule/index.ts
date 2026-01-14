@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { initCommand } from "./init";
 import { deployCommand } from "./deploy";
 import { listCommand } from "./list";
 import { statusCommand } from "./status";
@@ -9,6 +10,7 @@ import { disableCommand } from "./disable";
 export const scheduleCommand = new Command()
   .name("schedule")
   .description("Manage agent schedules")
+  .addCommand(initCommand)
   .addCommand(deployCommand)
   .addCommand(listCommand)
   .addCommand(statusCommand)
