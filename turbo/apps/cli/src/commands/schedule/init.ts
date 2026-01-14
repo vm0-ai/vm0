@@ -289,7 +289,10 @@ export const initCommand = new Command()
             console.error(chalk.red("✗ --prompt is required"));
             process.exit(1);
           }
-          promptText_ = await promptText("Prompt to run", "let's start working.");
+          promptText_ = await promptText(
+            "Prompt to run",
+            "let's start working.",
+          );
           if (!promptText_) {
             console.log(chalk.dim("Cancelled"));
             return;
