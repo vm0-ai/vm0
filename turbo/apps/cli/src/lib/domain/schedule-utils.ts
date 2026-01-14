@@ -183,7 +183,9 @@ export function extractVarsAndSecrets(): VarsAndSecrets {
         }
 
         // Match ${{ secrets.NAME }}
-        const secretsMatches = value.matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g);
+        const secretsMatches = value.matchAll(
+          /\$\{\{\s*secrets\.(\w+)\s*\}\}/g,
+        );
         for (const match of secretsMatches) {
           if (match[1] && !result.secrets.includes(match[1])) {
             result.secrets.push(match[1]);

@@ -79,15 +79,9 @@ export const initCommand = new Command()
   .name("init")
   .description("Create a schedule.yaml interactively")
   .option("-n, --name <name>", "Schedule name")
-  .option(
-    "-f, --frequency <type>",
-    "Frequency: daily|weekly|monthly|once",
-  )
+  .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
-  .option(
-    "-d, --day <day>",
-    "Day of week (mon-sun) or day of month (1-31)",
-  )
+  .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--no-vars", "Don't include vars from vm0.yaml")
@@ -139,7 +133,9 @@ export const initCommand = new Command()
         let scheduleName = options.name;
         if (!scheduleName) {
           if (!isInteractive()) {
-            console.error(chalk.red("✗ --name is required in non-interactive mode"));
+            console.error(
+              chalk.red("✗ --name is required in non-interactive mode"),
+            );
             process.exit(1);
           }
           scheduleName = await promptText(
@@ -194,11 +190,7 @@ export const initCommand = new Command()
             }
           } else if (isInteractive()) {
             if (frequency === "weekly") {
-              day = await promptSelect(
-                "Day of week",
-                DAY_OF_WEEK_CHOICES,
-                0,
-              );
+              day = await promptSelect("Day of week", DAY_OF_WEEK_CHOICES, 0);
               if (day === undefined) {
                 console.log(chalk.dim("Cancelled"));
                 return;
@@ -257,7 +249,11 @@ export const initCommand = new Command()
               console.error(chalk.red("✗ --time is required (HH:MM format)"));
               process.exit(1);
             }
-            time = await promptText("Time (HH:MM)", "09:00", validateTimeFormat);
+            time = await promptText(
+              "Time (HH:MM)",
+              "09:00",
+              validateTimeFormat,
+            );
             if (!time) {
               console.log(chalk.dim("Cancelled"));
               return;
@@ -378,11 +374,8 @@ export const initCommand = new Command()
         if (atTime) {
           scheduleYaml.schedules[scheduleName]!.on.at = atTime;
         } else if (time && frequency !== "once") {
-          scheduleYaml.schedules[scheduleName]!.on.cron = generateCronExpression(
-            frequency,
-            time,
-            day,
-          );
+          scheduleYaml.schedules[scheduleName]!.on.cron =
+            generateCronExpression(frequency, time, day);
         }
 
         // Add vars and secrets

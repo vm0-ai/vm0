@@ -42,8 +42,12 @@ describe("schedule init utilities", () => {
 
     it("should generate monthly cron expression", () => {
       expect(generateCronExpression("monthly", "09:00", 1)).toBe("0 9 1 * *");
-      expect(generateCronExpression("monthly", "12:00", 15)).toBe("0 12 15 * *");
-      expect(generateCronExpression("monthly", "23:00", 31)).toBe("0 23 31 * *");
+      expect(generateCronExpression("monthly", "12:00", 15)).toBe(
+        "0 12 15 * *",
+      );
+      expect(generateCronExpression("monthly", "23:00", 31)).toBe(
+        "0 23 31 * *",
+      );
     });
 
     it("should use default day when not provided", () => {
@@ -76,10 +80,18 @@ describe("schedule init utilities", () => {
     });
 
     it("should reject invalid time formats", () => {
-      expect(validateTimeFormat("9")).toBe("Invalid format. Use HH:MM (e.g., 09:00)");
-      expect(validateTimeFormat("900")).toBe("Invalid format. Use HH:MM (e.g., 09:00)");
-      expect(validateTimeFormat("9:0")).toBe("Invalid format. Use HH:MM (e.g., 09:00)");
-      expect(validateTimeFormat("")).toBe("Invalid format. Use HH:MM (e.g., 09:00)");
+      expect(validateTimeFormat("9")).toBe(
+        "Invalid format. Use HH:MM (e.g., 09:00)",
+      );
+      expect(validateTimeFormat("900")).toBe(
+        "Invalid format. Use HH:MM (e.g., 09:00)",
+      );
+      expect(validateTimeFormat("9:0")).toBe(
+        "Invalid format. Use HH:MM (e.g., 09:00)",
+      );
+      expect(validateTimeFormat("")).toBe(
+        "Invalid format. Use HH:MM (e.g., 09:00)",
+      );
     });
 
     it("should reject out of range hours", () => {
