@@ -529,7 +529,7 @@ describe("ScheduleService", () => {
 
     it("should execute due schedules", async () => {
       // Create a schedule and manually set nextRunAt to past
-      const deployResult = await scheduleService.deploy(TEST_USER_ID, {
+      await scheduleService.deploy(TEST_USER_ID, {
         name: `${TEST_PREFIX}due-schedule`,
         composeId: TEST_COMPOSE_ID,
         cronExpression: "0 9 * * *",
