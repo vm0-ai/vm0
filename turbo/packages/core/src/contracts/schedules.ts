@@ -49,20 +49,29 @@ export const scheduleYamlSchema = z.object({
 /**
  * Deploy schedule request - sent from CLI to API
  */
-const deployScheduleRequestSchema = z.object({
-  name: z.string().min(1).max(64, "Schedule name max 64 chars"),
-  cronExpression: z.string().optional(),
-  atTime: z.string().optional(),
-  timezone: z.string().default("UTC"),
-  prompt: z.string().min(1, "Prompt required"),
-  vars: z.record(z.string(), z.string()).optional(),
-  secrets: z.record(z.string(), z.string()).optional(),
-  artifactName: z.string().optional(),
-  artifactVersion: z.string().optional(),
-  volumeVersions: z.record(z.string(), z.string()).optional(),
-  // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
-  composeId: z.string().uuid("Invalid compose ID"),
-});
+const deployScheduleRequestSchema = z
+  .object({
+    name: z.string().min(1).max(64, "Schedule name max 64 chars"),
+    cronExpression: z.string().optional(),
+    atTime: z.string().optional(),
+    timezone: z.string().default("UTC"),
+    prompt: z.string().min(1, "Prompt required"),
+    vars: z.record(z.string(), z.string()).optional(),
+    secrets: z.record(z.string(), z.string()).optional(),
+    artifactName: z.string().optional(),
+    artifactVersion: z.string().optional(),
+    volumeVersions: z.record(z.string(), z.string()).optional(),
+    // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
+    composeId: z.string().uuid("Invalid compose ID"),
+  })
+  .refine(
+    (data) =>
+      (data.cronExpression && !data.atTime) ||
+      (!data.cronExpression && data.atTime),
+    {
+      message: "Exactly one of 'cronExpression' or 'atTime' must be specified",
+    },
+  );
 
 /**
  * Schedule response - returned from API

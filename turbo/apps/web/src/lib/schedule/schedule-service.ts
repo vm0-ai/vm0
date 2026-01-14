@@ -235,10 +235,14 @@ export class ScheduleService {
         .where(eq(agentSchedules.id, existing.id))
         .returning();
 
+      if (!updated) {
+        throw new Error(`Failed to update schedule ${request.name}`);
+      }
+
       log.debug(`Updated schedule ${request.name} (${existing.id})`);
 
       return {
-        schedule: this.toResponse(updated!, compose.name, scopeSlug),
+        schedule: this.toResponse(updated, compose.name, scopeSlug),
         created: false,
       };
     } else {
@@ -264,10 +268,14 @@ export class ScheduleService {
         })
         .returning();
 
-      log.debug(`Created schedule ${request.name} (${created!.id})`);
+      if (!created) {
+        throw new Error(`Failed to create schedule ${request.name}`);
+      }
+
+      log.debug(`Created schedule ${request.name} (${created.id})`);
 
       return {
-        schedule: this.toResponse(created!, compose.name, scopeSlug),
+        schedule: this.toResponse(created, compose.name, scopeSlug),
         created: true,
       };
     }
@@ -433,9 +441,13 @@ export class ScheduleService {
       .where(eq(agentSchedules.id, schedule.id))
       .returning();
 
+    if (!updated) {
+      throw new Error(`Failed to enable schedule ${name}`);
+    }
+
     log.debug(`Enabled schedule ${name}`);
 
-    return this.toResponse(updated!, compose.name, scopeSlug);
+    return this.toResponse(updated, compose.name, scopeSlug);
   }
 
   /**

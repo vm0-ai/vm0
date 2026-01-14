@@ -1,15 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { existsSync, readFileSync } from "fs";
-import { parse as parseYaml } from "yaml";
 import { apiClient, type ApiError } from "../../lib/api-client";
-
-const CONFIG_FILE = "vm0.yaml";
-
-interface AgentComposeConfig {
-  version: string;
-  agents: Record<string, unknown>;
-}
+import { loadAgentName, formatDateTime } from "../../lib/schedule-utils";
 
 interface ScheduleResponse {
   id: string;
@@ -34,55 +26,13 @@ interface ScheduleResponse {
 }
 
 /**
- * Load vm0.yaml and return agent name
+ * Format date with styled relative time (adds chalk formatting)
  */
-function loadAgentName(): string | null {
-  if (!existsSync(CONFIG_FILE)) {
-    return null;
-  }
-  try {
-    const content = readFileSync(CONFIG_FILE, "utf8");
-    const config = parseYaml(content) as AgentComposeConfig;
-    const agentNames = Object.keys(config.agents || {});
-    return agentNames[0] || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Format date with relative time
- */
-function formatDateTime(dateStr: string | null): string {
+function formatDateTimeStyled(dateStr: string | null): string {
   if (!dateStr) return chalk.dim("-");
-
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const diffAbs = Math.abs(diffMs);
-
-  const minutes = Math.floor(diffAbs / (1000 * 60));
-  const hours = Math.floor(diffAbs / (1000 * 60 * 60));
-  const days = Math.floor(diffAbs / (1000 * 60 * 60 * 24));
-
-  const isPast = diffMs < 0;
-  let relative: string;
-
-  if (days > 0) {
-    relative = isPast ? `${days}d ago` : `in ${days}d`;
-  } else if (hours > 0) {
-    relative = isPast ? `${hours}h ago` : `in ${hours}h`;
-  } else if (minutes > 0) {
-    relative = isPast ? `${minutes}m ago` : `in ${minutes}m`;
-  } else {
-    relative = isPast ? "just now" : "soon";
-  }
-
-  const formatted = date
-    .toISOString()
-    .replace("T", " ")
-    .replace(/\.\d+Z$/, " UTC");
-  return `${formatted} ${chalk.dim(`(${relative})`)}`;
+  const formatted = formatDateTime(dateStr);
+  // Add chalk.dim to the relative part (in parentheses)
+  return formatted.replace(/\(([^)]+)\)$/, chalk.dim("($1)"));
 }
 
 /**
@@ -105,12 +55,17 @@ export const statusCommand = new Command()
   .action(async (name: string) => {
     try {
       // Load vm0.yaml to get agent name
-      const agentName = loadAgentName();
-      if (!agentName) {
+      const result = loadAgentName();
+      if (result.error) {
+        console.error(chalk.red(`✗ Invalid vm0.yaml: ${result.error}`));
+        process.exit(1);
+      }
+      if (!result.agentName) {
         console.error(chalk.red("✗ No vm0.yaml found in current directory"));
         console.error(chalk.dim("  Run this command from the agent directory"));
         process.exit(1);
       }
+      const agentName = result.agentName;
 
       // Get compose ID
       let composeId: string;
@@ -157,15 +112,15 @@ export const statusCommand = new Command()
       // Next run (only if enabled)
       if (schedule.enabled) {
         console.log(
-          `${"Next Run:".padEnd(16)}${formatDateTime(schedule.nextRunAt)}`,
+          `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
         );
       }
 
       // Last run
       if (schedule.lastRunAt) {
         const lastRunInfo = schedule.lastRunId
-          ? `${formatDateTime(schedule.lastRunAt)} ${chalk.dim(`[${schedule.lastRunId.slice(0, 8)}]`)}`
-          : formatDateTime(schedule.lastRunAt);
+          ? `${formatDateTimeStyled(schedule.lastRunAt)} ${chalk.dim(`[${schedule.lastRunId.slice(0, 8)}]`)}`
+          : formatDateTimeStyled(schedule.lastRunAt);
         console.log(`${"Last Run:".padEnd(16)}${lastRunInfo}`);
       }
 

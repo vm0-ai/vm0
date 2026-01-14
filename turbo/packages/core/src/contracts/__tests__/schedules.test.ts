@@ -294,6 +294,40 @@ describe("schedules contracts", () => {
 
       expect(result.success).toBe(true);
     });
+
+    it("should reject when both cronExpression and atTime are provided", () => {
+      const result = deployScheduleRequestSchema.safeParse({
+        name: "task",
+        composeId: "123e4567-e89b-12d3-a456-426614174000",
+        cronExpression: "0 9 * * *",
+        atTime: "2025-12-31T23:59:59Z",
+        timezone: "UTC",
+        prompt: "Run",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toContain(
+          "Exactly one of 'cronExpression' or 'atTime' must be specified",
+        );
+      }
+    });
+
+    it("should reject when neither cronExpression nor atTime is provided", () => {
+      const result = deployScheduleRequestSchema.safeParse({
+        name: "task",
+        composeId: "123e4567-e89b-12d3-a456-426614174000",
+        timezone: "UTC",
+        prompt: "Run",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toContain(
+          "Exactly one of 'cronExpression' or 'atTime' must be specified",
+        );
+      }
+    });
   });
 
   describe("scheduleResponseSchema", () => {

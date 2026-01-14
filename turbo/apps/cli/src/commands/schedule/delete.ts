@@ -1,16 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { existsSync, readFileSync } from "fs";
-import { parse as parseYaml } from "yaml";
-import { apiClient, type ApiError } from "../../lib/api-client";
 import * as readline from "readline";
-
-const CONFIG_FILE = "vm0.yaml";
-
-interface AgentComposeConfig {
-  version: string;
-  agents: Record<string, unknown>;
-}
+import { apiClient, type ApiError } from "../../lib/api-client";
+import { loadAgentName } from "../../lib/schedule-utils";
 
 /**
  * Prompt for confirmation
@@ -29,23 +21,6 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
-/**
- * Load vm0.yaml and return agent name
- */
-function loadAgentName(): string | null {
-  if (!existsSync(CONFIG_FILE)) {
-    return null;
-  }
-  try {
-    const content = readFileSync(CONFIG_FILE, "utf8");
-    const config = parseYaml(content) as AgentComposeConfig;
-    const agentNames = Object.keys(config.agents || {});
-    return agentNames[0] || null;
-  } catch {
-    return null;
-  }
-}
-
 export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
@@ -55,12 +30,17 @@ export const deleteCommand = new Command()
   .action(async (name: string, options: { force?: boolean }) => {
     try {
       // Load vm0.yaml to get agent name
-      const agentName = loadAgentName();
-      if (!agentName) {
+      const result = loadAgentName();
+      if (result.error) {
+        console.error(chalk.red(`✗ Invalid vm0.yaml: ${result.error}`));
+        process.exit(1);
+      }
+      if (!result.agentName) {
         console.error(chalk.red("✗ No vm0.yaml found in current directory"));
         console.error(chalk.dim("  Run this command from the agent directory"));
         process.exit(1);
       }
+      const agentName = result.agentName;
 
       // Get compose ID
       let composeId: string;
