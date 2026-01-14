@@ -8,6 +8,19 @@ vi.mock("../config", () => ({
   getToken: vi.fn(),
 }));
 
+/**
+ * Create a mock Response that ts-rest can work with
+ * ts-rest needs headers.get() to read content-type
+ */
+function createMockResponse(body: unknown, status: number) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => body,
+  } as Response;
+}
+
 describe("ApiClient", () => {
   const mockFetch = vi.fn();
   const originalFetch = global.fetch;
@@ -150,30 +163,24 @@ describe("ApiClient", () => {
       };
       const mockResponse = {
         runId: "run-456",
-        status: "completed" as const,
-        sandboxId: "sbx-789",
-        output: "test output",
-        executionTimeMs: 1000,
+        status: "pending" as const,
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
 
       const result = await apiClient.createRun(mockRequest);
 
+      // Verify fetch was called with correct URL and headers
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/runs",
-        {
+        expect.objectContaining({
           method: "POST",
-          headers: {
-            Authorization: "Bearer test-token",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(mockRequest),
-        },
+          headers: expect.objectContaining({
+            authorization: "Bearer test-token",
+            "content-type": "application/json",
+          }),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -187,17 +194,16 @@ describe("ApiClient", () => {
         artifactName: "my-artifact",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          runId: "run-456",
-          status: "completed",
-          sandboxId: "sbx-789",
-          output: "output",
-          executionTimeMs: 1000,
-          createdAt: "2025-01-01T00:00:00Z",
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            runId: "run-456",
+            status: "pending",
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+          201,
+        ),
+      );
 
       await apiClient.createRun(mockRequest);
 
@@ -219,10 +225,7 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
 
       const result = await apiClient.createRun({
         agentComposeId: "cmp-123",
@@ -239,17 +242,11 @@ describe("ApiClient", () => {
       const mockResponse = {
         runId: "run-456",
         status: "failed" as const,
-        sandboxId: "sbx-789",
-        output: "",
         error: "Execution failed",
-        executionTimeMs: 2000,
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
 
       const result = await apiClient.createRun({
         agentComposeId: "cmp-123",
@@ -286,12 +283,12 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Compose not found", code: "NOT_FOUND" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          { error: { message: "Compose not found", code: "NOT_FOUND" } },
+          404,
+        ),
+      );
 
       await expect(
         apiClient.createRun({
@@ -303,12 +300,9 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "", code: "ERROR" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse({ error: { message: "", code: "ERROR" } }, 400),
+      );
 
       await expect(
         apiClient.createRun({

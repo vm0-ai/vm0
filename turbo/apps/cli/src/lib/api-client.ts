@@ -1,3 +1,5 @@
+import { initClient } from "@ts-rest/core";
+import { runsMainContract, type ApiErrorResponse } from "@vm0/core";
 import { getApiUrl, getToken } from "./config";
 
 export interface CreateComposeResponse {
@@ -9,13 +11,17 @@ export interface CreateComposeResponse {
   updatedAt?: string;
 }
 
+/**
+ * CreateRunResponse type
+ * TODO: In future phases, this can be replaced with inferred type from @vm0/core
+ */
 export interface CreateRunResponse {
   runId: string;
-  status: "pending" | "running" | "completed" | "failed";
-  sandboxId: string;
-  output: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  sandboxId?: string;
+  output?: string;
   error?: string;
-  executionTimeMs: number;
+  executionTimeMs?: number;
   createdAt: string;
 }
 
@@ -203,6 +209,46 @@ export interface GetCheckpointResponse {
   createdAt: string;
 }
 
+/**
+ * Create ts-rest client configuration with auth headers
+ */
+async function createClientConfig() {
+  const baseUrl = await getApiUrl();
+  if (!baseUrl) {
+    throw new Error("API URL not configured");
+  }
+
+  const token = await getToken();
+  if (!token) {
+    throw new Error("Not authenticated. Run: vm0 auth login");
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  // Add Vercel bypass secret if available (for CI/preview deployments)
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  return {
+    baseUrl,
+    baseHeaders: headers,
+    jsonQuery: true,
+  };
+}
+
+/**
+ * Get typed runs client
+ */
+async function getRunsClient() {
+  const config = await createClientConfig();
+  return initClient(runsMainContract, config);
+}
+
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
     const token = await getToken();
@@ -348,22 +394,19 @@ class ApiClient {
     // Required
     prompt: string;
   }): Promise<CreateRunResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const client = await getRunsClient();
+    const result = await client.create({ body });
 
-    const response = await fetch(`${baseUrl}/api/agent/runs`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      const message = error.error?.message || "Failed to create run";
-      throw new Error(message);
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 201) {
+      // Success - result.body is typed and validated
+      return result.body;
     }
 
-    return (await response.json()) as CreateRunResponse;
+    // Error cases - result.body is typed as ApiErrorResponse
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to create run";
+    throw new Error(message);
   }
 
   async getEvents(
