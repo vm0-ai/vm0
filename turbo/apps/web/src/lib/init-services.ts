@@ -12,7 +12,10 @@ import { initMetrics } from "./metrics";
 // Private variables for singleton instances
 let _env: Env | undefined;
 let _pool: PgPool | undefined;
-let _db: NodePgDatabase<typeof schema> | NeonHttpDatabase<typeof schema> | undefined;
+let _db:
+  | NodePgDatabase<typeof schema>
+  | NeonHttpDatabase<typeof schema>
+  | undefined;
 let _services: Services | undefined;
 let _metricsInitialized = false;
 
