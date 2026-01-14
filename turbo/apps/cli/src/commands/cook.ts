@@ -7,10 +7,10 @@ import { spawn } from "child_process";
 import { parse as parseYaml } from "yaml";
 import { config as dotenvConfig } from "dotenv";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import { validateAgentCompose } from "../lib/yaml-validator";
-import { readStorageConfig } from "../lib/storage-utils";
-import { checkAndUpgrade } from "../lib/update-checker";
-import { loadCookState, saveCookState } from "../lib/cook-state";
+import { validateAgentCompose } from "../lib/domain/yaml-validator";
+import { readStorageConfig } from "../lib/storage/storage-utils";
+import { checkAndUpgrade } from "../lib/utils/update-checker";
+import { loadCookState, saveCookState } from "../lib/domain/cook-state";
 
 declare const __CLI_VERSION__: string;
 

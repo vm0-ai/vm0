@@ -1,7 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { authenticate, logout, checkAuthStatus, setupToken } from "./lib/auth";
-import { getApiUrl } from "./lib/config";
+import {
+  authenticate,
+  logout,
+  checkAuthStatus,
+  setupToken,
+} from "./lib/api/auth";
+import { getApiUrl } from "./lib/api/config";
 import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";

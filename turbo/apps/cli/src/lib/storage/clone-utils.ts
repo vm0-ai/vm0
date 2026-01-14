@@ -4,8 +4,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { writeStorageConfig, type StorageType } from "./storage-utils";
-import { apiClient, type ApiError } from "./api-client";
-import { listTarFiles, formatBytes } from "./file-utils";
+import { apiClient, type ApiError } from "../api/api-client";
+import { listTarFiles, formatBytes } from "../utils/file-utils";
 
 /**
  * Download response from /api/storages/download

@@ -260,6 +260,17 @@ const metricDataSchema = z.object({
 });
 
 /**
+ * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
+ */
+const sandboxOperationSchema = z.object({
+  ts: z.string(),
+  action_type: z.string(),
+  duration_ms: z.number(),
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+
+/**
  * Network log entry schema (from mitmproxy addon)
  *
  * Supports two modes:
@@ -289,7 +300,7 @@ const networkLogSchema = z.object({
 export const webhookTelemetryContract = c.router({
   /**
    * POST /api/webhooks/agent/telemetry
-   * Receive telemetry data (system log, metrics, and network logs) from sandbox
+   * Receive telemetry data (system log, metrics, network logs, and sandbox operations) from sandbox
    */
   send: {
     method: "POST",
@@ -299,6 +310,7 @@ export const webhookTelemetryContract = c.router({
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogSchema).optional(),
+      sandboxOperations: z.array(sandboxOperationSchema).optional(),
     }),
     responses: {
       200: z.object({

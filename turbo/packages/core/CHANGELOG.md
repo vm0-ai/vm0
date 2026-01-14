@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/vm0-ai/vm0/compare/core-v4.4.0...core-v4.5.0) (2026-01-14)
+
+
+### Features
+
+* **metrics:** add sandbox internal metrics for operation timing ([#1202](https://github.com/vm0-ai/vm0/issues/1202)) ([7134662](https://github.com/vm0-ai/vm0/commit/7134662d5351ef8debc795e9a1c1e61a86a7df4c)), closes [#1174](https://github.com/vm0-ai/vm0/issues/1174)
+
 ## [4.4.0](https://github.com/vm0-ai/vm0/compare/core-v4.3.0...core-v4.4.0) (2026-01-14)
 
 

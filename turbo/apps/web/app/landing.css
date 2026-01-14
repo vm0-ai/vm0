@@ -1,17 +1,27 @@
-/* Reset */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Reset - wrapped in @layer base to not override Tailwind utilities */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 }
+
+/*
+ * Landing Page Variables
+ * Note: Core design tokens are in @vm0/ui/styles/globals.css
+ * These are landing-page specific extensions.
+ *
+ * --accent-color is the landing page's primary accent (same as design system --primary)
+ * kept as HEX for compatibility with existing CSS rules
+ */
 
 /* Root Variables - Dark Theme (Default) */
 :root {
-  --primary: #ed4e01;
-  --primary-hover: #ff6a1f;
-  --primary-light: rgba(237, 78, 1, 0.1);
+  /* Accent color for landing page (renamed to avoid conflict with design system --primary) */
+  --accent-color: #ed4e01;
+  --accent-color-hover: #ff6a1f;
+  --accent-color-light: rgba(237, 78, 1, 0.1);
 
-  /* Dark theme colors */
+  /* Landing page backgrounds */
   --bg-primary: #0a0a0a;
   --bg-secondary: #222222;
   --bg-tertiary: #1a1a1a;
@@ -234,7 +244,7 @@ section {
 }
 
 .logo-zero {
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .tagline {
@@ -271,7 +281,7 @@ section {
 
 .hamburger-btn:hover {
   background: var(--card-hover-bg);
-  border-color: var(--primary);
+  border-color: var(--accent-color);
 }
 
 .hamburger-line {
@@ -342,7 +352,7 @@ section {
 
 .mobile-menu-link:hover {
   background: var(--card-hover-bg);
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .mobile-menu-controls {
@@ -379,7 +389,7 @@ section {
 }
 
 .nav-link:hover {
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .nav-github {
@@ -411,8 +421,8 @@ section {
 
 .theme-toggle:hover {
   background: var(--card-hover-bg);
-  color: var(--primary);
-  border-color: var(--primary);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .theme-toggle svg {
@@ -440,21 +450,21 @@ section {
 
 .btn-try-demo {
   background: transparent;
-  color: var(--primary);
-  border: 1px solid var(--primary);
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
 }
 
 .btn-try-demo:hover {
-  background: var(--primary-light);
+  background: var(--accent-color-light);
 }
 
 .btn-get-access {
-  background: var(--primary);
+  background: var(--accent-color);
   color: white;
 }
 
 .btn-get-access:hover {
-  background: var(--primary-hover);
+  background: var(--accent-color-hover);
 }
 
 .btn-primary-large,
@@ -474,18 +484,18 @@ section {
 }
 
 .btn-primary-large {
-  background: var(--primary);
+  background: var(--accent-color);
   color: white;
 }
 
 .btn-primary-large:hover {
-  background: var(--primary-hover);
+  background: var(--accent-color-hover);
 }
 
 .btn-secondary-large {
-  background: var(--primary-light);
-  color: var(--primary);
-  border: 1px solid var(--primary);
+  background: var(--accent-color-light);
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
 }
 
 .btn-secondary-large:hover {
@@ -1422,7 +1432,11 @@ section {
   inset: 0;
   border-radius: 0 20px 20px 0;
   padding: 1px;
-  background: linear-gradient(to right, transparent 0%, var(--primary) 100%);
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--accent-color) 100%
+  );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -1493,7 +1507,7 @@ section {
   content: "";
   width: 10px;
   height: 10px;
-  background: var(--primary);
+  background: var(--accent-color);
   border-radius: 50%;
 }
 
@@ -2146,7 +2160,7 @@ section {
 }
 
 .footer-link:hover {
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .footer-link:hover img {
@@ -2194,7 +2208,7 @@ section {
 }
 
 .footer-legal-link:hover {
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .footer-legal-separator {
@@ -2962,8 +2976,8 @@ section {
 
 .language-switcher-button:hover {
   background: var(--card-hover-bg);
-  color: var(--primary);
-  border-color: var(--primary);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .language-switcher-dropdown {
@@ -3016,11 +3030,11 @@ section {
 
 .language-switcher-option:hover {
   background: var(--card-hover-bg);
-  color: var(--primary);
+  color: var(--accent-color);
 }
 
 .language-switcher-option.active {
-  color: var(--primary);
+  color: var(--accent-color);
   font-weight: 500;
 }
 

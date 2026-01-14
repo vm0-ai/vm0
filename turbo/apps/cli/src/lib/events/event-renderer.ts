@@ -10,7 +10,7 @@
 
 import chalk from "chalk";
 import type { ParsedEvent } from "./claude-event-parser";
-import type { RunResult } from "./api-client";
+import type { RunResult } from "../api/api-client";
 import { getProviderDisplayName, isSupportedProvider } from "@vm0/core";
 
 /**

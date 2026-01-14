@@ -3,18 +3,18 @@ import { setupGithubCommand } from "../setup-github";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import { execSync, spawnSync, SpawnSyncReturns } from "child_process";
-import * as config from "../../lib/config";
+import * as config from "../../lib/api/config";
 import * as core from "@vm0/core";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
 vi.mock("child_process");
-vi.mock("../../lib/config");
+vi.mock("../../lib/api/config");
 vi.mock("@vm0/core");
-vi.mock("../../lib/prompt-utils");
+vi.mock("../../lib/utils/prompt-utils");
 
-import * as promptUtils from "../../lib/prompt-utils";
+import * as promptUtils from "../../lib/utils/prompt-utils";
 
 describe("setup-github command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

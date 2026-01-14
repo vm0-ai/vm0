@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { readStorageConfig } from "../../lib/storage-utils";
-import { directUpload } from "../../lib/direct-upload";
+import { readStorageConfig } from "../../lib/storage/storage-utils";
+import { directUpload } from "../../lib/storage/direct-upload";
 
 /**
  * Format bytes to human-readable format

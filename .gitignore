@@ -160,7 +160,7 @@ settings.local.json
 codereviews/
 
 # Runner proxy CA certificates (generated per-deployment)
-turbo/scripts/deploy-runner/proxy-ca/
+turbo/apps/runner/scripts/deploy/proxy-ca/
 
 # SSH private keys and certificates (should never be committed)
 *.pem

@@ -20,10 +20,11 @@ import hashlib
 import tarfile
 import tempfile
 import shutil
+import time
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from common import RUN_ID, STORAGE_PREPARE_URL, STORAGE_COMMIT_URL
+from common import RUN_ID, STORAGE_PREPARE_URL, STORAGE_COMMIT_URL, record_sandbox_op
 from log import log_info, log_warn, log_error, log_debug
 from http_client import http_post_json, http_put_presigned
 
@@ -164,7 +165,9 @@ def create_direct_upload_snapshot(
 
     # Step 1: Collect file metadata
     log_info("Computing file hashes...")
+    hash_start = time.time()
     files = collect_file_metadata(mount_path)
+    record_sandbox_op("artifact_hash_compute", int((time.time() - hash_start) * 1000), True)
     log_info(f"Found {len(files)} files")
 
     if not files:
@@ -172,6 +175,7 @@ def create_direct_upload_snapshot(
 
     # Step 2: Call prepare endpoint
     log_info("Calling prepare endpoint...")
+    prepare_start = time.time()
     prepare_payload = {
         "storageName": storage_name,
         "storageType": storage_type,
@@ -183,12 +187,15 @@ def create_direct_upload_snapshot(
     prepare_response = http_post_json(STORAGE_PREPARE_URL, prepare_payload)
     if not prepare_response:
         log_error("Failed to call prepare endpoint")
+        record_sandbox_op("artifact_prepare_api", int((time.time() - prepare_start) * 1000), False)
         return None
 
     version_id = prepare_response.get("versionId")
     if not version_id:
         log_error(f"Invalid prepare response: {prepare_response}")
+        record_sandbox_op("artifact_prepare_api", int((time.time() - prepare_start) * 1000), False)
         return None
+    record_sandbox_op("artifact_prepare_api", int((time.time() - prepare_start) * 1000), True)
 
     # Step 3: Check if version already exists (deduplication)
     # Still call commit to update HEAD pointer (fixes #649)
@@ -231,10 +238,13 @@ def create_direct_upload_snapshot(
     try:
         # Create archive
         log_info("Creating archive...")
+        archive_start = time.time()
         archive_path = os.path.join(temp_dir, "archive.tar.gz")
         if not create_archive(mount_path, archive_path):
             log_error("Failed to create archive")
+            record_sandbox_op("artifact_archive_create", int((time.time() - archive_start) * 1000), False)
             return None
+        record_sandbox_op("artifact_archive_create", int((time.time() - archive_start) * 1000), True)
 
         # Create manifest
         log_info("Creating manifest...")
@@ -245,12 +255,14 @@ def create_direct_upload_snapshot(
 
         # Upload archive to S3
         log_info("Uploading archive to S3...")
+        s3_upload_start = time.time()
         if not http_put_presigned(
             archive_info["presignedUrl"],
             archive_path,
             "application/gzip"
         ):
             log_error("Failed to upload archive to S3")
+            record_sandbox_op("artifact_s3_upload", int((time.time() - s3_upload_start) * 1000), False)
             return None
 
         # Upload manifest to S3
@@ -261,10 +273,13 @@ def create_direct_upload_snapshot(
             "application/json"
         ):
             log_error("Failed to upload manifest to S3")
+            record_sandbox_op("artifact_s3_upload", int((time.time() - s3_upload_start) * 1000), False)
             return None
+        record_sandbox_op("artifact_s3_upload", int((time.time() - s3_upload_start) * 1000), True)
 
         # Step 6: Call commit endpoint
         log_info("Calling commit endpoint...")
+        commit_start = time.time()
         commit_payload = {
             "storageName": storage_name,
             "storageType": storage_type,
@@ -279,11 +294,14 @@ def create_direct_upload_snapshot(
         commit_response = http_post_json(STORAGE_COMMIT_URL, commit_payload)
         if not commit_response:
             log_error("Failed to call commit endpoint")
+            record_sandbox_op("artifact_commit_api", int((time.time() - commit_start) * 1000), False)
             return None
 
         if not commit_response.get("success"):
             log_error(f"Commit failed: {commit_response}")
+            record_sandbox_op("artifact_commit_api", int((time.time() - commit_start) * 1000), False)
             return None
+        record_sandbox_op("artifact_commit_api", int((time.time() - commit_start) * 1000), True)
 
         log_info(f"Direct upload snapshot created: {version_id[:8]}")
         return {"versionId": version_id}

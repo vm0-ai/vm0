@@ -92,8 +92,10 @@ export class SSHClient {
 
   /**
    * Execute a command on the remote VM
+   * @param command - The command to execute
+   * @param timeoutMs - Optional timeout in milliseconds (default: 300000ms = 5 minutes)
    */
-  async exec(command: string): Promise<ExecResult> {
+  async exec(command: string, timeoutMs?: number): Promise<ExecResult> {
     const sshCmd = this.buildSSHCommand();
     // Quote the command to ensure pipes and redirections run on remote, not local
     const escapedCommand = command.replace(/'/g, "'\\''");
@@ -102,7 +104,7 @@ export class SSHClient {
     try {
       const { stdout, stderr } = await execAsync(fullCmd, {
         maxBuffer: 50 * 1024 * 1024, // 50MB buffer
-        timeout: 300000, // 5 minute timeout
+        timeout: timeoutMs ?? 300000, // Default 5 minutes, customizable per call
       });
 
       return {
@@ -213,10 +215,13 @@ export class SSHClient {
 
   /**
    * Check if SSH connection is available
+   * Uses a short timeout (15s) to ensure waitUntilReachable() respects its outer timeout
    */
   async isReachable(): Promise<boolean> {
     try {
-      const result = await this.exec("echo ok");
+      // Use 15s timeout for connectivity checks to ensure fast failure detection
+      // This prevents waitUntilReachable() from blocking for much longer than expected
+      const result = await this.exec("echo ok", 15000);
       return result.exitCode === 0 && result.stdout.trim() === "ok";
     } catch {
       return false;

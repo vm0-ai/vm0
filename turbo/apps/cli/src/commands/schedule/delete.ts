@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
-import { apiClient, type ApiError } from "../../lib/api-client";
-import { loadAgentName } from "../../lib/schedule-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { loadAgentName } from "../../lib/domain/schedule-utils";
 
 /**
  * Prompt for confirmation

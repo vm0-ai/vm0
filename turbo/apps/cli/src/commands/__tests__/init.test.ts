@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { initCommand } from "../init";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
-import * as yamlValidator from "../../lib/yaml-validator";
+import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
-vi.mock("../../lib/yaml-validator");
-vi.mock("../../lib/prompt-utils");
+vi.mock("../../lib/domain/yaml-validator");
+vi.mock("../../lib/utils/prompt-utils");
 
-import * as promptUtils from "../../lib/prompt-utils";
+import * as promptUtils from "../../lib/utils/prompt-utils";
 
 // Mock isInteractive to return true for tests that test interactive mode
 vi.mocked(promptUtils.isInteractive).mockReturnValue(true);

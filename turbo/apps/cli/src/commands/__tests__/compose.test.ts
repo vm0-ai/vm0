@@ -7,16 +7,16 @@ import {
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import * as yaml from "yaml";
-import { apiClient } from "../../lib/api-client";
-import * as yamlValidator from "../../lib/yaml-validator";
+import { apiClient } from "../../lib/api/api-client";
+import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
 vi.mock("yaml");
-vi.mock("../../lib/api-client");
-vi.mock("../../lib/yaml-validator");
-vi.mock("../../lib/provider-config", () => ({
+vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/domain/yaml-validator");
+vi.mock("../../lib/domain/provider-config", () => ({
   getProviderDefaults: vi.fn().mockReturnValue(undefined),
   getDefaultImage: vi.fn().mockReturnValue(undefined),
 }));

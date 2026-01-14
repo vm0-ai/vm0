@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type GetComposeResponse } from "../../lib/api-client";
+import { apiClient, type GetComposeResponse } from "../../lib/api/api-client";
 import {
   deriveComposeVariableSources,
   type AgentVariableSources,
-} from "../../lib/source-derivation";
+} from "../../lib/domain/source-derivation";
 
 /**
  * Agent definition from compose content

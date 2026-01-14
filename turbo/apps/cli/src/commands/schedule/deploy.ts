@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
-import { apiClient, type ApiError } from "../../lib/api-client";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
 import { scheduleYamlSchema } from "@vm0/core";
 
 /**

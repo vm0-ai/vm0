@@ -14,6 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/axiom";
+import { recordSandboxInternalOperation } from "../../../../../src/lib/metrics";
 
 const log = logger("webhooks:telemetry");
 
@@ -82,16 +83,25 @@ const router = tsr.router(webhookTelemetryContract, {
     // Ingest metrics to Axiom (fire-and-forget)
     if (body.metrics && body.metrics.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_METRICS);
-      const axiomEvents = body.metrics.map((metric) => ({
-        _time: metric.ts,
-        runId: body.runId,
-        userId: auth.userId,
-        cpu: metric.cpu,
-        mem_used: metric.mem_used,
-        mem_total: metric.mem_total,
-        disk_used: metric.disk_used,
-        disk_total: metric.disk_total,
-      }));
+      const axiomEvents = body.metrics.map(
+        (metric: {
+          ts: string;
+          cpu: number;
+          mem_used: number;
+          mem_total: number;
+          disk_used: number;
+          disk_total: number;
+        }) => ({
+          _time: metric.ts,
+          runId: body.runId,
+          userId: auth.userId,
+          cpu: metric.cpu,
+          mem_used: metric.mem_used,
+          mem_total: metric.mem_total,
+          disk_used: metric.disk_used,
+          disk_total: metric.disk_total,
+        }),
+      );
       ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
         log.error("Axiom metrics ingest failed:", err);
       });
@@ -102,27 +112,42 @@ const router = tsr.router(webhookTelemetryContract, {
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       // Network logs are already masked by client
-      const axiomEvents = body.networkLogs.map((netLog) => ({
-        _time: netLog.timestamp,
-        runId: body.runId,
-        userId: auth.userId,
-        // Common fields (all modes)
-        mode: netLog.mode,
-        action: netLog.action,
-        host: netLog.host,
-        port: netLog.port,
-        rule_matched: netLog.rule_matched,
-        // MITM-only fields (may be undefined for SNI-only mode)
-        method: netLog.method,
-        url: netLog.url,
-        status: netLog.status,
-        latency_ms: netLog.latency_ms,
-        request_size: netLog.request_size,
-        response_size: netLog.response_size,
-      }));
+      const axiomEvents = body.networkLogs.map(
+        (netLog: Record<string, unknown>) => ({
+          _time: netLog.timestamp,
+          runId: body.runId,
+          userId: auth.userId,
+          // Common fields (all modes)
+          mode: netLog.mode,
+          action: netLog.action,
+          host: netLog.host,
+          port: netLog.port,
+          rule_matched: netLog.rule_matched,
+          // MITM-only fields (may be undefined for SNI-only mode)
+          method: netLog.method,
+          url: netLog.url,
+          status: netLog.status,
+          latency_ms: netLog.latency_ms,
+          request_size: netLog.request_size,
+          response_size: netLog.response_size,
+        }),
+      );
       ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
         log.error("Axiom network logs ingest failed:", err);
       });
+    }
+
+    // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
+    // Note: Currently only runner sandbox sends internal operations. E2B support can be added later.
+    if (body.sandboxOperations && body.sandboxOperations.length > 0) {
+      for (const op of body.sandboxOperations) {
+        recordSandboxInternalOperation({
+          actionType: op.action_type,
+          sandboxType: "runner",
+          durationMs: op.duration_ms,
+          success: op.success,
+        });
+      }
     }
 
     log.debug(

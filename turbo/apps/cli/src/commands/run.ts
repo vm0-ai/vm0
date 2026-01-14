@@ -3,10 +3,10 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
-import { apiClient } from "../lib/api-client";
-import { parseEvent } from "../lib/event-parser-factory";
-import { EventRenderer } from "../lib/event-renderer";
-import { CodexEventRenderer } from "../lib/codex-event-renderer";
+import { apiClient } from "../lib/api/api-client";
+import { parseEvent } from "../lib/events/event-parser-factory";
+import { EventRenderer } from "../lib/events/event-renderer";
+import { CodexEventRenderer } from "../lib/events/codex-event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 
 /**

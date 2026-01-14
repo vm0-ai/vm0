@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { readStorageConfig } from "../../lib/storage-utils";
-import { apiClient, type ApiError } from "../../lib/api-client";
+import { readStorageConfig } from "../../lib/storage/storage-utils";
+import { apiClient, type ApiError } from "../../lib/api/api-client";
 
 /**
  * Format bytes to human-readable format

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { statusCommand } from "../status";
-import { apiClient } from "../../../lib/api-client";
+import { apiClient } from "../../../lib/api/api-client";
 
 // Mock dependencies
-vi.mock("../../../lib/api-client");
+vi.mock("../../../lib/api/api-client");
 
 describe("scope status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

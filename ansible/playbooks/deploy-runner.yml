@@ -217,12 +217,12 @@
         group: "{{ ansible_user }}"
         mode: '0755'
       with_fileglob:
-        - "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/*.sh"
+        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
       tags: [prepare]
 
     - name: Copy Dockerfile for rootfs build
       copy:
-        src: "{{ playbook_dir }}/../../turbo/scripts/deploy-runner/Dockerfile"
+        src: "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
         dest: "{{ runner_base_dir }}/deploy-runner/Dockerfile"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
@@ -271,9 +271,46 @@
       register: rootfs_file
       tags: [prepare]
 
+    # Calculate hash of all files that affect rootfs content
+    - name: Calculate rootfs build inputs hash
+      shell: |
+        cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
+            "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
+            "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
+        | sha256sum | cut -d' ' -f1
+      register: rootfs_inputs_hash
+      changed_when: false
+      tags: [prepare]
+
+    - name: Read stored rootfs hash
+      slurp:
+        src: "{{ rootfs_path }}.sha256"
+      register: stored_rootfs_hash
+      ignore_errors: yes
+      tags: [prepare]
+
+    - name: Determine if rootfs rebuild is needed
+      set_fact:
+        rootfs_needs_rebuild: >-
+          {{
+            not rootfs_file.stat.exists or
+            force_rebuild_rootfs or
+            stored_rootfs_hash.failed or
+            (stored_rootfs_hash.content | default('') | b64decode | trim) != rootfs_inputs_hash.stdout
+          }}
+      tags: [prepare]
+
     - name: Build rootfs
       command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
-      when: not rootfs_file.stat.exists or force_rebuild_rootfs
+      when: rootfs_needs_rebuild
+      tags: [prepare]
+
+    - name: Store rootfs hash
+      copy:
+        content: "{{ rootfs_inputs_hash.stdout }}\n"
+        dest: "{{ rootfs_path }}.sha256"
+        mode: '0644'
+      when: rootfs_needs_rebuild
       tags: [prepare]
 
     - name: Check if proxy CA certificate exists

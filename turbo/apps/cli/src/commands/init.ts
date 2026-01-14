@@ -3,8 +3,8 @@ import chalk from "chalk";
 import path from "path";
 import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
-import { validateAgentName } from "../lib/yaml-validator";
-import { promptText, isInteractive } from "../lib/prompt-utils";
+import { validateAgentName } from "../lib/domain/yaml-validator";
+import { promptText, isInteractive } from "../lib/utils/prompt-utils";
 
 const VM0_YAML_FILE = "vm0.yaml";
 const AGENTS_MD_FILE = "AGENTS.md";
