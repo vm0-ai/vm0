@@ -289,7 +289,7 @@ export const initCommand = new Command()
             console.error(chalk.red("✗ --prompt is required"));
             process.exit(1);
           }
-          promptText_ = await promptText("Prompt to run");
+          promptText_ = await promptText("Prompt to run", "let's start working.");
           if (!promptText_) {
             console.log(chalk.dim("Cancelled"));
             return;
@@ -306,13 +306,18 @@ export const initCommand = new Command()
           if (extracted.vars.length > 0 || extracted.secrets.length > 0) {
             let includeVars = true;
             if (isInteractive()) {
-              const varList = [
+              const varCount = extracted.vars.length;
+              const secretCount = extracted.secrets.length;
+              const parts: string[] = [];
+              if (varCount > 0) parts.push(`${varCount} variable(s)`);
+              if (secretCount > 0) parts.push(`${secretCount} secret(s)`);
+              const itemList = [
                 ...extracted.vars.map((v) => `vars.${v}`),
                 ...extracted.secrets.map((s) => `secrets.${s}`),
               ];
               includeVars =
                 (await promptConfirm(
-                  `Include ${varList.length} variable(s) from vm0.yaml? (${varList.join(", ")})`,
+                  `Include ${parts.join(" and ")} from vm0.yaml? (${itemList.join(", ")})`,
                   true,
                 )) ?? true;
             }
