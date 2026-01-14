@@ -7,7 +7,7 @@ import {
   promptText,
   promptConfirm,
   promptSelect,
-} from "../../lib/prompt-utils";
+} from "../../lib/utils/prompt-utils";
 import {
   loadAgentName,
   generateCronExpression,
@@ -15,7 +15,7 @@ import {
   extractVarsAndSecrets,
   validateTimeFormat,
   type ScheduleFrequency,
-} from "../../lib/schedule-utils";
+} from "../../lib/domain/schedule-utils";
 
 const SCHEDULE_FILE = "schedule.yaml";
 

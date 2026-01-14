@@ -5,7 +5,7 @@ import {
   detectTimezone,
   extractVarsAndSecrets,
   validateTimeFormat,
-} from "../../../lib/schedule-utils";
+} from "../../../lib/domain/schedule-utils";
 
 // Mock fs module for file-based tests
 vi.mock("fs", async () => {
