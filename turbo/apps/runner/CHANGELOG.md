@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/vm0-ai/vm0/compare/runner-v2.7.1...runner-v2.8.0) (2026-01-14)
+
+
+### Features
+
+* **runner:** add codex and github cli to universal rootfs image ([#1187](https://github.com/vm0-ai/vm0/issues/1187)) ([a997751](https://github.com/vm0-ai/vm0/commit/a997751f33ff3caa06666301b6649f869cac3c83))
+
 ## [2.7.1](https://github.com/vm0-ai/vm0/compare/runner-v2.7.0...runner-v2.7.1) (2026-01-14)
 
 

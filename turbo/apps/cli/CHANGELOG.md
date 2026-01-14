@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.0](https://github.com/vm0-ai/vm0/compare/cli-v5.2.0...cli-v5.3.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add vm0 schedule init interactive wizard ([#1189](https://github.com/vm0-ai/vm0/issues/1189)) ([586f022](https://github.com/vm0-ai/vm0/commit/586f022f997a6f36a99e49ffe4df1ebe01b29681))
+
 ## [5.2.0](https://github.com/vm0-ai/vm0/compare/cli-v5.1.3...cli-v5.2.0) (2026-01-14)
 
 
