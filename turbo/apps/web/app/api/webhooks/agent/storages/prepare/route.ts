@@ -144,7 +144,12 @@ const router = tsr.router(webhookStoragesPrepareContract, {
           );
 
           // Create map of current files from client
-          const currentFilesMap = new Map(files.map((f) => [f.path, f]));
+          const currentFilesMap = new Map(
+            files.map((f: { path: string; hash: string; size: number }) => [
+              f.path,
+              f,
+            ]),
+          );
 
           // Start with base manifest files, excluding deleted ones
           const deletedSet = new Set(changes.deleted || []);
