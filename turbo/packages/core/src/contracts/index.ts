@@ -183,6 +183,7 @@ export {
   schedulesMainContract,
   schedulesByNameContract,
   schedulesEnableContract,
+  scheduleRunsContract,
   scheduleYamlSchema,
   scheduleTriggerSchema,
   scheduleRunConfigSchema,
@@ -191,9 +192,12 @@ export {
   scheduleResponseSchema,
   scheduleListResponseSchema,
   deployScheduleResponseSchema,
+  runSummarySchema,
+  scheduleRunsResponseSchema,
   type SchedulesMainContract,
   type SchedulesByNameContract,
   type SchedulesEnableContract,
+  type ScheduleRunsContract,
 } from "./schedules";
 
 // Public API v1 contracts (developer-friendly external API)

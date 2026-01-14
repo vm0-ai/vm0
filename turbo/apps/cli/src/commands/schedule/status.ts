@@ -19,10 +19,20 @@ interface ScheduleResponse {
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
   nextRunAt: string | null;
-  lastRunAt: string | null;
-  lastRunId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface RunSummary {
+  id: string;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
+}
+
+interface RunsResponse {
+  runs: RunSummary[];
 }
 
 /**
@@ -48,11 +58,35 @@ function formatTrigger(schedule: ScheduleResponse): string {
   return chalk.dim("-");
 }
 
+/**
+ * Format run status with color
+ */
+function formatRunStatus(status: string): string {
+  switch (status) {
+    case "completed":
+      return chalk.green(status);
+    case "failed":
+    case "timeout":
+      return chalk.red(status);
+    case "running":
+      return chalk.blue(status);
+    case "pending":
+      return chalk.yellow(status);
+    default:
+      return status;
+  }
+}
+
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a schedule")
   .argument("<name>", "Schedule name")
-  .action(async (name: string) => {
+  .option(
+    "-l, --limit <number>",
+    "Number of recent runs to show (0 to hide)",
+    "5",
+  )
+  .action(async (name: string, options: { limit: string }) => {
     try {
       // Load vm0.yaml to get agent name
       const result = loadAgentName();
@@ -116,14 +150,6 @@ export const statusCommand = new Command()
         );
       }
 
-      // Last run
-      if (schedule.lastRunAt) {
-        const lastRunInfo = schedule.lastRunId
-          ? `${formatDateTimeStyled(schedule.lastRunAt)} ${chalk.dim(`[${schedule.lastRunId.slice(0, 8)}]`)}`
-          : formatDateTimeStyled(schedule.lastRunAt);
-        console.log(`${"Last Run:".padEnd(16)}${lastRunInfo}`);
-      }
-
       // Prompt (truncated)
       const promptPreview =
         schedule.prompt.length > 60
@@ -163,19 +189,44 @@ export const statusCommand = new Command()
         );
       }
 
+      // Fetch and display recent runs
+      const limit = Math.min(
+        Math.max(0, parseInt(options.limit, 10) || 5),
+        100,
+      );
+      if (limit > 0) {
+        const runsResponse = await apiClient.get(
+          `/api/agent/schedules/${encodeURIComponent(name)}/runs?composeId=${encodeURIComponent(composeId)}&limit=${limit}`,
+        );
+
+        if (runsResponse.ok) {
+          const { runs } = (await runsResponse.json()) as RunsResponse;
+
+          if (runs.length > 0) {
+            console.log();
+            console.log("Recent Runs:");
+            for (const run of runs) {
+              const id = chalk.dim(`[${run.id.slice(0, 8)}]`);
+              const status = formatRunStatus(run.status).padEnd(20);
+              const created = formatDateTimeStyled(run.createdAt);
+              const errorMsg = run.error
+                ? chalk.red(
+                    run.error.length > 40
+                      ? run.error.slice(0, 37) + "..."
+                      : run.error,
+                  )
+                : "";
+              console.log(`  ${id} ${status} ${created} ${errorMsg}`);
+            }
+          }
+        }
+      }
+
       // Timestamps
       console.log();
       console.log(
         chalk.dim(
           `Created:  ${new Date(schedule.createdAt)
-            .toISOString()
-            .replace("T", " ")
-            .replace(/\.\d+Z$/, " UTC")}`,
-        ),
-      );
-      console.log(
-        chalk.dim(
-          `Updated:  ${new Date(schedule.updatedAt)
             .toISOString()
             .replace("T", " ")
             .replace(/\.\d+Z$/, " UTC")}`,

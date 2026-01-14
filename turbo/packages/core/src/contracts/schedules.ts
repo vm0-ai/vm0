@@ -94,10 +94,26 @@ const scheduleResponseSchema = z.object({
   volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
   nextRunAt: z.string().nullable(),
-  lastRunAt: z.string().nullable(),
-  lastRunId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+/**
+ * Run summary for schedule runs list
+ */
+const runSummarySchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["pending", "running", "completed", "failed", "timeout"]),
+  createdAt: z.string(),
+  completedAt: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+/**
+ * Schedule runs list response
+ */
+const scheduleRunsResponseSchema = z.object({
+  runs: z.array(runSummarySchema),
 });
 
 /**
@@ -249,10 +265,39 @@ export const schedulesEnableContract = c.router({
   },
 });
 
+/**
+ * Schedule runs route contract (/api/agent/schedules/[name]/runs)
+ * Lists recent runs for a schedule
+ */
+export const scheduleRunsContract = c.router({
+  /**
+   * GET /api/agent/schedules/:name/runs
+   * List recent runs for a schedule
+   */
+  listRuns: {
+    method: "GET",
+    path: "/api/agent/schedules/:name/runs",
+    pathParams: z.object({
+      name: z.string().min(1, "Schedule name required"),
+    }),
+    query: z.object({
+      composeId: z.string().uuid("Compose ID required"),
+      limit: z.coerce.number().min(0).max(100).default(5),
+    }),
+    responses: {
+      200: scheduleRunsResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List recent runs for a schedule",
+  },
+});
+
 // Type exports
 export type SchedulesMainContract = typeof schedulesMainContract;
 export type SchedulesByNameContract = typeof schedulesByNameContract;
 export type SchedulesEnableContract = typeof schedulesEnableContract;
+export type ScheduleRunsContract = typeof scheduleRunsContract;
 
 // Schema exports for reuse
 export {
@@ -263,4 +308,6 @@ export {
   scheduleResponseSchema,
   scheduleListResponseSchema,
   deployScheduleResponseSchema,
+  runSummarySchema,
+  scheduleRunsResponseSchema,
 };

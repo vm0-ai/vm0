@@ -1,4 +1,4 @@
-import { eq, and, lte, inArray } from "drizzle-orm";
+import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
@@ -32,10 +32,19 @@ export interface ScheduleResponse {
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
   nextRunAt: string | null;
-  lastRunAt: string | null;
-  lastRunId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Run summary for schedule runs list
+ */
+export interface RunSummary {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
 }
 
 /**
@@ -121,8 +130,6 @@ export class ScheduleService {
       volumeVersions: schedule.volumeVersions,
       enabled: schedule.enabled,
       nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
-      lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
-      lastRunId: schedule.lastRunId,
       createdAt: schedule.createdAt.toISOString(),
       updatedAt: schedule.updatedAt.toISOString(),
     };
@@ -376,6 +383,61 @@ export class ScheduleService {
     }
 
     return this.toResponse(schedule, compose.name, scopeSlug);
+  }
+
+  /**
+   * Get recent runs for a schedule
+   */
+  async getRecentRuns(
+    userId: string,
+    composeId: string,
+    scheduleName: string,
+    limit: number,
+  ): Promise<RunSummary[]> {
+    log.debug(
+      `Getting recent runs for schedule ${scheduleName} (limit: ${limit})`,
+    );
+
+    // Verify ownership
+    await this.verifyComposeOwnership(userId, composeId);
+
+    // Get schedule
+    const [schedule] = await globalThis.services.db
+      .select()
+      .from(agentSchedules)
+      .where(
+        and(
+          eq(agentSchedules.composeId, composeId),
+          eq(agentSchedules.name, scheduleName),
+        ),
+      )
+      .limit(1);
+
+    if (!schedule) {
+      throw new NotFoundError(`Schedule '${scheduleName}' not found`);
+    }
+
+    // Query runs for this schedule
+    const runs = await globalThis.services.db
+      .select({
+        id: agentRuns.id,
+        status: agentRuns.status,
+        createdAt: agentRuns.createdAt,
+        completedAt: agentRuns.completedAt,
+        error: agentRuns.error,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.scheduleId, schedule.id))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(limit);
+
+    return runs.map((run) => ({
+      id: run.id,
+      status: run.status as RunSummary["status"],
+      createdAt: run.createdAt.toISOString(),
+      completedAt: run.completedAt?.toISOString() ?? null,
+      error: run.error,
+    }));
   }
 
   /**
