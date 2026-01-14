@@ -3,6 +3,22 @@ import fs from "fs";
 import yaml from "yaml";
 
 /**
+ * Default values for sandbox configuration
+ * Note: In zod 4.x, .default({}) doesn't trigger child defaults,
+ * so we must provide the full default object
+ */
+const SANDBOX_DEFAULTS = {
+  max_concurrent: 1,
+  vcpu: 2,
+  memory_mb: 2048,
+  poll_interval_ms: 5000,
+} as const;
+
+const PROXY_DEFAULTS = {
+  port: 8080,
+} as const;
+
+/**
  * Runner configuration schema
  */
 export const runnerConfigSchema = z.object({
@@ -19,12 +35,20 @@ export const runnerConfigSchema = z.object({
   }),
   sandbox: z
     .object({
-      max_concurrent: z.number().int().min(1).default(1),
-      vcpu: z.number().int().min(1).default(2),
-      memory_mb: z.number().int().min(128).default(2048),
-      poll_interval_ms: z.number().int().min(1000).default(5000),
+      max_concurrent: z
+        .number()
+        .int()
+        .min(1)
+        .default(SANDBOX_DEFAULTS.max_concurrent),
+      vcpu: z.number().int().min(1).default(SANDBOX_DEFAULTS.vcpu),
+      memory_mb: z.number().int().min(128).default(SANDBOX_DEFAULTS.memory_mb),
+      poll_interval_ms: z
+        .number()
+        .int()
+        .min(1000)
+        .default(SANDBOX_DEFAULTS.poll_interval_ms),
     })
-    .default({}),
+    .default(SANDBOX_DEFAULTS),
   firecracker: z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
@@ -32,12 +56,17 @@ export const runnerConfigSchema = z.object({
   }),
   proxy: z
     .object({
-      port: z.number().int().min(1024).max(65535).default(8080),
+      port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
     })
-    .default({}),
+    .default(PROXY_DEFAULTS),
 });
 
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
+
+const DEBUG_SERVER_DEFAULTS = {
+  url: "http://localhost:3000",
+  token: "debug-token",
+} as const;
 
 /**
  * Debug configuration schema (relaxed - only firecracker paths required)
@@ -48,18 +77,26 @@ export const debugConfigSchema = z.object({
   group: z.string().default("debug/local"),
   server: z
     .object({
-      url: z.string().url().default("http://localhost:3000"),
-      token: z.string().default("debug-token"),
+      url: z.string().url().default(DEBUG_SERVER_DEFAULTS.url),
+      token: z.string().default(DEBUG_SERVER_DEFAULTS.token),
     })
-    .default({}),
+    .default(DEBUG_SERVER_DEFAULTS),
   sandbox: z
     .object({
-      max_concurrent: z.number().int().min(1).default(1),
-      vcpu: z.number().int().min(1).default(2),
-      memory_mb: z.number().int().min(128).default(2048),
-      poll_interval_ms: z.number().int().min(1000).default(5000),
+      max_concurrent: z
+        .number()
+        .int()
+        .min(1)
+        .default(SANDBOX_DEFAULTS.max_concurrent),
+      vcpu: z.number().int().min(1).default(SANDBOX_DEFAULTS.vcpu),
+      memory_mb: z.number().int().min(128).default(SANDBOX_DEFAULTS.memory_mb),
+      poll_interval_ms: z
+        .number()
+        .int()
+        .min(1000)
+        .default(SANDBOX_DEFAULTS.poll_interval_ms),
     })
-    .default({}),
+    .default(SANDBOX_DEFAULTS),
   firecracker: z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
@@ -67,9 +104,9 @@ export const debugConfigSchema = z.object({
   }),
   proxy: z
     .object({
-      port: z.number().int().min(1024).max(65535).default(8080),
+      port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
     })
-    .default({}),
+    .default(PROXY_DEFAULTS),
 });
 
 export type DebugConfig = z.infer<typeof debugConfigSchema>;
@@ -88,7 +125,7 @@ export function loadDebugConfig(configPath: string): DebugConfig {
 
   const result = debugConfigSchema.safeParse(raw);
   if (!result.success) {
-    const errors = result.error.errors
+    const errors = result.error.issues
       .map((e) => `  - ${e.path.join(".")}: ${e.message}`)
       .join("\n");
     throw new Error(`Invalid configuration:\n${errors}`);
@@ -110,7 +147,7 @@ export function loadConfig(configPath: string): RunnerConfig {
 
   const result = runnerConfigSchema.safeParse(raw);
   if (!result.success) {
-    const errors = result.error.errors
+    const errors = result.error.issues
       .map((e) => `  - ${e.path.join(".")}: ${e.message}`)
       .join("\n");
     throw new Error(`Invalid configuration:\n${errors}`);
