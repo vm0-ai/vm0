@@ -1,0 +1,110 @@
+---
+title: Self-Hosted Runner
+description: Run agents on your own infrastructure with experimental_runner
+---
+
+<Callout type="warning">
+  This is an experimental feature. The configuration and behavior may change in future releases.
+</Callout>
+
+Self-hosted runners allow you to run VM0 agents on your own infrastructure instead of the default cloud sandbox. This gives you full control over the execution environment, network access, and security policies.
+
+## Why Use Self-Hosted Runners?
+
+| Use Case | Benefit |
+| -------- | ------- |
+| **Data Privacy** | Keep sensitive data within your network |
+| **Network Control** | Apply firewall rules to control agent egress |
+| **Custom Environments** | Use specialized hardware or software |
+| **Compliance** | Meet regulatory requirements for data residency |
+
+## Prerequisites
+
+Before using self-hosted runners, you need:
+
+- A deployed runner instance connected to your VM0 organization
+- Runner group configured in your organization settings
+- Network access from the runner to VM0 API (`*.vm0.ai`)
+
+## Configuration
+
+Enable self-hosted runner by adding `experimental_runner` to your agent configuration:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    working_dir: /home/user/workspace
+    experimental_runner: # [!code highlight]
+      group: myorg/production # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+### Configuration Fields
+
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `group` | string | Yes | Runner group identifier in `scope/name` format |
+
+### Runner Group Format
+
+The `group` field must follow the pattern `scope/name`:
+
+- **scope**: Your organization or team identifier
+- **name**: The specific runner group name
+
+Examples:
+- `acme/production` - Production runners for Acme org
+- `myteam/gpu-runners` - GPU-enabled runners for a team
+- `dev/local` - Local development runners
+
+## Example Configurations
+
+### Basic Self-Hosted Runner
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  code-assistant:
+    provider: claude-code
+    experimental_runner:
+      group: myorg/default
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+### With Network Firewall
+
+Self-hosted runners can use the [Network Firewall](/docs/experimental/firewall) feature to control agent network access:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  secure-agent:
+    provider: claude-code
+    experimental_runner:
+      group: myorg/secure
+    experimental_firewall: # [!code highlight]
+      enabled: true # [!code highlight]
+      rules: # [!code highlight]
+        - domain: "*.github.com" # [!code highlight]
+          action: ALLOW # [!code highlight]
+        - final: DENY # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Network Firewall"
+    href="/docs/experimental/firewall"
+    description="Control agent network egress with domain and IP-based rules"
+  />
+</Cards>
