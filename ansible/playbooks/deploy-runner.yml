@@ -271,11 +271,12 @@
       register: rootfs_file
       tags: [prepare]
 
-    # Calculate hash of Dockerfile and overlay-init.sh to detect changes
+    # Calculate hash of all files that affect rootfs content
     - name: Calculate rootfs build inputs hash
       shell: |
         cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
             "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
+            "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
         | sha256sum | cut -d' ' -f1
       register: rootfs_inputs_hash
       changed_when: false
