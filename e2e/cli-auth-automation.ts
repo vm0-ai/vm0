@@ -162,30 +162,49 @@ export async function automateCliAuth(apiHost?: string) {
     await page.waitForLoadState("networkidle");
 
     // Step 7: Enter device code
-    // Device code format: XXXX-XXXX, entered into a single input field
+    // Device code format: XXXX-XXXX, entered into 8 separate input boxes
     console.log(`📝 Entering device code: ${deviceCode}`);
 
-    // Find the code input field
-    const codeInput = page.locator('input[type="text"]').first();
+    // Remove hyphen from device code to get 8 characters
+    const codeWithoutHyphen = deviceCode.replace("-", "");
 
-    // Fill the complete device code (with hyphen)
-    await codeInput.fill(deviceCode);
+    // Find all code input boxes (8 individual inputs)
+    const codeInputs = page.locator('input[type="text"][maxlength="1"]');
+    const inputCount = await codeInputs.count();
 
-    console.log(`✅ Device code entered: ${deviceCode}`);
+    if (inputCount === 8) {
+      // Fill each input box with corresponding character
+      for (let i = 0; i < 8; i++) {
+        await codeInputs.nth(i).fill(codeWithoutHyphen[i]);
+      }
+      console.log(`✅ Device code entered: ${deviceCode}`);
+    } else {
+      // Fallback: try single input field (old UI)
+      console.log(`⚠️ Expected 8 input boxes, found ${inputCount}. Trying single input fallback.`);
+      const singleInput = page.locator('input[type="text"]').first();
+      await singleInput.fill(deviceCode);
+      console.log(`✅ Device code entered (single input): ${deviceCode}`);
+    }
 
     // Debug: Screenshot to see page state
     await page.screenshot({ path: 'debug-before-submit.png' });
 
-    // Find and click Authorize Device button
-    const authorizeButton = await page.locator('button:has-text("Authorize Device")');
-    const buttonExists = await authorizeButton.count() > 0;
+    // Find and click Verify button (or fallback to Authorize Device for backwards compatibility)
+    let verifyButton = page.locator('button:has-text("Verify")');
+    let buttonExists = await verifyButton.count() > 0;
+
+    if (!buttonExists) {
+      // Fallback to old button text
+      verifyButton = page.locator('button:has-text("Authorize Device")');
+      buttonExists = await verifyButton.count() > 0;
+    }
 
     if (buttonExists) {
-      console.log("✅ Found Authorize Device button");
+      console.log("✅ Found submit button");
 
       // Click button
-      await authorizeButton.first().click();
-      console.log("✅ Clicked Authorize Device button");
+      await verifyButton.first().click();
+      console.log("✅ Clicked submit button");
 
       // Wait for page response
       await page.waitForTimeout(2000);
@@ -194,10 +213,10 @@ export async function automateCliAuth(apiHost?: string) {
       await page.screenshot({ path: 'debug-after-click.png' });
       console.log("📸 Saved post-click screenshot");
     } else {
-      console.log("❌ Authorize Device button not found");
+      console.log("❌ Submit button not found");
       // Try pressing Enter on last input
-      if (codeInputs.length > 0) {
-        await codeInputs[codeInputs.length - 1].press('Enter');
+      if (inputCount > 0) {
+        await codeInputs.nth(inputCount - 1).press('Enter');
         console.log("⏳ Trying Enter to submit");
       }
     }
