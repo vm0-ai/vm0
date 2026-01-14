@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.0](https://github.com/vm0-ai/vm0/compare/core-v4.3.0...core-v4.4.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add vm0 schedule command for automated agent runs ([#1105](https://github.com/vm0-ai/vm0/issues/1105)) ([ecdc2c5](https://github.com/vm0-ai/vm0/commit/ecdc2c5c01ea1340aefdc8ea20407fce1c264a34))
+
 ## [4.3.0](https://github.com/vm0-ai/vm0/compare/core-v4.2.1...core-v4.3.0) (2026-01-13)
 
 
