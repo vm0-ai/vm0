@@ -1,16 +1,18 @@
 import { Pool as PgPool } from "pg";
-import { Pool as NeonPool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { neon } from "@neondatabase/serverless";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import { drizzle as drizzleNeonHttp } from "drizzle-orm/neon-http";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type { Services } from "../types/global";
 import { initMetrics } from "./metrics";
 
 // Private variables for singleton instances
 let _env: Env | undefined;
-let _pool: PgPool | NeonPool | undefined;
-let _db: NodePgDatabase<typeof schema> | undefined;
+let _pool: PgPool | undefined;
+let _db: NodePgDatabase<typeof schema> | NeonHttpDatabase<typeof schema> | undefined;
 let _services: Services | undefined;
 let _metricsInitialized = false;
 
@@ -41,32 +43,40 @@ export function initServices(): void {
       return _env;
     },
     get pool() {
+      if (isVercel) {
+        // In Vercel serverless environment, we use Neon HTTP mode
+        // which doesn't require a connection pool
+        throw new Error(
+          "Connection pool is not available in Vercel serverless environment. " +
+            "Use services.db directly with Neon HTTP mode.",
+        );
+      }
       if (!_pool) {
-        if (isVercel) {
-          // Use Neon serverless driver for Vercel
-          // This driver is optimized for Neon's connection pooler and serverless environments
-          // See: https://vercel.com/guides/connection-pooling-with-functions
-          _pool = new NeonPool({
-            connectionString: this.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 10000,
-            connectionTimeoutMillis: 10000,
-          });
-        } else {
-          // Use regular pg driver for local development
-          _pool = new PgPool({
-            connectionString: this.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-          });
-        }
+        // Use regular pg driver for local development
+        _pool = new PgPool({
+          connectionString: this.env.DATABASE_URL,
+          max: 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+        });
       }
       return _pool;
     },
     get db() {
       if (!_db) {
-        _db = drizzle(this.pool, { schema });
+        if (isVercel) {
+          // Use Neon HTTP mode for Vercel serverless environment
+          // This is the recommended approach per Neon documentation:
+          // - No connection pool overhead
+          // - Each query executes independently via HTTP
+          // - Relies on Neon's server-side PgBouncer for connection reuse
+          // See: https://neon.com/docs/serverless/serverless-driver
+          const sql = neon(this.env.DATABASE_URL);
+          _db = drizzleNeonHttp({ client: sql, schema });
+        } else {
+          // Use regular pg driver with pool for local development
+          _db = drizzleNodePg(this.pool, { schema });
+        }
       }
       return _db;
     },
