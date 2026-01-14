@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.7.0](https://github.com/vm0-ai/vm0/compare/web-v9.6.0...web-v9.7.0) (2026-01-14)
+
+
+### Features
+
+* **web:** redesign cli auth page with figma design ([#1192](https://github.com/vm0-ai/vm0/issues/1192)) ([ea23262](https://github.com/vm0-ai/vm0/commit/ea23262b8a987e066a8a3b05f3d6f8f54e8f375f))
+
 ## [9.6.0](https://github.com/vm0-ai/vm0/compare/web-v9.5.0...web-v9.6.0) (2026-01-14)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.1](https://github.com/vm0-ai/vm0/compare/cli-v5.3.0...cli-v5.3.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **schedule:** improve init wizard UX with default prompt and better messages ([#1194](https://github.com/vm0-ai/vm0/issues/1194)) ([1aeb7b6](https://github.com/vm0-ai/vm0/commit/1aeb7b600c15f747471ec693cf502c73507f2cee))
+
 ## [5.3.0](https://github.com/vm0-ai/vm0/compare/cli-v5.2.0...cli-v5.3.0) (2026-01-14)
 
 
