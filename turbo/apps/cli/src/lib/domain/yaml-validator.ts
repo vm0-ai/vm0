@@ -1,5 +1,46 @@
-import { SUPPORTED_APPS, SUPPORTED_APP_TAGS } from "@vm0/core";
+import { z } from "zod";
+import {
+  agentNameSchema as coreAgentNameSchema,
+  agentComposeContentSchema,
+  SUPPORTED_APPS,
+  SUPPORTED_APP_TAGS,
+} from "@vm0/core";
 import { isProviderSupported } from "./provider-config";
+
+/**
+ * CLI-specific agent name schema that allows 3-character names.
+ * The @vm0/core schema requires 4+ characters, but CLI allows 3.
+ * Pattern: start/end with alphanumeric, middle can have hyphens
+ */
+const cliAgentNameSchema = z
+  .string()
+  .min(3, "Agent name must be at least 3 characters")
+  .max(64, "Agent name must be 64 characters or less")
+  .regex(
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,62}[a-zA-Z0-9])?$/,
+    "Agent name must start and end with letter or number, and contain only letters, numbers, and hyphens",
+  );
+
+/**
+ * Formats a Zod error into a user-friendly string
+ */
+function formatZodError(error: z.ZodError): string {
+  const issues = error.issues;
+  const firstIssue = issues[0];
+  if (!firstIssue) {
+    return "Validation failed";
+  }
+
+  const path = firstIssue.path.join(".");
+  const message = firstIssue.message;
+
+  // For root-level errors, just return the message
+  if (!path) {
+    return message;
+  }
+
+  return `${path}: ${message}`;
+}
 
 /**
  * Validates agent.name format
@@ -9,8 +50,7 @@ import { isProviderSupported } from "./provider-config";
  * - Must start and end with letter or number (not hyphen)
  */
 export function validateAgentName(name: string): boolean {
-  const nameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,62}[a-zA-Z0-9])?$/;
-  return nameRegex.test(name);
+  return cliAgentNameSchema.safeParse(name).success;
 }
 
 /**
@@ -18,7 +58,8 @@ export function validateAgentName(name: string): boolean {
  * Returns null if the name format is invalid
  */
 export function normalizeAgentName(name: string): string | null {
-  if (!validateAgentName(name)) {
+  const result = cliAgentNameSchema.safeParse(name);
+  if (!result.success) {
     return null;
   }
   return name.toLowerCase();
@@ -35,53 +76,21 @@ export function validateGitHubTreeUrl(url: string): boolean {
 }
 
 /**
- * Validates volume config structure
- * Each volume must have 'name' and 'version' fields
- */
-function validateVolumeConfig(
-  volumeKey: string,
-  volumeConfig: unknown,
-): string | null {
-  if (!volumeConfig || typeof volumeConfig !== "object") {
-    return `Volume "${volumeKey}" must be an object`;
-  }
-
-  const vol = volumeConfig as Record<string, unknown>;
-
-  if (!vol.name || typeof vol.name !== "string") {
-    return `Volume "${volumeKey}" must have a 'name' field (string)`;
-  }
-
-  if (!vol.version || typeof vol.version !== "string") {
-    return `Volume "${volumeKey}" must have a 'version' field (string)`;
-  }
-
-  return null;
-}
-
-/**
- * Validates agent compose structure
+ * Validates agent compose structure using Zod schemas from @vm0/core
+ * with CLI-specific business rules layered on top.
  */
 export function validateAgentCompose(config: unknown): {
   valid: boolean;
   error?: string;
 } {
+  // Step 1: Basic object check (before Zod for better error messages)
   if (!config || typeof config !== "object") {
     return { valid: false, error: "Config must be an object" };
   }
 
   const cfg = config as Record<string, unknown>;
 
-  // Check version
-  if (!cfg.version) {
-    return { valid: false, error: "Missing config.version" };
-  }
-
-  // Check agents section (must be object, not array)
-  if (!cfg.agents || typeof cfg.agents !== "object") {
-    return { valid: false, error: "Missing agents object in config" };
-  }
-
+  // Step 2: Check for array agents (common mistake, better error than Zod default)
   if (Array.isArray(cfg.agents)) {
     return {
       valid: false,
@@ -90,7 +99,29 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  const agentKeys = Object.keys(cfg.agents);
+  // Step 3: Validate basic structure with Zod schema
+  // Use a relaxed schema that accepts any string keys for agents (we validate names separately)
+  const basicStructureSchema = z.object({
+    version: z.string().min(1, "Missing config.version"),
+    agents: z.record(z.string(), z.unknown()),
+    volumes: z.record(z.string(), z.unknown()).optional(),
+  });
+
+  const structureResult = basicStructureSchema.safeParse(config);
+  if (!structureResult.success) {
+    const issue = structureResult.error.issues[0];
+    if (issue?.path[0] === "version" && issue?.code === "invalid_type") {
+      return { valid: false, error: "Missing config.version" };
+    }
+    if (issue?.path[0] === "agents") {
+      return { valid: false, error: "Missing agents object in config" };
+    }
+    return { valid: false, error: formatZodError(structureResult.error) };
+  }
+
+  // Step 4: CLI-specific business rules
+  const agentKeys = Object.keys(cfg.agents as Record<string, unknown>);
+
   if (agentKeys.length === 0) {
     return {
       valid: false,
@@ -105,9 +136,8 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Get agent name from key and validate format
+  // Step 5: Validate agent name format (CLI-specific regex allows 3-char names)
   const agentName = agentKeys[0]!;
-
   if (!validateAgentName(agentName)) {
     return {
       valid: false,
@@ -116,7 +146,7 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Validate agent definition
+  // Step 6: Validate agent definition
   const agentsObj = cfg.agents as Record<string, unknown>;
   const agent = agentsObj[agentName] as Record<string, unknown> | undefined;
 
@@ -124,7 +154,7 @@ export function validateAgentCompose(config: unknown): {
     return { valid: false, error: "Agent definition must be an object" };
   }
 
-  // Check agent.provider (required)
+  // Check provider (required)
   if (!agent.provider || typeof agent.provider !== "string") {
     return {
       valid: false,
@@ -132,9 +162,9 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  const providerIsSupported = isProviderSupported(agent.provider as string);
+  const providerIsSupported = isProviderSupported(agent.provider);
 
-  // Check agent.image (optional when provider supports auto-config)
+  // Check image (optional when provider supports auto-config)
   if (agent.image !== undefined && typeof agent.image !== "string") {
     return {
       valid: false,
@@ -149,7 +179,7 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Check agent.working_dir (optional when provider is supported)
+  // Check working_dir (optional when provider is supported)
   if (
     agent.working_dir !== undefined &&
     typeof agent.working_dir !== "string"
@@ -167,7 +197,7 @@ export function validateAgentCompose(config: unknown): {
     };
   }
 
-  // Validate instructions if present (must be a relative file path)
+  // Validate instructions if present
   if (agent.instructions !== undefined) {
     if (typeof agent.instructions !== "string") {
       return {
@@ -184,7 +214,7 @@ export function validateAgentCompose(config: unknown): {
     }
   }
 
-  // Validate skills if present (must be array of GitHub tree URLs)
+  // Validate skills if present (CLI-specific GitHub URL validation)
   if (agent.skills !== undefined) {
     if (!Array.isArray(agent.skills)) {
       return {
@@ -297,7 +327,6 @@ export function validateAgentCompose(config: unknown): {
         };
       }
 
-      // Parse app:tag format
       const [appName, tag] = appEntry.split(":");
       if (!appName) {
         return {
@@ -315,7 +344,6 @@ export function validateAgentCompose(config: unknown): {
         };
       }
 
-      // Validate tag if present
       if (
         tag !== undefined &&
         !SUPPORTED_APP_TAGS.includes(tag as (typeof SUPPORTED_APP_TAGS)[number])
@@ -341,7 +369,6 @@ export function validateAgentCompose(config: unknown): {
       };
     }
 
-    // Validate each referenced volume exists in volumes section
     for (const volDeclaration of agentVolumes) {
       if (typeof volDeclaration !== "string") {
         return {
@@ -359,7 +386,9 @@ export function validateAgentCompose(config: unknown): {
       }
 
       const volumeKey = parts[0]!.trim();
-      const volumeConfig = volumesSection[volumeKey];
+      const volumeConfig = volumesSection[volumeKey] as
+        | Record<string, unknown>
+        | undefined;
 
       if (!volumeConfig) {
         return {
@@ -369,12 +398,31 @@ export function validateAgentCompose(config: unknown): {
       }
 
       // Validate volume config structure
-      const volError = validateVolumeConfig(volumeKey, volumeConfig);
-      if (volError) {
-        return { valid: false, error: volError };
+      if (!volumeConfig || typeof volumeConfig !== "object") {
+        return {
+          valid: false,
+          error: `Volume "${volumeKey}" must be an object`,
+        };
+      }
+
+      if (!volumeConfig.name || typeof volumeConfig.name !== "string") {
+        return {
+          valid: false,
+          error: `Volume "${volumeKey}" must have a 'name' field (string)`,
+        };
+      }
+
+      if (!volumeConfig.version || typeof volumeConfig.version !== "string") {
+        return {
+          valid: false,
+          error: `Volume "${volumeKey}" must have a 'version' field (string)`,
+        };
       }
     }
   }
 
   return { valid: true };
 }
+
+// Re-export schemas for potential use by other CLI modules
+export { coreAgentNameSchema, agentComposeContentSchema };
