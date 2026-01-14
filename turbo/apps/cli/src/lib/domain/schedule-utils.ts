@@ -223,3 +223,83 @@ export function validateTimeFormat(time: string): boolean | string {
 
   return true;
 }
+
+/**
+ * Validate date format (YYYY-MM-DD)
+ * @param date - Date string to validate
+ * @returns true if valid, error message if invalid
+ */
+export function validateDateFormat(date: string): boolean | string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)";
+  }
+
+  const year = parseInt(match[1]!, 10);
+  const month = parseInt(match[2]!, 10);
+  const day = parseInt(match[3]!, 10);
+
+  if (year < 2000 || year > 2100) {
+    return "Year must be between 2000 and 2100";
+  }
+  if (month < 1 || month > 12) {
+    return "Month must be 1-12";
+  }
+  if (day < 1 || day > 31) {
+    return "Day must be 1-31";
+  }
+
+  // Validate the date is actually valid (e.g., not Feb 30)
+  const testDate = new Date(year, month - 1, day);
+  if (
+    testDate.getFullYear() !== year ||
+    testDate.getMonth() !== month - 1 ||
+    testDate.getDate() !== day
+  ) {
+    return "Invalid date";
+  }
+
+  return true;
+}
+
+/**
+ * Get tomorrow's date in local timezone as YYYY-MM-DD
+ * @returns Date string in YYYY-MM-DD format
+ */
+export function getTomorrowDateLocal(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Get current time in local timezone as HH:MM
+ * @returns Time string in HH:MM format
+ */
+export function getCurrentTimeLocal(): string {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * Convert a human-readable datetime string to ISO format
+ * Supports formats: "YYYY-MM-DD HH:MM" or full ISO string
+ * @param dateTimeStr - DateTime string (e.g., "2025-01-15 14:30")
+ * @returns ISO format string (e.g., "2025-01-15T14:30:00.000Z")
+ */
+export function toISODateTime(dateTimeStr: string): string {
+  // If already in ISO format, return as-is
+  if (dateTimeStr.includes("T") && dateTimeStr.endsWith("Z")) {
+    return dateTimeStr;
+  }
+
+  // Convert "YYYY-MM-DD HH:MM" to ISO
+  const isoStr = dateTimeStr.replace(" ", "T") + ":00";
+  const date = new Date(isoStr);
+  return date.toISOString();
+}

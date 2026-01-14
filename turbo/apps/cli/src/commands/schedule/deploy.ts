@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
 import { scheduleYamlSchema } from "@vm0/core";
+import { toISODateTime } from "../../lib/domain/schedule-utils";
 
 /**
  * Schedule definition type - matches what's in the YAML
@@ -166,11 +167,14 @@ export const deployCommand = new Command()
       const expandedSecrets = expandEnvVarsInObject(schedule.run.secrets);
 
       // Build deploy request
+      // Convert human-readable "YYYY-MM-DD HH:MM" format to ISO for the API
+      const atTime = schedule.on.at ? toISODateTime(schedule.on.at) : undefined;
+
       const body = {
         name: scheduleName,
         composeId,
         cronExpression: schedule.on.cron,
-        atTime: schedule.on.at,
+        atTime,
         timezone: schedule.on.timezone || "UTC",
         prompt: schedule.run.prompt,
         vars: expandedVars,
