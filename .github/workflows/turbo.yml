@@ -682,9 +682,10 @@ jobs:
             fi
           }
 
-          # Preferred host based on PR number
-          PREFERRED_INDEX=$((PR_NUMBER % NUM_HOSTS))
-          echo "Preferred host index: $PREFERRED_INDEX (PR $PR_NUMBER % $NUM_HOSTS)"
+          # Preferred host based on PR number (use hash for even distribution)
+          HASH=$(echo -n "$PR_NUMBER" | md5sum | cut -c1-8)
+          PREFERRED_INDEX=$((16#$HASH % NUM_HOSTS))
+          echo "Preferred host index: $PREFERRED_INDEX (hash of PR $PR_NUMBER % $NUM_HOSTS)"
 
           # Exponential backoff: 0, 2min, 4min, 8min
           BACKOFF_TIMES=(0 120 240 480)
