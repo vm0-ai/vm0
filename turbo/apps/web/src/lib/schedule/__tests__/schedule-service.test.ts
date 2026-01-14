@@ -239,6 +239,30 @@ describe("ScheduleService", () => {
         }),
       ).rejects.toThrow("not found or not owned");
     });
+
+    it("should reject deploy with invalid timezone", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}invalid-tz`,
+          composeId: TEST_COMPOSE_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "Invalid/Timezone",
+          prompt: "Should fail",
+        }),
+      ).rejects.toThrow("Invalid timezone");
+    });
+
+    it("should accept valid IANA timezones", async () => {
+      const result = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}valid-tz`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "America/New_York",
+        prompt: "Valid timezone test",
+      });
+
+      expect(result.schedule.timezone).toBe("America/New_York");
+    });
   });
 
   describe("getByName", () => {

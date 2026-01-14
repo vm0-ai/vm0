@@ -56,6 +56,18 @@ export interface DeployScheduleRequest {
 }
 
 /**
+ * Validate timezone using Intl API
+ */
+function isValidTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Schedule Service
  * Handles business logic for schedule management
  */
@@ -168,6 +180,11 @@ export class ScheduleService {
       userId,
       request.composeId,
     );
+
+    // Validate timezone
+    if (!isValidTimezone(request.timezone)) {
+      throw new BadRequestError(`Invalid timezone: ${request.timezone}`);
+    }
 
     // Check for existing schedule with same name on this compose
     const [existing] = await globalThis.services.db
