@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.8.1](https://github.com/vm0-ai/vm0/compare/web-v9.8.0...web-v9.8.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **metrics:** correct sandbox metrics dataset name ([#1209](https://github.com/vm0-ai/vm0/issues/1209)) ([f30ee0e](https://github.com/vm0-ai/vm0/commit/f30ee0e16321e421cff1763d8df93667e84deec1))
+
+## [9.8.0](https://github.com/vm0-ai/vm0/compare/web-v9.7.0...web-v9.8.0) (2026-01-14)
+
+
+### Features
+
+* **metrics:** add sandbox internal metrics for operation timing ([#1202](https://github.com/vm0-ai/vm0/issues/1202)) ([7134662](https://github.com/vm0-ai/vm0/commit/7134662d5351ef8debc795e9a1c1e61a86a7df4c)), closes [#1174](https://github.com/vm0-ai/vm0/issues/1174)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.5.0
+
+## [9.7.0](https://github.com/vm0-ai/vm0/compare/web-v9.6.0...web-v9.7.0) (2026-01-14)
+
+
+### Features
+
+* **web:** redesign cli auth page with figma design ([#1192](https://github.com/vm0-ai/vm0/issues/1192)) ([ea23262](https://github.com/vm0-ai/vm0/commit/ea23262b8a987e066a8a3b05f3d6f8f54e8f375f))
+
 ## [9.6.0](https://github.com/vm0-ai/vm0/compare/web-v9.5.0...web-v9.6.0) (2026-01-14)
 
 

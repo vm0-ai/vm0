@@ -16,8 +16,9 @@ from typing import List, Dict, Any
 
 from common import (
     RUN_ID, TELEMETRY_URL, TELEMETRY_INTERVAL,
-    SYSTEM_LOG_FILE, METRICS_LOG_FILE, NETWORK_LOG_FILE,
-    TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE, TELEMETRY_NETWORK_POS_FILE
+    SYSTEM_LOG_FILE, METRICS_LOG_FILE, NETWORK_LOG_FILE, SANDBOX_OPS_LOG_FILE,
+    TELEMETRY_LOG_POS_FILE, TELEMETRY_METRICS_POS_FILE, TELEMETRY_NETWORK_POS_FILE,
+    TELEMETRY_SANDBOX_OPS_POS_FILE
 )
 from log import log_info, log_error, log_debug, log_warn
 from http_client import http_post_json
@@ -120,6 +121,19 @@ def read_network_logs_from_position(pos_file: str) -> tuple[List[Dict[str, Any]]
     return read_jsonl_from_position(NETWORK_LOG_FILE, pos_file)
 
 
+def read_sandbox_ops_from_position(pos_file: str) -> tuple[List[Dict[str, Any]], int]:
+    """
+    Read new sandbox operations from JSONL file starting from last position.
+
+    Args:
+        pos_file: Path to position tracking file
+
+    Returns:
+        Tuple of (sandbox operations list, new_position)
+    """
+    return read_jsonl_from_position(SANDBOX_OPS_LOG_FILE, pos_file)
+
+
 def upload_telemetry() -> bool:
     """
     Upload telemetry data to VM0 API.
@@ -136,8 +150,11 @@ def upload_telemetry() -> bool:
     # Read new network logs
     network_logs, network_pos = read_network_logs_from_position(TELEMETRY_NETWORK_POS_FILE)
 
+    # Read new sandbox operations
+    sandbox_ops, sandbox_ops_pos = read_sandbox_ops_from_position(TELEMETRY_SANDBOX_OPS_POS_FILE)
+
     # Skip if nothing new
-    if not system_log and not metrics and not network_logs:
+    if not system_log and not metrics and not network_logs and not sandbox_ops:
         log_debug("No new telemetry data to upload")
         return True
 
@@ -151,10 +168,11 @@ def upload_telemetry() -> bool:
         "runId": RUN_ID,
         "systemLog": masked_system_log,
         "metrics": metrics,  # Metrics don't contain secrets (just numbers)
-        "networkLogs": masked_network_logs
+        "networkLogs": masked_network_logs,
+        "sandboxOperations": sandbox_ops  # Sandbox ops don't contain secrets (just timing data)
     }
 
-    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs")
+    log_debug(f"Uploading telemetry: {len(system_log)} bytes log, {len(metrics)} metrics, {len(network_logs)} network logs, {len(sandbox_ops)} sandbox ops")
 
     result = http_post_json(TELEMETRY_URL, payload, max_retries=1)
 
@@ -163,6 +181,7 @@ def upload_telemetry() -> bool:
         save_position(TELEMETRY_LOG_POS_FILE, log_pos)
         save_position(TELEMETRY_METRICS_POS_FILE, metrics_pos)
         save_position(TELEMETRY_NETWORK_POS_FILE, network_pos)
+        save_position(TELEMETRY_SANDBOX_OPS_POS_FILE, sandbox_ops_pos)
         log_debug(f"Telemetry uploaded successfully: {result.get('id', 'unknown')}")
         return True
     else:

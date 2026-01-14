@@ -16,6 +16,7 @@
   ],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",
+    "CRUSH_GLOBAL_CONFIG": "/home/vscode/.config/crush",
     "HISTFILE": "/home/vscode/.cache/.zsh_history",
     "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/postgres"
   },

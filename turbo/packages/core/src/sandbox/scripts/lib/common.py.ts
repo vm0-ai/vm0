@@ -77,6 +77,10 @@ NETWORK_LOG_FILE = f"/tmp/vm0-network-{RUN_ID}.jsonl"
 TELEMETRY_LOG_POS_FILE = f"/tmp/vm0-telemetry-log-pos-{RUN_ID}.txt"
 TELEMETRY_METRICS_POS_FILE = f"/tmp/vm0-telemetry-metrics-pos-{RUN_ID}.txt"
 TELEMETRY_NETWORK_POS_FILE = f"/tmp/vm0-telemetry-network-pos-{RUN_ID}.txt"
+TELEMETRY_SANDBOX_OPS_POS_FILE = f"/tmp/vm0-telemetry-sandbox-ops-pos-{RUN_ID}.txt"
+
+# Sandbox operations log file (JSONL format)
+SANDBOX_OPS_LOG_FILE = f"/tmp/vm0-sandbox-ops-{RUN_ID}.jsonl"
 
 # Metrics collection configuration
 METRICS_INTERVAL = 5  # seconds
@@ -90,4 +94,34 @@ def validate_config() -> bool:
     if not WORKING_DIR:
         raise ValueError("VM0_WORKING_DIR is required but not set")
     return True
+
+def record_sandbox_op(
+    action_type: str,
+    duration_ms: int,
+    success: bool,
+    error: str = None
+) -> None:
+    """
+    Record a sandbox operation to JSONL file for telemetry upload.
+
+    Args:
+        action_type: Operation name (e.g., "init_total", "storage_download", "cli_execution")
+        duration_ms: Duration in milliseconds
+        success: Whether the operation succeeded
+        error: Optional error message if failed
+    """
+    from datetime import datetime, timezone
+    import json
+
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "action_type": action_type,
+        "duration_ms": duration_ms,
+        "success": success,
+    }
+    if error:
+        entry["error"] = error
+
+    with open(SANDBOX_OPS_LOG_FILE, "a") as f:
+        f.write(json.dumps(entry) + "\\n")
 `;

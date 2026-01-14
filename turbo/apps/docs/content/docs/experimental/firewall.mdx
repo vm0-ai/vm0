@@ -1,0 +1,328 @@
+---
+title: Network Firewall
+description: Control agent network egress with domain and IP-based rules
+---
+
+<Callout type="warning">
+  This is an experimental feature. The configuration and behavior may change in future releases.
+</Callout>
+
+The network firewall controls outbound network traffic from your agent sandbox. It protects against prompt injection attacks and data exfiltration by allowing you to specify exactly which domains and IP addresses your agent can access.
+
+## Prerequisites
+
+Network firewall requires the VM0 production runner. Add `experimental_runner` with `group: vm0/production` to your configuration before enabling the firewall.
+
+## Quick Start
+
+Enable the firewall with a simple allowlist:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    experimental_runner: # [!code highlight]
+      group: vm0/production # [!code highlight]
+    experimental_firewall: # [!code highlight]
+      enabled: true # [!code highlight]
+      rules: # [!code highlight]
+        - domain: "*.github.com" # [!code highlight]
+          action: ALLOW # [!code highlight]
+        - final: DENY # [!code highlight]
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+## Configuration Fields
+
+| Field | Type | Required | Default | Description |
+| ----- | ---- | -------- | ------- | ----------- |
+| `enabled` | boolean | Yes | - | Enable network firewall |
+| `rules` | array | No | `[]` | List of firewall rules |
+| `experimental_mitm` | boolean | No | `false` | Enable HTTPS traffic inspection |
+| `experimental_seal_secrets` | boolean | No | `false` | Encrypt secrets (requires MITM) |
+
+## Rule Types
+
+### Domain Rules
+
+Match traffic by domain name:
+
+```yaml
+rules:
+  - domain: "api.github.com"
+    action: ALLOW
+```
+
+**Matching behavior:**
+- **Exact match**: `api.github.com` matches only `api.github.com`
+- **Wildcard**: `*.github.com` matches `api.github.com`, `raw.github.com`, and also `github.com` itself
+- **Case-insensitive**: `GitHub.com` matches `github.com`
+
+### IP Rules
+
+Match traffic by IP address or CIDR range:
+
+```yaml
+rules:
+  - ip: "192.168.1.100"
+    action: ALLOW
+  - ip: "10.0.0.0/8"
+    action: DENY
+```
+
+**Supported formats:**
+- Single IP: `1.2.3.4`
+- CIDR ranges: `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`
+
+### Terminal Rules
+
+Set a default action for unmatched traffic:
+
+```yaml
+rules:
+  - domain: "*.allowed.com"
+    action: ALLOW
+  - final: DENY  # Block everything else
+```
+
+The `final` rule stops evaluation and returns the specified action.
+
+## Rule Evaluation
+
+Rules are evaluated **top to bottom** with **first-match-wins** semantics:
+
+1. Each outgoing connection is checked against rules in order
+2. The first matching rule determines the action (ALLOW or DENY)
+3. If no rule matches, traffic is **denied by default** (zero-trust)
+
+<Callout type="info">
+  The platform automatically allows essential domains (`*.vm0.ai`, `*.cloudflarestorage.com`, and your LLM provider) before your rules are evaluated.
+</Callout>
+
+## Auto-Injected Rules
+
+The following domains are automatically allowed to ensure agent functionality:
+
+| Domain | Purpose |
+| ------ | ------- |
+| `*.vm0.ai` | VM0 platform communication |
+| `*.cloudflarestorage.com` | Volume and artifact storage |
+| `*.anthropic.com` | Claude API (for claude-code provider) |
+| `*.openai.com` | OpenAI API (for codex provider) |
+
+These rules are prepended to your custom rules and cannot be overridden.
+
+## Operating Modes
+
+### SNI-Only Mode (Default)
+
+The default mode filters traffic at the TLS handshake using Server Name Indication (SNI):
+
+```yaml
+experimental_firewall:
+  enabled: true
+  # experimental_mitm: false (default)
+```
+
+**Characteristics:**
+- Filters based on hostname in TLS ClientHello
+- No decryption of HTTPS traffic
+- Blocked connections fail with TLS certificate error
+- Lower overhead, simpler setup
+
+### MITM Mode
+
+Enable full HTTPS inspection for detailed logging and control:
+
+```yaml
+experimental_firewall:
+  enabled: true
+  experimental_mitm: true # [!code highlight]
+```
+
+**Characteristics:**
+- Decrypts and inspects all HTTPS traffic
+- Blocked requests return HTTP 403 with "Blocked by firewall"
+- Detailed network logs include URL, method, status, latency
+- Higher overhead, requires CA certificate trust
+
+### Secret Sealing
+
+Encrypt environment secrets to prevent exfiltration:
+
+```yaml
+experimental_firewall:
+  enabled: true
+  experimental_mitm: true
+  experimental_seal_secrets: true # [!code highlight]
+```
+
+<Callout type="info">
+  Secret sealing requires MITM mode to be enabled.
+</Callout>
+
+## Viewing Network Logs
+
+View firewall activity using the CLI:
+
+```bash
+vm0 logs <runId> --network
+```
+
+**Options:**
+- `--tail N` - Show last N entries (default: 5, max: 100)
+- `--head N` - Show first N entries
+- `--since TIME` - Filter by time (e.g., `5m`, `2h`, `2024-01-15T10:30:00Z`)
+
+**SNI mode output:**
+```
+[2024-01-15T10:30:00] SNI ALLOW api.github.com:443 domain:*.github.com
+[2024-01-15T10:30:01] SNI DENY evil.com:443 final:DENY
+```
+
+**MITM mode output:**
+```
+[2024-01-15T10:30:00] GET    200 150ms 2.3KB/45KB https://api.github.com/repos
+[2024-01-15T10:30:01] POST   403 5ms   1.2KB/0B   https://evil.com/exfil (BLOCKED)
+```
+
+## Example Configurations
+
+### Allowlist Pattern
+
+Only allow specific domains, deny everything else:
+
+```yaml title="vm0.yaml"
+experimental_firewall:
+  enabled: true
+  rules:
+    - domain: "*.github.com"
+      action: ALLOW
+    - domain: "*.npmjs.org"
+      action: ALLOW
+    - domain: "registry.npmjs.org"
+      action: ALLOW
+    - final: DENY
+```
+
+### Blocklist Pattern
+
+Block specific networks, allow everything else:
+
+```yaml title="vm0.yaml"
+experimental_firewall:
+  enabled: true
+  rules:
+    - ip: "10.0.0.0/8"
+      action: DENY
+    - ip: "192.168.0.0/16"
+      action: DENY
+    - ip: "172.16.0.0/12"
+      action: DENY
+    - final: ALLOW
+```
+
+### Corporate Environment
+
+Block internal networks and allow only approved external services:
+
+```yaml title="vm0.yaml"
+experimental_firewall:
+  enabled: true
+  experimental_mitm: true
+  rules:
+    # Block internal networks
+    - ip: "10.0.0.0/8"
+      action: DENY
+    - ip: "192.168.0.0/16"
+      action: DENY
+    # Allow approved services
+    - domain: "*.github.com"
+      action: ALLOW
+    - domain: "*.githubusercontent.com"
+      action: ALLOW
+    - domain: "*.npmjs.org"
+      action: ALLOW
+    - domain: "*.pypi.org"
+      action: ALLOW
+    # Deny everything else
+    - final: DENY
+```
+
+## Frequently Asked Questions
+
+<Accordions className="faq-accordions">
+
+<Accordion title="Why is my connection being blocked?">
+
+Check the network logs to see which rule blocked the request:
+
+```bash
+vm0 logs <runId> --network --tail 50
+```
+
+Look for entries with `DENY` action. The `rule_matched` field shows which rule caused the block.
+
+Common causes:
+- Domain not in your allowlist
+- IP falls within a blocked CIDR range
+- Missing `final: ALLOW` when using blocklist pattern
+
+</Accordion>
+
+<Accordion title="Why do I see certificate errors instead of connection refused?">
+
+In SNI-only mode (default), blocked connections fail during TLS handshake, which appears as a certificate error to the client.
+
+To get cleaner HTTP 403 responses, enable MITM mode:
+
+```yaml
+experimental_firewall:
+  enabled: true
+  experimental_mitm: true
+```
+
+</Accordion>
+
+<Accordion title="How do I allow a new domain?">
+
+Add a domain rule before your `final: DENY` rule:
+
+```yaml
+rules:
+  - domain: "*.existing.com"
+    action: ALLOW
+  - domain: "*.newdomain.com"  # Add new domain here
+    action: ALLOW
+  - final: DENY
+```
+
+Remember that rules are evaluated top to bottom, so order matters.
+
+</Accordion>
+
+<Accordion title="Do wildcards match the base domain?">
+
+Yes. `*.example.com` matches:
+- `sub.example.com`
+- `a.b.example.com`
+- `example.com` (the base domain itself)
+
+</Accordion>
+
+<Accordion title="What domains are automatically allowed?">
+
+The platform auto-allows these domains before your rules:
+- `*.vm0.ai` - Platform communication
+- `*.cloudflarestorage.com` - Storage access
+- `*.anthropic.com` - Claude API (if using claude-code)
+- `*.openai.com` - OpenAI API (if using codex)
+
+You cannot block these domains as they are required for agent operation.
+
+</Accordion>
+
+</Accordions>

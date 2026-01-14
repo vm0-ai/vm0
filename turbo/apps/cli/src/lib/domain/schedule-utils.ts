@@ -84,3 +84,142 @@ export function formatDateTime(dateStr: string | null): string {
 
   return `${formatted} (${relative})`;
 }
+
+/**
+ * Frequency type for schedule wizard
+ */
+export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "once";
+
+/**
+ * Generate cron expression from user-friendly inputs
+ * @param frequency - Schedule frequency type
+ * @param time - Time in HH:MM format (24-hour)
+ * @param day - Day of week (0-6, Sun=0) for weekly, or day of month (1-31) for monthly
+ * @returns Cron expression string
+ */
+export function generateCronExpression(
+  frequency: Exclude<ScheduleFrequency, "once">,
+  time: string,
+  day?: number,
+): string {
+  const [hourStr, minuteStr] = time.split(":");
+  const hour = parseInt(hourStr ?? "0", 10);
+  const minute = parseInt(minuteStr ?? "0", 10);
+
+  switch (frequency) {
+    case "daily":
+      return `${minute} ${hour} * * *`;
+    case "weekly":
+      return `${minute} ${hour} * * ${day ?? 1}`;
+    case "monthly":
+      return `${minute} ${hour} ${day ?? 1} * *`;
+  }
+}
+
+/**
+ * Detect system timezone using Intl API
+ * @returns IANA timezone identifier (e.g., "America/New_York")
+ */
+export function detectTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * Agent configuration within vm0.yaml
+ */
+interface AgentConfig {
+  experimental_vars?: string[];
+  experimental_secrets?: string[];
+  environment?: Record<string, string>;
+}
+
+/**
+ * Result of extracting vars and secrets from vm0.yaml
+ */
+export interface VarsAndSecrets {
+  vars: string[];
+  secrets: string[];
+}
+
+/**
+ * Extract variable and secret names from vm0.yaml
+ * Looks for experimental_vars, experimental_secrets, and ${{ vars.X }}, ${{ secrets.X }} patterns
+ */
+export function extractVarsAndSecrets(): VarsAndSecrets {
+  const result: VarsAndSecrets = { vars: [], secrets: [] };
+
+  if (!existsSync(CONFIG_FILE)) {
+    return result;
+  }
+
+  try {
+    const content = readFileSync(CONFIG_FILE, "utf8");
+    const config = parseYaml(content) as AgentComposeConfig;
+
+    // Get first agent's config
+    const agents = Object.values(config.agents || {}) as AgentConfig[];
+    const agent = agents[0];
+    if (!agent) {
+      return result;
+    }
+
+    // Collect from experimental_vars and experimental_secrets
+    if (agent.experimental_vars) {
+      result.vars.push(...agent.experimental_vars);
+    }
+    if (agent.experimental_secrets) {
+      result.secrets.push(...agent.experimental_secrets);
+    }
+
+    // Parse environment for ${{ vars.X }} and ${{ secrets.X }} patterns
+    if (agent.environment) {
+      for (const value of Object.values(agent.environment)) {
+        // Match ${{ vars.NAME }}
+        const varsMatches = value.matchAll(/\$\{\{\s*vars\.(\w+)\s*\}\}/g);
+        for (const match of varsMatches) {
+          if (match[1] && !result.vars.includes(match[1])) {
+            result.vars.push(match[1]);
+          }
+        }
+
+        // Match ${{ secrets.NAME }}
+        const secretsMatches = value.matchAll(
+          /\$\{\{\s*secrets\.(\w+)\s*\}\}/g,
+        );
+        for (const match of secretsMatches) {
+          if (match[1] && !result.secrets.includes(match[1])) {
+            result.secrets.push(match[1]);
+          }
+        }
+      }
+    }
+
+    return result;
+  } catch {
+    return result;
+  }
+}
+
+/**
+ * Validate time format (HH:MM, 24-hour)
+ * @param time - Time string to validate
+ * @returns true if valid, error message if invalid
+ */
+export function validateTimeFormat(time: string): boolean | string {
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return "Invalid format. Use HH:MM (e.g., 09:00)";
+  }
+
+  const hour = parseInt(match[1]!, 10);
+  const minute = parseInt(match[2]!, 10);
+
+  if (hour < 0 || hour > 23) {
+    return "Hour must be 0-23";
+  }
+  if (minute < 0 || minute > 59) {
+    return "Minute must be 0-59";
+  }
+
+  return true;
+}

@@ -227,7 +227,10 @@ const router = tsr.router(storagesCommitContract, {
     }
 
     // Calculate totals
-    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    const totalSize = files.reduce(
+      (sum: number, f: { size: number }) => sum + f.size,
+      0,
+    );
 
     // Use transaction for atomicity
     await globalThis.services.db.transaction(async (tx) => {
