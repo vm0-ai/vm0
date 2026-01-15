@@ -324,6 +324,28 @@ async function run(): Promise<[number, string]> {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    // Create promise to track process exit - register handlers BEFORE reading streams
+    // This prevents race condition where process exits before handlers are registered
+    const exitPromise = new Promise<number>((resolve) => {
+      let resolved = false;
+
+      proc.on("error", (err: Error) => {
+        if (!resolved) {
+          resolved = true;
+          logError(`Failed to spawn ${CLI_AGENT_TYPE}: ${err.message}`);
+          stderrLines.push(`Spawn error: ${err.message}`);
+          resolve(1);
+        }
+      });
+
+      proc.on("close", (code: number | null) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(code ?? 1);
+        }
+      });
+    });
+
     // Read stderr in background
     if (proc.stderr) {
       const stderrRl = readline.createInterface({ input: proc.stderr });
@@ -372,27 +394,8 @@ async function run(): Promise<[number, string]> {
       }
     }
 
-    // Wait for process to complete
-    // Handle both 'error' (spawn failure) and 'close' (normal exit) events
-    agentExitCode = await new Promise<number>((resolve) => {
-      let resolved = false;
-
-      proc.on("error", (err: Error) => {
-        if (!resolved) {
-          resolved = true;
-          logError(`Failed to spawn ${CLI_AGENT_TYPE}: ${err.message}`);
-          stderrLines.push(`Spawn error: ${err.message}`);
-          resolve(1);
-        }
-      });
-
-      proc.on("close", (code: number | null) => {
-        if (!resolved) {
-          resolved = true;
-          resolve(code ?? 1);
-        }
-      });
-    });
+    // Wait for process to complete (handlers already registered above)
+    agentExitCode = await exitPromise;
   } catch (error) {
     logError(`Failed to execute ${CLI_AGENT_TYPE}: ${error}`);
     agentExitCode = 1;
