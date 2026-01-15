@@ -1,5 +1,1 @@
-export {
-  scheduleService,
-  type ScheduleResponse,
-  type DeployScheduleRequest,
-} from "./schedule-service";
+export { scheduleService } from "./schedule-service";

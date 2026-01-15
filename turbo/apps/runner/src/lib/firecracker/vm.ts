@@ -358,12 +358,3 @@ export class FirecrackerVM {
     );
   }
 }
-
-/**
- * Create and start a VM with the given configuration
- */
-export async function createVM(config: VMConfig): Promise<FirecrackerVM> {
-  const vm = new FirecrackerVM(config);
-  await vm.start();
-  return vm;
-}

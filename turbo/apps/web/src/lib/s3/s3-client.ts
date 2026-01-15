@@ -363,37 +363,6 @@ export async function deleteS3Objects(
 }
 
 /**
- * Delete all objects under S3 prefix
- * @param s3Uri - S3 URI in format s3://bucket/prefix
- */
-export async function deleteS3Directory(s3Uri: string): Promise<void> {
-  const { bucket, prefix } = parseS3Uri(s3Uri);
-  const client = getS3Client();
-
-  // List all objects under prefix
-  const objects = await listS3Objects(bucket, prefix);
-
-  if (objects.length === 0) {
-    return;
-  }
-
-  // Delete in batches of 1000 (AWS limit)
-  const batchSize = 1000;
-  for (let i = 0; i < objects.length; i += batchSize) {
-    const batch = objects.slice(i, i + batchSize);
-
-    const command = new DeleteObjectsCommand({
-      Bucket: bucket,
-      Delete: {
-        Objects: batch.map((obj) => ({ Key: obj.key })),
-      },
-    });
-
-    await client.send(command);
-  }
-}
-
-/**
  * Get all files in directory recursively
  * @param dirPath - Directory path
  * @returns Array of file paths

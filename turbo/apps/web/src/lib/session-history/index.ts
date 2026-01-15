@@ -1,4 +1,1 @@
-export {
-  SessionHistoryService,
-  sessionHistoryService,
-} from "./session-history-service";
+export { sessionHistoryService } from "./session-history-service";

@@ -97,33 +97,6 @@ export async function downloadGitHubSkill(
 }
 
 /**
- * Download multiple skills in parallel
- *
- * @param skillUrls - Array of GitHub tree URLs
- * @param destDir - Destination directory for downloaded skills
- * @returns Map of skill URL to local path
- */
-export async function downloadSkills(
-  skillUrls: string[],
-  destDir: string,
-): Promise<Map<string, string>> {
-  const results = new Map<string, string>();
-
-  // Create destination directory
-  await fs.mkdir(destDir, { recursive: true });
-
-  // Download skills in parallel
-  const downloads = skillUrls.map(async (url) => {
-    const parsed = parseGitHubTreeUrl(url);
-    const skillPath = await downloadGitHubSkill(parsed, destDir);
-    results.set(url, skillPath);
-  });
-
-  await Promise.all(downloads);
-  return results;
-}
-
-/**
  * Validate that a downloaded skill has the required SKILL.md file
  *
  * @param skillDir - Path to the downloaded skill directory

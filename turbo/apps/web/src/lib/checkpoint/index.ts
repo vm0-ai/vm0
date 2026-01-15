@@ -4,11 +4,4 @@
  */
 
 export { checkpointService } from "./checkpoint-service";
-export type {
-  CheckpointData,
-  CheckpointRequest,
-  CheckpointResponse,
-  ArtifactSnapshot,
-  AgentComposeSnapshot,
-  ConversationData,
-} from "./types";
+export type { ArtifactSnapshot } from "./types";
