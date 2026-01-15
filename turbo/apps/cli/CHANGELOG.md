@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.0](https://github.com/vm0-ai/vm0/compare/cli-v5.6.0...cli-v5.7.0) (2026-01-15)
+
+
+### Features
+
+* **cli:** auto-detect schedule name from schedule.yaml ([#1253](https://github.com/vm0-ai/vm0/issues/1253)) ([1509a08](https://github.com/vm0-ai/vm0/commit/1509a0847fc6ab32e23b30e892ac51101f76e92a)), closes [#1251](https://github.com/vm0-ai/vm0/issues/1251)
+
 ## [5.6.0](https://github.com/vm0-ai/vm0/compare/cli-v5.5.0...cli-v5.6.0) (2026-01-15)
 
 

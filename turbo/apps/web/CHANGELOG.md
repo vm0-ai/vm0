@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.11.0](https://github.com/vm0-ai/vm0/compare/web-v9.10.1...web-v9.11.0) (2026-01-15)
+
+
+### Features
+
+* add multilingual glossary page with 29 agent building terms ([#1256](https://github.com/vm0-ai/vm0/issues/1256)) ([407b353](https://github.com/vm0-ai/vm0/commit/407b3539167511f0eb1cc410c9bcc24a86f8514f))
+
 ## [9.10.1](https://github.com/vm0-ai/vm0/compare/web-v9.10.0...web-v9.10.1) (2026-01-15)
 
 
