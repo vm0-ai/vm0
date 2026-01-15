@@ -78,6 +78,13 @@ const appStringSchema = z
   );
 
 /**
+ * Non-empty string array schema for experimental fields
+ */
+const nonEmptyStringArraySchema = z.array(
+  z.string().min(1, "Array entries cannot be empty strings"),
+);
+
+/**
  * Agent definition schema
  */
 const agentDefinitionSchema = z.object({
@@ -102,7 +109,7 @@ const agentDefinitionSchema = z.object({
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */
-  instructions: z.string().optional(),
+  instructions: z.string().min(1, "Instructions path cannot be empty").optional(),
   /**
    * Array of GitHub tree URLs for agent skills.
    * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
@@ -128,6 +135,16 @@ const agentDefinitionSchema = z.object({
    * When enabled, filters outbound traffic by domain/IP rules.
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
+  /**
+   * Array of secret names to inject from the scope's secret store.
+   * Each entry must be a non-empty string.
+   */
+  experimental_secrets: nonEmptyStringArraySchema.optional(),
+  /**
+   * Array of variable names to inject from the scope's variable store.
+   * Each entry must be a non-empty string.
+   */
+  experimental_vars: nonEmptyStringArraySchema.optional(),
 });
 
 /**
