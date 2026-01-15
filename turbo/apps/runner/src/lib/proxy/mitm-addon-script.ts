@@ -28,7 +28,7 @@ from mitmproxy import http, ctx, tls
 # VM0 Proxy configuration from environment
 API_URL = os.environ.get("VM0_API_URL", "https://www.vm0.ai")
 REGISTRY_PATH = os.environ.get("VM0_REGISTRY_PATH", "/tmp/vm0-vm-registry.json")
-VERCEL_BYPASS = os.environ.get("VERCEL_PROTECTION_BYPASS", "")
+VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 
 # Construct proxy URL
 PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"

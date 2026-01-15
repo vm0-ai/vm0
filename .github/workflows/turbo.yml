@@ -397,7 +397,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     needs: [e2e-auth, deploy-web, lint, test]
     if: needs.deploy-web.outputs.preview-url != ''
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -458,7 +458,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
     needs: [cli-e2e-01-serial, deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:

@@ -67,7 +67,7 @@ EOF
     assert_success
 }
 
-@test "sni-firewall: allowed domain passes through" {
+@test "sni-firewall: allowed domain passes through and logs captured" {
     if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
         skip "Network security test skipped"
     fi
@@ -103,6 +103,27 @@ EOF
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
+
+    # Extract run ID and verify network logs are captured
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || fail "Failed to extract Run ID"
+
+    # Fetch network logs with retry (Axiom ingestion is async)
+    local max_retries=10
+    local retry_delay=3
+    for i in $(seq 1 $max_retries); do
+        run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+        if [[ "$output" == *"httpbin.org"* ]]; then
+            echo "Network logs found (attempt $i)"
+            assert_success
+            return 0
+        fi
+        echo "Retry $i/$max_retries: waiting for network logs..."
+        sleep $retry_delay
+    done
+
+    echo "$output"
+    fail "Network logs not found after $max_retries retries"
 }
 
 @test "sni-firewall: blocked domain is denied" {

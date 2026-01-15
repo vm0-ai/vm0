@@ -67,7 +67,7 @@ EOF
     assert_success
 }
 
-@test "mitm-firewall: allowed domain passes through" {
+@test "mitm-firewall: allowed domain passes through and logs captured" {
     if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
         skip "Network security test skipped"
     fi
@@ -103,6 +103,27 @@ EOF
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
+
+    # Extract run ID and verify network logs are captured
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || fail "Failed to extract Run ID"
+
+    # Fetch network logs with retry (Axiom ingestion is async)
+    local max_retries=10
+    local retry_delay=3
+    for i in $(seq 1 $max_retries); do
+        run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+        if [[ "$output" == *"httpbin.org"* ]]; then
+            echo "Network logs found (attempt $i)"
+            assert_success
+            return 0
+        fi
+        echo "Retry $i/$max_retries: waiting for network logs..."
+        sleep $retry_delay
+    done
+
+    echo "$output"
+    fail "Network logs not found after $max_retries retries"
 }
 
 @test "mitm-firewall: blocked domain returns 403" {
@@ -246,52 +267,4 @@ EOF
     if [[ "$output" == *"VALUE=vm0_enc_"* ]]; then
         fail "Secret should not be encrypted when seal_secrets is disabled"
     fi
-}
-
-@test "mitm-firewall: network logs capture requests" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}-logs:
-    description: "MITM network logs test"
-    provider: claude-code
-    working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
-    experimental_firewall:
-      enabled: true
-      experimental_mitm: true
-      rules:
-        - domain: "httpbin.org"
-          action: ALLOW
-        - final: DENY
-EOF
-
-    create_artifact "$ARTIFACT_NAME-logs"
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    run $CLI_COMMAND run "${AGENT_NAME}-logs" \
-        --artifact-name "$ARTIFACT_NAME-logs" \
-        "curl --retry 3 -sf https://httpbin.org/get >/dev/null 2>&1 || true; echo 'done'"
-
-    echo "$output"
-    assert_success
-    assert_output --partial "Run completed successfully"
-
-    # Extract run ID
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
-    [ -n "$RUN_ID" ] || fail "Failed to extract Run ID"
-
-    # Fetch network logs - logs should be available after run completes
-    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
-    echo "$output"
-    assert_success
-    assert_output --partial "httpbin.org"
 }
