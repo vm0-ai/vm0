@@ -1,5 +1,6 @@
 node_modules
 dist
+packages/core/src/sandbox/scripts/bundled.ts
 pnpm-lock.yaml
 coverage
 .claude

@@ -35,7 +35,13 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "src/sandbox/scripts/bundled.ts", "src/sandbox/scripts/dist/**"]
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**",
+        "src/sandbox/scripts/bundled.ts",
+        "src/sandbox/scripts/dist/**"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

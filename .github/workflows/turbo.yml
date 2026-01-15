@@ -342,6 +342,9 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
 
@@ -418,6 +421,9 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
 
@@ -478,6 +484,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -542,6 +551,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -734,6 +746,9 @@ jobs:
           echo "ERROR: Could not acquire lock on any host after 4 attempts (~14 minutes)"
           echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build runner bundle
         run: |

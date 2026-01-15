@@ -66,9 +66,7 @@
         "scripts/build-sandbox-scripts.ts"
       ],
       "project": ["src/**/*.ts", "scripts/**/*.ts"],
-      "ignore": [
-        "src/sandbox/scripts/src/**"
-      ]
+      "ignore": ["src/sandbox/scripts/src/**"]
     },
     "packages/ui": {
       "entry": [
