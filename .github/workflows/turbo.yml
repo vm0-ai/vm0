@@ -139,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
-      # Run lint, check-types, and prettier directly (not via lefthook)
+      # Run lint, check-types, prettier and knip directly (not via lefthook)
       # lefthook's turbo filter uses git diff which doesn't work in CI
       - name: Lint
         working-directory: turbo
@@ -152,6 +152,10 @@ jobs:
       - name: Prettier
         working-directory: turbo
         run: pnpm prettier --check .
+
+      - name: Knip
+        working-directory: turbo
+        run: pnpm knip
 
   test:
     runs-on: ubuntu-latest

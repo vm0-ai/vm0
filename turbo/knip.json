@@ -16,45 +16,49 @@
         "**/*.{test,spec}.{ts,tsx}"
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
-      "ignoreDependencies": ["@vm0/ui"],
+      "ignoreDependencies": [
+        "@vm0/ui",
+        "e2b",
+        "@testing-library/react",
+        "@types/tar"
+      ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
     },
     "apps/cli": {
       "entry": [
-        "src/index.ts",
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@types/tar"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }
     },
     "apps/docs": {
       "entry": ["source.config.ts"],
-      "project": ["**/*.{ts,tsx,mdx,js,mjs}"]
+      "project": ["**/*.{ts,tsx,mdx,js,mjs}"],
+      "ignoreDependencies": ["@vm0/typescript-config"]
     },
     "apps/platform": {
-      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)", "src/test/setup.ts"],
+      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
-      "ignore": ["eslint.config.js", "custom-eslint/**"],
+      "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
-        "@typescript-eslint/parser",
         "tailwindcss",
-        "@vm0/ui"
-      ],
-      "eslint": false
+        "@vm0/ui",
+        "@testing-library/react",
+        "typescript-eslint"
+      ]
     },
     "apps/runner": {
       "entry": [
-        "src/index.ts",
-        "scripts/*.ts",
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "project": ["src/**/*.ts"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }
@@ -68,11 +72,11 @@
     },
     "packages/ui": {
       "entry": [
-        "src/test/setup.ts",
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "src/**/*.{test,spec}.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}"]
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["autoprefixer"]
     },
     "packages/eslint-config": {
       "entry": [],
@@ -85,8 +89,7 @@
     },
     "packages/proxy": {
       "entry": [],
-      "project": ["**/*.{js,json}"],
-      "ignoreBinaries": ["caddy"]
+      "project": ["**/*.{js,json}"]
     }
   },
   "ignore": [
@@ -96,25 +99,42 @@
     "build/**",
     "coverage/**",
     "**/drizzle.config.ts",
-    "**/eslint.config.{js,mjs,cjs}",
     "**/custom-eslint/**",
-    "**/vite.config.ts",
-    "**/vitest.config.ts",
     "apps/docs/src/components/plausible-tracker.tsx",
     "apps/platform/src/mocks/browser.ts",
     "apps/platform/src/signals/test-utils.ts",
+    "apps/platform/src/signals/__tests__/test-helpers.ts",
+    "apps/platform/src/signals/location.ts",
+    "apps/platform/src/signals/log.ts",
+    "apps/platform/src/signals/page-signal.ts",
+    "apps/platform/src/signals/utils.ts",
     "apps/platform/src/views/router/link.tsx",
     "apps/runner/src/lib/firecracker/index.ts",
+    "apps/runner/src/lib/firecracker/guest.ts",
+    "apps/runner/src/lib/firecracker/network.ts",
     "apps/web/src/db/index.ts",
     "apps/web/src/lib/auth/require-user.ts",
     "apps/web/src/lib/e2b/index.ts",
+    "apps/web/src/lib/e2b/types.ts",
     "apps/web/src/lib/public-api/index.ts",
+    "apps/web/src/lib/public-api/errors.ts",
+    "apps/web/src/lib/public-api/handler.ts",
+    "apps/web/src/lib/public-api/request-id.ts",
+    "apps/web/src/lib/image/image-service.ts",
+    "apps/web/src/lib/logger.ts",
+    "apps/web/src/lib/s3/s3-client.ts",
+    "apps/web/src/lib/scope/scope-service.ts",
+    "apps/web/src/lib/checkpoint/types.ts",
+    "apps/web/src/lib/proxy/proxy-service.ts",
+    "apps/web/src/lib/storage/types.ts",
     "apps/web/src/test/setup.ts",
-    "apps/web/src/types/agent-run.ts"
+    "apps/web/src/types/agent-run.ts",
+    "apps/web/src/types/agent-compose.ts",
+    "apps/cli/src/lib/api/api-client.ts",
+    "packages/core/src/contracts/public/agents.ts"
   ],
+  "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],
   "ignoreUnresolved": [],
-  "eslint": false,
-  "vite": false,
-  "vitest": false
+  "ignoreExportsUsedInFile": true
 }

@@ -78,9 +78,7 @@ export function getLatestVersion(): Promise<string | null> {
  * - pnpm: pnpm add -g @vm0/cli@latest
  * Returns true on success, false on failure
  */
-export function performUpgrade(
-  packageManager: PackageManager,
-): Promise<boolean> {
+function performUpgrade(packageManager: PackageManager): Promise<boolean> {
   return new Promise((resolve) => {
     const isWindows = process.platform === "win32";
     const command = isWindows ? `${packageManager}.cmd` : packageManager;

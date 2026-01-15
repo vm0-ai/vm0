@@ -102,7 +102,7 @@ const PROVIDER_APPS_IMAGES: Record<
  * @param appString - App string in format "app" or "app:tag"
  * @returns Object with app name and tag (defaults to "latest")
  */
-export function parseAppString(appString: string): {
+function parseAppString(appString: string): {
   app: string;
   tag: "latest" | "dev";
 } {
