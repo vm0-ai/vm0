@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.12.0](https://github.com/vm0-ai/vm0/compare/web-v9.11.0...web-v9.12.0) (2026-01-15)
+
+
+### Features
+
+* **i18n:** complete glossary translations for german and spanish ([#1259](https://github.com/vm0-ai/vm0/issues/1259)) ([633d977](https://github.com/vm0-ai/vm0/commit/633d977db40789bacf799716a3d2c7e43613d271))
+
 ## [9.11.0](https://github.com/vm0-ai/vm0/compare/web-v9.10.1...web-v9.11.0) (2026-01-15)
 
 
