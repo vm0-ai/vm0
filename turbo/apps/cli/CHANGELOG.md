@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.6.0](https://github.com/vm0-ai/vm0/compare/cli-v5.5.0...cli-v5.6.0) (2026-01-15)
+
+
+### Features
+
+* **cli:** improve schedule deploy output format for better readability ([#1249](https://github.com/vm0-ai/vm0/issues/1249)) ([ea92c39](https://github.com/vm0-ai/vm0/commit/ea92c395c16f8ca3c9b6a1502aa788d7d84731e0)), closes [#1247](https://github.com/vm0-ai/vm0/issues/1247)
+
+
+### Bug Fixes
+
+* **cli:** improve schedule date prompt tab completion ([#1248](https://github.com/vm0-ai/vm0/issues/1248)) ([be9d59d](https://github.com/vm0-ai/vm0/commit/be9d59d315ddc674b75f8975b9d308cce1979720))
+
 ## [5.5.0](https://github.com/vm0-ai/vm0/compare/cli-v5.4.0...cli-v5.5.0) (2026-01-15)
 
 
