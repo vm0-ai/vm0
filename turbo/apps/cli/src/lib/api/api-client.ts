@@ -1,5 +1,13 @@
 import { initClient } from "@ts-rest/core";
-import { runsMainContract, type ApiErrorResponse } from "@vm0/core";
+import {
+  runsMainContract,
+  runEventsContract,
+  runSystemLogContract,
+  runMetricsContract,
+  runAgentEventsContract,
+  runNetworkLogsContract,
+  type ApiErrorResponse,
+} from "@vm0/core";
 import { getApiUrl, getToken } from "./config";
 
 // Import types from @vm0/core contracts
@@ -246,23 +254,30 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const since = options?.since ?? 0;
-    const limit = options?.limit ?? 100;
+    // Create ts-rest client with config
+    const client = initClient(runEventsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
 
-    const response = await fetch(
-      `${baseUrl}/api/agent/runs/${runId}/events?since=${since}&limit=${limit}`,
-      {
-        method: "GET",
-        headers,
+    const result = await client.getEvents({
+      params: { id: runId },
+      query: {
+        since: options?.since ?? 0,
+        limit: options?.limit ?? 100,
       },
-    );
+    });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch events");
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetEventsResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to fetch events";
+    throw new Error(message);
   }
 
   async getSystemLog(
@@ -272,31 +287,31 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const params = new URLSearchParams();
-    if (options?.since !== undefined) {
-      params.set("since", String(options.since));
-    }
-    if (options?.limit !== undefined) {
-      params.set("limit", String(options.limit));
-    }
-    if (options?.order !== undefined) {
-      params.set("order", options.order);
-    }
-
-    const queryString = params.toString();
-    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/system-log${queryString ? `?${queryString}` : ""}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(runSystemLogContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch system log");
+    const result = await client.getSystemLog({
+      params: { id: runId },
+      query: {
+        since: options?.since,
+        limit: options?.limit,
+        order: options?.order,
+      },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetSystemLogResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to fetch system log";
+    throw new Error(message);
   }
 
   async getMetrics(
@@ -306,31 +321,31 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const params = new URLSearchParams();
-    if (options?.since !== undefined) {
-      params.set("since", String(options.since));
-    }
-    if (options?.limit !== undefined) {
-      params.set("limit", String(options.limit));
-    }
-    if (options?.order !== undefined) {
-      params.set("order", options.order);
-    }
-
-    const queryString = params.toString();
-    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/metrics${queryString ? `?${queryString}` : ""}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(runMetricsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch metrics");
+    const result = await client.getMetrics({
+      params: { id: runId },
+      query: {
+        since: options?.since,
+        limit: options?.limit,
+        order: options?.order,
+      },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetMetricsResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to fetch metrics";
+    throw new Error(message);
   }
 
   async getAgentEvents(
@@ -340,31 +355,31 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const params = new URLSearchParams();
-    if (options?.since !== undefined) {
-      params.set("since", String(options.since));
-    }
-    if (options?.limit !== undefined) {
-      params.set("limit", String(options.limit));
-    }
-    if (options?.order !== undefined) {
-      params.set("order", options.order);
-    }
-
-    const queryString = params.toString();
-    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/agent${queryString ? `?${queryString}` : ""}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(runAgentEventsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch agent events");
+    const result = await client.getAgentEvents({
+      params: { id: runId },
+      query: {
+        since: options?.since,
+        limit: options?.limit,
+        order: options?.order,
+      },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetAgentEventsResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to fetch agent events";
+    throw new Error(message);
   }
 
   async getNetworkLogs(
@@ -374,31 +389,31 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const params = new URLSearchParams();
-    if (options?.since !== undefined) {
-      params.set("since", String(options.since));
-    }
-    if (options?.limit !== undefined) {
-      params.set("limit", String(options.limit));
-    }
-    if (options?.order !== undefined) {
-      params.set("order", options.order);
-    }
-
-    const queryString = params.toString();
-    const url = `${baseUrl}/api/agent/runs/${runId}/telemetry/network${queryString ? `?${queryString}` : ""}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(runNetworkLogsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to fetch network logs");
+    const result = await client.getNetworkLogs({
+      params: { id: runId },
+      query: {
+        since: options?.since,
+        limit: options?.limit,
+        order: options?.order,
+      },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetNetworkLogsResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to fetch network logs";
+    throw new Error(message);
   }
 
   /**

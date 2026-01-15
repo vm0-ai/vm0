@@ -330,22 +330,18 @@ describe("ApiClient", () => {
         nextSequence: 0,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       const result = await apiClient.getEvents("run-123");
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
-        {
+        expect.objectContaining({
           method: "GET",
-          headers: {
-            Authorization: "Bearer test-token",
-            "Content-Type": "application/json",
-          },
-        },
+          headers: expect.objectContaining({
+            authorization: "Bearer test-token",
+          }),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -365,10 +361,7 @@ describe("ApiClient", () => {
         nextSequence: 5,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       const result = await apiClient.getEvents("run-123", { since: 4 });
 
@@ -388,10 +381,7 @@ describe("ApiClient", () => {
         nextSequence: 0,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       await apiClient.getEvents("run-123", { limit: 50 });
 
@@ -408,10 +398,7 @@ describe("ApiClient", () => {
         nextSequence: 150,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       const result = await apiClient.getEvents("run-123", {
         since: 100,
@@ -447,10 +434,7 @@ describe("ApiClient", () => {
         nextSequence: 2,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       const result = await apiClient.getEvents("run-123");
 
@@ -486,12 +470,14 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Run not found", code: "NOT_FOUND" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            error: { message: "Run not found", code: "NOT_FOUND" },
+          },
+          404,
+        ),
+      );
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
         "Run not found",
@@ -499,12 +485,14 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "", code: "ERROR" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            error: { message: "", code: "ERROR" },
+          },
+          500,
+        ),
+      );
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
         "Failed to fetch events",
