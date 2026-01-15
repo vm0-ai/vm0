@@ -109,7 +109,10 @@ const agentDefinitionSchema = z.object({
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */
-  instructions: z.string().min(1, "Instructions path cannot be empty").optional(),
+  instructions: z
+    .string()
+    .min(1, "Instructions path cannot be empty")
+    .optional(),
   /**
    * Array of GitHub tree URLs for agent skills.
    * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
