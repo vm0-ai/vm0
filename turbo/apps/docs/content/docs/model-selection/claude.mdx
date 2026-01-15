@@ -16,7 +16,7 @@ agents:
   my-agent:
     provider: claude-code
     environment:
-      # Required: Claude Code OAuth token
+      # Required: One of the following authentication methods
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" # [!code highlight]
 
       # Optional: Configure specific models for each tier
@@ -28,13 +28,22 @@ agents:
 
 ## Environment Variables
 
-### Required
+### Authentication
 
-| Name                      | Description                           |
-| ------------------------- | ------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` |
+You must configure **one** of the following authentication methods:
 
-Get your OAuth token by running `claude setup-token` in your terminal.
+| Name                      | Description                                                                 | Pricing         |
+| ------------------------- | --------------------------------------------------------------------------- | --------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` (requires Pro/Max subscription)       | Fixed monthly   |
+| `ANTHROPIC_API_KEY`       | API key from [Anthropic Console](https://console.anthropic.com/settings/keys) | Pay-per-token   |
+
+**OAuth Token (Subscription):** Get your OAuth token by running `claude setup-token` in your terminal. This uses your Claude Pro or Max subscription with unlimited usage.
+
+**API Key (Pay-per-use):** Get your API key from the [Anthropic Console](https://console.anthropic.com/settings/keys). You'll be charged based on token usage.
+
+<Callout type="warning">
+  Do not set both `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` at the same time. This will cause authentication conflicts.
+</Callout>
 
 ### Optional Model Configuration
 
@@ -73,6 +82,20 @@ agents:
     provider: claude-code
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+```
+
+### Use API Key Instead of OAuth Token
+
+If you prefer pay-per-token pricing or don't have a Claude subscription:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    provider: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" # [!code highlight]
 ```
 
 ### Use All Opus Models
