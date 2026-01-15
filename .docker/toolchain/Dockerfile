@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     lsb-release \
     ca-certificates \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22
