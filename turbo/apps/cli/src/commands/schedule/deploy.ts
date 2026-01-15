@@ -41,6 +41,25 @@ function expandEnvVarsInObject(
   return result;
 }
 
+/**
+ * Format an ISO date string in a specific timezone as YYYY-MM-DD HH:MM
+ */
+function formatInTimezone(isoDate: string, timezone: string): string {
+  const date = new Date(isoDate);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
 export const deployCommand = new Command()
   .name("deploy")
   .description("Deploy a schedule from schedule.yaml (create or update)")
@@ -171,20 +190,29 @@ export const deployCommand = new Command()
         );
       }
 
-      // Show next run time
-      if (deployResult.schedule.nextRunAt) {
-        const nextRun = new Date(deployResult.schedule.nextRunAt);
-        console.log(chalk.dim(`  Next run: ${nextRun.toLocaleString()}`));
-      }
+      // Show timezone
+      console.log(chalk.dim(`  Timezone: ${deployResult.schedule.timezone}`));
 
+      // Show trigger info based on type
       if (deployResult.schedule.cronExpression) {
+        // Cron schedule: show cron expression and next run
         console.log(
-          chalk.dim(
-            `  Cron: ${deployResult.schedule.cronExpression} (${deployResult.schedule.timezone})`,
-          ),
+          chalk.dim(`  Cron: ${deployResult.schedule.cronExpression}`),
         );
+        if (deployResult.schedule.nextRunAt) {
+          const nextRun = formatInTimezone(
+            deployResult.schedule.nextRunAt,
+            deployResult.schedule.timezone,
+          );
+          console.log(chalk.dim(`  Next run: ${nextRun}`));
+        }
       } else if (deployResult.schedule.atTime) {
-        console.log(chalk.dim(`  At: ${deployResult.schedule.atTime}`));
+        // One-time schedule: show at time (no need for next run)
+        const atTime = formatInTimezone(
+          deployResult.schedule.atTime,
+          deployResult.schedule.timezone,
+        );
+        console.log(chalk.dim(`  At: ${atTime}`));
       }
     } catch (error) {
       console.error(chalk.red("✗ Failed to deploy schedule"));
