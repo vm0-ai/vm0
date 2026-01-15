@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Mock Claude CLI for testing.
  * Executes prompt as bash and outputs Claude-compatible JSONL.

@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Download storages script for E2B sandbox.
  * Downloads tar.gz archives directly from S3 using presigned URLs.

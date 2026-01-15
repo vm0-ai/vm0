@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Environment loader wrapper for VM0 runner.
  * Loads environment variables from JSON file before executing run-agent.mjs.

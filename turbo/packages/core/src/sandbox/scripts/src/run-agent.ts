@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Main agent execution orchestrator for VM0.
  * This script coordinates the execution of Claude Code and handles:
