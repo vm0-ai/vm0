@@ -19,7 +19,6 @@ import type {
   CheckpointResponse,
   AgentComposeSnapshot as CoreAgentComposeSnapshot,
   ComposeResponse,
-  ApiErrorResponse,
   ScopeResponse as CoreScopeResponse,
 } from "@vm0/core";
 
