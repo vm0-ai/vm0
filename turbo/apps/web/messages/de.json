@@ -81,6 +81,7 @@
     "docs": "Docs",
     "blog": "Blog",
     "skills": "Skills",
+    "glossary": "Glossar",
     "github": "GitHub",
     "contact": "Demo vereinbaren",
     "joinWaitlist": "Warteliste beitreten"
@@ -125,6 +126,27 @@
       "Content": "Inhalt",
       "Utilities": "Dienstprogramme",
       "Other": "Sonstiges"
+    }
+  },
+  "glossary": {
+    "hero": {
+      "title": "Glossar für Agenten-Entwicklung",
+      "description": "Beherrschen Sie die Sprache von KI-Agenten. Erkunden Sie wichtige Konzepte, Terminologie und VM0-spezifische Funktionen, um Ihre Agenten-Entwicklungsreise zu beschleunigen."
+    },
+    "search": {
+      "placeholder": "Begriffe durchsuchen...",
+      "allCategories": "Alle Kategorien",
+      "showingAll": "Zeige alle Begriffe",
+      "found": "Gefunden",
+      "results": "Begriffe",
+      "noResults": "Keine Begriffe gefunden, die Ihrer Suche entsprechen"
+    },
+    "relatedTerms": "Verwandte Begriffe",
+    "categories": {
+      "Core Concepts": "Kernkonzepte",
+      "Execution": "Ausführung",
+      "Infrastructure": "Infrastruktur",
+      "Development": "Entwicklung"
     }
   }
 }

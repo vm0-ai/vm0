@@ -79,6 +79,9 @@ export default function Navbar() {
             <Link href="/skills" className="nav-link">
               {t("skills")}
             </Link>
+            <Link href="/glossary" className="nav-link">
+              {t("glossary")}
+            </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
               target="_blank"
@@ -153,6 +156,13 @@ export default function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               {t("skills")}
+            </Link>
+            <Link
+              href="/glossary"
+              className="mobile-menu-link"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {t("glossary")}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"

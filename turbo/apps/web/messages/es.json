@@ -81,6 +81,7 @@
     "docs": "Docs",
     "blog": "Blog",
     "skills": "Skills",
+    "glossary": "Glosario",
     "github": "GitHub",
     "contact": "Agendar demo",
     "joinWaitlist": "Unirse a lista de espera"
@@ -125,6 +126,27 @@
       "Content": "Contenido",
       "Utilities": "Utilidades",
       "Other": "Otros"
+    }
+  },
+  "glossary": {
+    "hero": {
+      "title": "Glosario de Construcción de Agentes",
+      "description": "Domina el lenguaje de los agentes de IA. Explora conceptos clave, terminología y características específicas de VM0 para acelerar tu viaje de desarrollo de agentes."
+    },
+    "search": {
+      "placeholder": "Buscar términos...",
+      "allCategories": "Todas las Categorías",
+      "showingAll": "Mostrando todos los términos",
+      "found": "Encontrado",
+      "results": "términos",
+      "noResults": "No se encontraron términos que coincidan con tu búsqueda"
+    },
+    "relatedTerms": "Términos relacionados",
+    "categories": {
+      "Core Concepts": "Conceptos Básicos",
+      "Execution": "Ejecución",
+      "Infrastructure": "Infraestructura",
+      "Development": "Desarrollo"
     }
   }
 }

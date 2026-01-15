@@ -81,6 +81,7 @@
     "docs": "ドキュメント",
     "blog": "ブログ",
     "skills": "Skills",
+    "glossary": "用語集",
     "github": "GitHub",
     "contact": "デモを予約",
     "joinWaitlist": "ウェイトリストに参加"
@@ -125,6 +126,145 @@
       "Content": "コンテンツ",
       "Utilities": "ユーティリティ",
       "Other": "その他"
+    }
+  },
+  "glossary": {
+    "hero": {
+      "title": "エージェント構築用語集",
+      "description": "AIエージェントの言語をマスターしましょう。主要な概念、用語、VM0固有の機能を探索して、エージェント開発の旅を加速させます。"
+    },
+    "search": {
+      "placeholder": "用語を検索...",
+      "allCategories": "すべてのカテゴリー",
+      "showingAll": "すべての用語を表示",
+      "found": "見つかりました",
+      "results": "用語",
+      "noResults": "検索に一致する用語が見つかりませんでした"
+    },
+    "relatedTerms": "関連用語",
+    "categories": {
+      "Core Concepts": "コア概念",
+      "Execution": "実行",
+      "Infrastructure": "インフラストラクチャ",
+      "Development": "開発"
+    },
+    "terms": {
+      "agent": {
+        "name": "Agent",
+        "definition": "指示を理解し、意思決定を行い、ツールを使用し、独立してタスクを実行できる自律的なAIプログラム。従来のスクリプトとは異なり、Agentはコンテキストに基づいてアプローチを適応させ、目標に向かって反復できます。"
+      },
+      "skill": {
+        "name": "Skill",
+        "definition": "Agentが外部サービスと相互作用するために使用できる事前構築統合または機能。Skillsはカスタム実装を必要とせずに、Slack、GitHub、NotionなどのAPIにアクセスするなど、Agentに既製の機能を提供します。"
+      },
+      "tool": {
+        "name": "Tool",
+        "definition": "Agentが特定のアクションを実行するために呼び出すことができる関数またはAPI。ToolsはAgent機能の構成要素であり、ファイルの読み取り、HTTPリクエストの作成、データベースのクエリ、または任意の外部システムとの相互作用を可能にします。"
+      },
+      "prompt": {
+        "name": "Prompt",
+        "definition": "Agentのタスク、動作、または目標を定義するために与えられた自然言語の指示。Promptは単純なコマンドから、Agentの思考方法と動作方法を形作る複雑なシステム指示まで様々です。"
+      },
+      "context": {
+        "name": "Context",
+        "definition": "実行中にAgentが利用可能な情報。会話履歴、メモリ、ツール出力、環境状態を含みます。Contextはエージェントが相互作用全体で一貫性を保ち、情報に基づいた決定を下すのに役立ちます。"
+      },
+      "session": {
+        "name": "Session",
+        "definition": "状態、メモリ、コンテキストを保持するAgentの実行の継続期間。Sessionsはエージェントが複数の相互作用全体で認識を維持し、進捗を失わずに作業を再開できるようにします。"
+      },
+      "checkpoint": {
+        "name": "Checkpoint",
+        "definition": "特定の時点でのAgentの状態のスナップショット。メモリ、コンテキスト、実行進捗をキャプチャします。Checkpointsは再現可能性を実現し、Agent実行を復元、フォーク、またはリプレイできます。"
+      },
+      "artifact": {
+        "name": "Artifact",
+        "definition": "Agent実行中に生成されたファイル、データ、または出力。Artifactsは実行全体で永続化でき、コード、ドキュメント、分析結果、またはAgentが生成した他の成果物を含むことができます。"
+      },
+      "observability": {
+        "name": "Observability",
+        "definition": "ログ、メトリクス、実行トレースを通じてAgent動作を検査、監視、理解する能力。Observabilityはデバッグ、最適化、透明で安全なAI操作を確保するために不可欠です。"
+      },
+      "sandbox": {
+        "name": "Sandbox",
+        "definition": "Agentが本番システムに影響を与えることなく安全に実行される隔離実行環境。Sandboxesはセキュリティ境界を提供し、Agentアクションが含まれ、制御されていることを確認します。"
+      },
+      "memory": {
+        "name": "Memory",
+        "definition": "Agentが相互作用全体で保持する情報。過去の経験から学び、時間をかけてコンテキストを維持できます。Memoryは事実、環境設定、会話履歴、学習されたパターンを含むことができます。"
+      },
+      "workflow": {
+        "name": "Workflow",
+        "definition": "目標を達成するためにAgentが実行する一連のタスクまたは操作。硬直した自動化スクリプトとは異なり、Agentワークフローは中間結果に基づいて適応および調整できます。"
+      },
+      "llm": {
+        "name": "LLM (Large Language Model)",
+        "definition": "Agentの推論と意思決定に力を与える基盤となるAIモデル。Claude、GPT-4、Geminiなどが例です。異なるLLMは異なる強度、コスト、機能を持っています。"
+      },
+      "skillMd": {
+        "name": "SKILL.MD",
+        "definition": "Skillの動作、入力、出力、実装ロジックを定義するMarkdown設定ファイル。SKILL.MDファイルは自然言語と構造化メタデータを使用してカスタムSkillsを作成できます。複雑なコードを書くことなくAgent機能を拡張できます。"
+      },
+      "agentMd": {
+        "name": "AGENT.MD",
+        "definition": "Agentの動作、個性、目標、利用可能なツールを定義するMarkdown設定ファイル。AGENT.MDファイルはAgentのブループリントとして機能し、どのように考えるべきか、何ができるか、ユーザーとシステムとどのように相互作用するべきかを指定します。"
+      },
+      "volume": {
+        "name": "Volume",
+        "definition": "Agent実行全体でファイルとデータを保持する永続ストレージスペース。Volumesはエージェントに個々の実行を超えて永続化するファイルシステムを提供し、状態を保存し、データをキャッシュし、長期的なアーティファクトを維持できます。"
+      },
+      "action": {
+        "name": "Action",
+        "definition": "目標を達成するためにAgentが実行する具体的な操作またはタスク。ActionsはAPIの呼び出し、ファイルの読み取り、データの処理、または外部システムとの相互作用を含むことができます。Agent実行フローの各ステップを表します。"
+      },
+      "runtime": {
+        "name": "Runtime",
+        "definition": "Agentが実行される実行環境。必要なインフラストラクチャ、リソース、APIを提供します。Runtimeはagentのライフサイクルを管理し、リソース割り当てを処理し、異なるAgent実行間の適切な分離を確保します。"
+      },
+      "orchestration": {
+        "name": "Orchestration",
+        "definition": "複雑な目標を達成するための複数のAgent、ワークフロー、またはタスクの調整と管理。Orchestrationは依存関係、シーケンス、分散Agent操作全体での並列実行、リソース割り当てを処理します。"
+      },
+      "mcp": {
+        "name": "MCP (Model Context Protocol)",
+        "definition": "Anthropicによって開発されたオープンプロトコル。AIアシスタントが外部データソースとツールに安全に接続できます。MCPはエージェントがデータベース、API、ファイルシステムなどのリソースにアクセスし、セキュリティとコンテキスト認識を維持できる標準化された方法を提供します。"
+      },
+      "image": {
+        "name": "Image",
+        "definition": "Agentを実行するために必要なコード、ランタイム、依存関係、設定を含むパッケージ化されたコンテナ。Imagesは一貫性のある再現可能な実行環境を提供し、異なるデプロイメント間でエージェントが同じように動作することを確保します。"
+      },
+      "secrets": {
+        "name": "Secrets",
+        "definition": "APIキー、パスワード、トークンなど、Agentが外部サービスにアクセスする必要があるセンシティブ情報。Secretsは安全に保存され、実行時にAgent runtimeに注入され、コードまたは設定ファイルでの露出を防ぎます。"
+      },
+      "environmentVariable": {
+        "name": "Environment Variable",
+        "definition": "実行時にAgentに渡される設定値。コードを変更することなく動作をカスタマイズできます。Environment Variablesは一般的にAPIエンドポイント、機能フラグ、非センシティブ設定に使用されます。"
+      },
+      "virtualMachine": {
+        "name": "Virtual Machine",
+        "definition": "物理コンピューターをエミュレートする隔離されたソフトウェアベースのコンピューティング環境。仮想マシンはAgent実行間の完全な分離を提供し、セキュリティを確保し、干渉を防ぎます。VM0は独自のオペレーティングシステム、ファイルシステム、ネットワークスタックを持つ軽量の仮想マシンを使用してエージェントを実行します。"
+      },
+      "cli": {
+        "name": "CLI (Command Line Interface)",
+        "definition": "AgentとVM0プラットフォームと相互作用するためのテキストベースのインターフェース。CLIは開発者がターミナルコマンドを通じてAgentを作成、デプロイ、管理できます。グラフィカルインターフェースがなくても強力なスクリプトと自動化機能を提供します。"
+      },
+      "cliAgent": {
+        "name": "CLI Agent",
+        "definition": "コマンドラインインターフェースを通じて呼び出しおよび制御されるように設計されたAgent。CLI Agentsはスクリプト、CI/CDパイプライン、ターミナルワークフローに統合でき、自動化タスクと開発者ツーリングに理想的です。"
+      },
+      "agentRouter": {
+        "name": "Agent Router",
+        "definition": "タスク要件、コスト制約、パフォーマンスニーズに基づいて、Agent要求を最も適切なAIモデルにインテリジェントにルーティングするシステム。Agent Routerは異なるLLMs(Claude、GPT、Gemini)の間で動的に選択するか、特定の機能の専門モデルにルーティングできます。"
+      },
+      "claudeCode": {
+        "name": "Claude Code",
+        "definition": "AnthropicのAI Agentを構築および展開するための公式コマンドラインツール。Claude CodeはAgentの作成、Skillsの管理、Claude APIとの統合のためのデベロッパーフレンドリーなインターフェースを提供します。ライブリロード、デバッグツール、展開自動化などの機能でagent開発ワークフローを簡素化します。"
+      },
+      "codex": {
+        "name": "Codex",
+        "definition": "Agent開発および展開のためのコマンドラインツール。Codexは開発者にターミナルを通じてAgent構築、テスト、管理用のユーティリティを提供します。コード生成、Scaffolding、AIモデルとの統合などの機能を提供し、agent開発ワークフローを簡素化します。"
+      }
     }
   }
 }
