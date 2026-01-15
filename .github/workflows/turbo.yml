@@ -824,7 +824,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
-    needs: [change-detection, deploy-web, deploy-runner-prepare, deploy-runner-benchmark]
+    needs: [change-detection, deploy-web, deploy-runner-prepare]
     if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
     outputs:
       runner-deployed: ${{ steps.start.outputs.runner-deployed }}
