@@ -171,6 +171,47 @@ EOF
     assert_output --partial "not found"
 }
 
+@test "vm0 schedule status should accept --limit option" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with --limit
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" --limit 10
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+}
+
+@test "vm0 schedule status should accept -l shorthand for limit" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with -l shorthand
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" -l 5
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+}
+
+@test "vm0 schedule status with --limit 0 should hide runs section" {
+    cd "$TEST_DIR"
+
+    # Deploy a schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Get status with --limit 0
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME" --limit 0
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+    # Should not show "Recent Runs" when limit is 0
+    refute_output --partial "Recent Runs:"
+}
+
 # ============================================================
 # Enable/Disable tests
 # ============================================================
@@ -434,4 +475,54 @@ EOF
     run cat schedule.yaml
     assert_output --partial "Overwritten task"
     assert_output --partial "0 11 * * *"
+}
+
+@test "vm0 schedule init with --frequency once should require interactive mode" {
+    cd "$TEST_DIR"
+
+    rm -f schedule.yaml
+
+    # One-time schedules require interactive mode
+    run $CLI_COMMAND schedule init \
+        --name "$SCHEDULE_NAME" \
+        --frequency once \
+        --timezone "UTC" \
+        --prompt "One-time task" \
+        --no-vars
+    assert_failure
+    assert_output --partial "One-time schedules require interactive mode"
+}
+
+# ============================================================
+# One-time schedule (at: format) deploy tests
+# ============================================================
+
+@test "vm0 schedule deploy should handle at: format for one-time schedules" {
+    cd "$TEST_DIR"
+
+    # Calculate a future date (tomorrow)
+    local FUTURE_DATE=$(date -d "+1 day" "+%Y-%m-%d")
+
+    # Create schedule with at: format (human-readable)
+    cat > "$TEST_DIR/schedule-onetime.yaml" <<EOF
+version: "1.0"
+
+schedules:
+  ${SCHEDULE_NAME}:
+    on:
+      at: "${FUTURE_DATE} 14:30"
+      timezone: "UTC"
+    run:
+      agent: "${AGENT_NAME}"
+      prompt: "One-time scheduled task"
+EOF
+
+    run $CLI_COMMAND schedule deploy schedule-onetime.yaml
+    assert_success
+    assert_output --partial "Created schedule"
+
+    # Verify in status - one-time schedules show "(one-time)" in trigger
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME"
+    assert_success
+    assert_output --partial "(one-time)"
 }

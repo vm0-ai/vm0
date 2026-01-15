@@ -1,6 +1,7 @@
 import "server-only";
 import { Axiom, Entry } from "@axiomhq/js";
 import { logger } from "../logger";
+import { getDatasetName, DATASETS } from "./datasets";
 
 const log = logger("axiom");
 
@@ -73,4 +74,62 @@ export async function queryAxiom<T = Record<string, unknown>>(
     log.error("Axiom query failed:", error);
     return null;
   }
+}
+
+export interface RequestLogEntry {
+  remote_addr: string;
+  user_agent: string;
+  method: string;
+  path_template: string;
+  host: string;
+  status: number;
+  body_bytes_sent: number;
+  request_time_ms: number;
+}
+
+/**
+ * Ingest request log to Axiom (nginx-style).
+ * Fire-and-forget - doesn't block the response.
+ */
+export function ingestRequestLog(entry: RequestLogEntry): void {
+  const client = getAxiomClient();
+  if (!client) {
+    return;
+  }
+
+  const dataset = getDatasetName(DATASETS.REQUEST_LOG);
+  client.ingest(dataset, [
+    {
+      _time: new Date().toISOString(),
+      ...entry,
+    },
+  ]);
+  // Don't await flush - let it batch automatically
+}
+
+export interface SandboxOpLogEntry {
+  source: "web" | "runner" | "sandbox";
+  op_type: string;
+  sandbox_type: string;
+  duration_ms: number;
+}
+
+/**
+ * Ingest sandbox operation log to Axiom.
+ * Fire-and-forget - doesn't block the response.
+ */
+export function ingestSandboxOpLog(entry: SandboxOpLogEntry): void {
+  const client = getAxiomClient();
+  if (!client) {
+    return;
+  }
+
+  const dataset = getDatasetName(DATASETS.SANDBOX_OP_LOG);
+  client.ingest(dataset, [
+    {
+      _time: new Date().toISOString(),
+      ...entry,
+    },
+  ]);
+  // Don't await flush - let it batch automatically
 }

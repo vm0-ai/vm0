@@ -159,6 +159,7 @@ export async function GET() {
 - **Type Check:** `cd turbo && pnpm check-types` - Verify TypeScript type safety
 - **Format:** `cd turbo && pnpm format` - Auto-format code according to project standards
 - **Test:** `cd turbo && pnpm vitest` - Run all tests to ensure functionality
+- **Knip:** `cd turbo && pnpm knip` - Find and fix unused dependencies, exports, and files
 
 ### Before Committing:
 1. Run all checks to ensure code quality
@@ -166,6 +167,29 @@ export async function GET() {
 3. Never commit code that fails any of these checks
 4. Use proper conventional commit message format
 5. These checks help maintain the high standards defined in our design principles
+
+## Code Quality Tools
+
+### Knip - Dependency and Export Analysis
+
+**Knip is integrated to maintain a clean and efficient codebase.** It identifies unused files, dependencies, and exports across the monorepo.
+
+#### Available Commands:
+- `pnpm knip` - Run full analysis to find unused code
+- `pnpm knip:fix` - Automatically fix issues (removes unused files and dependencies)
+- `pnpm knip:production` - Strict production mode analysis
+- `pnpm knip --workspace <name>` - Analyze specific workspace only
+
+#### Configuration:
+- Configuration file: `turbo/knip.json`
+- Workspace-specific settings for each package
+- Integrated with lefthook pre-commit hooks
+
+#### Common Issues and Solutions:
+- **Unused dependencies:** Review and remove from package.json
+- **Unused exports:** Delete or mark as internal if needed
+- **Unused files:** Remove if truly unused, or add to entry patterns if needed
+- **False positives:** Add to ignore patterns in knip.json
 
 ## PR Checks
 

@@ -34,6 +34,8 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom module
 vi.mock("../../../../../../src/lib/axiom", () => ({
   ingestToAxiom: vi.fn().mockResolvedValue(true),
+  ingestRequestLog: vi.fn(),
+  ingestSandboxOpLog: vi.fn(),
   getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
   DATASETS: {
     AGENT_RUN_EVENTS: "agent-run-events",

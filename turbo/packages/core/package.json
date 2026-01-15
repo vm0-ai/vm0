@@ -1,6 +1,6 @@
 {
   "name": "@vm0/core",
-  "version": "4.5.0",
+  "version": "4.6.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
-    "@ts-rest/serverless": "3.53.0-rc.1",
     "zod": "^4.1.12"
   }
 }

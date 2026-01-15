@@ -219,3 +219,19 @@ export async function flushLogs(): Promise<void> {
     console.error("[logger] Failed to flush logs to Axiom:", e);
   }
 }
+
+/**
+ * Get current debug configuration status.
+ * Useful for diagnostics and debugging logger behavior.
+ */
+export function getDebugConfig(): {
+  patterns: string[];
+  autoEnabled: boolean;
+  axiomEnabled: boolean;
+} {
+  return {
+    patterns: getDebugPatterns(),
+    autoEnabled: isAutoDebugEnabled(),
+    axiomEnabled: axiomLogger !== null,
+  };
+}

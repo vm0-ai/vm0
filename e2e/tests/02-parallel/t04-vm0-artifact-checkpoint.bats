@@ -13,6 +13,9 @@ load '../../helpers/setup'
 AGENT_NAME="e2e-t04"
 
 setup() {
+    # Create unique volume for this test
+    create_test_volume "e2e-vol-t04"
+
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     # Use unique test artifact name with timestamp
@@ -31,7 +34,7 @@ agents:
     working_dir: /home/user/workspace
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 }
@@ -45,6 +48,8 @@ teardown() {
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 @test "Build VM0 artifact checkpoint test agent configuration" {

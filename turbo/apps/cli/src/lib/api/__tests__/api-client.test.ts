@@ -83,7 +83,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createOrUpdateCompose({
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
       });
 
       expect(result.action).toBe("created");
@@ -105,7 +105,7 @@ describe("ApiClient", () => {
       });
 
       const result = await apiClient.createOrUpdateCompose({
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
       });
 
       expect(result.action).toBe("updated");
@@ -115,7 +115,9 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.createOrUpdateCompose({ content: {} }),
+        apiClient.createOrUpdateCompose({
+          content: { version: "1", agents: { main: { provider: "claude" } } },
+        }),
       ).rejects.toThrow("Not authenticated");
     });
 
@@ -123,7 +125,9 @@ describe("ApiClient", () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
-        apiClient.createOrUpdateCompose({ content: {} }),
+        apiClient.createOrUpdateCompose({
+          content: { version: "1", agents: { main: { provider: "claude" } } },
+        }),
       ).rejects.toThrow("API URL not configured");
     });
 
@@ -136,7 +140,9 @@ describe("ApiClient", () => {
       });
 
       await expect(
-        apiClient.createOrUpdateCompose({ content: {} }),
+        apiClient.createOrUpdateCompose({
+          content: { version: "1", agents: { main: { provider: "claude" } } },
+        }),
       ).rejects.toThrow("Invalid compose");
     });
 
@@ -149,7 +155,9 @@ describe("ApiClient", () => {
       });
 
       await expect(
-        apiClient.createOrUpdateCompose({ content: {} }),
+        apiClient.createOrUpdateCompose({
+          content: { version: "1", agents: { main: { provider: "claude" } } },
+        }),
       ).rejects.toThrow("Failed to create compose");
     });
   });

@@ -1,4 +1,330 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
-  "extends": ["../../.oxlintrc.json"]
+  "ignorePatterns": ["scripts/**/*.js", "public/mockServiceWorker.js"],
+  "overrides": [
+    {
+      "files": ["src/views/**/*.*"],
+      "rules": {
+        "no-restricted-imports": [
+          "deny",
+          {
+            "paths": [
+              {
+                "allowImportNames": ["StrictMode", "Component"],
+                "allowTypeImports": true,
+                "name": "react"
+              },
+              {
+                "allowImportNames": [
+                  "useGet",
+                  "useSet",
+                  "useLoadable",
+                  "useResolved",
+                  "useLastLoadable",
+                  "useLastResolved"
+                ],
+                "allowTypeImports": true,
+                "name": "ccstate"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/signals/**/*.*"],
+      "rules": {
+        "no-restricted-imports": [
+          "deny",
+          {
+            "paths": [
+              {
+                "allowImportNames": ["createElement"],
+                "allowTypeImports": true,
+                "name": "react"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/__tests__/**/*.{ts,tsx}"],
+      "plugins": ["jest", "vitest"],
+      "rules": {
+        "no-restricted-imports": "allow",
+        "consistent-test-it": "deny",
+        "eslint/max-nested-callbacks": ["allow"],
+        "expect-expect": "allow",
+        "max-lines-per-function": ["allow"],
+        "no-alias-methods": "deny",
+        "no-confusing-set-timeout": "deny",
+        "no-deprecated-functions": "deny",
+        "no-disabled-tests": "allow",
+        "no-done-callback": "deny",
+        "no-duplicate-hooks": "deny",
+        "no-identical-title": "deny",
+        "no-jasmine-globals": "deny",
+        "no-mocks-import": "deny",
+        "no-standalone-expect": "allow",
+        "no-test-return-statement": "deny",
+        "no-untyped-mock-factory": "allow",
+        "prefer-called-with": "deny",
+        "prefer-comparison-matcher": "deny",
+        "prefer-each": "deny",
+        "prefer-equality-matcher": "deny",
+        "prefer-expect-resolves": "deny",
+        "prefer-hooks-in-order": "deny",
+        "prefer-hooks-on-top": "deny",
+        "prefer-jest-mocked": "deny",
+        "prefer-lowercase-title": "deny",
+        "prefer-mock-promise-shorthand": "deny",
+        "prefer-spy-on": "deny",
+        "prefer-strict-equal": "deny",
+        "prefer-to-be": "deny",
+        "prefer-to-contain": "deny",
+        "prefer-to-have-length": "deny",
+        "react_perf/jsx-no-jsx-as-prop": "allow",
+        "vitest/no-import-node-tests": "deny",
+        "vitest/prefer-to-be-falsy": "deny",
+        "vitest/prefer-to-be-object": "deny",
+        "vitest/prefer-to-be-truthy": "deny",
+        "jest/require-to-throw-message": "allow",
+        "jest/no-conditional-expect": "allow"
+      }
+    },
+    {
+      "files": ["**/*.tsx"],
+      "rules": {
+        "max-lines-per-function": ["allow"]
+      }
+    },
+    {
+      "files": ["custom-eslint/**/*.*"],
+      "rules": {
+        "new-cap": "allow",
+        "max-lines-per-function": ["allow"]
+      }
+    },
+    {
+      "files": ["src/signals/log.ts"],
+      "rules": {
+        "no-console": "allow"
+      }
+    },
+    {
+      "files": ["src/signals/__tests__/fetch.test.ts"],
+      "rules": {
+        "first": "allow",
+        "jest/no-untyped-mock-factory": "allow"
+      }
+    }
+  ],
+  "plugins": [
+    "import",
+    "promise",
+    "react",
+    "typescript",
+    "unicorn",
+    "eslint",
+    "oxc",
+    "react-perf"
+  ],
+  "rules": {
+    "adjacent-overload-signatures": "deny",
+    "array-callback-return": "deny",
+    "array-type": "deny",
+    "catch-error-name": "deny",
+    "catch-or-return": "deny",
+    "consistent-date-clone": "deny",
+    "consistent-existence-index-check": "deny",
+    "consistent-generic-constructors": "deny",
+    "consistent-indexed-object-style": "deny",
+    "curly": "deny",
+    "default": "deny",
+    "default-param-last": "deny",
+    "empty-brace-spaces": "deny",
+    "eqeqeq": "deny",
+    "error-message": "deny",
+    "export": "deny",
+    "filename-case": [
+      "deny",
+      {
+        "case": "kebabCase"
+      }
+    ],
+    "first": "deny",
+    "guard-for-in": "deny",
+    "jsx-boolean-value": "deny",
+    "max-depth": "deny",
+    "max-lines-per-function": [
+      "deny",
+      {
+        "max": 128,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-nested-callbacks": [
+      "deny",
+      {
+        "max": 4
+      }
+    ],
+    "max-params": [
+      "deny",
+      {
+        "max": 5
+      }
+    ],
+    "named": "deny",
+    "namespace": "deny",
+    "new-cap": "deny",
+    "new-for-builtins": "deny",
+    "no-abusive-eslint-disable": "deny",
+    "no-alert": "deny",
+    "no-amd": "deny",
+    "no-array-constructor": "deny",
+    "no-array-for-each": "deny",
+    "no-array-index-key": "deny",
+    "no-commonjs": "deny",
+    "no-console": "deny",
+    "no-console-spaces": "deny",
+    "no-cycle": "deny",
+    "no-document-cookie": "deny",
+    "no-duplicate-imports": "deny",
+    "no-duplicates": "deny",
+    "no-dynamic-require": "deny",
+    "no-else-return": "deny",
+    "no-empty": "deny",
+    "no-empty-interface": "deny",
+    "no-empty-named-blocks": "deny",
+    "no-empty-object-types": "deny",
+    "no-eq-null": "deny",
+    "no-explicit-any": "deny",
+    "no-extend-native": "deny",
+    "no-fallthrough": "deny",
+    "no-import-type-side-effects": "deny",
+    "no-inferrable-types": "deny",
+    "no-invalid-fetch-options": "allow",
+    "no-lonely-if": "deny",
+    "no-multi-assign": "deny",
+    "no-multi-string": "deny",
+    "no-mutable-exports": "deny",
+    "no-named-as-default": "deny",
+    "no-named-as-default-member": "deny",
+    "no-nesting": "deny",
+    "no-promise-in-callback": "deny",
+    "no-proto": "deny",
+    "no-redeclare": "deny",
+    "no-restricted-globals": [
+      "error",
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "setTimeout"
+      },
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "clearTimeout"
+      },
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "setImmediate"
+      },
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "clearImmediate"
+      },
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "requestAnimationFrame"
+      },
+      {
+        "message": "Use signal-timers instead of setTimeout to avoid floating promises.",
+        "name": "cancelAnimationFrame"
+      },
+      {
+        "message": "Use signal-timers instead of queueMicroTask to avoid floating promises.",
+        "name": "queueMicroTask"
+      },
+      {
+        "message": "Use signal-timers instead of setInterval to avoid floating promises.",
+        "name": "setInterval"
+      }
+    ],
+    "no-restricted-imports": [
+      "deny",
+      {
+        "paths": [
+          {
+            "allowTypeImports": true,
+            "name": "react"
+          },
+          {
+            "importNames": ["timeout"],
+            "message": "Use signal-timers/delay instead of timeout to avoid floating promises.",
+            "name": "signal-timers"
+          }
+        ]
+      }
+    ],
+    "no-return-in-finally": "deny",
+    "no-return-wrap": "deny",
+    "no-self-import": "deny",
+    "no-template-curly-in-string": "deny",
+    "no-unexpected-multiline": "deny",
+    "no-unknown-property": "deny",
+    "no-unneeded-ternary": "deny",
+    "no-unreadable-array-destructuring": "deny",
+    "no-unresolved": "deny",
+    "no-new-buffer": "deny",
+    "no-negation-in-equality-check": "deny",
+    "no-unreadable-iife": "deny",
+    "no-unsafe-function-types": "deny",
+    "no-unused-modules": "deny",
+    "no-useless-concat": "deny",
+    "no-zero-fractions": "deny",
+    "numeric-separators-style": "deny",
+    "param-names": "deny",
+    "prefer-add-event-listener": "deny",
+    "prefer-array-flat": "deny",
+    "prefer-array-flat-map": "deny",
+    "prefer-regexp-test": "deny",
+    "prefer-array-some": "deny",
+    "prefer-blob-reading-methods": "deny",
+    "prefer-catch": "deny",
+    "prefer-dom-node-dataset": "deny",
+    "prefer-dom-node-remove": "deny",
+    "prefer-dom-node-text-content": "deny",
+    "prefer-enum-initializers": "deny",
+    "prefer-event-target": "deny",
+    "prefer-for-of": "deny",
+    "prefer-function-type": "deny",
+    "prefer-includes": "deny",
+    "prefer-logical-operator-over-ternary": "deny",
+    "prefer-modern-dom-apis": "deny",
+    "prefer-modern-math-apis": "deny",
+    "prefer-negative-index": "deny",
+    "prefer-number-properties": "deny",
+    "prefer-object-spread": "deny",
+    "prefer-optional-catch-binding": "deny",
+    "prefer-promise-reject-errors": "deny",
+    "prefer-reflect-apply": "deny",
+    "prefer-rest-params": "deny",
+    "prefer-set-has": "deny",
+    "prefer-spread": "deny",
+    "prefer-string-raw": "deny",
+    "prefer-string-trim-start-end": "deny",
+    "prefer-structured-clone": "deny",
+    "react/no-namespace": "deny",
+    "require-array-join-separator": "deny",
+    "require-await": "deny",
+    "rules-of-hooks": "deny",
+    "self-closing-comp": "deny",
+    "spec-only": "deny",
+    "switch-case-braces": "deny",
+    "text-encoding-identifier-case": "deny",
+    "typescript/no-namespace": "deny",
+    "extensions": "allow"
+  }
 }

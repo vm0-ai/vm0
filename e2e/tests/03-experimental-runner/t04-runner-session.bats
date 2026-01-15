@@ -24,6 +24,9 @@ setup() {
         fail "RUNNER_GROUP not set - runner was not started by workflow"
     fi
 
+    # Create unique volume for this test
+    create_test_volume "e2e-vol-runner-t04"
+
     # Create temporary test directory
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
@@ -44,7 +47,7 @@ agents:
     working_dir: /home/user/workspace
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 }
@@ -58,6 +61,8 @@ teardown() {
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 @test "Runner session: compose agent with experimental_runner" {

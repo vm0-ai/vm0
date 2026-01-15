@@ -36,7 +36,7 @@ export function initMetrics(config: MetricsConfig): void {
     url: "https://api.axiom.co/v1/metrics",
     headers: {
       Authorization: `Bearer ${config.axiomToken}`,
-      "X-Axiom-Dataset": `runner-metrics-${env}`,
+      "X-Axiom-Dataset": `vm0-sandbox-op-log-${env}`,
     },
   });
 

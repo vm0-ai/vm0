@@ -29,7 +29,10 @@ describe("run command", () => {
       id: testUuid,
       name: "test-agent",
       headVersionId: "version-123",
-      content: { agents: { "test-agent": {} } },
+      content: {
+        version: "1",
+        agents: { "test-agent": { provider: "claude" } },
+      },
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     });
@@ -116,7 +119,10 @@ describe("run command", () => {
         id: testUuid,
         name: "my-agent",
         headVersionId: "version-123",
-        content: { agents: { "my-agent": {} } },
+        content: {
+          version: "1",
+          agents: { "my-agent": { provider: "claude" } },
+        },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -211,7 +217,7 @@ describe("run command", () => {
         name: "my-agent",
         headVersionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -284,7 +290,7 @@ describe("run command", () => {
         name: "my-agent",
         headVersionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -351,7 +357,7 @@ describe("run command", () => {
         name: "my-agent",
         headVersionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -382,7 +388,7 @@ describe("run command", () => {
         name: "my-agent",
         headVersionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
@@ -437,7 +443,7 @@ describe("run command", () => {
         name: "my-agent",
         headVersionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: {},
+        content: { version: "1", agents: { main: { provider: "claude" } } },
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });

@@ -2,26 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
 import { formatRelativeTime } from "../../lib/domain/schedule-utils";
-
-/**
- * Schedule response from API
- */
-interface ScheduleResponse {
-  id: string;
-  name: string;
-  cronExpression: string | null;
-  atTime: string | null;
-  timezone: string;
-  enabled: boolean;
-  nextRunAt: string | null;
-  lastRunAt: string | null;
-  composeName: string;
-  scopeSlug: string;
-}
-
-interface ListResponse {
-  schedules: ScheduleResponse[];
-}
+import type { ScheduleListResponse } from "@vm0/core";
 
 export const listCommand = new Command()
   .name("list")
@@ -36,7 +17,7 @@ export const listCommand = new Command()
         throw new Error(error.error?.message || "List failed");
       }
 
-      const result = (await response.json()) as ListResponse;
+      const result = (await response.json()) as ScheduleListResponse;
 
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));

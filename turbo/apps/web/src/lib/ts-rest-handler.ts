@@ -16,7 +16,7 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import type { TsRestResponse, TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
-import { recordApiRequest, flushMetrics } from "./metrics";
+import { ingestRequestLog } from "./axiom";
 
 // Re-export tsr for convenience
 export { tsr };
@@ -68,22 +68,27 @@ export function createHandler<T extends AppRouter>(
     ],
     responseHandlers: [
       async (response, request) => {
-        // Record API metrics
+        // Record request log (nginx-style)
         const startTime = requestStartTimes.get(request);
         if (startTime !== undefined) {
           const url = new URL(request.url);
-          recordApiRequest({
+          ingestRequestLog({
+            remote_addr:
+              request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+              "unknown",
+            user_agent: request.headers.get("user-agent") || "",
             method: request.method,
-            pathTemplate: request.route,
-            statusCode: response.status,
+            path_template: request.route,
             host: url.host,
-            durationMs: Date.now() - startTime,
+            status: response.status,
+            body_bytes_sent: 0, // Not available from TsRestResponse
+            request_time_ms: Date.now() - startTime,
           });
           requestStartTimes.delete(request);
         }
 
-        // Flush all pending logs and metrics to Axiom after each request
-        await Promise.all([flushLogs(), flushMetrics()]);
+        // Flush all pending logs to Axiom after each request
+        await flushLogs();
       },
     ],
   });

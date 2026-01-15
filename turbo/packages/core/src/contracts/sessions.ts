@@ -118,3 +118,12 @@ export {
   artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
 };
+
+// Export inferred types for consumers
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+export type CheckpointResponse = z.infer<typeof checkpointResponseSchema>;
+export type AgentComposeSnapshot = z.infer<typeof agentComposeSnapshotSchema>;
+export type ArtifactSnapshot = z.infer<typeof artifactSnapshotSchema>;
+export type VolumeVersionsSnapshot = z.infer<
+  typeof volumeVersionsSnapshotSchema
+>;

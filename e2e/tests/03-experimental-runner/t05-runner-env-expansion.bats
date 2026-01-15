@@ -24,6 +24,9 @@ setup() {
         fail "RUNNER_GROUP not set - runner was not started by workflow"
     fi
 
+    # Create unique volume for this test
+    create_test_volume "e2e-vol-runner-t05"
+
     # Create unique test values
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export SECRET_VALUE="secret-value-${UNIQUE_ID}"
@@ -49,7 +52,7 @@ agents:
       - claude-files:/home/user/.claude
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 }
@@ -61,6 +64,8 @@ teardown() {
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 # Helper to create artifact

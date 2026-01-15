@@ -20,3 +20,28 @@ bats::on_failure() {
         $CLI_COMMAND logs "$run_id" --system
     fi
 }
+
+# Create a test volume with unique name
+# Usage: create_test_volume "prefix"
+# Sets: TEST_VOLUME_DIR, VOLUME_NAME
+create_test_volume() {
+    local prefix="${1:-e2e-vol}"
+    export TEST_VOLUME_DIR="$(mktemp -d)"
+    export VOLUME_NAME="${prefix}-$(date +%s%3N)-$RANDOM"
+
+    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume push >/dev/null
+    cd - >/dev/null
+}
+
+# Cleanup test volume directory
+cleanup_test_volume() {
+    if [ -n "$TEST_VOLUME_DIR" ] && [ -d "$TEST_VOLUME_DIR" ]; then
+        rm -rf "$TEST_VOLUME_DIR"
+    fi
+}

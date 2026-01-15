@@ -3,6 +3,9 @@
 load '../../helpers/setup'
 
 setup() {
+    # Create unique volume for this test
+    create_test_volume "e2e-vol-t12"
+
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export SECRET_VALUE="secret-value-${UNIQUE_ID}"
     export VAR_VALUE="var-value-${UNIQUE_ID}"
@@ -32,7 +35,7 @@ agents:
 
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 }
@@ -45,6 +48,8 @@ teardown() {
     if [ -n "$TEST_ENV_DIR" ] && [ -d "$TEST_ENV_DIR" ]; then
         rm -rf "$TEST_ENV_DIR"
     fi
+    # Clean up test volume
+    cleanup_test_volume
 }
 
 # Helper to create artifact for tests
@@ -239,7 +244,7 @@ agents:
 
 volumes:
   claude-files:
-    name: claude-files
+    name: $VOLUME_NAME
     version: latest
 EOF
 
