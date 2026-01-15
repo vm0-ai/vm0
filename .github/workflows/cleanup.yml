@@ -5,7 +5,7 @@ on:
     types: [closed]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:

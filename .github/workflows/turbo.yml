@@ -15,8 +15,8 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.head_ref != '' }}
 
 jobs:
   # Detect changes in apps to optimize CI pipeline
