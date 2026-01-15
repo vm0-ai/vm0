@@ -1,7 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
-import { loadAgentName, formatDateTime } from "../../lib/domain/schedule-utils";
+import {
+  loadAgentName,
+  formatDateTime,
+  detectTimezone,
+} from "../../lib/domain/schedule-utils";
 import type {
   ScheduleResponse,
   RunSummary,
@@ -22,11 +26,11 @@ function formatDateTimeStyled(dateStr: string | null): string {
 }
 
 /**
- * Format trigger (cron or at)
+ * Format trigger (cron or at) - timezone shown separately
  */
 function formatTrigger(schedule: ScheduleResponse): string {
   if (schedule.cronExpression) {
-    return `${schedule.cronExpression} ${chalk.dim(`(${schedule.timezone})`)}`;
+    return schedule.cronExpression;
   }
   if (schedule.atTime) {
     return `${schedule.atTime} ${chalk.dim("(one-time)")}`;
@@ -105,6 +109,8 @@ export const statusCommand = new Command()
       console.log(`Schedule: ${chalk.cyan(schedule.name)}`);
       console.log(chalk.dim("━".repeat(50)));
 
+      // === Group 1: Run Configuration ===
+
       // Status
       const statusText = schedule.enabled
         ? chalk.green("enabled")
@@ -115,16 +121,6 @@ export const statusCommand = new Command()
       console.log(
         `${"Agent:".padEnd(16)}${schedule.composeName} ${chalk.dim(`(${schedule.scopeSlug})`)}`,
       );
-
-      // Trigger
-      console.log(`${"Trigger:".padEnd(16)}${formatTrigger(schedule)}`);
-
-      // Next run (only if enabled)
-      if (schedule.enabled) {
-        console.log(
-          `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
-        );
-      }
 
       // Prompt (truncated)
       const promptPreview =
@@ -165,7 +161,23 @@ export const statusCommand = new Command()
         );
       }
 
-      // Fetch and display recent runs
+      // === Group 2: Time Schedule ===
+      console.log();
+
+      // Trigger
+      console.log(`${"Trigger:".padEnd(16)}${formatTrigger(schedule)}`);
+
+      // Timezone
+      console.log(`${"Timezone:".padEnd(16)}${detectTimezone()}`);
+
+      // Next run (only if enabled)
+      if (schedule.enabled) {
+        console.log(
+          `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
+        );
+      }
+
+      // === Group 3: Recent Runs ===
       const limit = Math.min(
         Math.max(0, parseInt(options.limit, 10) || 5),
         100,
@@ -181,18 +193,16 @@ export const statusCommand = new Command()
           if (runs.length > 0) {
             console.log();
             console.log("Recent Runs:");
+            console.log(
+              chalk.dim(
+                "RUN ID                                STATUS     CREATED",
+              ),
+            );
             for (const run of runs) {
-              const id = chalk.dim(`[${run.id.slice(0, 8)}]`);
-              const status = formatRunStatus(run.status).padEnd(20);
+              const id = run.id;
+              const status = formatRunStatus(run.status).padEnd(10);
               const created = formatDateTimeStyled(run.createdAt);
-              const errorMsg = run.error
-                ? chalk.red(
-                    run.error.length > 40
-                      ? run.error.slice(0, 37) + "..."
-                      : run.error,
-                  )
-                : "";
-              console.log(`  ${id} ${status} ${created} ${errorMsg}`);
+              console.log(`${id}  ${status} ${created}`);
             }
           }
         } else {
@@ -200,18 +210,6 @@ export const statusCommand = new Command()
           console.log(chalk.dim("Recent Runs: (unable to fetch)"));
         }
       }
-
-      // Timestamps
-      console.log();
-      console.log(
-        chalk.dim(
-          `Created:  ${new Date(schedule.createdAt)
-            .toISOString()
-            .replace("T", " ")
-            .replace(/\.\d+Z$/, " UTC")}`,
-        ),
-      );
-      console.log(chalk.dim(`ID:       ${schedule.id}`));
       console.log();
     } catch (error) {
       console.error(chalk.red("✗ Failed to get schedule status"));
