@@ -29,6 +29,38 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
+/**
+ * Filter events to only include consecutive sequence numbers starting from `since + 1`.
+ * This handles Axiom's eventual consistency where events may become queryable out of order.
+ *
+ * Example:
+ * - Input: events=[seq=1, seq=2, seq=4, seq=5], since=0
+ * - Output: [seq=1, seq=2] (truncated at gap before seq=4)
+ *
+ * @param events - Events sorted by sequenceNumber ascending
+ * @param since - The last sequence number already processed
+ * @returns Consecutive events starting from since+1
+ */
+export function filterConsecutiveEvents(
+  events: AxiomAgentEvent[],
+  since: number,
+): AxiomAgentEvent[] {
+  const consecutiveEvents: AxiomAgentEvent[] = [];
+  let expectedSeq = since + 1;
+
+  for (const event of events) {
+    if (event.sequenceNumber === expectedSeq) {
+      consecutiveEvents.push(event);
+      expectedSeq++;
+    } else {
+      // Gap detected, stop here
+      break;
+    }
+  }
+
+  return consecutiveEvents;
+}
+
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query }) => {
     initServices();
@@ -90,10 +122,16 @@ const router = tsr.router(runEventsContract, {
     const axiomEvents = await queryAxiom<AxiomAgentEvent>(apl);
 
     // If Axiom is not configured or query failed, return empty
-    const events = axiomEvents ?? [];
+    const rawEvents = axiomEvents ?? [];
+
+    // Filter to only consecutive events to handle Axiom's eventual consistency.
+    // This prevents permanently skipping events when they become queryable out of order.
+    const events = filterConsecutiveEvents(rawEvents, since);
 
     // Calculate nextSequence and hasMore
-    const hasMore = events.length === limit;
+    // hasMore is true if we truncated due to gap OR if we hit the limit
+    const hasMore =
+      events.length < rawEvents.length || rawEvents.length === limit;
     const nextSequence =
       events.length > 0 ? events[events.length - 1]!.sequenceNumber : since;
 
