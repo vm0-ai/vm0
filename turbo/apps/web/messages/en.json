@@ -203,12 +203,12 @@
         "definition": "The underlying AI model that powers agent reasoning and decision-making. Examples include Claude, GPT-4, and Gemini. Different LLMs have different strengths, costs, and capabilities."
       },
       "skillMd": {
-        "name": "SKILL.MD",
-        "definition": "A markdown configuration file that defines a skill's behavior, inputs, outputs, and implementation logic. The SKILL.MD file allows you to create custom skills using natural language and structured metadata, making it easy to extend agent capabilities without writing complex code."
+        "name": "SKILL.md",
+        "definition": "A markdown configuration file that defines a skill's behavior, inputs, outputs, and implementation logic. The SKILL.md file allows you to create custom skills using natural language and structured metadata, making it easy to extend agent capabilities without writing complex code."
       },
       "agentMd": {
-        "name": "AGENT.MD",
-        "definition": "A markdown configuration file that defines an agent's behavior, personality, goals, and available tools. The AGENT.MD file serves as the agent's blueprint, specifying how it should think, what it can do, and how it should interact with users and systems."
+        "name": "AGENTS.md",
+        "definition": "A markdown configuration file that defines an agent's behavior, personality, goals, and available tools. The AGENTS.md file serves as the agent's blueprint, specifying how it should think, what it can do, and how it should interact with users and systems."
       },
       "volume": {
         "name": "Volume",

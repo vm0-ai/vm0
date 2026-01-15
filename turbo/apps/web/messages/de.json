@@ -146,7 +146,126 @@
       "Core Concepts": "Kernkonzepte",
       "Execution": "Ausführung",
       "Infrastructure": "Infrastruktur",
+      "VM0 Features": "VM0-Funktionen",
       "Development": "Entwicklung"
+    },
+    "terms": {
+      "agent": {
+        "name": "Agent",
+        "definition": "Ein autonomes KI-Programm, das Anweisungen verstehen, Entscheidungen treffen, Werkzeuge verwenden und Aufgaben selbstständig ausführen kann. Im Gegensatz zu traditionellen Skripten können Agenten ihren Ansatz basierend auf dem Kontext anpassen und iterativ auf Ziele hinarbeiten."
+      },
+      "skill": {
+        "name": "Skill",
+        "definition": "Eine vorgefertigte Integration oder Fähigkeit, die Agenten nutzen können, um mit externen Diensten zu interagieren. Skills bieten Agenten sofort einsetzbare Funktionalität wie den Zugriff auf Slack, GitHub, Notion oder andere APIs, ohne dass eine benutzerdefinierte Implementierung erforderlich ist."
+      },
+      "tool": {
+        "name": "Tool",
+        "definition": "Eine Funktion oder API, die ein Agent aufrufen kann, um bestimmte Aktionen auszuführen. Tools sind die Bausteine der Agentenfähigkeiten und ermöglichen es ihnen, Dateien zu lesen, HTTP-Anfragen zu stellen, Datenbanken abzufragen oder mit jedem externen System zu interagieren."
+      },
+      "prompt": {
+        "name": "Prompt",
+        "definition": "Natürlichsprachliche Anweisungen, die einem Agenten gegeben werden, um seine Aufgabe, sein Verhalten oder sein Ziel zu definieren. Prompts können von einfachen Befehlen bis hin zu komplexen Systemanweisungen reichen, die bestimmen, wie ein Agent denkt und arbeitet."
+      },
+      "context": {
+        "name": "Kontext",
+        "definition": "Die Informationen, die einem Agenten während der Ausführung zur Verfügung stehen, einschließlich Gesprächsverlauf, Speicher, Tool-Ausgaben und Umgebungszustand. Der Kontext hilft Agenten, Kohärenz über Interaktionen hinweg zu wahren und fundierte Entscheidungen zu treffen."
+      },
+      "session": {
+        "name": "Sitzung",
+        "definition": "Ein kontinuierlicher Zeitraum der Agentenausführung, der Zustand, Speicher und Kontext bewahrt. Sitzungen ermöglichen es Agenten, das Bewusstsein über mehrere Interaktionen hinweg aufrechtzuerhalten und die Arbeit fortzusetzen, ohne Fortschritte zu verlieren."
+      },
+      "checkpoint": {
+        "name": "Checkpoint",
+        "definition": "Ein Snapshot des Zustands eines Agenten zu einem bestimmten Zeitpunkt, der seinen Speicher, Kontext und Ausführungsfortschritt erfasst. Checkpoints ermöglichen Reproduzierbarkeit und erlauben es Ihnen, Agentendurchläufe wiederherzustellen, zu forken oder zu wiederholen."
+      },
+      "artifact": {
+        "name": "Artefakt",
+        "definition": "Dateien, Daten oder Ausgaben, die von einem Agenten während der Ausführung erzeugt werden. Artefakte bleiben über Durchläufe hinweg bestehen und können Code, Dokumente, Analyseergebnisse oder andere vom Agenten produzierte Ergebnisse umfassen."
+      },
+      "observability": {
+        "name": "Beobachtbarkeit",
+        "definition": "Die Fähigkeit, das Verhalten von Agenten durch Logs, Metriken und Ausführungstraces zu inspizieren, zu überwachen und zu verstehen. Beobachtbarkeit ist wesentlich für Debugging, Optimierung und die Gewährleistung transparenter KI-Operationen."
+      },
+      "sandbox": {
+        "name": "Sandbox",
+        "definition": "Eine isolierte Ausführungsumgebung, in der Agenten sicher laufen, ohne Produktionssysteme zu beeinträchtigen. Sandboxes bieten Sicherheitsgrenzen und stellen sicher, dass Agentenaktionen eingedämmt und kontrolliert werden."
+      },
+      "memory": {
+        "name": "Speicher",
+        "definition": "Informationen, die ein Agent über Interaktionen hinweg behält und es ihm ermöglichen, aus vergangenen Erfahrungen zu lernen und den Kontext über die Zeit aufrechtzuerhalten. Der Speicher kann Fakten, Präferenzen, Gesprächsverläufe und gelernte Muster umfassen."
+      },
+      "workflow": {
+        "name": "Workflow",
+        "definition": "Eine Abfolge von Aufgaben oder Operationen, die ein Agent ausführt, um ein Ziel zu erreichen. Im Gegensatz zu starren Automatisierungsskripten können Agenten-Workflows sich anpassen und basierend auf Zwischenergebnissen und sich ändernden Bedingungen justieren."
+      },
+      "llm": {
+        "name": "LLM (Large Language Model)",
+        "definition": "Das zugrunde liegende KI-Modell, das das Reasoning und die Entscheidungsfindung des Agenten antreibt. Beispiele sind Claude, GPT-4 und Gemini. Verschiedene LLMs haben unterschiedliche Stärken, Kosten und Fähigkeiten."
+      },
+      "skillMd": {
+        "name": "SKILL.md",
+        "definition": "Eine Markdown-Konfigurationsdatei, die das Verhalten, die Eingaben, Ausgaben und Implementierungslogik einer Skill definiert. Die SKILL.md-Datei ermöglicht es Ihnen, benutzerdefinierte Skills mit natürlicher Sprache und strukturierten Metadaten zu erstellen, wodurch es einfach wird, Agentenfähigkeiten zu erweitern, ohne komplexen Code zu schreiben."
+      },
+      "agentMd": {
+        "name": "AGENTS.md",
+        "definition": "Eine Markdown-Konfigurationsdatei, die das Verhalten, die Persönlichkeit, die Ziele und die verfügbaren Tools eines Agenten definiert. Die AGENTS.md-Datei dient als Blaupause des Agenten und spezifiziert, wie er denken sollte, was er tun kann und wie er mit Benutzern und Systemen interagieren sollte."
+      },
+      "volume": {
+        "name": "Volume",
+        "definition": "Ein persistenter Speicherplatz, der Dateien und Daten über Agentendurchläufe hinweg bewahrt. Volumes bieten Agenten ein Dateisystem, das über einzelne Ausführungen hinaus besteht und es ihnen ermöglicht, Zustände zu speichern, Daten zu cachen und langfristige Artefakte zu pflegen."
+      },
+      "action": {
+        "name": "Aktion",
+        "definition": "Eine konkrete Operation oder Aufgabe, die ein Agent ausführt, um seine Ziele zu erreichen. Aktionen können API-Aufrufe, das Lesen von Dateien, die Verarbeitung von Daten oder die Interaktion mit externen Systemen umfassen. Jede Aktion repräsentiert einen einzelnen Schritt im Ausführungsfluss des Agenten."
+      },
+      "runtime": {
+        "name": "Runtime",
+        "definition": "Die Ausführungsumgebung, in der Agenten laufen und die notwendige Infrastruktur, Ressourcen und APIs bereitstellt. Die Runtime verwaltet den Agentenlebenszyklus, handhabt die Ressourcenzuweisung und gewährleistet die ordnungsgemäße Isolation zwischen verschiedenen Agentenausführungen."
+      },
+      "orchestration": {
+        "name": "Orchestrierung",
+        "definition": "Die Koordination und Verwaltung mehrerer Agenten, Workflows oder Aufgaben, um komplexe Ziele zu erreichen. Die Orchestrierung handhabt Abhängigkeiten, Sequenzierung, parallele Ausführung und Ressourcenzuweisung über verteilte Agentenoperationen hinweg."
+      },
+      "mcp": {
+        "name": "MCP (Model Context Protocol)",
+        "definition": "Ein offenes Protokoll, das von Anthropic entwickelt wurde und es KI-Assistenten ermöglicht, sich sicher mit externen Datenquellen und Tools zu verbinden. MCP bietet eine standardisierte Möglichkeit für Agenten, auf Ressourcen wie Datenbanken, APIs und Dateisysteme zuzugreifen, während Sicherheit und Kontextbewusstsein gewahrt bleiben."
+      },
+      "image": {
+        "name": "Image",
+        "definition": "Ein gepackter Container, der den Code, die Runtime, die Abhängigkeiten und die Konfiguration enthält, die zum Ausführen eines Agenten erforderlich sind. Images bieten eine konsistente und reproduzierbare Ausführungsumgebung und stellen sicher, dass Agenten sich über verschiedene Deployments hinweg gleich verhalten."
+      },
+      "secrets": {
+        "name": "Secrets",
+        "definition": "Sensible Informationen wie API-Schlüssel, Passwörter und Tokens, die Agenten benötigen, um auf externe Dienste zuzugreifen. Secrets werden sicher gespeichert und zur Ausführungszeit in die Agenten-Runtime injiziert, wodurch eine Offenlegung im Code oder in Konfigurationsdateien verhindert wird."
+      },
+      "environmentVariable": {
+        "name": "Umgebungsvariable",
+        "definition": "Ein Konfigurationswert, der einem Agenten zur Laufzeit übergeben wird und es Ihnen ermöglicht, das Verhalten anzupassen, ohne Code zu ändern. Umgebungsvariablen werden häufig für API-Endpunkte, Feature-Flags und nicht sensible Konfigurationseinstellungen verwendet."
+      },
+      "virtualMachine": {
+        "name": "Virtuelle Maschine",
+        "definition": "Eine isolierte, softwarebasierte Rechenumgebung, die einen physischen Computer emuliert. Virtuelle Maschinen bieten vollständige Isolation zwischen Agentenausführungen und gewährleisten Sicherheit und verhindern Interferenzen. VM0 verwendet leichtgewichtige virtuelle Maschinen, um Agenten mit ihrem eigenen Betriebssystem, Dateisystem und Netzwerk-Stack auszuführen."
+      },
+      "cli": {
+        "name": "CLI (Command Line Interface)",
+        "definition": "Eine textbasierte Schnittstelle zur Interaktion mit Agenten und der VM0-Plattform. Die CLI ermöglicht es Entwicklern, Agenten über Terminal-Befehle zu erstellen, bereitzustellen und zu verwalten, und bietet leistungsstarke Skripting- und Automatisierungsfähigkeiten, ohne eine grafische Benutzeroberfläche zu benötigen."
+      },
+      "cliAgent": {
+        "name": "CLI-Agent",
+        "definition": "Ein Agent, der speziell dafür entwickelt wurde, über Befehlszeilenschnittstellen aufgerufen und gesteuert zu werden. CLI-Agenten können in Skripte, CI/CD-Pipelines und Terminal-Workflows integriert werden, was sie ideal für Automatisierungsaufgaben und Entwicklerwerkzeuge macht."
+      },
+      "agentRouter": {
+        "name": "Agent-Router",
+        "definition": "Ein System, das Agentenanfragen intelligent an das am besten geeignete KI-Modell weiterleitet, basierend auf Aufgabenanforderungen, Kostenbeschränkungen und Leistungsbedürfnissen. Der Agent-Router kann dynamisch zwischen verschiedenen LLMs (Claude, GPT, Gemini) wählen oder an spezialisierte Modelle für bestimmte Fähigkeiten weiterleiten."
+      },
+      "claudeCode": {
+        "name": "Claude Code",
+        "definition": "Anthropics offizielles Befehlszeilenwerkzeug zum Erstellen und Bereitstellen von KI-Agenten. Claude Code bietet eine entwicklerfreundliche Schnittstelle zum Erstellen von Agenten, Verwalten von Skills und zur Integration mit der Claude API. Es rationalisiert den Agenten-Entwicklungsworkflow mit Funktionen wie Live-Reloading, Debugging-Tools und Deployment-Automatisierung."
+      },
+      "codex": {
+        "name": "Codex",
+        "definition": "Ein Befehlszeilenwerkzeug für Agentenentwicklung und -bereitstellung. Codex bietet Entwicklern Dienstprogramme zum Erstellen, Testen und Verwalten von Agenten über das Terminal. Es bietet Funktionen wie Code-Generierung, Scaffolding und Integration mit KI-Modellen, um den Agenten-Entwicklungsworkflow zu optimieren."
+      }
     }
   }
 }

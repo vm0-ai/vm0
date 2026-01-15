@@ -202,12 +202,12 @@
         "definition": "Agentの推論と意思決定に力を与える基盤となるAIモデル。Claude、GPT-4、Geminiなどが例です。異なるLLMは異なる強度、コスト、機能を持っています。"
       },
       "skillMd": {
-        "name": "SKILL.MD",
-        "definition": "Skillの動作、入力、出力、実装ロジックを定義するMarkdown設定ファイル。SKILL.MDファイルは自然言語と構造化メタデータを使用してカスタムSkillsを作成できます。複雑なコードを書くことなくAgent機能を拡張できます。"
+        "name": "SKILLS.MD",
+        "definition": "Skillの動作、入力、出力、実装ロジックを定義するMarkdown設定ファイル。SKILLS.MDファイルは自然言語と構造化メタデータを使用してカスタムSkillsを作成できます。複雑なコードを書くことなくAgent機能を拡張できます。"
       },
       "agentMd": {
-        "name": "AGENT.MD",
-        "definition": "Agentの動作、個性、目標、利用可能なツールを定義するMarkdown設定ファイル。AGENT.MDファイルはAgentのブループリントとして機能し、どのように考えるべきか、何ができるか、ユーザーとシステムとどのように相互作用するべきかを指定します。"
+        "name": "AGENTS.MD",
+        "definition": "Agentの動作、個性、目標、利用可能なツールを定義するMarkdown設定ファイル。AGENTS.MDファイルはAgentのブループリントとして機能し、どのように考えるべきか、何ができるか、ユーザーとシステムとどのように相互作用するべきかを指定します。"
       },
       "volume": {
         "name": "Volume",
