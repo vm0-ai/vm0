@@ -294,7 +294,7 @@ async function run(): Promise<[number, string]> {
 
     // Select Claude binary
     const claudeBin = useMock
-      ? "/usr/local/bin/vm0-agent/lib/mock_claude.mjs"
+      ? "/usr/local/bin/vm0-agent/mock-claude.mjs"
       : "claude";
 
     if (useMock) {
