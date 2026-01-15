@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.5](https://github.com/vm0-ai/vm0/compare/runner-v2.8.4...runner-v2.8.5) (2026-01-15)
+
+
+### Bug Fixes
+
+* **runner:** use correct env var name in mitmproxy addon ([#1230](https://github.com/vm0-ai/vm0/issues/1230)) ([ec082f3](https://github.com/vm0-ai/vm0/commit/ec082f3e8f877f026f2dc4eefba759a86c7c820d))
+
 ## [2.8.4](https://github.com/vm0-ai/vm0/compare/runner-v2.8.3...runner-v2.8.4) (2026-01-14)
 
 
