@@ -58,8 +58,8 @@ export interface CreateComposeResponse {
 export interface CreateRunResponse {
   runId: string;
   status: RunStatus;
-  sandboxId: string;
-  output: string;
+  sandboxId?: string;
+  output?: string;
   error?: string;
   executionTimeMs?: number;
   createdAt: string;
