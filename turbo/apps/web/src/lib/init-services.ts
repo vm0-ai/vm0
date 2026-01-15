@@ -1,18 +1,21 @@
 import { Pool as PgPool } from "pg";
 import { Pool as NeonPool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
 import { schema } from "../db/db";
 import { env, type Env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { Services } from "../types/global";
-import { initMetrics } from "./metrics";
 
 // Private variables for singleton instances
 let _env: Env | undefined;
 let _pool: PgPool | NeonPool | undefined;
-let _db: NodePgDatabase<typeof schema> | undefined;
+let _db:
+  | NodePgDatabase<typeof schema>
+  | NeonDatabase<typeof schema>
+  | undefined;
 let _services: Services | undefined;
-let _metricsInitialized = false;
 
 /**
  * Initialize global services
@@ -66,7 +69,17 @@ export function initServices(): void {
     },
     get db() {
       if (!_db) {
-        _db = drizzle(this.pool, { schema });
+        if (isVercel) {
+          // Use Neon serverless driver with drizzle for Vercel
+          // This supports interactive transactions (required for storage commit)
+          _db = drizzleNeonServerless({
+            client: this.pool as NeonPool,
+            schema,
+          });
+        } else {
+          // Use regular pg driver with drizzle for local development
+          _db = drizzleNodePg(this.pool as PgPool, { schema });
+        }
       }
       return _db;
     },
@@ -82,20 +95,4 @@ export function initServices(): void {
     },
     configurable: true,
   });
-
-  // Initialize metrics (idempotent)
-  if (!_metricsInitialized) {
-    _metricsInitialized = true;
-    const envVars = _services.env;
-    if (!envVars.AXIOM_DATASET_SUFFIX) {
-      throw new Error(
-        "AXIOM_DATASET_SUFFIX is required. Set to 'dev' or 'prod'.",
-      );
-    }
-    initMetrics({
-      serviceName: "vm0-web",
-      axiomToken: envVars.AXIOM_TOKEN,
-      environment: envVars.AXIOM_DATASET_SUFFIX,
-    });
-  }
 }

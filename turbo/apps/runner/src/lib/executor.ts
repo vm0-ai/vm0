@@ -586,6 +586,56 @@ export async function executeJob(
         completed = true;
         break;
       }
+
+      // Check if agent process is still running (production mode only)
+      // If exit code file doesn't exist but process is dead, agent crashed unexpectedly
+      if (!options.benchmarkMode) {
+        const processCheck = await ssh.exec(
+          `pgrep -f "env-loader.py" > /dev/null 2>&1 && echo "RUNNING" || echo "DEAD"`,
+        );
+
+        if (processCheck.stdout.trim() === "DEAD") {
+          // Process is dead but no exit code file - agent crashed unexpectedly
+          log(
+            `[Executor] Agent process died unexpectedly without writing exit code`,
+          );
+
+          // Try to get diagnostic info from system log and dmesg
+          const logContent = await ssh.exec(
+            `tail -50 ${systemLogFile} 2>/dev/null`,
+          );
+          const dmesgCheck = await ssh.exec(
+            `dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
+          );
+
+          let errorMsg = "Agent process terminated unexpectedly";
+          if (
+            dmesgCheck.stdout.toLowerCase().includes("oom") ||
+            dmesgCheck.stdout.toLowerCase().includes("killed")
+          ) {
+            errorMsg = "Agent process killed by OOM killer";
+            log(`[Executor] OOM detected: ${dmesgCheck.stdout}`);
+          }
+          if (logContent.stdout) {
+            log(
+              `[Executor] Last log output: ${logContent.stdout.substring(0, 500)}`,
+            );
+          }
+
+          // Record metric and return failure
+          const durationMs = Date.now() - startTime;
+          recordRunnerOperation({
+            actionType: "agent_execute",
+            durationMs,
+            success: false,
+          });
+
+          return {
+            exitCode: 1,
+            error: errorMsg,
+          };
+        }
+      }
     }
 
     const durationMs = Date.now() - startTime;

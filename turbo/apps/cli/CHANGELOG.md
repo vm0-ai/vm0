@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.4.0](https://github.com/vm0-ai/vm0/compare/cli-v5.3.2...cli-v5.4.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add api endpoint to view schedule run history ([#1204](https://github.com/vm0-ai/vm0/issues/1204)) ([c53f1a6](https://github.com/vm0-ai/vm0/commit/c53f1a664ecbf460727217364f62089eff1cc408))
+* **schedule:** improve one-time schedule UX with contextual date hint ([#1200](https://github.com/vm0-ai/vm0/issues/1200)) ([09228a4](https://github.com/vm0-ai/vm0/commit/09228a41762635444c0ef4e906316a93769d772e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.0
+
 ## [5.3.2](https://github.com/vm0-ai/vm0/compare/cli-v5.3.1...cli-v5.3.2) (2026-01-14)
 
 

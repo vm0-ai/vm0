@@ -1,4 +1,5 @@
 import prompts from "prompts";
+import chalk from "chalk";
 
 /**
  * Check if the current environment supports interactive prompts
@@ -118,4 +119,79 @@ export async function promptSelect<T>(
   );
 
   return response.value;
+}
+
+/**
+ * Prompt for text input with a gray hint prefix in the default value.
+ * The hint is displayed in gray/dim and is stripped from the result.
+ *
+ * Display: "Date (YYYY-MM-DD): tomorrow 2025-01-15"
+ *                              ^^^^^^^^ (gray)
+ *
+ * - Tab: Autocompletes to initial value (hint + value), user can then edit
+ * - Enter: Accepts input and strips hint prefix if present
+ *
+ * @param message - The prompt message
+ * @param hint - The hint word to display in gray (e.g., "tomorrow")
+ * @param initial - The actual value (e.g., "2025-01-15")
+ * @param validate - Optional validation function (receives value without hint)
+ * @returns The user's input without the hint, or undefined if cancelled
+ */
+export async function promptTextWithHint(
+  message: string,
+  hint: string,
+  initial: string,
+  validate?: (value: string) => boolean | string,
+): Promise<string | undefined> {
+  if (!isInteractive()) {
+    return undefined;
+  }
+
+  // Create the display value with hint prefix
+  const hintedInitial = `${hint} ${initial}`;
+
+  const response = await prompts(
+    {
+      type: "text",
+      name: "value",
+      message,
+      initial: hintedInitial,
+      // Custom render to show hint in gray
+      onRender(this: { msg: string; rendered: string; value: string }) {
+        // If the current value starts with the hint, style it
+        if (this.value.startsWith(hint + " ")) {
+          const hintPart = hint + " ";
+          const valuePart = this.value.slice(hintPart.length);
+          this.rendered = chalk.dim(hintPart) + valuePart;
+        }
+      },
+      // Validate after stripping hint
+      validate: validate
+        ? (value: string) => {
+            const stripped = stripHintPrefix(value, hint);
+            return validate(stripped);
+          }
+        : undefined,
+      // Format the final value to strip hint
+      format: (value: string) => stripHintPrefix(value, hint),
+    },
+    {
+      onCancel: () => {
+        return false;
+      },
+    },
+  );
+
+  return response.value;
+}
+
+/**
+ * Strip hint prefix from a value if present
+ */
+function stripHintPrefix(value: string, hint: string): string {
+  const prefix = hint + " ";
+  if (value.startsWith(prefix)) {
+    return value.slice(prefix.length);
+  }
+  return value;
 }

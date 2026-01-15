@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.10.0](https://github.com/vm0-ai/vm0/compare/web-v9.9.1...web-v9.10.0) (2026-01-14)
+
+
+### Features
+
+* **schedule:** add api endpoint to view schedule run history ([#1204](https://github.com/vm0-ai/vm0/issues/1204)) ([c53f1a6](https://github.com/vm0-ai/vm0/commit/c53f1a664ecbf460727217364f62089eff1cc408))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.0
+
+## [9.9.1](https://github.com/vm0-ai/vm0/compare/web-v9.9.0...web-v9.9.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* **ci:** use hash for even runner host distribution ([#1214](https://github.com/vm0-ai/vm0/issues/1214)) ([ec74840](https://github.com/vm0-ai/vm0/commit/ec7484080f32e0b16e81a451ca5447e7db1170e8))
+
+## [9.9.0](https://github.com/vm0-ai/vm0/compare/web-v9.8.1...web-v9.9.0) (2026-01-14)
+
+
+### Features
+
+* **web:** add debug configuration status utility ([#1223](https://github.com/vm0-ai/vm0/issues/1223)) ([0172112](https://github.com/vm0-ai/vm0/commit/0172112a3b818067110819980640267d8b3c86c8))
+
 ## [9.8.1](https://github.com/vm0-ai/vm0/compare/web-v9.8.0...web-v9.8.1) (2026-01-14)
 
 

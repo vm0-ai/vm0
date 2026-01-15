@@ -5,6 +5,10 @@ import {
   detectTimezone,
   extractVarsAndSecrets,
   validateTimeFormat,
+  validateDateFormat,
+  getTomorrowDateLocal,
+  getCurrentTimeLocal,
+  toISODateTime,
 } from "../../../lib/domain/schedule-utils";
 
 // Mock fs module for file-based tests
@@ -183,6 +187,111 @@ agents:
 
       const result = extractVarsAndSecrets();
       expect(result).toEqual({ vars: [], secrets: [] });
+    });
+  });
+
+  describe("validateDateFormat", () => {
+    it("should accept valid date formats", () => {
+      expect(validateDateFormat("2025-01-15")).toBe(true);
+      expect(validateDateFormat("2024-12-31")).toBe(true);
+      expect(validateDateFormat("2000-01-01")).toBe(true);
+      expect(validateDateFormat("2100-06-15")).toBe(true);
+    });
+
+    it("should reject invalid date formats", () => {
+      expect(validateDateFormat("2025-1-15")).toBe(
+        "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)",
+      );
+      expect(validateDateFormat("25-01-15")).toBe(
+        "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)",
+      );
+      expect(validateDateFormat("2025/01/15")).toBe(
+        "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)",
+      );
+      expect(validateDateFormat("")).toBe(
+        "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)",
+      );
+    });
+
+    it("should reject out of range years", () => {
+      expect(validateDateFormat("1999-01-15")).toBe(
+        "Year must be between 2000 and 2100",
+      );
+      expect(validateDateFormat("2101-01-15")).toBe(
+        "Year must be between 2000 and 2100",
+      );
+    });
+
+    it("should reject out of range months", () => {
+      expect(validateDateFormat("2025-00-15")).toBe("Month must be 1-12");
+      expect(validateDateFormat("2025-13-15")).toBe("Month must be 1-12");
+    });
+
+    it("should reject out of range days", () => {
+      expect(validateDateFormat("2025-01-00")).toBe("Day must be 1-31");
+      expect(validateDateFormat("2025-01-32")).toBe("Day must be 1-31");
+    });
+
+    it("should reject invalid dates like Feb 30", () => {
+      expect(validateDateFormat("2025-02-30")).toBe("Invalid date");
+      expect(validateDateFormat("2025-02-29")).toBe("Invalid date"); // 2025 is not a leap year
+      expect(validateDateFormat("2024-02-29")).toBe(true); // 2024 is a leap year
+      expect(validateDateFormat("2025-04-31")).toBe("Invalid date"); // April has 30 days
+    });
+  });
+
+  describe("getTomorrowDateLocal", () => {
+    it("should return a date in YYYY-MM-DD format", () => {
+      const result = getTomorrowDateLocal();
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it("should return tomorrow's date", () => {
+      const result = getTomorrowDateLocal();
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const expected = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+      expect(result).toBe(expected);
+    });
+  });
+
+  describe("getCurrentTimeLocal", () => {
+    it("should return a time in HH:MM format", () => {
+      const result = getCurrentTimeLocal();
+      expect(result).toMatch(/^\d{2}:\d{2}$/);
+    });
+
+    it("should return the current time", () => {
+      const result = getCurrentTimeLocal();
+      const now = new Date();
+      const expected = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      expect(result).toBe(expected);
+    });
+  });
+
+  describe("toISODateTime", () => {
+    it("should convert human-readable format to ISO", () => {
+      const result = toISODateTime("2025-01-15 14:30");
+      // The result should be a valid ISO string
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
+      // Check that the date components are preserved
+      const date = new Date(result);
+      expect(date.getFullYear()).toBe(2025);
+      expect(date.getMonth()).toBe(0); // January
+      expect(date.getDate()).toBe(15);
+    });
+
+    it("should pass through ISO format unchanged", () => {
+      const isoStr = "2025-01-15T14:30:00.000Z";
+      expect(toISODateTime(isoStr)).toBe(isoStr);
+    });
+
+    it("should handle different times", () => {
+      const result1 = toISODateTime("2025-12-31 23:59");
+      expect(result1).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
+
+      const result2 = toISODateTime("2025-01-01 00:00");
+      expect(result2).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
     });
   });
 });

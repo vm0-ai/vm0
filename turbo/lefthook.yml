@@ -1,4 +1,5 @@
 pre-commit:
+  parallel: true
   commands:
     lint:
       root: turbo/
@@ -14,3 +15,12 @@ pre-commit:
       # Only type-check packages affected by staged changes (much faster than full check)
       run: pnpm turbo run check-types --filter='...[HEAD]'
       glob: "turbo/**/*.{ts,tsx}"
+    knip:
+      root: turbo/
+      run: pnpm knip --cache
+      glob: "turbo/**/*.{js,ts,tsx,jsx,json}"
+      skip:
+        - merge
+        - rebase
+      fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
+      timeout: 60

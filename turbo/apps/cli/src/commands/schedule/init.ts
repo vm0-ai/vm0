@@ -5,6 +5,7 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   isInteractive,
   promptText,
+  promptTextWithHint,
   promptConfirm,
   promptSelect,
 } from "../../lib/utils/prompt-utils";
@@ -14,6 +15,9 @@ import {
   detectTimezone,
   extractVarsAndSecrets,
   validateTimeFormat,
+  validateDateFormat,
+  getTomorrowDateLocal,
+  getCurrentTimeLocal,
   type ScheduleFrequency,
 } from "../../lib/domain/schedule-utils";
 
@@ -229,19 +233,36 @@ export const initCommand = new Command()
             );
             process.exit(1);
           }
-          const dateStr = await promptText(
-            "Date and time (YYYY-MM-DD HH:MM)",
-            new Date(Date.now() + 24 * 60 * 60 * 1000)
-              .toISOString()
-              .slice(0, 16)
-              .replace("T", " "),
+
+          // Step 1: Prompt for date with "tomorrow" hint (local timezone)
+          const tomorrowDate = getTomorrowDateLocal();
+          const date = await promptTextWithHint(
+            "Date (YYYY-MM-DD)",
+            "tomorrow",
+            tomorrowDate,
+            validateDateFormat,
           );
-          if (!dateStr) {
+          if (!date) {
             console.log(chalk.dim("Cancelled"));
             return;
           }
-          // Convert to ISO
-          atTime = new Date(dateStr.replace(" ", "T") + ":00Z").toISOString();
+
+          // Step 2: Prompt for time (local timezone)
+          const currentTime = getCurrentTimeLocal();
+          time = await promptText(
+            "Time (HH:MM)",
+            currentTime,
+            validateTimeFormat,
+          );
+          if (!time) {
+            console.log(chalk.dim("Cancelled"));
+            return;
+          }
+
+          // Combine date and time - will be converted to UTC with timezone later
+          const dateStr = `${date} ${time}`;
+          // Store for later conversion after timezone is gathered
+          atTime = dateStr;
         } else {
           // Cron schedule needs time
           if (!time) {
@@ -281,6 +302,10 @@ export const initCommand = new Command()
             timezone = detectedTimezone;
           }
         }
+
+        // For one-time schedules, atTime is already in "YYYY-MM-DD HH:MM" format
+        // This human-readable format is stored in schedule.yaml
+        // The deploy command will convert it to ISO format when sending to the API
 
         // 8. Gather prompt
         let promptText_ = options.prompt;

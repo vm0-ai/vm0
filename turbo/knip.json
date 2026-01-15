@@ -1,0 +1,120 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "apps/web": {
+      "entry": [
+        "app/**/page.{ts,tsx}",
+        "app/**/layout.{ts,tsx}",
+        "app/api/**/route.{ts,tsx}",
+        "app/v1/**/route.{ts,tsx}",
+        "middleware.{ts,tsx}",
+        "middleware.cors.ts",
+        "i18n.ts",
+        "navigation.ts",
+        "scripts/*.ts",
+        "**/__tests__/**/*.{test,spec}.{ts,tsx}",
+        "**/*.{test,spec}.{ts,tsx}"
+      ],
+      "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
+      "ignoreDependencies": ["@vm0/ui"],
+      "next": {
+        "entry": ["next.config.{js,ts,mjs}"]
+      }
+    },
+    "apps/cli": {
+      "entry": [
+        "src/index.ts",
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      "tsup": {
+        "config": ["tsup.config.ts"]
+      }
+    },
+    "apps/docs": {
+      "entry": ["source.config.ts"],
+      "project": ["**/*.{ts,tsx,mdx,js,mjs}"]
+    },
+    "apps/platform": {
+      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)", "src/test/setup.ts"],
+      "project": ["**/*.{ts,tsx}"],
+      "ignore": ["eslint.config.js", "custom-eslint/**"],
+      "ignoreDependencies": [
+        "@typescript-eslint/parser",
+        "tailwindcss",
+        "@vm0/ui"
+      ],
+      "eslint": false
+    },
+    "apps/runner": {
+      "entry": [
+        "src/index.ts",
+        "scripts/*.ts",
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "tsup": {
+        "config": ["tsup.config.ts"]
+      }
+    },
+    "packages/core": {
+      "entry": [
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui": {
+      "entry": [
+        "src/test/setup.ts",
+        "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
+        "src/**/*.{test,spec}.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/eslint-config": {
+      "entry": [],
+      "project": ["**/*.js"]
+    },
+    "packages/typescript-config": {
+      "entry": [],
+      "project": ["*.json"],
+      "ignoreUnresolved": ["next"]
+    },
+    "packages/proxy": {
+      "entry": [],
+      "project": ["**/*.{js,json}"],
+      "ignoreBinaries": ["caddy"]
+    }
+  },
+  "ignore": [
+    "**/*.d.ts",
+    ".next/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "**/drizzle.config.ts",
+    "**/eslint.config.{js,mjs,cjs}",
+    "**/custom-eslint/**",
+    "**/vite.config.ts",
+    "**/vitest.config.ts",
+    "apps/docs/src/components/plausible-tracker.tsx",
+    "apps/platform/src/mocks/browser.ts",
+    "apps/platform/src/signals/test-utils.ts",
+    "apps/platform/src/views/router/link.tsx",
+    "apps/runner/src/lib/firecracker/index.ts",
+    "apps/web/src/db/index.ts",
+    "apps/web/src/lib/auth/require-user.ts",
+    "apps/web/src/lib/e2b/index.ts",
+    "apps/web/src/lib/public-api/index.ts",
+    "apps/web/src/test/setup.ts",
+    "apps/web/src/types/agent-run.ts"
+  ],
+  "ignoreWorkspaces": [],
+  "ignoreUnresolved": [],
+  "eslint": false,
+  "vite": false,
+  "vitest": false
+}

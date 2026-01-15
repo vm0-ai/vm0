@@ -1,5 +1,46 @@
 import { getApiUrl, getToken } from "./config";
 
+// Import types from @vm0/core contracts
+import type {
+  RunStatus as CoreRunStatus,
+  RunResult as CoreRunResult,
+  RunState as CoreRunState,
+  RunEvent as CoreRunEvent,
+  EventsResponse,
+  TelemetryMetric as CoreTelemetryMetric,
+  SystemLogResponse,
+  MetricsResponse,
+  AgentEventsResponse,
+  NetworkLogEntry as CoreNetworkLogEntry,
+  NetworkLogsResponse,
+  SessionResponse,
+  CheckpointResponse,
+  AgentComposeSnapshot as CoreAgentComposeSnapshot,
+  ComposeResponse,
+  ApiErrorResponse,
+  ScopeResponse as CoreScopeResponse,
+} from "@vm0/core";
+
+// Re-export types with CLI naming conventions for backward compatibility
+export type RunStatus = CoreRunStatus;
+export type RunResult = CoreRunResult;
+export type RunState = CoreRunState;
+export type RunEvent = CoreRunEvent;
+export type TelemetryMetric = CoreTelemetryMetric;
+export type NetworkLogEntry = CoreNetworkLogEntry;
+export type AgentComposeSnapshot = CoreAgentComposeSnapshot;
+export type ApiError = ApiErrorResponse;
+export type ScopeResponse = CoreScopeResponse;
+export type GetSystemLogResponse = SystemLogResponse;
+export type GetMetricsResponse = MetricsResponse;
+export type GetAgentEventsResponse = AgentEventsResponse;
+export type GetNetworkLogsResponse = NetworkLogsResponse;
+export type GetSessionResponse = SessionResponse;
+export type GetCheckpointResponse = CheckpointResponse;
+export type GetComposeResponse = ComposeResponse;
+export type GetEventsResponse = EventsResponse;
+
+// CLI-specific types (not in @vm0/core or have different structure)
 export interface CreateComposeResponse {
   composeId: string;
   name: string;
@@ -11,7 +52,7 @@ export interface CreateComposeResponse {
 
 export interface CreateRunResponse {
   runId: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: RunStatus;
   sandboxId: string;
   output: string;
   error?: string;
@@ -19,176 +60,9 @@ export interface CreateRunResponse {
   createdAt: string;
 }
 
-export interface GetComposeResponse {
-  id: string;
-  name: string;
-  headVersionId: string | null;
-  content: unknown;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ApiError {
-  error: {
-    message: string;
-    code: string;
-  };
-}
-
-export type RunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "timeout";
-
-/**
- * Run result stored when status = 'completed'
- * Contains checkpoint and artifact information for session continuation
- */
-export interface RunResult {
-  checkpointId: string;
-  agentSessionId: string;
-  conversationId: string;
-  artifact: Record<string, string>;
-  volumes?: Record<string, string>;
-}
-
-/**
- * Run state information returned by events API
- * Replaces the previous vm0_start/vm0_result/vm0_error events
- */
-export interface RunState {
-  status: RunStatus;
-  result?: RunResult;
-  error?: string;
-}
-
-export interface GetEventsResponse {
-  events: Array<{
-    sequenceNumber: number;
-    eventType: string;
-    eventData: unknown;
-    createdAt: string;
-  }>;
-  hasMore: boolean;
-  nextSequence: number;
-  /** Run state information (replaces previous vm0_* events) */
-  run: RunState;
-  /** Provider type from compose configuration */
-  provider: string;
-}
-
 export interface GetComposeVersionResponse {
   versionId: string;
   tag?: string;
-}
-
-export interface TelemetryMetric {
-  ts: string;
-  cpu: number;
-  mem_used: number;
-  mem_total: number;
-  disk_used: number;
-  disk_total: number;
-}
-
-export interface GetSystemLogResponse {
-  systemLog: string;
-  hasMore: boolean;
-}
-
-export interface GetMetricsResponse {
-  metrics: TelemetryMetric[];
-  hasMore: boolean;
-}
-
-export interface RunEvent {
-  sequenceNumber: number;
-  eventType: string;
-  eventData: unknown;
-  createdAt: string;
-}
-
-export interface GetAgentEventsResponse {
-  events: RunEvent[];
-  hasMore: boolean;
-  /** Provider type from compose configuration */
-  provider: string;
-}
-
-/**
- * Network log entry supports two modes:
- * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
- * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
- */
-export interface NetworkLogEntry {
-  timestamp: string;
-  // Common fields (all modes)
-  mode?: "mitm" | "sni";
-  action?: "ALLOW" | "DENY";
-  host?: string;
-  port?: number;
-  rule_matched?: string | null;
-  // MITM-only fields (optional)
-  method?: string;
-  url?: string;
-  status?: number;
-  latency_ms?: number;
-  request_size?: number;
-  response_size?: number;
-}
-
-export interface GetNetworkLogsResponse {
-  networkLogs: NetworkLogEntry[];
-  hasMore: boolean;
-}
-
-export interface ScopeResponse {
-  id: string;
-  slug: string;
-  type: "personal" | "organization" | "system";
-  displayName: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Session response from GET /api/agent/sessions/{id}
- */
-export interface GetSessionResponse {
-  id: string;
-  agentComposeId: string;
-  agentComposeVersionId: string | null;
-  conversationId: string | null;
-  artifactName: string | null;
-  vars: Record<string, string> | null;
-  secretNames: string[] | null;
-  volumeVersions: Record<string, string> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Agent compose snapshot stored in checkpoints
- */
-export interface AgentComposeSnapshot {
-  agentComposeVersionId: string;
-  vars?: Record<string, string>;
-  secretNames?: string[];
-}
-
-/**
- * Checkpoint response from GET /api/agent/checkpoints/{id}
- */
-export interface GetCheckpointResponse {
-  id: string;
-  runId: string;
-  conversationId: string;
-  agentComposeSnapshot: AgentComposeSnapshot;
-  artifactSnapshot: { artifactName: string; artifactVersion: string } | null;
-  volumeVersionsSnapshot: { versions: Record<string, string> } | null;
-  createdAt: string;
 }
 
 class ApiClient {

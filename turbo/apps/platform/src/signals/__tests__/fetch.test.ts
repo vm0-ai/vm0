@@ -37,18 +37,24 @@ vi.mock("@clerk/clerk-js", () => {
         session: null as { getToken: () => Promise<string | null> } | null,
         setUser(user: { id: string } | null) {
           instance.user = user;
-          for (const listener of listeners) listener();
+          for (const listener of listeners) {
+            listener();
+          }
         },
         setSession(session: { getToken: () => Promise<string | null> } | null) {
           instance.session = session;
-          for (const listener of listeners) listener();
+          for (const listener of listeners) {
+            listener();
+          }
         },
         load: () => Promise.resolve(),
         addListener: (callback: () => void) => {
           listeners.push(callback);
           return () => {
             const idx = listeners.indexOf(callback);
-            if (idx !== -1) listeners.splice(idx, 1);
+            if (idx !== -1) {
+              listeners.splice(idx, 1);
+            }
           };
         },
       };
@@ -214,7 +220,7 @@ describe("fetch$ signal integration tests", () => {
     });
   });
 
-  describe("URL handling", () => {
+  describe("url handling", () => {
     it("should prepend apiBase to relative paths", async () => {
       const fch = context.store.get(fetch$);
 

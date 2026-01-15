@@ -3,47 +3,12 @@ import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
-import { scheduleYamlSchema } from "@vm0/core";
-
-/**
- * Schedule definition type - matches what's in the YAML
- */
-interface ScheduleDefinition {
-  on: {
-    cron?: string;
-    at?: string;
-    timezone?: string;
-  };
-  run: {
-    agent: string;
-    prompt: string;
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
-    artifactName?: string;
-    artifactVersion?: string;
-    volumeVersions?: Record<string, string>;
-  };
-}
-
-/**
- * Schedule response from API
- */
-interface ScheduleResponse {
-  id: string;
-  name: string;
-  cronExpression: string | null;
-  atTime: string | null;
-  timezone: string;
-  enabled: boolean;
-  nextRunAt: string | null;
-  composeName: string;
-  scopeSlug: string;
-}
-
-interface DeployResponse {
-  schedule: ScheduleResponse;
-  created: boolean;
-}
+import {
+  scheduleYamlSchema,
+  type ScheduleDefinition,
+  type DeployScheduleResponse,
+} from "@vm0/core";
+import { toISODateTime } from "../../lib/domain/schedule-utils";
 
 /**
  * Expand environment variables in a string
@@ -166,11 +131,14 @@ export const deployCommand = new Command()
       const expandedSecrets = expandEnvVarsInObject(schedule.run.secrets);
 
       // Build deploy request
+      // Convert human-readable "YYYY-MM-DD HH:MM" format to ISO for the API
+      const atTime = schedule.on.at ? toISODateTime(schedule.on.at) : undefined;
+
       const body = {
         name: scheduleName,
         composeId,
         cronExpression: schedule.on.cron,
-        atTime: schedule.on.at,
+        atTime,
         timezone: schedule.on.timezone || "UTC",
         prompt: schedule.run.prompt,
         vars: expandedVars,
@@ -190,7 +158,7 @@ export const deployCommand = new Command()
         throw new Error(error.error?.message || "Deploy failed");
       }
 
-      const deployResult = (await response.json()) as DeployResponse;
+      const deployResult = (await response.json()) as DeployScheduleResponse;
 
       // Display result
       if (deployResult.created) {

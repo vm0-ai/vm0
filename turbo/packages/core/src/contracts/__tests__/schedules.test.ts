@@ -6,6 +6,8 @@ import {
   scheduleDefinitionSchema,
   deployScheduleRequestSchema,
   scheduleResponseSchema,
+  runSummarySchema,
+  scheduleRunsResponseSchema,
 } from "../schedules";
 
 describe("schedules contracts", () => {
@@ -349,8 +351,6 @@ describe("schedules contracts", () => {
         volumeVersions: null,
         enabled: true,
         nextRunAt: "2025-01-13T09:00:00Z",
-        lastRunAt: null,
-        lastRunId: null,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
       });
@@ -376,10 +376,93 @@ describe("schedules contracts", () => {
         volumeVersions: null,
         enabled: false,
         nextRunAt: null,
-        lastRunAt: null,
-        lastRunId: null,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
+      });
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("runSummarySchema", () => {
+    it("should accept valid run summary", () => {
+      const result = runSummarySchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "completed",
+        createdAt: "2025-01-12T10:00:00Z",
+        completedAt: "2025-01-12T10:05:00Z",
+        error: null,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept run summary with error", () => {
+      const result = runSummarySchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "failed",
+        createdAt: "2025-01-12T10:00:00Z",
+        completedAt: "2025-01-12T10:01:00Z",
+        error: "Connection timeout",
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all valid status values", () => {
+      const statuses = ["pending", "running", "completed", "failed", "timeout"];
+      for (const status of statuses) {
+        const result = runSummarySchema.safeParse({
+          id: "123e4567-e89b-12d3-a456-426614174000",
+          status,
+          createdAt: "2025-01-12T10:00:00Z",
+          completedAt: null,
+          error: null,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("should reject invalid status", () => {
+      const result = runSummarySchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "invalid",
+        createdAt: "2025-01-12T10:00:00Z",
+        completedAt: null,
+        error: null,
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("scheduleRunsResponseSchema", () => {
+    it("should accept valid runs response", () => {
+      const result = scheduleRunsResponseSchema.safeParse({
+        runs: [
+          {
+            id: "123e4567-e89b-12d3-a456-426614174000",
+            status: "completed",
+            createdAt: "2025-01-12T10:00:00Z",
+            completedAt: "2025-01-12T10:05:00Z",
+            error: null,
+          },
+          {
+            id: "123e4567-e89b-12d3-a456-426614174001",
+            status: "failed",
+            createdAt: "2025-01-11T10:00:00Z",
+            completedAt: "2025-01-11T10:01:00Z",
+            error: "Error message",
+          },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty runs array", () => {
+      const result = scheduleRunsResponseSchema.safeParse({
+        runs: [],
       });
 
       expect(result.success).toBe(true);

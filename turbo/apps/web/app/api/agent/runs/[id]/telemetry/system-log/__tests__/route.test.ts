@@ -32,9 +32,15 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom module
 vi.mock("../../../../../../../../src/lib/axiom", () => ({
   queryAxiom: vi.fn(),
+  ingestRequestLog: vi.fn(),
+  ingestSandboxOpLog: vi.fn(),
   getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
   DATASETS: {
     SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
+    AGENT_RUN_EVENTS: "agent-run-events",
+    WEB_LOGS: "web-logs",
+    REQUEST_LOG: "request-log",
+    SANDBOX_OP_LOG: "sandbox-op-log",
   },
 }));
 

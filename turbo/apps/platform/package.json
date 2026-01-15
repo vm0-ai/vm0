@@ -13,15 +13,13 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.92.1",
-    "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "ccstate": "^5.0.0",
     "ccstate-react": "^5.0.0",
     "lucide-react": "^0.562.0",
     "path-to-regexp": "^8.3.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "signal-timers": "^1.0.4"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.8",
