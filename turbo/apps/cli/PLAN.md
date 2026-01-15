@@ -7,6 +7,7 @@ Migrate CLI API client from raw fetch to ts-rest client, starting with `createRu
 ## Phase 1: createRun Migration (First PR)
 
 ### Goal
+
 Replace `apiClient.createRun()` with ts-rest client implementation and ensure all CI pipelines pass.
 
 ### Files to Modify
@@ -24,6 +25,7 @@ Replace `apiClient.createRun()` with ts-rest client implementation and ensure al
 ### Changes Detail
 
 **Add to api-client.ts:**
+
 ```typescript
 import { initClient } from "@ts-rest/core";
 import { runsMainContract, type ApiErrorResponse } from "@vm0/core";
@@ -33,11 +35,13 @@ async function getRunsClient() { ... }
 ```
 
 **Replace createRun method:**
+
 - Use ts-rest client internally
 - Maintain same public interface
 - Throw errors same as before for compatibility
 
 ### Cleanup
+
 - Delete spike files after merging:
   - `src/lib/api-client-tsrest-spike.ts`
   - `src/lib/__tests__/api-client-tsrest-spike.test.ts`
@@ -47,6 +51,7 @@ async function getRunsClient() { ... }
 ## Phase 2: Events & Telemetry Endpoints
 
 ### Endpoints to Migrate
+
 - `getEvents()` - uses `runEventsContract`
 - `getTelemetry()` - uses `runTelemetryContract`
 - `getSystemLog()` - uses `runSystemLogContract`
@@ -55,6 +60,7 @@ async function getRunsClient() { ... }
 - `getNetworkLogs()` - uses `runNetworkLogsContract`
 
 ### Approach
+
 - Add client factories for each contract
 - Migrate one endpoint at a time
 - Update corresponding tests
@@ -64,12 +70,14 @@ async function getRunsClient() { ... }
 ## Phase 3: Compose Endpoints
 
 ### Endpoints to Migrate
+
 - `getComposeByName()` - uses `composesMainContract`
 - `getComposeById()` - uses `composesByIdContract`
 - `getComposeVersion()` - uses `composesVersionsContract`
 - `createOrUpdateCompose()` - uses `composesMainContract`
 
 ### Notes
+
 - `getComposeVersion` has jsonQuery edge case (scientific notation) - ts-rest handles automatically
 
 ---
@@ -77,6 +85,7 @@ async function getRunsClient() { ... }
 ## Phase 4: Session & Scope Endpoints
 
 ### Endpoints to Migrate
+
 - `getSession()` - uses `sessionsByIdContract`
 - `getCheckpoint()` - uses `checkpointsByIdContract`
 - `getScope()` - uses `scopeContract`
@@ -88,15 +97,19 @@ async function getRunsClient() { ... }
 ## Phase 5: Generic Methods & Cleanup
 
 ### Decision Point
+
 Generic methods (`get()`, `post()`, `delete()`) are used by:
+
 - `direct-upload.ts` for storage endpoints
 
 ### Options
+
 A. Migrate storage endpoints to typed clients, remove generic methods
 B. Keep generic methods but consolidate header logic
 C. Create typed storage client, deprecate generic methods
 
 ### Final Cleanup
+
 - Remove unused local type definitions
 - Consolidate all client creation logic
 - Update all tests to use proper Response mocks
@@ -107,6 +120,7 @@ C. Create typed storage client, deprecate generic methods
 ## Success Criteria
 
 ### Phase 1 (Must Pass)
+
 - [ ] All existing `createRun` tests pass
 - [ ] Type check passes (`pnpm check-types`)
 - [ ] Lint passes (`pnpm lint`)
@@ -114,6 +128,7 @@ C. Create typed storage client, deprecate generic methods
 - [ ] CI pipeline passes (lint, test, build, cli-e2e)
 
 ### Overall
+
 - [ ] No breaking changes to public API
 - [ ] All 523+ tests pass
 - [ ] Code reduction target: ~780 lines → ~300 lines
