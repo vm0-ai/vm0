@@ -141,6 +141,10 @@ jobs:
 
       # Run lint, check-types, and prettier directly (not via lefthook)
       # lefthook's turbo filter uses git diff which doesn't work in CI
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+
       - name: Lint
         working-directory: turbo
         run: pnpm lint
@@ -171,6 +175,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
+
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
 
       - name: Run Database Migrations
         working-directory: turbo
