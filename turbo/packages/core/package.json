@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build:sandbox-scripts": "tsx scripts/build-sandbox-scripts.ts",
-    "prebuild": "pnpm run build:sandbox-scripts",
+    "build": "pnpm run build:sandbox-scripts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && eslint . --max-warnings 0",
