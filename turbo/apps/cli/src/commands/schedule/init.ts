@@ -5,7 +5,6 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   isInteractive,
   promptText,
-  promptTextWithHint,
   promptConfirm,
   promptSelect,
 } from "../../lib/utils/prompt-utils";
@@ -234,11 +233,10 @@ export const initCommand = new Command()
             process.exit(1);
           }
 
-          // Step 1: Prompt for date with "tomorrow" hint (local timezone)
+          // Step 1: Prompt for date (local timezone)
           const tomorrowDate = getTomorrowDateLocal();
-          const date = await promptTextWithHint(
-            "Date (YYYY-MM-DD)",
-            "tomorrow",
+          const date = await promptText(
+            "Date (YYYY-MM-DD, default tomorrow)",
             tomorrowDate,
             validateDateFormat,
           );
