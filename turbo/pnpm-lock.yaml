@@ -44,6 +44,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@ts-rest/core':
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@types/node@24.3.0)
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
