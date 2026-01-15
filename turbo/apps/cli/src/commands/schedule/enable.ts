@@ -1,14 +1,40 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
-import { loadAgentName } from "../../lib/domain/schedule-utils";
+import {
+  loadAgentName,
+  loadScheduleName,
+} from "../../lib/domain/schedule-utils";
 
 export const enableCommand = new Command()
   .name("enable")
   .description("Enable a schedule")
-  .argument("<name>", "Schedule name to enable")
-  .action(async (name: string) => {
+  .argument(
+    "[name]",
+    "Schedule name (auto-detected from schedule.yaml if omitted)",
+  )
+  .action(async (nameArg: string | undefined) => {
     try {
+      // Auto-detect schedule name if not provided
+      let name = nameArg;
+      if (!name) {
+        const scheduleResult = loadScheduleName();
+        if (scheduleResult.error) {
+          console.error(chalk.red(`✗ ${scheduleResult.error}`));
+          process.exit(1);
+        }
+        if (!scheduleResult.scheduleName) {
+          console.error(chalk.red("✗ Schedule name required"));
+          console.error(
+            chalk.dim(
+              "  Provide name or run from directory with schedule.yaml",
+            ),
+          );
+          process.exit(1);
+        }
+        name = scheduleResult.scheduleName;
+      }
+
       // Load vm0.yaml to get agent name
       const result = loadAgentName();
       if (result.error) {

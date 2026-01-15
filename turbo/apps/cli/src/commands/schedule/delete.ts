@@ -2,7 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
-import { loadAgentName } from "../../lib/domain/schedule-utils";
+import {
+  loadAgentName,
+  loadScheduleName,
+} from "../../lib/domain/schedule-utils";
 
 /**
  * Prompt for confirmation
@@ -25,10 +28,33 @@ export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
   .description("Delete a schedule")
-  .argument("<name>", "Schedule name to delete")
+  .argument(
+    "[name]",
+    "Schedule name (auto-detected from schedule.yaml if omitted)",
+  )
   .option("-f, --force", "Skip confirmation prompt")
-  .action(async (name: string, options: { force?: boolean }) => {
+  .action(async (nameArg: string | undefined, options: { force?: boolean }) => {
     try {
+      // Auto-detect schedule name if not provided
+      let name = nameArg;
+      if (!name) {
+        const scheduleResult = loadScheduleName();
+        if (scheduleResult.error) {
+          console.error(chalk.red(`✗ ${scheduleResult.error}`));
+          process.exit(1);
+        }
+        if (!scheduleResult.scheduleName) {
+          console.error(chalk.red("✗ Schedule name required"));
+          console.error(
+            chalk.dim(
+              "  Provide name or run from directory with schedule.yaml",
+            ),
+          );
+          process.exit(1);
+        }
+        name = scheduleResult.scheduleName;
+      }
+
       // Load vm0.yaml to get agent name
       const result = loadAgentName();
       if (result.error) {

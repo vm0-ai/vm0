@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { apiClient, type ApiError } from "../../lib/api/api-client";
 import {
   loadAgentName,
+  loadScheduleName,
   formatDateTime,
   detectTimezone,
 } from "../../lib/domain/schedule-utils";
@@ -60,14 +61,37 @@ function formatRunStatus(status: RunStatus): string {
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a schedule")
-  .argument("<name>", "Schedule name")
+  .argument(
+    "[name]",
+    "Schedule name (auto-detected from schedule.yaml if omitted)",
+  )
   .option(
     "-l, --limit <number>",
     "Number of recent runs to show (0 to hide)",
     "5",
   )
-  .action(async (name: string, options: { limit: string }) => {
+  .action(async (nameArg: string | undefined, options: { limit: string }) => {
     try {
+      // Auto-detect schedule name if not provided
+      let name = nameArg;
+      if (!name) {
+        const scheduleResult = loadScheduleName();
+        if (scheduleResult.error) {
+          console.error(chalk.red(`✗ ${scheduleResult.error}`));
+          process.exit(1);
+        }
+        if (!scheduleResult.scheduleName) {
+          console.error(chalk.red("✗ Schedule name required"));
+          console.error(
+            chalk.dim(
+              "  Provide name or run from directory with schedule.yaml",
+            ),
+          );
+          process.exit(1);
+        }
+        name = scheduleResult.scheduleName;
+      }
+
       // Load vm0.yaml to get agent name
       const result = loadAgentName();
       if (result.error) {
@@ -220,7 +244,9 @@ export const statusCommand = new Command()
           error.message.includes("not found") ||
           error.message.includes("Not found")
         ) {
-          console.error(chalk.dim(`  Schedule "${name}" not found`));
+          console.error(
+            chalk.dim(`  Schedule "${nameArg ?? "unknown"}" not found`),
+          );
         } else {
           console.error(chalk.dim(`  ${error.message}`));
         }

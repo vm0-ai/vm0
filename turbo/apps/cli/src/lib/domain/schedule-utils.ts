@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 
 const CONFIG_FILE = "vm0.yaml";
+const SCHEDULE_FILE = "schedule.yaml";
 
 /**
  * vm0.yaml structure for agent compose
@@ -36,6 +37,44 @@ export function loadAgentName(): LoadAgentNameResult {
     return {
       agentName: null,
       error: err instanceof Error ? err.message : "Failed to parse vm0.yaml",
+    };
+  }
+}
+
+/**
+ * Result of loading schedule name from schedule.yaml
+ */
+export interface LoadScheduleNameResult {
+  scheduleName: string | null;
+  error?: string;
+}
+
+/**
+ * Load schedule.yaml and return the first schedule name.
+ * Returns error message if file exists but cannot be parsed.
+ */
+export function loadScheduleName(): LoadScheduleNameResult {
+  if (!existsSync(SCHEDULE_FILE)) {
+    return { scheduleName: null };
+  }
+  try {
+    const content = readFileSync(SCHEDULE_FILE, "utf8");
+    const parsed = parseYaml(content) as {
+      schedules?: Record<string, unknown>;
+    };
+    if (!parsed?.schedules) {
+      return {
+        scheduleName: null,
+        error: "No schedules defined in schedule.yaml",
+      };
+    }
+    const scheduleNames = Object.keys(parsed.schedules);
+    return { scheduleName: scheduleNames[0] || null };
+  } catch (err) {
+    return {
+      scheduleName: null,
+      error:
+        err instanceof Error ? err.message : "Failed to parse schedule.yaml",
     };
   }
 }
