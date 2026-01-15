@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/docs-v0.16.3...docs-v0.17.0) (2026-01-15)
+
+
+### Features
+
+* **docs:** add anthropic api key as optional authentication method ([#1246](https://github.com/vm0-ai/vm0/issues/1246)) ([364ae6d](https://github.com/vm0-ai/vm0/commit/364ae6dba10faa2f80a541011cfb596358f247ac))
+
 ## [0.16.3](https://github.com/vm0-ai/vm0/compare/docs-v0.16.2...docs-v0.16.3) (2026-01-13)
 
 

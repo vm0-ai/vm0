@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.10.1](https://github.com/vm0-ai/vm0/compare/web-v9.10.0...web-v9.10.1) (2026-01-15)
+
+
+### Bug Fixes
+
+* **api:** handle axiom eventual consistency in events endpoint ([#1240](https://github.com/vm0-ai/vm0/issues/1240)) ([7c7b6b6](https://github.com/vm0-ai/vm0/commit/7c7b6b69f0fcf9d3b7c9eaa45cc8f8ec2239d5da)), closes [#1233](https://github.com/vm0-ai/vm0/issues/1233)
+
 ## [9.10.0](https://github.com/vm0-ai/vm0/compare/web-v9.9.1...web-v9.10.0) (2026-01-14)
 
 

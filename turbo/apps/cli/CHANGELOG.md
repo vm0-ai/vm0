@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.0](https://github.com/vm0-ai/vm0/compare/cli-v5.4.0...cli-v5.5.0) (2026-01-15)
+
+
+### Features
+
+* **cli:** improve schedule status UX with local timezone and full run IDs ([#1245](https://github.com/vm0-ai/vm0/issues/1245)) ([ed167c2](https://github.com/vm0-ai/vm0/commit/ed167c23aa7118ca8137da34fa8365a6d36f6660)), closes [#1237](https://github.com/vm0-ai/vm0/issues/1237)
+
 ## [5.4.0](https://github.com/vm0-ai/vm0/compare/cli-v5.3.2...cli-v5.4.0) (2026-01-14)
 
 
