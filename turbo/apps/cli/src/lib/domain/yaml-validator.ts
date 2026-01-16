@@ -277,4 +277,3 @@ export function validateAgentCompose(config: unknown): {
 
   return { valid: true };
 }
-
