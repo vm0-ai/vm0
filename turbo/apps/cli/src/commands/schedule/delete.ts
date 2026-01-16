@@ -34,9 +34,9 @@ export const deleteCommand = new Command()
   )
   .option("-f, --force", "Skip confirmation prompt")
   .action(async (nameArg: string | undefined, options: { force?: boolean }) => {
+    // Auto-detect schedule name if not provided
+    let name = nameArg;
     try {
-      // Auto-detect schedule name if not provided
-      let name = nameArg;
       if (!name) {
         const scheduleResult = loadScheduleName();
         if (scheduleResult.error) {
