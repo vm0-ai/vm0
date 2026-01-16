@@ -4,3 +4,4 @@
  */
 
 export { runService } from "./run-service";
+// calculateSessionHistoryPath is re-exported from run-service.ts for backward compatibility
