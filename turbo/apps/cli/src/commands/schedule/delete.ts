@@ -97,6 +97,8 @@ export const deleteCommand = new Command()
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.dim("  Run: vm0 auth login"));
+        } else if (error.message.toLowerCase().includes("not found")) {
+          console.error(chalk.dim(`  Schedule "${name}" not found`));
         } else {
           console.error(chalk.dim(`  ${error.message}`));
         }
