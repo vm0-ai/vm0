@@ -8,6 +8,54 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 
 - [Docker](https://www.docker.com/) (or [OrbStack](https://orbstack.dev/) for macOS, recommended)
 - [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- [mkcert](https://github.com/FiloSottile/mkcert) for local SSL certificates
+
+### SSL Certificates and Hosts Configuration
+
+Before opening the project in VS Code, you need to set up SSL certificates and hosts on your **host machine** (the machine running Docker, not inside the container).
+
+#### 1. Install mkcert
+
+**macOS:**
+```bash
+brew install mkcert
+```
+
+**Linux:**
+```bash
+# Debian/Ubuntu
+sudo apt install mkcert
+
+# Arch Linux
+sudo pacman -S mkcert
+```
+
+#### 2. Generate SSL Certificates
+
+Run the certificate generation script from the project root on your host machine:
+
+```bash
+cd /path/to/vm0
+bash scripts/generate-certs.sh
+```
+
+This script uses mkcert to create locally-trusted SSL certificates for development.
+
+#### 3. Configure Hosts File
+
+Add the following entries to `/etc/hosts`:
+
+```bash
+sudo vim /etc/hosts
+# or
+sudo nano /etc/hosts
+```
+
+Add these lines:
+
+```
+127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai platform.vm7.ai storybook.vm7.ai
+```
 
 ### Getting Started
 
@@ -55,23 +103,14 @@ Create the following `.env.local` files manually:
 
 To run the web application locally with HTTPS:
 
-1. **Generate certificates** (on host machine):
-   ```bash
-   bash scripts/generate-certs.sh
-   ```
+1. **Ensure SSL certificates and hosts are configured** (see [SSL Certificates and Hosts Configuration](#ssl-certificates-and-hosts-configuration) above)
 
-2. **Configure hosts** (on host machine):
-   Add the following entries to your hosts file (`/etc/hosts` on macOS/Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows):
-   ```
-   127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai
-   ```
-
-3. **Start the dev server** (inside dev container):
+2. **Start the dev server** (inside dev container):
    ```bash
    cd turbo && pnpm install && pnpm dev
    ```
 
-4. **Access the application**:
+3. **Access the application**:
    Open https://vm7.ai:8443/ in your browser.
 
 ### Local Testing
