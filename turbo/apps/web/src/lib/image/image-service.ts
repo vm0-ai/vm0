@@ -23,7 +23,7 @@ function isLegacySystemTemplate(reference: string): boolean {
  * Check if an image alias is a system template
  * Supports both legacy (vm0-*) and new (vm0/...) formats
  */
-export function isSystemTemplate(alias: string): boolean {
+function isSystemTemplate(alias: string): boolean {
   // Legacy vm0-* format
   if (isLegacySystemTemplate(alias)) {
     return true;
@@ -48,23 +48,10 @@ async function getScopeBySlug(slug: string) {
 }
 
 /**
- * Get image by scope ID and alias (legacy - returns first match)
- * @deprecated Use getLatestImage or getImageByScopeAliasAndVersion instead
- */
-export async function getImageByScopeAndAlias(scopeId: string, alias: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(images)
-    .where(and(eq(images.scopeId, scopeId), eq(images.alias, alias)))
-    .limit(1);
-  return result[0] ?? null;
-}
-
-/**
  * Get the latest ready version of an image by scope ID and alias
  * Orders by createdAt DESC to get the most recently built version
  */
-export async function getLatestImage(scopeId: string, alias: string) {
+async function getLatestImage(scopeId: string, alias: string) {
   const result = await globalThis.services.db
     .select()
     .from(images)
@@ -83,7 +70,7 @@ export async function getLatestImage(scopeId: string, alias: string) {
 /**
  * Image version resolution result
  */
-export type ImageVersionResolutionResult =
+type ImageVersionResolutionResult =
   | { image: typeof images.$inferSelect }
   | { error: string; status: number };
 
@@ -91,7 +78,7 @@ export type ImageVersionResolutionResult =
  * Get a specific version of an image by scope ID, alias, and version ID or prefix
  * Supports both exact match and prefix matching (minimum 8 characters)
  */
-export async function getImageByScopeAliasAndVersion(
+async function getImageByScopeAliasAndVersion(
   scopeId: string,
   alias: string,
   versionIdOrPrefix: string,
@@ -168,7 +155,7 @@ export async function getImageByScopeAliasAndVersion(
 /**
  * Check if a resolution result is an error
  */
-export function isImageResolutionError(
+function isImageResolutionError(
   result: ImageVersionResolutionResult,
 ): result is { error: string; status: number } {
   return "error" in result;
@@ -276,7 +263,7 @@ export async function resolveImageAlias(
  * - Scoped reference: "scope/my-image"
  * - Version tags: "my-image:latest", "my-image:abc123", "scope/my-image:v1"
  */
-export async function validateImageAccess(
+async function validateImageAccess(
   userId: string,
   imageAlias: string,
 ): Promise<{ error: string; status: number } | null> {

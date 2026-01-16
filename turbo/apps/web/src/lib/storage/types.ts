@@ -6,11 +6,6 @@ import type { VolumeConfig } from "../../types/agent-compose";
  */
 export type StorageDriver = "vas";
 
-/**
- * Storage type distinguishes between static volumes and artifacts
- */
-export type StorageType = "volume" | "artifact";
-
 // Re-export VolumeConfig from agent-config for convenience
 export type { VolumeConfig };
 
@@ -76,18 +71,6 @@ export interface AgentVolumeConfig {
 }
 
 /**
- * Prepared storage with local path and mount information
- */
-export interface PreparedStorage {
-  name: string;
-  driver: StorageDriver;
-  localPath?: string;
-  mountPath: string;
-  vasStorageName: string;
-  vasVersionId: string;
-}
-
-/**
  * Prepared artifact with local path and mount information (VAS only)
  */
 export interface PreparedArtifact {
@@ -98,16 +81,6 @@ export interface PreparedArtifact {
   vasVersionId: string;
   /** Presigned URL for manifest.json (for incremental upload) */
   manifestUrl?: string;
-}
-
-/**
- * Result of storage preparation (resolution + download)
- */
-export interface StoragePreparationResult {
-  preparedStorages: PreparedStorage[];
-  preparedArtifact: PreparedArtifact | null;
-  tempDir: string | null;
-  errors: string[];
 }
 
 /**

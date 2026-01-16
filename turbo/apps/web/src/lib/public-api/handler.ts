@@ -19,9 +19,6 @@ import { ingestRequestLog } from "../axiom";
 // Re-export tsr for convenience
 export { tsr };
 
-// Re-export TsRestResponse for error handlers
-export { TsRestResponse } from "@ts-rest/serverless";
-
 /**
  * Type alias for ts-rest router implementation.
  */
@@ -99,25 +96,4 @@ export function createPublicApiHandler<T extends AppRouter>(
       },
     ],
   });
-}
-
-/**
- * Middleware context for public API handlers.
- */
-export interface PublicApiContext {
-  requestId: string;
-  userId: string | null;
-}
-
-/**
- * Create a context object for public API handlers
- */
-export function createPublicApiContext(
-  requestId: string,
-  userId: string | null = null,
-): PublicApiContext {
-  return {
-    requestId,
-    userId,
-  };
 }

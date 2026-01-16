@@ -37,17 +37,9 @@ const RESPONSE_HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
-export interface ProxyResult {
+interface ProxyResult {
   response: Response;
   targetUrl: string;
-}
-
-export interface ProxyError {
-  error: {
-    message: string;
-    code: string;
-    targetUrl?: string;
-  };
 }
 
 /**

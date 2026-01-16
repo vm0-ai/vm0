@@ -33,27 +33,6 @@ export interface VolumeVersionsSnapshot {
 }
 
 /**
- * Conversation data for CLI agent session
- */
-export interface ConversationData {
-  runId: string;
-  cliAgentType: string;
-  cliAgentSessionId: string;
-  cliAgentSessionHistory: string;
-}
-
-/**
- * Complete checkpoint data stored in database
- */
-export interface CheckpointData {
-  runId: string;
-  conversationId: string;
-  agentComposeSnapshot: AgentComposeSnapshot;
-  artifactSnapshot?: ArtifactSnapshot;
-  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
-}
-
-/**
  * Request body for checkpoint webhook endpoint
  */
 export interface CheckpointRequest {

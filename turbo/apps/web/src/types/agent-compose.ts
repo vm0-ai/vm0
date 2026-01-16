@@ -48,7 +48,7 @@ export interface ExperimentalFirewall {
  * Agent definition within the agents dictionary
  * The agent name is the key in the dictionary, not a field
  */
-export interface AgentDefinition {
+interface AgentDefinition {
   description?: string;
   image?: string; // Optional when provider supports auto-config
   provider: string;
@@ -85,64 +85,4 @@ export interface AgentComposeYaml {
   version: string;
   agents: Record<string, AgentDefinition>; // Dictionary of agent definitions (currently only one agent supported)
   volumes?: Record<string, VolumeConfig>; // Volume definitions with name and version
-}
-
-/**
- * Database record type for compose metadata
- */
-export interface AgentComposeRecord {
-  id: string;
-  userId: string;
-  name: string;
-  headVersionId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
- * Database record type for compose version (immutable)
- */
-export interface AgentComposeVersionRecord {
-  id: string; // SHA-256 hash
-  composeId: string;
-  content: AgentComposeYaml;
-  createdBy: string;
-  createdAt: Date;
-}
-
-/**
- * API request/response types
- */
-export interface CreateAgentComposeRequest {
-  content: AgentComposeYaml;
-}
-
-export interface CreateAgentComposeResponse {
-  composeId: string;
-  name: string;
-  versionId: string;
-  action: "created" | "existing";
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface GetAgentComposeResponse {
-  id: string;
-  name: string;
-  headVersionId: string | null;
-  content: AgentComposeYaml | null; // null if no versions exist
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Response type for getting a specific version
- */
-export interface GetAgentComposeVersionResponse {
-  versionId: string;
-  composeId: string;
-  composeName: string;
-  content: AgentComposeYaml;
-  createdBy: string;
-  createdAt: string;
 }

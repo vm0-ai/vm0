@@ -16,36 +16,6 @@ export interface S3Object {
 }
 
 /**
- * Result of downloading S3 directory
- */
-export interface DownloadResult {
-  localPath: string;
-  filesDownloaded: number;
-  totalBytes: number;
-}
-
-/**
- * Result of uploading directory to S3
- */
-export interface UploadResult {
-  s3Prefix: string;
-  filesUploaded: number;
-  totalBytes: number;
-}
-
-/**
- * File with presigned URL for direct download
- */
-export interface PresignedFile {
-  /** Relative path within the storage */
-  path: string;
-  /** Presigned URL for downloading the file */
-  url: string;
-  /** File size in bytes */
-  size: number;
-}
-
-/**
  * S3 download error
  */
 export class S3DownloadError extends Error {
@@ -107,7 +77,10 @@ export interface S3StorageManifest {
 /**
  * Result of uploading directory with manifest and archive
  */
-export interface UploadWithManifestResult extends UploadResult {
+export interface UploadWithManifestResult {
+  s3Prefix: string;
+  filesUploaded: number;
+  totalBytes: number;
   /** The generated storage manifest */
   manifest: S3StorageManifest;
 }
