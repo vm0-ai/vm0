@@ -222,7 +222,7 @@ class ApiClient {
     });
 
     const result = await client.create({
-      body,
+      body: body as any,
     });
 
     // ts-rest returns discriminated union based on status code
