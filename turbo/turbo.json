@@ -39,7 +39,6 @@
         ".next/**",
         "!.next/cache/**",
         "dist/**",
-        "src/sandbox/scripts/bundled.ts",
         "src/sandbox/scripts/dist/**"
       ]
     },

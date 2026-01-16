@@ -1,3 +1,2 @@
 # Build output for sandbox scripts
 src/sandbox/scripts/dist/
-src/sandbox/scripts/bundled.ts

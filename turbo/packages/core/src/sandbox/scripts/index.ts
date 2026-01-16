@@ -14,7 +14,7 @@ export {
   DOWNLOAD_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
   ENV_LOADER_SCRIPT,
-} from "./bundled";
+} from "./dist/bundled";
 
 /**
  * Script paths in the E2B sandbox / Firecracker VM (TypeScript/ESM)
