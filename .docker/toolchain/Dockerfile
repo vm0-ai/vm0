@@ -114,6 +114,10 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && apt-get install -y 1password-cli \
     && rm -rf /var/lib/apt/lists/*
 
+# Install agent-browser for browser automation
+RUN npm install -g agent-browser \
+    && agent-browser install --with-deps
+
 # Create vscode user with standard UID/GID for devcontainer compatibility
 # Following Microsoft's devcontainer pattern for better feature compatibility
 # Use -f flag to force group creation if GID already exists (1Password CLI creates GID 1000)
