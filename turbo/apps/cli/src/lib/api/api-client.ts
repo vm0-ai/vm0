@@ -893,7 +893,8 @@ class ApiClient {
 
     const errorBody = result.body as ApiErrorResponse;
     const message =
-      errorBody.error?.message || `Failed to delete schedule "${params.name}"`;
+      errorBody.error?.message ||
+      `Schedule "${params.name}" not found on remote`;
     throw new Error(message);
   }
 
