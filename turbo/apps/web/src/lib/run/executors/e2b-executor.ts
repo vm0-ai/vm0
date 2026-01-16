@@ -5,19 +5,9 @@ import { BadRequestError } from "../../errors";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import type { PreparedArtifact, StorageManifest } from "../../storage/types";
 import {
-  INIT_SCRIPT,
-  COMMON_SCRIPT,
-  LOG_SCRIPT,
-  HTTP_SCRIPT,
-  EVENTS_SCRIPT,
-  DIRECT_UPLOAD_SCRIPT,
-  DOWNLOAD_SCRIPT,
-  CHECKPOINT_SCRIPT,
-  MOCK_CLAUDE_SCRIPT,
-  METRICS_SCRIPT,
-  UPLOAD_TELEMETRY_SCRIPT,
-  SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
+  DOWNLOAD_SCRIPT,
+  MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
 } from "@vm0/core";
 import { calculateSessionHistoryPath } from "../run-service";
@@ -331,22 +321,14 @@ class E2BExecutor implements Executor {
 
   /**
    * Get all scripts to upload
+   *
+   * TypeScript bundled scripts - each is self-contained with all dependencies
    */
   private getAllScripts(): Array<{ content: string; path: string }> {
     return [
-      { content: INIT_SCRIPT, path: SCRIPT_PATHS.libInit },
-      { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
-      { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
-      { content: HTTP_SCRIPT, path: SCRIPT_PATHS.httpClient },
-      { content: EVENTS_SCRIPT, path: SCRIPT_PATHS.events },
-      { content: DIRECT_UPLOAD_SCRIPT, path: SCRIPT_PATHS.directUpload },
-      { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
-      { content: CHECKPOINT_SCRIPT, path: SCRIPT_PATHS.checkpoint },
-      { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
-      { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
-      { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
-      { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+      { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
+      { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
     ];
   }
 
@@ -422,9 +404,9 @@ class E2BExecutor implements Executor {
     await sandbox.files.write(tarPath, arrayBuffer);
 
     await sandbox.commands.run(
-      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
+      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} && ` +
         `cd / && sudo tar xf ${tarPath} && ` +
-        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true && ` +
+        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true && ` +
         `rm -f ${tarPath}`,
     );
 
@@ -438,7 +420,7 @@ class E2BExecutor implements Executor {
     sandbox: Sandbox,
     runId: string,
   ): Promise<void> {
-    const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+    const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
     await sandbox.commands.run(cmd);
   }
 
@@ -469,7 +451,7 @@ class E2BExecutor implements Executor {
     await sandbox.files.write(manifestPath, arrayBuffer);
 
     const result = await sandbox.commands.run(
-      `python3 ${SCRIPT_PATHS.download} ${manifestPath}`,
+      `node ${SCRIPT_PATHS.download} ${manifestPath}`,
       { timeoutMs: 300000 },
     );
 

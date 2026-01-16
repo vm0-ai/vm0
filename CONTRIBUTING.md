@@ -8,6 +8,54 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 
 - [Docker](https://www.docker.com/) (or [OrbStack](https://orbstack.dev/) for macOS, recommended)
 - [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- [mkcert](https://github.com/FiloSottile/mkcert) for local SSL certificates
+
+### SSL Certificates and Hosts Configuration
+
+Before opening the project in VS Code, you need to set up SSL certificates and hosts on your **host machine** (the machine running Docker, not inside the container).
+
+#### 1. Install mkcert
+
+**macOS:**
+```bash
+brew install mkcert
+```
+
+**Linux:**
+```bash
+# Debian/Ubuntu
+sudo apt install mkcert
+
+# Arch Linux
+sudo pacman -S mkcert
+```
+
+#### 2. Generate SSL Certificates
+
+Run the certificate generation script from the project root on your host machine:
+
+```bash
+cd /path/to/vm0
+bash scripts/generate-certs.sh
+```
+
+This script uses mkcert to create locally-trusted SSL certificates for development.
+
+#### 3. Configure Hosts File
+
+Add the following entries to `/etc/hosts`:
+
+```bash
+sudo vim /etc/hosts
+# or
+sudo nano /etc/hosts
+```
+
+Add these lines:
+
+```
+127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai platform.vm7.ai storybook.vm7.ai
+```
 
 ### Getting Started
 
@@ -17,27 +65,52 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 4. The container will build and set up the development environment automatically
 5. Initialize git hooks: `lefthook install`
 
+### Environment Variables
+
+#### For VM0 Team Members
+
+Run the sync script to populate environment variables from 1Password:
+
+```bash
+scripts/sync-env.sh
+```
+
+#### For Community Contributors
+
+Create the following `.env.local` files manually:
+
+**`turbo/apps/web/.env.local`:**
+
+| Variable | Required | Service |
+|----------|----------|---------|
+| `CLERK_SECRET_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
+| `E2B_API_KEY` | Yes | [E2B](https://e2b.dev/dashboard) |
+| `E2B_TEMPLATE_NAME` | Yes | Set to `vm0-claude-code-dev` |
+| `R2_ACCOUNT_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_ACCESS_KEY_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_SECRET_ACCESS_KEY` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_USER_STORAGES_BUCKET_NAME` | Yes | Create bucket in Cloudflare |
+
+**`turbo/apps/platform/.env.local`:**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_CLERK_PUBLISHABLE_KEY` | Yes | Same as `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` |
+| `VITE_API_URL` | Yes | Use `http://localhost:3000` |
+
 ### Local Web Development
 
 To run the web application locally with HTTPS:
 
-1. **Generate certificates** (on host machine):
-   ```bash
-   bash scripts/generate-certs.sh
-   ```
+1. **Ensure SSL certificates and hosts are configured** (see [SSL Certificates and Hosts Configuration](#ssl-certificates-and-hosts-configuration) above)
 
-2. **Configure hosts** (on host machine):
-   Add the following entries to your hosts file (`/etc/hosts` on macOS/Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows):
-   ```
-   127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai
-   ```
-
-3. **Start the dev server** (inside dev container):
+2. **Start the dev server** (inside dev container):
    ```bash
    cd turbo && pnpm install && pnpm dev
    ```
 
-4. **Access the application**:
+3. **Access the application**:
    Open https://vm7.ai:8443/ in your browser.
 
 ### Local Testing

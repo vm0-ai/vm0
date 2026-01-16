@@ -280,10 +280,9 @@ async function uploadNetworkLogs(
 async function uploadScripts(ssh: SSHClient): Promise<void> {
   const scripts = getAllScripts();
 
-  // Create directories first (requires sudo for /usr/local/bin)
-  await ssh.execOrThrow(
-    `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir}`,
-  );
+  // Create directory (requires sudo for /usr/local/bin)
+  // No lib directory needed - scripts are self-contained ESM bundles
+  await ssh.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
 
   // Write each script file individually using sudo tee
   for (const script of scripts) {
@@ -292,7 +291,7 @@ async function uploadScripts(ssh: SSHClient): Promise<void> {
 
   // Set executable permissions (requires sudo)
   await ssh.execOrThrow(
-    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true`,
+    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true`,
   );
 }
 
@@ -321,7 +320,7 @@ async function downloadStorages(
 
   // Run download script
   const result = await ssh.exec(
-    `python3 ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
+    `node ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
   );
 
   if (result.exitCode !== 0) {
@@ -552,7 +551,7 @@ export async function executeJob(
     const startTime = Date.now();
 
     if (options.benchmarkMode) {
-      // Benchmark mode: run prompt directly as bash command (skip run-agent.py)
+      // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
       // This avoids API dependencies while still testing the full VM setup pipeline
       log(`[Executor] Running command directly (benchmark mode)...`);
       await ssh.exec(
@@ -560,10 +559,10 @@ export async function executeJob(
       );
       log(`[Executor] Command started in background`);
     } else {
-      // Production mode: run env-loader.py which loads environment and runs run-agent.py
+      // Production mode: run env-loader.mjs which loads environment and runs run-agent.mjs
       log(`[Executor] Running agent via env-loader (background)...`);
       await ssh.exec(
-        `nohup sh -c 'python3 -u ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
+        `nohup sh -c 'node ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
       log(`[Executor] Agent started in background`);
     }
@@ -591,7 +590,7 @@ export async function executeJob(
       // If exit code file doesn't exist but process is dead, agent crashed unexpectedly
       if (!options.benchmarkMode) {
         const processCheck = await ssh.exec(
-          `pgrep -f "env-loader.py" > /dev/null 2>&1 && echo "RUNNING" || echo "DEAD"`,
+          `pgrep -f "env-loader.mjs" > /dev/null 2>&1 && echo "RUNNING" || echo "DEAD"`,
         );
 
         if (processCheck.stdout.trim() === "DEAD") {

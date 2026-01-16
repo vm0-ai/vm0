@@ -11,19 +11,9 @@ import type {
 } from "../storage/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
-  INIT_SCRIPT,
-  COMMON_SCRIPT,
-  LOG_SCRIPT,
-  HTTP_SCRIPT,
-  EVENTS_SCRIPT,
-  DIRECT_UPLOAD_SCRIPT,
-  DOWNLOAD_SCRIPT,
-  CHECKPOINT_SCRIPT,
-  MOCK_CLAUDE_SCRIPT,
-  METRICS_SCRIPT,
-  UPLOAD_TELEMETRY_SCRIPT,
-  SECRET_MASKER_SCRIPT,
   RUN_AGENT_SCRIPT,
+  DOWNLOAD_SCRIPT,
+  MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
 } from "@vm0/core";
 import type { ExecutionContext } from "../run/types";
@@ -426,23 +416,13 @@ class E2BService {
 
   /**
    * Define all scripts that need to be uploaded to the sandbox
-   * Scripts are split into single-responsibility Python modules for better maintainability
+   * Scripts are self-contained ESM bundles (.mjs) - no lib directory needed
    */
   private getAllScripts(): Array<{ content: string; path: string }> {
     return [
-      { content: INIT_SCRIPT, path: SCRIPT_PATHS.libInit },
-      { content: COMMON_SCRIPT, path: SCRIPT_PATHS.common },
-      { content: LOG_SCRIPT, path: SCRIPT_PATHS.log },
-      { content: HTTP_SCRIPT, path: SCRIPT_PATHS.httpClient },
-      { content: EVENTS_SCRIPT, path: SCRIPT_PATHS.events },
-      { content: DIRECT_UPLOAD_SCRIPT, path: SCRIPT_PATHS.directUpload },
-      { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
-      { content: CHECKPOINT_SCRIPT, path: SCRIPT_PATHS.checkpoint },
-      { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
-      { content: METRICS_SCRIPT, path: SCRIPT_PATHS.metrics },
-      { content: UPLOAD_TELEMETRY_SCRIPT, path: SCRIPT_PATHS.uploadTelemetry },
-      { content: SECRET_MASKER_SCRIPT, path: SCRIPT_PATHS.secretMasker },
       { content: RUN_AGENT_SCRIPT, path: SCRIPT_PATHS.runAgent },
+      { content: DOWNLOAD_SCRIPT, path: SCRIPT_PATHS.download },
+      { content: MOCK_CLAUDE_SCRIPT, path: SCRIPT_PATHS.mockClaude },
     ];
   }
 
@@ -566,11 +546,11 @@ class E2BService {
     await sandbox.files.write(tarPath, arrayBuffer);
 
     // Extract tar archive and set permissions (single commands.run call)
-    // This creates directories, extracts files, and sets executable permissions for Python scripts
+    // This creates the directory, extracts files, and sets executable permissions for ESM scripts
     await sandbox.commands.run(
-      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} ${SCRIPT_PATHS.libDir} && ` +
+      `sudo mkdir -p ${SCRIPT_PATHS.baseDir} && ` +
         `cd / && sudo tar xf ${tarPath} && ` +
-        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.py ${SCRIPT_PATHS.libDir}/*.py 2>/dev/null || true && ` +
+        `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true && ` +
         `rm -f ${tarPath}`,
     );
 
@@ -582,7 +562,7 @@ class E2BService {
 
   /**
    * Start agent execution (fire-and-forget)
-   * Starts run-agent.sh in background without waiting
+   * Starts run-agent.mjs in background without waiting
    * NOTE: Scripts must already be uploaded via uploadAllScripts() before calling this method
    *
    * NOTE: All environment variables must be set at sandbox creation time via createSandbox().
@@ -592,14 +572,13 @@ class E2BService {
     sandbox: Sandbox,
     runId: string,
   ): Promise<void> {
-    log.debug(`Starting run-agent.py for run ${runId} (fire-and-forget)...`);
+    log.debug(`Starting run-agent.mjs for run ${runId} (fire-and-forget)...`);
 
-    // Start Python script in background using nohup to ignore SIGHUP signal
+    // Start Node.js script in background using nohup to ignore SIGHUP signal
     // This prevents the process from being killed when E2B connection is closed
     // NOTE: Scripts already uploaded via uploadAllScripts(), do not pass envs here
     // Redirect output to per-run log file in /tmp with vm0- prefix
-    // Use python3 -u for unbuffered stdout/stderr to ensure logs are written immediately
-    const cmd = `nohup python3 -u ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+    const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
     log.debug(`[${runId}] Executing background command: ${cmd}`);
     await sandbox.commands.run(cmd);
     log.debug(`[${runId}] Background command returned successfully`);
@@ -645,7 +624,7 @@ class E2BService {
     // Execute download script (scripts already uploaded via uploadAllScripts)
     const downloadStart = Date.now();
     const result = await sandbox.commands.run(
-      `python3 ${SCRIPT_PATHS.download} ${manifestPath}`,
+      `node ${SCRIPT_PATHS.download} ${manifestPath}`,
       {
         timeoutMs: 300000, // 5 minute timeout for downloads
       },

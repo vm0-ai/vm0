@@ -34,6 +34,14 @@ mkcert -install
 # Create .certs directory in git root if it doesn't exist
 CERTS_DIR="${GIT_ROOT}/.certs"
 mkdir -p "$CERTS_DIR"
+
+# Copy root CA to .certs for devcontainer trust
+CAROOT=$(mkcert -CAROOT)
+if [ -f "$CAROOT/rootCA.pem" ]; then
+  cp "$CAROOT/rootCA.pem" "$CERTS_DIR/"
+  echo -e "${GREEN}✓ Copied rootCA.pem to ${CERTS_DIR}/${NC}"
+fi
+
 cd "$CERTS_DIR"
 
 # Generate certificates for each domain (skip if already exists)

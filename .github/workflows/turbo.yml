@@ -23,7 +23,7 @@ jobs:
   change-detection:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     # Run for all events, but only do actual detection for PRs
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
@@ -134,13 +134,17 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
       # Run lint, check-types, prettier and knip directly (not via lefthook)
       # lefthook's turbo filter uses git diff which doesn't work in CI
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+
       - name: Lint
         working-directory: turbo
         run: pnpm lint
@@ -160,7 +164,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     services:
       postgres:
         image: postgres:17-alpine
@@ -175,6 +179,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
+
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
 
       - name: Run Database Migrations
         working-directory: turbo
@@ -202,7 +210,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     # Deploy if:
     # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
@@ -264,7 +272,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     # Only deploy if it's a PR and docs changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.docs-changed == 'true'
@@ -292,7 +300,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection, deploy-web]
     # Only deploy if it's a PR and platform changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
@@ -323,7 +331,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     steps:
@@ -337,6 +345,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -370,7 +381,7 @@ jobs:
   api-e2e-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [e2e-auth, deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 5
@@ -398,7 +409,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [e2e-auth, deploy-web, lint, test]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 5
@@ -413,6 +424,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -459,7 +473,7 @@ jobs:
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [cli-e2e-01-serial, deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 8
@@ -474,6 +488,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -523,7 +540,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 8
@@ -538,6 +555,9 @@ jobs:
           mkdir -p $HOME/.local/share/pnpm
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -589,7 +609,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     if: |
       (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
@@ -731,6 +751,9 @@ jobs:
           echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
 
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
       - name: Build runner bundle
         run: |
           cd turbo && pnpm --filter @vm0/runner build
@@ -787,7 +810,7 @@ jobs:
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [deploy-runner-prepare]
     if: needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
@@ -827,7 +850,7 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection, deploy-web, deploy-runner-prepare]
     if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
     outputs:

@@ -10,6 +10,8 @@
     }
   },
   "scripts": {
+    "build:sandbox-scripts": "tsx scripts/build-sandbox-scripts.ts",
+    "build": "pnpm run build:sandbox-scripts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && eslint . --max-warnings 0",
@@ -18,8 +20,10 @@
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
+    "esbuild": "^0.24.0",
     "eslint": "^9.34.0",
     "oxlint": "^1.14.0",
+    "tsx": "^4.20.6",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"
   },

@@ -66,9 +66,11 @@
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
+        "src/**/*.{test,spec}.ts",
+        "scripts/build-sandbox-scripts.ts"
       ],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "ignore": ["src/sandbox/scripts/src/**"]
     },
     "packages/ui": {
       "entry": [

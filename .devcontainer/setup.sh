@@ -70,29 +70,33 @@ if [ ! -L "$HOME/.mozilla" ]; then
   echo "✓ Linked ~/.mozilla to project directory"
 fi
 
-# Install mkcert CA if certificates exist
-if [ -d "$WORKSPACE_DIR/.certs" ] && [ "$(ls -A $WORKSPACE_DIR/.certs 2>/dev/null)" ]; then
-  echo "🔐 Installing mkcert CA..."
+# Install host mkcert CA if certificates exist
+# The rootCA.pem is generated on the host machine and shared via .certs/
+if [ -f "$WORKSPACE_DIR/.certs/rootCA.pem" ]; then
+  echo "🔐 Installing host mkcert CA..."
+  HOST_CA="$WORKSPACE_DIR/.certs/rootCA.pem"
 
-  if command -v mkcert &> /dev/null; then
-    CAROOT=$(mkcert -CAROOT)
+  # Install to system trust store (for curl, Node.js, etc.)
+  sudo cp "$HOST_CA" /usr/local/share/ca-certificates/mkcert-host-ca.crt
+  sudo update-ca-certificates 2>/dev/null
+  echo "✓ Host CA installed to system trust store"
 
-    # Install to system trust store (for curl, Node.js, etc.)
-    TRUST_STORES=system mkcert -install
-    echo "✓ mkcert CA installed to system trust store"
-
-    # Install to NSS for browsers (Chrome/Firefox)
-    # Use certutil directly since mkcert doesn't handle symlinks well
-    if [ -f "$CAROOT/rootCA.pem" ] && [ -f "$NSS_DIR/cert9.db" ]; then
-      PWFILE=$(mktemp)
-      echo "" > "$PWFILE"
-      certutil -d sql:"$NSS_DIR" -A -t "C,," -n "mkcert" -i "$CAROOT/rootCA.pem" -f "$PWFILE"
-      rm -f "$PWFILE"
-      echo "✓ mkcert CA installed to NSS database"
-    fi
+  # Install to Chromium NSS database (~/.pki/nssdb)
+  CHROMIUM_NSS="$HOME/.pki/nssdb"
+  if [ -d "$CHROMIUM_NSS" ]; then
+    certutil -d sql:"$CHROMIUM_NSS" -A -t "C,," -n "mkcert-host" -i "$HOST_CA" 2>/dev/null || true
+    echo "✓ Host CA installed to Chromium NSS database"
   fi
+
+  # Install to Firefox NSS database
+  if [ -f "$NSS_DIR/cert9.db" ]; then
+    certutil -d sql:"$NSS_DIR" -A -t "C,," -n "mkcert-host" -i "$HOST_CA" 2>/dev/null || true
+    echo "✓ Host CA installed to Firefox NSS database"
+  fi
+elif [ -d "$WORKSPACE_DIR/.certs" ] && [ "$(ls -A $WORKSPACE_DIR/.certs 2>/dev/null)" ]; then
+  echo "⚠️  Certificates found but no rootCA.pem. Run 'scripts/generate-certs.sh' on host to include CA."
 else
-  echo "ℹ️  No certificates found. Run 'npm run generate-certs' to create them."
+  echo "ℹ️  No certificates found. Run 'scripts/generate-certs.sh' on host to create them."
 fi
 
 # Install lefthook git hooks for pre-commit checks
