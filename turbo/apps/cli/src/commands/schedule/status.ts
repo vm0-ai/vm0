@@ -7,10 +7,7 @@ import {
   formatDateTime,
   detectTimezone,
 } from "../../lib/domain/schedule-utils";
-import type {
-  ScheduleResponse,
-  RunSummary,
-} from "@vm0/core";
+import type { ScheduleResponse, RunSummary } from "@vm0/core";
 
 // Re-export RunStatus type for local use (same as RunSummary['status'])
 type RunStatus = RunSummary["status"];

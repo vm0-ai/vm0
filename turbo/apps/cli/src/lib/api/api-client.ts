@@ -747,9 +747,7 @@ class ApiClient {
   /**
    * List storages (volumes or artifacts)
    */
-  async listStorages(query: {
-    type: "volume" | "artifact";
-  }): Promise<
+  async listStorages(query: { type: "volume" | "artifact" }): Promise<
     Array<{
       name: string;
       size: number;
@@ -773,8 +771,7 @@ class ApiClient {
     }
 
     const errorBody = result.body as ApiErrorResponse;
-    const message =
-      errorBody.error?.message || `Failed to list ${query.type}s`;
+    const message = errorBody.error?.message || `Failed to list ${query.type}s`;
     throw new Error(message);
   }
 
@@ -1079,8 +1076,7 @@ class ApiClient {
     }
 
     const errorBody = result.body as ApiErrorResponse;
-    const message =
-      errorBody.error?.message || `Artifact "${id}" not found`;
+    const message = errorBody.error?.message || `Artifact "${id}" not found`;
     throw new Error(message);
   }
 

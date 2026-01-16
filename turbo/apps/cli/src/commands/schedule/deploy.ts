@@ -3,10 +3,7 @@ import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { apiClient } from "../../lib/api/api-client";
-import {
-  scheduleYamlSchema,
-  type ScheduleDefinition,
-} from "@vm0/core";
+import { scheduleYamlSchema, type ScheduleDefinition } from "@vm0/core";
 import { toISODateTime } from "../../lib/domain/schedule-utils";
 
 /**
