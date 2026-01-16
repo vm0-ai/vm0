@@ -73,7 +73,7 @@ export const MIN_VERSION_PREFIX_LENGTH = 8;
 /**
  * Default display length for version IDs
  */
-export const DEFAULT_VERSION_DISPLAY_LENGTH = 8;
+const DEFAULT_VERSION_DISPLAY_LENGTH = 8;
 
 /**
  * Full SHA-256 hash length
@@ -109,7 +109,7 @@ export function isValidVersionPrefix(prefix: string): boolean {
  * File entry with pre-computed hash (no content needed)
  * Used for direct upload flow where client computes hashes
  */
-export interface FileEntryWithHash {
+interface FileEntryWithHash {
   /** Relative path within the storage */
   path: string;
   /** SHA-256 hash of file content (computed by client) */

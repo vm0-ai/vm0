@@ -3,7 +3,7 @@
  * When a provider is specified, these defaults can be used if not explicitly set
  */
 
-export interface ProviderDefaults {
+interface ProviderDefaults {
   workingDir: string;
   image: {
     production: string;

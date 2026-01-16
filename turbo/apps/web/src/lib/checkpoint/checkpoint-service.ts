@@ -21,7 +21,7 @@ const log = logger("service:checkpoint");
  * Checkpoint Service
  * Manages creation and storage of agent run checkpoints
  */
-export class CheckpointService {
+class CheckpointService {
   /**
    * Create a checkpoint for an agent run
    *

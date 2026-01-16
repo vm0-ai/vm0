@@ -1,6 +1,6 @@
 import type { RoutePath } from "./route.ts";
 
-export type NavIconName =
+type NavIconName =
   | "Bot"
   | "CircleDot"
   | "FileBarChart"

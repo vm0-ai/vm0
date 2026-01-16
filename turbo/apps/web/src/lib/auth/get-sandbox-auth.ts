@@ -25,7 +25,7 @@ const log = logger("auth:sandbox");
  *
  * @returns SandboxAuth with userId and runId, or null if not authenticated
  */
-export async function getSandboxAuth(): Promise<SandboxAuth | null> {
+async function getSandboxAuth(): Promise<SandboxAuth | null> {
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 

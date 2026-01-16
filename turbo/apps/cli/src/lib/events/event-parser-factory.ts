@@ -7,7 +7,7 @@ import { ClaudeEventParser, type ParsedEvent } from "./claude-event-parser";
 import { CodexEventParser } from "./codex-event-parser";
 import { getValidatedProvider, type SupportedProvider } from "@vm0/core";
 
-export type EventParserType =
+type EventParserType =
   | typeof ClaudeEventParser
   | typeof CodexEventParser;
 

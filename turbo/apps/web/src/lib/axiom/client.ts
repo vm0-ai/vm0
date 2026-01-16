@@ -11,7 +11,7 @@ let axiomClient: Axiom | null = null;
  * Get the Axiom client singleton.
  * Returns null if AXIOM_TOKEN is not configured.
  */
-export function getAxiomClient(): Axiom | null {
+function getAxiomClient(): Axiom | null {
   const token = process.env.AXIOM_TOKEN;
   if (!token) {
     return null;
@@ -76,7 +76,7 @@ export async function queryAxiom<T = Record<string, unknown>>(
   }
 }
 
-export interface RequestLogEntry {
+interface RequestLogEntry {
   remote_addr: string;
   user_agent: string;
   method: string;
@@ -107,7 +107,7 @@ export function ingestRequestLog(entry: RequestLogEntry): void {
   // Don't await flush - let it batch automatically
 }
 
-export interface SandboxOpLogEntry {
+interface SandboxOpLogEntry {
   source: "web" | "runner" | "sandbox";
   op_type: string;
   sandbox_type: string;

@@ -79,7 +79,7 @@ export async function promptConfirm(
 /**
  * Choice option for select prompts
  */
-export interface SelectChoice<T> {
+interface SelectChoice<T> {
   title: string;
   value: T;
   description?: string;

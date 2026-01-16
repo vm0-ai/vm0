@@ -16,7 +16,7 @@ import { getProviderDisplayName, isSupportedProvider } from "@vm0/core";
 /**
  * Info about a started run
  */
-export interface RunStartedInfo {
+interface RunStartedInfo {
   runId: string;
   sandboxId?: string;
 }

@@ -70,7 +70,7 @@ function getFirstAgent(
  * Executes agent runs in E2B sandboxes.
  * Receives a PreparedContext with all necessary information pre-computed.
  */
-export class E2BExecutor implements Executor {
+class E2BExecutor implements Executor {
   /**
    * Execute an agent run in E2B sandbox
    *

@@ -37,7 +37,7 @@ import { withSandboxTiming, recordRunnerOperation } from "./metrics/index.js";
 /**
  * Execution result
  */
-export interface ExecutionResult {
+interface ExecutionResult {
   exitCode: number;
   error?: string;
 }
@@ -45,7 +45,7 @@ export interface ExecutionResult {
 /**
  * Execution options for customizing job execution behavior
  */
-export interface ExecutionOptions {
+interface ExecutionOptions {
   /**
    * Benchmark mode for local VM performance testing without API server:
    * - Runs prompt directly as bash command (skips run-agent.py)

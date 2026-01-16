@@ -16,7 +16,7 @@ export const PROXY_TOKEN_PREFIX = "vm0_enc_";
 /**
  * Token payload structure
  */
-export interface ProxyTokenPayload {
+interface ProxyTokenPayload {
   runId: string;
   userId: string;
   secretName: string;
@@ -27,7 +27,7 @@ export interface ProxyTokenPayload {
 /**
  * Token validation result
  */
-export interface TokenValidationResult {
+interface TokenValidationResult {
   valid: boolean;
   payload?: ProxyTokenPayload;
   error?: string;

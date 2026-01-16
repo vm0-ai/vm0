@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  agentNameSchema as coreAgentNameSchema,
-  agentDefinitionSchema,
-  volumeConfigSchema,
-  agentComposeContentSchema,
-} from "@vm0/core";
+import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
 import { isProviderSupported } from "./provider-config";
 
 /**
@@ -283,5 +278,3 @@ export function validateAgentCompose(config: unknown): {
   return { valid: true };
 }
 
-// Re-export schemas for potential use by other CLI modules
-export { coreAgentNameSchema, agentComposeContentSchema };

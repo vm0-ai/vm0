@@ -50,7 +50,7 @@ function getFirstAgent(
  * Manages E2B sandbox creation and execution
  * Agnostic to run type (new run or resume)
  */
-export class E2BService {
+class E2BService {
   /**
    * Execute an agent run with the given context
    * Works for both new runs and resumed runs

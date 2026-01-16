@@ -39,7 +39,7 @@ export interface ScheduleResponse {
 /**
  * Run summary for schedule runs list
  */
-export interface RunSummary {
+interface RunSummary {
   id: string;
   status: "pending" | "running" | "completed" | "failed" | "timeout";
   createdAt: string;
@@ -50,7 +50,7 @@ export interface RunSummary {
 /**
  * Deploy schedule request data
  */
-export interface DeployScheduleRequest {
+interface DeployScheduleRequest {
   name: string;
   composeId: string;
   cronExpression?: string;

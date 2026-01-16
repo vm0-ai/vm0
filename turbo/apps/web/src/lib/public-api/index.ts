@@ -39,8 +39,4 @@ export {
 } from "./request-id";
 
 // Authentication
-export {
-  authenticatePublicApi,
-  isAuthSuccess,
-  type PublicApiAuth,
-} from "./auth";
+export { authenticatePublicApi, isAuthSuccess } from "./auth";

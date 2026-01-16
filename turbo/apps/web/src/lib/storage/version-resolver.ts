@@ -13,12 +13,12 @@ import {
 /**
  * Storage version record type
  */
-export type StorageVersion = typeof storageVersions.$inferSelect;
+type StorageVersion = typeof storageVersions.$inferSelect;
 
 /**
  * Result of version resolution - either success with version or error with details
  */
-export type VersionResolutionResult =
+type VersionResolutionResult =
   | { version: StorageVersion }
   | { error: string; status: number };
 

@@ -23,7 +23,7 @@ const MAX_CONCURRENT_UPLOADS = 10;
 /**
  * Result of uploading blobs
  */
-export interface BlobUploadResult {
+interface BlobUploadResult {
   /** Map of file path to blob hash */
   hashes: Map<string, string>;
   /** Number of new blobs uploaded */

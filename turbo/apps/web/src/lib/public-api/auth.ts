@@ -13,7 +13,7 @@ const log = logger("public-api:auth");
 /**
  * Authentication result for public API
  */
-export interface PublicApiAuth {
+interface PublicApiAuth {
   userId: string;
 }
 

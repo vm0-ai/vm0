@@ -4,7 +4,7 @@ import { removeExtraFiles } from "../utils/file-utils";
 /**
  * Result of handling an empty storage response (HTTP 204).
  */
-export interface EmptyStorageResult {
+interface EmptyStorageResult {
   removedCount: number;
 }
 

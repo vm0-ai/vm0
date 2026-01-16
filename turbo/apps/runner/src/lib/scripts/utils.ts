@@ -23,7 +23,7 @@ import {
   ENV_LOADER_PATH,
 } from "./index.js";
 
-export interface ScriptEntry {
+interface ScriptEntry {
   content: string;
   path: string;
 }

@@ -124,6 +124,7 @@
     "apps/web/src/lib/logger.ts",
     "apps/web/src/lib/s3/s3-client.ts",
     "apps/web/src/lib/scope/scope-service.ts",
+    "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/checkpoint/types.ts",
     "apps/web/src/lib/proxy/proxy-service.ts",
     "apps/web/src/lib/storage/types.ts",
@@ -135,6 +136,5 @@
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],
-  "ignoreUnresolved": [],
-  "ignoreExportsUsedInFile": true
+  "ignoreUnresolved": []
 }

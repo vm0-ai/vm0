@@ -1,4 +1,4 @@
-export { e2bService, E2BService } from "./e2b-service";
+export { e2bService } from "./e2b-service";
 export type {
   CreateRunOptions,
   RunResult,

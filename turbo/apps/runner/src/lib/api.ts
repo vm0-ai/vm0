@@ -14,12 +14,12 @@ import type {
 } from "@vm0/core";
 
 // Re-export types for consumers
-export type { Job, ExecutionContext, StorageManifest, ResumeSession };
+export type { ExecutionContext, StorageManifest, ResumeSession };
 
 /**
  * Runner-specific server configuration
  */
-export interface ServerConfig {
+interface ServerConfig {
   url: string;
   token: string;
 }
@@ -112,7 +112,7 @@ export async function claimJob(
   return response.json() as Promise<ExecutionContext>;
 }
 
-export interface CompleteJobResult {
+interface CompleteJobResult {
   success: boolean;
   status: "completed" | "failed";
 }

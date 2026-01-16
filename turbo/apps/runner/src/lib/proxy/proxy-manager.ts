@@ -15,7 +15,7 @@ import { RUNNER_MITM_ADDON_SCRIPT } from "./mitm-addon-script";
 /**
  * Proxy configuration
  */
-export interface ProxyConfig {
+interface ProxyConfig {
   /** Port for mitmproxy to listen on */
   port: number;
   /** Path to the mitmproxy CA directory */

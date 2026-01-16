@@ -14,7 +14,7 @@ const log = logger("executor:runner");
  * Unlike E2B executor which executes immediately, this executor
  * stores the job in the runner_job_queue for later polling.
  */
-export class RunnerExecutor implements Executor {
+class RunnerExecutor implements Executor {
   /**
    * Queue an agent run for execution by a self-hosted runner
    *

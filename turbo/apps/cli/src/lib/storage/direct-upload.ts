@@ -42,7 +42,7 @@ interface CommitResponse {
 /**
  * Result of direct upload operation
  */
-export interface DirectUploadResult {
+interface DirectUploadResult {
   versionId: string;
   size: number;
   fileCount: number;
@@ -53,7 +53,7 @@ export interface DirectUploadResult {
 /**
  * Progress callback for upload operations
  */
-export type ProgressCallback = (message: string) => void;
+type ProgressCallback = (message: string) => void;
 
 /**
  * Compute SHA-256 hash of file content (for testing with small buffers)
@@ -266,7 +266,7 @@ async function uploadToPresignedUrl(
 /**
  * Options for direct upload
  */
-export interface DirectUploadOptions {
+interface DirectUploadOptions {
   onProgress?: ProgressCallback;
   force?: boolean;
 }

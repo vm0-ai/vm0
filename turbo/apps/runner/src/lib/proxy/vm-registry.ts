@@ -16,7 +16,7 @@ import fs from "fs";
  * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
  * - Terminal rule: { final: "DENY" } - value is the action
  */
-export interface FirewallRule {
+interface FirewallRule {
   domain?: string;
   ip?: string;
   /** Terminal rule - value is the action (ALLOW or DENY) */
@@ -28,7 +28,7 @@ export interface FirewallRule {
 /**
  * VM registration data
  */
-export interface VMRegistration {
+interface VMRegistration {
   runId: string;
   sandboxToken: string;
   registeredAt: number;

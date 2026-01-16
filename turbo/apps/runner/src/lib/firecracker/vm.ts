@@ -36,7 +36,7 @@ export interface VMConfig {
 /**
  * VM state
  */
-export type VMState =
+type VMState =
   | "created"
   | "configuring"
   | "running"

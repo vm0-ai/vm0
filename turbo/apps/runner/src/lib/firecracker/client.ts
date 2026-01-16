@@ -10,7 +10,7 @@ import http from "node:http";
 /**
  * Machine configuration for Firecracker VM
  */
-export interface MachineConfig {
+interface MachineConfig {
   vcpu_count: number;
   mem_size_mib: number;
   smt?: boolean; // Simultaneous Multi-Threading (default: false)
@@ -19,7 +19,7 @@ export interface MachineConfig {
 /**
  * Boot source configuration
  */
-export interface BootSource {
+interface BootSource {
   kernel_image_path: string;
   boot_args?: string;
 }
@@ -27,7 +27,7 @@ export interface BootSource {
 /**
  * Drive configuration for block devices
  */
-export interface Drive {
+interface Drive {
   drive_id: string;
   path_on_host: string;
   is_root_device: boolean;
@@ -37,7 +37,7 @@ export interface Drive {
 /**
  * Network interface configuration
  */
-export interface NetworkInterface {
+interface NetworkInterface {
   iface_id: string;
   guest_mac?: string;
   host_dev_name: string;
@@ -46,7 +46,7 @@ export interface NetworkInterface {
 /**
  * Vsock device configuration
  */
-export interface Vsock {
+interface Vsock {
   vsock_id: string;
   guest_cid: number;
   uds_path: string;
@@ -55,7 +55,7 @@ export interface Vsock {
 /**
  * Action types for VM control
  */
-export type ActionType = "InstanceStart" | "SendCtrlAltDel" | "FlushMetrics";
+type ActionType = "InstanceStart" | "SendCtrlAltDel" | "FlushMetrics";
 
 /**
  * Firecracker API Client

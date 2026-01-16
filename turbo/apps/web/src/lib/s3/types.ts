@@ -78,7 +78,7 @@ export class S3UploadError extends Error {
 /**
  * File entry with hash for manifest generation
  */
-export interface FileEntryWithHash {
+interface FileEntryWithHash {
   /** Relative path within the storage */
   path: string;
   /** SHA-256 hash of file content */

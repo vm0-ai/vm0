@@ -10,7 +10,7 @@ import path from "path";
  */
 export type StorageType = "volume" | "artifact";
 
-export interface StorageConfig {
+interface StorageConfig {
   name: string;
   type: StorageType;
 }

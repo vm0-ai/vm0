@@ -40,7 +40,6 @@ export {
   type SupportedAppTag,
   // Inferred types
   type ComposeResponse,
-  type CoreCreateComposeResponse,
   type ComposeListItem,
 } from "./composes";
 export {

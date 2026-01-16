@@ -38,7 +38,7 @@ const STORAGE_AUTO_DOMAINS = [
  * Extract and process firewall configuration from agent compose
  * Auto-injects platform and provider domains
  */
-export function processFirewallConfig(
+function processFirewallConfig(
   agentCompose: unknown,
 ): CoreExperimentalFirewall | null {
   const compose = agentCompose as AgentComposeYaml | undefined;
@@ -122,7 +122,7 @@ export function processFirewallConfig(
  * Extract working directory from agent compose config
  * This is required for resume and storage operations
  */
-export function extractWorkingDir(agentCompose: unknown): string {
+function extractWorkingDir(agentCompose: unknown): string {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
     throw new BadRequestError(
@@ -142,7 +142,7 @@ export function extractWorkingDir(agentCompose: unknown): string {
 /**
  * Extract CLI agent type from agent compose config
  */
-export function extractCliAgentType(agentCompose: unknown): string {
+function extractCliAgentType(agentCompose: unknown): string {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return "claude-code";
   const agents = Object.values(compose.agents);
@@ -152,7 +152,7 @@ export function extractCliAgentType(agentCompose: unknown): string {
 /**
  * Resolve runner group from agent compose config
  */
-export function resolveRunnerGroup(agentCompose: unknown): string | null {
+function resolveRunnerGroup(agentCompose: unknown): string | null {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return null;
   const agents = Object.values(compose.agents);

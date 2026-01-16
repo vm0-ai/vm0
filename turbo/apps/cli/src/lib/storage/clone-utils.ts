@@ -18,11 +18,11 @@ interface DownloadResponse {
   size: number;
 }
 
-export interface CloneOptions {
+interface CloneOptions {
   version?: string;
 }
 
-export interface CloneResult {
+interface CloneResult {
   success: boolean;
   fileCount: number;
   size: number;

@@ -13,7 +13,7 @@ import {
 import { directUpload } from "./direct-upload";
 import { getValidatedProvider } from "@vm0/core";
 
-export interface StorageUploadResult {
+interface StorageUploadResult {
   name: string;
   versionId: string;
   action: "created" | "deduplicated";

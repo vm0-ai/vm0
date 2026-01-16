@@ -7,7 +7,7 @@ const SCHEDULE_FILE = "schedule.yaml";
 /**
  * vm0.yaml structure for agent compose
  */
-export interface AgentComposeConfig {
+interface AgentComposeConfig {
   version: string;
   agents: Record<string, unknown>;
 }
@@ -15,7 +15,7 @@ export interface AgentComposeConfig {
 /**
  * Result of loading agent name from vm0.yaml
  */
-export interface LoadAgentNameResult {
+interface LoadAgentNameResult {
   agentName: string | null;
   error?: string;
 }
@@ -44,7 +44,7 @@ export function loadAgentName(): LoadAgentNameResult {
 /**
  * Result of loading schedule name from schedule.yaml
  */
-export interface LoadScheduleNameResult {
+interface LoadScheduleNameResult {
   scheduleName: string | null;
   error?: string;
 }
@@ -181,7 +181,7 @@ interface AgentConfig {
 /**
  * Result of extracting vars and secrets from vm0.yaml
  */
-export interface VarsAndSecrets {
+interface VarsAndSecrets {
   vars: string[];
   secrets: string[];
 }

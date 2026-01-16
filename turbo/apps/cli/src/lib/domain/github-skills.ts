@@ -17,7 +17,7 @@ const execAsync = promisify(exec);
 export { getInstructionsStorageName };
 
 // Re-export the type with the local name for backwards compatibility
-export type ParsedGitHubUrl = ParsedGitHubTreeUrl;
+type ParsedGitHubUrl = ParsedGitHubTreeUrl;
 
 /**
  * Parse a GitHub tree URL into its components

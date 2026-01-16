@@ -8,7 +8,7 @@ const COOK_STATE_FILE = join(CONFIG_DIR, "cook.json");
 const STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 // Public API interface (unchanged for backward compatibility)
-export interface CookState {
+interface CookState {
   lastRunId?: string;
   lastSessionId?: string;
   lastCheckpointId?: string;

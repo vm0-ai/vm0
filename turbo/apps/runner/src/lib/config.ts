@@ -109,7 +109,7 @@ export const debugConfigSchema = z.object({
     .default(PROXY_DEFAULTS),
 });
 
-export type DebugConfig = z.infer<typeof debugConfigSchema>;
+type DebugConfig = z.infer<typeof debugConfigSchema>;
 
 /**
  * Load and validate debug configuration from YAML file

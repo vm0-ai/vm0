@@ -358,13 +358,9 @@ export {
   agentDefinitionSchema,
   agentComposeContentSchema,
   composeResponseSchema,
-  createComposeResponseSchema,
   composeListItemSchema,
 };
 
 // Export inferred types for consumers
 export type ComposeResponse = z.infer<typeof composeResponseSchema>;
-export type CoreCreateComposeResponse = z.infer<
-  typeof createComposeResponseSchema
->;
 export type ComposeListItem = z.infer<typeof composeListItemSchema>;

@@ -38,7 +38,7 @@ interface AgentComposeContent {
 /**
  * Source of a variable or secret
  */
-export interface VariableSource {
+interface VariableSource {
   /** The variable/secret name */
   name: string;
   /** Source description (e.g., "agent environment" or "skill: openai-skill") */
