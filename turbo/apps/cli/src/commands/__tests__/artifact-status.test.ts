@@ -72,17 +72,13 @@ describe("artifact status command", () => {
     });
 
     it("should show start message", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            versionId:
-              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-            fileCount: 100,
-            size: 1024000,
-          }),
-      } as Response);
+      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+        url: "https://example.com/download",
+        fileCount: 100,
+        size: 1024000,
+      });
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -92,40 +88,31 @@ describe("artifact status command", () => {
     });
 
     it("should exit with error if remote returns 404", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: false,
-        status: 404,
-        json: () =>
-          Promise.resolve({
-            error: { message: "Storage not found" },
-          }),
-      } as Response);
+      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+        new Error('Storage "test-artifact" not found'),
+      );
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not found on remote"),
+        expect.stringContaining("Status check failed"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 artifact push"),
+        expect.stringContaining("not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should display version info when remote exists", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            versionId:
-              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-            fileCount: 100,
-            size: 1024000,
-          }),
-      } as Response);
+      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+        url: "https://example.com/download",
+        fileCount: 100,
+        size: 1024000,
+      });
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -144,18 +131,13 @@ describe("artifact status command", () => {
     });
 
     it("should display empty indicator for empty storage", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            versionId:
-              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-            fileCount: 0,
-            size: 0,
-            empty: true,
-          }),
-      } as Response);
+      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+        empty: true,
+        fileCount: 0,
+        size: 0,
+      });
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -177,14 +159,9 @@ describe("artifact status command", () => {
     });
 
     it("should handle API errors", async () => {
-      vi.mocked(apiClient.get).mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: () =>
-          Promise.resolve({
-            error: { message: "Internal server error" },
-          }),
-      } as Response);
+      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+        new Error("Internal server error"),
+      );
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -197,7 +174,9 @@ describe("artifact status command", () => {
     });
 
     it("should handle network errors", async () => {
-      vi.mocked(apiClient.get).mockRejectedValue(new Error("Network error"));
+      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+        new Error("Network error"),
+      );
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
