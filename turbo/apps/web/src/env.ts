@@ -12,15 +12,15 @@ function initEnv() {
         .enum(["development", "test", "production"])
         .default("development"),
       CLERK_SECRET_KEY: z.string().min(1),
-      E2B_API_KEY: z.string().min(1).optional(),
-      E2B_TEMPLATE_NAME: z.string().min(1).optional(),
+      E2B_API_KEY: z.string().min(1),
+      E2B_TEMPLATE_NAME: z.string().min(1),
       VM0_API_URL: z.string().url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
       VERCEL_URL: z.string().optional(),
-      R2_ACCOUNT_ID: z.string().min(1).optional(),
-      R2_ACCESS_KEY_ID: z.string().min(1).optional(),
-      R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-      R2_USER_STORAGES_BUCKET_NAME: z.string().min(1).optional(),
+      R2_ACCOUNT_ID: z.string().min(1),
+      R2_ACCESS_KEY_ID: z.string().min(1),
+      R2_SECRET_ACCESS_KEY: z.string().min(1),
+      R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
       SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN: z.string().min(1).optional(),

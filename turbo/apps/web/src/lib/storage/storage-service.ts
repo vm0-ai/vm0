@@ -119,11 +119,6 @@ export class StorageService {
     log.debug("Preparing storage manifest with presigned URLs...");
 
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    if (!bucketName) {
-      throw new Error(
-        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
-      );
-    }
 
     // For resume scenario, use resumeArtifact; otherwise use artifactName/artifactVersion
     const effectiveArtifactName = resumeArtifact?.artifactName ?? artifactName;

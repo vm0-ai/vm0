@@ -61,11 +61,6 @@ export class BlobService {
     }
 
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    if (!bucketName) {
-      throw new Error(
-        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
-      );
-    }
 
     // Step 1: Compute hashes for all files
     const fileHashes = new Map<string, { hash: string; content: Buffer }>();
@@ -218,12 +213,6 @@ export class BlobService {
    */
   async downloadBlob(hash: string): Promise<Buffer> {
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    if (!bucketName) {
-      throw new Error(
-        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
-      );
-    }
-
     return downloadBlobFromS3(bucketName, hash);
   }
 
@@ -240,12 +229,6 @@ export class BlobService {
     }
 
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    if (!bucketName) {
-      throw new Error(
-        "R2_USER_STORAGES_BUCKET_NAME environment variable is not set",
-      );
-    }
-
     const result = new Map<string, Buffer>();
     const uniqueHashes = [...new Set(hashes)];
     const limit = pLimit(MAX_CONCURRENT_UPLOADS);
