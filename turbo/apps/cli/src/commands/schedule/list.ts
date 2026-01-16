@@ -1,8 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import { formatRelativeTime } from "../../lib/domain/schedule-utils";
-import type { ScheduleListResponse } from "@vm0/core";
 
 export const listCommand = new Command()
   .name("list")
@@ -10,14 +9,7 @@ export const listCommand = new Command()
   .description("List all schedules")
   .action(async () => {
     try {
-      const response = await apiClient.get("/api/agent/schedules");
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "List failed");
-      }
-
-      const result = (await response.json()) as ScheduleListResponse;
+      const result = await apiClient.listSchedules();
 
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));

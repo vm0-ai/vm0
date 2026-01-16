@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import { listTarFiles, removeExtraFiles } from "../../lib/utils/file-utils";
 import { handleEmptyStorageResponse } from "../../lib/storage/pull-utils";
 
@@ -18,17 +18,6 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
-
-/**
- * Download response from /api/storages/download
- */
-interface DownloadResponse {
-  url?: string;
-  empty?: boolean;
-  versionId: string;
-  fileCount: number;
-  size: number;
 }
 
 export const pullCommand = new Command()
@@ -66,49 +55,26 @@ export const pullCommand = new Command()
       // Get download URL from API
       console.log(chalk.dim("Getting download URL..."));
 
-      let url = `/api/storages/download?name=${encodeURIComponent(config.name)}&type=artifact`;
-      if (versionId) {
-        // Quote version as JSON string to prevent ts-rest's jsonQuery from
-        // parsing hex strings like "52999e37" as scientific notation numbers
-        const quotedVersion = JSON.stringify(versionId);
-        url += `&version=${encodeURIComponent(quotedVersion)}`;
-      }
-
-      const response = await apiClient.get(url);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.error(chalk.red(`✗ Artifact "${config.name}" not found`));
-          console.error(
-            chalk.dim(
-              "  Make sure the artifact name is correct in .vm0/storage.yaml",
-            ),
-          );
-          console.error(
-            chalk.dim("  Or push the artifact first with: vm0 artifact push"),
-          );
-        } else {
-          const error = (await response.json()) as ApiError;
-          throw new Error(error.error?.message || "Download failed");
-        }
-        process.exit(1);
-      }
-
-      const downloadInfo = (await response.json()) as DownloadResponse;
+      const downloadInfo = await apiClient.getStorageDownload({
+        name: config.name,
+        type: "artifact",
+        version: versionId,
+      });
 
       // Handle empty artifact
-      if (downloadInfo.empty) {
+      if ("empty" in downloadInfo) {
         await handleEmptyStorageResponse(cwd);
         return;
       }
 
-      if (!downloadInfo.url) {
+      const downloadUrl = downloadInfo.url;
+      if (!downloadUrl) {
         throw new Error("No download URL returned");
       }
 
       // Download directly from S3
       console.log(chalk.dim("Downloading from S3..."));
-      const s3Response = await fetch(downloadInfo.url);
+      const s3Response = await fetch(downloadUrl);
 
       if (!s3Response.ok) {
         throw new Error(`S3 download failed: ${s3Response.status}`);

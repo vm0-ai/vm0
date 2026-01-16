@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import {
   loadAgentName,
   loadScheduleName,
@@ -10,7 +10,6 @@ import {
 import type {
   ScheduleResponse,
   RunSummary,
-  ScheduleRunsResponse,
 } from "@vm0/core";
 
 // Re-export RunStatus type for local use (same as RunSummary['status'])
@@ -117,16 +116,7 @@ export const statusCommand = new Command()
       }
 
       // Get schedule details
-      const response = await apiClient.get(
-        `/api/agent/schedules/${encodeURIComponent(name)}?composeId=${encodeURIComponent(composeId)}`,
-      );
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "Failed to get schedule");
-      }
-
-      const schedule = (await response.json()) as ScheduleResponse;
+      const schedule = await apiClient.getScheduleByName({ name, composeId });
 
       // Print header
       console.log();
@@ -207,12 +197,12 @@ export const statusCommand = new Command()
         100,
       );
       if (limit > 0) {
-        const runsResponse = await apiClient.get(
-          `/api/agent/schedules/${encodeURIComponent(name)}/runs?composeId=${encodeURIComponent(composeId)}&limit=${limit}`,
-        );
-
-        if (runsResponse.ok) {
-          const { runs } = (await runsResponse.json()) as ScheduleRunsResponse;
+        try {
+          const { runs } = await apiClient.listScheduleRuns({
+            name,
+            composeId,
+            limit,
+          });
 
           if (runs.length > 0) {
             console.log();
@@ -229,7 +219,7 @@ export const statusCommand = new Command()
               console.log(`${id}  ${status} ${created}`);
             }
           }
-        } else {
+        } catch {
           console.log();
           console.log(chalk.dim("Recent Runs: (unable to fetch)"));
         }

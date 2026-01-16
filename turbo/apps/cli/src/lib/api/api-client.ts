@@ -15,8 +15,27 @@ import {
   storagesPrepareContract,
   storagesCommitContract,
   storagesDownloadContract,
+  storagesListContract,
+  schedulesMainContract,
+  schedulesByNameContract,
+  schedulesEnableContract,
+  scheduleRunsContract,
+  publicAgentsListContract,
+  publicArtifactsListContract,
+  publicArtifactByIdContract,
+  publicVolumesListContract,
+  publicVolumeByIdContract,
   agentComposeContentSchema,
   type ApiErrorResponse,
+  type ScheduleResponse,
+  type ScheduleListResponse,
+  type DeployScheduleResponse,
+  type ScheduleRunsResponse,
+  type PublicAgent,
+  type PublicArtifact,
+  type PublicArtifactDetail,
+  type PublicVolume,
+  type PublicVolumeDetail,
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getToken } from "./config";
@@ -722,6 +741,400 @@ class ApiClient {
     const errorBody = result.body as ApiErrorResponse;
     const message =
       errorBody.error?.message || `Storage "${query.name}" not found`;
+    throw new Error(message);
+  }
+
+  /**
+   * List storages (volumes or artifacts)
+   */
+  async listStorages(query: {
+    type: "volume" | "artifact";
+  }): Promise<
+    Array<{
+      name: string;
+      size: number;
+      fileCount: number;
+      updatedAt: string;
+    }>
+  > {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(storagesListContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list({ query });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Failed to list ${query.type}s`;
+    throw new Error(message);
+  }
+
+  /**
+   * Deploy schedule (create or update)
+   */
+  async deploySchedule(body: {
+    name: string;
+    cronExpression?: string;
+    atTime?: string;
+    timezone?: string;
+    prompt: string;
+    vars?: Record<string, string>;
+    secrets?: Record<string, string>;
+    artifactName?: string;
+    artifactVersion?: string;
+    volumeVersions?: Record<string, string>;
+    composeId: string;
+  }): Promise<DeployScheduleResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.deploy({ body });
+
+    if (result.status === 200 || result.status === 201) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to deploy schedule";
+    throw new Error(message);
+  }
+
+  /**
+   * List all schedules
+   */
+  async listSchedules(): Promise<ScheduleListResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list();
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to list schedules";
+    throw new Error(message);
+  }
+
+  /**
+   * Get schedule by name
+   */
+  async getScheduleByName(params: {
+    name: string;
+    composeId: string;
+  }): Promise<ScheduleResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesByNameContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.getByName({
+      params: { name: params.name },
+      query: { composeId: params.composeId },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Schedule "${params.name}" not found`;
+    throw new Error(message);
+  }
+
+  /**
+   * Delete schedule by name
+   */
+  async deleteSchedule(params: {
+    name: string;
+    composeId: string;
+  }): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesByNameContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.delete({
+      params: { name: params.name },
+      query: { composeId: params.composeId },
+    });
+
+    if (result.status === 204) {
+      return;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Failed to delete schedule "${params.name}"`;
+    throw new Error(message);
+  }
+
+  /**
+   * Enable schedule
+   */
+  async enableSchedule(params: {
+    name: string;
+    composeId: string;
+  }): Promise<ScheduleResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesEnableContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.enable({
+      params: { name: params.name },
+      body: { composeId: params.composeId },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Failed to enable schedule "${params.name}"`;
+    throw new Error(message);
+  }
+
+  /**
+   * Disable schedule
+   */
+  async disableSchedule(params: {
+    name: string;
+    composeId: string;
+  }): Promise<ScheduleResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(schedulesEnableContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.disable({
+      params: { name: params.name },
+      body: { composeId: params.composeId },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Failed to disable schedule "${params.name}"`;
+    throw new Error(message);
+  }
+
+  /**
+   * List recent runs for a schedule
+   */
+  async listScheduleRuns(params: {
+    name: string;
+    composeId: string;
+    limit?: number;
+  }): Promise<ScheduleRunsResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(scheduleRunsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.listRuns({
+      params: { name: params.name },
+      query: {
+        composeId: params.composeId,
+        limit: params.limit ?? 5,
+      },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message ||
+      `Failed to list runs for schedule "${params.name}"`;
+    throw new Error(message);
+  }
+
+  /**
+   * List public agents
+   */
+  async listPublicAgents(query?: {
+    cursor?: string;
+    limit?: number;
+    name?: string;
+  }): Promise<{
+    data: PublicAgent[];
+    pagination: { cursor: string | null; has_more: boolean };
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(publicAgentsListContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list({ query: query ?? {} });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to list agents";
+    throw new Error(message);
+  }
+
+  /**
+   * List public artifacts
+   */
+  async listPublicArtifacts(query?: {
+    cursor?: string;
+    limit?: number;
+  }): Promise<{
+    data: PublicArtifact[];
+    pagination: { cursor: string | null; has_more: boolean };
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(publicArtifactsListContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list({ query: query ?? {} });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to list artifacts";
+    throw new Error(message);
+  }
+
+  /**
+   * Get public artifact by ID
+   */
+  async getPublicArtifact(id: string): Promise<PublicArtifactDetail> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(publicArtifactByIdContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.get({ params: { id } });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Artifact "${id}" not found`;
+    throw new Error(message);
+  }
+
+  /**
+   * List public volumes
+   */
+  async listPublicVolumes(query?: {
+    cursor?: string;
+    limit?: number;
+  }): Promise<{
+    data: PublicVolume[];
+    pagination: { cursor: string | null; has_more: boolean };
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(publicVolumesListContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list({ query: query ?? {} });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to list volumes";
+    throw new Error(message);
+  }
+
+  /**
+   * Get public volume by ID
+   */
+  async getPublicVolume(id: string): Promise<PublicVolumeDetail> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(publicVolumeByIdContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.get({ params: { id } });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || `Volume "${id}" not found`;
     throw new Error(message);
   }
 

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import {
   loadAgentName,
   loadScheduleName,
@@ -89,14 +89,7 @@ export const deleteCommand = new Command()
       }
 
       // Call API
-      const response = await apiClient.delete(
-        `/api/agent/schedules/${encodeURIComponent(name)}?composeId=${encodeURIComponent(composeId)}`,
-      );
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "Delete failed");
-      }
+      await apiClient.deleteSchedule({ name, composeId });
 
       console.log(chalk.green(`✓ Deleted schedule ${chalk.cyan(name)}`));
     } catch (error) {

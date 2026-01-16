@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import {
   loadAgentName,
   loadScheduleName,
@@ -59,16 +59,8 @@ export const enableCommand = new Command()
         process.exit(1);
       }
 
-      // Call API - enable/disable use body with composeId
-      const response = await apiClient.post(
-        `/api/agent/schedules/${encodeURIComponent(name)}/enable`,
-        { body: JSON.stringify({ composeId }) },
-      );
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "Enable failed");
-      }
+      // Call API
+      await apiClient.enableSchedule({ name, composeId });
 
       console.log(chalk.green(`✓ Enabled schedule ${chalk.cyan(name)}`));
     } catch (error) {

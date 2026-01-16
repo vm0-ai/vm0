@@ -1,17 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { apiClient } from "../../lib/api/api-client";
 import { formatBytes, formatRelativeTime } from "../../lib/utils/file-utils";
-
-/**
- * List response from /api/storages/list
- */
-interface StorageListItem {
-  name: string;
-  size: number;
-  fileCount: number;
-  updatedAt: string;
-}
 
 export const listCommand = new Command()
   .name("list")
@@ -20,15 +10,7 @@ export const listCommand = new Command()
   .action(async () => {
     try {
       // Call API
-      const url = "/api/storages/list?type=volume";
-      const response = await apiClient.get(url);
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        throw new Error(error.error?.message || "List failed");
-      }
-
-      const items = (await response.json()) as StorageListItem[];
+      const items = await apiClient.listStorages({ type: "volume" });
 
       if (items.length === 0) {
         console.log(chalk.dim("No volumes found"));
