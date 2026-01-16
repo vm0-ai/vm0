@@ -115,9 +115,10 @@ class ApiClient {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
 
+    // Note: Don't set Content-Type here - ts-rest automatically adds it for requests with body.
+    // Setting Content-Type for bodyless requests (GET, DELETE) can cause server-side parsing issues.
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
     };
 
     // Add Vercel bypass secret if available (for CI/preview deployments)
