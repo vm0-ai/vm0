@@ -16,30 +16,6 @@ export interface FileEntryWithHash {
 }
 
 /**
- * Prepare response from the server
- */
-interface PrepareResponse {
-  versionId: string;
-  existing: boolean;
-  uploads?: {
-    archive: { key: string; presignedUrl: string };
-    manifest: { key: string; presignedUrl: string };
-  };
-}
-
-/**
- * Commit response from the server
- */
-interface CommitResponse {
-  success: boolean;
-  versionId: string;
-  storageName: string;
-  size: number;
-  fileCount: number;
-  deduplicated?: boolean;
-}
-
-/**
  * Result of direct upload operation
  */
 interface DirectUploadResult {
@@ -298,46 +274,24 @@ export async function directUpload(
 
   // Step 3: Call prepare endpoint
   onProgress?.("Preparing upload...");
-  const prepareResponse = await apiClient.post("/api/storages/prepare", {
-    body: JSON.stringify({
-      storageName,
-      storageType,
-      files: fileEntries,
-      force,
-    }),
+  const prepareResult = await apiClient.prepareStorage({
+    storageName,
+    storageType,
+    files: fileEntries,
+    force,
   });
-
-  if (!prepareResponse.ok) {
-    const error = (await prepareResponse.json()) as {
-      error: { message: string; code: string };
-    };
-    throw new Error(error.error?.message || "Prepare failed");
-  }
-
-  const prepareResult = (await prepareResponse.json()) as PrepareResponse;
 
   // Step 4: Check if version already exists (deduplication)
   // Skip upload but still call commit to update HEAD (fixes #626)
   if (prepareResult.existing) {
     onProgress?.("Version exists, updating HEAD...");
 
-    const commitResponse = await apiClient.post("/api/storages/commit", {
-      body: JSON.stringify({
-        storageName,
-        storageType,
-        versionId: prepareResult.versionId,
-        files: fileEntries,
-      }),
+    const commitResult = await apiClient.commitStorage({
+      storageName,
+      storageType,
+      versionId: prepareResult.versionId,
+      files: fileEntries,
     });
-
-    if (!commitResponse.ok) {
-      const error = (await commitResponse.json()) as {
-        error: { message: string; code: string };
-      };
-      throw new Error(error.error?.message || "Commit failed");
-    }
-
-    const commitResult = (await commitResponse.json()) as CommitResponse;
 
     return {
       versionId: commitResult.versionId,
@@ -379,23 +333,12 @@ export async function directUpload(
 
   // Step 7: Commit the upload
   onProgress?.("Committing...");
-  const commitResponse = await apiClient.post("/api/storages/commit", {
-    body: JSON.stringify({
-      storageName,
-      storageType,
-      versionId: prepareResult.versionId,
-      files: fileEntries,
-    }),
+  const commitResult = await apiClient.commitStorage({
+    storageName,
+    storageType,
+    versionId: prepareResult.versionId,
+    files: fileEntries,
   });
-
-  if (!commitResponse.ok) {
-    const error = (await commitResponse.json()) as {
-      error: { message: string; code: string };
-    };
-    throw new Error(error.error?.message || "Commit failed");
-  }
-
-  const commitResult = (await commitResponse.json()) as CommitResponse;
 
   return {
     versionId: commitResult.versionId,

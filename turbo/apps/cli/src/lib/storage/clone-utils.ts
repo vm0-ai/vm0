@@ -4,19 +4,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { writeStorageConfig, type StorageType } from "./storage-utils";
-import { apiClient, type ApiError } from "../api/api-client";
+import { apiClient } from "../api/api-client";
 import { listTarFiles, formatBytes } from "../utils/file-utils";
-
-/**
- * Download response from /api/storages/download
- */
-interface DownloadResponse {
-  url?: string;
-  empty?: boolean;
-  versionId: string;
-  fileCount: number;
-  size: number;
-}
 
 interface CloneOptions {
   version?: string;
@@ -49,34 +38,18 @@ export async function cloneStorage(
   // Check if storage exists on remote
   console.log(chalk.dim(`Checking remote ${typeLabel}...`));
 
-  let url = `/api/storages/download?name=${encodeURIComponent(name)}&type=${type}`;
-  if (options.version) {
-    // Quote version as JSON string to prevent ts-rest's jsonQuery from
-    // parsing hex strings like "52999e37" as scientific notation numbers
-    const quotedVersion = JSON.stringify(options.version);
-    url += `&version=${encodeURIComponent(quotedVersion)}`;
-  }
-
-  const response = await apiClient.get(url);
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(
-        `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} "${name}" not found`,
-      );
-    }
-    const error = (await response.json()) as ApiError;
-    throw new Error(error.error?.message || "Clone failed");
-  }
-
-  const downloadInfo = (await response.json()) as DownloadResponse;
+  const downloadInfo = await apiClient.getStorageDownload({
+    name,
+    type,
+    version: options.version,
+  });
 
   // Create destination directory
   console.log(chalk.dim(`Creating directory: ${destination}/`));
   await fs.promises.mkdir(destination, { recursive: true });
 
-  // Handle empty storage
-  if (downloadInfo.empty) {
+  // Handle empty storage (type guard)
+  if ("empty" in downloadInfo) {
     // Create .vm0 directory and config
     await writeStorageConfig(name, destination, type);
 
@@ -91,13 +64,15 @@ export async function cloneStorage(
     };
   }
 
-  if (!downloadInfo.url) {
+  // TypeScript now knows downloadInfo has url property
+  const downloadUrl = downloadInfo.url;
+  if (!downloadUrl) {
     throw new Error("No download URL returned");
   }
 
   // Download from S3
   console.log(chalk.dim("Downloading from S3..."));
-  const s3Response = await fetch(downloadInfo.url);
+  const s3Response = await fetch(downloadUrl);
 
   if (!s3Response.ok) {
     // Clean up directory on failure

@@ -12,6 +12,23 @@ import {
   sessionsByIdContract,
   checkpointsByIdContract,
   scopeContract,
+  storagesPrepareContract,
+  storagesCommitContract,
+  storagesDownloadContract,
+  storagesListContract,
+  schedulesMainContract,
+  schedulesByNameContract,
+  schedulesEnableContract,
+  scheduleRunsContract,
+  publicAgentsListContract,
+  publicArtifactsListContract,
+  publicArtifactByIdContract,
+  publicArtifactVersionsContract,
+  publicArtifactDownloadContract,
+  publicVolumesListContract,
+  publicVolumeByIdContract,
+  publicVolumeVersionsContract,
+  publicVolumeDownloadContract,
   agentComposeContentSchema,
   type ApiErrorResponse,
 } from "@vm0/core";
@@ -599,6 +616,126 @@ class ApiClient {
     const errorBody = result.body as ApiErrorResponse;
     const message =
       errorBody.error?.message || `Checkpoint not found: ${checkpointId}`;
+    throw new Error(message);
+  }
+
+  /**
+   * Prepare storage for direct S3 upload
+   */
+  async prepareStorage(body: {
+    storageName: string;
+    storageType: "volume" | "artifact";
+    files: Array<{ path: string; hash: string; size: number }>;
+    force?: boolean;
+  }): Promise<{
+    versionId: string;
+    existing: boolean;
+    uploads?: {
+      archive: { key: string; presignedUrl: string };
+      manifest: { key: string; presignedUrl: string };
+    };
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(storagesPrepareContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.prepare({ body });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to prepare storage";
+    throw new Error(message);
+  }
+
+  /**
+   * Commit storage after S3 upload
+   */
+  async commitStorage(body: {
+    storageName: string;
+    storageType: "volume" | "artifact";
+    versionId: string;
+    files: Array<{ path: string; hash: string; size: number }>;
+  }): Promise<{
+    success: true;
+    versionId: string;
+    storageName: string;
+    size: number;
+    fileCount: number;
+    deduplicated?: boolean;
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(storagesCommitContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.commit({ body });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to commit storage";
+    throw new Error(message);
+  }
+
+  /**
+   * Get download URL for storage (volume or artifact)
+   */
+  async getStorageDownload(query: {
+    name: string;
+    type: "volume" | "artifact";
+    version?: string;
+  }): Promise<
+    | {
+        url: string;
+        versionId: string;
+        fileCount: number;
+        size: number;
+      }
+    | {
+        empty: true;
+        versionId: string;
+        fileCount: 0;
+        size: 0;
+      }
+  > {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(storagesDownloadContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.download({
+      query: {
+        name: query.name,
+        type: query.type,
+        version: query.version,
+      },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Storage "${query.name}" not found`;
     throw new Error(message);
   }
 
