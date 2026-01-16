@@ -26,12 +26,13 @@ let shutdownRequested = false;
 
 /**
  * Read new content from file starting from last position.
+ * Exported for testing.
  *
  * @param filePath - Path to the file to read
  * @param posFile - Path to position tracking file
  * @returns Tuple of [new_content, new_position]
  */
-function readFileFromPosition(
+export function readFileFromPosition(
   filePath: string,
   posFile: string,
 ): [string, number] {
@@ -74,8 +75,9 @@ function readFileFromPosition(
 
 /**
  * Save file read position for next iteration.
+ * Exported for testing.
  */
-function savePosition(posFile: string, position: number): void {
+export function savePosition(posFile: string, position: number): void {
   try {
     fs.writeFileSync(posFile, String(position));
   } catch (error) {
@@ -89,12 +91,13 @@ interface JsonEntry {
 
 /**
  * Read new entries from JSONL file starting from last position.
+ * Exported for testing.
  *
  * @param filePath - Path to the JSONL file to read
  * @param posFile - Path to position tracking file
  * @returns Tuple of [entries list, new_position]
  */
-function readJsonlFromPosition(
+export function readJsonlFromPosition(
   filePath: string,
   posFile: string,
 ): [JsonEntry[], number] {

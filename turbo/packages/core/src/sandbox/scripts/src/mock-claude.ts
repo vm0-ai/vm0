@@ -12,7 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
-interface ParsedArgs {
+export interface ParsedArgs {
   outputFormat: string;
   print: boolean;
   verbose: boolean;
@@ -23,8 +23,9 @@ interface ParsedArgs {
 
 /**
  * Parse command line arguments (same as real claude CLI).
+ * Exported for testing.
  */
-function parseArgs(args: string[]): ParsedArgs {
+export function parseArgs(args: string[]): ParsedArgs {
   const result: ParsedArgs = {
     outputFormat: "text",
     print: false,
@@ -74,8 +75,9 @@ function parseArgs(args: string[]): ParsedArgs {
 /**
  * Create session history file for checkpoint compatibility.
  * Claude Code stores session history at: ~/.claude/projects/-{path}/{session_id}.jsonl
+ * Exported for testing.
  */
-function createSessionHistory(sessionId: string, cwd: string): string {
+export function createSessionHistory(sessionId: string, cwd: string): string {
   const projectName = cwd.replace(/^\//, "").replace(/\//g, "-");
   const homeDir = process.env.HOME ?? "/home/user";
   const sessionDir = `${homeDir}/.claude/projects/-${projectName}`;
@@ -257,5 +259,12 @@ function main(): void {
   }
 }
 
-// Run main
-main();
+// Run main only when executed directly (not when imported for testing)
+// In ESM, we check if this file is the entry point
+const isMainModule =
+  process.argv[1]?.endsWith("mock-claude.mjs") ||
+  process.argv[1]?.endsWith("mock-claude.ts");
+
+if (isMainModule) {
+  main();
+}
