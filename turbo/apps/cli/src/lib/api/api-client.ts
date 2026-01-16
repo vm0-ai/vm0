@@ -12,8 +12,10 @@ import {
   sessionsByIdContract,
   checkpointsByIdContract,
   scopeContract,
+  agentComposeContentSchema,
   type ApiErrorResponse,
 } from "@vm0/core";
+import type { z } from "zod";
 import { getApiUrl, getToken } from "./config";
 
 // Import types from @vm0/core contracts
@@ -222,7 +224,7 @@ class ApiClient {
     });
 
     const result = await client.create({
-      body: body as any,
+      body: body as { content: z.infer<typeof agentComposeContentSchema> },
     });
 
     // ts-rest returns discriminated union based on status code
