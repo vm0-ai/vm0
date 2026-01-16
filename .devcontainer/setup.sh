@@ -95,4 +95,9 @@ else
   echo "ℹ️  No certificates found. Run 'npm run generate-certs' to create them."
 fi
 
+# Install lefthook git hooks for pre-commit checks
+echo "🪝 Installing lefthook git hooks..."
+cd "$WORKSPACE_DIR/turbo" && lefthook install
+echo "✓ Lefthook hooks installed"
+
 echo "✅ Dev container setup complete!"
