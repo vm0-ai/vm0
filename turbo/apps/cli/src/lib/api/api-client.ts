@@ -6,6 +6,9 @@ import {
   runMetricsContract,
   runAgentEventsContract,
   runNetworkLogsContract,
+  composesMainContract,
+  composesByIdContract,
+  composesVersionsContract,
   type ApiErrorResponse,
 } from "@vm0/core";
 import { getApiUrl, getToken } from "./config";
@@ -114,42 +117,55 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const params = new URLSearchParams({ name });
-    if (scope) {
-      params.append("scope", scope);
-    }
+    // Create ts-rest client with config
+    const client = initClient(composesMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
 
-    const response = await fetch(
-      `${baseUrl}/api/agent/composes?${params.toString()}`,
-      {
-        method: "GET",
-        headers,
+    const result = await client.getByName({
+      query: {
+        name,
+        scope,
       },
-    );
+    });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || `Compose not found: ${name}`);
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetComposeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || `Compose not found: ${name}`;
+    throw new Error(message);
   }
 
   async getComposeById(id: string): Promise<GetComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/composes/${id}`, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(composesByIdContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || `Compose not found: ${id}`);
+    const result = await client.getById({
+      params: { id },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetComposeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || `Compose not found: ${id}`;
+    throw new Error(message);
   }
 
   /**
@@ -163,23 +179,30 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    // Quote the version as JSON string to prevent ts-rest's jsonQuery from
-    // parsing hex strings like "52999e37" as scientific notation numbers
-    const quotedVersion = JSON.stringify(version);
-    const response = await fetch(
-      `${baseUrl}/api/agent/composes/versions?composeId=${encodeURIComponent(composeId)}&version=${encodeURIComponent(quotedVersion)}`,
-      {
-        method: "GET",
-        headers,
-      },
-    );
+    // Create ts-rest client with config
+    // Note: jsonQuery: true handles scientific notation edge cases automatically
+    const client = initClient(composesVersionsContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || `Version not found: ${version}`);
+    const result = await client.resolveVersion({
+      query: {
+        composeId,
+        version,
+      },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetComposeVersionResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || `Version not found: ${version}`;
+    throw new Error(message);
   }
 
   async createOrUpdateCompose(body: {
@@ -188,18 +211,27 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/composes`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
+    // Create ts-rest client with config
+    const client = initClient(composesMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to create compose");
+    const result = await client.create({
+      body,
+    });
+
+    // ts-rest returns discriminated union based on status code
+    // Both 200 and 201 are success cases
+    if (result.status === 200 || result.status === 201) {
+      return result.body;
     }
 
-    return (await response.json()) as CreateComposeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to create compose";
+    throw new Error(message);
   }
 
   /**

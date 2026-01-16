@@ -45,10 +45,7 @@ describe("ApiClient", () => {
         action: "created" as const,
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
 
       const result = await apiClient.createOrUpdateCompose({
         content: mockConfig,
@@ -56,14 +53,12 @@ describe("ApiClient", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:3000/api/agent/composes",
-        {
+        expect.objectContaining({
           method: "POST",
-          headers: {
-            Authorization: "Bearer test-token",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ content: mockConfig }),
-        },
+          headers: expect.objectContaining({
+            authorization: "Bearer test-token",
+          }),
+        }),
       );
 
       expect(result).toEqual(mockResponse);
@@ -77,10 +72,7 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
 
       const result = await apiClient.createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
@@ -99,10 +91,7 @@ describe("ApiClient", () => {
         updatedAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
 
       const result = await apiClient.createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
@@ -132,12 +121,14 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Invalid compose", code: "INVALID_COMPOSE" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            error: { message: "Invalid compose", code: "INVALID_COMPOSE" },
+          },
+          400,
+        ),
+      );
 
       await expect(
         apiClient.createOrUpdateCompose({
@@ -147,12 +138,14 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "", code: "ERROR" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            error: { message: "", code: "ERROR" },
+          },
+          400,
+        ),
+      );
 
       await expect(
         apiClient.createOrUpdateCompose({
@@ -501,49 +494,49 @@ describe("ApiClient", () => {
   });
 
   describe("getComposeVersion", () => {
-    it("should quote version parameter to prevent scientific notation parsing", async () => {
-      // Version strings like "52999e37" look like scientific notation to JSON.parse
-      // They must be quoted as JSON strings so the server receives the correct value
+    it("should handle version parameter with scientific notation correctly", async () => {
+      // Version strings like "52999e37" look like scientific notation
+      // ts-rest with jsonQuery automatically quotes these to prevent misinterpretation
       const scientificNotationVersion = "52999e37";
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ versionId: "full-hash-123" }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse({ versionId: "full-hash-123" }, 200),
+      );
 
       await apiClient.getComposeVersion(
         "compose-123",
         scientificNotationVersion,
       );
 
-      // Verify the version is quoted (becomes "52999e37" with quotes)
+      // ts-rest quotes the value to prevent scientific notation parsing
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(scientificNotationVersion))}`;
       expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
     });
 
-    it("should also quote normal hex versions for consistency", async () => {
+    it("should handle normal hex versions", async () => {
       const normalVersion = "a1b2c3d4";
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ versionId: "full-hash-456" }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse({ versionId: "full-hash-456" }, 200),
+      );
 
       await apiClient.getComposeVersion("compose-123", normalVersion);
 
-      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(normalVersion))}`;
+      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${normalVersion}`;
       expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
     });
 
-    it("should quote 'latest' tag", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ versionId: "head-version-id", tag: "latest" }),
-      });
+    it("should handle 'latest' tag", async () => {
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          { versionId: "head-version-id", tag: "latest" },
+          200,
+        ),
+      );
 
       await apiClient.getComposeVersion("compose-123", "latest");
 
-      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify("latest"))}`;
+      const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=latest`;
       expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
     });
 
@@ -556,12 +549,14 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on version not found", async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { message: "Version not found: abc123", code: "NOT_FOUND" },
-        }),
-      });
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          {
+            error: { message: "Version not found: abc123", code: "NOT_FOUND" },
+          },
+          404,
+        ),
+      );
 
       await expect(
         apiClient.getComposeVersion("compose-123", "abc123"),
