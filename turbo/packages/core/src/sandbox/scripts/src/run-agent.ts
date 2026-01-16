@@ -31,7 +31,7 @@ import {
   validateConfig,
   recordSandboxOp,
 } from "./lib/common.js";
-import { logInfo, logError, logWarn } from "./lib/log.js";
+import { logInfo, logError, logWarn, logDebug } from "./lib/log.js";
 import { sendEvent } from "./lib/events.js";
 import { createCheckpoint } from "./lib/checkpoint.js";
 import { httpPostJson } from "./lib/http-client.js";
@@ -389,7 +389,8 @@ async function run(): Promise<[number, string]> {
             }
           }
         } catch {
-          // Not valid JSON, skip
+          // Not valid JSON - log at debug level and skip
+          logDebug(`Non-JSON line from agent: ${stripped.slice(0, 100)}`);
         }
       }
     }
