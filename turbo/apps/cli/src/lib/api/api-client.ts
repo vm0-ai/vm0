@@ -9,6 +9,9 @@ import {
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
+  sessionsByIdContract,
+  checkpointsByIdContract,
+  scopeContract,
   type ApiErrorResponse,
 } from "@vm0/core";
 import { getApiUrl, getToken } from "./config";
@@ -455,17 +458,24 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(scopeContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to get scope");
+    const result = await client.get();
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as ScopeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to get scope";
+    throw new Error(message);
   }
 
   /**
@@ -478,18 +488,24 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
+    // Create ts-rest client with config
+    const client = initClient(scopeContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to create scope");
+    const result = await client.create({ body });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 201) {
+      return result.body;
     }
 
-    return (await response.json()) as ScopeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to create scope";
+    throw new Error(message);
   }
 
   /**
@@ -502,18 +518,24 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/scope`, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(body),
+    // Create ts-rest client with config
+    const client = initClient(scopeContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(error.error?.message || "Failed to update scope");
+    const result = await client.update({ body });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as ScopeResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to update scope";
+    throw new Error(message);
   }
 
   /**
@@ -524,19 +546,27 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(`${baseUrl}/api/agent/sessions/${sessionId}`, {
-      method: "GET",
-      headers,
+    // Create ts-rest client with config
+    const client = initClient(sessionsByIdContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
     });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(
-        error.error?.message || `Session not found: ${sessionId}`,
-      );
+    const result = await client.getById({
+      params: { id: sessionId },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetSessionResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Session not found: ${sessionId}`;
+    throw new Error(message);
   }
 
   /**
@@ -547,22 +577,27 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const response = await fetch(
-      `${baseUrl}/api/agent/checkpoints/${checkpointId}`,
-      {
-        method: "GET",
-        headers,
-      },
-    );
+    // Create ts-rest client with config
+    const client = initClient(checkpointsByIdContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
 
-    if (!response.ok) {
-      const error = (await response.json()) as ApiError;
-      throw new Error(
-        error.error?.message || `Checkpoint not found: ${checkpointId}`,
-      );
+    const result = await client.getById({
+      params: { id: checkpointId },
+    });
+
+    // ts-rest returns discriminated union based on status code
+    if (result.status === 200) {
+      return result.body;
     }
 
-    return (await response.json()) as GetCheckpointResponse;
+    // Error cases
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Checkpoint not found: ${checkpointId}`;
+    throw new Error(message);
   }
 
   /**
