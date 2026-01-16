@@ -23,7 +23,7 @@ jobs:
   change-detection:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     # Run for all events, but only do actual detection for PRs
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
@@ -134,7 +134,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -160,7 +160,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     services:
       postgres:
         image: postgres:17-alpine
@@ -202,7 +202,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [change-detection]
     # Deploy if:
     # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
@@ -264,7 +264,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [change-detection]
     # Only deploy if it's a PR and docs changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.docs-changed == 'true'
@@ -292,7 +292,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [change-detection, deploy-web]
     # Only deploy if it's a PR and platform changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
@@ -323,7 +323,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     steps:
@@ -370,7 +370,7 @@ jobs:
   api-e2e-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [e2e-auth, deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 5
@@ -398,7 +398,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [e2e-auth, deploy-web, lint, test]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 5
@@ -459,7 +459,7 @@ jobs:
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [cli-e2e-01-serial, deploy-web]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 8
@@ -523,7 +523,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: needs.deploy-web.outputs.preview-url != ''
     timeout-minutes: 8
@@ -589,7 +589,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [change-detection]
     if: |
       (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
@@ -787,7 +787,7 @@ jobs:
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [deploy-runner-prepare]
     if: needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
@@ -827,7 +827,7 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:4f3a2d7
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260115
     needs: [change-detection, deploy-web, deploy-runner-prepare]
     if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
     outputs:
