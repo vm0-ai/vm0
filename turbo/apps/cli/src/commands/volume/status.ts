@@ -59,12 +59,17 @@ export const statusCommand = new Command()
         console.log(chalk.dim(`  Size: ${formatBytes(info.size)}`));
       }
     } catch (error) {
-      console.error(chalk.red("✗ Status check failed"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
+      if (error instanceof Error && error.message.includes("not found")) {
+        console.error(chalk.red("✗ Not found on remote"));
+        console.error(chalk.dim("  Run: vm0 volume push"));
+      } else {
+        console.error(chalk.red("✗ Status check failed"));
+        if (error instanceof Error) {
+          if (error.message.includes("Not authenticated")) {
+            console.error(chalk.dim("  Run: vm0 auth login"));
+          } else {
+            console.error(chalk.dim(`  ${error.message}`));
+          }
         }
       }
       process.exit(1);
