@@ -36,14 +36,17 @@ describe("runPreflightCheck", () => {
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
 
-    // Verify curl command was called with correct URL
+    // Verify curl command was called with correct URL and timeout
     expect(mockSsh.exec).toHaveBeenCalledOnce();
-    const curlCmd = mockSsh.exec.mock.calls[0]?.[0] as string;
+    const [curlCmd, timeout] = mockSsh.exec.mock.calls[0] as [string, number];
     expect(curlCmd).toContain(
       "https://api.example.com/api/webhooks/agent/heartbeat",
     );
     expect(curlCmd).toContain("Bearer token-456");
     expect(curlCmd).toContain("run-123");
+    expect(curlCmd).toContain("--connect-timeout 5");
+    expect(curlCmd).toContain("--max-time 10");
+    expect(timeout).toBe(20000); // 20 second SSH timeout
   });
 
   it("returns DNS error for exit code 6", async () => {

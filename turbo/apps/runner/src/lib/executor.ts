@@ -446,11 +446,13 @@ export async function runPreflightCheck(
   // Build curl command to send test heartbeat from inside VM
   // -s: silent mode (no progress bar)
   // -f: fail silently on HTTP errors (returns exit code 22)
-  // --max-time: timeout in seconds
+  // --connect-timeout: max time for connection phase
+  // --max-time: total max time for the request
   // Note: This runs inside the VM via SSH, not on the runner host
-  const curlCmd = `curl -sf --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}" -d '{"runId":"${runId}"}'`;
+  const curlCmd = `curl -sf --connect-timeout 5 --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}" -d '{"runId":"${runId}"}'`;
 
-  const result = await ssh.exec(curlCmd);
+  // Use 20 second timeout for SSH exec (curl has 10s max-time, plus buffer for SSH overhead)
+  const result = await ssh.exec(curlCmd, 20000);
 
   if (result.exitCode === 0) {
     return { success: true };
