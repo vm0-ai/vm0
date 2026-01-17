@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/vm0-ai/vm0/compare/runner-v2.8.5...runner-v2.9.0) (2026-01-17)
+
+
+### Features
+
+* **runner:** add preflight connectivity check before agent execution ([#1292](https://github.com/vm0-ai/vm0/issues/1292)) ([76f3ebb](https://github.com/vm0-ai/vm0/commit/76f3ebbfda3281541a828236f332588358566433))
+
 ## [2.8.5](https://github.com/vm0-ai/vm0/compare/runner-v2.8.4...runner-v2.8.5) (2026-01-15)
 
 

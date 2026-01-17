@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.12.1](https://github.com/vm0-ai/vm0/compare/web-v9.12.0...web-v9.12.1) (2026-01-17)
+
+
+### Performance Improvements
+
+* **db:** add missing indexes for high-frequency queries ([#1286](https://github.com/vm0-ai/vm0/issues/1286)) ([c0ae99c](https://github.com/vm0-ai/vm0/commit/c0ae99c504202f5e6988255696de47277b1d5a1f)), closes [#1284](https://github.com/vm0-ai/vm0/issues/1284)
+
 ## [9.12.0](https://github.com/vm0-ai/vm0/compare/web-v9.11.0...web-v9.12.0) (2026-01-15)
 
 
