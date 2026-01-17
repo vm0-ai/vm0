@@ -18,6 +18,7 @@ describe("runPreflightCheck", () => {
   let mockSsh: MockSSHClient;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockSsh = {
       exec: vi.fn(),
     };
@@ -189,6 +190,7 @@ describe("reportPreflightFailure", () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     global.fetch = vi.fn();
   });
 
