@@ -433,6 +433,7 @@ export const CURL_ERROR_MESSAGES: Record<number, string> = {
  * @param apiUrl - VM0 API URL to test
  * @param runId - Run ID for the heartbeat request
  * @param sandboxToken - Authentication token for the API
+ * @param bypassSecret - Optional Vercel automation bypass secret for preview deployments
  * @returns PreflightResult indicating success or failure with error message
  */
 export async function runPreflightCheck(
@@ -440,6 +441,7 @@ export async function runPreflightCheck(
   apiUrl: string,
   runId: string,
   sandboxToken: string,
+  bypassSecret?: string,
 ): Promise<PreflightResult> {
   const heartbeatUrl = `${apiUrl}/api/webhooks/agent/heartbeat`;
 
@@ -449,7 +451,10 @@ export async function runPreflightCheck(
   // --connect-timeout: max time for connection phase
   // --max-time: total max time for the request
   // Note: This runs inside the VM via SSH, not on the runner host
-  const curlCmd = `curl -sf --connect-timeout 5 --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}" -d '{"runId":"${runId}"}'`;
+  const bypassHeader = bypassSecret
+    ? ` -H "x-vercel-protection-bypass: ${bypassSecret}"`
+    : "";
+  const curlCmd = `curl -sf --connect-timeout 5 --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}"${bypassHeader} -d '{"runId":"${runId}"}'`;
 
   // Use 20 second timeout for SSH exec (curl has 10s max-time, plus buffer for SSH overhead)
   const result = await ssh.exec(curlCmd, 20000);
@@ -477,22 +482,31 @@ export async function runPreflightCheck(
  * @param runId - Run ID to mark as failed
  * @param sandboxToken - Authentication token
  * @param error - Error message to report
+ * @param bypassSecret - Optional Vercel automation bypass secret for preview deployments
  */
 export async function reportPreflightFailure(
   apiUrl: string,
   runId: string,
   sandboxToken: string,
   error: string,
+  bypassSecret?: string,
 ): Promise<void> {
   const completeUrl = `${apiUrl}/api/webhooks/agent/complete`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${sandboxToken}`,
+  };
+
+  // Add Vercel bypass header for preview deployments
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
 
   try {
     const response = await fetch(completeUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sandboxToken}`,
-      },
+      headers,
       body: JSON.stringify({
         runId,
         exitCode: 1,
@@ -659,11 +673,13 @@ export async function executeJob(
     // Skip in benchmark mode since it doesn't use API
     if (!options.benchmarkMode) {
       log(`[Executor] Running preflight connectivity check...`);
+      const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       const preflight = await runPreflightCheck(
         ssh,
         config.server.url,
         context.runId,
         context.sandboxToken,
+        bypassSecret,
       );
 
       if (!preflight.success) {
@@ -675,6 +691,7 @@ export async function executeJob(
           context.runId,
           context.sandboxToken,
           preflight.error!,
+          bypassSecret,
         );
 
         return {

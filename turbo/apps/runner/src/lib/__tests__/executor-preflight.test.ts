@@ -152,6 +152,37 @@ describe("runPreflightCheck", () => {
     expect(result.error).toContain("TLS certificate error");
     expect(result.error).toContain("unable to get local issuer certificate");
   });
+
+  it("includes Vercel bypass header when bypassSecret is provided", async () => {
+    mockSsh.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    await runPreflightCheck(
+      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      "https://api.example.com",
+      "run-123",
+      "token-456",
+      "bypass-secret-789",
+    );
+
+    expect(mockSsh.exec).toHaveBeenCalledOnce();
+    const [curlCmd] = mockSsh.exec.mock.calls[0] as [string, number];
+    expect(curlCmd).toContain("x-vercel-protection-bypass: bypass-secret-789");
+  });
+
+  it("does not include Vercel bypass header when bypassSecret is not provided", async () => {
+    mockSsh.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    await runPreflightCheck(
+      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      "https://api.example.com",
+      "run-123",
+      "token-456",
+    );
+
+    expect(mockSsh.exec).toHaveBeenCalledOnce();
+    const [curlCmd] = mockSsh.exec.mock.calls[0] as [string, number];
+    expect(curlCmd).not.toContain("x-vercel-protection-bypass");
+  });
 });
 
 describe("reportPreflightFailure", () => {
@@ -230,6 +261,48 @@ describe("reportPreflightFailure", () => {
     );
 
     consoleSpy.mockRestore();
+  });
+
+  it("includes Vercel bypass header when bypassSecret is provided", async () => {
+    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await reportPreflightFailure(
+      "https://api.example.com",
+      "run-123",
+      "token-456",
+      "Test error message",
+      "bypass-secret-789",
+    );
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+
+    expect(options.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer token-456",
+      "x-vercel-protection-bypass": "bypass-secret-789",
+    });
+  });
+
+  it("does not include Vercel bypass header when bypassSecret is not provided", async () => {
+    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await reportPreflightFailure(
+      "https://api.example.com",
+      "run-123",
+      "token-456",
+      "Test error message",
+    );
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+
+    expect(options.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer token-456",
+    });
   });
 });
 
