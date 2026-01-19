@@ -426,16 +426,16 @@
       become: no
       tags: [start]
 
-    - name: Verify runner can connect to API
-      command: node index.js status --config ./runner.yaml
+    - name: Verify runner health
+      command: node index.js doctor --config ./runner.yaml
       args:
         chdir: "{{ runner_base_dir }}"
       become: no
       environment: "{{ extra_env }}"
-      register: status_check
+      register: health_check
       retries: 3
       delay: 5
-      until: status_check.rc == 0
+      until: health_check.rc == 0
       tags: [start]
 
     - name: Display deployment summary
