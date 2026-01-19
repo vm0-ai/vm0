@@ -189,8 +189,11 @@ jobs:
       - name: Use latest npm for OIDC support
         run: npm install -g npm@latest
 
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
       - name: Build CLI
-        run: cd turbo && pnpm -F @vm0/cli build
+        run: cd turbo && pnpm --filter @vm0/cli build
 
       - name: Publish to npm with OIDC
         run: cd turbo/apps/cli/dist && npm publish --access public
