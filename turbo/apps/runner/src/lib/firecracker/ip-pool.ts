@@ -184,12 +184,14 @@ export async function allocateIP(vmId: string): Promise<string> {
   // We use atomic file operations to ensure exclusivity
   const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
   const startTime = Date.now();
+  let lockAcquired = false;
 
   // Wait for lock
   while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
     try {
       // Try to create lock file exclusively
       fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
+      lockAcquired = true;
       break;
     } catch {
       // Lock exists, check if it's stale (process dead)
@@ -214,7 +216,7 @@ export async function allocateIP(vmId: string): Promise<string> {
     }
   }
 
-  if (!fs.existsSync(lockMarker)) {
+  if (!lockAcquired) {
     throw new Error(
       `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
     );
@@ -270,11 +272,13 @@ export async function releaseIP(ip: string): Promise<void> {
 
   const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
   const startTime = Date.now();
+  let lockAcquired = false;
 
   // Wait for lock
   while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
     try {
       fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
+      lockAcquired = true;
       break;
     } catch {
       try {
@@ -295,7 +299,7 @@ export async function releaseIP(ip: string): Promise<void> {
     }
   }
 
-  if (!fs.existsSync(lockMarker)) {
+  if (!lockAcquired) {
     throw new Error(
       `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
     );
