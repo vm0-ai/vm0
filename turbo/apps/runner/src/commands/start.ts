@@ -17,6 +17,7 @@ import {
   checkNetworkPrerequisites,
   setupBridge,
   cleanupOrphanedProxyRules,
+  flushBridgeArpCache,
 } from "../lib/firecracker/network.js";
 import { cleanupOrphanedAllocations } from "../lib/firecracker/ip-pool.js";
 import {
@@ -151,6 +152,11 @@ export const startCommand = new Command("start")
       // Set up bridge network
       console.log("Setting up network bridge...");
       await setupBridge();
+
+      // Flush bridge ARP cache to clear stale entries from previous runs
+      // This prevents routing issues when IPs are reused with different MACs
+      console.log("Flushing bridge ARP cache...");
+      await flushBridgeArpCache();
 
       // Clean up orphaned proxy rules from previous runs
       // This handles rules left behind after crashes or SIGKILL

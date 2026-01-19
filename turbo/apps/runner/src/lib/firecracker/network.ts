@@ -558,6 +558,59 @@ export async function findOrphanedIptablesRules(
 }
 
 /**
+ * Flush all ARP cache entries on the VM bridge
+ *
+ * This is called at runner startup to clear any stale ARP entries from
+ * previous runs. Stale entries can cause routing issues when IPs are
+ * reused by new VMs with different MAC addresses.
+ */
+export async function flushBridgeArpCache(): Promise<void> {
+  console.log(`Flushing ARP cache on bridge ${BRIDGE_NAME}...`);
+
+  try {
+    // Check if bridge exists first
+    if (!(await bridgeExists())) {
+      console.log("Bridge does not exist, skipping ARP flush");
+      return;
+    }
+
+    // Get all ARP entries on the bridge
+    const { stdout } = await execAsync(
+      `ip neigh show dev ${BRIDGE_NAME} 2>/dev/null || true`,
+    );
+
+    if (!stdout.trim()) {
+      console.log("No ARP entries on bridge");
+      return;
+    }
+
+    // Parse ARP entries and delete each one
+    // Format: "172.16.0.2 lladdr 02:00:00:xx:xx:xx REACHABLE"
+    const lines = stdout.split("\n").filter((line) => line.trim());
+    let cleared = 0;
+
+    for (const line of lines) {
+      const match = line.match(/^(\d+\.\d+\.\d+\.\d+)\s/);
+      if (match && match[1]) {
+        const ip = match[1];
+        try {
+          await execCommand(`ip neigh del ${ip} dev ${BRIDGE_NAME}`, true);
+          cleared++;
+        } catch {
+          // Entry might already be gone
+        }
+      }
+    }
+
+    console.log(`Cleared ${cleared} ARP entries from bridge`);
+  } catch (error) {
+    console.log(
+      `Warning: Could not flush ARP cache: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+  }
+}
+
+/**
  * Clean up orphaned proxy rules for a specific runner on startup
  *
  * This function removes all iptables rules tagged with this runner's name.
