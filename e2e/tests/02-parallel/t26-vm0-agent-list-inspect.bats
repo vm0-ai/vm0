@@ -2,7 +2,7 @@
 
 load '../../helpers/setup'
 
-# vm0 agents list and inspect command tests
+# vm0 agent list and inspect command tests
 
 setup() {
     # Create temporary test directory
@@ -22,20 +22,20 @@ teardown() {
 # Help Tests
 # ============================================
 
-@test "vm0 agents list --help shows command description" {
-    run $CLI_COMMAND agents list --help
+@test "vm0 agent list --help shows command description" {
+    run $CLI_COMMAND agent list --help
     assert_success
     assert_output --partial "List all agent composes"
 }
 
-@test "vm0 agents ls alias works" {
-    run $CLI_COMMAND agents ls --help
+@test "vm0 agent ls alias works" {
+    run $CLI_COMMAND agent ls --help
     assert_success
     assert_output --partial "List all agent composes"
 }
 
-@test "vm0 agents inspect --help shows command description" {
-    run $CLI_COMMAND agents inspect --help
+@test "vm0 agent inspect --help shows command description" {
+    run $CLI_COMMAND agent inspect --help
     assert_success
     assert_output --partial "Inspect an agent compose"
 }
@@ -44,7 +44,7 @@ teardown() {
 # List Command Tests
 # ============================================
 
-@test "vm0 agents list shows composed agent with table headers" {
+@test "vm0 agent list shows composed agent with table headers" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -61,8 +61,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents list"
-    run $CLI_COMMAND agents list
+    echo "# Step 3: Run vm0 agent list"
+    run $CLI_COMMAND agent list
     assert_success
     assert_output --partial "$AGENT_NAME"
     assert_output --partial "NAME"
@@ -70,7 +70,7 @@ EOF
     assert_output --partial "UPDATED"
 }
 
-@test "vm0 agents list shows version as 8-char hex" {
+@test "vm0 agent list shows version as 8-char hex" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -87,8 +87,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents list and check version format"
-    run $CLI_COMMAND agents list
+    echo "# Step 3: Run vm0 agent list and check version format"
+    run $CLI_COMMAND agent list
     assert_success
     # Version should be 8 hex characters
     assert_output --regexp "[0-9a-f]{8}"
@@ -98,7 +98,7 @@ EOF
 # Inspect Command Tests
 # ============================================
 
-@test "vm0 agents inspect shows agent details" {
+@test "vm0 agent inspect shows agent details" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -115,8 +115,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents inspect"
-    run $CLI_COMMAND agents inspect "$AGENT_NAME"
+    echo "# Step 3: Run vm0 agent inspect"
+    run $CLI_COMMAND agent inspect "$AGENT_NAME"
     assert_success
     assert_output --partial "Name:"
     assert_output --partial "Version:"
@@ -124,7 +124,7 @@ EOF
     assert_output --partial "Provider:"
 }
 
-@test "vm0 agents inspect with version specifier" {
+@test "vm0 agent inspect with version specifier" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -143,13 +143,13 @@ EOF
     VERSION=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Captured version: $VERSION"
 
-    echo "# Step 3: Run vm0 agents inspect with version specifier"
-    run $CLI_COMMAND agents inspect "$AGENT_NAME:$VERSION"
+    echo "# Step 3: Run vm0 agent inspect with version specifier"
+    run $CLI_COMMAND agent inspect "$AGENT_NAME:$VERSION"
     assert_success
     assert_output --partial "$VERSION"
 }
 
-@test "vm0 agents inspect with :latest tag" {
+@test "vm0 agent inspect with :latest tag" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -166,14 +166,14 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents inspect with :latest"
-    run $CLI_COMMAND agents inspect "$AGENT_NAME:latest"
+    echo "# Step 3: Run vm0 agent inspect with :latest"
+    run $CLI_COMMAND agent inspect "$AGENT_NAME:latest"
     assert_success
     assert_output --partial "Name:"
     assert_output --partial "Version:"
 }
 
-@test "vm0 agents inspect with --no-sources flag" {
+@test "vm0 agent inspect with --no-sources flag" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -190,8 +190,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents inspect with --no-sources flag"
-    run $CLI_COMMAND agents inspect "$AGENT_NAME" --no-sources
+    echo "# Step 3: Run vm0 agent inspect with --no-sources flag"
+    run $CLI_COMMAND agent inspect "$AGENT_NAME" --no-sources
     assert_success
     assert_output --partial "Name:"
 }
@@ -200,13 +200,13 @@ EOF
 # Error Handling Tests
 # ============================================
 
-@test "vm0 agents inspect fails for nonexistent agent" {
-    run $CLI_COMMAND agents inspect "nonexistent-agent-12345"
+@test "vm0 agent inspect fails for nonexistent agent" {
+    run $CLI_COMMAND agent inspect "nonexistent-agent-12345"
     assert_failure
     assert_output --partial "not found"
 }
 
-@test "vm0 agents inspect fails for nonexistent version" {
+@test "vm0 agent inspect fails for nonexistent version" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -223,8 +223,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agents inspect with nonexistent version"
-    run $CLI_COMMAND agents inspect "$AGENT_NAME:deadbeef"
+    echo "# Step 3: Run vm0 agent inspect with nonexistent version"
+    run $CLI_COMMAND agent inspect "$AGENT_NAME:deadbeef"
     assert_failure
     assert_output --partial "Version not found"
 }

@@ -160,7 +160,7 @@ export const inspectCommand = new Command()
         } catch (error) {
           if (error instanceof Error && error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-            console.error(chalk.dim("  Run: vm0 agents list"));
+            console.error(chalk.dim("  Run: vm0 agent list"));
             process.exit(1);
           }
           throw error;
