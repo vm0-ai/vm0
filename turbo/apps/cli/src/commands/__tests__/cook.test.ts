@@ -67,6 +67,7 @@ describe("cook command - environment variable check", () => {
         env: [],
         vars: [mockRefs[0]!, mockRefs[2]!],
         secrets: [mockRefs[1]!],
+        credentials: [],
       });
 
       // The actual function is internal, so we verify the logic through integration

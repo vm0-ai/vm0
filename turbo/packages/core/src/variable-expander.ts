@@ -1,6 +1,6 @@
 /**
  * Unified variable expansion for agent compose configurations
- * Supports ${{ vars.xxx }} and ${{ secrets.xxx }} syntax
+ * Supports ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} syntax
  * Note: ${{ env.xxx }} is parsed but not currently used (reserved for future)
  */
 
@@ -8,7 +8,7 @@
  * Variable reference with source and name
  */
 export interface VariableReference {
-  source: "env" | "vars" | "secrets";
+  source: "env" | "vars" | "secrets" | "credentials";
   name: string;
   fullMatch: string;
 }
@@ -20,6 +20,7 @@ export interface VariableSources {
   env?: Record<string, string | undefined>;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
+  credentials?: Record<string, string>;
 }
 
 /**
@@ -32,10 +33,10 @@ export interface ExpansionResult<T> {
 
 /**
  * Regex pattern for ${{ source.name }} syntax
- * Matches: ${{ env.VAR }}, ${{ vars.foo }}, ${{ secrets.key }}
+ * Matches: ${{ env.VAR }}, ${{ vars.foo }}, ${{ secrets.key }}, ${{ credentials.KEY }}
  */
 const VARIABLE_PATTERN =
-  /\$\{\{\s*(env|vars|secrets)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+  /\$\{\{\s*(env|vars|secrets|credentials)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
  * Extract all variable references from a string
@@ -49,7 +50,7 @@ export function extractVariableReferencesFromString(
   const matches = value.matchAll(VARIABLE_PATTERN);
 
   for (const match of matches) {
-    const source = match[1] as "env" | "vars" | "secrets";
+    const source = match[1] as "env" | "vars" | "secrets" | "credentials";
     const name = match[2]!;
     refs.push({
       source,
@@ -109,7 +110,7 @@ export function expandVariablesInString(
   const seenMissing = new Set<string>();
 
   const result = value.replace(VARIABLE_PATTERN, (fullMatch, source, name) => {
-    const typedSource = source as "env" | "vars" | "secrets";
+    const typedSource = source as "env" | "vars" | "secrets" | "credentials";
     const sourceObj = sources[typedSource];
 
     if (sourceObj === undefined) {
@@ -213,11 +214,13 @@ export function groupVariablesBySource(refs: VariableReference[]): {
   env: VariableReference[];
   vars: VariableReference[];
   secrets: VariableReference[];
+  credentials: VariableReference[];
 } {
   const groups = {
     env: [] as VariableReference[],
     vars: [] as VariableReference[],
     secrets: [] as VariableReference[],
+    credentials: [] as VariableReference[],
   };
 
   for (const ref of refs) {
@@ -249,6 +252,11 @@ export function formatMissingVariables(missing: VariableReference[]): string {
   if (grouped.secrets.length > 0) {
     const names = grouped.secrets.map((r) => r.name).join(", ");
     messages.push(`Secrets: ${names}`);
+  }
+
+  if (grouped.credentials.length > 0) {
+    const names = grouped.credentials.map((r) => r.name).join(", ");
+    messages.push(`Credentials: ${names}`);
   }
 
   return messages.join("\n");

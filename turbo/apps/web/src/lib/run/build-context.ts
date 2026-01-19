@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { NotFoundError } from "../errors";
 import { logger } from "../logger";
@@ -11,6 +12,8 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
+import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getCredentialValues } from "../credential/credential-service";
 
 const log = logger("run:build-context");
 
@@ -179,12 +182,44 @@ export async function buildExecutionContext(
     throw new NotFoundError("Agent compose could not be loaded");
   }
 
-  // Step 4: Expand environment variables from compose config using vars and secrets
+  // Step 4: Check if credentials are needed and fetch them from the user's scope
+  let credentials: Record<string, string> | undefined;
+
+  // Extract variable references from compose to check for credentials
+  const compose = agentCompose as {
+    agents?: Record<string, { environment?: Record<string, string> }>;
+  };
+  if (compose?.agents) {
+    const agents = Object.values(compose.agents);
+    const firstAgent = agents[0];
+    if (firstAgent?.environment) {
+      const refs = extractVariableReferences(firstAgent.environment);
+      const grouped = groupVariablesBySource(refs);
+
+      // If credentials are referenced, fetch them from the user's scope
+      if (grouped.credentials.length > 0) {
+        log.debug(
+          `Credentials referenced in environment: ${grouped.credentials.map((r) => r.name).join(", ")}`,
+        );
+
+        const userScope = await getUserScopeByClerkId(params.userId);
+        if (userScope) {
+          credentials = await getCredentialValues(userScope.id);
+          log.debug(
+            `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
+          );
+        }
+      }
+    }
+  }
+
+  // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
   // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     vars,
     secrets,
+    credentials,
     params.userId,
     params.runId,
   );

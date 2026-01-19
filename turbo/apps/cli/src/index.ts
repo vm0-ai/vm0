@@ -19,6 +19,7 @@ import { initCommand } from "./commands/init";
 import { setupGithubCommand } from "./commands/setup-github";
 import { scheduleCommand } from "./commands/schedule";
 import { usageCommand } from "./commands/usage";
+import { credentialCommand } from "./commands/credential";
 
 const program = new Command();
 
@@ -86,6 +87,7 @@ program.addCommand(initCommand);
 program.addCommand(setupGithubCommand);
 program.addCommand(scheduleCommand);
 program.addCommand(usageCommand);
+program.addCommand(credentialCommand);
 
 export { program };
 

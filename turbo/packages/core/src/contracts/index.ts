@@ -163,6 +163,19 @@ export {
   type UpdateScopeRequest,
 } from "./scopes";
 export {
+  credentialsMainContract,
+  credentialsByNameContract,
+  credentialNameSchema,
+  credentialResponseSchema,
+  credentialListResponseSchema,
+  setCredentialRequestSchema,
+  type CredentialsMainContract,
+  type CredentialsByNameContract,
+  type CredentialResponse,
+  type CredentialListResponse,
+  type SetCredentialRequest,
+} from "./credentials";
+export {
   sessionsByIdContract,
   checkpointsByIdContract,
   sessionResponseSchema,

@@ -25,6 +25,8 @@ import {
   publicArtifactByIdContract,
   publicVolumesListContract,
   publicVolumeByIdContract,
+  credentialsMainContract,
+  credentialsByNameContract,
   agentComposeContentSchema,
   type ApiErrorResponse,
   type ScheduleResponse,
@@ -36,6 +38,8 @@ import {
   type PublicArtifactDetail,
   type PublicVolume,
   type PublicVolumeDetail,
+  type CredentialResponse,
+  type CredentialListResponse,
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getToken } from "./config";
@@ -1171,6 +1175,112 @@ class ApiClient {
     }
 
     return response.json() as Promise<UsageResponse>;
+  }
+
+  /**
+   * List credentials (metadata only, no values)
+   */
+  async listCredentials(): Promise<CredentialListResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(credentialsMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.list();
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to list credentials";
+    throw new Error(message);
+  }
+
+  /**
+   * Get credential by name (metadata only, no value)
+   */
+  async getCredential(name: string): Promise<CredentialResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(credentialsByNameContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.get({
+      params: { name },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Credential "${name}" not found`;
+    throw new Error(message);
+  }
+
+  /**
+   * Set (create or update) a credential
+   */
+  async setCredential(body: {
+    name: string;
+    value: string;
+    description?: string;
+  }): Promise<CredentialResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(credentialsMainContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.set({ body });
+
+    if (result.status === 200 || result.status === 201) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to set credential";
+    throw new Error(message);
+  }
+
+  /**
+   * Delete a credential by name
+   */
+  async deleteCredential(name: string): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(credentialsByNameContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: true,
+    });
+
+    const result = await client.delete({
+      params: { name },
+    });
+
+    if (result.status === 204) {
+      return;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message =
+      errorBody.error?.message || `Credential "${name}" not found`;
+    throw new Error(message);
   }
 
   /**

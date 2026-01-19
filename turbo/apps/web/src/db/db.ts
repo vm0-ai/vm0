@@ -14,6 +14,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
+import * as credentialSchema from "./schema/credential";
 
 export const schema = {
   ...userSchema,
@@ -32,4 +33,5 @@ export const schema = {
   ...scopeSchema,
   ...runnerSchema,
   ...agentScheduleSchema,
+  ...credentialSchema,
 };

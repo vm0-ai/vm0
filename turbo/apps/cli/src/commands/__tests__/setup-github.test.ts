@@ -30,6 +30,7 @@ describe("setup-github command", () => {
       env: [],
       vars: [],
       secrets: [],
+      credentials: [],
     });
   });
 
@@ -246,6 +247,7 @@ agents:
             fullMatch: "${{ secrets.API_KEY }}",
           },
         ],
+        credentials: [],
       });
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
@@ -270,6 +272,7 @@ agents:
           { source: "vars", name: "REGION", fullMatch: "${{ vars.REGION }}" },
         ],
         secrets: [],
+        credentials: [],
       });
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
@@ -544,6 +547,7 @@ agents:
             fullMatch: `\${{ secrets.${TEST_SECRET} }}`,
           },
         ],
+        credentials: [],
       });
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
@@ -646,6 +650,7 @@ agents:
             fullMatch: "${{ secrets.MISSING_SECRET }}",
           },
         ],
+        credentials: [],
       });
 
       await setupGithubCommand.parseAsync(["node", "cli", "--yes"]);

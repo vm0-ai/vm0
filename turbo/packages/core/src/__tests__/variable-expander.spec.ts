@@ -40,6 +40,18 @@ describe("extractVariableReferencesFromString", () => {
     });
   });
 
+  test("extracts credentials variables", () => {
+    const refs = extractVariableReferencesFromString(
+      "${{ credentials.MY_API_KEY }}",
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toEqual({
+      source: "credentials",
+      name: "MY_API_KEY",
+      fullMatch: "${{ credentials.MY_API_KEY }}",
+    });
+  });
+
   test("extracts multiple variables from same string", () => {
     const refs = extractVariableReferencesFromString(
       "host: ${{ env.HOST }}, port: ${{ vars.port }}",
@@ -157,6 +169,17 @@ describe("expandVariablesInString", () => {
       secrets: { token: "secret123" },
     });
     expect(result.result).toBe("Token: secret123");
+    expect(result.missingVars).toHaveLength(0);
+  });
+
+  test("expands credentials variables", () => {
+    const result = expandVariablesInString(
+      "Key: ${{ credentials.MY_API_KEY }}",
+      {
+        credentials: { MY_API_KEY: "cred-value-123" },
+      },
+    );
+    expect(result.result).toBe("Key: cred-value-123");
     expect(result.missingVars).toHaveLength(0);
   });
 
@@ -318,12 +341,14 @@ describe("groupVariablesBySource", () => {
       { source: "env" as const, name: "A", fullMatch: "" },
       { source: "vars" as const, name: "B", fullMatch: "" },
       { source: "secrets" as const, name: "C", fullMatch: "" },
-      { source: "env" as const, name: "D", fullMatch: "" },
+      { source: "credentials" as const, name: "D", fullMatch: "" },
+      { source: "env" as const, name: "E", fullMatch: "" },
     ];
     const grouped = groupVariablesBySource(refs);
     expect(grouped.env).toHaveLength(2);
     expect(grouped.vars).toHaveLength(1);
     expect(grouped.secrets).toHaveLength(1);
+    expect(grouped.credentials).toHaveLength(1);
   });
 });
 
@@ -333,11 +358,13 @@ describe("formatMissingVariables", () => {
       { source: "env" as const, name: "A", fullMatch: "" },
       { source: "vars" as const, name: "b", fullMatch: "" },
       { source: "secrets" as const, name: "c", fullMatch: "" },
+      { source: "credentials" as const, name: "MY_KEY", fullMatch: "" },
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A");
     expect(msg).toContain("CLI variables (--vars): b");
     expect(msg).toContain("Secrets: c");
+    expect(msg).toContain("Credentials: MY_KEY");
   });
 
   test("lists multiple vars per source", () => {

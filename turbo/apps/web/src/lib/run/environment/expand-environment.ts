@@ -20,7 +20,7 @@ interface ExpandedEnvironmentResult {
 
 /**
  * Extract and expand environment variables from agent compose config
- * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
+ * Expands ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} references
  *
  * When experimental_firewall.experimental_seal_secrets is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
@@ -28,6 +28,7 @@ interface ExpandedEnvironmentResult {
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
+ * @param credentials Credentials for expansion (from platform credential store)
  * @param userId User ID for token binding
  * @param runId Run ID for token binding (required for seal_secrets)
  * @returns Expanded environment variables and seal_secrets flag
@@ -36,6 +37,7 @@ export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
+  credentials: Record<string, string> | undefined,
   userId: string,
   runId: string,
 ): ExpandedEnvironmentResult {
@@ -111,16 +113,62 @@ export function expandEnvironmentFromCompose(
     }
   }
 
+  // Process credentials if needed
+  let processedCredentials: Record<string, string> | undefined;
+  if (grouped.credentials.length > 0) {
+    const credentialNames = grouped.credentials.map((r) => r.name);
+
+    // Check for missing credentials
+    const missingCredentials = credentialNames.filter(
+      (name) => !credentials || !credentials[name],
+    );
+    if (missingCredentials.length > 0) {
+      throw new BadRequestError(
+        `Missing required credentials: ${missingCredentials.join(", ")}. Use 'vm0 credential set ${missingCredentials[0]}=<value>' to add them.`,
+      );
+    }
+
+    // If seal_secrets is enabled, encrypt credentials into proxy tokens
+    if (sealSecretsEnabled) {
+      log.debug(
+        `Seal secrets enabled for run ${runId}, encrypting ${credentialNames.length} credential(s)`,
+      );
+      processedCredentials = {};
+      for (const name of credentialNames) {
+        const credentialValue = credentials![name];
+        if (credentialValue) {
+          // Create encrypted proxy token bound to this run
+          processedCredentials[name] = createProxyToken(
+            runId,
+            userId,
+            name,
+            credentialValue,
+          );
+        }
+      }
+    } else {
+      // Default: use plaintext credentials
+      processedCredentials = {};
+      for (const name of credentialNames) {
+        processedCredentials[name] = credentials![name]!;
+      }
+    }
+  }
+
   // Build sources for expansion
   const sources: {
     vars?: Record<string, string>;
     secrets?: Record<string, string>;
+    credentials?: Record<string, string>;
   } = {};
   if (vars && Object.keys(vars).length > 0) {
     sources.vars = vars;
   }
   if (secrets && Object.keys(secrets).length > 0) {
     sources.secrets = secrets;
+  }
+  if (processedCredentials && Object.keys(processedCredentials).length > 0) {
+    sources.credentials = processedCredentials;
   }
 
   // If no sources provided and there are vars references, warn
@@ -135,7 +183,7 @@ export function expandEnvironmentFromCompose(
   // Expand all variables
   const { result, missingVars } = expandVariables(environment, sources);
 
-  // Check for missing vars (secrets already checked above)
+  // Check for missing vars (secrets and credentials already checked above)
   const missingVarNames = missingVars
     .filter((v) => v.source === "vars")
     .map((v) => v.name);

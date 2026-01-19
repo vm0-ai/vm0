@@ -1,1 +1,6 @@
-export { encryptSecretsMap, decryptSecretsMap } from "./secrets-encryption";
+export {
+  encryptSecretsMap,
+  decryptSecretsMap,
+  encryptCredentialValue,
+  decryptCredentialValue,
+} from "./secrets-encryption";
