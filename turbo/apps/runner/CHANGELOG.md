@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/vm0-ai/vm0/compare/runner-v2.10.0...runner-v2.11.0) (2026-01-19)
+
+
+### Features
+
+* **ci:** add core build step to deploy-runner-production job ([#1306](https://github.com/vm0-ai/vm0/issues/1306)) ([4586694](https://github.com/vm0-ai/vm0/commit/45866948e94b252d30b44829f0b95952645916f9))
+
 ## [2.10.0](https://github.com/vm0-ai/vm0/compare/runner-v2.9.0...runner-v2.10.0) (2026-01-19)
 
 
