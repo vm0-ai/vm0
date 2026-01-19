@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Install Claude Code CLI globally (matching e2b template)
-RUN npm install -g @anthropic-ai/claude-code@latest
+RUN npm install -g @anthropic-ai/claude-code@2.1.12
 
 # Install Codex CLI globally (matching e2b template)
 # See: turbo/scripts/e2b/vm0-codex/template.ts
