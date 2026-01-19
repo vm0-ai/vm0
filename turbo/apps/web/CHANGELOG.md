@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.14.0](https://github.com/vm0-ai/vm0/compare/web-v9.13.1...web-v9.14.0) (2026-01-19)
+
+
+### Features
+
+* **billing:** integrate clerk billing mvp ([#1308](https://github.com/vm0-ai/vm0/issues/1308)) ([836a295](https://github.com/vm0-ai/vm0/commit/836a2953fe5eaae70450b544d0a155f8b30e0742))
+
 ## [9.13.1](https://github.com/vm0-ai/vm0/compare/web-v9.13.0...web-v9.13.1) (2026-01-19)
 
 

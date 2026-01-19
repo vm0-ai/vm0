@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.2](https://github.com/vm0-ai/vm0/compare/cli-v5.7.1...cli-v5.7.2) (2026-01-19)
+
+
+### Bug Fixes
+
+* **cli:** simplify comment in index.ts ([#1323](https://github.com/vm0-ai/vm0/issues/1323)) ([604df37](https://github.com/vm0-ai/vm0/commit/604df37402ae2e0d11cfc852c94ef0275d46881a))
+
 ## [5.7.1](https://github.com/vm0-ai/vm0/compare/cli-v5.7.0...cli-v5.7.1) (2026-01-19)
 
 
