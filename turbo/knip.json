@@ -1,31 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
-    "apps/api": {
-      "entry": [
-        "app/**/page.{ts,tsx}",
-        "app/**/layout.{ts,tsx}",
-        "app/api/**/route.{ts,tsx}",
-        "app/v1/**/route.{ts,tsx}",
-        "middleware.{ts,tsx}",
-        "middleware.cors.ts",
-        "i18n.ts",
-        "navigation.ts",
-        "scripts/*.ts",
-        "**/__tests__/**/*.{test,spec}.{ts,tsx}",
-        "**/*.{test,spec}.{ts,tsx}"
-      ],
-      "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
-      "ignoreDependencies": [
-        "@vm0/ui",
-        "e2b",
-        "@testing-library/react",
-        "@types/tar"
-      ],
-      "next": {
-        "entry": ["next.config.{js,ts,mjs}"]
-      }
-    },
     "apps/web": {
       "entry": [
         "app/**/page.{ts,tsx}",
@@ -139,8 +114,6 @@
     "apps/runner/src/lib/firecracker/index.ts",
     "apps/runner/src/lib/firecracker/guest.ts",
     "apps/runner/src/lib/firecracker/network.ts",
-    "apps/api/src/test/setup.ts",
-    "apps/api/src/lib/schedule/schedule-service.ts",
     "apps/web/src/test/setup.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/cli/src/lib/api/api-client.ts",

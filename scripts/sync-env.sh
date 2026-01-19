@@ -43,17 +43,6 @@ else
   echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
 fi
 
-# Sync api app environment (.env.local.tpl → turbo/apps/api/.env.local)
-if [ -f "$PROJECT_ROOT/.env.local.tpl" ]; then
-  echo ""
-  echo "Syncing: $PROJECT_ROOT/.env.local.tpl"
-  echo "Output:  $PROJECT_ROOT/turbo/apps/api/.env.local"
-  op inject --force -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/api/.env.local"
-  echo "✓ Synced successfully"
-else
-  echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
-fi
-
 # Sync platform app environment (turbo/apps/platform/.env.local.tpl → turbo/apps/platform/.env.local)
 if [ -f "$PROJECT_ROOT/turbo/apps/platform/.env.local.tpl" ]; then
   echo ""
