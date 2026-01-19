@@ -1139,6 +1139,39 @@ class ApiClient {
   }
 
   /**
+   * Get usage statistics
+   */
+  async getUsage(options: { startDate: string; endDate: string }): Promise<{
+    period: { start: string; end: string };
+    summary: { total_runs: number; total_run_time_ms: number };
+    daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
+  }> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams({
+      start_date: options.startDate,
+      end_date: options.endDate,
+    });
+
+    const response = await fetch(`${baseUrl}/api/usage?${params}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as { error?: { message?: string } };
+      throw new Error(error.error?.message || "Failed to fetch usage data");
+    }
+
+    return response.json() as Promise<{
+      period: { start: string; end: string };
+      summary: { total_runs: number; total_run_time_ms: number };
+      daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
+    }>;
+  }
+
+  /**
    * Generic GET request
    */
   async get(path: string): Promise<Response> {

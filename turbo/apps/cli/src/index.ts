@@ -18,6 +18,7 @@ import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { setupGithubCommand } from "./commands/setup-github";
 import { scheduleCommand } from "./commands/schedule";
+import { usageCommand } from "./commands/usage";
 
 const program = new Command();
 
@@ -84,6 +85,7 @@ program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(setupGithubCommand);
 program.addCommand(scheduleCommand);
+program.addCommand(usageCommand);
 
 export { program };
 
