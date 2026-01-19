@@ -27,6 +27,7 @@ jobs:
     # Run for all events, but only do actual detection for PRs
     outputs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
+      api-changed: ${{ steps.detect.outputs.api-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
@@ -47,6 +48,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run_cli_e2e }}" = "true" ]; then
             echo "Manual trigger with CLI E2E enabled"
             echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "api-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=false" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
@@ -59,6 +61,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "Not a PR, assuming all apps changed"
             echo "web-changed=true" >> $GITHUB_OUTPUT
+            echo "api-changed=true" >> $GITHUB_OUTPUT
             echo "docs-changed=true" >> $GITHUB_OUTPUT
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
@@ -78,6 +81,16 @@ jobs:
           else
             echo "Changes detected in web app"
             echo "web-changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check api app
+          cd ../api
+          if npx turbo-ignore; then
+            echo "No changes detected in api app"
+            echo "api-changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in api app"
+            echo "api-changed=true" >> $GITHUB_OUTPUT
           fi
 
           # Check docs app
@@ -206,20 +219,21 @@ jobs:
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: pnpm test
 
-  # Deploy web application with database
-  deploy-web:
+  # Deploy api application with database (api is the source of truth for database)
+  deploy-api:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     # Deploy if:
-    # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
+    # - It's a PR and api, web, CLI, runner, platform, or e2e changed (all need api deployment for E2E tests)
     # - It's a workflow_dispatch with run_cli_e2e enabled
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.api-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
+      database-url: ${{ steps.branch.outputs.database-url }}
     permissions:
       contents: read
       pull-requests: write
@@ -239,6 +253,57 @@ jobs:
           action: "create"
 
       # Step 2: Deploy to Vercel with database URL
+      - name: Deploy API to Vercel
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          environment: preview
+          deployment-env: api
+          environment-variables: |
+            DATABASE_URL=${{ steps.branch.outputs.database-url }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
+            E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
+            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
+            SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
+            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
+            AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+            AXIOM_DATASET_SUFFIX=dev
+            USE_MOCK_CLAUDE=true
+            CRON_SECRET=${{ secrets.CRON_SECRET }}
+            DEBUG=*
+          meta-branch: ${{ github.head_ref }}
+          meta-pr: ${{ github.event.pull_request.number }}
+
+  # Deploy web application (shares database with api)
+  deploy-web:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+    needs: [change-detection, deploy-api]
+    # Deploy if it's a PR, web changed, and api was deployed (to reuse its database branch)
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.change-detection.outputs.web-changed == 'true' &&
+      needs.deploy-api.outputs.preview-url != ''
+    outputs:
+      preview-url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      # Deploy to Vercel with database URL from deploy-api
       - name: Deploy Web to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -249,7 +314,7 @@ jobs:
           environment: preview
           deployment-env: web
           environment-variables: |
-            DATABASE_URL=${{ steps.branch.outputs.database-url }}
+            DATABASE_URL=${{ needs.deploy-api.outputs.database-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
@@ -301,7 +366,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web]
+    needs: [change-detection, deploy-api]
     # Only deploy if it's a PR and platform changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
     permissions:
@@ -323,7 +388,7 @@ jobs:
           deployment-env: platform
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
+            VITE_API_URL=${{ needs.deploy-api.outputs.preview-url }}
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
 
@@ -332,8 +397,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [deploy-api]
+    if: needs.deploy-api.outputs.preview-url != ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -363,10 +428,10 @@ jobs:
 
       - name: Authenticate CLI
         run: |
-          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
+          echo "Authenticating CLI with ${{ needs.deploy-api.outputs.preview-url }}"
           cd e2e && npm run auth
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -382,8 +447,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [e2e-auth, deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [e2e-auth, deploy-api]
+    if: needs.deploy-api.outputs.preview-url != ''
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -402,7 +467,7 @@ jobs:
           echo "=== Running API E2E Tests ==="
           ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Run CLI E2E tests - Phase 1: Serial tests (establishes e2e-stable scope)
@@ -410,8 +475,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [e2e-auth, deploy-web, lint, test]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [e2e-auth, deploy-api, lint, test]
+    if: needs.deploy-api.outputs.preview-url != ''
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -447,7 +512,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -457,7 +522,7 @@ jobs:
           ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
 
@@ -474,8 +539,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [cli-e2e-01-serial, deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [cli-e2e-01-serial, deploy-api]
+    if: needs.deploy-api.outputs.preview-url != ''
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -514,7 +579,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -524,7 +589,7 @@ jobs:
           ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
           echo "✅ Parallel tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
 
@@ -541,8 +606,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [cli-e2e-01-serial, deploy-api, deploy-runner-start]
+    if: needs.deploy-api.outputs.preview-url != ''
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -581,7 +646,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -591,7 +656,7 @@ jobs:
           RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -605,7 +670,7 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Prepare runner: lock host, build bundle, install deps (runs parallel with deploy-web)
+  # Prepare runner: lock host, build bundle, install deps (runs parallel with deploy-api)
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
@@ -846,13 +911,13 @@ jobs:
           echo ""
           echo "=== VM Benchmark Complete ==="
 
-  # Start runner after deploy-web provides preview URL
+  # Start runner after deploy-api provides preview URL
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web, deploy-runner-prepare]
-    if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
+    needs: [change-detection, deploy-api, deploy-runner-prepare]
+    if: needs.deploy-api.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
     outputs:
       runner-deployed: ${{ steps.start.outputs.runner-deployed }}
       runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
@@ -870,7 +935,7 @@ jobs:
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
