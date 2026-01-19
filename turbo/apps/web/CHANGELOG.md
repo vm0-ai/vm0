@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.13.0](https://github.com/vm0-ai/vm0/compare/web-v9.12.1...web-v9.13.0) (2026-01-19)
+
+
+### Features
+
+* **web:** add instatus status widget to landing page ([#1313](https://github.com/vm0-ai/vm0/issues/1313)) ([be54222](https://github.com/vm0-ai/vm0/commit/be54222b5f11951e1d370da1b63940548867ca58))
+
 ## [9.12.1](https://github.com/vm0-ai/vm0/compare/web-v9.12.0...web-v9.12.1) (2026-01-17)
 
 
