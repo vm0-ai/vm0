@@ -259,6 +259,13 @@ export async function allocateIP(vmId: string): Promise<string> {
       );
     }
 
+    // Debug: log current allocation state
+    const allocatedCount = Object.keys(registry.allocations).length;
+    const allocatedIPs = Object.keys(registry.allocations).sort();
+    console.log(
+      `[IP Pool] Current state: ${allocatedCount} IPs allocated [${allocatedIPs.join(", ")}], assigning ${ip}`,
+    );
+
     // Add allocation to registry
     registry.allocations[ip] = {
       vmId,
