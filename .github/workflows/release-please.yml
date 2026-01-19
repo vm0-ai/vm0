@@ -241,10 +241,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
       - name: Build runner bundle
         run: |
           # Build runner (use subshell to preserve working directory)
-          (cd turbo && pnpm -F @vm0/runner build)
+          (cd turbo && pnpm --filter @vm0/runner build)
 
           # Create staging directory with built files
           STAGING_DIR="/tmp/vm0-runner-bundle"
