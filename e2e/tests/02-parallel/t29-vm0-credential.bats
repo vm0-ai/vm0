@@ -11,13 +11,13 @@ setup() {
 
 teardown() {
     # Clean up test credential if it exists
-    $CLI_COMMAND credential delete "$TEST_CRED_NAME" 2>/dev/null || true
+    $CLI_COMMAND credential delete -y "$TEST_CRED_NAME" 2>/dev/null || true
 }
 
 @test "vm0 credential --help shows command description" {
     run $CLI_COMMAND credential --help
     assert_success
-    assert_output --partial "Manage credentials"
+    assert_output --partial "Manage stored credentials"
     assert_output --partial "list"
     assert_output --partial "set"
     assert_output --partial "delete"
@@ -120,8 +120,8 @@ teardown() {
     # Create a credential
     $CLI_COMMAND credential set "$TEST_CRED_NAME" "to-be-deleted"
 
-    # Delete it
-    run $CLI_COMMAND credential delete "$TEST_CRED_NAME"
+    # Delete it (use -y to skip confirmation)
+    run $CLI_COMMAND credential delete -y "$TEST_CRED_NAME"
     assert_success
     assert_output --partial "Credential \"$TEST_CRED_NAME\" deleted"
 
@@ -135,14 +135,14 @@ teardown() {
 }
 
 @test "vm0 credential delete fails for non-existent credential" {
-    run $CLI_COMMAND credential delete "NONEXISTENT_CRED_$(date +%s)"
+    run $CLI_COMMAND credential delete -y "NONEXISTENT_CRED_$(date +%s)"
     assert_failure
     assert_output --partial "not found"
 }
 
 @test "vm0 credential list shows empty state message" {
     # Delete any existing test credentials first
-    $CLI_COMMAND credential delete "$TEST_CRED_NAME" 2>/dev/null || true
+    $CLI_COMMAND credential delete -y "$TEST_CRED_NAME" 2>/dev/null || true
 
     # List credentials - might have other credentials from other tests
     # Just verify the command works
