@@ -27,13 +27,13 @@ function createTestRequest(
 }
 
 // Mock the auth module
-let mockUserId: string | null = "test-user-list";
+let mockUserId: string | null = "test-user-list-api";
 vi.mock("../../../../../../src/lib/auth/get-user-id", () => ({
   getUserId: async () => mockUserId,
 }));
 
 describe("GET /api/agent/composes/list", () => {
-  const testUserId = "test-user-list";
+  const testUserId = "test-user-list-api";
   const testScopeId = randomUUID();
   const testScopeSlug = `test-list-${testScopeId.slice(0, 8)}`;
 
