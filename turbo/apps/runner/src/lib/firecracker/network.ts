@@ -276,6 +276,18 @@ export async function deleteTapDevice(
     console.log(`TAP device ${tapDevice} deleted`);
   }
 
+  // Clear ARP cache entry for the VM's IP to prevent stale MAC associations
+  // This ensures that when the same IP is reused by a new VM with a different MAC,
+  // the host will properly learn the new MAC via ARP instead of using cached entries
+  if (guestIp) {
+    try {
+      await execCommand(`ip neigh del ${guestIp} dev ${BRIDGE_NAME}`, true);
+      console.log(`ARP entry cleared for ${guestIp}`);
+    } catch {
+      // ARP entry might not exist, that's fine
+    }
+  }
+
   // Release IP back to the pool if provided
   if (guestIp) {
     await releaseIP(guestIp);
