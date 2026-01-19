@@ -87,7 +87,6 @@ runs:
           echo "Attempting without --pooled flag..."
           DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }})
         fi
-        # Don't echo the full URL as it triggers secret masking in GitHub Actions outputs
         echo "DATABASE_URL obtained (length: ${#DATABASE_URL})"
         echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
         echo "Neon branch ready: $BRANCH_NAME"
