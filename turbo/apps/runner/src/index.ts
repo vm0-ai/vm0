@@ -1,7 +1,8 @@
 // VM0 Runner - Self-hosted runner that polls the VM0 API server and executes agent jobs in isolated Firecracker microVMs
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
-import { statusCommand } from "./commands/status.js";
+import { doctorCommand } from "./commands/doctor.js";
+import { killCommand } from "./commands/kill.js";
 import { benchmarkCommand } from "./commands/benchmark.js";
 
 // Version is injected at build time by tsup
@@ -15,7 +16,8 @@ program
   .description("Self-hosted runner for VM0 agents");
 
 program.addCommand(startCommand);
-program.addCommand(statusCommand);
+program.addCommand(doctorCommand);
+program.addCommand(killCommand);
 program.addCommand(benchmarkCommand);
 
 program.parse();

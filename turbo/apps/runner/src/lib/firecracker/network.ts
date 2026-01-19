@@ -27,8 +27,8 @@ export interface VMNetworkConfig {
 /**
  * Bridge configuration
  */
-const BRIDGE_NAME = "vm0br0";
-const BRIDGE_IP = "172.16.0.1";
+export const BRIDGE_NAME = "vm0br0";
+export const BRIDGE_IP = "172.16.0.1";
 const BRIDGE_NETMASK = "255.255.255.0";
 const BRIDGE_CIDR = "172.16.0.0/24";
 
@@ -401,4 +401,133 @@ export async function removeVMProxyRules(
   }
 
   console.log(`Proxy rules cleanup complete for VM ${vmIp}`);
+}
+
+/**
+ * List all TAP devices that match our naming pattern (tap + 8 hex chars)
+ */
+export async function listTapDevices(): Promise<string[]> {
+  try {
+    const result = await execCommand("ip -o link show type tuntap", false);
+    const devices: string[] = [];
+
+    const lines = result.split("\n");
+    for (const line of lines) {
+      const match = line.match(/^\d+:\s+(tap[a-f0-9]{8}):/);
+      if (match && match[1]) {
+        devices.push(match[1]);
+      }
+    }
+
+    return devices;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Check if the network bridge exists and is up
+ */
+export async function checkBridgeStatus(): Promise<{
+  exists: boolean;
+  ip?: string;
+  up?: boolean;
+}> {
+  try {
+    const result = await execCommand(`ip -o addr show ${BRIDGE_NAME}`, false);
+    // Output: "3: vm0br0    inet 172.16.0.1/24 ..."
+    const ipMatch = result.match(/inet\s+(\d+\.\d+\.\d+\.\d+)/);
+    const upMatch = result.includes("UP") || result.includes("state UP");
+
+    return {
+      exists: true,
+      ip: ipMatch?.[1] ?? BRIDGE_IP,
+      up: upMatch,
+    };
+  } catch {
+    return { exists: false };
+  }
+}
+
+/**
+ * Check if a port is in use (for proxy check)
+ */
+export async function isPortInUse(port: number): Promise<boolean> {
+  try {
+    await execCommand(`ss -tln | grep -q ":${port} "`, false);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * iptables NAT rule targeting VM subnet
+ */
+export interface IptablesRule {
+  sourceIp: string;
+  destPort: number;
+  redirectPort: number;
+}
+
+/**
+ * Scan iptables NAT PREROUTING rules for VM-related redirects
+ * Returns rules that redirect traffic from VM subnet (172.16.0.0/24)
+ */
+export async function listIptablesNatRules(): Promise<IptablesRule[]> {
+  try {
+    // Get PREROUTING rules in numeric format
+    const result = await execCommand("iptables -t nat -L PREROUTING -n", true);
+    const rules: IptablesRule[] = [];
+
+    // Parse output lines like:
+    // REDIRECT   tcp  --  172.16.0.98   0.0.0.0/0   tcp dpt:80  redir ports 8270
+    const lines = result.split("\n");
+    for (const line of lines) {
+      // Match REDIRECT rules from VM subnet
+      const match = line.match(
+        /REDIRECT\s+tcp\s+--\s+(172\.16\.0\.\d+)\s+\S+\s+tcp\s+dpt:(\d+)\s+redir\s+ports\s+(\d+)/,
+      );
+      if (match && match[1] && match[2] && match[3]) {
+        rules.push({
+          sourceIp: match[1],
+          destPort: parseInt(match[2], 10),
+          redirectPort: parseInt(match[3], 10),
+        });
+      }
+    }
+
+    return rules;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Check which iptables rules are orphaned (redirect to ports with no service)
+ */
+export async function findOrphanedIptablesRules(
+  rules: IptablesRule[],
+  activeVmIps: Set<string>,
+  expectedProxyPort: number,
+): Promise<IptablesRule[]> {
+  const orphaned: IptablesRule[] = [];
+
+  for (const rule of rules) {
+    // Rule is orphaned if:
+    // 1. Source IP is not an active VM, OR
+    // 2. Redirect port doesn't match expected proxy port
+    const isActiveVm = activeVmIps.has(rule.sourceIp);
+    const correctPort = rule.redirectPort === expectedProxyPort;
+
+    if (!isActiveVm || !correctPort) {
+      // Double-check: is the redirect port actually listening?
+      const portListening = await isPortInUse(rule.redirectPort);
+      if (!portListening) {
+        orphaned.push(rule);
+      }
+    }
+  }
+
+  return orphaned;
 }
