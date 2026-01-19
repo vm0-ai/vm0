@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.11.0](https://github.com/vm0-ai/vm0/compare/runner-v2.10.0...runner-v2.11.0) (2026-01-19)
+
+
+### Features
+
+* **ci:** add core build step to deploy-runner-production job ([#1306](https://github.com/vm0-ai/vm0/issues/1306)) ([4586694](https://github.com/vm0-ai/vm0/commit/45866948e94b252d30b44829f0b95952645916f9))
+
+## [2.10.0](https://github.com/vm0-ai/vm0/compare/runner-v2.9.0...runner-v2.10.0) (2026-01-19)
+
+
+### Features
+
+* **ci:** use turbo for runner npm build to resolve dependency chain ([#1304](https://github.com/vm0-ai/vm0/issues/1304)) ([df76ed3](https://github.com/vm0-ai/vm0/commit/df76ed37d275bf62d3ce3d92103550e54dfd7e8d))
+
 ## [2.9.0](https://github.com/vm0-ai/vm0/compare/runner-v2.8.5...runner-v2.9.0) (2026-01-17)
 
 
