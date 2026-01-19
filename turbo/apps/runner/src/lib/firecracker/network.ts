@@ -214,6 +214,46 @@ async function tapDeviceExists(tapDevice: string): Promise<boolean> {
 }
 
 /**
+ * Clear any stale iptables rules for a specific IP
+ *
+ * This is called when a new VM is assigned an IP to ensure no leftover
+ * REDIRECT rules from previous VMs interfere with network connectivity.
+ */
+async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
+  try {
+    // Get all PREROUTING rules
+    const { stdout } = await execAsync(
+      "sudo iptables -t nat -S PREROUTING 2>/dev/null || true",
+    );
+
+    // Find any rules that reference this IP
+    const lines = stdout.split("\n");
+    const rulesForIP = lines.filter((line) => line.includes(`-s ${ip}`));
+
+    if (rulesForIP.length === 0) {
+      return;
+    }
+
+    console.log(
+      `Clearing ${rulesForIP.length} stale iptables rule(s) for IP ${ip}`,
+    );
+
+    // Delete each rule
+    for (const rule of rulesForIP) {
+      // Convert -A to -D for deletion
+      const deleteRule = rule.replace("-A ", "-D ");
+      try {
+        await execCommand(`iptables -t nat ${deleteRule}`);
+      } catch {
+        // Rule might already be gone
+      }
+    }
+  } catch {
+    // Ignore errors - this is defensive cleanup
+  }
+}
+
+/**
  * Create and configure a TAP device for a VM
  * Uses the IP pool manager for race-safe IP allocation
  */
@@ -224,6 +264,10 @@ export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
 
   // Allocate IP from pool (race-safe with file locking)
   const guestIp = await allocateIP(vmId);
+
+  // Clear any stale iptables rules for this IP from previous VMs
+  // This prevents leftover REDIRECT rules from interfering with network
+  await clearStaleIptablesRulesForIP(guestIp);
 
   console.log(`Creating TAP device ${tapDevice} for VM ${vmId}...`);
 
