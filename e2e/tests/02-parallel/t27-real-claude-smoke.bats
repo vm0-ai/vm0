@@ -18,14 +18,14 @@ teardown() {
 }
 
 @test "real claude executes simple prompt with --debug-no-mock-claude" {
-    # Skip if ANTHROPIC_API_KEY is not set
+    # Fail if ANTHROPIC_API_KEY is not set (required for this test)
     if [ -z "$ANTHROPIC_API_KEY" ]; then
-        skip "ANTHROPIC_API_KEY not set - required for real Claude test"
+        fail "ANTHROPIC_API_KEY not set - required for real Claude test"
     fi
 
-    # Skip if not authenticated (requires VM0_TOKEN or logged in)
+    # Fail if not authenticated
     if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
-        skip "Not authenticated - run 'vm0 auth login' first"
+        fail "Not authenticated - run 'vm0 auth login' first"
     fi
 
     cd "$TEST_DIR"
@@ -50,17 +50,9 @@ ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 EOF
 
     echo "# Step 3: Run cook with --debug-no-mock-claude flag..."
-    # Use a simple prompt that Claude can execute quickly
-    # Timeout after 120 seconds to catch hangs
-    run timeout 120 $CLI_COMMAND cook --debug-no-mock-claude "echo 'hello from real claude' && exit 0"
+    run timeout 120 $CLI_COMMAND cook --debug-no-mock-claude "1+1=?"
 
-    echo "# Step 4: Verify run completed..."
-    # Should succeed and produce JSONL output
+    echo "# Step 4: Verify run completed with result..."
     assert_success
-
-    echo "# Step 5: Check for expected output markers..."
-    # Should see init event
-    assert_output --partial "[init]"
-    # Should complete successfully
-    assert_output --partial "Run completed successfully"
+    assert_output --partial "[result]"
 }
