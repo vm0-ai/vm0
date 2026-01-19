@@ -243,13 +243,11 @@ export async function allocateIP(vmId: string): Promise<string> {
 
   try {
     // Read current registry
-    let registry = readRegistry();
+    const registry = readRegistry();
 
-    // Scan actual TAP devices
-    const activeTaps = await scanTapDevices();
-
-    // Reconcile registry with actual state (self-healing)
-    registry = reconcileRegistry(registry, activeTaps);
+    // Note: Reconciliation with TAP devices is intentionally NOT done during
+    // allocateIP() to avoid race conditions. The reconciliation happens only
+    // at runner startup via cleanupOrphanedAllocations().
 
     // Find a free IP
     const ip = findFreeIP(registry);
@@ -343,6 +341,96 @@ export async function releaseIP(ip: string): Promise<void> {
       );
     } else {
       console.log(`[IP Pool] IP ${ip} was not in registry, nothing to release`);
+    }
+  } finally {
+    try {
+      fs.unlinkSync(lockMarker);
+    } catch {
+      // Ignore errors on unlock
+    }
+  }
+}
+
+/**
+ * Clean up orphaned IP allocations on runner startup
+ *
+ * This reconciles the IP registry with actual TAP devices on the bridge.
+ * It removes allocations for IPs whose TAP devices no longer exist (crashed VMs).
+ *
+ * IMPORTANT: This should ONLY be called at runner startup, never during
+ * the allocateIP() hot path, to avoid race conditions where:
+ * 1. Process A allocates IP, registry updated
+ * 2. Process B calls allocateIP, scans TAPs, doesn't see A's TAP yet
+ * 3. Process B reconciles and removes A's allocation
+ * 4. Process B allocates the same IP -> collision!
+ */
+export async function cleanupOrphanedAllocations(): Promise<void> {
+  await ensureRunDir();
+
+  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
+  const startTime = Date.now();
+  let lockAcquired = false;
+
+  // Wait for lock
+  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
+    try {
+      fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
+      lockAcquired = true;
+      break;
+    } catch {
+      try {
+        const pidStr = fs.readFileSync(lockMarker, "utf-8");
+        const pid = parseInt(pidStr, 10);
+        try {
+          process.kill(pid, 0);
+        } catch {
+          fs.unlinkSync(lockMarker);
+          continue;
+        }
+      } catch {
+        // Can't read lock file, retry
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
+      );
+    }
+  }
+
+  if (!lockAcquired) {
+    throw new Error(
+      `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
+    );
+  }
+
+  try {
+    console.log("[IP Pool] Cleaning up orphaned allocations...");
+
+    // Read current registry
+    const registry = readRegistry();
+    const beforeCount = Object.keys(registry.allocations).length;
+
+    if (beforeCount === 0) {
+      console.log("[IP Pool] No allocations in registry, nothing to clean up");
+      return;
+    }
+
+    // Scan actual TAP devices on the bridge
+    const activeTaps = await scanTapDevices();
+    console.log(
+      `[IP Pool] Found ${activeTaps.size} active TAP device(s) on bridge`,
+    );
+
+    // Reconcile registry with actual state
+    const reconciled = reconcileRegistry(registry, activeTaps);
+    const afterCount = Object.keys(reconciled.allocations).length;
+
+    if (afterCount !== beforeCount) {
+      writeRegistry(reconciled);
+      console.log(
+        `[IP Pool] Cleaned up ${beforeCount - afterCount} orphaned allocation(s)`,
+      );
+    } else {
+      console.log("[IP Pool] No orphaned allocations found");
     }
   } finally {
     try {
