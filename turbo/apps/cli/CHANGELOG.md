@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.7.1](https://github.com/vm0-ai/vm0/compare/cli-v5.7.0...cli-v5.7.1) (2026-01-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.1
+
 ## [5.7.0](https://github.com/vm0-ai/vm0/compare/cli-v5.6.0...cli-v5.7.0) (2026-01-15)
 
 

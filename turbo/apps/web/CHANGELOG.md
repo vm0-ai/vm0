@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.13.1](https://github.com/vm0-ai/vm0/compare/web-v9.13.0...web-v9.13.1) (2026-01-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.1
+
 ## [9.13.0](https://github.com/vm0-ai/vm0/compare/web-v9.12.1...web-v9.13.0) (2026-01-19)
 
 
