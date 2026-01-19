@@ -1,7 +1,15 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import {
   validateCredentialName,
   listCredentials,
@@ -18,6 +26,10 @@ import { eq } from "drizzle-orm";
 import { BadRequestError, NotFoundError } from "../../errors";
 
 describe("Credential Service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   describe("validateCredentialName", () => {
     it("should accept valid names", () => {
       expect(() => validateCredentialName("MY_API_KEY")).not.toThrow();
