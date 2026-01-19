@@ -38,6 +38,13 @@ const LOCK_TIMEOUT_MS = 10000;
 const LOCK_RETRY_INTERVAL_MS = 100;
 
 /**
+ * Grace period for new allocations (in milliseconds)
+ * Entries newer than this are kept during reconciliation even if TAP doesn't exist yet.
+ * This handles the window between IP allocation and TAP device creation.
+ */
+const ALLOCATION_GRACE_PERIOD_MS = 30000; // 30 seconds
+
+/**
  * Registry entry for an allocated IP
  */
 interface IPAllocation {
@@ -120,6 +127,7 @@ async function scanTapDevices(): Promise<Map<string, string>> {
  * Reconcile the registry with actual TAP device state
  * - Remove entries for IPs whose TAP devices no longer exist
  * - This handles crash recovery where VMs were killed but registry wasn't updated
+ * - Entries within the grace period are kept even if TAP doesn't exist yet
  */
 function reconcileRegistry(
   registry: IPRegistry,
@@ -127,10 +135,21 @@ function reconcileRegistry(
 ): IPRegistry {
   const reconciled: IPRegistry = { allocations: {} };
   const activeTapNames = new Set(activeTaps.keys());
+  const now = Date.now();
 
   for (const [ip, allocation] of Object.entries(registry.allocations)) {
-    // Keep allocation only if its TAP device still exists
+    // Check if this allocation is within the grace period
+    const allocatedTime = new Date(allocation.allocatedAt).getTime();
+    const isWithinGracePeriod =
+      now - allocatedTime < ALLOCATION_GRACE_PERIOD_MS;
+
+    // Keep allocation if:
+    // 1. Its TAP device exists, OR
+    // 2. It's within the grace period (TAP might not be created yet)
     if (activeTapNames.has(allocation.tapDevice)) {
+      reconciled.allocations[ip] = allocation;
+    } else if (isWithinGracePeriod) {
+      // Keep recent allocation - TAP might be in process of being created
       reconciled.allocations[ip] = allocation;
     } else {
       console.log(
