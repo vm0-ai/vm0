@@ -79,6 +79,13 @@ export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
 
+// Usage API types
+export interface UsageResponse {
+  period: { start: string; end: string };
+  summary: { total_runs: number; total_run_time_ms: number };
+  daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
+}
+
 // CLI-specific types (not in @vm0/core or have different structure)
 export interface CreateComposeResponse {
   composeId: string;
@@ -1141,11 +1148,10 @@ class ApiClient {
   /**
    * Get usage statistics
    */
-  async getUsage(options: { startDate: string; endDate: string }): Promise<{
-    period: { start: string; end: string };
-    summary: { total_runs: number; total_run_time_ms: number };
-    daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
-  }> {
+  async getUsage(options: {
+    startDate: string;
+    endDate: string;
+  }): Promise<UsageResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
@@ -1164,11 +1170,7 @@ class ApiClient {
       throw new Error(error.error?.message || "Failed to fetch usage data");
     }
 
-    return response.json() as Promise<{
-      period: { start: string; end: string };
-      summary: { total_runs: number; total_run_time_ms: number };
-      daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
-    }>;
+    return response.json() as Promise<UsageResponse>;
   }
 
   /**
