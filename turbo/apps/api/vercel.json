@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=web",
+  "buildCommand": "cd ../.. && pnpm run build --filter=api",
   "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": ".next",
   "crons": [
