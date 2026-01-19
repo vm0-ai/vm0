@@ -220,7 +220,7 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Build Runner
-        run: cd turbo && pnpm -F @vm0/runner build
+        run: cd turbo && pnpm turbo run build --filter=@vm0/runner
 
       - name: Publish to npm with OIDC
         run: cd turbo/apps/runner/dist && npm publish --access public

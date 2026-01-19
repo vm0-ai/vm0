@@ -1,4 +1,4 @@
-// VM0 Runner - Polls the API server and executes jobs in isolated Firecracker microVMs
+// VM0 Runner - Self-hosted runner that polls the API server and executes agent jobs in isolated Firecracker microVMs
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
