@@ -38,6 +38,8 @@ export interface BuildContextParams {
   agentName?: string;
   resumedFromCheckpointId?: string;
   continuedFromSessionId?: string;
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude?: boolean;
 }
 
 /**
@@ -208,5 +210,7 @@ export async function buildExecutionContext(
     agentName: params.agentName,
     resumedFromCheckpointId: params.resumedFromCheckpointId,
     continuedFromSessionId: params.continuedFromSessionId,
+    // Debug flag
+    debugNoMockClaude: params.debugNoMockClaude,
   };
 }

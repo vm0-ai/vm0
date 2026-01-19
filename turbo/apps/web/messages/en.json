@@ -82,9 +82,14 @@
     "blog": "Blog",
     "skills": "Skills",
     "glossary": "Glossary",
+    "pricing": "Pricing",
     "github": "GitHub",
     "contact": "Schedule a demo",
     "joinWaitlist": "Join waitlist"
+  },
+  "pricing": {
+    "title": "Choose Your Plan",
+    "subtitle": "Start free and scale as you grow. No credit card required."
   },
   "footer": {
     "tagline": "Build agents and automate workflows with natural language",

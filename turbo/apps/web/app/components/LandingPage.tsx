@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
+import Script from "next/script";
 import { useTranslations } from "next-intl";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
@@ -701,6 +702,12 @@ export default function LandingPage() {
       </section>
 
       <Footer />
+
+      {/* Instatus Status Widget */}
+      <Script
+        src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+        strategy="lazyOnload"
+      />
     </>
   );
 }

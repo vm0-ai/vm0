@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.11.1](https://github.com/vm0-ai/vm0/compare/runner-v2.11.0...runner-v2.11.1) (2026-01-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.6.1
+
 ## [2.11.0](https://github.com/vm0-ai/vm0/compare/runner-v2.10.0...runner-v2.11.0) (2026-01-19)
 
 

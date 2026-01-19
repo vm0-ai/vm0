@@ -1,5 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Receipt } from "lucide-react";
+import { SubscriptionDetailsButton } from "@clerk/clerk-react/experimental";
 import {
   NAVIGATION_CONFIG,
   FOOTER_NAV_ITEMS,
@@ -8,6 +9,7 @@ import {
 } from "../../signals/layout/navigation.ts";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { NavLink } from "./nav-link.tsx";
+import { ClerkProvider } from "./clerk-provider.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function Sidebar() {
@@ -79,6 +81,15 @@ export function Sidebar() {
       {/* Footer navigation - padding: 8px, gap: 4px */}
       <div className="p-2">
         <div className="flex flex-col gap-1">
+          {/* Bill button - opens subscription management modal */}
+          <ClerkProvider>
+            <SubscriptionDetailsButton>
+              <button className="flex w-full items-center gap-2 p-2 h-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                <Receipt className="h-4 w-4 shrink-0" />
+                <span className="text-sm leading-5">Bill</span>
+              </button>
+            </SubscriptionDetailsButton>
+          </ClerkProvider>
           {FOOTER_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.id}

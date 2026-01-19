@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.1](https://github.com/vm0-ai/vm0/compare/core-v4.6.0...core-v4.6.1) (2026-01-19)
+
+
+### Bug Fixes
+
+* **sandbox:** use ignore for stdin to prevent claude code hang ([#1316](https://github.com/vm0-ai/vm0/issues/1316)) ([5e4a279](https://github.com/vm0-ai/vm0/commit/5e4a2790a79459a05da4430f8222f0fa23fd502c))
+
 ## [4.6.0](https://github.com/vm0-ai/vm0/compare/core-v4.5.0...core-v4.6.0) (2026-01-14)
 
 

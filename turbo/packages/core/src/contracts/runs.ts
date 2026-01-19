@@ -33,6 +33,9 @@ const unifiedRunRequestSchema = z.object({
   secrets: z.record(z.string(), z.string()).optional(),
   volumeVersions: z.record(z.string(), z.string()).optional(),
 
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude: z.boolean().optional(),
+
   // Required
   prompt: z.string().min(1, "Missing prompt"),
 });

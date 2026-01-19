@@ -280,6 +280,8 @@ class ApiClient {
     vars?: Record<string, string>;
     secrets?: Record<string, string>;
     volumeVersions?: Record<string, string>;
+    // Debug flag (internal use only)
+    debugNoMockClaude?: boolean;
     // Required
     prompt: string;
   }): Promise<CreateRunResponse> {

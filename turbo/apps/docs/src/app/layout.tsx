@@ -41,6 +41,10 @@ export default function Layout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex flex-col min-h-screen">
         <RootProvider>{children}</RootProvider>
+        <Script
+          src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );

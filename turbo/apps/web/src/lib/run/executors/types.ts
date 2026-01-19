@@ -49,6 +49,9 @@ export interface PreparedContext {
   agentName: string | null;
   resumedFromCheckpointId: string | null;
   continuedFromSessionId: string | null;
+
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude: boolean;
 }
 
 /**

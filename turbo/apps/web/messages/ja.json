@@ -82,9 +82,14 @@
     "blog": "ブログ",
     "skills": "Skills",
     "glossary": "用語集",
+    "pricing": "料金",
     "github": "GitHub",
     "contact": "デモを予約",
     "joinWaitlist": "ウェイトリストに参加"
+  },
+  "pricing": {
+    "title": "プランを選択",
+    "subtitle": "無料から始めて、必要に応じて拡張。クレジットカード不要。"
   },
   "footer": {
     "tagline": "エージェントネイティブ開発のための最新ランタイム",
