@@ -22,6 +22,7 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
+  generateTestUserId,
 } from "../../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
@@ -78,7 +79,7 @@ function createAxiomAgentEvent(overrides: {
 
 describe("GET /api/agent/runs/:id/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testUserId = generateTestUserId();
   const testScopeId = randomUUID();
   const testAgentName = `test-agent-run-events-${Date.now()}`;
   const testRunId = randomUUID(); // UUID for agent run

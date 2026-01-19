@@ -217,7 +217,8 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
-        run: pnpm test
+        # Run tests sequentially to avoid database conflicts between api and web
+        run: pnpm turbo run test --concurrency=1
 
   # Deploy api application with database (api is the source of truth for database)
   deploy-api:

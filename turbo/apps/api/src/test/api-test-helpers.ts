@@ -21,6 +21,26 @@ import type { AgentComposeYaml } from "../types/agent-compose";
 import { generateSandboxToken } from "../lib/auth/sandbox-token";
 
 /**
+ * App name prefix for test isolation.
+ * When api and web tests run in parallel on the same database,
+ * using distinct prefixes prevents conflicts.
+ */
+const APP_NAME = "api";
+
+/**
+ * Generate a unique test user ID with app-specific prefix.
+ * This ensures tests from different apps (api, web) don't conflict
+ * when running in parallel against the same database.
+ *
+ * @param suffix - Optional suffix for additional uniqueness within a test file
+ * @returns A unique test user ID like "test-user-api-1234567890-123"
+ */
+export function generateTestUserId(suffix?: string): string {
+  const base = `test-user-${APP_NAME}-${Date.now()}-${process.pid}`;
+  return suffix ? `${base}-${suffix}` : base;
+}
+
+/**
  * Helper to create a NextRequest for testing.
  * Uses actual NextRequest constructor so ts-rest handler gets nextUrl property.
  */
