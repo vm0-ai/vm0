@@ -16,6 +16,7 @@ import { executeJob as executeJobInVM } from "../lib/executor.js";
 import {
   checkNetworkPrerequisites,
   setupBridge,
+  cleanupOrphanedProxyRules,
 } from "../lib/firecracker/network.js";
 import {
   initProxyManager,
@@ -149,6 +150,11 @@ export const startCommand = new Command("start")
       // Set up bridge network
       console.log("Setting up network bridge...");
       await setupBridge();
+
+      // Clean up orphaned proxy rules from previous runs
+      // This handles rules left behind after crashes or SIGKILL
+      console.log("Cleaning up orphaned proxy rules...");
+      await cleanupOrphanedProxyRules(config.name);
 
       // Initialize proxy for network security mode
       // The proxy is always started but only used when experimentalFirewall is enabled

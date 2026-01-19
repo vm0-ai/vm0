@@ -10,6 +10,7 @@
 
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
+import { allocateIP, releaseIP } from "./ip-pool.js";
 
 const execAsync = promisify(exec);
 
@@ -34,7 +35,7 @@ const BRIDGE_CIDR = "172.16.0.0/24";
 
 /**
  * Simple hash function to convert a string to a number
- * Used for generating unique MAC/IP from string vmId
+ * Used for generating unique MAC addresses from string vmId
  */
 function hashString(str: string): number {
   let hash = 0;
@@ -58,17 +59,6 @@ export function generateMacAddress(vmId: string): string {
   const b2 = (hash >> 8) & 0xff;
   const b3 = hash & 0xff;
   return `02:00:00:${b1.toString(16).padStart(2, "0")}:${b2.toString(16).padStart(2, "0")}:${b3.toString(16).padStart(2, "0")}`;
-}
-
-/**
- * Generate an IP address for a VM within the bridge subnet
- * VM IPs start at 172.16.0.2 (172.16.0.1 is the bridge)
- */
-export function generateGuestIp(vmId: string): string {
-  // Guest IPs: 172.16.0.2 - 172.16.0.254
-  const hash = hashString(vmId);
-  const lastOctet = (hash % 253) + 2;
-  return `172.16.0.${lastOctet}`;
 }
 
 /**
@@ -225,12 +215,15 @@ async function tapDeviceExists(tapDevice: string): Promise<boolean> {
 
 /**
  * Create and configure a TAP device for a VM
+ * Uses the IP pool manager for race-safe IP allocation
  */
 export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
   // TAP device name limited to 15 chars, use "tap" + first 8 chars of vmId
   const tapDevice = `tap${vmId.substring(0, 8)}`;
   const guestMac = generateMacAddress(vmId);
-  const guestIp = generateGuestIp(vmId);
+
+  // Allocate IP from pool (race-safe with file locking)
+  const guestIp = await allocateIP(vmId);
 
   console.log(`Creating TAP device ${tapDevice} for VM ${vmId}...`);
 
@@ -266,16 +259,27 @@ export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
 }
 
 /**
- * Delete a TAP device
+ * Delete a TAP device and optionally release its IP back to the pool
+ *
+ * @param tapDevice The TAP device name to delete
+ * @param guestIp Optional IP address to release back to the pool
  */
-export async function deleteTapDevice(tapDevice: string): Promise<void> {
+export async function deleteTapDevice(
+  tapDevice: string,
+  guestIp?: string,
+): Promise<void> {
   // Only attempt delete if device exists
   if (!(await tapDeviceExists(tapDevice))) {
     console.log(`TAP device ${tapDevice} does not exist, skipping delete`);
-    return;
+  } else {
+    await execCommand(`ip link delete ${tapDevice}`);
+    console.log(`TAP device ${tapDevice} deleted`);
   }
-  await execCommand(`ip link delete ${tapDevice}`);
-  console.log(`TAP device ${tapDevice} deleted`);
+
+  // Release IP back to the pool if provided
+  if (guestIp) {
+    await releaseIP(guestIp);
+  }
 }
 
 /**
@@ -328,26 +332,32 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
  * Set up iptables DNAT rules to redirect a specific VM's traffic to the proxy
  * Only VMs with network security enabled should have their traffic intercepted.
  *
+ * Rules are tagged with a comment for easy identification and cleanup.
+ * This follows the industry standard pattern used by Docker, Kubernetes, and firewalld.
+ *
  * @param vmIp The VM's IP address (e.g., "172.16.0.42")
  * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
+ * @param runnerName The runner name for comment tagging (used for cleanup)
  */
 export async function setupVMProxyRules(
   vmIp: string,
   proxyPort: number,
+  runnerName: string,
 ): Promise<void> {
+  const comment = `vm0:runner:${runnerName}`;
   console.log(
-    `Setting up proxy rules for VM ${vmIp} -> localhost:${proxyPort}`,
+    `Setting up proxy rules for VM ${vmIp} -> localhost:${proxyPort} (comment: ${comment})`,
   );
 
   // Redirect HTTP (port 80) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:80 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:80 added`);
   }
@@ -355,12 +365,12 @@ export async function setupVMProxyRules(
   // Redirect HTTPS (port 443) from this specific VM to proxy
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:443 already exists`);
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:443 added`);
   }
@@ -373,17 +383,20 @@ export async function setupVMProxyRules(
  *
  * @param vmIp The VM's IP address
  * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
+ * @param runnerName The runner name for comment matching
  */
 export async function removeVMProxyRules(
   vmIp: string,
   proxyPort: number,
+  runnerName: string,
 ): Promise<void> {
+  const comment = `vm0:runner:${runnerName}`;
   console.log(`Removing proxy rules for VM ${vmIp}...`);
 
   // Remove HTTP rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:80 removed`);
   } catch {
@@ -393,7 +406,7 @@ export async function removeVMProxyRules(
   // Remove HTTPS rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort}`,
+      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
     console.log(`Proxy rule for ${vmIp}:443 removed`);
   } catch {
@@ -530,4 +543,56 @@ export async function findOrphanedIptablesRules(
   }
 
   return orphaned;
+}
+
+/**
+ * Clean up orphaned proxy rules for a specific runner on startup
+ *
+ * This function removes all iptables rules tagged with this runner's name.
+ * It's called on runner startup to clean up rules left by previous runs
+ * that may have crashed or been killed without proper cleanup.
+ *
+ * @param runnerName The runner name to clean up rules for
+ */
+export async function cleanupOrphanedProxyRules(
+  runnerName: string,
+): Promise<void> {
+  const comment = `vm0:runner:${runnerName}`;
+  console.log(`Cleaning up orphaned proxy rules for runner '${runnerName}'...`);
+
+  try {
+    // List all PREROUTING rules in save format (-S gives us the exact command syntax)
+    const rules = await execCommand("iptables -t nat -S PREROUTING", false);
+
+    // Find rules with our runner's comment
+    const ourRules = rules.split("\n").filter((rule) => rule.includes(comment));
+
+    if (ourRules.length === 0) {
+      console.log("No orphaned proxy rules found");
+      return;
+    }
+
+    console.log(`Found ${ourRules.length} orphaned rule(s) to clean up`);
+
+    // Delete each rule (convert -A to -D)
+    for (const rule of ourRules) {
+      const deleteRule = rule.replace("-A ", "-D ");
+      try {
+        await execCommand(`iptables -t nat ${deleteRule}`);
+        console.log(`Deleted orphaned rule: ${rule.substring(0, 80)}...`);
+      } catch {
+        console.log(
+          `Failed to delete rule (may already be gone): ${rule.substring(0, 80)}...`,
+        );
+      }
+    }
+
+    console.log("Orphaned proxy rules cleanup complete");
+  } catch (error) {
+    // If iptables command fails, log but continue
+    // This could happen if iptables is not available or we don't have permissions
+    console.log(
+      `Warning: Could not clean up orphaned rules: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+  }
 }

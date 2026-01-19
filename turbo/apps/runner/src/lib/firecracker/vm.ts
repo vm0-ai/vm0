@@ -311,9 +311,12 @@ export class FirecrackerVM {
       this.process = null;
     }
 
-    // Delete TAP device
+    // Delete TAP device and release IP back to pool
     if (this.networkConfig) {
-      await deleteTapDevice(this.networkConfig.tapDevice);
+      await deleteTapDevice(
+        this.networkConfig.tapDevice,
+        this.networkConfig.guestIp,
+      );
       this.networkConfig = null;
     }
 
