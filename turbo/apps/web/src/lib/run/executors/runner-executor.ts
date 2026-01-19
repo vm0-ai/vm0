@@ -52,6 +52,7 @@ class RunnerExecutor implements Executor {
       encryptedSecrets,
       cliAgentType: context.cliAgentType,
       experimentalFirewall: context.experimentalFirewall ?? undefined,
+      debugNoMockClaude: context.debugNoMockClaude || undefined,
     };
 
     // Insert into runner job queue

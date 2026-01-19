@@ -344,6 +344,7 @@ const runCmd = new Command()
     "Resume from conversation ID (for fine-grained control)",
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option("--debug-no-mock-claude")
   .action(
     async (
       identifier: string,
@@ -356,6 +357,7 @@ const runCmd = new Command()
         volumeVersion: Record<string, string>;
         conversation?: string;
         verbose?: boolean;
+        debugNoMockClaude?: boolean;
       },
     ) => {
       const startTimestamp = new Date(); // Capture command start time for elapsed calculation
@@ -495,6 +497,7 @@ const runCmd = new Command()
               ? options.volumeVersion
               : undefined,
           conversationId: options.conversation,
+          debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)
@@ -576,6 +579,7 @@ runCmd
     {},
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option("--debug-no-mock-claude")
   .action(
     async (
       checkpointId: string,
@@ -584,6 +588,7 @@ runCmd
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
+        debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
@@ -596,6 +601,7 @@ runCmd
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
+        debugNoMockClaude?: boolean;
       };
 
       const verbose = options.verbose || allOpts.verbose;
@@ -661,6 +667,8 @@ runCmd
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion
               : undefined,
+          debugNoMockClaude:
+            options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)
@@ -734,6 +742,7 @@ runCmd
     {},
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option("--debug-no-mock-claude")
   .action(
     async (
       agentSessionId: string,
@@ -742,6 +751,7 @@ runCmd
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
+        debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
@@ -754,6 +764,7 @@ runCmd
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
+        debugNoMockClaude?: boolean;
       };
 
       const verbose = options.verbose || allOpts.verbose;
@@ -819,6 +830,8 @@ runCmd
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion
               : undefined,
+          debugNoMockClaude:
+            options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)

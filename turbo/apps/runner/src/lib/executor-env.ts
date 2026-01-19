@@ -39,9 +39,9 @@ export function buildEnvironmentVariables(
     envVars.VERCEL_PROTECTION_BYPASS = vercelBypass;
   }
 
-  // Pass USE_MOCK_CLAUDE from host environment for testing
+  // Pass USE_MOCK_CLAUDE from host environment for testing (skip if debugNoMockClaude is set)
   const useMockClaude = process.env.USE_MOCK_CLAUDE;
-  if (useMockClaude) {
+  if (useMockClaude && !context.debugNoMockClaude) {
     envVars.USE_MOCK_CLAUDE = useMockClaude;
   }
 

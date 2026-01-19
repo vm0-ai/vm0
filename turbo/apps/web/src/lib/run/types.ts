@@ -79,4 +79,7 @@ export interface ExecutionContext {
   agentName?: string;
   resumedFromCheckpointId?: string;
   continuedFromSessionId?: string;
+
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude?: boolean;
 }

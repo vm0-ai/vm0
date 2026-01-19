@@ -243,6 +243,9 @@ export async function prepareForExecution(
     agentName: context.agentName || null,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
+
+    // Debug flag
+    debugNoMockClaude: context.debugNoMockClaude || false,
   };
 
   log.debug(`PreparedContext built for run ${context.runId}`);
