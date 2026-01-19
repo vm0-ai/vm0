@@ -72,7 +72,7 @@ authCommand
     await setupToken();
   });
 
-// Register compose, run, volume, artifact, cook, logs, and scope commands
+// Register all subcommands
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
