@@ -300,10 +300,18 @@
           }}
       tags: [prepare]
 
-    - name: Build rootfs
-      command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
+    - name: Build rootfs with retry on cache failure
       when: rootfs_needs_rebuild
       tags: [prepare]
+      block:
+        - name: Build rootfs
+          command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
+      rescue:
+        - name: Clear Docker buildkit cache after failure
+          command: docker builder prune -f
+
+        - name: Retry rootfs build after cache cleanup
+          command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
 
     - name: Store rootfs hash
       copy:

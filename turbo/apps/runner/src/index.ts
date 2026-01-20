@@ -1,4 +1,5 @@
 // VM0 Runner - Self-hosted runner that polls the VM0 API server and executes agent jobs in isolated Firecracker microVMs
+// Deployment: Added buildkit cache retry mechanism (issue #1328)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";
