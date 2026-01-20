@@ -304,7 +304,7 @@ export default function PricingPage() {
               {/* Master Plan */}
               <PricingCard
                 title="Master"
-                price="$39"
+                price="$45"
                 period="/month"
                 description="For diverse automation scenarios at scale. Build production workflows with advanced features."
                 features={[
