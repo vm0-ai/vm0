@@ -6,3 +6,5 @@ export * from "./storage-names";
 export * from "./github-url";
 export * from "./providers";
 export * from "./sandbox/scripts";
+export * from "./feature-switch-key";
+export * from "./feature-switch";
