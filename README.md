@@ -17,7 +17,7 @@
 
 [Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Join Waitlist](https://www.vm0.ai/sign-up) / [Discord](https://discord.gg/WMpAmHFfp6)
 
-`VM0` is the easiest way to run natural language-described workflows automatically, on schedule, and securely in remote sandbox environments.
+`VM0` runs natural language-described workflows automatically on schedule in remote sandbox environments (E2B containers or Firecracker microVMs with KVM isolation).
 
 ⭐ Star us on GitHub, it motivates us a lot! ⭐
 
