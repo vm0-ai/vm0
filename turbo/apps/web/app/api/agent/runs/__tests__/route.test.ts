@@ -54,7 +54,6 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
-    // Clear all mocks
     vi.clearAllMocks();
 
     // Initialize services
