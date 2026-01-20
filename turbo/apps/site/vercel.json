@@ -1,15 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=web",
+  "buildCommand": "cd ../.. && pnpm run build --filter=site",
   "installCommand": "cd ../.. && pnpm install",
-  "outputDirectory": ".next",
-  "crons": [
-    {
-      "path": "/api/cron/cleanup-sandboxes",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/execute-schedules",
-      "schedule": "* * * * *"
-    }
-  ]
+  "outputDirectory": ".next"
 }

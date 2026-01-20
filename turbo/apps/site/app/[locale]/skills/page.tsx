@@ -26,7 +26,10 @@ interface SkillMetadata {
 
 async function getSkills(): Promise<SkillMetadata[]> {
   // Fetch skills from web app API
-  const webAppUrl = process.env.WEB_APP_URL || process.env.NEXT_PUBLIC_WEB_APP_URL || "http://localhost:3000";
+  const webAppUrl =
+    process.env.WEB_APP_URL ||
+    process.env.NEXT_PUBLIC_WEB_APP_URL ||
+    "http://localhost:3000";
   const response = await fetch(`${webAppUrl}/api/web/skills`, {
     next: { revalidate: 3600 },
   });

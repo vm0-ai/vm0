@@ -27,7 +27,5 @@ export default clerkMiddleware(async (_auth, request) => {
 });
 
 export const config = {
-  matcher: [
-    "/((?!_next|_vercel|assets|.*\\..*|api|v1).*)",
-  ],
+  matcher: ["/((?!_next|_vercel|assets|.*\\..*|api|v1).*)"],
 };
