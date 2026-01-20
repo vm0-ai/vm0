@@ -57,14 +57,16 @@ function PricingCard({
             top: "16px",
             right: "16px",
             padding: "4px 12px",
-            background: "linear-gradient(135deg, #FF8C42 0%, #FFB74D 50%, #FFD54F 100%)",
+            background:
+              "linear-gradient(135deg, #FF8C42 0%, #FFB74D 50%, #FFD54F 100%)",
             borderRadius: "6px",
             fontSize: "11px",
             fontWeight: 700,
             color: "#000000",
             letterSpacing: "0.5px",
             textTransform: "uppercase",
-            boxShadow: "0 4px 20px rgba(255, 183, 77, 0.6), 0 0 30px rgba(255, 140, 66, 0.4)",
+            boxShadow:
+              "0 4px 20px rgba(255, 183, 77, 0.6), 0 0 30px rgba(255, 140, 66, 0.4)",
           }}
         >
           {badge}
@@ -221,7 +223,8 @@ function CustomPlanCard() {
             margin: 0,
           }}
         >
-          For large organizations with advanced customization and self-host options
+          For large organizations with advanced customization and self-host
+          options
         </p>
       </div>
       <a
@@ -254,7 +257,9 @@ export default function PricingPage() {
           <div>
             <h1 className="hero-title">Simple, simple pricing</h1>
             <p className="hero-description">
-              We&apos;re in early access, so we keep it straightforward. No gotchas, no surprises. Start free and scale when you&apos;re ready.
+              We&apos;re in early access, so we keep it straightforward. No
+              gotchas, no surprises. Start free and scale when you&apos;re
+              ready.
             </p>
           </div>
         </div>
@@ -603,9 +608,7 @@ function TableRow2({
           <polyline points="20 6 9 17 4 12" />
         </svg>
       ) : (
-        <span style={{ color: "var(--text-muted)", fontSize: "14px" }}>
-          —
-        </span>
+        <span style={{ color: "var(--text-muted)", fontSize: "14px" }}>—</span>
       );
     }
     return value;
@@ -657,13 +660,7 @@ function TableRow2({
   );
 }
 
-function FAQItem({
-  question,
-  answer,
-}: {
-  question: string;
-  answer: string;
-}) {
+function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   return (
