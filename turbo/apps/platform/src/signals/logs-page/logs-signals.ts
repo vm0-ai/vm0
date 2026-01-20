@@ -53,10 +53,9 @@ export const initLogs$ = command(({ set }, signal: AbortSignal) => {
   // Load first batch (no cursor for first batch)
   const firstBatch$ = computed(async (get) => {
     const fetchFn = get(fetch$);
-    const url = new URL("/v1/runs", window.location.origin);
-    url.searchParams.set("limit", "20");
+    const params = new URLSearchParams({ limit: "20" });
 
-    const response = await fetchFn(url.toString());
+    const response = await fetchFn(`/v1/runs?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch runs: ${response.statusText}`);
     }
@@ -76,13 +75,12 @@ export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Load next batch with cursor
   const nextBatch$ = computed(async (get) => {
     const fetchFn = get(fetch$);
-    const url = new URL("/v1/runs", window.location.origin);
+    const params = new URLSearchParams({ limit: "20" });
     if (cursor) {
-      url.searchParams.set("cursor", cursor);
+      params.set("cursor", cursor);
     }
-    url.searchParams.set("limit", "20");
 
-    const response = await fetchFn(url.toString());
+    const response = await fetchFn(`/v1/runs?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch runs: ${response.statusText}`);
     }
