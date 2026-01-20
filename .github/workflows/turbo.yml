@@ -32,7 +32,6 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +52,6 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=false" >> $GITHUB_OUTPUT
             echo "platform-changed=false" >> $GITHUB_OUTPUT
-            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -66,7 +64,6 @@ jobs:
             echo "cli-changed=true" >> $GITHUB_OUTPUT
             echo "runner-changed=true" >> $GITHUB_OUTPUT
             echo "platform-changed=true" >> $GITHUB_OUTPUT
-            echo "e2e-changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -111,17 +108,6 @@ jobs:
           else
             echo "No changes detected in CLI app"
             echo "cli-changed=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Check E2E tests directory (outside turbo workspace)
-          # Use origin/main...HEAD to compare entire PR branch against main
-          cd /__w/vm0/vm0
-          if git diff --name-only origin/main...HEAD | grep -q "^e2e/"; then
-            echo "Changes detected in E2E tests"
-            echo "e2e-changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No changes detected in E2E tests"
-            echo "e2e-changed=false" >> $GITHUB_OUTPUT
           fi
 
           # Check runner app
@@ -226,10 +212,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     # Deploy if:
-    # - It's a PR and web, CLI, runner, platform, or e2e changed (all need web deployment for E2E tests)
+    # - It's a PR and web, CLI, runner, site, or platform changed
     # - It's a workflow_dispatch with run_cli_e2e enabled
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.site-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
@@ -378,7 +364,6 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -427,8 +412,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [e2e-auth, deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [change-detection, e2e-auth, deploy-web]
+    if: needs.change-detection.outputs.web-changed == 'true'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -455,8 +440,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [e2e-auth, deploy-web, lint, test]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [change-detection, e2e-auth, deploy-web, lint, test]
+    if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -519,8 +507,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [cli-e2e-01-serial, deploy-web]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [change-detection, cli-e2e-01-serial, deploy-web]
+    if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -587,8 +578,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [cli-e2e-01-serial, deploy-web, deploy-runner-start]
-    if: needs.deploy-web.outputs.preview-url != ''
+    needs: [change-detection, cli-e2e-01-serial, deploy-web, deploy-runner-start]
+    if: |
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -658,7 +651,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     if: |
-      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.e2e-changed == 'true')) ||
+      (github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_cli_e2e == 'true')
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
