@@ -6,24 +6,6 @@ import { fetch$ } from "../fetch.ts";
 // Internal state: Array of computed promises, each representing a batch of data
 const internalLogs$ = state<Computed<Promise<LogResponse>>[]>([]);
 
-// Exported command: Set logs state (for tests and commands)
-export const setLogs$ = command<
-  void,
-  [
-    | Computed<Promise<LogResponse>>[]
-    | ((
-        prev: Computed<Promise<LogResponse>>[],
-      ) => Computed<Promise<LogResponse>>[]),
-  ]
->(({ set, get }, logsOrFn) => {
-  if (typeof logsOrFn === "function") {
-    const prev = get(internalLogs$);
-    set(internalLogs$, logsOrFn(prev));
-  } else {
-    set(internalLogs$, logsOrFn);
-  }
-});
-
 // Exported computed: Read-only access to logs
 export const logs$ = computed((get) => get(internalLogs$));
 
@@ -61,39 +43,54 @@ export const hasMore$ = computed(async (get) => {
   return response.pagination.has_more;
 });
 
-// Helper: Create computed that fetches a batch of runs
-export function createLogsFetch(
-  cursor: string | null,
-): Computed<Promise<LogResponse>> {
-  return computed(async (get) => {
-    const fetchFn = get(fetch$);
+// Command: Initialize logs with first batch (clears and loads)
+export const initLogs$ = command(({ set }, signal: AbortSignal) => {
+  signal.throwIfAborted();
 
-    // Build URL with query params
+  // Clear internal logs
+  set(internalLogs$, []);
+
+  // Load first batch (no cursor for first batch)
+  const firstBatch$ = computed(async (get) => {
+    const fetchFn = get(fetch$);
     const url = new URL("/v1/runs", window.location.origin);
-    if (cursor) {
-      url.searchParams.set("cursor", cursor);
-    }
     url.searchParams.set("limit", "20");
 
-    // Fetch from API
     const response = await fetchFn(url.toString());
-
     if (!response.ok) {
       throw new Error(`Failed to fetch runs: ${response.statusText}`);
     }
 
     return (await response.json()) as LogResponse;
   });
-}
+
+  set(internalLogs$, [firstBatch$]);
+});
 
 // Command: Load next batch of data
 export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const cursor = await get(currentCursor$);
-  const newComputed = createLogsFetch(cursor);
 
-  set(setLogs$, (prev) => [...prev, newComputed]);
+  // Load next batch with cursor
+  const nextBatch$ = computed(async (get) => {
+    const fetchFn = get(fetch$);
+    const url = new URL("/v1/runs", window.location.origin);
+    if (cursor) {
+      url.searchParams.set("cursor", cursor);
+    }
+    url.searchParams.set("limit", "20");
+
+    const response = await fetchFn(url.toString());
+    if (!response.ok) {
+      throw new Error(`Failed to fetch runs: ${response.statusText}`);
+    }
+
+    return (await response.json()) as LogResponse;
+  });
+
+  set(internalLogs$, (prev) => [...prev, nextBatch$]);
 });
 
 // Command: Navigate to run detail page

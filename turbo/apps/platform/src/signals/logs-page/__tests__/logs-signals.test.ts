@@ -1,17 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { computed } from "ccstate";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import {
   logs$,
-  setLogs$,
+  initLogs$,
   currentCursor$,
   hasMore$,
-  createLogsFetch,
   loadMore$,
   navigateToRunDetail$,
 } from "../logs-signals.ts";
-import type { LogResponse } from "../types.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 
 // Mock Clerk BEFORE any module evaluation using vi.hoisted
@@ -54,210 +51,89 @@ describe("logs-signals", () => {
       const logs = store.get(logs$);
       expect(logs).toStrictEqual([]);
     });
+  });
 
-    it("should allow setting logs array via setLogs$", () => {
-      const { store } = context;
-      const mockComputed$ = computed(() =>
-        Promise.resolve({
-          data: [],
-          pagination: { has_more: false, next_cursor: null },
-        }),
-      );
+  describe("initLogs$", () => {
+    it("should load first batch", () => {
+      const { store, signal } = context;
 
-      store.set(setLogs$, [mockComputed$]);
+      store.set(initLogs$, signal);
+
       const logs = store.get(logs$);
       expect(logs).toHaveLength(1);
     });
-  });
 
-  describe("currentCursor$", () => {
-    it("should return null when logs$ is empty", async () => {
-      const { store } = context;
-      store.set(setLogs$, []);
+    it("should clear existing logs before loading", async () => {
+      const { store, signal } = context;
 
-      const cursor = await store.get(currentCursor$);
-      expect(cursor).toBeNull();
+      // Load first batch
+      store.set(initLogs$, signal);
+      expect(store.get(logs$)).toHaveLength(1);
+
+      // Load more to have 2 batches
+      await store.set(loadMore$, signal);
+      expect(store.get(logs$)).toHaveLength(2);
+
+      // Initialize again should clear and start fresh
+      store.set(initLogs$, signal);
+      expect(store.get(logs$)).toHaveLength(1);
     });
 
-    it("should return null when last response has no cursor", async () => {
+    it("should respect abort signal", () => {
       const { store } = context;
-      const mockResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: false, next_cursor: null },
-      };
-      const mockComputed$ = computed(() => Promise.resolve(mockResponse));
+      const controller = new AbortController();
+      controller.abort();
 
-      store.set(setLogs$, [mockComputed$]);
-
-      const cursor = await store.get(currentCursor$);
-      expect(cursor).toBeNull();
-    });
-
-    it("should return cursor value when available", async () => {
-      const { store } = context;
-      const mockResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: true, next_cursor: "cursor123" },
-      };
-      const mockComputed$ = computed(() => Promise.resolve(mockResponse));
-
-      store.set(setLogs$, [mockComputed$]);
-
-      const cursor = await store.get(currentCursor$);
-      expect(cursor).toBe("cursor123");
-    });
-  });
-
-  describe("hasMore$", () => {
-    it("should return false when logs$ is empty", async () => {
-      const { store } = context;
-      store.set(setLogs$, []);
-
-      const hasMore = await store.get(hasMore$);
-      expect(hasMore).toBeFalsy();
-    });
-
-    it("should return false when has_more is false", async () => {
-      const { store } = context;
-      const mockResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: false, next_cursor: null },
-      };
-      const mockComputed$ = computed(() => Promise.resolve(mockResponse));
-
-      store.set(setLogs$, [mockComputed$]);
-
-      const hasMore = await store.get(hasMore$);
-      expect(hasMore).toBeFalsy();
-    });
-
-    it("should return true when has_more is true", async () => {
-      const { store } = context;
-      const mockResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: true, next_cursor: "cursor123" },
-      };
-      const mockComputed$ = computed(() => Promise.resolve(mockResponse));
-
-      store.set(setLogs$, [mockComputed$]);
-
-      const hasMore = await store.get(hasMore$);
-      expect(hasMore).toBeTruthy();
-    });
-  });
-
-  describe("createLogsFetch", () => {
-    it("should create computed that fetches without cursor", async () => {
-      const { store } = context;
-
-      // Use default MSW handler from v1-runs.ts
-      const fetchComputed$ = createLogsFetch(null);
-      const response = await store.get(fetchComputed$);
-
-      expect(response.data).toBeDefined();
-      expect(response.pagination).toBeDefined();
-      expect(response.pagination.has_more).toBeDefined();
-    });
-
-    it("should create computed that fetches with cursor", async () => {
-      const { store } = context;
-      const mockResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: false, next_cursor: null },
-      };
-
-      // Override MSW handler for this specific test
-      server.use(
-        http.get("/v1/runs", ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("cursor")).toBe("cursor123");
-          expect(url.searchParams.get("limit")).toBe("20");
-          return HttpResponse.json(mockResponse);
-        }),
-      );
-
-      const fetchComputed$ = createLogsFetch("cursor123");
-      const response = await store.get(fetchComputed$);
-
-      expect(response).toStrictEqual(mockResponse);
-    });
-
-    it("should throw error on fetch failure", async () => {
-      const { store } = context;
-
-      // Override MSW handler to return error
-      server.use(
-        http.get("/v1/runs", () =>
-          HttpResponse.json(null, {
-            status: 500,
-            statusText: "Internal Server Error",
-          }),
-        ),
-      );
-
-      const fetchComputed$ = createLogsFetch(null);
-
-      await expect(store.get(fetchComputed$)).rejects.toThrow(
-        "Failed to fetch runs",
-      );
+      expect(() => store.set(initLogs$, controller.signal)).toThrow();
     });
   });
 
   describe("loadMore$", () => {
-    it("should append computed to empty array", async () => {
+    it("should append new batch to existing logs", async () => {
       const { store, signal } = context;
 
-      store.set(setLogs$, []);
-      await store.set(loadMore$, signal);
+      // Initialize with first batch
+      store.set(initLogs$, signal);
+      expect(store.get(logs$)).toHaveLength(1);
 
-      const logs = store.get(logs$);
-      expect(logs).toHaveLength(1);
+      // Load more should append
+      await store.set(loadMore$, signal);
+      expect(store.get(logs$)).toHaveLength(2);
     });
 
-    it("should append computed to existing array", async () => {
+    it("should use cursor from previous batch", async () => {
       const { store, signal } = context;
-      const firstResponse: LogResponse = {
-        data: [],
-        pagination: { has_more: true, next_cursor: "cursor123" },
-      };
 
-      const firstComputed$ = computed(() => Promise.resolve(firstResponse));
-      store.set(setLogs$, [firstComputed$]);
-
-      // Override MSW handler for second fetch
+      // Mock API to return specific cursor
       server.use(
         http.get("/v1/runs", ({ request }) => {
           const url = new URL(request.url);
-          if (url.searchParams.get("cursor") === "cursor123") {
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            // First batch
+            return HttpResponse.json({
+              data: [],
+              pagination: { has_more: true, next_cursor: "cursor123" },
+            });
+          }
+
+          if (cursor === "cursor123") {
+            // Second batch
             return HttpResponse.json({
               data: [],
               pagination: { has_more: false, next_cursor: null },
             });
           }
+
           return HttpResponse.json(null, { status: 404 });
         }),
       );
 
+      store.set(initLogs$, signal);
       await store.set(loadMore$, signal);
 
-      const logs = store.get(logs$);
-      expect(logs).toHaveLength(2);
-    });
-
-    it("should use current cursor from logs$", async () => {
-      const { store, signal } = context;
-
-      // Use default MSW handler which returns mock data
-      store.set(setLogs$, []);
-      await store.set(loadMore$, signal);
-
-      // Verify we have one batch
-      expect(store.get(logs$)).toHaveLength(1);
-
-      // Verify currentCursor$ works
-      const cursor = await store.get(currentCursor$);
-      // Default handler returns next_cursor based on mock data
-      expect(cursor).toBeDefined();
+      expect(store.get(logs$)).toHaveLength(2);
     });
 
     it("should respect abort signal", async () => {
@@ -266,6 +142,62 @@ describe("logs-signals", () => {
       controller.abort();
 
       await expect(store.set(loadMore$, controller.signal)).rejects.toThrow();
+    });
+  });
+
+  describe("currentCursor$ and hasMore$", () => {
+    it("should return null cursor and false hasMore when no logs", async () => {
+      const { store } = context;
+
+      const cursor = await store.get(currentCursor$);
+      const hasMore = await store.get(hasMore$);
+
+      expect(cursor).toBeNull();
+      expect(hasMore).toBeFalsy();
+    });
+
+    it("should return cursor and hasMore from last batch", async () => {
+      const { store, signal } = context;
+
+      // Mock API response with cursor
+      server.use(
+        http.get("/v1/runs", () =>
+          HttpResponse.json({
+            data: [],
+            pagination: { has_more: true, next_cursor: "cursor456" },
+          }),
+        ),
+      );
+
+      store.set(initLogs$, signal);
+
+      const cursor = await store.get(currentCursor$);
+      const hasMore = await store.get(hasMore$);
+
+      expect(cursor).toBe("cursor456");
+      expect(hasMore).toBeTruthy();
+    });
+
+    it("should return null cursor when has_more is false", async () => {
+      const { store, signal } = context;
+
+      // Mock API response without cursor
+      server.use(
+        http.get("/v1/runs", () =>
+          HttpResponse.json({
+            data: [],
+            pagination: { has_more: false, next_cursor: null },
+          }),
+        ),
+      );
+
+      store.set(initLogs$, signal);
+
+      const cursor = await store.get(currentCursor$);
+      const hasMore = await store.get(hasMore$);
+
+      expect(cursor).toBeNull();
+      expect(hasMore).toBeFalsy();
     });
   });
 
