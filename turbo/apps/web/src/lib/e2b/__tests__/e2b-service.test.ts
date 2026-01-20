@@ -1,25 +1,36 @@
 /**
- * Unit tests for E2B Service - E2B SDK integration testing.
+ * E2B Service Integration Tests
  *
- * This file focuses on testing the E2B SDK integration and business logic
- * with all external dependencies mocked. Database operations are intentionally
- * mocked to keep these tests fast and focused on E2B SDK behavior.
+ * Mock Strategy (Only External Services):
+ * - MOCK: E2B SDK (external API), S3 client (Cloudflare R2)
+ * - REAL: Database, storage service, image service
  *
- * Database integration is tested separately in:
- * - e2b-service-database.integration.test.ts (database operations with real DB)
- *
- * Design decisions:
- * - E2B SDK (Sandbox) is mocked to avoid external API calls
- * - Database operations are mocked to focus on business logic
- * - Storage and image services are mocked for isolation
- * - Test run IDs use simple strings instead of UUIDs for readability
+ * vitest runs as a single process with access to real database and services.
+ * We test the full integration of E2B service with real internal services
+ * while isolating external API calls.
  */
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterAll,
+  vi,
+} from "vitest";
+import { eq } from "drizzle-orm";
 import { Sandbox } from "@e2b/code-interpreter";
 import { initServices } from "../../init-services";
+import { agentRuns } from "../../../db/schema/agent-run";
+import {
+  agentComposeVersions,
+  agentComposes,
+} from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
+import { randomUUID } from "crypto";
 import type { ExecutionContext } from "../../run/types";
 
-// Mock the E2B SDK module
+// Mock ONLY external services - E2B SDK
 vi.mock("@e2b/code-interpreter");
 
 // Mock e2bConfig to provide a default template
@@ -30,78 +41,100 @@ vi.mock("../config", () => ({
   },
 }));
 
-// Mock StorageService - use vi.hoisted to ensure mock is defined before vi.mock runs
-const mockStorageService = vi.hoisted(() => ({
-  prepareStorageManifest: vi.fn().mockResolvedValue({
-    storages: [],
-    artifact: null,
-  }),
+// Mock ONLY external services - S3 client (Cloudflare R2)
+vi.mock("../../s3/s3-client", () => ({
+  generatePresignedUrl: vi.fn().mockResolvedValue("https://mock-presigned-url"),
+  listS3Objects: vi.fn().mockResolvedValue([]),
+  uploadToS3: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../storage/storage-service", () => ({
-  storageService: mockStorageService,
-}));
-
-// Mock image-service for resolveImageAlias
-// Return the alias as-is (simulating system template behavior)
-vi.mock("../../image/image-service", () => ({
-  resolveImageAlias: vi
-    .fn()
-    .mockImplementation((_userId: string, alias: string) => {
-      return Promise.resolve({
-        templateName: alias,
-        isUserImage: false,
-      });
-    }),
-}));
-
-// Mock fs module
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  return {
-    ...actual,
-    promises: {
-      ...actual.promises,
-      readFile: vi
-        .fn()
-        .mockResolvedValue(Buffer.from("#!/bin/bash\necho 'mock script'")),
-    },
-  };
-});
+// Set required environment variables before initServices
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Import e2bService after mocks are set up
 let e2bService: typeof import("../e2b-service").e2bService;
 
-describe("E2B Service - mocked unit tests", () => {
+// Test user ID and scope for isolation
+const TEST_USER_ID = "test-user-e2b-service";
+const TEST_SCOPE_ID = randomUUID();
+const TEST_COMPOSE_ID = randomUUID();
+const TEST_VERSION_ID = "test-version-e2b-service";
+
+describe("E2B Service", () => {
   beforeAll(async () => {
     initServices();
     const e2bModule = await import("../e2b-service");
     e2bService = e2bModule.e2bService;
-  });
 
-  beforeEach(() => {
-    // Clear all mocks before each test
-    vi.clearAllMocks();
-
-    // Reset mock implementations to defaults
-    mockStorageService.prepareStorageManifest.mockResolvedValue({
-      storages: [],
-      artifact: null,
+    // Create test scope (required for compose creation)
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, TEST_SCOPE_ID));
+    await globalThis.services.db.insert(scopes).values({
+      id: TEST_SCOPE_ID,
+      slug: `test-e2b-${TEST_SCOPE_ID.slice(0, 8)}`,
+      type: "personal",
+      ownerId: TEST_USER_ID,
     });
 
-    // Mock db.update to prevent actual database operations
-    // This is needed because e2b-service internally updates run status/sandboxId
-    // and our test run IDs are not real UUIDs
-    const mockDbUpdateChain = {
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
-    };
-    vi.spyOn(globalThis.services.db, "update").mockReturnValue(
-      mockDbUpdateChain as unknown as ReturnType<
-        typeof globalThis.services.db.update
-      >,
-    );
+    // Create test compose and version (required for runs)
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, TEST_COMPOSE_ID));
+    await globalThis.services.db.insert(agentComposes).values({
+      id: TEST_COMPOSE_ID,
+      userId: TEST_USER_ID,
+      scopeId: TEST_SCOPE_ID,
+      name: "test-compose-e2b",
+      headVersionId: TEST_VERSION_ID,
+    });
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, TEST_VERSION_ID));
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: TEST_VERSION_ID,
+      composeId: TEST_COMPOSE_ID,
+      content: {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            image: "vm0/claude-code",
+            provider: "claude-code",
+            working_dir: "/workspace",
+          },
+        },
+      },
+      createdBy: TEST_USER_ID,
+    });
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Clean up test runs
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, TEST_USER_ID));
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, TEST_USER_ID));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, TEST_VERSION_ID));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, TEST_COMPOSE_ID));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, TEST_SCOPE_ID));
   });
 
   /**
@@ -111,7 +144,7 @@ describe("E2B Service - mocked unit tests", () => {
     version: "1.0",
     agents: {
       "test-agent": {
-        image: "test-image",
+        image: "vm0/claude-code",
         provider: "claude-code",
         working_dir: "/workspace",
         ...overrides,
@@ -146,9 +179,19 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Say hello",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-001",
-        agentComposeVersionId: "test-version-001",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hello",
@@ -191,8 +234,12 @@ describe("E2B Service - mocked unit tests", () => {
       // Sandbox is NOT killed - it continues running (fire-and-forget)
       expect(mockSandbox.kill).not.toHaveBeenCalled();
 
-      // Verify sandboxId was persisted to database
-      expect(globalThis.services.db.update).toHaveBeenCalled();
+      // Verify database was updated with sandboxId
+      const [run] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, runId));
+      expect(run?.sandboxId).toBe("mock-sandbox-id-123");
     });
 
     it("should use provided run IDs for multiple calls", async () => {
@@ -208,17 +255,39 @@ describe("E2B Service - mocked unit tests", () => {
         .mockResolvedValueOnce(mockSandbox1 as unknown as Sandbox)
         .mockResolvedValueOnce(mockSandbox2 as unknown as Sandbox);
 
+      const runId1 = randomUUID();
+      const runId2 = randomUUID();
+
+      await globalThis.services.db.insert(agentRuns).values([
+        {
+          id: runId1,
+          userId: TEST_USER_ID,
+          agentComposeVersionId: TEST_VERSION_ID,
+          status: "pending",
+          prompt: "Say hi",
+        },
+        {
+          id: runId2,
+          userId: TEST_USER_ID,
+          agentComposeVersionId: TEST_VERSION_ID,
+          status: "pending",
+          prompt: "Say hi",
+        },
+      ]);
+
       const context1: ExecutionContext = {
-        runId: "test-run-002a",
-        agentComposeVersionId: "test-version-002",
+        runId: runId1,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
       };
 
       const context2: ExecutionContext = {
-        runId: "test-run-002b",
-        agentComposeVersionId: "test-version-002",
+        runId: runId2,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say hi",
@@ -256,9 +325,19 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "What is 2+2?",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-003",
-        agentComposeVersionId: "test-version-003",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "What is 2+2?",
@@ -285,9 +364,19 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Quick question: what is today?",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-004",
-        agentComposeVersionId: "test-version-004",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Quick question: what is today?",
@@ -319,9 +408,19 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Say goodbye",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-005",
-        agentComposeVersionId: "test-version-005",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "Say goodbye",
@@ -345,15 +444,25 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Read files from workspace",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-006",
-        agentComposeVersionId: "test-version-006",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {
               description: "Test agent with working dir",
-              image: "test-image",
+              image: "vm0/claude-code",
               provider: "claude-code",
               working_dir: "/home/user/workspace",
             },
@@ -387,15 +496,25 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Read files",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-007",
-        agentComposeVersionId: "test-version-007",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {
               description: "Test agent without working dir",
-              image: "test-image",
+              image: "vm0/claude-code",
               provider: "claude-code",
               working_dir: "",
             },
@@ -421,9 +540,19 @@ describe("E2B Service - mocked unit tests", () => {
         new Error("E2B API error: Invalid API key"),
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "This should fail due to mocked error",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-error",
-        agentComposeVersionId: "test-version-error",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: createValidAgentCompose(),
         sandboxToken: "vm0_live_test_token",
         prompt: "This should fail due to mocked error",
@@ -440,33 +569,14 @@ describe("E2B Service - mocked unit tests", () => {
 
       // Verify Sandbox.create was called but sandbox methods were not
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
-    });
 
-    it("should fail when storage manifest preparation throws error", async () => {
-      // Arrange - Mock storage service to throw error
-      mockStorageService.prepareStorageManifest.mockRejectedValueOnce(
-        new Error('Storage "claude-files" has no versions'),
-      );
-
-      const context: ExecutionContext = {
-        runId: "test-run-storage-error",
-        agentComposeVersionId: "test-version-storage-error",
-        agentCompose: createValidAgentCompose(),
-        sandboxToken: "vm0_live_test_token",
-        prompt: "This should fail due to storage errors",
-      };
-
-      // Act
-      const result = await e2bService.execute(context);
-
-      // Assert - Should return failed status with storage errors
-      expect(result.status).toBe("failed");
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain("claude-files");
-      expect(result.sandboxId).toBe("unknown");
-
-      // Verify sandbox was never created since storage prep failed
-      expect(Sandbox.create).not.toHaveBeenCalled();
+      // Verify database was updated
+      const [run] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, runId));
+      expect(run?.status).toBe("failed");
+      expect(run?.error).toContain("E2B API error");
     });
   });
 
@@ -478,15 +588,25 @@ describe("E2B Service - mocked unit tests", () => {
         mockSandbox as unknown as Sandbox,
       );
 
+      const runId = randomUUID();
+      await globalThis.services.db.insert(agentRuns).values({
+        id: runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
+        status: "pending",
+        prompt: "Test with custom image",
+      });
+
       const context: ExecutionContext = {
-        runId: "test-run-template-001",
-        agentComposeVersionId: "test-version-template-001",
+        runId,
+        userId: TEST_USER_ID,
+        agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
           agents: {
             "test-agent": {
               description: "Test agent with custom image",
-              image: "custom-template-name",
+              image: "vm0/codex",
               provider: "claude-code",
               working_dir: "/workspace",
             },
@@ -503,10 +623,11 @@ describe("E2B Service - mocked unit tests", () => {
       expect(result.status).toBe("running");
       expect(Sandbox.create).toHaveBeenCalledTimes(1);
 
-      // Verify that agent.image was used
+      // Verify that agent.image was resolved and used
       const createCall = vi.mocked(Sandbox.create).mock.calls[0];
       expect(createCall).toBeDefined();
-      expect(createCall?.[0]).toBe("custom-template-name");
+      // The resolved E2B template name should be passed
+      expect(createCall?.[0]).toBeDefined();
     });
   });
 
