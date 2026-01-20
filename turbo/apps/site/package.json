@@ -1,0 +1,31 @@
+{
+  "name": "site",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "oxlint && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.35.1",
+    "@vm0/ui": "workspace:*",
+    "next": "^15.5.7",
+    "next-intl": "^4.6.1",
+    "react": "^19.1.2",
+    "react-dom": "^19.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.14.0",
+    "typescript": "5.9.2"
+  }
+}

@@ -26,6 +26,20 @@
         "entry": ["next.config.{js,ts,mjs}"]
       }
     },
+    "apps/site": {
+      "entry": [
+        "app/**/page.{ts,tsx}",
+        "app/**/layout.{ts,tsx}",
+        "middleware.{ts,tsx}",
+        "i18n.ts",
+        "navigation.ts"
+      ],
+      "project": ["**/*.{ts,tsx}"],
+      "ignoreDependencies": ["@vm0/ui"],
+      "next": {
+        "entry": ["next.config.{js,ts,mjs}"]
+      }
+    },
     "apps/cli": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",

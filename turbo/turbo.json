@@ -29,7 +29,9 @@
     "USE_MOCK_CLAUDE",
     "CRON_SECRET",
     "AXIOM_TOKEN",
-    "AXIOM_DATASET_SUFFIX"
+    "AXIOM_DATASET_SUFFIX",
+    "WEB_APP_URL",
+    "NEXT_PUBLIC_WEB_APP_URL"
   ],
   "tasks": {
     "build": {

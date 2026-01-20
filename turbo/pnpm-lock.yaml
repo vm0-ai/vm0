@@ -325,6 +325,52 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.3.0)(@vitest/ui@3.2.4)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.2))(tsx@4.20.6)(yaml@2.8.1)
 
+  apps/site:
+    dependencies:
+      '@clerk/nextjs':
+        specifier: ^6.35.1
+        version: 6.35.1(next@15.5.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      '@vm0/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      next:
+        specifier: ^15.5.7
+        version: 15.5.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      next-intl:
+        specifier: ^4.6.1
+        version: 4.6.1(@swc/helpers@0.5.18)(next@15.5.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1)(typescript@5.9.2)
+      react:
+        specifier: ^19.1.2
+        version: 19.2.1
+      react-dom:
+        specifier: ^19.1.2
+        version: 19.2.1(react@19.2.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.1.12
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.1.9(@types/react@19.1.12)
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.34.0(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   apps/web:
     dependencies:
       '@aws-sdk/client-s3':
