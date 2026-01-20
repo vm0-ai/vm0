@@ -13,8 +13,9 @@ import * as s3Client from "../../s3/s3-client";
 import { initServices } from "../../init-services";
 import { storages, storageVersions } from "../../../db/schema/storage";
 
-// Mock S3 client only (storage-resolver is pure logic, no need to mock)
-vi.mock("../../s3/s3-client");
+// Mock AWS SDK (third-party external dependency)
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
 // Set required environment variables before initServices
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
@@ -38,6 +39,12 @@ describe("StorageService", () => {
   beforeEach(async () => {
     storageService = new StorageService();
     vi.clearAllMocks();
+
+    // Mock s3Client functions (spying on real module)
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
+      "https://mock-url.example.com",
+    );
+    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
 
     // Clean up test data - clear headVersionId first (foreign key constraint)
     await globalThis.services.db

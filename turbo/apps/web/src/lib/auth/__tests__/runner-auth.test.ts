@@ -28,15 +28,6 @@ vi.mock("../sandbox-token", () => ({
   isSandboxToken: (token: string) => token.split(".").length === 3,
 }));
 
-// Mock the logger (external dependency)
-vi.mock("../../logger", () => ({
-  logger: () => ({
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
-}));
-
 // Set required environment variables before initServices
 process.env.OFFICIAL_RUNNER_SECRET = TEST_OFFICIAL_SECRET;
 
