@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import { usageCommand } from "../usage";
-import * as api from "../../lib/api";
+import * as config from "../../lib/api/config";
 
-// Mock dependencies
-vi.mock("../../lib/api");
+// Only mock config - use real api implementation with MSW
+vi.mock("../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 
 describe("usage command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -16,38 +21,40 @@ describe("usage command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    server.resetHandlers();
   });
 
   describe("default behavior", () => {
     it("should fetch usage with default 7 day range", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-12T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: {
-          total_runs: 10,
-          total_run_time_ms: 600000, // 10 minutes
-        },
-        daily: [
-          { date: "2026-01-18", run_count: 5, run_time_ms: 300000 },
-          { date: "2026-01-17", run_count: 3, run_time_ms: 180000 },
-          { date: "2026-01-16", run_count: 2, run_time_ms: 120000 },
-        ],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: {
+              total_runs: 10,
+              total_run_time_ms: 600000, // 10 minutes
+            },
+            daily: [
+              { date: "2026-01-18", run_count: 5, run_time_ms: 300000 },
+              { date: "2026-01-17", run_count: 3, run_time_ms: 180000 },
+              { date: "2026-01-16", run_count: 2, run_time_ms: 120000 },
+            ],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli"]);
-
-      expect(api.getUsage).toHaveBeenCalledWith({
-        startDate: expect.any(String),
-        endDate: expect.any(String),
-      });
 
       // Check output contains expected header and data
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -56,19 +63,23 @@ describe("usage command", () => {
     });
 
     it("should display daily breakdown with formatted durations", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-12T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: {
-          total_runs: 10,
-          total_run_time_ms: 600000,
-        },
-        daily: [
-          { date: "2026-01-18", run_count: 5, run_time_ms: 300000 }, // 5m
-        ],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: {
+              total_runs: 10,
+              total_run_time_ms: 600000,
+            },
+            daily: [
+              { date: "2026-01-18", run_count: 5, run_time_ms: 300000 }, // 5m
+            ],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli"]);
 
@@ -81,36 +92,46 @@ describe("usage command", () => {
 
   describe("--since option", () => {
     it("should accept ISO date format", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-15T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: { total_runs: 5, total_run_time_ms: 300000 },
-        daily: [],
-      });
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/usage", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli", "--since", "2026-01-15"]);
 
-      expect(api.getUsage).toHaveBeenCalledWith({
-        startDate: expect.stringContaining("2026-01-15"),
-        endDate: expect.any(String),
-      });
+      expect(capturedUrl?.searchParams.get("start_date")).toContain(
+        "2026-01-15",
+      );
     });
 
     it("should accept relative format (7d)", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-12T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: { total_runs: 5, total_run_time_ms: 300000 },
-        daily: [],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli", "--since", "7d"]);
 
-      expect(api.getUsage).toHaveBeenCalled();
+      // Should complete without error
+      expect(mockConsoleLog).toHaveBeenCalled();
     });
 
     it("should reject invalid --since format", async () => {
@@ -127,21 +148,24 @@ describe("usage command", () => {
 
   describe("--until option", () => {
     it("should accept ISO date format", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-10T00:00:00.000Z",
-          end: "2026-01-17T00:00:00.000Z",
-        },
-        summary: { total_runs: 5, total_run_time_ms: 300000 },
-        daily: [],
-      });
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/usage", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-10T00:00:00.000Z",
+              end: "2026-01-17T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli", "--until", "2026-01-17"]);
 
-      expect(api.getUsage).toHaveBeenCalledWith({
-        startDate: expect.any(String),
-        endDate: expect.stringContaining("2026-01-17"),
-      });
+      expect(capturedUrl?.searchParams.get("end_date")).toContain("2026-01-17");
     });
 
     it("should reject invalid --until format", async () => {
@@ -196,7 +220,7 @@ describe("usage command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      vi.mocked(api.getUsage).mockRejectedValue(new Error("Not authenticated"));
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
@@ -212,7 +236,14 @@ describe("usage command", () => {
     });
 
     it("should handle API errors", async () => {
-      vi.mocked(api.getUsage).mockRejectedValue(new Error("Server error"));
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json(
+            { error: { message: "Server error" } },
+            { status: 500 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
@@ -224,33 +255,38 @@ describe("usage command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should handle unexpected errors", async () => {
-      vi.mocked(api.getUsage).mockRejectedValue("Non-error object");
+    it("should handle network errors", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("unexpected error"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 
   describe("output formatting", () => {
     it("should fill in missing dates with zero values", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-15T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: { total_runs: 2, total_run_time_ms: 120000 },
-        daily: [
-          // Only one day has data, others should be filled with zeros
-          { date: "2026-01-17", run_count: 2, run_time_ms: 120000 },
-        ],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 2, total_run_time_ms: 120000 },
+            daily: [
+              // Only one day has data, others should be filled with zeros
+              { date: "2026-01-17", run_count: 2, run_time_ms: 120000 },
+            ],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli"]);
 
@@ -260,14 +296,18 @@ describe("usage command", () => {
     });
 
     it("should display '-' for zero run time", async () => {
-      vi.mocked(api.getUsage).mockResolvedValue({
-        period: {
-          start: "2026-01-15T00:00:00.000Z",
-          end: "2026-01-19T00:00:00.000Z",
-        },
-        summary: { total_runs: 0, total_run_time_ms: 0 },
-        daily: [],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 0, total_run_time_ms: 0 },
+            daily: [],
+          });
+        }),
+      );
 
       await usageCommand.parseAsync(["node", "cli"]);
 
