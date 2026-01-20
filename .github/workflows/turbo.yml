@@ -288,7 +288,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [deploy-web]
+    needs: [change-detection, deploy-web]
+    if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -779,8 +783,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [deploy-runner-prepare]
-    if: needs.deploy-runner-prepare.outputs.runner-host != ''
+    needs: [change-detection, deploy-runner-prepare]
+    if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -820,7 +827,10 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection, deploy-web, deploy-runner-prepare]
-    if: needs.deploy-web.outputs.preview-url != '' && needs.deploy-runner-prepare.outputs.runner-host != ''
+    if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
+      needs.change-detection.outputs.cli-changed == 'true' ||
+      needs.change-detection.outputs.runner-changed == 'true'
     outputs:
       runner-deployed: ${{ steps.start.outputs.runner-deployed }}
       runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
