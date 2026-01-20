@@ -341,6 +341,16 @@
       when: not proxy_ca_file.stat.exists
       tags: [prepare]
 
+    - name: Fix proxy CA certificate ownership
+      file:
+        path: "{{ runner_base_dir }}/proxy"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: yes
+      when: not proxy_ca_file.stat.exists
+      tags: [prepare]
+
     - name: Ensure user is in kvm group for Firecracker
       user:
         name: "{{ ansible_user }}"
