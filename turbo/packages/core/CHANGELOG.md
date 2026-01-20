@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.7.0](https://github.com/vm0-ai/vm0/compare/core-v4.6.1...core-v4.7.0) (2026-01-20)
+
+
+### Features
+
+* add --debug-no-mock-claude flag for real Claude E2E tests ([#1324](https://github.com/vm0-ai/vm0/issues/1324)) ([f75cdb5](https://github.com/vm0-ai/vm0/commit/f75cdb5cc5f27b5979f4d8f882af5fdfdce9c07c))
+* **core:** implement feature flag system across all packages ([#1334](https://github.com/vm0-ai/vm0/issues/1334)) ([b90205e](https://github.com/vm0-ai/vm0/commit/b90205ebcc0f7de5bcb0af12a957420873eb3253)), closes [#1333](https://github.com/vm0-ai/vm0/issues/1333)
+
 ## [4.6.1](https://github.com/vm0-ai/vm0/compare/core-v4.6.0...core-v4.6.1) (2026-01-19)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.8.0](https://github.com/vm0-ai/vm0/compare/cli-v5.7.2...cli-v5.8.0) (2026-01-20)
+
+
+### Features
+
+* add --debug-no-mock-claude flag for real Claude E2E tests ([#1324](https://github.com/vm0-ai/vm0/issues/1324)) ([f75cdb5](https://github.com/vm0-ai/vm0/commit/f75cdb5cc5f27b5979f4d8f882af5fdfdce9c07c))
+* **cli:** add usage command to view daily run statistics ([#1301](https://github.com/vm0-ai/vm0/issues/1301)) ([1aaeaf1](https://github.com/vm0-ai/vm0/commit/1aaeaf1fed3fd07afaef8668bb92b09a7e9b3cdc))
+* **cli:** rename `vm0 agents` command to `vm0 agent` ([#1299](https://github.com/vm0-ai/vm0/issues/1299)) ([9074358](https://github.com/vm0-ai/vm0/commit/907435824b3210f07bddc59aea1f011112e4d314)), closes [#1297](https://github.com/vm0-ai/vm0/issues/1297)
+* **core:** implement feature flag system across all packages ([#1334](https://github.com/vm0-ai/vm0/issues/1334)) ([b90205e](https://github.com/vm0-ai/vm0/commit/b90205ebcc0f7de5bcb0af12a957420873eb3253)), closes [#1333](https://github.com/vm0-ai/vm0/issues/1333)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.7.0
+
 ## [5.7.2](https://github.com/vm0-ai/vm0/compare/cli-v5.7.1...cli-v5.7.2) (2026-01-19)
 
 

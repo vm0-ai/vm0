@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/docs-v0.18.0...docs-v0.19.0) (2026-01-20)
+
+
+### Features
+
+* **cli:** rename `vm0 agents` command to `vm0 agent` ([#1299](https://github.com/vm0-ai/vm0/issues/1299)) ([9074358](https://github.com/vm0-ai/vm0/commit/907435824b3210f07bddc59aea1f011112e4d314)), closes [#1297](https://github.com/vm0-ai/vm0/issues/1297)
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/docs-v0.17.0...docs-v0.18.0) (2026-01-19)
 
 

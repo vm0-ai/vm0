@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.15.0](https://github.com/vm0-ai/vm0/compare/web-v9.14.0...web-v9.15.0) (2026-01-20)
+
+
+### Features
+
+* add --debug-no-mock-claude flag for real Claude E2E tests ([#1324](https://github.com/vm0-ai/vm0/issues/1324)) ([f75cdb5](https://github.com/vm0-ai/vm0/commit/f75cdb5cc5f27b5979f4d8f882af5fdfdce9c07c))
+* **cli:** add usage command to view daily run statistics ([#1301](https://github.com/vm0-ai/vm0/issues/1301)) ([1aaeaf1](https://github.com/vm0-ai/vm0/commit/1aaeaf1fed3fd07afaef8668bb92b09a7e9b3cdc))
+* **core:** implement feature flag system across all packages ([#1334](https://github.com/vm0-ai/vm0/issues/1334)) ([b90205e](https://github.com/vm0-ai/vm0/commit/b90205ebcc0f7de5bcb0af12a957420873eb3253)), closes [#1333](https://github.com/vm0-ai/vm0/issues/1333)
+* **web:** remove pricing link from navigation ([#1332](https://github.com/vm0-ai/vm0/issues/1332)) ([55573d4](https://github.com/vm0-ai/vm0/commit/55573d47f3b1223f39c1068ac43c87c3732ba924))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.7.0
+
 ## [9.14.0](https://github.com/vm0-ai/vm0/compare/web-v9.13.1...web-v9.14.0) (2026-01-19)
 
 
