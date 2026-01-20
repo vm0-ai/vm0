@@ -13,8 +13,8 @@ import { blobs } from "../../../db/schema/blob";
 import * as s3Client from "../../s3/s3-client";
 import type { FileEntry } from "../../storage/content-hash";
 
-// Mock S3 dependencies (external service) but NOT env - we want real database
-vi.mock("../../s3/s3-client");
+// Mock AWS SDK (third-party external dependency)
+vi.mock("@aws-sdk/client-s3");
 
 // Set required environment variables before initServices
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-blobs-bucket";
@@ -38,6 +38,9 @@ describe("BlobService", () => {
   beforeEach(async () => {
     blobService = new BlobService();
     vi.clearAllMocks();
+
+    // Mock s3Client functions (spying on real module)
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
     // Clean up test blobs before each test
     await globalThis.services.db

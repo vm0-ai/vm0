@@ -1,27 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   generateSandboxToken,
   verifySandboxToken,
   isSandboxToken,
 } from "../sandbox-token";
 
-// Mock the env module
-vi.mock("../../../env", () => ({
-  env: () => ({
-    SECRETS_ENCRYPTION_KEY:
-      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    NODE_ENV: "test",
-  }),
-}));
-
-// Mock the logger
-vi.mock("../../logger", () => ({
-  logger: () => ({
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
-}));
+// Set required environment variables before any imports
+process.env.SECRETS_ENCRYPTION_KEY =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {

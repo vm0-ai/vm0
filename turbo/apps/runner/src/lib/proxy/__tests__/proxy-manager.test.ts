@@ -6,13 +6,6 @@ import { ProxyManager, DEFAULT_PROXY_CONFIG } from "../proxy-manager";
 // Mock modules
 vi.mock("fs");
 vi.mock("child_process");
-vi.mock("../vm-registry", () => ({
-  getVMRegistry: vi.fn(() => ({
-    register: vi.fn(),
-    unregister: vi.fn(),
-  })),
-  DEFAULT_REGISTRY_PATH: "/tmp/vm0-vm-registry.json",
-}));
 
 describe("ProxyManager", () => {
   let proxyManager: ProxyManager;

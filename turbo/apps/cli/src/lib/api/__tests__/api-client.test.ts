@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { apiClient } from "../api-client";
 import * as config from "../config";
 
@@ -8,31 +10,13 @@ vi.mock("../config", () => ({
   getToken: vi.fn(),
 }));
 
-/**
- * Create a mock Response that ts-rest can work with
- * ts-rest needs headers.get() to read content-type
- */
-function createMockResponse(body: unknown, status: number) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers({ "content-type": "application/json" }),
-    json: async () => body,
-  } as Response;
-}
-
 describe("ApiClient", () => {
-  const mockFetch = vi.fn();
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    global.fetch = mockFetch;
     vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
     vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
     vi.clearAllMocks();
   });
 
@@ -45,20 +29,27 @@ describe("ApiClient", () => {
         action: "created" as const,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/composes",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 201 });
+          },
+        ),
+      );
 
       const result = await apiClient.createOrUpdateCompose({
         content: mockConfig,
       });
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/composes",
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            authorization: "Bearer test-token",
-          }),
-        }),
+      );
+      expect(capturedRequest?.method).toBe("POST");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
       );
 
       expect(result).toEqual(mockResponse);
@@ -72,7 +63,11 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockResponse, { status: 201 });
+        }),
+      );
 
       const result = await apiClient.createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
@@ -91,7 +86,11 @@ describe("ApiClient", () => {
         updatedAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockResponse, { status: 200 });
+        }),
+      );
 
       const result = await apiClient.createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
@@ -121,13 +120,15 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            error: { message: "Invalid compose", code: "INVALID_COMPOSE" },
-          },
-          400,
-        ),
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "Invalid compose", code: "INVALID_COMPOSE" },
+            },
+            { status: 400 },
+          );
+        }),
       );
 
       await expect(
@@ -138,13 +139,15 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            error: { message: "", code: "ERROR" },
-          },
-          400,
-        ),
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "", code: "ERROR" },
+            },
+            { status: 400 },
+          );
+        }),
       );
 
       await expect(
@@ -168,20 +171,26 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 201 });
+          },
+        ),
+      );
 
       const result = await apiClient.createRun(mockRequest);
 
-      // Verify fetch was called with correct URL and headers
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/agent/runs",
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            authorization: "Bearer test-token",
-            "content-type": "application/json",
-          }),
-        }),
+      expect(capturedRequest?.url).toBe("http://localhost:3000/api/agent/runs");
+      expect(capturedRequest?.method).toBe("POST");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
+      );
+      expect(capturedRequest?.headers.get("content-type")).toBe(
+        "application/json",
       );
 
       expect(result).toEqual(mockResponse);
@@ -195,25 +204,28 @@ describe("ApiClient", () => {
         artifactName: "my-artifact",
       };
 
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            runId: "run-456",
-            status: "pending",
-            createdAt: "2025-01-01T00:00:00Z",
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              {
+                runId: "run-456",
+                status: "pending",
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              { status: 201 },
+            );
           },
-          201,
         ),
       );
 
       await apiClient.createRun(mockRequest);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          body: JSON.stringify(mockRequest),
-        }),
-      );
+      const body = await capturedRequest?.text();
+      expect(body).toBe(JSON.stringify(mockRequest));
     });
 
     it("should return completed run response", async () => {
@@ -226,7 +238,11 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(mockResponse, { status: 201 });
+        }),
+      );
 
       const result = await apiClient.createRun({
         agentComposeId: "cmp-123",
@@ -247,7 +263,11 @@ describe("ApiClient", () => {
         createdAt: "2025-01-01T00:00:00Z",
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 201));
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(mockResponse, { status: 201 });
+        }),
+      );
 
       const result = await apiClient.createRun({
         agentComposeId: "cmp-123",
@@ -284,11 +304,13 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          { error: { message: "Compose not found", code: "NOT_FOUND" } },
-          404,
-        ),
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            { error: { message: "Compose not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(
@@ -301,8 +323,13 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse({ error: { message: "", code: "ERROR" } }, 400),
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            { error: { message: "", code: "ERROR" } },
+            { status: 400 },
+          );
+        }),
       );
 
       await expect(
@@ -323,18 +350,25 @@ describe("ApiClient", () => {
         nextSequence: 0,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
+      );
 
       const result = await apiClient.getEvents("run-123");
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
-        expect.objectContaining({
-          method: "GET",
-          headers: expect.objectContaining({
-            authorization: "Bearer test-token",
-          }),
-        }),
+      );
+      expect(capturedRequest?.method).toBe("GET");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
       );
 
       expect(result).toEqual(mockResponse);
@@ -354,13 +388,21 @@ describe("ApiClient", () => {
         nextSequence: 5,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
+      );
 
       const result = await apiClient.getEvents("run-123", { since: 4 });
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=4&limit=100",
-        expect.any(Object),
       );
 
       expect(result.events).toHaveLength(1);
@@ -374,13 +416,21 @@ describe("ApiClient", () => {
         nextSequence: 0,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
+      );
 
       await apiClient.getEvents("run-123", { limit: 50 });
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=50",
-        expect.any(Object),
       );
     });
 
@@ -391,16 +441,24 @@ describe("ApiClient", () => {
         nextSequence: 150,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
+      );
 
       const result = await apiClient.getEvents("run-123", {
         since: 100,
         limit: 50,
       });
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=100&limit=50",
-        expect.any(Object),
       );
 
       expect(result.hasMore).toBe(true);
@@ -427,7 +485,11 @@ describe("ApiClient", () => {
         nextSequence: 2,
       };
 
-      mockFetch.mockResolvedValue(createMockResponse(mockResponse, 200));
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json(mockResponse, { status: 200 });
+        }),
+      );
 
       const result = await apiClient.getEvents("run-123");
 
@@ -463,13 +525,15 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on HTTP error response", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            error: { message: "Run not found", code: "NOT_FOUND" },
-          },
-          404,
-        ),
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "Run not found", code: "NOT_FOUND" },
+            },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
@@ -478,13 +542,15 @@ describe("ApiClient", () => {
     });
 
     it("should throw default error message when API error has no message", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            error: { message: "", code: "ERROR" },
-          },
-          500,
-        ),
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "", code: "ERROR" },
+            },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(apiClient.getEvents("run-123")).rejects.toThrow(
@@ -499,8 +565,18 @@ describe("ApiClient", () => {
       // ts-rest with jsonQuery automatically quotes these to prevent misinterpretation
       const scientificNotationVersion = "52999e37";
 
-      mockFetch.mockResolvedValue(
-        createMockResponse({ versionId: "full-hash-123" }, 200),
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "full-hash-123" },
+              { status: 200 },
+            );
+          },
+        ),
       );
 
       await apiClient.getComposeVersion(
@@ -510,34 +586,51 @@ describe("ApiClient", () => {
 
       // ts-rest quotes the value to prevent scientific notation parsing
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(scientificNotationVersion))}`;
-      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+      expect(capturedRequest?.url).toBe(expectedUrl);
     });
 
     it("should handle normal hex versions", async () => {
       const normalVersion = "a1b2c3d4";
 
-      mockFetch.mockResolvedValue(
-        createMockResponse({ versionId: "full-hash-456" }, 200),
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "full-hash-456" },
+              { status: 200 },
+            );
+          },
+        ),
       );
 
       await apiClient.getComposeVersion("compose-123", normalVersion);
 
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${normalVersion}`;
-      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+      expect(capturedRequest?.url).toBe(expectedUrl);
     });
 
     it("should handle 'latest' tag", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          { versionId: "head-version-id", tag: "latest" },
-          200,
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "head-version-id", tag: "latest" },
+              { status: 200 },
+            );
+          },
         ),
       );
 
       await apiClient.getComposeVersion("compose-123", "latest");
 
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=latest`;
-      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expect.any(Object));
+      expect(capturedRequest?.url).toBe(expectedUrl);
     });
 
     it("should throw error when not authenticated", async () => {
@@ -549,13 +642,18 @@ describe("ApiClient", () => {
     });
 
     it("should throw error on version not found", async () => {
-      mockFetch.mockResolvedValue(
-        createMockResponse(
-          {
-            error: { message: "Version not found: abc123", code: "NOT_FOUND" },
-          },
-          404,
-        ),
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/versions", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Version not found: abc123",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(

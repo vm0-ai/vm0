@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseS3Uri, uploadStorageVersionArchive } from "../s3-client";
 import type { FileEntry } from "../../storage/content-hash";
 
+// Set required environment variables before any imports
+process.env.R2_ACCOUNT_ID = "test-account-id";
+process.env.R2_ACCESS_KEY_ID = "test-key";
+process.env.R2_SECRET_ACCESS_KEY = "test-secret";
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-bucket";
+
 // Mock AWS SDK
 vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: vi.fn().mockImplementation(() => ({
@@ -21,15 +27,6 @@ vi.mock("@aws-sdk/lib-storage", () => ({
 
 vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: vi.fn().mockResolvedValue("https://signed-url.example.com"),
-}));
-
-vi.mock("../../../env", () => ({
-  env: () => ({
-    R2_ACCOUNT_ID: "test-account-id",
-    R2_ACCESS_KEY_ID: "test-key",
-    R2_SECRET_ACCESS_KEY: "test-secret",
-    R2_USER_STORAGES_BUCKET_NAME: "test-bucket",
-  }),
 }));
 
 describe("parseS3Uri", () => {

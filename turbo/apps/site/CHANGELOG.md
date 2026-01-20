@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/vm0-ai/vm0/compare/site-v1.1.0...site-v1.2.0) (2026-01-20)
+
+
+### Features
+
+* **site:** enhance readme with product features and correct port ([#1368](https://github.com/vm0-ai/vm0/issues/1368)) ([79df11a](https://github.com/vm0-ai/vm0/commit/79df11aed56e7fbe815376a12f6695501d68e0cc))
+
 ## [1.1.0](https://github.com/vm0-ai/vm0/compare/site-v1.0.0...site-v1.1.0) (2026-01-20)
 
 

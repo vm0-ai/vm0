@@ -23,14 +23,6 @@ vi.mock("@axiomhq/js", () => ({
   Axiom: vi.fn(),
 }));
 
-// Mock axiom/datasets
-vi.mock("../axiom/datasets", () => ({
-  getDatasetName: vi.fn().mockReturnValue("vm0-web-logs-dev"),
-  DATASETS: {
-    WEB_LOGS: "web-logs",
-  },
-}));
-
 // Import after mocks
 import { logger, clearLoggerCache, flushLogs } from "../logger";
 

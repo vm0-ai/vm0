@@ -37,11 +37,12 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "oxlint": "^1.14.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "json": "^11.0.0",
+    "msw": "^2.12.7",
+    "oxlint": "^1.14.0",
     "tsup": "^8.5.0",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"

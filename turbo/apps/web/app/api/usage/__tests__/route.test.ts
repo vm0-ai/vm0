@@ -1,62 +1,122 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
+import { initServices } from "../../../../src/lib/init-services";
+import { agentRuns } from "../../../../src/db/schema/agent-run";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../src/db/schema/scope";
+import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
-// Mock the auth module
-let mockUserId: string | null = "test-user-usage-api";
-vi.mock("../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
 
-// Mock the init-services module
-vi.mock("../../../../src/lib/init-services", () => ({
-  initServices: vi.fn(),
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
 
-// Mock database queries
-const mockDailyResults = [
-  { date: "2026-01-18", run_count: 5, run_time_ms: 300000 },
-  { date: "2026-01-17", run_count: 3, run_time_ms: 180000 },
-];
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
 
-vi.mock("drizzle-orm", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("drizzle-orm")>();
-  return {
-    ...actual,
-    sql: actual.sql,
-    and: actual.and,
-    gte: actual.gte,
-    lt: actual.lt,
-    eq: actual.eq,
-    isNotNull: actual.isNotNull,
-  };
-});
-
-// Set up mock database
-const mockDb = {
-  select: vi.fn(() => ({
-    from: vi.fn(() => ({
-      where: vi.fn(() => ({
-        groupBy: vi.fn(() => ({
-          orderBy: vi.fn(() => Promise.resolve(mockDailyResults)),
-        })),
-      })),
-    })),
-  })),
-};
-
-// Mock globalThis.services
-beforeEach(() => {
-  mockUserId = "test-user-usage-api";
-  (globalThis as Record<string, unknown>).services = {
-    db: mockDb,
-  };
-});
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 describe("/api/usage", () => {
+  const testUserId = `test-user-usage-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
+  let testComposeId: string;
+  let testVersionId: string;
+
+  beforeAll(async () => {
+    // Initialize real services
+    initServices();
+
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-scope-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create test compose
+    const composes = await globalThis.services.db
+      .insert(agentComposes)
+      .values({
+        userId: testUserId,
+        scopeId: testScopeId,
+        name: "test-compose",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testComposeId = composes[0]!.id;
+
+    // Create test version (with content-addressed hash ID)
+    // Use randomUUID to generate unique hash per test run
+    const versionHash =
+      randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: versionHash,
+      composeId: testComposeId,
+      content: { version: "1.0", agents: {} },
+      createdBy: testUserId,
+      createdAt: new Date(),
+    });
+    testVersionId = versionHash;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock headers() to return no Authorization header by default
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+  });
+
+  afterEach(async () => {
+    // Clean up runs created during tests
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+  });
+
   describe("GET /api/usage", () => {
     it("should require authentication", async () => {
-      mockUserId = null;
+      // Mock Clerk auth to return no user
+      mockAuth.mockResolvedValue({
+        userId: null,
+      } as Awaited<ReturnType<typeof auth>>);
 
       const request = new NextRequest("http://localhost:3000/api/usage", {
         method: "GET",
@@ -70,6 +130,41 @@ describe("/api/usage", () => {
     });
 
     it("should return usage data with default 7 day range", async () => {
+      // Mock Clerk auth to return test user
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
+      // Create test runs with completed data
+      const now = new Date();
+      const twoDaysAgo = new Date(now);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      const threeDaysAgo = new Date(now);
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      // Create 2 completed runs
+      await globalThis.services.db.insert(agentRuns).values([
+        {
+          userId: testUserId,
+          agentComposeVersionId: testVersionId,
+          status: "completed",
+          prompt: "Test prompt 1",
+          createdAt: twoDaysAgo,
+          startedAt: twoDaysAgo,
+          completedAt: new Date(twoDaysAgo.getTime() + 60000), // 1 minute
+        },
+        {
+          userId: testUserId,
+          agentComposeVersionId: testVersionId,
+          status: "completed",
+          prompt: "Test prompt 2",
+          createdAt: threeDaysAgo,
+          startedAt: threeDaysAgo,
+          completedAt: new Date(threeDaysAgo.getTime() + 120000), // 2 minutes
+        },
+      ]);
+
       const request = new NextRequest("http://localhost:3000/api/usage", {
         method: "GET",
       });
@@ -82,13 +177,18 @@ describe("/api/usage", () => {
       expect(data.period.start).toBeDefined();
       expect(data.period.end).toBeDefined();
       expect(data.summary).toBeDefined();
-      expect(data.summary.total_runs).toBe(8); // 5 + 3
-      expect(data.summary.total_run_time_ms).toBe(480000); // 300000 + 180000
+      expect(data.summary.total_runs).toBe(2);
+      expect(data.summary.total_run_time_ms).toBe(180000); // 60000 + 120000
       expect(data.daily).toBeDefined();
       expect(Array.isArray(data.daily)).toBe(true);
+      expect(data.daily.length).toBeGreaterThan(0);
     });
 
     it("should accept custom date range", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
       const now = new Date();
       const threeDaysAgo = new Date(now);
       threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
@@ -109,6 +209,10 @@ describe("/api/usage", () => {
     });
 
     it("should reject invalid start_date format", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
       const request = new NextRequest(
         "http://localhost:3000/api/usage?start_date=invalid",
         {
@@ -124,6 +228,10 @@ describe("/api/usage", () => {
     });
 
     it("should reject invalid end_date format", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
       const request = new NextRequest(
         "http://localhost:3000/api/usage?end_date=invalid",
         {
@@ -139,6 +247,10 @@ describe("/api/usage", () => {
     });
 
     it("should reject start_date after end_date", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
       const now = new Date();
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -160,6 +272,10 @@ describe("/api/usage", () => {
     });
 
     it("should reject range exceeding 30 days", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
       const now = new Date();
       const fortyDaysAgo = new Date(now);
       fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
@@ -179,6 +295,39 @@ describe("/api/usage", () => {
     });
 
     it("should return daily breakdown with run counts and run times", async () => {
+      mockAuth.mockResolvedValue({
+        userId: testUserId,
+      } as Awaited<ReturnType<typeof auth>>);
+
+      // Create test runs on different days
+      const now = new Date();
+      const oneDayAgo = new Date(now);
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+      const twoDaysAgo = new Date(now);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+      await globalThis.services.db.insert(agentRuns).values([
+        {
+          userId: testUserId,
+          agentComposeVersionId: testVersionId,
+          status: "completed",
+          prompt: "Test prompt 3",
+          createdAt: oneDayAgo,
+          startedAt: oneDayAgo,
+          completedAt: new Date(oneDayAgo.getTime() + 30000), // 30 seconds
+        },
+        {
+          userId: testUserId,
+          agentComposeVersionId: testVersionId,
+          status: "completed",
+          prompt: "Test prompt 4",
+          createdAt: twoDaysAgo,
+          startedAt: twoDaysAgo,
+          completedAt: new Date(twoDaysAgo.getTime() + 45000), // 45 seconds
+        },
+      ]);
+
       const request = new NextRequest("http://localhost:3000/api/usage", {
         method: "GET",
       });
@@ -195,6 +344,10 @@ describe("/api/usage", () => {
         expect(typeof day.run_count).toBe("number");
         expect(typeof day.run_time_ms).toBe("number");
       }
+
+      // Verify summary totals
+      expect(data.summary.total_runs).toBe(2);
+      expect(data.summary.total_run_time_ms).toBe(75000); // 30000 + 45000
     });
   });
 });
