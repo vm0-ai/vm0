@@ -15,6 +15,46 @@ interface FirecrackerProcess {
 }
 
 /**
+ * Parse /proc/{pid}/cmdline content to extract Firecracker process info.
+ * Pure function for easy testing.
+ */
+export function parseFirecrackerCmdline(
+  cmdline: string,
+): { vmId: string; socketPath: string } | null {
+  const args = cmdline.split("\0");
+
+  if (!args[0]?.includes("firecracker")) return null;
+
+  const sockIdx = args.indexOf("--api-sock");
+  const socketPath = args[sockIdx + 1];
+  if (sockIdx === -1 || !socketPath) return null;
+
+  const match = socketPath.match(/vm0-([a-f0-9]+)\/firecracker\.sock$/);
+  if (!match?.[1]) return null;
+
+  return { vmId: match[1], socketPath };
+}
+
+/**
+ * Parse /proc/{pid}/cmdline content to extract mitmproxy process info.
+ * Pure function for easy testing.
+ */
+export function parseMitmproxyCmdline(
+  cmdline: string,
+): { port?: number } | null {
+  if (!cmdline.includes("mitmproxy") && !cmdline.includes("mitmdump")) {
+    return null;
+  }
+
+  const args = cmdline.split("\0");
+  const portIdx = args.findIndex((a) => a === "-p" || a === "--listen-port");
+  const portArg = args[portIdx + 1];
+  const port = portIdx !== -1 && portArg ? parseInt(portArg, 10) : undefined;
+
+  return { port };
+}
+
+/**
  * Find all running Firecracker processes by scanning /proc
  */
 export function findFirecrackerProcesses(): FirecrackerProcess[] {
@@ -38,18 +78,10 @@ export function findFirecrackerProcesses(): FirecrackerProcess[] {
 
     try {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
-      const args = cmdline.split("\0");
-
-      if (!args[0]?.includes("firecracker")) continue;
-
-      const sockIdx = args.indexOf("--api-sock");
-      const socketPath = args[sockIdx + 1];
-      if (sockIdx === -1 || !socketPath) continue;
-
-      const match = socketPath.match(/vm0-([a-f0-9]+)\/firecracker\.sock$/);
-      if (!match || !match[1]) continue;
-
-      processes.push({ pid, vmId: match[1], socketPath });
+      const parsed = parseFirecrackerCmdline(cmdline);
+      if (parsed) {
+        processes.push({ pid, ...parsed });
+      }
     } catch {
       continue;
     }
@@ -133,16 +165,9 @@ export function findMitmproxyProcess(): { pid: number; port?: number } | null {
 
     try {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
-      if (cmdline.includes("mitmproxy") || cmdline.includes("mitmdump")) {
-        // Try to extract port from arguments
-        const args = cmdline.split("\0");
-        const portIdx = args.findIndex(
-          (a) => a === "-p" || a === "--listen-port",
-        );
-        const portArg = args[portIdx + 1];
-        const port =
-          portIdx !== -1 && portArg ? parseInt(portArg, 10) : undefined;
-        return { pid, port };
+      const parsed = parseMitmproxyCmdline(cmdline);
+      if (parsed) {
+        return { pid, port: parsed.port };
       }
     } catch {
       continue;
