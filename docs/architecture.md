@@ -245,8 +245,6 @@ sandbox:
 8. Webhook reports progress
 9. VM terminated on completion
 
-**Code**: `turbo/apps/runner/src/lib/executor.ts`, `turbo/apps/runner/src/lib/firecracker/`
-
 ---
 
 ### Cloudflare R2 Object Storage
@@ -274,42 +272,9 @@ Sandboxes download directly from R2 (no proxy through VM0 API):
 3. Sandbox's `download.mjs` script fetches from R2
 4. Parallel downloads for multiple archives
 
-**Code**: `turbo/apps/web/src/lib/s3/s3-client.ts`
-
 ---
 
 ## References
-
-### Codebase
-
-**E2B Integration**:
-- `turbo/apps/web/src/lib/e2b/e2b-service.ts`
-
-**Firecracker Runner**:
-- `turbo/apps/runner/src/lib/firecracker/vm.ts` - VM lifecycle
-- `turbo/apps/runner/src/lib/firecracker/network.ts` - Network setup
-- `turbo/apps/runner/src/lib/firecracker/client.ts` - API client
-- `turbo/apps/runner/src/lib/executor.ts` - Job execution
-- `turbo/apps/runner/src/lib/config.ts` - Configuration
-
-**Storage**:
-- `turbo/apps/web/src/lib/storage/storage-service.ts`
-- `turbo/apps/web/src/lib/s3/s3-client.ts`
-
-**Orchestration**:
-- `turbo/apps/web/src/lib/run/executors/`
-- `turbo/apps/web/src/db/schema/runner-job-queue.ts`
-- `turbo/apps/web/app/api/runners/poll/route.ts`
-
-**Network**:
-- `turbo/apps/runner/src/lib/proxy/proxy-manager.ts`
-- `turbo/apps/runner/src/lib/proxy/mitm-addon-script.ts`
-
-**Deployment**:
-- `turbo/apps/runner/scripts/deploy/install-firecracker.sh`
-- `turbo/apps/runner/scripts/deploy/build-rootfs.sh`
-- `turbo/apps/runner/scripts/deploy/Dockerfile`
-- `ansible/playbooks/deploy-runner.yml`
 
 ### External
 
