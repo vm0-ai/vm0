@@ -1,20 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/create-next-app).
+# VM0 Site
+
+Marketing site for VM0 showcasing pre-built skills, pricing, and product information. Built with Next.js 15 and internationalization support.
+
+## Features
+
+- 🌍 Multi-language support (i18n)
+- 🎨 Dark/light theme toggle
+- 📱 Responsive design
+- 🔧 74+ pre-built skill integrations showcase
+- 💰 Pricing page
+- 📖 Glossary of terms
 
 ## Getting Started
 
 First, run the development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3003](http://localhost:3003) or [https://site.vm7.ai:8443](https://site.vm7.ai:8443) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
