@@ -5,17 +5,14 @@ import { server } from "../../../mocks/server.ts";
 import {
   logs$,
   setLogs$,
-  selectedFilter$,
   currentCursor$,
   hasMore$,
   createLogsFetch,
   loadMore$,
-  changeFilter$,
   navigateToRunDetail$,
 } from "../logs-signals.ts";
-import { FILTER_VALUES, type LogResponse } from "../types.ts";
+import type { LogResponse } from "../types.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { mockLocation } from "../../location.ts";
 
 // Mock Clerk BEFORE any module evaluation using vi.hoisted
 vi.hoisted(() => {
@@ -70,57 +67,6 @@ describe("logs-signals", () => {
       store.set(setLogs$, [mockComputed$]);
       const logs = store.get(logs$);
       expect(logs).toHaveLength(1);
-    });
-  });
-
-  describe("selectedFilter$", () => {
-    it("should return 'all' when no filter param", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/logs", search: "" }, signal);
-
-      const filter = store.get(selectedFilter$);
-      expect(filter).toBe("all");
-    });
-
-    it("should return filter param when valid", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/logs", search: "?filter=agent" }, signal);
-
-      const filter = store.get(selectedFilter$);
-      expect(filter).toBe("agent");
-    });
-
-    it("should return 'all' when invalid filter param", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/logs", search: "?filter=invalid" }, signal);
-
-      const filter = store.get(selectedFilter$);
-      expect(filter).toBe("all");
-    });
-
-    it("should support all valid filter values", () => {
-      const { signal } = context;
-
-      // Use FILTER_VALUES to verify all defined filters work
-      expect(FILTER_VALUES).toHaveLength(4);
-
-      const validFilters: ["all" | "agent" | "system" | "network", string][] = [
-        ["all", "all"],
-        ["agent", "agent"],
-        ["system", "system"],
-        ["network", "network"],
-      ];
-
-      for (const [filterValue, expected] of validFilters) {
-        // Create fresh store for each iteration to avoid signal caching
-        const { store: freshStore } = testContext();
-        mockLocation(
-          { pathname: "/logs", search: `?filter=${filterValue}` },
-          signal,
-        );
-        const filter = freshStore.get(selectedFilter$);
-        expect(filter).toBe(expected);
-      }
     });
   });
 
@@ -320,18 +266,6 @@ describe("logs-signals", () => {
       controller.abort();
 
       await expect(store.set(loadMore$, controller.signal)).rejects.toThrow();
-    });
-  });
-
-  describe("changeFilter$", () => {
-    it("should call navigateInReact$ when executed", () => {
-      const { store } = context;
-
-      // navigateInReact$ requires rootSignal$ which isn't set up in tests
-      // Just verify the command is callable (will throw "No root signal" which is expected)
-      expect(() => {
-        store.set(changeFilter$, "agent");
-      }).toThrow("No root signal");
     });
   });
 

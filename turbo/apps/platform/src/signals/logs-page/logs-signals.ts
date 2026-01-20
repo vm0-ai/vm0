@@ -1,6 +1,6 @@
 import { state, computed, command, type Computed } from "ccstate";
-import type { LogResponse, FilterType } from "./types.ts";
-import { searchParams$, navigateInReact$ } from "../route.ts";
+import type { LogResponse } from "./types.ts";
+import { navigateInReact$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 
 // Internal state: Array of computed promises, each representing a batch of data
@@ -26,18 +26,6 @@ export const setLogs$ = command<
 
 // Exported computed: Read-only access to logs
 export const logs$ = computed((get) => get(internalLogs$));
-
-// Computed: Derive filter from URL query params
-export const selectedFilter$ = computed((get) => {
-  const params = get(searchParams$);
-  const filter = params.get("filter");
-
-  // Validate filter value
-  const validFilters: FilterType[] = ["all", "agent", "system", "network"];
-  return validFilters.includes(filter as FilterType)
-    ? (filter as FilterType)
-    : "all";
-});
 
 // Computed: Get next_cursor from last log response
 export const currentCursor$ = computed(async (get) => {
@@ -106,14 +94,6 @@ export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
   const newComputed = createLogsFetch(cursor);
 
   set(setLogs$, (prev) => [...prev, newComputed]);
-});
-
-// Command: Change filter (navigates to new URL)
-export const changeFilter$ = command(({ set }, filter: FilterType) => {
-  set(navigateInReact$, "/logs", {
-    searchParams: new URLSearchParams({ filter }),
-  });
-  // Note: Navigation triggers setupLogsPage$ which resets state
 });
 
 // Command: Navigate to run detail page

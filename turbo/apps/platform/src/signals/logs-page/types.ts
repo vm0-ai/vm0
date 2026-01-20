@@ -23,12 +23,3 @@ export interface Run {
   started_at: string | null;
   completed_at: string | null;
 }
-
-export type FilterType = "all" | "agent" | "system" | "network";
-
-export const FILTER_VALUES: readonly FilterType[] = [
-  "all",
-  "agent",
-  "system",
-  "network",
-] as const;
