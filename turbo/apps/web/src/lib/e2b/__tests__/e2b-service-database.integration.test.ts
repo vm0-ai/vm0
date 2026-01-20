@@ -1,22 +1,13 @@
 /**
  * Integration tests for E2B Service database operations.
  *
- * Focus: Test E2B service + Database integration
+ * Mock Strategy (Only External Services):
+ * - MOCK: E2B SDK (external API), S3 client (Cloudflare R2)
+ * - REAL: Database, storage service, image service
  *
- * Mock Strategy (Pragmatic Approach):
- * - Mock EXTERNAL services: E2B SDK (external API), S3 client (Cloudflare R2)
- * - Mock INTERNAL services with complex setup: image service, storage service
- *   - These services have their own comprehensive tests
- *   - Mocking them keeps this test focused and fast
- * - Use REAL: Database (PostgreSQL)
- *
- * Rationale:
- * - Image service requires images table + scope data setup
- * - Storage service requires storages + storage_versions setup
- * - Setting up all dependencies would make tests slow and brittle
- * - This test focuses on E2B-specific database operations (status, sandboxId)
- *
- * For full end-to-end testing with real storage/image services, see E2E tests.
+ * This tests the full integration of E2B service with real internal services
+ * while isolating external API calls. This ensures we test real business logic
+ * and database interactions.
  */
 import {
   describe,
@@ -39,7 +30,7 @@ import { scopes } from "../../../db/schema/scope";
 import { randomUUID } from "crypto";
 import type { ExecutionContext } from "../../run/types";
 
-// Mock external services
+// Mock ONLY external services - E2B SDK
 vi.mock("@e2b/code-interpreter");
 
 // Mock e2bConfig to provide a default template
@@ -50,29 +41,15 @@ vi.mock("../config", () => ({
   },
 }));
 
-// Mock internal services with complex dependencies
-// These have their own comprehensive test files
-const mockStorageService = vi.hoisted(() => ({
-  prepareStorageManifest: vi.fn().mockResolvedValue({
-    storages: [],
-    artifact: null,
-  }),
+// Mock ONLY external services - S3 client (Cloudflare R2)
+vi.mock("../../s3/s3-client", () => ({
+  generatePresignedUrl: vi.fn().mockResolvedValue("https://mock-presigned-url"),
+  listS3Objects: vi.fn().mockResolvedValue([]),
+  uploadToS3: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../storage/storage-service", () => ({
-  storageService: mockStorageService,
-}));
-
-vi.mock("../../image/image-service", () => ({
-  resolveImageAlias: vi
-    .fn()
-    .mockImplementation((_userId: string, alias: string) => {
-      return Promise.resolve({
-        templateName: alias,
-        isUserImage: false,
-      });
-    }),
-}));
+// Set required environment variables before initServices
+process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Import e2bService after mocks are set up
 let e2bService: typeof import("../e2b-service").e2bService;
@@ -122,7 +99,7 @@ describe("E2B Service - Database Integration Tests", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "test-image",
+            image: "vm0/claude-code",
             provider: "claude-code",
             working_dir: "/workspace",
           },
@@ -139,12 +116,6 @@ describe("E2B Service - Database Integration Tests", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.userId, TEST_USER_ID));
-
-    // Reset mock implementations to defaults
-    mockStorageService.prepareStorageManifest.mockResolvedValue({
-      storages: [],
-      artifact: null,
-    });
   });
 
   afterAll(async () => {
@@ -209,7 +180,7 @@ describe("E2B Service - Database Integration Tests", () => {
           version: "1.0",
           agents: {
             "test-agent": {
-              image: "test-image",
+              image: "vm0/claude-code", // Real system template - no images table needed
               provider: "claude-code",
               working_dir: "/workspace",
             },
@@ -262,7 +233,7 @@ describe("E2B Service - Database Integration Tests", () => {
           version: "1.0",
           agents: {
             "test-agent": {
-              image: "test-image",
+              image: "vm0/claude-code",
               provider: "claude-code",
               working_dir: "/workspace",
             },
@@ -328,7 +299,7 @@ describe("E2B Service - Database Integration Tests", () => {
           version: "1.0",
           agents: {
             "test-agent": {
-              image: "test-image",
+              image: "vm0/claude-code",
               provider: "claude-code",
               working_dir: "/workspace",
             },
@@ -346,7 +317,7 @@ describe("E2B Service - Database Integration Tests", () => {
           version: "1.0",
           agents: {
             "test-agent": {
-              image: "test-image",
+              image: "vm0/claude-code",
               provider: "claude-code",
               working_dir: "/workspace",
             },
@@ -382,6 +353,8 @@ describe("E2B Service - Database Integration Tests", () => {
     });
   });
 
-  // Note: Storage service error handling is tested in storage-service.test.ts
-  // This integration test focuses on E2B + database integration with simple scenarios
+  // Note: Real storage service is used here
+  // It works correctly because with no volumes, it returns empty manifest
+  // For more complex storage scenarios with volumes, we would need to set up
+  // storages and storage_versions tables (similar to storage-service.test.ts)
 });
