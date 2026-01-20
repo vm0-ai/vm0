@@ -31,19 +31,26 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.post("http://localhost:3000/api/agent/composes", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 201 });
-        }),
+        http.post(
+          "http://localhost:3000/api/agent/composes",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 201 });
+          },
+        ),
       );
 
       const result = await apiClient.createOrUpdateCompose({
         content: mockConfig,
       });
 
-      expect(capturedRequest?.url).toBe("http://localhost:3000/api/agent/composes");
+      expect(capturedRequest?.url).toBe(
+        "http://localhost:3000/api/agent/composes",
+      );
       expect(capturedRequest?.method).toBe("POST");
-      expect(capturedRequest?.headers.get("authorization")).toBe("Bearer test-token");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
+      );
 
       expect(result).toEqual(mockResponse);
     });
@@ -166,18 +173,25 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.post("http://localhost:3000/api/agent/runs", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 201 });
-        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 201 });
+          },
+        ),
       );
 
       const result = await apiClient.createRun(mockRequest);
 
       expect(capturedRequest?.url).toBe("http://localhost:3000/api/agent/runs");
       expect(capturedRequest?.method).toBe("POST");
-      expect(capturedRequest?.headers.get("authorization")).toBe("Bearer test-token");
-      expect(capturedRequest?.headers.get("content-type")).toBe("application/json");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
+      );
+      expect(capturedRequest?.headers.get("content-type")).toBe(
+        "application/json",
+      );
 
       expect(result).toEqual(mockResponse);
     });
@@ -192,17 +206,20 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.post("http://localhost:3000/api/agent/runs", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(
-            {
-              runId: "run-456",
-              status: "pending",
-              createdAt: "2025-01-01T00:00:00Z",
-            },
-            { status: 201 },
-          );
-        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              {
+                runId: "run-456",
+                status: "pending",
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              { status: 201 },
+            );
+          },
+        ),
       );
 
       await apiClient.createRun(mockRequest);
@@ -308,7 +325,10 @@ describe("ApiClient", () => {
     it("should throw default error message when API error has no message", async () => {
       server.use(
         http.post("http://localhost:3000/api/agent/runs", () => {
-          return HttpResponse.json({ error: { message: "", code: "ERROR" } }, { status: 400 });
+          return HttpResponse.json(
+            { error: { message: "", code: "ERROR" } },
+            { status: 400 },
+          );
         }),
       );
 
@@ -332,10 +352,13 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/runs/:id/events", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
       );
 
       const result = await apiClient.getEvents("run-123");
@@ -344,7 +367,9 @@ describe("ApiClient", () => {
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
       );
       expect(capturedRequest?.method).toBe("GET");
-      expect(capturedRequest?.headers.get("authorization")).toBe("Bearer test-token");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
+      );
 
       expect(result).toEqual(mockResponse);
     });
@@ -365,10 +390,13 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/runs/:id/events", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
       );
 
       const result = await apiClient.getEvents("run-123", { since: 4 });
@@ -390,10 +418,13 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/runs/:id/events", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
       );
 
       await apiClient.getEvents("run-123", { limit: 50 });
@@ -412,10 +443,13 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/runs/:id/events", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json(mockResponse, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockResponse, { status: 200 });
+          },
+        ),
       );
 
       const result = await apiClient.getEvents("run-123", {
@@ -502,7 +536,9 @@ describe("ApiClient", () => {
         }),
       );
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow("Run not found");
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "Run not found",
+      );
     });
 
     it("should throw default error message when API error has no message", async () => {
@@ -517,7 +553,9 @@ describe("ApiClient", () => {
         }),
       );
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow("Failed to fetch events");
+      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+        "Failed to fetch events",
+      );
     });
   });
 
@@ -529,13 +567,22 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/versions", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json({ versionId: "full-hash-123" }, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "full-hash-123" },
+              { status: 200 },
+            );
+          },
+        ),
       );
 
-      await apiClient.getComposeVersion("compose-123", scientificNotationVersion);
+      await apiClient.getComposeVersion(
+        "compose-123",
+        scientificNotationVersion,
+      );
 
       // ts-rest quotes the value to prevent scientific notation parsing
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(scientificNotationVersion))}`;
@@ -547,10 +594,16 @@ describe("ApiClient", () => {
 
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/versions", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json({ versionId: "full-hash-456" }, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "full-hash-456" },
+              { status: 200 },
+            );
+          },
+        ),
       );
 
       await apiClient.getComposeVersion("compose-123", normalVersion);
@@ -562,10 +615,16 @@ describe("ApiClient", () => {
     it("should handle 'latest' tag", async () => {
       let capturedRequest: Request | undefined;
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/versions", async ({ request }) => {
-          capturedRequest = request;
-          return HttpResponse.json({ versionId: "head-version-id", tag: "latest" }, { status: 200 });
-        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(
+              { versionId: "head-version-id", tag: "latest" },
+              { status: 200 },
+            );
+          },
+        ),
       );
 
       await apiClient.getComposeVersion("compose-123", "latest");
@@ -587,16 +646,19 @@ describe("ApiClient", () => {
         http.get("http://localhost:3000/api/agent/composes/versions", () => {
           return HttpResponse.json(
             {
-              error: { message: "Version not found: abc123", code: "NOT_FOUND" },
+              error: {
+                message: "Version not found: abc123",
+                code: "NOT_FOUND",
+              },
             },
             { status: 404 },
           );
         }),
       );
 
-      await expect(apiClient.getComposeVersion("compose-123", "abc123")).rejects.toThrow(
-        "Version not found: abc123",
-      );
+      await expect(
+        apiClient.getComposeVersion("compose-123", "abc123"),
+      ).rejects.toThrow("Version not found: abc123");
     });
   });
 });

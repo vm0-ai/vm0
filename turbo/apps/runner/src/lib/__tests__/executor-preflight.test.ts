@@ -196,10 +196,13 @@ describe("reportPreflightFailure", () => {
   it("calls complete API with correct parameters", async () => {
     let capturedRequest: Request | undefined;
     server.use(
-      http.post("http://localhost:3000/api/webhooks/agent/complete", async ({ request }) => {
-        capturedRequest = request;
-        return HttpResponse.json({}, { status: 200 });
-      }),
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
     );
 
     await reportPreflightFailure(
@@ -209,10 +212,16 @@ describe("reportPreflightFailure", () => {
       "Test error message",
     );
 
-    expect(capturedRequest?.url).toBe("http://localhost:3000/api/webhooks/agent/complete");
+    expect(capturedRequest?.url).toBe(
+      "http://localhost:3000/api/webhooks/agent/complete",
+    );
     expect(capturedRequest?.method).toBe("POST");
-    expect(capturedRequest?.headers.get("Content-Type")).toBe("application/json");
-    expect(capturedRequest?.headers.get("Authorization")).toBe("Bearer token-456");
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
 
     const body = await capturedRequest?.json();
     expect(body).toEqual({
@@ -231,7 +240,12 @@ describe("reportPreflightFailure", () => {
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await reportPreflightFailure("http://localhost:3000", "run-123", "token-456", "Test error");
+    await reportPreflightFailure(
+      "http://localhost:3000",
+      "run-123",
+      "token-456",
+      "Test error",
+    );
 
     expect(consoleSpy).toHaveBeenCalledWith(
       "[Executor] Failed to report preflight failure: HTTP 500",
@@ -249,7 +263,12 @@ describe("reportPreflightFailure", () => {
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await reportPreflightFailure("http://localhost:3000", "run-123", "token-456", "Test error");
+    await reportPreflightFailure(
+      "http://localhost:3000",
+      "run-123",
+      "token-456",
+      "Test error",
+    );
 
     expect(consoleSpy).toHaveBeenCalledWith(
       "[Executor] Failed to report preflight failure: TypeError: Failed to fetch",
@@ -261,10 +280,13 @@ describe("reportPreflightFailure", () => {
   it("includes Vercel bypass header when bypassSecret is provided", async () => {
     let capturedRequest: Request | undefined;
     server.use(
-      http.post("http://localhost:3000/api/webhooks/agent/complete", async ({ request }) => {
-        capturedRequest = request;
-        return HttpResponse.json({}, { status: 200 });
-      }),
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
     );
 
     await reportPreflightFailure(
@@ -275,18 +297,27 @@ describe("reportPreflightFailure", () => {
       "bypass-secret-789",
     );
 
-    expect(capturedRequest?.headers.get("Content-Type")).toBe("application/json");
-    expect(capturedRequest?.headers.get("Authorization")).toBe("Bearer token-456");
-    expect(capturedRequest?.headers.get("x-vercel-protection-bypass")).toBe("bypass-secret-789");
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
+    expect(capturedRequest?.headers.get("x-vercel-protection-bypass")).toBe(
+      "bypass-secret-789",
+    );
   });
 
   it("does not include Vercel bypass header when bypassSecret is not provided", async () => {
     let capturedRequest: Request | undefined;
     server.use(
-      http.post("http://localhost:3000/api/webhooks/agent/complete", async ({ request }) => {
-        capturedRequest = request;
-        return HttpResponse.json({}, { status: 200 });
-      }),
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
     );
 
     await reportPreflightFailure(
@@ -296,9 +327,15 @@ describe("reportPreflightFailure", () => {
       "Test error message",
     );
 
-    expect(capturedRequest?.headers.get("Content-Type")).toBe("application/json");
-    expect(capturedRequest?.headers.get("Authorization")).toBe("Bearer token-456");
-    expect(capturedRequest?.headers.get("x-vercel-protection-bypass")).toBeNull();
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
+    expect(
+      capturedRequest?.headers.get("x-vercel-protection-bypass"),
+    ).toBeNull();
   });
 });
 
