@@ -119,7 +119,9 @@ describe("realtime/client", () => {
       delete process.env.ABLY_API_KEY;
       const { publishStatus } = await import("../client");
 
-      const result = await publishStatus("run-123", "completed", { foo: "bar" });
+      const result = await publishStatus("run-123", "completed", {
+        foo: "bar",
+      });
 
       expect(result).toBe(false);
     });

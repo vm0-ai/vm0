@@ -153,7 +153,11 @@ const router = tsr.router(webhookCompleteContract, {
       log.debug(`Run ${body.runId} completed successfully`);
 
       // Publish completion status to Ably for realtime streaming to CLI
-      await publishStatus(body.runId, "completed", result as unknown as Record<string, unknown>);
+      await publishStatus(
+        body.runId,
+        "completed",
+        result as unknown as Record<string, unknown>,
+      );
     } else {
       // Failure: store error in run table
       const errorMessage =
