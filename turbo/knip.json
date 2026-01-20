@@ -130,8 +130,10 @@
     "apps/runner/src/lib/firecracker/network.ts",
     "apps/web/src/test/setup.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
-    "apps/cli/src/lib/api/api-client.ts",
-    "packages/core/src/contracts/public/agents.ts"
+    "packages/core/src/contracts/public/agents.ts",
+    "apps/cli/src/lib/api/domains/runs.ts",
+    "apps/cli/src/lib/api/core/types.ts",
+    "apps/cli/src/lib/api/index.ts"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],

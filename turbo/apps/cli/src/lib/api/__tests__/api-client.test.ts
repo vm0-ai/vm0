@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
-import { apiClient } from "../api-client";
+import {
+  createOrUpdateCompose,
+  createRun,
+  getEvents,
+  getComposeVersion,
+} from "../index";
 import * as config from "../config";
 
 // Mock the config module
@@ -10,7 +15,7 @@ vi.mock("../config", () => ({
   getToken: vi.fn(),
 }));
 
-describe("ApiClient", () => {
+describe("API Functions", () => {
   beforeEach(() => {
     vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
     vi.mocked(config.getToken).mockResolvedValue("test-token");
@@ -40,7 +45,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      const result = await apiClient.createOrUpdateCompose({
+      const result = await createOrUpdateCompose({
         content: mockConfig,
       });
 
@@ -69,7 +74,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      const result = await apiClient.createOrUpdateCompose({
+      const result = await createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
       });
 
@@ -92,7 +97,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      const result = await apiClient.createOrUpdateCompose({
+      const result = await createOrUpdateCompose({
         content: { version: "1", agents: { main: { provider: "claude" } } },
       });
 
@@ -103,7 +108,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.createOrUpdateCompose({
+        createOrUpdateCompose({
           content: { version: "1", agents: { main: { provider: "claude" } } },
         }),
       ).rejects.toThrow("Not authenticated");
@@ -113,7 +118,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
-        apiClient.createOrUpdateCompose({
+        createOrUpdateCompose({
           content: { version: "1", agents: { main: { provider: "claude" } } },
         }),
       ).rejects.toThrow("API URL not configured");
@@ -132,7 +137,7 @@ describe("ApiClient", () => {
       );
 
       await expect(
-        apiClient.createOrUpdateCompose({
+        createOrUpdateCompose({
           content: { version: "1", agents: { main: { provider: "claude" } } },
         }),
       ).rejects.toThrow("Invalid compose");
@@ -151,7 +156,7 @@ describe("ApiClient", () => {
       );
 
       await expect(
-        apiClient.createOrUpdateCompose({
+        createOrUpdateCompose({
           content: { version: "1", agents: { main: { provider: "claude" } } },
         }),
       ).rejects.toThrow("Failed to create compose");
@@ -182,7 +187,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      const result = await apiClient.createRun(mockRequest);
+      const result = await createRun(mockRequest);
 
       expect(capturedRequest?.url).toBe("http://localhost:3000/api/agent/runs");
       expect(capturedRequest?.method).toBe("POST");
@@ -222,7 +227,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      await apiClient.createRun(mockRequest);
+      await createRun(mockRequest);
 
       const body = await capturedRequest?.text();
       expect(body).toBe(JSON.stringify(mockRequest));
@@ -244,7 +249,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      const result = await apiClient.createRun({
+      const result = await createRun({
         agentComposeId: "cmp-123",
         prompt: "test",
         artifactName: "my-artifact",
@@ -269,7 +274,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      const result = await apiClient.createRun({
+      const result = await createRun({
         agentComposeId: "cmp-123",
         prompt: "test",
         artifactName: "my-artifact",
@@ -283,7 +288,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.createRun({
+        createRun({
           agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
@@ -295,7 +300,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
       await expect(
-        apiClient.createRun({
+        createRun({
           agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
@@ -314,7 +319,7 @@ describe("ApiClient", () => {
       );
 
       await expect(
-        apiClient.createRun({
+        createRun({
           agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
@@ -333,7 +338,7 @@ describe("ApiClient", () => {
       );
 
       await expect(
-        apiClient.createRun({
+        createRun({
           agentComposeId: "cmp-123",
           prompt: "test",
           artifactName: "my-artifact",
@@ -361,7 +366,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      const result = await apiClient.getEvents("run-123");
+      const result = await getEvents("run-123");
 
       expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
@@ -399,7 +404,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      const result = await apiClient.getEvents("run-123", { since: 4 });
+      const result = await getEvents("run-123", { since: 4 });
 
       expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=4&limit=100",
@@ -427,7 +432,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      await apiClient.getEvents("run-123", { limit: 50 });
+      await getEvents("run-123", { limit: 50 });
 
       expect(capturedRequest?.url).toBe(
         "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=50",
@@ -452,7 +457,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      const result = await apiClient.getEvents("run-123", {
+      const result = await getEvents("run-123", {
         since: 100,
         limit: 50,
       });
@@ -491,7 +496,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      const result = await apiClient.getEvents("run-123");
+      const result = await getEvents("run-123");
 
       expect(result.events).toHaveLength(2);
       expect(result.events[0]).toEqual({
@@ -511,15 +516,13 @@ describe("ApiClient", () => {
     it("should throw error when not authenticated", async () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
-        "Not authenticated",
-      );
+      await expect(getEvents("run-123")).rejects.toThrow("Not authenticated");
     });
 
     it("should throw error when API URL not configured", async () => {
       vi.mocked(config.getApiUrl).mockResolvedValue("");
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+      await expect(getEvents("run-123")).rejects.toThrow(
         "API URL not configured",
       );
     });
@@ -536,9 +539,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
-        "Run not found",
-      );
+      await expect(getEvents("run-123")).rejects.toThrow("Run not found");
     });
 
     it("should throw default error message when API error has no message", async () => {
@@ -553,7 +554,7 @@ describe("ApiClient", () => {
         }),
       );
 
-      await expect(apiClient.getEvents("run-123")).rejects.toThrow(
+      await expect(getEvents("run-123")).rejects.toThrow(
         "Failed to fetch events",
       );
     });
@@ -579,10 +580,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      await apiClient.getComposeVersion(
-        "compose-123",
-        scientificNotationVersion,
-      );
+      await getComposeVersion("compose-123", scientificNotationVersion);
 
       // ts-rest quotes the value to prevent scientific notation parsing
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${encodeURIComponent(JSON.stringify(scientificNotationVersion))}`;
@@ -606,7 +604,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      await apiClient.getComposeVersion("compose-123", normalVersion);
+      await getComposeVersion("compose-123", normalVersion);
 
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=${normalVersion}`;
       expect(capturedRequest?.url).toBe(expectedUrl);
@@ -627,7 +625,7 @@ describe("ApiClient", () => {
         ),
       );
 
-      await apiClient.getComposeVersion("compose-123", "latest");
+      await getComposeVersion("compose-123", "latest");
 
       const expectedUrl = `http://localhost:3000/api/agent/composes/versions?composeId=compose-123&version=latest`;
       expect(capturedRequest?.url).toBe(expectedUrl);
@@ -637,7 +635,7 @@ describe("ApiClient", () => {
       vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(
-        apiClient.getComposeVersion("compose-123", "version-123"),
+        getComposeVersion("compose-123", "version-123"),
       ).rejects.toThrow("Not authenticated");
     });
 
@@ -656,9 +654,9 @@ describe("ApiClient", () => {
         }),
       );
 
-      await expect(
-        apiClient.getComposeVersion("compose-123", "abc123"),
-      ).rejects.toThrow("Version not found: abc123");
+      await expect(getComposeVersion("compose-123", "abc123")).rejects.toThrow(
+        "Version not found: abc123",
+      );
     });
   });
 });

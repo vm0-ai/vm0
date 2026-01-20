@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runCommand } from "../run";
-import { apiClient } from "../../lib/api/api-client";
+import * as api from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import chalk from "chalk";
 
 // Mock dependencies
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api");
 vi.mock("../../lib/events/event-parser-factory");
 vi.mock("../../lib/events/event-renderer");
 
@@ -25,7 +25,7 @@ describe("run command", () => {
     vi.clearAllMocks();
 
     // Default mock for getComposeById (needed when using UUID)
-    vi.mocked(apiClient.getComposeById).mockResolvedValue({
+    vi.mocked(api.getComposeById).mockResolvedValue({
       id: testUuid,
       name: "test-agent",
       headVersionId: "version-123",
@@ -56,7 +56,7 @@ describe("run command", () => {
   describe("composeId validation", () => {
     it("should accept valid UUID format", async () => {
       const validUuid = testUuid;
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -66,7 +66,7 @@ describe("run command", () => {
       });
 
       // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -101,8 +101,8 @@ describe("run command", () => {
       ]);
 
       // UUID still requires fetching compose to get content for secret extraction
-      expect(apiClient.getComposeById).toHaveBeenCalledWith(validUuid);
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.getComposeById).toHaveBeenCalledWith(validUuid);
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: validUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -115,7 +115,7 @@ describe("run command", () => {
     });
 
     it("should accept and resolve agent names", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: testUuid,
         name: "my-agent",
         headVersionId: "version-123",
@@ -126,7 +126,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -136,7 +136,7 @@ describe("run command", () => {
       });
 
       // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -170,11 +170,8 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.getComposeByName).toHaveBeenCalledWith("my-agent", undefined);
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -187,7 +184,7 @@ describe("run command", () => {
     });
 
     it("should handle agent not found errors", async () => {
-      vi.mocked(apiClient.getComposeByName).mockRejectedValue(
+      vi.mocked(api.getComposeByName).mockRejectedValue(
         new Error("Compose not found: nonexistent-agent"),
       );
 
@@ -212,7 +209,7 @@ describe("run command", () => {
     });
 
     it("should parse name:version format and call getComposeVersion", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         headVersionId:
@@ -221,11 +218,11 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
+      vi.mocked(api.getComposeVersion).mockResolvedValue({
         versionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
       });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -234,7 +231,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -268,15 +265,12 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
-      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
+      expect(api.getComposeByName).toHaveBeenCalledWith("my-agent", undefined);
+      expect(api.getComposeVersion).toHaveBeenCalledWith(
         "550e8400-e29b-41d4-a716-446655440000",
         "abc12345",
       );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(api.createRun).toHaveBeenCalledWith(
         expect.objectContaining({
           agentComposeVersionId:
             "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
@@ -285,7 +279,7 @@ describe("run command", () => {
     });
 
     it("should use agentComposeId for :latest version", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         headVersionId:
@@ -294,7 +288,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -303,7 +297,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -337,14 +331,11 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
+      expect(api.getComposeByName).toHaveBeenCalledWith("my-agent", undefined);
       // Should NOT call getComposeVersion for :latest
-      expect(apiClient.getComposeVersion).not.toHaveBeenCalled();
+      expect(api.getComposeVersion).not.toHaveBeenCalled();
       // Should use agentComposeId (not agentComposeVersionId)
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(api.createRun).toHaveBeenCalledWith(
         expect.objectContaining({
           agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         }),
@@ -352,7 +343,7 @@ describe("run command", () => {
     });
 
     it("should handle version not found error", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         headVersionId:
@@ -361,7 +352,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.getComposeVersion).mockRejectedValue(
+      vi.mocked(api.getComposeVersion).mockRejectedValue(
         new Error("Version 'deadbeef' not found"),
       );
 
@@ -383,7 +374,7 @@ describe("run command", () => {
     });
 
     it("should parse scope/name format", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         headVersionId:
@@ -392,7 +383,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -401,7 +392,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -426,11 +417,11 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+      expect(api.getComposeByName).toHaveBeenCalledWith(
         "my-agent",
         "user-abc123",
       );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(api.createRun).toHaveBeenCalledWith(
         expect.objectContaining({
           agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         }),
@@ -438,7 +429,7 @@ describe("run command", () => {
     });
 
     it("should parse scope/name:version format", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
+      vi.mocked(api.getComposeByName).mockResolvedValue({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "my-agent",
         headVersionId:
@@ -447,11 +438,11 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
+      vi.mocked(api.getComposeVersion).mockResolvedValue({
         versionId:
           "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
       });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -460,7 +451,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -485,15 +476,15 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
+      expect(api.getComposeByName).toHaveBeenCalledWith(
         "my-agent",
         "user-abc123",
       );
-      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
+      expect(api.getComposeVersion).toHaveBeenCalledWith(
         "550e8400-e29b-41d4-a716-446655440000",
         "abc12345",
       );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(api.createRun).toHaveBeenCalledWith(
         expect.objectContaining({
           agentComposeVersionId:
             "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
@@ -504,7 +495,7 @@ describe("run command", () => {
 
   describe("template variables", () => {
     beforeEach(() => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -514,7 +505,7 @@ describe("run command", () => {
       });
 
       // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -552,7 +543,7 @@ describe("run command", () => {
         "KEY1=value1",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -578,7 +569,7 @@ describe("run command", () => {
         "KEY2=value2",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -602,7 +593,7 @@ describe("run command", () => {
         "URL=https://example.com?foo=bar",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -669,7 +660,7 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(api.createRun).toHaveBeenCalledWith({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -685,7 +676,7 @@ describe("run command", () => {
   describe("API interaction", () => {
     beforeEach(() => {
       // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [
           {
             sequenceNumber: 1,
@@ -712,7 +703,7 @@ describe("run command", () => {
     });
 
     it("should display starting messages in verbose mode", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -721,7 +712,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
       // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -756,7 +747,7 @@ describe("run command", () => {
     });
 
     it("should not display starting messages without verbose flag", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -765,7 +756,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
       // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -796,7 +787,7 @@ describe("run command", () => {
     });
 
     it("should display vars when provided in verbose mode", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -805,7 +796,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
       // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -843,7 +834,7 @@ describe("run command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
+      vi.mocked(api.createRun).mockRejectedValue(
         new Error("Not authenticated"),
       );
 
@@ -868,7 +859,7 @@ describe("run command", () => {
     });
 
     it("should handle compose not found errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
+      vi.mocked(api.createRun).mockRejectedValue(
         new Error("Compose not found"),
       );
 
@@ -893,9 +884,7 @@ describe("run command", () => {
     });
 
     it("should handle API errors with message", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
-        new Error("Execution failed"),
-      );
+      vi.mocked(api.createRun).mockRejectedValue(new Error("Execution failed"));
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -915,7 +904,7 @@ describe("run command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue("Non-error object");
+      vi.mocked(api.createRun).mockRejectedValue("Non-error object");
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -971,7 +960,7 @@ describe("run command", () => {
     });
 
     it("should poll for events after creating run", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -981,7 +970,7 @@ describe("run command", () => {
       });
 
       // First poll returns some events, second poll indicates completion
-      vi.mocked(apiClient.getEvents)
+      vi.mocked(api.getEvents)
         .mockResolvedValueOnce({
           events: [
             {
@@ -1044,16 +1033,16 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
+      expect(api.getEvents).toHaveBeenCalledWith("run-123", {
         since: 0,
       });
-      expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
+      expect(api.getEvents).toHaveBeenCalledWith("run-123", {
         since: 1,
       });
     });
 
     it("should parse and render events as they arrive", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1062,7 +1051,7 @@ describe("run command", () => {
         createdAt: "2025-01-01T00:00:00Z",
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
+      vi.mocked(api.getEvents).mockResolvedValueOnce({
         events: [
           {
             sequenceNumber: 1,
@@ -1125,7 +1114,7 @@ describe("run command", () => {
     });
 
     it("should stop polling when run status is completed", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1135,7 +1124,7 @@ describe("run command", () => {
       });
 
       // With new architecture, polling stops when run.status is completed
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
+      vi.mocked(api.getEvents).mockResolvedValueOnce({
         events: [
           {
             sequenceNumber: 1,
@@ -1178,14 +1167,14 @@ describe("run command", () => {
       ]);
 
       // Should only call getEvents once since status is completed
-      expect(apiClient.getEvents).toHaveBeenCalledTimes(1);
+      expect(api.getEvents).toHaveBeenCalledTimes(1);
     });
 
     // Test removed due to timing complexity with fake timers
     // The polling logic handles empty responses correctly in production
 
     it("should skip events that fail to parse", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1209,7 +1198,7 @@ describe("run command", () => {
         return null;
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
+      vi.mocked(api.getEvents).mockResolvedValueOnce({
         events: [
           {
             sequenceNumber: 1,
@@ -1262,7 +1251,7 @@ describe("run command", () => {
     });
 
     it("should handle polling errors gracefully", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1272,7 +1261,7 @@ describe("run command", () => {
       });
 
       // First poll succeeds, second poll fails
-      vi.mocked(apiClient.getEvents)
+      vi.mocked(api.getEvents)
         .mockResolvedValueOnce({
           events: [
             {
@@ -1308,7 +1297,7 @@ describe("run command", () => {
     });
 
     it("should exit with error when run fails (status: failed)", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1318,7 +1307,7 @@ describe("run command", () => {
       });
 
       // Return no events with "failed" status and error message
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -1345,7 +1334,7 @@ describe("run command", () => {
     });
 
     it("should exit with error when run times out (status: timeout)", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1355,7 +1344,7 @@ describe("run command", () => {
       });
 
       // Return no events with "timeout" status - sandbox heartbeat expired
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,
@@ -1380,7 +1369,7 @@ describe("run command", () => {
     });
 
     it("should handle completed status with result", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
+      vi.mocked(api.createRun).mockResolvedValue({
         runId: "run-123",
         status: "running",
         sandboxId: "sbx-456",
@@ -1390,7 +1379,7 @@ describe("run command", () => {
       });
 
       // Return completed status with result (new architecture)
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
+      vi.mocked(api.getEvents).mockResolvedValue({
         events: [],
         hasMore: false,
         nextSequence: 0,

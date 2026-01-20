@@ -1,11 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  apiClient,
-  TelemetryMetric,
-  RunEvent,
-  NetworkLogEntry,
-} from "../../lib/api/api-client";
+  getAgentEvents,
+  getSystemLog,
+  getMetrics,
+  getNetworkLogs,
+} from "../../lib/api";
+import type { TelemetryMetric, RunEvent, NetworkLogEntry } from "../../lib/api";
 import { parseTime } from "../../lib/utils/time-parser";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
@@ -216,7 +217,7 @@ async function showAgentEvents(
   runId: string,
   options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
-  const response = await apiClient.getAgentEvents(runId, options);
+  const response = await getAgentEvents(runId, options);
 
   if (response.events.length === 0) {
     console.log(chalk.yellow("No agent events found for this run."));
@@ -248,7 +249,7 @@ async function showSystemLog(
   runId: string,
   options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
-  const response = await apiClient.getSystemLog(runId, options);
+  const response = await getSystemLog(runId, options);
 
   if (!response.systemLog) {
     console.log(chalk.yellow("No system log found for this run."));
@@ -272,7 +273,7 @@ async function showMetrics(
   runId: string,
   options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
-  const response = await apiClient.getMetrics(runId, options);
+  const response = await getMetrics(runId, options);
 
   if (response.metrics.length === 0) {
     console.log(chalk.yellow("No metrics found for this run."));
@@ -306,7 +307,7 @@ async function showNetworkLogs(
   runId: string,
   options: { since?: number; limit: number; order: "asc" | "desc" },
 ): Promise<void> {
-  const response = await apiClient.getNetworkLogs(runId, options);
+  const response = await getNetworkLogs(runId, options);
 
   if (response.networkLogs.length === 0) {
     console.log(

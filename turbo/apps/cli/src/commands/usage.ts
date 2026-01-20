@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../lib/api/api-client";
+import { getUsage } from "../lib/api";
 import { parseTime } from "../lib/utils/time-parser";
 import { formatDuration } from "../lib/utils/duration-formatter";
 
@@ -155,7 +155,7 @@ export const usageCommand = new Command()
       }
 
       // Fetch usage data
-      const usage = await apiClient.getUsage({
+      const usage = await getUsage({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
       });

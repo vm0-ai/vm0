@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setCommand } from "../set";
-import { apiClient } from "../../../lib/api/api-client";
+import * as api from "../../../lib/api";
 
 // Mock dependencies
-vi.mock("../../../lib/api/api-client");
+vi.mock("../../../lib/api");
 
 describe("scope set command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -26,10 +26,10 @@ describe("scope set command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
+      vi.mocked(api.createScope).mockRejectedValue(
         new Error("Not authenticated"),
       );
 
@@ -49,10 +49,10 @@ describe("scope set command", () => {
 
   describe("create new scope", () => {
     it("should create scope successfully", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockResolvedValue({
+      vi.mocked(api.createScope).mockResolvedValue({
         id: "test-id",
         slug: "testslug",
         type: "personal",
@@ -63,7 +63,7 @@ describe("scope set command", () => {
 
       await setCommand.parseAsync(["node", "cli", "testslug"]);
 
-      expect(apiClient.createScope).toHaveBeenCalledWith({
+      expect(api.createScope).toHaveBeenCalledWith({
         slug: "testslug",
         displayName: undefined,
       });
@@ -76,10 +76,10 @@ describe("scope set command", () => {
     });
 
     it("should create scope with display name", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockResolvedValue({
+      vi.mocked(api.createScope).mockResolvedValue({
         id: "test-id",
         slug: "testslug",
         type: "personal",
@@ -96,7 +96,7 @@ describe("scope set command", () => {
         "Test Display",
       ]);
 
-      expect(apiClient.createScope).toHaveBeenCalledWith({
+      expect(api.createScope).toHaveBeenCalledWith({
         slug: "testslug",
         displayName: "Test Display",
       });
@@ -105,7 +105,7 @@ describe("scope set command", () => {
 
   describe("update existing scope", () => {
     it("should require --force to update existing scope", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "test-id",
         slug: "oldslug",
         type: "personal",
@@ -128,7 +128,7 @@ describe("scope set command", () => {
     });
 
     it("should update scope with --force", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "test-id",
         slug: "oldslug",
         type: "personal",
@@ -136,7 +136,7 @@ describe("scope set command", () => {
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-01T00:00:00Z",
       });
-      vi.mocked(apiClient.updateScope).mockResolvedValue({
+      vi.mocked(api.updateScope).mockResolvedValue({
         id: "test-id",
         slug: "newslug",
         type: "personal",
@@ -147,7 +147,7 @@ describe("scope set command", () => {
 
       await setCommand.parseAsync(["node", "cli", "newslug", "--force"]);
 
-      expect(apiClient.updateScope).toHaveBeenCalledWith({
+      expect(api.updateScope).toHaveBeenCalledWith({
         slug: "newslug",
         force: true,
       });
@@ -159,10 +159,10 @@ describe("scope set command", () => {
 
   describe("error handling", () => {
     it("should handle slug already taken", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
+      vi.mocked(api.createScope).mockRejectedValue(
         new Error("Scope already exists"),
       );
 
@@ -177,10 +177,10 @@ describe("scope set command", () => {
     });
 
     it("should handle reserved slug", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
+      vi.mocked(api.createScope).mockRejectedValue(
         new Error('Scope slug "vm0" is reserved'),
       );
 
@@ -195,10 +195,10 @@ describe("scope set command", () => {
     });
 
     it("should handle vm0 prefix rejection", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
+      vi.mocked(api.createScope).mockRejectedValue(
         new Error('Scope slug "vm0test" is reserved'),
       );
 
@@ -213,10 +213,10 @@ describe("scope set command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
+      vi.mocked(api.createScope).mockRejectedValue(
         new Error("Unexpected error"),
       );
 
@@ -231,10 +231,10 @@ describe("scope set command", () => {
     });
 
     it("should handle non-Error exceptions", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue("Unknown error");
+      vi.mocked(api.createScope).mockRejectedValue("Unknown error");
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "testslug"]);

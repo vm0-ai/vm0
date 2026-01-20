@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import {
+  getComposeByName,
+  getScheduleByName,
+  listScheduleRuns,
+} from "../../lib/api";
 import {
   loadAgentName,
   loadScheduleName,
@@ -104,7 +108,7 @@ export const statusCommand = new Command()
       // Get compose ID
       let composeId: string;
       try {
-        const compose = await apiClient.getComposeByName(agentName);
+        const compose = await getComposeByName(agentName);
         composeId = compose.id;
       } catch {
         console.error(chalk.red(`✗ Agent not found: ${agentName}`));
@@ -113,7 +117,7 @@ export const statusCommand = new Command()
       }
 
       // Get schedule details
-      const schedule = await apiClient.getScheduleByName({ name, composeId });
+      const schedule = await getScheduleByName({ name, composeId });
 
       // Print header
       console.log();
@@ -195,7 +199,7 @@ export const statusCommand = new Command()
       );
       if (limit > 0) {
         try {
-          const { runs } = await apiClient.listScheduleRuns({
+          const { runs } = await listScheduleRuns({
             name,
             composeId,
             limit,

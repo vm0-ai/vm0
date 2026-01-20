@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { statusCommand } from "../artifact/status";
 import * as storageUtils from "../../lib/storage/storage-utils";
-import { apiClient } from "../../lib/api/api-client";
+import * as api from "../../lib/api";
 
 // Mock dependencies
 vi.mock("../../lib/storage/storage-utils");
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api");
 
 describe("artifact status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -72,7 +72,7 @@ describe("artifact status command", () => {
     });
 
     it("should show start message", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+      vi.mocked(api.getStorageDownload).mockResolvedValue({
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
         url: "https://example.com/download",
@@ -88,7 +88,7 @@ describe("artifact status command", () => {
     });
 
     it("should exit with error if remote returns 404", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+      vi.mocked(api.getStorageDownload).mockRejectedValue(
         new Error('Storage "test-artifact" not found'),
       );
 
@@ -106,7 +106,7 @@ describe("artifact status command", () => {
     });
 
     it("should display version info when remote exists", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+      vi.mocked(api.getStorageDownload).mockResolvedValue({
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
         url: "https://example.com/download",
@@ -131,7 +131,7 @@ describe("artifact status command", () => {
     });
 
     it("should display empty indicator for empty storage", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
+      vi.mocked(api.getStorageDownload).mockResolvedValue({
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
         empty: true,
@@ -159,7 +159,7 @@ describe("artifact status command", () => {
     });
 
     it("should handle API errors", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+      vi.mocked(api.getStorageDownload).mockRejectedValue(
         new Error("Internal server error"),
       );
 
@@ -174,7 +174,7 @@ describe("artifact status command", () => {
     });
 
     it("should handle network errors", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
+      vi.mocked(api.getStorageDownload).mockRejectedValue(
         new Error("Network error"),
       );
 

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getScope, createScope, updateScope } from "../../lib/api";
 
 export const setCommand = new Command()
   .name("set")
@@ -17,7 +17,7 @@ export const setCommand = new Command()
         // First check if user already has a scope
         let existingScope;
         try {
-          existingScope = await apiClient.getScope();
+          existingScope = await getScope();
         } catch (error) {
           // Only swallow "No scope configured" errors - that's the expected case for new users
           // All other errors (network, auth, etc.) should propagate to the outer handler
@@ -48,11 +48,11 @@ export const setCommand = new Command()
             process.exit(1);
           }
 
-          scope = await apiClient.updateScope({ slug, force: true });
+          scope = await updateScope({ slug, force: true });
           console.log(chalk.green(`✓ Scope updated to ${scope.slug}`));
         } else {
           // Create new scope
-          scope = await apiClient.createScope({
+          scope = await createScope({
             slug,
             displayName: options.displayName,
           });

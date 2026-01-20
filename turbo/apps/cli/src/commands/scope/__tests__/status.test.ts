@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { statusCommand } from "../status";
-import { apiClient } from "../../../lib/api/api-client";
+import * as api from "../../../lib/api";
 
 // Mock dependencies
-vi.mock("../../../lib/api/api-client");
+vi.mock("../../../lib/api");
 
 describe("scope status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -26,9 +26,7 @@ describe("scope status command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("Not authenticated"),
-      );
+      vi.mocked(api.getScope).mockRejectedValue(new Error("Not authenticated"));
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -46,7 +44,7 @@ describe("scope status command", () => {
 
   describe("no scope configured", () => {
     it("should show helpful message when user has no scope", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
+      vi.mocked(api.getScope).mockRejectedValue(
         new Error("No scope configured"),
       );
 
@@ -66,7 +64,7 @@ describe("scope status command", () => {
 
   describe("scope display", () => {
     it("should display scope information", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "test-id",
         slug: "testuser",
         type: "personal",
@@ -92,7 +90,7 @@ describe("scope status command", () => {
     });
 
     it("should handle scope without display name", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "test-id",
         slug: "testuser",
         type: "personal",
@@ -111,9 +109,7 @@ describe("scope status command", () => {
 
   describe("error handling", () => {
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("Network error"),
-      );
+      vi.mocked(api.getScope).mockRejectedValue(new Error("Network error"));
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -126,7 +122,7 @@ describe("scope status command", () => {
     });
 
     it("should handle non-Error exceptions", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue("Unknown error");
+      vi.mocked(api.getScope).mockRejectedValue("Unknown error");
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);

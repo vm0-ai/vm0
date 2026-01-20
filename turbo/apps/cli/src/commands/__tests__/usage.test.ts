@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { usageCommand } from "../usage";
-import { apiClient } from "../../lib/api/api-client";
+import * as api from "../../lib/api";
 
 // Mock dependencies
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api");
 
 describe("usage command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -26,7 +26,7 @@ describe("usage command", () => {
 
   describe("default behavior", () => {
     it("should fetch usage with default 7 day range", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-12T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",
@@ -44,7 +44,7 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli"]);
 
-      expect(apiClient.getUsage).toHaveBeenCalledWith({
+      expect(api.getUsage).toHaveBeenCalledWith({
         startDate: expect.any(String),
         endDate: expect.any(String),
       });
@@ -56,7 +56,7 @@ describe("usage command", () => {
     });
 
     it("should display daily breakdown with formatted durations", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-12T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",
@@ -81,7 +81,7 @@ describe("usage command", () => {
 
   describe("--since option", () => {
     it("should accept ISO date format", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-15T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",
@@ -92,14 +92,14 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli", "--since", "2026-01-15"]);
 
-      expect(apiClient.getUsage).toHaveBeenCalledWith({
+      expect(api.getUsage).toHaveBeenCalledWith({
         startDate: expect.stringContaining("2026-01-15"),
         endDate: expect.any(String),
       });
     });
 
     it("should accept relative format (7d)", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-12T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",
@@ -110,7 +110,7 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli", "--since", "7d"]);
 
-      expect(apiClient.getUsage).toHaveBeenCalled();
+      expect(api.getUsage).toHaveBeenCalled();
     });
 
     it("should reject invalid --since format", async () => {
@@ -127,7 +127,7 @@ describe("usage command", () => {
 
   describe("--until option", () => {
     it("should accept ISO date format", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-10T00:00:00.000Z",
           end: "2026-01-17T00:00:00.000Z",
@@ -138,7 +138,7 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli", "--until", "2026-01-17"]);
 
-      expect(apiClient.getUsage).toHaveBeenCalledWith({
+      expect(api.getUsage).toHaveBeenCalledWith({
         startDate: expect.any(String),
         endDate: expect.stringContaining("2026-01-17"),
       });
@@ -196,9 +196,7 @@ describe("usage command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.getUsage).mockRejectedValue(
-        new Error("Not authenticated"),
-      );
+      vi.mocked(api.getUsage).mockRejectedValue(new Error("Not authenticated"));
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
@@ -214,9 +212,7 @@ describe("usage command", () => {
     });
 
     it("should handle API errors", async () => {
-      vi.mocked(apiClient.getUsage).mockRejectedValue(
-        new Error("Server error"),
-      );
+      vi.mocked(api.getUsage).mockRejectedValue(new Error("Server error"));
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
@@ -229,7 +225,7 @@ describe("usage command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getUsage).mockRejectedValue("Non-error object");
+      vi.mocked(api.getUsage).mockRejectedValue("Non-error object");
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);
@@ -244,7 +240,7 @@ describe("usage command", () => {
 
   describe("output formatting", () => {
     it("should fill in missing dates with zero values", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-15T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",
@@ -264,7 +260,7 @@ describe("usage command", () => {
     });
 
     it("should display '-' for zero run time", async () => {
-      vi.mocked(apiClient.getUsage).mockResolvedValue({
+      vi.mocked(api.getUsage).mockResolvedValue({
         period: {
           start: "2026-01-15T00:00:00.000Z",
           end: "2026-01-19T00:00:00.000Z",

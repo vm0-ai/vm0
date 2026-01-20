@@ -1,13 +1,13 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getScope } from "../../lib/api";
 
 export const statusCommand = new Command()
   .name("status")
   .description("View current scope status")
   .action(async () => {
     try {
-      const scope = await apiClient.getScope();
+      const scope = await getScope();
 
       console.log(chalk.bold("Scope Information:"));
       console.log(`  Slug: ${chalk.green(scope.slug)}`);

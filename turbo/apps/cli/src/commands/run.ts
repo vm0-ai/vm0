@@ -3,7 +3,15 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
-import { apiClient } from "../lib/api/api-client";
+import {
+  getEvents,
+  getComposeById,
+  getComposeByName,
+  getComposeVersion,
+  createRun,
+  getCheckpoint,
+  getSession,
+} from "../lib/api";
 import { parseEvent } from "../lib/events/event-parser-factory";
 import { EventRenderer } from "../lib/events/event-renderer";
 import { CodexEventRenderer } from "../lib/events/codex-event-renderer";
@@ -195,7 +203,7 @@ async function pollEvents(
   const verbose = options.verbose;
 
   while (!complete) {
-    const response = await apiClient.getEvents(runId, {
+    const response = await getEvents(runId, {
       since: nextSequence,
     });
 
@@ -377,7 +385,7 @@ const runCmd = new Command()
           if (verbose) {
             console.log(chalk.dim(`  Using compose ID: ${identifier}`));
           }
-          const compose = await apiClient.getComposeById(name);
+          const compose = await getComposeById(name);
           composeId = compose.id;
           composeContent = compose.content;
         } else {
@@ -386,7 +394,7 @@ const runCmd = new Command()
             const displayRef = scope ? `${scope}/${name}` : name;
             console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
-          const compose = await apiClient.getComposeByName(name, scope);
+          const compose = await getComposeByName(name, scope);
           composeId = compose.id;
           composeContent = compose.content;
           if (verbose) {
@@ -403,10 +411,7 @@ const runCmd = new Command()
             console.log(chalk.dim(`  Resolving version: ${version}`));
           }
           try {
-            const versionInfo = await apiClient.getComposeVersion(
-              composeId,
-              version,
-            );
+            const versionInfo = await getComposeVersion(composeId, version);
             agentComposeVersionId = versionInfo.versionId;
             if (verbose) {
               console.log(
@@ -482,7 +487,7 @@ const runCmd = new Command()
         }
 
         // 6. Call unified API (server handles all variable expansion)
-        const response = await apiClient.createRun({
+        const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
             ? { agentComposeVersionId }
@@ -622,7 +627,7 @@ runCmd
 
         // 2. Fetch checkpoint info to get required secret names
         // This allows loading secrets from environment variables
-        const checkpointInfo = await apiClient.getCheckpoint(checkpointId);
+        const checkpointInfo = await getCheckpoint(checkpointId);
         const requiredSecretNames =
           checkpointInfo.agentComposeSnapshot.secretNames || [];
 
@@ -658,7 +663,7 @@ runCmd
         }
 
         // 5. Call unified API with checkpointId
-        const response = await apiClient.createRun({
+        const response = await createRun({
           checkpointId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
@@ -785,7 +790,7 @@ runCmd
 
         // 2. Fetch session info to get required secret names
         // This allows loading secrets from environment variables
-        const sessionInfo = await apiClient.getSession(agentSessionId);
+        const sessionInfo = await getSession(agentSessionId);
         const requiredSecretNames = sessionInfo.secretNames || [];
 
         // 3. Load secrets from CLI options + environment variables
@@ -821,7 +826,7 @@ runCmd
         }
 
         // 5. Call unified API with sessionId
-        const response = await apiClient.createRun({
+        const response = await createRun({
           sessionId: agentSessionId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,

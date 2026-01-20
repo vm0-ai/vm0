@@ -7,14 +7,14 @@ import {
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import * as yaml from "yaml";
-import { apiClient } from "../../lib/api/api-client";
+import * as api from "../../lib/api";
 import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
 vi.mock("yaml");
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api");
 vi.mock("../../lib/domain/yaml-validator");
 vi.mock("../../lib/domain/provider-config", () => ({
   getProviderDefaults: vi.fn().mockReturnValue(undefined),
@@ -68,14 +68,14 @@ describe("compose command", () => {
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "scope-123",
         slug: "user-abc12345",
         type: "personal",
@@ -120,14 +120,14 @@ describe("compose command", () => {
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "scope-123",
         slug: "user-abc12345",
         type: "personal",
@@ -175,14 +175,14 @@ describe("compose command", () => {
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
       });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "scope-123",
         slug: "user-abc12345",
         type: "personal",
@@ -193,7 +193,7 @@ describe("compose command", () => {
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(apiClient.createOrUpdateCompose).toHaveBeenCalled();
+      expect(api.createOrUpdateCompose).toHaveBeenCalled();
     });
   });
 
@@ -208,7 +208,7 @@ describe("compose command", () => {
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
+      vi.mocked(api.getScope).mockResolvedValue({
         id: "scope-123",
         slug: "user-abc12345",
         type: "personal",
@@ -219,7 +219,7 @@ describe("compose command", () => {
     });
 
     it("should display loading message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
         versionId:
@@ -235,7 +235,7 @@ describe("compose command", () => {
     });
 
     it("should display created message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test-agent",
         versionId:
@@ -254,7 +254,7 @@ describe("compose command", () => {
     });
 
     it("should display 'version exists' message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test-agent",
         versionId:
@@ -272,7 +272,7 @@ describe("compose command", () => {
     });
 
     it("should display usage instructions", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
+      vi.mocked(api.createOrUpdateCompose).mockResolvedValue({
         composeId: "cmp-123",
         name: "test",
         versionId:
@@ -302,7 +302,7 @@ describe("compose command", () => {
     });
 
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
+      vi.mocked(api.createOrUpdateCompose).mockRejectedValue(
         new Error("Not authenticated"),
       );
 
@@ -320,7 +320,7 @@ describe("compose command", () => {
     });
 
     it("should handle API errors with message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
+      vi.mocked(api.createOrUpdateCompose).mockRejectedValue(
         new Error("Failed to create compose: Invalid name"),
       );
 
@@ -335,7 +335,7 @@ describe("compose command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
+      vi.mocked(api.createOrUpdateCompose).mockRejectedValue(
         "Non-error object",
       );
 

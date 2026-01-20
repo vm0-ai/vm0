@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getComposeByName, enableSchedule } from "../../lib/api";
 import {
   loadAgentName,
   loadScheduleName,
@@ -51,7 +51,7 @@ export const enableCommand = new Command()
       // Get compose ID
       let composeId: string;
       try {
-        const compose = await apiClient.getComposeByName(agentName);
+        const compose = await getComposeByName(agentName);
         composeId = compose.id;
       } catch {
         console.error(chalk.red(`✗ Agent not found: ${agentName}`));
@@ -60,7 +60,7 @@ export const enableCommand = new Command()
       }
 
       // Call API
-      await apiClient.enableSchedule({ name, composeId });
+      await enableSchedule({ name, composeId });
 
       console.log(chalk.green(`✓ Enabled schedule ${chalk.cyan(name)}`));
     } catch (error) {
