@@ -131,24 +131,24 @@
         - name: Signal runner to enter drain mode
           command: kill -USR1 {{ pm2_pid.stdout }}
 
-        - name: Wait for active jobs to complete
+        - name: Wait for active runs to complete
           shell: |
-            # Poll status file until active_jobs is 0 or timeout
+            # Poll status file until active_runs is 0 or timeout
             timeout={{ drain_timeout }}
             elapsed=0
             status_file="{{ runner_base_dir }}/status.json"
 
             while [ $elapsed -lt $timeout ]; do
               if [ -f "$status_file" ]; then
-                # Check mode and active_jobs from JSON (handle pretty-printed format with spaces)
+                # Check mode and active_runs from JSON (handle pretty-printed format with spaces)
                 mode=$(cat "$status_file" | grep -o '"mode": *"[^"]*"' | cut -d'"' -f4)
-                active=$(cat "$status_file" | grep -o '"active_jobs": *[0-9]*' | grep -o '[0-9]*')
+                active=$(cat "$status_file" | grep -o '"active_runs": *[0-9]*' | grep -o '[0-9]*')
 
                 if [ "$active" = "0" ]; then
-                  echo "Drain complete: no active jobs (mode: $mode)"
+                  echo "Drain complete: no active runs (mode: $mode)"
                   exit 0
                 fi
-                echo "Draining: $active active job(s), mode: $mode (${elapsed}s elapsed)"
+                echo "Draining: $active active run(s), mode: $mode (${elapsed}s elapsed)"
               else
                 echo "Status file not found yet, waiting..."
               fi
