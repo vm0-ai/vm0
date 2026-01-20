@@ -1,7 +1,4 @@
-import type {
-  InboundMessage,
-  ConnectionStateChange,
-} from "ably";
+import type { InboundMessage, ConnectionStateChange } from "ably";
 import { apiClient } from "../api/api-client";
 import { createRealtimeClient, getRunChannelName } from "./client";
 
@@ -39,8 +36,22 @@ export interface StreamResult {
 export interface StreamOptions {
   verbose?: boolean;
   startTimestamp: Date;
-  onEvent: (event: unknown, options: { verbose?: boolean; previousTimestamp: Date; startTimestamp: Date }) => Date;
-  onRunCompleted: (result: Record<string, unknown> | undefined, options: { verbose?: boolean; previousTimestamp: Date; startTimestamp: Date }) => void;
+  onEvent: (
+    event: unknown,
+    options: {
+      verbose?: boolean;
+      previousTimestamp: Date;
+      startTimestamp: Date;
+    },
+  ) => Date;
+  onRunCompleted: (
+    result: Record<string, unknown> | undefined,
+    options: {
+      verbose?: boolean;
+      previousTimestamp: Date;
+      startTimestamp: Date;
+    },
+  ) => void;
   onRunFailed: (error: string | undefined, runId: string) => void;
   onTimeout: (runId: string) => void;
 }
@@ -58,7 +69,14 @@ export async function streamEvents(
   runId: string,
   options: StreamOptions,
 ): Promise<StreamResult> {
-  const { verbose, startTimestamp, onEvent, onRunCompleted, onRunFailed, onTimeout } = options;
+  const {
+    verbose,
+    startTimestamp,
+    onEvent,
+    onRunCompleted,
+    onRunFailed,
+    onTimeout,
+  } = options;
   let previousTimestamp = startTimestamp;
 
   // Create Ably client with token-based auth
@@ -81,7 +99,11 @@ export async function streamEvents(
     // Handle connection errors
     ablyClient.connection.on("failed", (stateChange: ConnectionStateChange) => {
       cleanup();
-      reject(new Error(`Realtime connection failed: ${stateChange.reason?.message || "Unknown error"}`));
+      reject(
+        new Error(
+          `Realtime connection failed: ${stateChange.reason?.message || "Unknown error"}`,
+        ),
+      );
     });
 
     function cleanup(): void {
@@ -104,7 +126,9 @@ export async function streamEvents(
             if (seq > nextExpectedSequence) {
               // Gap detected - we may have missed events
               // In fail-fast mode, we continue but log a warning
-              console.warn(`Warning: Event sequence gap detected (expected ${nextExpectedSequence}, got ${seq})`);
+              console.warn(
+                `Warning: Event sequence gap detected (expected ${nextExpectedSequence}, got ${seq})`,
+              );
             }
             nextExpectedSequence = Math.max(nextExpectedSequence, seq + 1);
           }
@@ -147,7 +171,9 @@ export async function streamEvents(
     // Subscribe to the channel (returns a promise)
     channel.subscribe(handleMessage).catch((err: Error) => {
       cleanup();
-      reject(new Error(`Failed to subscribe to realtime channel: ${err.message}`));
+      reject(
+        new Error(`Failed to subscribe to realtime channel: ${err.message}`),
+      );
     });
   });
 }

@@ -1307,8 +1307,7 @@ class ApiClient {
     }
 
     const errorBody = result.body as ApiErrorResponse;
-    const message =
-      errorBody.error?.message || "Failed to get realtime token";
+    const message = errorBody.error?.message || "Failed to get realtime token";
     throw new Error(message);
   }
 
