@@ -19,7 +19,9 @@ export const listCommand = new Command()
         console.log(chalk.dim("No credentials found."));
         console.log();
         console.log("To add a credential:");
-        console.log(chalk.cyan("  vm0 credential set MY_API_KEY <value>"));
+        console.log(
+          chalk.cyan("  vm0 experimental-credential set MY_API_KEY <value>"),
+        );
         return;
       }
 
