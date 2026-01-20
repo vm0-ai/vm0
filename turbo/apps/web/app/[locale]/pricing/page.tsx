@@ -254,7 +254,7 @@ export default function PricingPage() {
           <div>
             <h1 className="hero-title">Simple, simple pricing</h1>
             <p className="hero-description">
-              We're in early access, so we keep it straightforward. No gotchas, no surprises. Start free and scale when you're ready.
+              We&apos;re in early access, so we keep it straightforward. No gotchas, no surprises. Start free and scale when you&apos;re ready.
             </p>
           </div>
         </div>
