@@ -48,6 +48,14 @@ vm0 cook "run your workflow"
 
 ## 📚 Documentation
 
+### Architecture
+
+<p align="center">
+  <a href="./docs/architecture.md">
+    <img src="./docs/arch.svg" alt="VM0 Architecture Diagram" width="800">
+  </a>
+</p>
+
 - **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (E2B, Firecracker), infrastructure components and network architecture
 
 For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
