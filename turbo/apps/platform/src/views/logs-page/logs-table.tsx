@@ -4,13 +4,7 @@ import { logs$ } from "../../signals/logs-page/logs-signals.ts";
 import { LogsTableRow } from "./logs-table-row.tsx";
 import { LogsEmptyState } from "./logs-empty-state.tsx";
 import type { LogResponse } from "../../signals/logs-page/types.ts";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-} from "@vm0/ui";
+import { Table, TableHeader, TableBody, TableHead, TableRow } from "@vm0/ui";
 
 interface LogBatchProps {
   logComputed: Computed<Promise<LogResponse>>;

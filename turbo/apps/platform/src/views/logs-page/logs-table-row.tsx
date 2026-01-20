@@ -15,10 +15,7 @@ export function LogsTableRow({ run }: LogsTableRowProps) {
   };
 
   return (
-    <TableRow
-      onClick={handleClick}
-      className="cursor-pointer hover:bg-gray-50"
-    >
+    <TableRow onClick={handleClick} className="cursor-pointer hover:bg-gray-50">
       <TableCell>{run.id}</TableCell>
       <TableCell>{run.agent_name}</TableCell>
       <TableCell>{new Date(run.created_at).toLocaleString()}</TableCell>
