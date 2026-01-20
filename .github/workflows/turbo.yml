@@ -135,7 +135,13 @@ jobs:
     needs: [change-detection]
     # Deploy if it's a PR and web, CLI, runner, site, or platform changed
     if: |
-      github.event_name == 'pull_request' && (needs.change-detection.outputs.web-changed == 'true' || needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true' || needs.change-detection.outputs.site-changed == 'true' || needs.change-detection.outputs.platform-changed == 'true')
+      github.event_name == 'pull_request' && (
+        needs.change-detection.outputs.web-changed == 'true' ||
+        needs.change-detection.outputs.cli-changed == 'true' ||
+        needs.change-detection.outputs.runner-changed == 'true' ||
+        needs.change-detection.outputs.site-changed == 'true' ||
+        needs.change-detection.outputs.platform-changed == 'true'
+      )
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -570,7 +576,11 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection]
     if: |
-      github.event_name == 'pull_request' && (needs.change-detection.outputs.cli-changed == 'true' || needs.change-detection.outputs.runner-changed == 'true')
+      github.event_name == 'pull_request' && (
+        needs.change-detection.outputs.web-changed == 'true' ||
+        needs.change-detection.outputs.cli-changed == 'true' ||
+        needs.change-detection.outputs.runner-changed == 'true'
+      )
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
       runner-dir: ${{ steps.prepare.outputs.runner-dir }}
