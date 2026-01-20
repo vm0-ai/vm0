@@ -93,6 +93,9 @@ importers:
       json:
         specifier: ^11.0.0
         version: 11.0.0
+      msw:
+        specifier: ^2.12.7
+        version: 2.12.7(@types/node@24.3.0)(typescript@5.9.2)
       oxlint:
         specifier: ^1.14.0
         version: 1.38.0
@@ -312,6 +315,9 @@ importers:
       json:
         specifier: ^11.0.0
         version: 11.0.0
+      msw:
+        specifier: ^2.12.7
+        version: 2.12.7(@types/node@24.3.0)(typescript@5.9.2)
       oxlint:
         specifier: ^1.14.0
         version: 1.38.0
