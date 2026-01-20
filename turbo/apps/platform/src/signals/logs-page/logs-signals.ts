@@ -10,10 +10,10 @@ const internalLogs$ = state<Computed<Promise<LogResponse>>[]>([]);
 export const setLogs$ = command<
   void,
   [
-    (
-      | Computed<Promise<LogResponse>>[]
-      | ((prev: Computed<Promise<LogResponse>>[]) => Computed<Promise<LogResponse>>[])
-    ),
+    | Computed<Promise<LogResponse>>[]
+    | ((
+        prev: Computed<Promise<LogResponse>>[],
+      ) => Computed<Promise<LogResponse>>[]),
   ]
 >(({ set, get }, logsOrFn) => {
   if (typeof logsOrFn === "function") {
