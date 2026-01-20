@@ -34,7 +34,17 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/vitest.config.ts",
+        "!**/src/test/**"
+      ],
       "outputs": [
         ".next/**",
         "!.next/cache/**",
