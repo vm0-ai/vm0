@@ -9,13 +9,11 @@ import {
 } from "vitest";
 import { eq } from "drizzle-orm";
 import type { AgentVolumeConfig } from "../types";
-import * as storageResolver from "../storage-resolver";
 import * as s3Client from "../../s3/s3-client";
 import { initServices } from "../../init-services";
 import { storages, storageVersions } from "../../../db/schema/storage";
 
-// Mock external dependencies
-vi.mock("../storage-resolver");
+// Mock S3 client only (storage-resolver is pure logic, no need to mock)
 vi.mock("../../s3/s3-client");
 
 // Set required environment variables before initServices
@@ -110,12 +108,6 @@ describe("StorageService", () => {
         },
       };
 
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: null,
-        errors: [],
-      });
-
       const result = await storageService.prepareStorageManifest(
         agentConfig,
         {},
@@ -156,6 +148,7 @@ describe("StorageService", () => {
         .set({ headVersionId: versionId })
         .where(eq(storages.id, storage!.id));
 
+      // Use real config structure that resolveVolumes will parse
       const agentConfig: AgentVolumeConfig = {
         agents: {
           "test-agent": {
@@ -163,21 +156,13 @@ describe("StorageService", () => {
             working_dir: "/home/user/workspace",
           },
         },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "data",
-            driver: "vas",
-            mountPath: "/workspace/data",
-            vasStorageName: `${TEST_PREFIX}dataset`,
-            vasVersion: "latest",
+        volumes: {
+          data: {
+            name: `${TEST_PREFIX}dataset`,
+            version: "latest",
           },
-        ],
-        artifact: null,
-        errors: [],
-      });
+        },
+      };
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
@@ -240,17 +225,6 @@ describe("StorageService", () => {
           },
         },
       };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: {
-          driver: "vas",
-          mountPath: "/home/user/workspace",
-          vasStorageName: `${TEST_PREFIX}artifact`,
-          vasVersion: "latest",
-        },
-        errors: [],
-      });
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/artifact-archive.tar.gz",
@@ -341,21 +315,13 @@ describe("StorageService", () => {
             working_dir: "/home/user/workspace",
           },
         },
-      };
-
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [
-          {
-            name: "data",
-            driver: "vas",
-            mountPath: "/workspace/data",
-            vasStorageName: `${TEST_PREFIX}dataset-resume`,
-            vasVersion: "latest",
+        volumes: {
+          data: {
+            name: `${TEST_PREFIX}dataset-resume`,
+            version: "latest",
           },
-        ],
-        artifact: null,
-        errors: [],
-      });
+        },
+      };
 
       vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
@@ -386,12 +352,6 @@ describe("StorageService", () => {
     });
 
     it("should throw error when resumeArtifactMountPath is not provided with resumeArtifact", async () => {
-      vi.mocked(storageResolver.resolveVolumes).mockReturnValue({
-        volumes: [],
-        artifact: null,
-        errors: [],
-      });
-
       await expect(
         storageService.prepareStorageManifest(
           undefined,
