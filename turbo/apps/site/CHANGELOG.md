@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/vm0-ai/vm0/compare/site-v1.3.0...site-v1.4.0) (2026-01-20)
+
+
+### Features
+
+* **site:** improve robots.txt with crawl delay and host directive ([#1385](https://github.com/vm0-ai/vm0/issues/1385)) ([e5be890](https://github.com/vm0-ai/vm0/commit/e5be890e3809c768558371fe9bc2e3e54a5a61b2))
+
 ## [1.3.0](https://github.com/vm0-ai/vm0/compare/site-v1.2.0...site-v1.3.0) (2026-01-20)
 
 
