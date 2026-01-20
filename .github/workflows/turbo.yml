@@ -505,6 +505,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [change-detection, cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: |
+      needs.change-detection.outputs.web-changed == 'true' ||
       needs.change-detection.outputs.cli-changed == 'true' ||
       needs.change-detection.outputs.runner-changed == 'true'
     timeout-minutes: 8
