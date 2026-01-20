@@ -32,14 +32,6 @@
 
 **Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, DeepAgent CLI, OpenCode
 
-## 📚 Technical Documentation
-
-- **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (E2B, Firecracker), infrastructure components, network architecture, and deployment models
-- **[Agent Creator Guide](./docs/agent-creator.md)** - Learn how to build your first agent
-- **[Issue Workflow Guide](./docs/issue-workflow.md)** - GitHub issue workflow automation
-
-For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
-
 ## 🚀 [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
 From zero to workflow agent in 5 minutes
@@ -53,6 +45,12 @@ vm0 init
 cat AGENTS.md # check the workflow which your agent will run
 vm0 cook "run your workflow"
 ```
+
+## 📚 Documentation
+
+- **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (E2B, Firecracker), infrastructure components and network architecture
+
+For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
 
 ## 🤝 Contribute
 
