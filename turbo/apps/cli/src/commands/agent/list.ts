@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type ApiError } from "../../lib/api/api-client";
+import { httpGet, type ApiError } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
 
 /**
@@ -28,7 +28,7 @@ export const listCommand = new Command()
         ? `/api/agent/composes/list?scope=${encodeURIComponent(options.scope)}`
         : "/api/agent/composes/list";
 
-      const response = await apiClient.get(url);
+      const response = await httpGet(url);
 
       if (!response.ok) {
         const error = (await response.json()) as ApiError;

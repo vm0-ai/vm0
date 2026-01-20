@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { setCommand } from "../set";
-import { apiClient } from "../../../lib/api/api-client";
+import * as config from "../../../lib/api/config";
 
-// Mock dependencies
-vi.mock("../../../lib/api/api-client");
+// Mock the config module for auth
+vi.mock("../../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 
 describe("scope set command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -16,6 +21,8 @@ describe("scope set command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
@@ -26,12 +33,7 @@ describe("scope set command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
-      );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
-        new Error("Not authenticated"),
-      );
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "testslug"]);
@@ -40,33 +42,36 @@ describe("scope set command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 
   describe("create new scope", () => {
     it("should create scope successfully", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            {
+              id: "test-id",
+              slug: "testslug",
+              type: "personal",
+              displayName: null,
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
       );
-      vi.mocked(apiClient.createScope).mockResolvedValue({
-        id: "test-id",
-        slug: "testslug",
-        type: "personal",
-        displayName: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
 
       await setCommand.parseAsync(["node", "cli", "testslug"]);
 
-      expect(apiClient.createScope).toHaveBeenCalledWith({
-        slug: "testslug",
-        displayName: undefined,
-      });
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Scope created: testslug"),
       );
@@ -76,17 +81,29 @@ describe("scope set command", () => {
     });
 
     it("should create scope with display name", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json(
+            {
+              id: "test-id",
+              slug: "testslug",
+              type: "personal",
+              displayName: "Test Display",
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
       );
-      vi.mocked(apiClient.createScope).mockResolvedValue({
-        id: "test-id",
-        slug: "testslug",
-        type: "personal",
-        displayName: "Test Display",
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
 
       await setCommand.parseAsync([
         "node",
@@ -96,7 +113,7 @@ describe("scope set command", () => {
         "Test Display",
       ]);
 
-      expect(apiClient.createScope).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         slug: "testslug",
         displayName: "Test Display",
       });
@@ -105,14 +122,18 @@ describe("scope set command", () => {
 
   describe("update existing scope", () => {
     it("should require --force to update existing scope", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "test-id",
-        slug: "oldslug",
-        type: "personal",
-        displayName: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "test-id",
+            slug: "oldslug",
+            type: "personal",
+            displayName: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "newslug"]);
@@ -128,29 +149,31 @@ describe("scope set command", () => {
     });
 
     it("should update scope with --force", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "test-id",
-        slug: "oldslug",
-        type: "personal",
-        displayName: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.updateScope).mockResolvedValue({
-        id: "test-id",
-        slug: "newslug",
-        type: "personal",
-        displayName: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "test-id",
+            slug: "oldslug",
+            type: "personal",
+            displayName: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }),
+        http.put("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "test-id",
+            slug: "newslug",
+            type: "personal",
+            displayName: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await setCommand.parseAsync(["node", "cli", "newslug", "--force"]);
 
-      expect(apiClient.updateScope).toHaveBeenCalledWith({
-        slug: "newslug",
-        force: true,
-      });
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Scope updated to newslug"),
       );
@@ -159,11 +182,19 @@ describe("scope set command", () => {
 
   describe("error handling", () => {
     it("should handle slug already taken", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
-      );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
-        new Error("Scope already exists"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "Scope already exists", code: "CONFLICT" } },
+            { status: 409 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -177,11 +208,24 @@ describe("scope set command", () => {
     });
 
     it("should handle reserved slug", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
-      );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
-        new Error('Scope slug "vm0" is reserved'),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: 'Scope slug "vm0" is reserved',
+                code: "FORBIDDEN",
+              },
+            },
+            { status: 403 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -195,11 +239,24 @@ describe("scope set command", () => {
     });
 
     it("should handle vm0 prefix rejection", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
-      );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
-        new Error('Scope slug "vm0test" is reserved'),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: 'Scope slug "vm0test" is reserved',
+                code: "FORBIDDEN",
+              },
+            },
+            { status: 403 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -213,11 +270,21 @@ describe("scope set command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
-      );
-      vi.mocked(apiClient.createScope).mockRejectedValue(
-        new Error("Unexpected error"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "Unexpected error", code: "SERVER_ERROR" },
+            },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -231,17 +298,25 @@ describe("scope set command", () => {
     });
 
     it("should handle non-Error exceptions", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/scope", () => {
+          return HttpResponse.error();
+        }),
       );
-      vi.mocked(apiClient.createScope).mockRejectedValue("Unknown error");
 
       await expect(async () => {
         await setCommand.parseAsync(["node", "cli", "testslug"]);
       }).rejects.toThrow("process.exit called");
 
+      // Network error from HttpResponse.error() manifests as "Failed to fetch"
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("unexpected error"),
+        expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

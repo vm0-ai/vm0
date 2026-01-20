@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
-import { apiClient } from "../../lib/api/api-client";
+import { getComposeByName, deleteSchedule } from "../../lib/api";
 import {
   loadAgentName,
   loadScheduleName,
@@ -71,7 +71,7 @@ export const deleteCommand = new Command()
       // Get compose ID
       let composeId: string;
       try {
-        const compose = await apiClient.getComposeByName(agentName);
+        const compose = await getComposeByName(agentName);
         composeId = compose.id;
       } catch {
         console.error(chalk.red(`✗ Agent not found: ${agentName}`));
@@ -89,7 +89,7 @@ export const deleteCommand = new Command()
       }
 
       // Call API
-      await apiClient.deleteSchedule({ name, composeId });
+      await deleteSchedule({ name, composeId });
 
       console.log(chalk.green(`✓ Deleted schedule ${chalk.cyan(name)}`));
     } catch (error) {

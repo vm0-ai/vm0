@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getCheckpoint, createRun } from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
@@ -79,7 +79,7 @@ export const resumeCommand = new Command()
 
         // 2. Fetch checkpoint info to get required secret names
         // This allows loading secrets from environment variables
-        const checkpointInfo = await apiClient.getCheckpoint(checkpointId);
+        const checkpointInfo = await getCheckpoint(checkpointId);
         const requiredSecretNames =
           checkpointInfo.agentComposeSnapshot.secretNames || [];
 
@@ -115,7 +115,7 @@ export const resumeCommand = new Command()
         }
 
         // 5. Call unified API with checkpointId
-        const response = await apiClient.createRun({
+        const response = await createRun({
           checkpointId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,

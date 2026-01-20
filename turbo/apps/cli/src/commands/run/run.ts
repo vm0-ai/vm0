@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import {
+  getComposeById,
+  getComposeByName,
+  getComposeVersion,
+  createRun,
+} from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
@@ -84,7 +89,7 @@ export const mainRunCommand = new Command()
           if (verbose) {
             console.log(chalk.dim(`  Using compose ID: ${identifier}`));
           }
-          const compose = await apiClient.getComposeById(name);
+          const compose = await getComposeById(name);
           composeId = compose.id;
           composeContent = compose.content;
         } else {
@@ -93,7 +98,7 @@ export const mainRunCommand = new Command()
             const displayRef = scope ? `${scope}/${name}` : name;
             console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
-          const compose = await apiClient.getComposeByName(name, scope);
+          const compose = await getComposeByName(name, scope);
           composeId = compose.id;
           composeContent = compose.content;
           if (verbose) {
@@ -110,10 +115,7 @@ export const mainRunCommand = new Command()
             console.log(chalk.dim(`  Resolving version: ${version}`));
           }
           try {
-            const versionInfo = await apiClient.getComposeVersion(
-              composeId,
-              version,
-            );
+            const versionInfo = await getComposeVersion(composeId, version);
             agentComposeVersionId = versionInfo.versionId;
             if (verbose) {
               console.log(
@@ -189,7 +191,7 @@ export const mainRunCommand = new Command()
         }
 
         // 6. Call unified API (server handles all variable expansion)
-        const response = await apiClient.createRun({
+        const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
             ? { agentComposeVersionId }

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getSession, createRun } from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
@@ -81,7 +81,7 @@ export const continueCommand = new Command()
 
         // 2. Fetch session info to get required secret names
         // This allows loading secrets from environment variables
-        const sessionInfo = await apiClient.getSession(agentSessionId);
+        const sessionInfo = await getSession(agentSessionId);
         const requiredSecretNames = sessionInfo.secretNames || [];
 
         // 3. Load secrets from CLI options + environment variables
@@ -117,7 +117,7 @@ export const continueCommand = new Command()
         }
 
         // 5. Call unified API with sessionId
-        const response = await apiClient.createRun({
+        const response = await createRun({
           sessionId: agentSessionId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,

@@ -2,7 +2,7 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
-import { apiClient } from "../../lib/api/api-client";
+import { getEvents } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
@@ -194,7 +194,7 @@ export async function pollEvents(
   const verbose = options.verbose;
 
   while (!complete) {
-    const response = await apiClient.getEvents(runId, {
+    const response = await getEvents(runId, {
       since: nextSequence,
     });
 
