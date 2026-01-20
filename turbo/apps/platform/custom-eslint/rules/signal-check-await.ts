@@ -177,23 +177,45 @@ export default createRule<[], MessageIds>({
       },
       ArrowFunctionExpression(node) {
         // Track nested async functions inside command (but not the command callback itself)
-        if (inCommand && signalParamName && node.async && node !== commandCallback) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback
+        ) {
           functionDepth++;
         }
       },
       "ArrowFunctionExpression:exit"(node: TSESTree.ArrowFunctionExpression) {
-        if (inCommand && signalParamName && node.async && node !== commandCallback && functionDepth > 0) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback &&
+          functionDepth > 0
+        ) {
           functionDepth--;
         }
       },
       FunctionExpression(node) {
         // Track nested async functions inside command (but not the command callback itself)
-        if (inCommand && signalParamName && node.async && node !== commandCallback) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback
+        ) {
           functionDepth++;
         }
       },
       "FunctionExpression:exit"(node: TSESTree.FunctionExpression) {
-        if (inCommand && signalParamName && node.async && node !== commandCallback && functionDepth > 0) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback &&
+          functionDepth > 0
+        ) {
           functionDepth--;
         }
       },
