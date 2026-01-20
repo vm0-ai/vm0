@@ -1,31 +1,43 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { createStore } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import { LogsPage } from "../logs-page.tsx";
+import { setPageSignal$ } from "../../../signals/page-signal.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+// Mock Clerk BEFORE any module evaluation using vi.hoisted
+vi.hoisted(() => {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+});
 
 // Mock clerk-js
 vi.mock("@clerk/clerk-js", () => ({
-  Clerk: vi.fn().mockImplementation(() => ({
-    load: vi.fn().mockResolvedValue(undefined),
-    user: {
-      id: "test-user",
-      fullName: "Test User",
-      primaryEmailAddress: { emailAddress: "test@example.com" },
-      imageUrl: "https://example.com/avatar.png",
-    },
-    addListener: vi.fn().mockReturnValue(() => {}),
-    openUserProfile: vi.fn(),
-  })),
+  Clerk: function MockClerk() {
+    return {
+      user: null,
+      session: {
+        getToken: () => Promise.resolve("mock-token"),
+      },
+      load: () => Promise.resolve(),
+      addListener: () => () => {},
+    };
+  },
 }));
 
-describe("logs page", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+// Mock sidebar to avoid @clerk/clerk-react/experimental import
+vi.mock("../../layout/sidebar.tsx", () => ({
+  Sidebar: () => null,
+}));
 
+const context = testContext();
+
+describe("logs page", () => {
   it("should render the logs page", () => {
-    const store = createStore();
+    const { store, signal } = context;
+
+    // Set page signal before rendering
+    store.set(setPageSignal$, signal);
 
     render(
       <StoreProvider value={store}>
