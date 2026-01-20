@@ -1,14 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  getRunnerAuth,
-  OFFICIAL_RUNNER_TOKEN_PREFIX,
-  type RunnerAuthContext,
-} from "../runner-auth";
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
+import { eq } from "drizzle-orm";
+import { initServices } from "../../init-services";
+import { cliTokens } from "../../../db/schema/cli-tokens";
+import type { RunnerAuthContext } from "../runner-auth";
 
 const TEST_OFFICIAL_SECRET =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const TEST_CLI_TOKEN = "vm0_live_test_token_12345";
-const TEST_USER_ID = "user_test_123";
+const TEST_USER_ID = "test-user-runner-auth";
 
 // Mock the headers
 const mockHeaders = vi.fn();
@@ -16,12 +23,12 @@ vi.mock("next/headers", () => ({
   headers: () => mockHeaders(),
 }));
 
-// Mock init-services and globalThis.services
-vi.mock("../../init-services", () => ({
-  initServices: vi.fn(),
+// Mock the sandbox-token module (external dependency)
+vi.mock("../sandbox-token", () => ({
+  isSandboxToken: (token: string) => token.split(".").length === 3,
 }));
 
-// Mock the logger
+// Mock the logger (external dependency)
 vi.mock("../../logger", () => ({
   logger: () => ({
     debug: vi.fn(),
@@ -30,41 +37,38 @@ vi.mock("../../logger", () => ({
   }),
 }));
 
-// Mock the sandbox-token module
-vi.mock("../sandbox-token", () => ({
-  isSandboxToken: (token: string) => token.split(".").length === 3,
-}));
+// Set required environment variables before initServices
+process.env.OFFICIAL_RUNNER_SECRET = TEST_OFFICIAL_SECRET;
 
-// Setup globalThis.services mock
-const mockDb = {
-  select: vi.fn().mockReturnThis(),
-  from: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
-  limit: vi.fn(),
-  update: vi.fn().mockReturnThis(),
-  set: vi.fn().mockReturnThis(),
-  catch: vi.fn(),
-};
-
-const mockEnv = {
-  OFFICIAL_RUNNER_SECRET: TEST_OFFICIAL_SECRET,
-};
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).services = {
-    db: mockDb,
-    env: mockEnv,
-  };
-});
-
-afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (globalThis as any).services;
-});
+// Import module after setting up mocks
+let getRunnerAuth: typeof import("../runner-auth").getRunnerAuth;
+let OFFICIAL_RUNNER_TOKEN_PREFIX: typeof import("../runner-auth").OFFICIAL_RUNNER_TOKEN_PREFIX;
 
 describe("runner-auth", () => {
+  beforeAll(async () => {
+    initServices();
+    // Dynamically import to ensure initServices runs first
+    const authModule = await import("../runner-auth");
+    getRunnerAuth = authModule.getRunnerAuth;
+    OFFICIAL_RUNNER_TOKEN_PREFIX = authModule.OFFICIAL_RUNNER_TOKEN_PREFIX;
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Clean up test data
+    await globalThis.services.db
+      .delete(cliTokens)
+      .where(eq(cliTokens.userId, TEST_USER_ID));
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .delete(cliTokens)
+      .where(eq(cliTokens.userId, TEST_USER_ID));
+  });
+
   describe("OFFICIAL_RUNNER_TOKEN_PREFIX", () => {
     it("should be vm0_official_", () => {
       expect(OFFICIAL_RUNNER_TOKEN_PREFIX).toBe("vm0_official_");
@@ -128,8 +132,14 @@ describe("runner-auth", () => {
       });
 
       it("should return null when OFFICIAL_RUNNER_SECRET is not configured", async () => {
-        // @ts-expect-error - mocking undefined secret
-        globalThis.services.env.OFFICIAL_RUNNER_SECRET = undefined;
+        // Temporarily unset the cached environment variable
+        const originalSecret = globalThis.services.env.OFFICIAL_RUNNER_SECRET;
+        // Use type assertion to bypass readonly constraint for testing
+        (
+          globalThis.services.env as {
+            OFFICIAL_RUNNER_SECRET: string | undefined;
+          }
+        ).OFFICIAL_RUNNER_SECRET = undefined;
 
         const token = `${OFFICIAL_RUNNER_TOKEN_PREFIX}${TEST_OFFICIAL_SECRET}`;
         mockHeaders.mockResolvedValue({
@@ -138,6 +148,13 @@ describe("runner-auth", () => {
 
         const result = await getRunnerAuth();
         expect(result).toBeNull();
+
+        // Restore the environment variable
+        (
+          globalThis.services.env as {
+            OFFICIAL_RUNNER_SECRET: string | undefined;
+          }
+        ).OFFICIAL_RUNNER_SECRET = originalSecret;
       });
 
       it("should be timing-safe and reject secrets with different lengths", async () => {
@@ -154,18 +171,17 @@ describe("runner-auth", () => {
 
     describe("with CLI token", () => {
       it("should return user context when token is valid", async () => {
+        // Insert real test token into database
+        await globalThis.services.db.insert(cliTokens).values({
+          token: TEST_CLI_TOKEN,
+          userId: TEST_USER_ID,
+          name: "Test Token",
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour from now
+        });
+
         mockHeaders.mockResolvedValue({
           get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
         });
-
-        // Mock database to return valid token record
-        mockDb.limit.mockResolvedValue([
-          {
-            token: TEST_CLI_TOKEN,
-            userId: TEST_USER_ID,
-            expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour from now
-          },
-        ]);
 
         const result = await getRunnerAuth();
         expect(result).toEqual({ type: "user", userId: TEST_USER_ID });
@@ -176,46 +192,41 @@ describe("runner-auth", () => {
           get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
         });
 
-        // Mock database to return empty result
-        mockDb.limit.mockResolvedValue([]);
-
         const result = await getRunnerAuth();
         expect(result).toBeNull();
       });
 
       it("should update lastUsedAt timestamp", async () => {
+        // Insert real test token into database without lastUsedAt
+        await globalThis.services.db.insert(cliTokens).values({
+          token: TEST_CLI_TOKEN,
+          userId: TEST_USER_ID,
+          name: "Test Token",
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          lastUsedAt: null,
+        });
+
         mockHeaders.mockResolvedValue({
           get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
         });
 
-        // Track how many times where is called to handle both select and update chains
-        let whereCallCount = 0;
-        const mockCatch = vi.fn().mockResolvedValue(undefined);
-
-        mockDb.where.mockImplementation(() => {
-          whereCallCount++;
-          if (whereCallCount === 1) {
-            // First where call is for select chain
-            return {
-              limit: vi.fn().mockResolvedValue([
-                {
-                  token: TEST_CLI_TOKEN,
-                  userId: TEST_USER_ID,
-                  expiresAt: new Date(Date.now() + 1000 * 60 * 60),
-                },
-              ]),
-            };
-          }
-          // Second where call is for update chain
-          return { catch: mockCatch };
-        });
-
         const result = await getRunnerAuth();
 
-        // Verify update was called
-        expect(mockDb.update).toHaveBeenCalled();
-        // Also verify the actual result
+        // Verify the result
         expect(result).toEqual({ type: "user", userId: TEST_USER_ID });
+
+        // Wait a bit for the non-blocking update to complete
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Verify lastUsedAt was updated in the database
+        const [tokenRecord] = await globalThis.services.db
+          .select()
+          .from(cliTokens)
+          .where(eq(cliTokens.token, TEST_CLI_TOKEN));
+
+        expect(tokenRecord).toBeDefined();
+        expect(tokenRecord!.lastUsedAt).not.toBeNull();
+        expect(tokenRecord!.lastUsedAt).toBeInstanceOf(Date);
       });
     });
 
@@ -233,7 +244,10 @@ describe("runner-auth", () => {
 
   describe("RunnerAuthContext type", () => {
     it("should type check user context correctly", () => {
-      const userAuth: RunnerAuthContext = { type: "user", userId: "test-123" };
+      const userAuth: RunnerAuthContext = {
+        type: "user",
+        userId: "test-123",
+      };
       expect(userAuth.type).toBe("user");
       if (userAuth.type === "user") {
         expect(userAuth.userId).toBe("test-123");
@@ -241,7 +255,9 @@ describe("runner-auth", () => {
     });
 
     it("should type check official-runner context correctly", () => {
-      const runnerAuth: RunnerAuthContext = { type: "official-runner" };
+      const runnerAuth: RunnerAuthContext = {
+        type: "official-runner",
+      };
       expect(runnerAuth.type).toBe("official-runner");
     });
   });
