@@ -162,6 +162,38 @@ function writeRegistry(registry: IPRegistry): void {
 }
 
 /**
+ * Get all current IP allocations (for diagnostic purposes)
+ *
+ * This returns the current state of the IP registry without modifying it.
+ * Used by the doctor command to display allocated IPs.
+ *
+ * @returns Map of IP addresses to their allocation info
+ */
+export function getAllocations(): Map<
+  string,
+  { vmId: string; tapDevice: string; allocatedAt: string }
+> {
+  const registry = readRegistry();
+  return new Map(Object.entries(registry.allocations));
+}
+
+/**
+ * Get IP allocation for a specific VM ID (for diagnostic purposes)
+ *
+ * @param vmId The VM identifier to look up
+ * @returns The allocated IP or undefined if not found
+ */
+export function getIPForVm(vmId: string): string | undefined {
+  const registry = readRegistry();
+  for (const [ip, allocation] of Object.entries(registry.allocations)) {
+    if (allocation.vmId === vmId) {
+      return ip;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Scan TAP devices on the bridge to get actual state
  * Returns a map of TAP device names to their associated vmIds (derived from TAP name)
  */

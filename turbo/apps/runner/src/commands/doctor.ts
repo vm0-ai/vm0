@@ -21,11 +21,11 @@ import {
   listTapDevices,
   checkBridgeStatus,
   isPortInUse,
-  generateGuestIp,
   listIptablesNatRules,
   findOrphanedIptablesRules,
   BRIDGE_NAME,
 } from "../lib/firecracker/network.js";
+import { getIPForVm, getAllocations } from "../lib/firecracker/ip-pool.js";
 
 interface RunnerStatus {
   mode: string;
@@ -147,7 +147,8 @@ export const doctorCommand = new Command("doctor")
       // Build job info with IP addresses
       const jobs: JobInfo[] = [];
       const statusVmIds = new Set<string>();
-      const ipToVmIds = new Map<string, string[]>(); // For IP conflict detection
+      // IP pool manager prevents collisions at allocation time, so we just read from registry
+      const allocations = getAllocations();
 
       if (status?.active_job_ids) {
         for (const runId of status.active_job_ids) {
@@ -155,12 +156,8 @@ export const doctorCommand = new Command("doctor")
           if (!vmId) continue;
           statusVmIds.add(vmId);
           const proc = processes.find((p) => p.vmId === vmId);
-          const ip = generateGuestIp(vmId);
-
-          // Track IP assignments for conflict detection
-          const existing = ipToVmIds.get(ip) ?? [];
-          existing.push(vmId);
-          ipToVmIds.set(ip, existing);
+          // Look up IP from the registry (allocated by IP pool manager)
+          const ip = getIPForVm(vmId) ?? "not allocated";
 
           jobs.push({
             runId,
@@ -170,6 +167,14 @@ export const doctorCommand = new Command("doctor")
             pid: proc?.pid,
           });
         }
+      }
+
+      // Check for any stale allocations in registry (IPs allocated but no active job)
+      const ipToVmIds = new Map<string, string[]>();
+      for (const [ip, allocation] of allocations) {
+        const existing = ipToVmIds.get(ip) ?? [];
+        existing.push(allocation.vmId);
+        ipToVmIds.set(ip, existing);
       }
 
       // Display jobs
