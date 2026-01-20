@@ -19,5 +19,3 @@ declare global {
   // getter ensures it's always defined after initServices()
   var services: Services;
 }
-
-export {};

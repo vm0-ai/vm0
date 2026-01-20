@@ -210,10 +210,12 @@ describe("runner-auth", () => {
           return { catch: mockCatch };
         });
 
-        await getRunnerAuth();
+        const result = await getRunnerAuth();
 
         // Verify update was called
         expect(mockDb.update).toHaveBeenCalled();
+        // Also verify the actual result
+        expect(result).toEqual({ type: "user", userId: TEST_USER_ID });
       });
     });
 
