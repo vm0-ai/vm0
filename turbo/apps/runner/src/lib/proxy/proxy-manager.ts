@@ -13,15 +13,19 @@ import { getVMRegistry, DEFAULT_REGISTRY_PATH } from "./vm-registry";
 import { RUNNER_MITM_ADDON_SCRIPT } from "./mitm-addon-script";
 
 /**
- * Proxy configuration
+ * Required proxy configuration (must be provided)
  */
-interface ProxyConfig {
+interface RequiredProxyConfig {
+  /** Path to the mitmproxy CA directory (per-runner isolation) */
+  caDir: string;
+}
+
+/**
+ * Optional proxy configuration (has defaults)
+ */
+interface OptionalProxyConfig {
   /** Port for mitmproxy to listen on */
   port: number;
-  /** Path to the mitmproxy CA directory */
-  caDir: string;
-  /** Path to the mitm_addon.py script */
-  addonPath: string;
   /** Path to the VM registry file */
   registryPath: string;
   /** VM0 API URL for the addon */
@@ -29,12 +33,23 @@ interface ProxyConfig {
 }
 
 /**
- * Default proxy configuration
+ * Full proxy configuration (internal use)
  */
-export const DEFAULT_PROXY_CONFIG: ProxyConfig = {
+interface ProxyConfig extends RequiredProxyConfig, OptionalProxyConfig {
+  /** Path to the mitm_addon.py script (derived from caDir) */
+  addonPath: string;
+}
+
+/**
+ * Input configuration for ProxyManager
+ */
+type ProxyConfigInput = RequiredProxyConfig & Partial<OptionalProxyConfig>;
+
+/**
+ * Default values for optional proxy configuration
+ */
+const DEFAULT_PROXY_OPTIONS: OptionalProxyConfig = {
   port: 8080,
-  caDir: "/opt/vm0-runner/proxy",
-  addonPath: "/opt/vm0-runner/proxy/mitm_addon.py",
   registryPath: DEFAULT_REGISTRY_PATH,
   apiUrl: process.env.VM0_API_URL || "https://www.vm0.ai",
 };
@@ -47,8 +62,14 @@ export class ProxyManager {
   private process: ChildProcess | null = null;
   private isRunning: boolean = false;
 
-  constructor(config: Partial<ProxyConfig> = {}) {
-    this.config = { ...DEFAULT_PROXY_CONFIG, ...config };
+  constructor(config: ProxyConfigInput) {
+    // Derive addonPath from caDir
+    const addonPath = path.join(config.caDir, "mitm_addon.py");
+    this.config = {
+      ...DEFAULT_PROXY_OPTIONS,
+      ...config,
+      addonPath,
+    };
   }
 
   /**
@@ -273,18 +294,22 @@ let globalProxyManager: ProxyManager | null = null;
 
 /**
  * Get the global proxy manager instance
+ * @throws Error if proxy manager was not initialized with initProxyManager
  */
 export function getProxyManager(): ProxyManager {
   if (!globalProxyManager) {
-    globalProxyManager = new ProxyManager();
+    throw new Error(
+      "ProxyManager not initialized. Call initProxyManager() first with caDir.",
+    );
   }
   return globalProxyManager;
 }
 
 /**
- * Initialize the proxy manager with custom config
+ * Initialize the proxy manager with config
+ * @param config - Configuration including required caDir
  */
-export function initProxyManager(config?: Partial<ProxyConfig>): ProxyManager {
+export function initProxyManager(config: ProxyConfigInput): ProxyManager {
   globalProxyManager = new ProxyManager(config);
   return globalProxyManager;
 }

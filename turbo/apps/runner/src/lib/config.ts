@@ -54,11 +54,10 @@ export const runnerConfigSchema = z.object({
     kernel: z.string().min(1, "Kernel path is required"),
     rootfs: z.string().min(1, "Rootfs path is required"),
   }),
-  proxy: z
-    .object({
-      port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
-    })
-    .default(PROXY_DEFAULTS),
+  proxy: z.object({
+    port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
+    ca_dir: z.string().min(1, "Proxy CA directory is required"),
+  }),
 });
 
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
@@ -105,8 +104,9 @@ export const debugConfigSchema = z.object({
   proxy: z
     .object({
       port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
+      ca_dir: z.string().default("/tmp/vm0-proxy"),
     })
-    .default(PROXY_DEFAULTS),
+    .default({ ...PROXY_DEFAULTS, ca_dir: "/tmp/vm0-proxy" }),
 });
 
 type DebugConfig = z.infer<typeof debugConfigSchema>;
