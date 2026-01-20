@@ -46,6 +46,8 @@ export default createRule<[], MessageIds>({
   create(context) {
     let signalParamName: string | null = null;
     let inCommand = false;
+    let functionDepth = 0;
+    let commandCallback: TSESTree.Node | null = null;
 
     function isCommandCall(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
@@ -159,6 +161,8 @@ export default createRule<[], MessageIds>({
             if (callback.async) {
               inCommand = true;
               signalParamName = getSignalParamName(callback);
+              functionDepth = 0;
+              commandCallback = callback; // Save reference to command callback
             }
           }
         }
@@ -167,10 +171,35 @@ export default createRule<[], MessageIds>({
         if (isCommandCall(node)) {
           inCommand = false;
           signalParamName = null;
+          functionDepth = 0;
+          commandCallback = null;
+        }
+      },
+      ArrowFunctionExpression(node) {
+        // Track nested async functions inside command (but not the command callback itself)
+        if (inCommand && signalParamName && node.async && node !== commandCallback) {
+          functionDepth++;
+        }
+      },
+      "ArrowFunctionExpression:exit"(node: TSESTree.ArrowFunctionExpression) {
+        if (inCommand && signalParamName && node.async && node !== commandCallback && functionDepth > 0) {
+          functionDepth--;
+        }
+      },
+      FunctionExpression(node) {
+        // Track nested async functions inside command (but not the command callback itself)
+        if (inCommand && signalParamName && node.async && node !== commandCallback) {
+          functionDepth++;
+        }
+      },
+      "FunctionExpression:exit"(node: TSESTree.FunctionExpression) {
+        if (inCommand && signalParamName && node.async && node !== commandCallback && functionDepth > 0) {
+          functionDepth--;
         }
       },
       BlockStatement(node) {
-        if (inCommand && signalParamName) {
+        // Only check await in the command's direct block, not nested functions
+        if (inCommand && signalParamName && functionDepth === 0) {
           checkAwaitInBlock(node.body);
         }
       },
