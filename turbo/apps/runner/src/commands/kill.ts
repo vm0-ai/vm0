@@ -31,7 +31,7 @@ interface CleanupResult {
 }
 
 export const killCommand = new Command("kill")
-  .description("Force terminate a job and clean up all resources")
+  .description("Force terminate a run and clean up all resources")
   .argument("<run-id>", "Run ID (full UUID or short 8-char vmId)")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--force", "Skip confirmation prompt")
@@ -49,7 +49,7 @@ export const killCommand = new Command("kill")
         // Resolve run ID
         const { vmId, runId } = resolveRunId(runIdArg, statusFilePath);
 
-        console.log(`Killing job ${vmId}...`);
+        console.log(`Killing run ${vmId}...`);
 
         // Find resources
         const proc = findProcessByVmId(vmId);
@@ -185,10 +185,10 @@ export const killCommand = new Command("kill")
 
         console.log("");
         if (allSuccess) {
-          console.log(`Job ${vmId} killed successfully.`);
+          console.log(`Run ${vmId} killed successfully.`);
           process.exit(0);
         } else {
-          console.log(`Job ${vmId} cleanup completed with errors.`);
+          console.log(`Run ${vmId} cleanup completed with errors.`);
           process.exit(1);
         }
       } catch (error) {

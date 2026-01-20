@@ -32,8 +32,8 @@ import {
   shutdownMetrics,
 } from "../lib/metrics/index.js";
 
-// Track active jobs for concurrency management
-const activeJobs = new Set<string>();
+// Track active runs for concurrency management
+const activeRuns = new Set<string>();
 
 // Runner mode for maintenance/drain support
 type RunnerMode = "running" | "draining" | "stopped";
@@ -57,8 +57,8 @@ function writeStatusFile(
 ): void {
   const status: RunnerStatus = {
     mode,
-    active_runs: activeJobs.size,
-    active_run_ids: Array.from(activeJobs),
+    active_runs: activeRuns.size,
+    active_run_ids: Array.from(activeRuns),
     started_at: startedAt.toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -239,7 +239,7 @@ export const startCommand = new Command("start")
         if (state.mode === "running") {
           console.log("\n[Maintenance] Entering drain mode...");
           console.log(
-            `[Maintenance] Active jobs: ${activeJobs.size} (will wait for completion)`,
+            `[Maintenance] Active jobs: ${activeRuns.size} (will wait for completion)`,
           );
           state.mode = "draining";
           updateStatus();
@@ -253,7 +253,7 @@ export const startCommand = new Command("start")
       while (running) {
         // In drain mode, don't poll for new jobs - just wait for active jobs to complete
         if (state.mode === "draining") {
-          if (activeJobs.size === 0) {
+          if (activeRuns.size === 0) {
             console.log("[Maintenance] All jobs completed, exiting drain mode");
             running = false;
             break;
@@ -267,7 +267,7 @@ export const startCommand = new Command("start")
         }
 
         // Check concurrency limit - skip poll if at capacity
-        if (activeJobs.size >= config.sandbox.max_concurrent) {
+        if (activeRuns.size >= config.sandbox.max_concurrent) {
           // Wait for any job to complete before polling again
           if (jobPromises.size > 0) {
             await Promise.race(jobPromises);
@@ -301,7 +301,7 @@ export const startCommand = new Command("start")
             console.log(`Claimed job: ${context.runId}`);
 
             // Track and execute in background
-            activeJobs.add(context.runId);
+            activeRuns.add(context.runId);
             updateStatus(); // Update status when job starts
 
             const jobPromise: Promise<void> = executeJob(context, config)
@@ -312,7 +312,7 @@ export const startCommand = new Command("start")
                 );
               })
               .finally(() => {
-                activeJobs.delete(context.runId);
+                activeRuns.delete(context.runId);
                 jobPromises.delete(jobPromise);
                 updateStatus(); // Update status when job completes
               });
