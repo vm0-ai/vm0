@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.1](https://github.com/vm0-ai/vm0/compare/runner-v2.13.0...runner-v2.13.1) (2026-01-20)
+
+
+### Bug Fixes
+
+* **ci:** add buildkit cache retry mechanism for runner deployment ([#1353](https://github.com/vm0-ai/vm0/issues/1353)) ([a680b47](https://github.com/vm0-ai/vm0/commit/a680b479e8646494448dee8dea7da3bf27b5f72b)), closes [#1328](https://github.com/vm0-ai/vm0/issues/1328)
+
 ## [2.13.0](https://github.com/vm0-ai/vm0/compare/runner-v2.12.0...runner-v2.13.0) (2026-01-20)
 
 

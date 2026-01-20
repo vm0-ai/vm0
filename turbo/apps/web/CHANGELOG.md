@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.16.1](https://github.com/vm0-ai/vm0/compare/web-v9.16.0...web-v9.16.1) (2026-01-20)
+
+
+### Bug Fixes
+
+* update credential hint messages to use experimental-credential command ([#1348](https://github.com/vm0-ai/vm0/issues/1348)) ([3ac009a](https://github.com/vm0-ai/vm0/commit/3ac009a7db9af2dddc567d116c7e7f13628c1866))
+
 ## [9.16.0](https://github.com/vm0-ai/vm0/compare/web-v9.15.0...web-v9.16.0) (2026-01-20)
 
 

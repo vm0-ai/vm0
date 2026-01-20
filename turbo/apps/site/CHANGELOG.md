@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/site-v1.0.0...site-v1.1.0) (2026-01-20)
+
+
+### Features
+
+* **docs:** trigger release for product philosophy page ([#884](https://github.com/vm0-ai/vm0/issues/884)) ([45ec3a2](https://github.com/vm0-ai/vm0/commit/45ec3a296b4d4ac01b4ac1f0536692d1626c7551))
+* separate SEO pages into new site app ([#1337](https://github.com/vm0-ai/vm0/issues/1337)) ([49a3864](https://github.com/vm0-ai/vm0/commit/49a3864884db244c3507199af5bff0ea4f358ce8))
+
+
+### Bug Fixes
+
+* **docs:** trigger production deployment for cli reference updates ([#1173](https://github.com/vm0-ai/vm0/issues/1173)) ([57baf42](https://github.com/vm0-ai/vm0/commit/57baf42d83a19652c9db2881e48f50fd1a0054e6))
+* **docs:** trigger production deployment for quick start updates ([#1142](https://github.com/vm0-ai/vm0/issues/1142)) ([f8fb029](https://github.com/vm0-ai/vm0/commit/f8fb029227bfc5151a5af30154a0cfb4bc28b480)), closes [#1118](https://github.com/vm0-ai/vm0/issues/1118)
+* **docs:** trigger release for documentation updates ([#993](https://github.com/vm0-ai/vm0/issues/993)) ([1f3e2be](https://github.com/vm0-ai/vm0/commit/1f3e2be18c74219b2954c0d98a6456bf35b055ca))
+
 ## [9.16.0](https://github.com/vm0-ai/vm0/compare/web-v9.15.0...web-v9.16.0) (2026-01-20)
 
 
