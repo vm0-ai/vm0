@@ -249,5 +249,11 @@ export {
   type ScheduleRunsResponse,
 } from "./schedules";
 
+export {
+  realtimeTokenContract,
+  type RealtimeTokenContract,
+  type AblyTokenRequest,
+} from "./realtime";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

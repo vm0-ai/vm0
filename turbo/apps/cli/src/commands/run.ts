@@ -3,11 +3,12 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
-import { apiClient } from "../lib/api/api-client";
+import { apiClient, type RunResult } from "../lib/api/api-client";
 import { parseEvent } from "../lib/events/event-parser-factory";
 import { EventRenderer } from "../lib/events/event-renderer";
 import { CodexEventRenderer } from "../lib/events/codex-event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import { streamEvents, type StreamResult } from "../lib/realtime/stream-events";
 
 /**
  * Collector for --secrets and --vars flags
@@ -263,6 +264,57 @@ async function pollEvents(
 }
 
 /**
+ * Render a single event (used by streamEvents callback)
+ * Returns the event timestamp for elapsed time calculation
+ */
+function renderEvent(
+  event: unknown,
+  options: { verbose?: boolean; previousTimestamp: Date; startTimestamp: Date },
+): Date {
+  const eventData = event as Record<string, unknown>;
+  const parsed = parseEvent(eventData);
+  if (parsed) {
+    EventRenderer.render(parsed, {
+      verbose: options.verbose,
+      previousTimestamp: options.previousTimestamp,
+      startTimestamp: options.startTimestamp,
+    });
+    return parsed.timestamp;
+  }
+  return options.previousTimestamp;
+}
+
+/**
+ * Stream events using Ably realtime (experimental)
+ * @returns Stream result with success status and optional session/checkpoint IDs
+ */
+async function streamRealtimeEvents(
+  runId: string,
+  options: PollOptions,
+): Promise<StreamResult> {
+  const startTimestamp = options.startTimestamp;
+  const verbose = options.verbose;
+
+  return streamEvents(runId, {
+    verbose,
+    startTimestamp,
+    onEvent: renderEvent,
+    onRunCompleted: (result, opts) => {
+      EventRenderer.renderRunCompleted(result as RunResult | undefined, opts);
+    },
+    onRunFailed: (error, rid) => {
+      EventRenderer.renderRunFailed(error, rid);
+    },
+    onTimeout: (rid) => {
+      console.error(chalk.red("\n✗ Run timed out"));
+      console.error(
+        chalk.dim(`  (use "vm0 logs ${rid} --system" to view system logs)`),
+      );
+    },
+  });
+}
+
+/**
  * Log verbose pre-flight messages
  */
 function logVerbosePreFlight(
@@ -344,6 +396,10 @@ const runCmd = new Command()
     "Resume from conversation ID (for fine-grained control)",
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option(
+    "--experimental-realtime",
+    "Use realtime event streaming instead of polling (experimental)",
+  )
   .option("--debug-no-mock-claude")
   .action(
     async (
@@ -357,6 +413,7 @@ const runCmd = new Command()
         volumeVersion: Record<string, string>;
         conversation?: string;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       },
     ) => {
@@ -515,11 +572,16 @@ const runCmd = new Command()
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, {
-          verbose,
-          startTimestamp,
-        });
+        // 6. Poll or stream for events and exit with appropriate code
+        const result = options.experimentalRealtime
+          ? await streamRealtimeEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            })
+          : await pollEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            });
         if (!result.succeeded) {
           process.exit(1);
         }
@@ -529,6 +591,12 @@ const runCmd = new Command()
           if (error.message.includes("Not authenticated")) {
             console.error(
               chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("Realtime connection failed")) {
+            console.error(chalk.red("✗ Realtime streaming failed"));
+            console.error(chalk.dim(`  ${error.message}`));
+            console.error(
+              chalk.dim("  Try running without --experimental-realtime"),
             );
           } else if (error.message.startsWith("Version not found:")) {
             console.error(chalk.red(`✗ ${error.message}`));
@@ -579,6 +647,10 @@ runCmd
     {},
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option(
+    "--experimental-realtime",
+    "Use realtime event streaming instead of polling (experimental)",
+  )
   .option("--debug-no-mock-claude")
   .action(
     async (
@@ -588,6 +660,7 @@ runCmd
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
@@ -601,6 +674,7 @@ runCmd
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       };
 
@@ -686,11 +760,18 @@ runCmd
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, {
-          verbose,
-          startTimestamp,
-        });
+        // 6. Poll or stream for events and exit with appropriate code
+        const experimentalRealtime =
+          options.experimentalRealtime || allOpts.experimentalRealtime;
+        const result = experimentalRealtime
+          ? await streamRealtimeEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            })
+          : await pollEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            });
         if (!result.succeeded) {
           process.exit(1);
         }
@@ -700,6 +781,12 @@ runCmd
           if (error.message.includes("Not authenticated")) {
             console.error(
               chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("Realtime connection failed")) {
+            console.error(chalk.red("✗ Realtime streaming failed"));
+            console.error(chalk.dim(`  ${error.message}`));
+            console.error(
+              chalk.dim("  Try running without --experimental-realtime"),
             );
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
@@ -742,6 +829,10 @@ runCmd
     {},
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option(
+    "--experimental-realtime",
+    "Use realtime event streaming instead of polling (experimental)",
+  )
   .option("--debug-no-mock-claude")
   .action(
     async (
@@ -751,6 +842,7 @@ runCmd
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
@@ -764,6 +856,7 @@ runCmd
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       };
 
@@ -849,11 +942,18 @@ runCmd
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, {
-          verbose,
-          startTimestamp,
-        });
+        // 6. Poll or stream for events and exit with appropriate code
+        const experimentalRealtime =
+          options.experimentalRealtime || allOpts.experimentalRealtime;
+        const result = experimentalRealtime
+          ? await streamRealtimeEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            })
+          : await pollEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            });
         if (!result.succeeded) {
           process.exit(1);
         }
@@ -863,6 +963,12 @@ runCmd
           if (error.message.includes("Not authenticated")) {
             console.error(
               chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("Realtime connection failed")) {
+            console.error(chalk.red("✗ Realtime streaming failed"));
+            console.error(chalk.dim(`  ${error.message}`));
+            console.error(
+              chalk.dim("  Try running without --experimental-realtime"),
             );
           } else if (error.message.includes("not found")) {
             console.error(

@@ -661,4 +661,137 @@ describe("ApiClient", () => {
       ).rejects.toThrow("Version not found: abc123");
     });
   });
+
+  describe("getRealtimeToken", () => {
+    it("should call correct endpoint with auth headers", async () => {
+      const mockToken = {
+        keyName: "test-key",
+        timestamp: 1234567890,
+        capability: '{"run:run-123":["subscribe"]}',
+        nonce: "test-nonce",
+        mac: "test-mac",
+      };
+
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/realtime/token",
+          async ({ request }) => {
+            capturedRequest = request;
+            return HttpResponse.json(mockToken, { status: 200 });
+          },
+        ),
+      );
+
+      const result = await apiClient.getRealtimeToken("run-123");
+
+      expect(capturedRequest?.url).toBe(
+        "http://localhost:3000/api/realtime/token",
+      );
+      expect(capturedRequest?.method).toBe("POST");
+      expect(capturedRequest?.headers.get("authorization")).toBe(
+        "Bearer test-token",
+      );
+
+      const body = await capturedRequest?.json();
+      expect(body).toEqual({ runId: "run-123" });
+
+      expect(result).toEqual(mockToken);
+    });
+
+    it("should return token with all fields", async () => {
+      const mockToken = {
+        keyName: "ably-key.name",
+        timestamp: Date.now(),
+        capability: '{"run:test-run":["subscribe"]}',
+        nonce: "unique-nonce-123",
+        mac: "hmac-signature",
+        ttl: 3600000,
+        clientId: "client-123",
+      };
+
+      server.use(
+        http.post("http://localhost:3000/api/realtime/token", () => {
+          return HttpResponse.json(mockToken, { status: 200 });
+        }),
+      );
+
+      const result = await apiClient.getRealtimeToken("test-run");
+
+      expect(result.keyName).toBe("ably-key.name");
+      expect(result.nonce).toBe("unique-nonce-123");
+      expect(result.mac).toBe("hmac-signature");
+    });
+
+    it("should throw error when not authenticated", async () => {
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
+
+      await expect(apiClient.getRealtimeToken("run-123")).rejects.toThrow(
+        "Not authenticated",
+      );
+    });
+
+    it("should throw error when API URL not configured", async () => {
+      vi.mocked(config.getApiUrl).mockResolvedValue("");
+
+      await expect(apiClient.getRealtimeToken("run-123")).rejects.toThrow(
+        "API URL not configured",
+      );
+    });
+
+    it("should throw error when run not found", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/realtime/token", () => {
+          return HttpResponse.json(
+            { error: { message: "Run not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(apiClient.getRealtimeToken("run-123")).rejects.toThrow(
+        "Run not found",
+      );
+    });
+
+    it("should throw error when user does not own run", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/realtime/token", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "You do not have access to this run",
+                code: "FORBIDDEN",
+              },
+            },
+            { status: 403 },
+          );
+        }),
+      );
+
+      await expect(apiClient.getRealtimeToken("run-123")).rejects.toThrow(
+        "You do not have access to this run",
+      );
+    });
+
+    it("should throw error when realtime service unavailable", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/realtime/token", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Realtime service unavailable",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
+        }),
+      );
+
+      await expect(apiClient.getRealtimeToken("run-123")).rejects.toThrow(
+        "Realtime service unavailable",
+      );
+    });
+  });
 });
