@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/vm0-ai/vm0/compare/site-v1.2.0...site-v1.3.0) (2026-01-20)
+
+
+### Features
+
+* **site:** add documentation comment to skills client component ([#1369](https://github.com/vm0-ai/vm0/issues/1369)) ([026ca22](https://github.com/vm0-ai/vm0/commit/026ca22e255eecffc8170b02732fbfd446e734bc))
+
 ## [1.2.0](https://github.com/vm0-ai/vm0/compare/site-v1.1.0...site-v1.2.0) (2026-01-20)
 
 
