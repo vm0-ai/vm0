@@ -18,8 +18,8 @@ import { deleteTapDevice } from "../lib/firecracker/network.js";
 
 interface RunnerStatus {
   mode: string;
-  active_jobs: number;
-  active_job_ids: string[];
+  active_runs: number;
+  active_run_ids: string[];
   started_at: string;
   updated_at: string;
 }
@@ -32,12 +32,12 @@ interface CleanupResult {
 
 export const killCommand = new Command("kill")
   .description("Force terminate a job and clean up all resources")
-  .argument("<job-id>", "Job ID (full runId UUID or short 8-char vmId)")
+  .argument("<run-id>", "Run ID (full UUID or short 8-char vmId)")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--force", "Skip confirmation prompt")
   .action(
     async (
-      jobId: string,
+      runIdArg: string,
       options: { config: string; force?: boolean },
     ): Promise<void> => {
       try {
@@ -46,8 +46,8 @@ export const killCommand = new Command("kill")
         const statusFilePath = join(configDir, "status.json");
         const workspacesDir = join(configDir, "workspaces");
 
-        // Resolve job ID
-        const { vmId, runId } = resolveJobId(jobId, statusFilePath);
+        // Resolve run ID
+        const { vmId, runId } = resolveRunId(runIdArg, statusFilePath);
 
         console.log(`Killing job ${vmId}...`);
 
@@ -147,17 +147,17 @@ export const killCommand = new Command("kill")
             const status: RunnerStatus = JSON.parse(
               readFileSync(statusFilePath, "utf-8"),
             ) as RunnerStatus;
-            const oldCount = status.active_jobs;
-            status.active_job_ids = status.active_job_ids.filter(
-              (id) => id !== runId,
+            const oldCount = status.active_runs;
+            status.active_run_ids = status.active_run_ids.filter(
+              (id: string) => id !== runId,
             );
-            status.active_jobs = status.active_job_ids.length;
+            status.active_runs = status.active_run_ids.length;
             status.updated_at = new Date().toISOString();
             writeFileSync(statusFilePath, JSON.stringify(status, null, 2));
             results.push({
               step: "status.json",
               success: true,
-              message: `Updated (active_jobs: ${oldCount} -> ${status.active_jobs})`,
+              message: `Updated (active_runs: ${oldCount} -> ${status.active_runs})`,
             });
           } catch (error) {
             results.push({
@@ -200,7 +200,7 @@ export const killCommand = new Command("kill")
     },
   );
 
-function resolveJobId(
+function resolveRunId(
   input: string,
   statusFilePath: string,
 ): { vmId: string; runId: string | null } {
@@ -214,7 +214,9 @@ function resolveJobId(
       const status: RunnerStatus = JSON.parse(
         readFileSync(statusFilePath, "utf-8"),
       ) as RunnerStatus;
-      const match = status.active_job_ids.find((id) => id.startsWith(input));
+      const match = status.active_run_ids.find((id: string) =>
+        id.startsWith(input),
+      );
       if (match) {
         return { vmId: input, runId: match };
       }

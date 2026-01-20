@@ -40,8 +40,8 @@ type RunnerMode = "running" | "draining" | "stopped";
 
 interface RunnerStatus {
   mode: RunnerMode;
-  active_jobs: number;
-  active_job_ids: string[];
+  active_runs: number;
+  active_run_ids: string[];
   started_at: string;
   updated_at: string;
 }
@@ -57,8 +57,8 @@ function writeStatusFile(
 ): void {
   const status: RunnerStatus = {
     mode,
-    active_jobs: activeJobs.size,
-    active_job_ids: Array.from(activeJobs),
+    active_runs: activeJobs.size,
+    active_run_ids: Array.from(activeJobs),
     started_at: startedAt.toISOString(),
     updated_at: new Date().toISOString(),
   };

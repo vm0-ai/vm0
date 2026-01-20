@@ -29,8 +29,8 @@ import { getIPForVm, getAllocations } from "../lib/firecracker/ip-pool.js";
 
 interface RunnerStatus {
   mode: string;
-  active_jobs: number;
-  active_job_ids: string[];
+  active_runs: number;
+  active_run_ids: string[];
   started_at: string;
   updated_at: string;
 }
@@ -150,8 +150,8 @@ export const doctorCommand = new Command("doctor")
       // IP pool manager prevents collisions at allocation time, so we just read from registry
       const allocations = getAllocations();
 
-      if (status?.active_job_ids) {
-        for (const runId of status.active_job_ids) {
+      if (status?.active_run_ids) {
+        for (const runId of status.active_run_ids) {
           const vmId = runId.split("-")[0];
           if (!vmId) continue;
           statusVmIds.add(vmId);
@@ -177,16 +177,17 @@ export const doctorCommand = new Command("doctor")
         ipToVmIds.set(ip, existing);
       }
 
-      // Display jobs
+      // Display runs
       const maxConcurrent = config.sandbox.max_concurrent;
-      console.log(`Jobs (${jobs.length} active, max ${maxConcurrent}):`);
+      console.log(`Runs (${jobs.length} active, max ${maxConcurrent}):`);
 
       if (jobs.length === 0) {
-        console.log("  No active jobs");
+        console.log("  No active runs");
       } else {
-        console.log("  ID              VM ID       IP              Status");
+        console.log(
+          "  Run ID                                VM ID       IP              Status",
+        );
         for (const job of jobs) {
-          const shortId = job.runId.substring(0, 12) + "...";
           const ipConflict = (ipToVmIds.get(job.ip)?.length ?? 0) > 1;
           let statusText: string;
 
@@ -199,7 +200,7 @@ export const doctorCommand = new Command("doctor")
           }
 
           console.log(
-            `  ${shortId}  ${job.vmId}    ${job.ip.padEnd(15)} ${statusText}`,
+            `  ${job.runId}  ${job.vmId}    ${job.ip.padEnd(15)} ${statusText}`,
           );
         }
       }
@@ -208,11 +209,11 @@ export const doctorCommand = new Command("doctor")
 
       // Detect warnings
 
-      // Jobs without process
+      // Runs without process
       for (const job of jobs) {
         if (!job.hasProcess) {
           warnings.push({
-            message: `Job ${job.vmId} in status.json but no Firecracker process running`,
+            message: `Run ${job.vmId} in status.json but no Firecracker process running`,
           });
         }
       }
