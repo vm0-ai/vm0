@@ -55,23 +55,31 @@ export default createRule<[], MessageIds>({
     function getSignalParamName(
       node: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
     ): string | null {
-      const firstParam = node.params[0];
-      if (!firstParam) {
-        return null;
-      }
+      // 遍历所有参数，不只是第一个
+      for (const param of node.params) {
+        // 情况1: 独立参数 signal: AbortSignal
+        if (param.type === "Identifier" && param.name === "signal") {
+          return "signal";
+        }
 
-      if (firstParam.type === "ObjectPattern") {
-        for (const prop of firstParam.properties) {
-          if (
-            prop.type === "Property" &&
-            prop.key.type === "Identifier" &&
-            prop.key.name === "signal"
-          ) {
-            if (prop.value.type === "Identifier") {
-              return prop.value.name;
-            }
-            return "signal";
+        // 情况2: 解构参数 { signal } 或 { signal: customName }
+        if (param.type !== "ObjectPattern") {
+          continue;
+        }
+
+        for (const prop of param.properties) {
+          if (prop.type !== "Property") {
+            continue;
           }
+          if (prop.key.type !== "Identifier" || prop.key.name !== "signal") {
+            continue;
+          }
+
+          // 找到了 signal 属性
+          if (prop.value.type === "Identifier") {
+            return prop.value.name;
+          }
+          return "signal";
         }
       }
 
