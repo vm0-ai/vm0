@@ -299,16 +299,6 @@ export async function executeJob(
     // This verifies VM can reach VM0 API - if not, we report failure immediately
     // Skip in benchmark mode since it doesn't use API
     if (!options.benchmarkMode) {
-      // Debug: test basic network connectivity before preflight
-      // Note: ssh.exec runs commands inside the VM, not on the host
-      log(`[Executor] Testing network connectivity for ${guestIp}...`);
-      const networkTestCmd =
-        "curl -sf --connect-timeout 5 --max-time 10 https://www.google.com -o /dev/null -w '%{http_code}'";
-      const pingResult = await ssh.exec(networkTestCmd, 15000);
-      log(
-        `[Executor] Network test: exit=${pingResult.exitCode} stdout='${pingResult.stdout.trim()}' stderr='${pingResult.stderr.trim()}'`,
-      );
-
       log(`[Executor] Running preflight connectivity check...`);
       const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       const preflight = await runPreflightCheck(
