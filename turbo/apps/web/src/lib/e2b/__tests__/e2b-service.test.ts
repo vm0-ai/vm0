@@ -1,12 +1,18 @@
 /**
- * Note: This test file focuses on E2B SDK integration testing.
- * Database operations (updating run status/sandboxId) are side effects
- * that are tested separately in integration tests. These unit tests
- * verify the core E2B service behavior with mocked external dependencies.
+ * Unit tests for E2B Service - E2B SDK integration testing.
  *
- * We use initServices() to properly initialize the services but then
- * spy on db.update to prevent actual database operations, since the
- * tests use non-UUID run IDs for simplicity.
+ * This file focuses on testing the E2B SDK integration and business logic
+ * with all external dependencies mocked. Database operations are intentionally
+ * mocked to keep these tests fast and focused on E2B SDK behavior.
+ *
+ * Database integration is tested separately in:
+ * - e2b-service-database.integration.test.ts (database operations with real DB)
+ *
+ * Design decisions:
+ * - E2B SDK (Sandbox) is mocked to avoid external API calls
+ * - Database operations are mocked to focus on business logic
+ * - Storage and image services are mocked for isolation
+ * - Test run IDs use simple strings instead of UUIDs for readability
  */
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { Sandbox } from "@e2b/code-interpreter";
