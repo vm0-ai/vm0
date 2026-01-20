@@ -4,7 +4,6 @@ import {
   composesByIdContract,
   composesVersionsContract,
   agentComposeContentSchema,
-  type ApiErrorResponse,
 } from "@vm0/core";
 import type { z } from "zod";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -29,9 +28,7 @@ export async function getComposeByName(
     return result.body;
   }
 
-  const errorBody = result.body as ApiErrorResponse;
-  const message = errorBody.error?.message || `Compose not found: ${name}`;
-  throw new Error(message);
+  handleError(result, `Compose not found: ${name}`);
 }
 
 export async function getComposeById(id: string): Promise<GetComposeResponse> {
@@ -46,9 +43,7 @@ export async function getComposeById(id: string): Promise<GetComposeResponse> {
     return result.body;
   }
 
-  const errorBody = result.body as ApiErrorResponse;
-  const message = errorBody.error?.message || `Compose not found: ${id}`;
-  throw new Error(message);
+  handleError(result, `Compose not found: ${id}`);
 }
 
 /**
