@@ -314,7 +314,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection]
+    needs: [change-detection, deploy-web]
     # Only deploy if it's a PR and site changed
     if: github.event_name == 'pull_request' && needs.change-detection.outputs.site-changed == 'true'
     permissions:
@@ -335,6 +335,7 @@ jobs:
           environment: preview
           deployment-env: site
           environment-variables: |
+            WEB_APP_URL=${{ needs.deploy-web.outputs.preview-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
           meta-branch: ${{ github.head_ref }}
