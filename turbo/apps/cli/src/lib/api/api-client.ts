@@ -79,6 +79,13 @@ export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
 
+// Usage API types
+export interface UsageResponse {
+  period: { start: string; end: string };
+  summary: { total_runs: number; total_run_time_ms: number };
+  daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
+}
+
 // CLI-specific types (not in @vm0/core or have different structure)
 export interface CreateComposeResponse {
   composeId: string;
@@ -280,6 +287,8 @@ class ApiClient {
     vars?: Record<string, string>;
     secrets?: Record<string, string>;
     volumeVersions?: Record<string, string>;
+    // Debug flag (internal use only)
+    debugNoMockClaude?: boolean;
     // Required
     prompt: string;
   }): Promise<CreateRunResponse> {
@@ -1134,6 +1143,34 @@ class ApiClient {
     const errorBody = result.body as ApiErrorResponse;
     const message = errorBody.error?.message || `Volume "${id}" not found`;
     throw new Error(message);
+  }
+
+  /**
+   * Get usage statistics
+   */
+  async getUsage(options: {
+    startDate: string;
+    endDate: string;
+  }): Promise<UsageResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const params = new URLSearchParams({
+      start_date: options.startDate,
+      end_date: options.endDate,
+    });
+
+    const response = await fetch(`${baseUrl}/api/usage?${params}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as { error?: { message?: string } };
+      throw new Error(error.error?.message || "Failed to fetch usage data");
+    }
+
+    return response.json() as Promise<UsageResponse>;
   }
 
   /**

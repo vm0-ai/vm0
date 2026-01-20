@@ -14,10 +14,11 @@ import { artifactCommand } from "./commands/artifact";
 import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
 import { scopeCommand } from "./commands/scope";
-import { agentsCommand } from "./commands/agents";
+import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { setupGithubCommand } from "./commands/setup-github";
 import { scheduleCommand } from "./commands/schedule";
+import { usageCommand } from "./commands/usage";
 
 const program = new Command();
 
@@ -72,7 +73,7 @@ authCommand
     await setupToken();
   });
 
-// Register compose, run, volume, artifact, cook, logs, and scope commands
+// Register all subcommands
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);
@@ -80,10 +81,11 @@ program.addCommand(artifactCommand);
 program.addCommand(cookCommand);
 program.addCommand(logsCommand);
 program.addCommand(scopeCommand);
-program.addCommand(agentsCommand);
+program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(setupGithubCommand);
 program.addCommand(scheduleCommand);
+program.addCommand(usageCommand);
 
 export { program };
 

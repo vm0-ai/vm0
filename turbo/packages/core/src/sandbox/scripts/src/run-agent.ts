@@ -320,8 +320,10 @@ async function run(): Promise<[number, string]> {
     }
 
     // Spawn process
+    // Use "ignore" for stdin since we don't send any input to Claude Code
+    // Using "pipe" without closing it would cause Claude Code to hang waiting for EOF
     const proc = spawn(cmdExe, cmd.slice(1), {
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
     // Create promise to track process exit - register handlers BEFORE reading streams

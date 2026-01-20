@@ -182,6 +182,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretValues, // Decrypted secrets
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewall: storedContext.experimentalFirewall,
+        debugNoMockClaude: storedContext.debugNoMockClaude,
       },
     };
   },

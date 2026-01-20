@@ -125,6 +125,8 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
   cliAgentType: z.string(),
   experimentalFirewall: experimentalFirewallSchema.optional(),
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude: z.boolean().optional(),
 });
 
 /**
@@ -147,6 +149,8 @@ export const executionContextSchema = z.object({
   cliAgentType: z.string(),
   // Experimental firewall configuration
   experimentalFirewall: experimentalFirewallSchema.optional(),
+  // Debug flag to force real Claude in mock environments (internal use only)
+  debugNoMockClaude: z.boolean().optional(),
 });
 
 /**

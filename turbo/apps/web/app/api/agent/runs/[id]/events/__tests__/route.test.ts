@@ -7,7 +7,8 @@ import {
   afterAll,
   vi,
 } from "vitest";
-import { GET, filterConsecutiveEvents } from "../route";
+import { GET } from "../route";
+import { filterConsecutiveEvents } from "../filter-events";
 import { POST as createCompose } from "../../../../composes/route";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";

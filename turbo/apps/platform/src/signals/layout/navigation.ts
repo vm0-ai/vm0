@@ -37,8 +37,8 @@ export const NAVIGATION_CONFIG = [
 ] as const satisfies readonly NavGroup[];
 
 // Footer navigation items (non-grouped)
+// Note: "Bill" is handled separately via SubscriptionDetailsButton in sidebar.tsx
 export const FOOTER_NAV_ITEMS = [
-  { id: "bill", label: "Bill", icon: "Receipt", path: "/" },
   { id: "docs", label: "Documentation", icon: "HelpCircle", path: "/" },
 ] as const satisfies readonly NavItem[];
 

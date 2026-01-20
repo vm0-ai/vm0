@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/docs-v0.17.0...docs-v0.18.0) (2026-01-19)
+
+
+### Features
+
+* **web:** add instatus status widget to landing page ([#1313](https://github.com/vm0-ai/vm0/issues/1313)) ([be54222](https://github.com/vm0-ai/vm0/commit/be54222b5f11951e1d370da1b63940548867ca58))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/docs-v0.16.3...docs-v0.17.0) (2026-01-15)
 
 

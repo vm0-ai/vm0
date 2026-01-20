@@ -254,8 +254,8 @@ class E2BExecutor implements Executor {
       sandboxEnvVars.VM0_RESUME_SESSION_ID = context.resumeSession.sessionId;
     }
 
-    // Pass USE_MOCK_CLAUDE for testing
-    if (process.env.USE_MOCK_CLAUDE === "true") {
+    // Pass USE_MOCK_CLAUDE for testing (skip if debugNoMockClaude is set)
+    if (process.env.USE_MOCK_CLAUDE === "true" && !context.debugNoMockClaude) {
       sandboxEnvVars.USE_MOCK_CLAUDE = "true";
     }
 

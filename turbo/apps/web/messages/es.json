@@ -82,9 +82,14 @@
     "blog": "Blog",
     "skills": "Skills",
     "glossary": "Glosario",
+    "pricing": "Precios",
     "github": "GitHub",
     "contact": "Agendar demo",
     "joinWaitlist": "Unirse a lista de espera"
+  },
+  "pricing": {
+    "title": "Elige Tu Plan",
+    "subtitle": "Comienza gratis y escala según crezcas. Sin tarjeta de crédito."
   },
   "footer": {
     "tagline": "El tiempo de ejecución moderno para desarrollo nativo de agentes",
