@@ -81,7 +81,7 @@ cd turbo && pnpm check-types
 
 ### Step 4: Create Pull Request
 
-1. Create a feature branch: `refactor/clean-defensive-catch-<date>`
+1. Create a feature branch: `refactor/defensive-code-cleanup-<date>`
 2. Commit with conventional commit message (scope based on affected packages):
    ```
    refactor(<scope>): remove defensive try-catch blocks
@@ -122,7 +122,7 @@ Post review summary as PR comment.
 Provide a summary report:
 
 ```markdown
-## Clean Catch Summary
+## Defensive Code Cleanup Summary
 
 ### Files Modified
 | File | Changes | Pattern Removed |

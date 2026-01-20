@@ -1,11 +1,11 @@
 ---
-command: cleanup-preview-envs
+command: preview-envs-cleanup
 description: Clean up old GitHub preview deployment environments
 ---
 
 Cleans up GitHub preview deployment environments that haven't had deployments in the last 3 days.
 
-Usage: `/cleanup-preview-envs`
+Usage: `/preview-envs-cleanup`
 
 ## What to do:
 
