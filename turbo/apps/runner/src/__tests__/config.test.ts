@@ -25,6 +25,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.safeParse(config);
@@ -50,6 +53,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.parse(config);
@@ -72,6 +78,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.safeParse(config);
@@ -92,6 +101,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.safeParse(config);
@@ -110,6 +122,9 @@ describe("RunnerConfig Schema", () => {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
+      },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
       },
     };
 
@@ -130,6 +145,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.safeParse(config);
@@ -145,6 +163,9 @@ describe("RunnerConfig Schema", () => {
         kernel: "/opt/vmlinux",
         rootfs: "/opt/rootfs.squashfs",
       },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
     };
 
     const result = runnerConfigSchema.safeParse(config);
@@ -157,6 +178,28 @@ describe("RunnerConfig Schema", () => {
       group: "scope/name",
       server: {
         url: "not-a-valid-url",
+        token: "test-token",
+      },
+      firecracker: {
+        binary: "/usr/bin/firecracker",
+        kernel: "/opt/vmlinux",
+        rootfs: "/opt/rootfs.squashfs",
+      },
+      proxy: {
+        ca_dir: "/opt/runner/proxy",
+      },
+    };
+
+    const result = runnerConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject missing proxy ca_dir", () => {
+    const config = {
+      name: "test",
+      group: "scope/name",
+      server: {
+        url: "https://example.com",
         token: "test-token",
       },
       firecracker: {
@@ -201,6 +244,8 @@ firecracker:
   binary: /usr/bin/firecracker
   kernel: /opt/vmlinux
   rootfs: /opt/rootfs.squashfs
+proxy:
+  ca_dir: /opt/runner/proxy
 `;
     fs.writeFileSync(testConfigPath, yamlContent);
 
@@ -208,6 +253,7 @@ firecracker:
     expect(config.name).toBe("test-runner");
     expect(config.group).toBe("e2e/test");
     expect(config.server.url).toBe("https://example.com");
+    expect(config.proxy.ca_dir).toBe("/opt/runner/proxy");
   });
 
   it("should throw error for invalid YAML config", () => {
@@ -221,6 +267,8 @@ firecracker:
   binary: /usr/bin/firecracker
   kernel: /opt/vmlinux
   rootfs: /opt/rootfs.squashfs
+proxy:
+  ca_dir: /opt/runner/proxy
 `;
     fs.writeFileSync(testConfigPath, yamlContent);
 
