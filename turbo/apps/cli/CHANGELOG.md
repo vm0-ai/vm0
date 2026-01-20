@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.9.0](https://github.com/vm0-ai/vm0/compare/cli-v5.8.0...cli-v5.9.0) (2026-01-20)
+
+
+### Features
+
+* **credentials:** add persistent credential management for third-party services ([#1303](https://github.com/vm0-ai/vm0/issues/1303)) ([ceff78a](https://github.com/vm0-ai/vm0/commit/ceff78a8285454f69ee3c25190c305795c6b327f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.8.0
+
 ## [5.8.0](https://github.com/vm0-ai/vm0/compare/cli-v5.7.2...cli-v5.8.0) (2026-01-20)
 
 

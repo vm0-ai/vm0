@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.13.0](https://github.com/vm0-ai/vm0/compare/runner-v2.12.0...runner-v2.13.0) (2026-01-20)
+
+
+### Features
+
+* **runner:** add doctor and kill cli commands for maintenance ([#1330](https://github.com/vm0-ai/vm0/issues/1330)) ([98c6a7d](https://github.com/vm0-ai/vm0/commit/98c6a7d00ff2ffbcb67331e545e810f162dc2492))
+
+
+### Bug Fixes
+
+* **runner:** prevent ip address collision in parallel vm creation ([#1331](https://github.com/vm0-ai/vm0/issues/1331)) ([993c0da](https://github.com/vm0-ai/vm0/commit/993c0dae67f0b208297b45ff1a29b63ba7def7ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.8.0
+
 ## [2.12.0](https://github.com/vm0-ai/vm0/compare/runner-v2.11.1...runner-v2.12.0) (2026-01-20)
 
 

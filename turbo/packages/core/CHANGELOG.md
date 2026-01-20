@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/vm0-ai/vm0/compare/core-v4.7.0...core-v4.8.0) (2026-01-20)
+
+
+### Features
+
+* **credentials:** add persistent credential management for third-party services ([#1303](https://github.com/vm0-ai/vm0/issues/1303)) ([ceff78a](https://github.com/vm0-ai/vm0/commit/ceff78a8285454f69ee3c25190c305795c6b327f))
+
 ## [4.7.0](https://github.com/vm0-ai/vm0/compare/core-v4.6.1...core-v4.7.0) (2026-01-20)
 
 
