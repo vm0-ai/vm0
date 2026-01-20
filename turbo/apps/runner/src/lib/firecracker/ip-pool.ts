@@ -71,6 +71,75 @@ async function ensureRunDir(): Promise<void> {
 }
 
 /**
+ * Execute a function while holding an exclusive lock on the IP pool
+ *
+ * This helper provides file-based locking to prevent race conditions during
+ * concurrent IP operations. It:
+ * 1. Acquires an exclusive lock using atomic file creation
+ * 2. Detects and cleans up stale locks from dead processes
+ * 3. Executes the provided callback
+ * 4. Releases the lock in a finally block
+ *
+ * @param fn The function to execute while holding the lock
+ * @returns The result of the callback function
+ * @throws Error if lock cannot be acquired within timeout
+ */
+async function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  await ensureRunDir();
+
+  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
+  const startTime = Date.now();
+  let lockAcquired = false;
+
+  // Wait for lock
+  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
+    try {
+      // Try to create lock file exclusively (atomic operation)
+      fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
+      lockAcquired = true;
+      break;
+    } catch {
+      // Lock exists, check if it's stale (process dead)
+      try {
+        const pidStr = fs.readFileSync(lockMarker, "utf-8");
+        const pid = parseInt(pidStr, 10);
+        // Check if process is still alive
+        try {
+          process.kill(pid, 0);
+          // Process exists, wait and retry
+        } catch {
+          // Process doesn't exist, remove stale lock
+          fs.unlinkSync(lockMarker);
+          continue;
+        }
+      } catch {
+        // Can't read lock file, retry
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
+      );
+    }
+  }
+
+  if (!lockAcquired) {
+    throw new Error(
+      `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
+    );
+  }
+
+  try {
+    return await fn();
+  } finally {
+    // Release lock
+    try {
+      fs.unlinkSync(lockMarker);
+    } catch {
+      // Ignore errors on unlock
+    }
+  }
+}
+
+/**
  * Read the IP registry from file
  */
 function readRegistry(): IPRegistry {
@@ -194,54 +263,10 @@ function findFreeIP(registry: IPRegistry): string | null {
  * @throws Error if no free IPs are available or lock cannot be acquired
  */
 export async function allocateIP(vmId: string): Promise<string> {
-  await ensureRunDir();
-
   // TAP device name uses first 8 chars of vmId
   const tapDevice = `tap${vmId.substring(0, 8)}`;
 
-  // Simple file-based locking using a marker file
-  // We use atomic file operations to ensure exclusivity
-  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
-  const startTime = Date.now();
-  let lockAcquired = false;
-
-  // Wait for lock
-  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
-    try {
-      // Try to create lock file exclusively
-      fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
-      lockAcquired = true;
-      break;
-    } catch {
-      // Lock exists, check if it's stale (process dead)
-      try {
-        const pidStr = fs.readFileSync(lockMarker, "utf-8");
-        const pid = parseInt(pidStr, 10);
-        // Check if process is still alive
-        try {
-          process.kill(pid, 0);
-          // Process exists, wait and retry
-        } catch {
-          // Process doesn't exist, remove stale lock
-          fs.unlinkSync(lockMarker);
-          continue;
-        }
-      } catch {
-        // Can't read lock file, retry
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
-      );
-    }
-  }
-
-  if (!lockAcquired) {
-    throw new Error(
-      `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
-    );
-  }
-
-  try {
+  return withLock(async () => {
     // Read current registry
     const registry = readRegistry();
 
@@ -276,14 +301,7 @@ export async function allocateIP(vmId: string): Promise<string> {
 
     console.log(`[IP Pool] Allocated ${ip} for VM ${vmId} (TAP ${tapDevice})`);
     return ip;
-  } finally {
-    // Release lock
-    try {
-      fs.unlinkSync(lockMarker);
-    } catch {
-      // Ignore errors on unlock
-    }
-  }
+  });
 }
 
 /**
@@ -292,44 +310,7 @@ export async function allocateIP(vmId: string): Promise<string> {
  * @param ip The IP address to release
  */
 export async function releaseIP(ip: string): Promise<void> {
-  await ensureRunDir();
-
-  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
-  const startTime = Date.now();
-  let lockAcquired = false;
-
-  // Wait for lock
-  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
-    try {
-      fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
-      lockAcquired = true;
-      break;
-    } catch {
-      try {
-        const pidStr = fs.readFileSync(lockMarker, "utf-8");
-        const pid = parseInt(pidStr, 10);
-        try {
-          process.kill(pid, 0);
-        } catch {
-          fs.unlinkSync(lockMarker);
-          continue;
-        }
-      } catch {
-        // Can't read lock file, retry
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
-      );
-    }
-  }
-
-  if (!lockAcquired) {
-    throw new Error(
-      `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
-    );
-  }
-
-  try {
+  return withLock(async () => {
     const registry = readRegistry();
 
     if (registry.allocations[ip]) {
@@ -342,13 +323,7 @@ export async function releaseIP(ip: string): Promise<void> {
     } else {
       console.log(`[IP Pool] IP ${ip} was not in registry, nothing to release`);
     }
-  } finally {
-    try {
-      fs.unlinkSync(lockMarker);
-    } catch {
-      // Ignore errors on unlock
-    }
-  }
+  });
 }
 
 /**
@@ -365,44 +340,7 @@ export async function releaseIP(ip: string): Promise<void> {
  * 4. Process B allocates the same IP -> collision!
  */
 export async function cleanupOrphanedAllocations(): Promise<void> {
-  await ensureRunDir();
-
-  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
-  const startTime = Date.now();
-  let lockAcquired = false;
-
-  // Wait for lock
-  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
-    try {
-      fs.writeFileSync(lockMarker, process.pid.toString(), { flag: "wx" });
-      lockAcquired = true;
-      break;
-    } catch {
-      try {
-        const pidStr = fs.readFileSync(lockMarker, "utf-8");
-        const pid = parseInt(pidStr, 10);
-        try {
-          process.kill(pid, 0);
-        } catch {
-          fs.unlinkSync(lockMarker);
-          continue;
-        }
-      } catch {
-        // Can't read lock file, retry
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
-      );
-    }
-  }
-
-  if (!lockAcquired) {
-    throw new Error(
-      `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
-    );
-  }
-
-  try {
+  return withLock(async () => {
     console.log("[IP Pool] Cleaning up orphaned allocations...");
 
     // Read current registry
@@ -432,11 +370,5 @@ export async function cleanupOrphanedAllocations(): Promise<void> {
     } else {
       console.log("[IP Pool] No orphaned allocations found");
     }
-  } finally {
-    try {
-      fs.unlinkSync(lockMarker);
-    } catch {
-      // Ignore errors on unlock
-    }
-  }
+  });
 }
