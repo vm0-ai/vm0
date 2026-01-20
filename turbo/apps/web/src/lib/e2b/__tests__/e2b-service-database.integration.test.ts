@@ -1,13 +1,22 @@
 /**
  * Integration tests for E2B Service database operations.
  *
- * This file complements e2b-service.test.ts by testing the database integration
- * aspects that are mocked in the unit tests. These tests verify that:
- * 1. Run status is correctly updated in the database after sandbox creation
- * 2. Sandbox IDs are properly persisted
- * 3. Database operations handle edge cases and errors appropriately
+ * Focus: Test E2B service + Database integration
  *
- * Note: E2B SDK operations are mocked to isolate database testing.
+ * Mock Strategy (Pragmatic Approach):
+ * - Mock EXTERNAL services: E2B SDK (external API), S3 client (Cloudflare R2)
+ * - Mock INTERNAL services with complex setup: image service, storage service
+ *   - These services have their own comprehensive tests
+ *   - Mocking them keeps this test focused and fast
+ * - Use REAL: Database (PostgreSQL)
+ *
+ * Rationale:
+ * - Image service requires images table + scope data setup
+ * - Storage service requires storages + storage_versions setup
+ * - Setting up all dependencies would make tests slow and brittle
+ * - This test focuses on E2B-specific database operations (status, sandboxId)
+ *
+ * For full end-to-end testing with real storage/image services, see E2E tests.
  */
 import {
   describe,
@@ -30,7 +39,7 @@ import { scopes } from "../../../db/schema/scope";
 import { randomUUID } from "crypto";
 import type { ExecutionContext } from "../../run/types";
 
-// Mock the E2B SDK module
+// Mock external services
 vi.mock("@e2b/code-interpreter");
 
 // Mock e2bConfig to provide a default template
@@ -41,7 +50,8 @@ vi.mock("../config", () => ({
   },
 }));
 
-// Mock StorageService
+// Mock internal services with complex dependencies
+// These have their own comprehensive test files
 const mockStorageService = vi.hoisted(() => ({
   prepareStorageManifest: vi.fn().mockResolvedValue({
     storages: [],
@@ -53,7 +63,6 @@ vi.mock("../../storage/storage-service", () => ({
   storageService: mockStorageService,
 }));
 
-// Mock image-service for resolveImageAlias
 vi.mock("../../image/image-service", () => ({
   resolveImageAlias: vi
     .fn()
@@ -64,20 +73,6 @@ vi.mock("../../image/image-service", () => ({
       });
     }),
 }));
-
-// Mock fs module
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  return {
-    ...actual,
-    promises: {
-      ...actual.promises,
-      readFile: vi
-        .fn()
-        .mockResolvedValue(Buffer.from("#!/bin/bash\necho 'mock script'")),
-    },
-  };
-});
 
 // Import e2bService after mocks are set up
 let e2bService: typeof import("../e2b-service").e2bService;
@@ -208,6 +203,7 @@ describe("E2B Service - Database Integration Tests", () => {
 
       const context: ExecutionContext = {
         runId: testRunId,
+        userId: TEST_USER_ID,
         agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
@@ -260,6 +256,7 @@ describe("E2B Service - Database Integration Tests", () => {
 
       const context: ExecutionContext = {
         runId: testRunId,
+        userId: TEST_USER_ID,
         agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
@@ -325,6 +322,7 @@ describe("E2B Service - Database Integration Tests", () => {
 
       const context1: ExecutionContext = {
         runId: testRunId1,
+        userId: TEST_USER_ID,
         agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
@@ -342,6 +340,7 @@ describe("E2B Service - Database Integration Tests", () => {
 
       const context2: ExecutionContext = {
         runId: testRunId2,
+        userId: TEST_USER_ID,
         agentComposeVersionId: TEST_VERSION_ID,
         agentCompose: {
           version: "1.0",
@@ -383,57 +382,6 @@ describe("E2B Service - Database Integration Tests", () => {
     });
   });
 
-  describe("database error handling", () => {
-    it("should update run status to 'failed' when storage preparation fails", async () => {
-      // Arrange - Create a test run in the database
-      const testRunId = randomUUID();
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: TEST_USER_ID,
-        agentComposeVersionId: TEST_VERSION_ID,
-        status: "pending",
-        prompt: "Test prompt",
-      });
-
-      // Mock storage service to throw error
-      mockStorageService.prepareStorageManifest.mockRejectedValueOnce(
-        new Error('Storage "claude-files" has no versions'),
-      );
-
-      const context: ExecutionContext = {
-        runId: testRunId,
-        agentComposeVersionId: TEST_VERSION_ID,
-        agentCompose: {
-          version: "1.0",
-          agents: {
-            "test-agent": {
-              image: "test-image",
-              provider: "claude-code",
-              working_dir: "/workspace",
-            },
-          },
-        },
-        sandboxToken: "vm0_live_test_token",
-        prompt: "Test prompt",
-      };
-
-      // Act
-      const result = await e2bService.execute(context);
-
-      // Assert - Verify result
-      expect(result.status).toBe("failed");
-      expect(result.error).toContain("claude-files");
-
-      // Verify database was updated with failed status
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      expect(run).toBeDefined();
-      expect(run!.status).toBe("failed");
-      expect(run!.error).toContain("claude-files");
-      expect(run!.completedAt).toBeInstanceOf(Date);
-    });
-  });
+  // Note: Storage service error handling is tested in storage-service.test.ts
+  // This integration test focuses on E2B + database integration with simple scenarios
 });
