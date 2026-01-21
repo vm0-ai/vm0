@@ -372,6 +372,20 @@
       "when": 1767700000000,
       "tag": "0052_add_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1767800000000,
+      "tag": "0053_add_schedule_id_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1767900000000,
+      "tag": "0054_add_model_providers",
+      "breakpoints": true
     }
   ]
 }
