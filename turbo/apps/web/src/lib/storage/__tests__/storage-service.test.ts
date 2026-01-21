@@ -9,13 +9,29 @@ import {
 } from "vitest";
 import { eq } from "drizzle-orm";
 import type { AgentVolumeConfig } from "../types";
-import * as s3Client from "../../s3/s3-client";
 import { initServices } from "../../init-services";
 import { storages, storageVersions } from "../../../db/schema/storage";
 
 // Mock AWS SDK (third-party external dependency)
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
+
+// Mock s3-client module
+vi.mock("../../s3/s3-client", () => ({
+  uploadS3Buffer: vi.fn(),
+  downloadBlob: vi.fn(),
+  generatePresignedUrl: vi.fn(),
+  listS3Objects: vi.fn(),
+  deleteS3Objects: vi.fn(),
+  s3ObjectExists: vi.fn(),
+  verifyS3FilesExist: vi.fn(),
+  uploadStorageVersionArchive: vi.fn(),
+  downloadManifest: vi.fn(),
+  generatePresignedPutUrl: vi.fn(),
+  parseS3Uri: vi.fn(),
+}));
+
+import { generatePresignedUrl, listS3Objects } from "../../s3/s3-client";
 
 // Set required environment variables before initServices
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
@@ -40,11 +56,11 @@ describe("StorageService", () => {
     storageService = new StorageService();
     vi.clearAllMocks();
 
-    // Mock s3Client functions (spying on real module)
-    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
+    // Mock s3Client functions
+    vi.mocked(generatePresignedUrl).mockResolvedValue(
       "https://mock-url.example.com",
     );
-    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
+    vi.mocked(listS3Objects).mockResolvedValue([]);
 
     // Clean up test data - clear headVersionId first (foreign key constraint)
     await globalThis.services.db
@@ -171,10 +187,10 @@ describe("StorageService", () => {
         },
       };
 
-      vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
+      vi.mocked(generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
       );
-      vi.mocked(s3Client.listS3Objects).mockResolvedValue([
+      vi.mocked(listS3Objects).mockResolvedValue([
         { key: "archive.tar.gz", size: 3072, lastModified: new Date() },
       ]);
 
@@ -233,10 +249,10 @@ describe("StorageService", () => {
         },
       };
 
-      vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
+      vi.mocked(generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/artifact-archive.tar.gz",
       );
-      vi.mocked(s3Client.listS3Objects).mockResolvedValue([
+      vi.mocked(listS3Objects).mockResolvedValue([
         { key: "archive.tar.gz", size: 512, lastModified: new Date() },
       ]);
 
@@ -330,10 +346,10 @@ describe("StorageService", () => {
         },
       };
 
-      vi.mocked(s3Client.generatePresignedUrl).mockResolvedValue(
+      vi.mocked(generatePresignedUrl).mockResolvedValue(
         "https://s3.example.com/archive.tar.gz",
       );
-      vi.mocked(s3Client.listS3Objects).mockResolvedValue([
+      vi.mocked(listS3Objects).mockResolvedValue([
         { key: "archive.tar.gz", size: 100, lastModified: new Date() },
       ]);
 

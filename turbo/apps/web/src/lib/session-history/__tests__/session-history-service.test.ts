@@ -11,10 +11,26 @@ import { eq, like } from "drizzle-orm";
 import { SessionHistoryService } from "../session-history-service";
 import { initServices } from "../../init-services";
 import { blobs } from "../../../db/schema/blob";
-import * as s3Client from "../../s3/s3-client";
 
 // Mock AWS SDK (third-party external dependency)
 vi.mock("@aws-sdk/client-s3");
+
+// Mock s3-client module
+vi.mock("../../s3/s3-client", () => ({
+  uploadS3Buffer: vi.fn(),
+  downloadBlob: vi.fn(),
+  generatePresignedUrl: vi.fn(),
+  listS3Objects: vi.fn(),
+  deleteS3Objects: vi.fn(),
+  s3ObjectExists: vi.fn(),
+  verifyS3FilesExist: vi.fn(),
+  uploadStorageVersionArchive: vi.fn(),
+  downloadManifest: vi.fn(),
+  generatePresignedPutUrl: vi.fn(),
+  parseS3Uri: vi.fn(),
+}));
+
+import { uploadS3Buffer, downloadBlob } from "../../s3/s3-client";
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
@@ -30,9 +46,9 @@ describe("SessionHistoryService", () => {
     service = new SessionHistoryService();
     vi.clearAllMocks();
 
-    // Mock s3Client functions (spying on real module)
-    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
-    vi.spyOn(s3Client, "downloadBlob").mockImplementation(
+    // Mock s3Client functions
+    vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+    vi.mocked(downloadBlob).mockImplementation(
       async (bucket: string, hash: string) => {
         // Fetch from database to simulate S3 download
         const [blob] = await globalThis.services.db
@@ -73,7 +89,7 @@ describe("SessionHistoryService", () => {
       expect(hash).toHaveLength(64); // SHA-256 hex length
 
       // Verify S3 upload was called
-      expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(1);
+      expect(uploadS3Buffer).toHaveBeenCalledTimes(1);
 
       // Verify blob was inserted into database
       const [blob] = await globalThis.services.db
@@ -120,10 +136,7 @@ describe("SessionHistoryService", () => {
       // Now retrieve it
       const result = await service.retrieve(hash);
 
-      expect(s3Client.downloadBlob).toHaveBeenCalledWith(
-        "test-storages-bucket",
-        hash,
-      );
+      expect(downloadBlob).toHaveBeenCalledWith("test-storages-bucket", hash);
       // The mock returns a standard format, so verify it's a string
       expect(typeof result).toBe("string");
       expect(result).toContain("hello from");
@@ -138,10 +151,7 @@ describe("SessionHistoryService", () => {
 
       const result = await service.resolve(hash, legacyContent);
 
-      expect(s3Client.downloadBlob).toHaveBeenCalledWith(
-        "test-storages-bucket",
-        hash,
-      );
+      expect(downloadBlob).toHaveBeenCalledWith("test-storages-bucket", hash);
       // Should use hash, not legacy
       expect(result).toContain("hello from");
     });
@@ -151,14 +161,14 @@ describe("SessionHistoryService", () => {
 
       const result = await service.resolve(null, legacyContent);
 
-      expect(s3Client.downloadBlob).not.toHaveBeenCalled();
+      expect(downloadBlob).not.toHaveBeenCalled();
       expect(result).toBe(legacyContent);
     });
 
     it("should return null when both hash and legacy text are null", async () => {
       const result = await service.resolve(null, null);
 
-      expect(s3Client.downloadBlob).not.toHaveBeenCalled();
+      expect(downloadBlob).not.toHaveBeenCalled();
       expect(result).toBeNull();
     });
 
@@ -168,10 +178,7 @@ describe("SessionHistoryService", () => {
 
       const result = await service.resolve(hash, "");
 
-      expect(s3Client.downloadBlob).toHaveBeenCalledWith(
-        "test-storages-bucket",
-        hash,
-      );
+      expect(downloadBlob).toHaveBeenCalledWith("test-storages-bucket", hash);
       expect(result).toContain("hello from");
     });
 
@@ -189,13 +196,13 @@ describe("SessionHistoryService", () => {
       const legacyContent = '{"from":"legacy"}\n';
 
       // Mock downloadBlob to throw an error
-      vi.spyOn(s3Client, "downloadBlob").mockRejectedValue(
+      vi.mocked(downloadBlob).mockRejectedValue(
         new Error("Blob not found: " + fakeHash),
       );
 
       const result = await service.resolve(fakeHash, legacyContent);
 
-      expect(s3Client.downloadBlob).toHaveBeenCalledWith(
+      expect(downloadBlob).toHaveBeenCalledWith(
         "test-storages-bucket",
         fakeHash,
       );
@@ -208,7 +215,7 @@ describe("SessionHistoryService", () => {
         "abc123def456789012345678901234567890123456789012345678901234abcd";
 
       // Mock downloadBlob to throw an error
-      vi.spyOn(s3Client, "downloadBlob").mockRejectedValue(
+      vi.mocked(downloadBlob).mockRejectedValue(
         new Error("Blob not found: " + fakeHash),
       );
 

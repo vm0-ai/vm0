@@ -14,7 +14,6 @@ import {
   storages,
   storageVersions,
 } from "../../../../../src/db/schema/storage";
-import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -29,6 +28,23 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock AWS SDK (external) for S3 operations
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
+
+// Mock s3-client module
+vi.mock("../../../../../src/lib/s3/s3-client", () => ({
+  uploadS3Buffer: vi.fn(),
+  downloadBlob: vi.fn(),
+  generatePresignedUrl: vi.fn(),
+  listS3Objects: vi.fn(),
+  deleteS3Objects: vi.fn(),
+  s3ObjectExists: vi.fn(),
+  verifyS3FilesExist: vi.fn(),
+  uploadStorageVersionArchive: vi.fn(),
+  downloadManifest: vi.fn(),
+  generatePresignedPutUrl: vi.fn(),
+  parseS3Uri: vi.fn(),
+}));
+
+import { generatePresignedUrl } from "../../../../../src/lib/s3/s3-client";
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
@@ -54,7 +70,7 @@ describe("GET /api/storages/download", () => {
     vi.clearAllMocks();
 
     // Setup S3 mocks
-    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
+    vi.mocked(generatePresignedUrl).mockResolvedValue(
       "https://s3.example.com/presigned-download-url",
     );
 
