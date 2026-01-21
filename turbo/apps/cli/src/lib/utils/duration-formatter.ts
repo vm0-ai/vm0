@@ -49,3 +49,36 @@ export function formatDuration(ms: number | null | undefined): string {
 
   return parts.join(" ");
 }
+
+/**
+ * Format duration in milliseconds to compact string (shows only the largest unit)
+ * @param ms - Duration in milliseconds
+ * @returns Compact formatted duration string (e.g., "2h", "45m", "32s")
+ */
+export function formatDurationCompact(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || ms === 0) {
+    return "-";
+  }
+
+  if (ms < 0) {
+    return "-";
+  }
+
+  const totalSeconds = Math.floor(ms / 1000);
+
+  if (totalSeconds === 0) {
+    return "< 1s";
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+
+  return `${totalSeconds}s`;
+}

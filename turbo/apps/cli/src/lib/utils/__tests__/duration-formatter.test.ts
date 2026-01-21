@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDuration } from "../duration-formatter";
+import { formatDuration, formatDurationCompact } from "../duration-formatter";
 
 describe("formatDuration", () => {
   it("formats hours, minutes, and seconds", () => {
@@ -74,5 +74,35 @@ describe("formatDuration", () => {
   it("formats large durations correctly", () => {
     // 24h 30m 45s = 88245000ms
     expect(formatDuration(88245000)).toBe("24h 30m 45s");
+  });
+});
+
+describe("formatDurationCompact", () => {
+  it("shows only hours for durations >= 1 hour", () => {
+    // 2h 53m 22s = 10402000ms, should show "2h"
+    expect(formatDurationCompact(10402000)).toBe("2h");
+  });
+
+  it("shows only minutes for durations < 1 hour", () => {
+    // 45m 32s = 2732000ms, should show "45m"
+    expect(formatDurationCompact(2732000)).toBe("45m");
+  });
+
+  it("shows only seconds for durations < 1 minute", () => {
+    // 32s = 32000ms
+    expect(formatDurationCompact(32000)).toBe("32s");
+  });
+
+  it("returns '< 1s' for sub-second durations", () => {
+    expect(formatDurationCompact(500)).toBe("< 1s");
+  });
+
+  it("returns '-' for zero", () => {
+    expect(formatDurationCompact(0)).toBe("-");
+  });
+
+  it("returns '-' for null/undefined", () => {
+    expect(formatDurationCompact(null)).toBe("-");
+    expect(formatDurationCompact(undefined)).toBe("-");
   });
 });
