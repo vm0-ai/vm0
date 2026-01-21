@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { getCheckpoint, createRun } from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
@@ -41,7 +41,7 @@ export const resumeCommand = new Command()
     "--experimental-realtime",
     "Use realtime event streaming instead of polling (experimental)",
   )
-  .option("--debug-no-mock-claude")
+  .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
       checkpointId: string,

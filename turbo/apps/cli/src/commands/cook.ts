@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { readFile, mkdir, writeFile, appendFile } from "fs/promises";
 import { existsSync, readFileSync } from "fs";
@@ -317,7 +317,7 @@ const cookCmd = new Command()
 cookCmd
   .argument("[prompt]", "Prompt for the agent")
   .option("-y, --yes", "Skip confirmation prompts")
-  .option("--debug-no-mock-claude")
+  .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
       prompt: string | undefined,
@@ -627,7 +627,7 @@ cookCmd
     "Continue from the last session (latest conversation and artifact)",
   )
   .argument("<prompt>", "Prompt for the continued agent")
-  .option("--debug-no-mock-claude")
+  .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(async (prompt: string, options: { debugNoMockClaude?: boolean }) => {
     const state = await loadCookState();
     if (!state.lastSessionId) {
@@ -680,7 +680,7 @@ cookCmd
     "Resume from the last checkpoint (snapshotted conversation and artifact)",
   )
   .argument("<prompt>", "Prompt for the resumed agent")
-  .option("--debug-no-mock-claude")
+  .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(async (prompt: string, options: { debugNoMockClaude?: boolean }) => {
     const state = await loadCookState();
     if (!state.lastCheckpointId) {
