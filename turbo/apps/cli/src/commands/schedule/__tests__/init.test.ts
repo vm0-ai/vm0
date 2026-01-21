@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, readFileSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import {
   generateCronExpression,
   detectTimezone,
@@ -11,20 +13,20 @@ import {
   toISODateTime,
 } from "../../../lib/domain/schedule-utils";
 
-// Mock fs module for file-based tests
-vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof import("fs")>("fs");
-  return {
-    ...actual,
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-    writeFileSync: vi.fn(),
-  };
-});
-
 describe("schedule init utilities", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-schedule-init-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
   describe("generateCronExpression", () => {
@@ -110,21 +112,17 @@ describe("schedule init utilities", () => {
   });
 
   describe("extractVarsAndSecrets", () => {
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
     it("should return empty arrays when vm0.yaml does not exist", () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
+      // vm0.yaml doesn't exist in tempDir
       const result = extractVarsAndSecrets();
       expect(result).toEqual({ vars: [], secrets: [] });
     });
 
     it("should extract experimental_vars and experimental_secrets", () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue(`
-version: "1.0"
+      // Create real vm0.yaml file
+      writeFileSync(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
 agents:
   my-agent:
     provider: anthropic
@@ -134,7 +132,8 @@ agents:
     experimental_secrets:
       - DATABASE_URL
       - API_SECRET
-`);
+`,
+      );
 
       const result = extractVarsAndSecrets();
       expect(result.vars).toContain("API_KEY");
@@ -144,9 +143,10 @@ agents:
     });
 
     it("should extract vars and secrets from environment patterns", () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue(`
-version: "1.0"
+      // Create real vm0.yaml file
+      writeFileSync(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
 agents:
   my-agent:
     provider: anthropic
@@ -154,7 +154,8 @@ agents:
       MY_VAR: "\${{ vars.MY_VAR }}"
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
       ANOTHER: "\${{ vars.ANOTHER }}"
-`);
+`,
+      );
 
       const result = extractVarsAndSecrets();
       expect(result.vars).toContain("MY_VAR");
@@ -163,9 +164,10 @@ agents:
     });
 
     it("should not duplicate variable names", () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue(`
-version: "1.0"
+      // Create real vm0.yaml file
+      writeFileSync(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
 agents:
   my-agent:
     provider: anthropic
@@ -174,7 +176,8 @@ agents:
     environment:
       KEY1: "\${{ vars.API_KEY }}"
       KEY2: "\${{ vars.API_KEY }}"
-`);
+`,
+      );
 
       const result = extractVarsAndSecrets();
       // API_KEY should only appear once
@@ -182,8 +185,8 @@ agents:
     });
 
     it("should handle parse errors gracefully", () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue("invalid: yaml: content:");
+      // Create real vm0.yaml file with invalid content
+      writeFileSync(path.join(tempDir, "vm0.yaml"), "invalid: yaml: content:");
 
       const result = extractVarsAndSecrets();
       expect(result).toEqual({ vars: [], secrets: [] });

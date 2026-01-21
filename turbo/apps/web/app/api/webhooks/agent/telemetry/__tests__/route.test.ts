@@ -22,30 +22,20 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock Axiom module
-vi.mock("../../../../../../src/lib/axiom", () => ({
-  ingestToAxiom: vi.fn().mockResolvedValue(true),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
-    SANDBOX_TELEMETRY_METRICS: "sandbox-telemetry-metrics",
-    SANDBOX_TELEMETRY_NETWORK: "sandbox-telemetry-network",
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { ingestToAxiom } from "../../../../../../src/lib/axiom";
+import { Axiom } from "@axiomhq/js";
+import * as axiomModule from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockIngestToAxiom = vi.mocked(ingestToAxiom);
+
+// Spy for ingestToAxiom - will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let ingestToAxiomSpy: any;
 
 describe("POST /api/webhooks/agent/telemetry", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -70,6 +60,21 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
+
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Setup spy on ingestToAxiom - returns true by default
+    ingestToAxiomSpy = vi
+      .spyOn(axiomModule, "ingestToAxiom")
+      .mockResolvedValue(true);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -309,7 +314,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(data.success).toBe(true);
 
       // Verify Axiom was called with the systemLog
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-system-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -354,7 +359,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(data.success).toBe(true);
 
       // Verify Axiom was called with metrics
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-metrics-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -405,7 +410,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(data.success).toBe(true);
 
       // Verify Axiom was called with network logs
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-network-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -465,7 +470,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(data.success).toBe(true);
 
       // Verify Axiom was called with systemLog
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-system-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -476,7 +481,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       );
 
       // Verify Axiom was called with metrics
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-sandbox-telemetry-metrics-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -528,7 +533,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       expect(response2.status).toBe(200);
 
       // Verify Axiom was called twice (systemLog goes to Axiom)
-      expect(mockIngestToAxiom).toHaveBeenCalledTimes(2);
+      expect(ingestToAxiomSpy).toHaveBeenCalledTimes(2);
     });
   });
 

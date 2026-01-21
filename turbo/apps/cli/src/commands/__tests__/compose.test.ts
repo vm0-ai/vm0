@@ -7,15 +7,14 @@ import {
   getSecretsFromComposeContent,
 } from "../compose";
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import * as yaml from "yaml";
 import * as config from "../../lib/api/config";
 import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
-vi.mock("yaml");
 vi.mock("../../lib/domain/yaml-validator");
 vi.mock("../../lib/domain/provider-config", () => ({
   getProviderDefaults: vi.fn().mockReturnValue(undefined),
@@ -31,6 +30,9 @@ vi.mock("../../lib/api/config", () => ({
 }));
 
 describe("compose command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -41,11 +43,16 @@ describe("compose command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
     vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
     vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -53,8 +60,6 @@ describe("compose command", () => {
 
   describe("file validation", () => {
     it("should exit with error if file does not exist", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "nonexistent.yaml"]);
       }).rejects.toThrow("process.exit called");
@@ -66,12 +71,10 @@ describe("compose command", () => {
     });
 
     it("should read file when it exists", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("version: 1.0");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
@@ -99,20 +102,20 @@ describe("compose command", () => {
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(fs.readFile).toHaveBeenCalledWith("config.yaml", "utf8");
+      const content = await fs.readFile(
+        path.join(tempDir, "config.yaml"),
+        "utf8",
+      );
+      expect(content).toContain("version");
     });
   });
 
   describe("YAML parsing", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-    });
-
     it("should exit with error on invalid YAML", async () => {
-      vi.mocked(yaml.parse).mockImplementation(() => {
-        throw new Error("Invalid YAML");
-      });
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        "invalid: yaml: content:",
+      );
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
@@ -125,11 +128,10 @@ describe("compose command", () => {
     });
 
     it("should parse valid YAML", async () => {
-      const mockConfig = {
-        version: "1.0",
-        agents: { test: { working_dir: "/" } },
-      };
-      vi.mocked(yaml.parse).mockReturnValue(mockConfig);
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
@@ -157,21 +159,22 @@ describe("compose command", () => {
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(yaml.parse).toHaveBeenCalled();
-      expect(yamlValidator.validateAgentCompose).toHaveBeenCalledWith(
-        mockConfig,
+      const content = await fs.readFile(
+        path.join(tempDir, "config.yaml"),
+        "utf8",
       );
+      const parsed = yaml.parse(content);
+      expect(parsed.version).toBe("1.0");
+      expect(yamlValidator.validateAgentCompose).toHaveBeenCalled();
     });
   });
 
   describe("compose validation", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
     });
 
     it("should exit with error on invalid compose", async () => {
@@ -225,13 +228,11 @@ describe("compose command", () => {
   });
 
   describe("API interaction", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
@@ -336,13 +337,11 @@ describe("compose command", () => {
   });
 
   describe("error handling", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });

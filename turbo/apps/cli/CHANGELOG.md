@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.10.0](https://github.com/vm0-ai/vm0/compare/cli-v5.9.1...cli-v5.10.0) (2026-01-21)
+
+
+### Features
+
+* **cli:** add experimental realtime event streaming with ably ([#1383](https://github.com/vm0-ai/vm0/issues/1383)) ([a37b177](https://github.com/vm0-ai/vm0/commit/a37b1776819c9c1653f214a513c206032e37af01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.9.0
+
 ## [5.9.1](https://github.com/vm0-ai/vm0/compare/cli-v5.9.0...cli-v5.9.1) (2026-01-20)
 
 

@@ -35,27 +35,20 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock Axiom module
-vi.mock("../../../../../../../src/lib/axiom", () => ({
-  queryAxiom: vi.fn(),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { queryAxiom } from "../../../../../../../src/lib/axiom";
+import { Axiom } from "@axiomhq/js";
+import * as axiomModule from "../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockQueryAxiom = vi.mocked(queryAxiom);
+
+// Spy for queryAxiom - will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let queryAxiomSpy: any;
 
 /**
  * Helper to create mock Axiom agent event
@@ -103,8 +96,18 @@ describe("GET /api/agent/runs/:id/events", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Default: return empty events
-    mockQueryAxiom.mockResolvedValue([]);
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Setup spy on queryAxiom - returns empty array by default
+    queryAxiomSpy = vi.spyOn(axiomModule, "queryAxiom").mockResolvedValue([]);
 
     // Clean up any existing test data
     // Delete agent_runs first - CASCADE will delete related events
@@ -312,7 +315,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty events list when no events exist", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -331,7 +334,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     });
 
     it("should return empty events when Axiom is not configured", async () => {
-      mockQueryAxiom.mockResolvedValue(null);
+      queryAxiomSpy.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -381,7 +384,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       ];
 
-      mockQueryAxiom.mockResolvedValue(testEvents);
+      queryAxiomSpy.mockResolvedValue(testEvents);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -406,7 +409,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Pagination", () => {
     it("should verify APL query includes 'since' parameter", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
@@ -415,13 +418,13 @@ describe("GET /api/agent/runs/:id/events", () => {
       await GET(request);
 
       // Verify the APL query includes the since filter
-      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
-      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(queryAxiomSpy).toHaveBeenCalledTimes(1);
+      const apl = queryAxiomSpy.mock.calls[0]![0];
       expect(apl).toContain("sequenceNumber > 2");
     });
 
     it("should verify APL query includes 'limit' parameter", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=3`,
@@ -430,8 +433,8 @@ describe("GET /api/agent/runs/:id/events", () => {
       await GET(request);
 
       // Verify the APL query includes the limit
-      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
-      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(queryAxiomSpy).toHaveBeenCalledTimes(1);
+      const apl = queryAxiomSpy.mock.calls[0]![0];
       expect(apl).toContain("limit 3");
     });
 
@@ -446,7 +449,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       );
 
-      mockQueryAxiom.mockResolvedValue(testEvents);
+      queryAxiomSpy.mockResolvedValue(testEvents);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=3`,
@@ -472,7 +475,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       );
 
-      mockQueryAxiom.mockResolvedValue(testEvents);
+      queryAxiomSpy.mockResolvedValue(testEvents);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=10`,
@@ -518,7 +521,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         session_id: "session-abc-123",
       };
 
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 1,
@@ -542,7 +545,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     it("should return createdAt from Axiom _time", async () => {
       const timestamp = "2024-12-24T10:30:00.000Z";
 
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: 1,
@@ -571,7 +574,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Edge Cases", () => {
     it("should handle since parameter with value 0", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=0`,
@@ -580,13 +583,13 @@ describe("GET /api/agent/runs/:id/events", () => {
       await GET(request);
 
       // Verify the APL query uses since=0
-      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
-      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(queryAxiomSpy).toHaveBeenCalledTimes(1);
+      const apl = queryAxiomSpy.mock.calls[0]![0];
       expect(apl).toContain("sequenceNumber > 0");
     });
 
     it("should return nextSequence as 'since' value when no events returned", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=100`,
@@ -602,7 +605,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     });
 
     it("should use default limit of 100 when not specified", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -611,8 +614,8 @@ describe("GET /api/agent/runs/:id/events", () => {
       await GET(request);
 
       // Verify the APL query uses default limit of 100
-      expect(mockQueryAxiom).toHaveBeenCalledTimes(1);
-      const apl = mockQueryAxiom.mock.calls[0]![0];
+      expect(queryAxiomSpy).toHaveBeenCalledTimes(1);
+      const apl = queryAxiomSpy.mock.calls[0]![0];
       expect(apl).toContain("limit 100");
     });
   });
@@ -623,7 +626,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Run State", () => {
     it("should return run state with status 'running' for running run", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -658,7 +661,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         })
         .where(eq(agentRuns.id, testRunId));
 
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -687,7 +690,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         })
         .where(eq(agentRuns.id, testRunId));
 
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -710,7 +713,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
   describe("Provider Field", () => {
     it("should return default provider 'claude-code' for compose without provider", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -762,7 +765,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         createdAt: new Date(),
       });
 
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${codexRunId}/events`,
@@ -825,7 +828,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         createdAt: new Date(),
       });
 
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${explicitRunId}/events`,
@@ -1077,7 +1080,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       ];
 
-      mockQueryAxiom.mockResolvedValue(testEvents);
+      queryAxiomSpy.mockResolvedValue(testEvents);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?limit=10`,
@@ -1124,7 +1127,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       ];
 
-      mockQueryAxiom.mockResolvedValue(firstQueryEvents);
+      queryAxiomSpy.mockResolvedValue(firstQueryEvents);
 
       const firstRequest = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -1154,7 +1157,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         }),
       ];
 
-      mockQueryAxiom.mockResolvedValue(secondQueryEvents);
+      queryAxiomSpy.mockResolvedValue(secondQueryEvents);
 
       const secondRequest = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events?since=2`,
