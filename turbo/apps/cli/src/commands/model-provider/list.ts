@@ -6,15 +6,9 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all model providers")
-  .option("--json", "Output in JSON format")
-  .action(async (options: { json?: boolean }) => {
+  .action(async () => {
     try {
       const result = await listModelProviders();
-
-      if (options.json) {
-        console.log(JSON.stringify(result.modelProviders, null, 2));
-        return;
-      }
 
       if (result.modelProviders.length === 0) {
         console.log(chalk.dim("No model providers configured."));
