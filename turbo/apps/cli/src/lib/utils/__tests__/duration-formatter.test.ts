@@ -70,4 +70,9 @@ describe("formatDuration", () => {
   it("handles exactly 1 hour", () => {
     expect(formatDuration(3600000)).toBe("1h");
   });
+
+  it("formats large durations correctly", () => {
+    // 24h 30m 45s = 88245000ms
+    expect(formatDuration(88245000)).toBe("24h 30m 45s");
+  });
 });
