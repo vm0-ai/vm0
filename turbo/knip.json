@@ -62,8 +62,7 @@
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
         "tailwindcss",
-        "typescript-eslint",
-        "@clerk/clerk-react"
+        "typescript-eslint"
       ]
     },
     "apps/runner": {
@@ -79,8 +78,7 @@
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts",
-        "scripts/build-sandbox-scripts.ts"
+        "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts", "scripts/**/*.ts"],
       "ignore": ["src/sandbox/scripts/src/**"]
