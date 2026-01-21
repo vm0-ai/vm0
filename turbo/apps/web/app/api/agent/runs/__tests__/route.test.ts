@@ -21,7 +21,7 @@ import {
   createDefaultComposeConfig,
   createTestCliToken,
   deleteTestCliToken,
-} from "../../../../../src/test/api-test-helpers";
+} from "../../../../../src/__tests__/api-test-helpers";
 import { Sandbox } from "@e2b/code-interpreter";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
 

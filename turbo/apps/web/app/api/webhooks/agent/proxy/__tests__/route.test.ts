@@ -3,7 +3,7 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { createProxyToken } from "../../../../../../src/lib/proxy/token-service";
-import { createTestSandboxToken } from "../../../../../../src/test/api-test-helpers";
+import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
 import { randomUUID } from "crypto";
 
 // Mock Next.js headers() function
