@@ -321,44 +321,34 @@
       when: rootfs_needs_rebuild
       tags: [prepare]
 
-    - name: Check if proxy CA certificate exists
-      stat:
-        path: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
-      register: proxy_ca_file
-      tags: [prepare]
-
-    - name: Generate proxy CA certificate if not exists
-      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/deploy-runner/proxy-ca"
-      when: not proxy_ca_file.stat.exists
-      tags: [prepare]
-
-    - name: Ensure proxy CA directory exists
+    - name: Ensure per-runner proxy directory exists
       file:
-        path: /opt/vm0-runner/proxy
+        path: "{{ runner_base_dir }}/proxy"
         state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
       tags: [prepare]
 
-    - name: Copy proxy CA (cert+key) for mitmproxy
-      copy:
-        src: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca.pem"
-        dest: /opt/vm0-runner/proxy/mitmproxy-ca.pem
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0600'
-        remote_src: yes
+    - name: Check if proxy CA certificate exists
+      stat:
+        path: "{{ runner_base_dir }}/proxy/mitmproxy-ca.pem"
+      register: proxy_ca_file
       tags: [prepare]
 
-    - name: Copy proxy CA certificate (cert only) for VM installation
-      copy:
-        src: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca-cert.pem"
-        dest: /opt/vm0-runner/proxy/mitmproxy-ca-cert.pem
+    - name: Generate proxy CA certificate if not exists
+      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/proxy"
+      when: not proxy_ca_file.stat.exists
+      tags: [prepare]
+
+    - name: Fix proxy CA certificate ownership
+      file:
+        path: "{{ runner_base_dir }}/proxy"
+        state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
-        mode: '0644'
-        remote_src: yes
+        recurse: yes
+      when: not proxy_ca_file.stat.exists
       tags: [prepare]
 
     - name: Ensure user is in kvm group for Firecracker

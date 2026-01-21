@@ -1,0 +1,36 @@
+import { http, HttpResponse } from "msw";
+
+export const apiHandlers = [
+  // POST /api/agent/composes - createOrUpdateCompose
+  http.post("http://localhost:3000/api/agent/composes", () => {
+    return HttpResponse.json(
+      { composeId: "default", name: "default", action: "created" },
+      { status: 201 },
+    );
+  }),
+
+  // POST /api/agent/runs - createRun
+  http.post("http://localhost:3000/api/agent/runs", () => {
+    return HttpResponse.json(
+      {
+        runId: "default",
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      },
+      { status: 201 },
+    );
+  }),
+
+  // GET /api/agent/runs/:id/events - getEvents
+  http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+    return HttpResponse.json(
+      { events: [], hasMore: false, nextSequence: 0 },
+      { status: 200 },
+    );
+  }),
+
+  // GET /api/agent/composes/versions - getComposeVersion
+  http.get("http://localhost:3000/api/agent/composes/versions", () => {
+    return HttpResponse.json({ versionId: "default" }, { status: 200 });
+  }),
+];

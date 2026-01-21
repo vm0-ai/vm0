@@ -14,27 +14,32 @@ import {
   storages,
   storageVersions,
 } from "../../../../../src/db/schema/storage";
+import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
-// Mock external dependencies - vi.mock() is hoisted, so mocks are ready before imports
-vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: vi.fn().mockResolvedValue("test-user-prepare"),
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
 
-vi.mock("../../../../../src/lib/s3/s3-client", () => ({
-  generatePresignedPutUrl: vi
-    .fn()
-    .mockResolvedValue("https://s3.example.com/presigned-url"),
-  downloadManifest: vi.fn().mockResolvedValue({ files: [] }),
-  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
+
+// Mock AWS SDK (external) for S3 operations
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Static imports - mocks are already in place due to hoisting
 import { POST } from "../route";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { verifyS3FilesExist } from "../../../../../src/lib/s3/s3-client";
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 // Test constants
 const TEST_USER_ID = "test-user-prepare";
@@ -47,6 +52,29 @@ describe("POST /api/storages/prepare", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Setup S3 mocks
+    vi.spyOn(s3Client, "generatePresignedPutUrl").mockResolvedValue(
+      "https://s3.example.com/presigned-url",
+    );
+    vi.spyOn(s3Client, "downloadManifest").mockResolvedValue({
+      version: "1.0",
+      createdAt: new Date().toISOString(),
+      totalSize: 0,
+      fileCount: 0,
+      files: [],
+    });
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user by default
+    mockAuth.mockResolvedValue({
+      userId: TEST_USER_ID,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up test data
     await globalThis.services.db
@@ -94,8 +122,10 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    // Override mock to return null for this test
-    vi.mocked(getUserId).mockResolvedValueOnce(null);
+    // Mock Clerk to return no user
+    mockAuth.mockResolvedValueOnce({
+      userId: null,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
@@ -338,7 +368,7 @@ describe("POST /api/storages/prepare", () => {
     });
 
     // Mock S3 files as missing
-    vi.mocked(verifyS3FilesExist).mockResolvedValueOnce(false);
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValueOnce(false);
 
     // Prepare again with same files - should get upload URLs since S3 missing
     const request2 = new NextRequest(

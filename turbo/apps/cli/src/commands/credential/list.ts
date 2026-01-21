@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { listCredentials } from "../../lib/api";
 
 export const listCommand = new Command()
   .name("list")
@@ -8,7 +8,7 @@ export const listCommand = new Command()
   .option("--json", "Output in JSON format")
   .action(async (options: { json?: boolean }) => {
     try {
-      const result = await apiClient.listCredentials();
+      const result = await listCredentials();
 
       if (options.json) {
         console.log(JSON.stringify(result.credentials, null, 2));

@@ -1,27 +1,40 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 
-// Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
-vi.mock("os", () => ({
-  homedir: () => "/home/testuser",
-}));
+// Mock os module to return our temp directory as homedir
+vi.mock("os", async () => {
+  const actual = await vi.importActual<typeof import("os")>("os");
+  return {
+    ...actual,
+    homedir: vi.fn(),
+  };
+});
 
 describe("cook-state", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-cook-state-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+    // Make os.homedir() return tempDir
+    vi.mocked(os.homedir).mockReturnValue(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     vi.resetModules();
   });
 
   describe("loadCookState", () => {
     it("returns empty object when file doesn't exist", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
+      // Don't create the file, so it doesn't exist
       const { loadCookState } = await import("../cook-state");
       const state = await loadCookState();
 
@@ -30,8 +43,11 @@ describe("cook-state", () => {
 
     it("returns state for current PPID", async () => {
       const mockPpid = String(process.ppid);
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+
+      // Create real state file (note: the file is named cook.json, not cook-state.json)
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           ppid: {
             [mockPpid]: {
@@ -55,8 +71,10 @@ describe("cook-state", () => {
     });
 
     it("returns empty object for different PPID", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+      // Create real state file with different PPID
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           ppid: {
             "99999": {
@@ -74,8 +92,10 @@ describe("cook-state", () => {
     });
 
     it("migrates old format to current PPID", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+      // Create real state file with old format
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           lastRunId: "old-run",
           lastSessionId: "old-session",
@@ -92,8 +112,12 @@ describe("cook-state", () => {
     });
 
     it("returns empty object when JSON is corrupted", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("not valid json {{{");
+      // Create real state file with invalid JSON
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        "not valid json {{{",
+      );
 
       const { loadCookState } = await import("../cook-state");
       const state = await loadCookState();
@@ -104,28 +128,24 @@ describe("cook-state", () => {
 
   describe("saveCookState", () => {
     it("creates config directory if needed", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue();
-
+      // Directory doesn't exist yet
       const { saveCookState } = await import("../cook-state");
       await saveCookState({ lastRunId: "new-run" });
 
-      expect(fs.mkdir).toHaveBeenCalledWith("/home/testuser/.vm0", {
-        recursive: true,
-      });
+      // Verify directory was created
+      expect(existsSync(path.join(tempDir, ".vm0"))).toBe(true);
     });
 
     it("saves state under current PPID with timestamp", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue();
-
       const { saveCookState } = await import("../cook-state");
       await saveCookState({ lastRunId: "new-run" });
 
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0]!;
-      const written = JSON.parse(writeCall[1] as string) as {
+      // Read the real file (note: the file is named cook.json, not cook-state.json)
+      const content = await fs.readFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        "utf-8",
+      );
+      const written = JSON.parse(content) as {
         ppid: Record<string, { lastRunId: string; lastActiveAt: number }>;
       };
       const ppidEntry = written.ppid[String(process.ppid)];
@@ -140,8 +160,10 @@ describe("cook-state", () => {
       const now = Date.now();
       const oldTimestamp = now - 49 * 60 * 60 * 1000; // 49 hours ago
 
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+      // Create real state file with old and recent entries
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           ppid: {
             "old-ppid": {
@@ -155,14 +177,16 @@ describe("cook-state", () => {
           },
         }),
       );
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue();
 
       const { saveCookState } = await import("../cook-state");
       await saveCookState({ lastRunId: "new-run" });
 
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0]!;
-      const written = JSON.parse(writeCall[1] as string) as {
+      // Read the real file
+      const content = await fs.readFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        "utf-8",
+      );
+      const written = JSON.parse(content) as {
         ppid: Record<string, unknown>;
       };
 
@@ -172,8 +196,11 @@ describe("cook-state", () => {
 
     it("merges with existing entry for same PPID", async () => {
       const mockPpid = String(process.ppid);
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+
+      // Create real state file with existing entry
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           ppid: {
             [mockPpid]: {
@@ -184,14 +211,16 @@ describe("cook-state", () => {
           },
         }),
       );
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue();
 
       const { saveCookState } = await import("../cook-state");
       await saveCookState({ lastRunId: "new-run" });
 
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0]!;
-      const written = JSON.parse(writeCall[1] as string) as {
+      // Read the real file
+      const content = await fs.readFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        "utf-8",
+      );
+      const written = JSON.parse(content) as {
         ppid: Record<string, { lastRunId: string; lastSessionId: string }>;
       };
 
@@ -202,24 +231,28 @@ describe("cook-state", () => {
     });
 
     it("migrates old format on save", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(
+      // Create real state file with old format
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
         JSON.stringify({
           lastRunId: "old-run",
           lastSessionId: "old-session",
           lastCheckpointId: "old-checkpoint",
         }),
       );
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue();
 
       const { saveCookState } = await import("../cook-state");
       await saveCookState({
         lastRunId: "new-run",
       });
 
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0]!;
-      const written = JSON.parse(writeCall[1] as string) as {
+      // Read the real file
+      const content = await fs.readFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        "utf-8",
+      );
+      const written = JSON.parse(content) as {
         ppid: Record<
           string,
           {

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { writeStorageConfig, type StorageType } from "./storage-utils";
-import { apiClient } from "../api/api-client";
+import { getStorageDownload } from "../api";
 import { listTarFiles, formatBytes } from "../utils/file-utils";
 
 interface CloneOptions {
@@ -38,7 +38,7 @@ export async function cloneStorage(
   // Check if storage exists on remote
   console.log(chalk.dim(`Checking remote ${typeLabel}...`));
 
-  const downloadInfo = await apiClient.getStorageDownload({
+  const downloadInfo = await getStorageDownload({
     name,
     type,
     version: options.version,

@@ -10,14 +10,7 @@ import {
   createDefaultComposeConfig,
 } from "../../../../../src/test/api-test-helpers";
 
-// Mock e2bService
-vi.mock("../../../../../src/lib/e2b/e2b-service", () => ({
-  e2bService: {
-    killSandbox: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-// Mock Clerk auth (needed for compose API)
+// Mock Clerk auth (external SaaS - needed for compose API)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
@@ -33,13 +26,20 @@ vi.mock("next/headers", () => ({
   })),
 }));
 
-import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
+// Mock E2B SDK (external)
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    connect: vi.fn(),
+  },
+}));
+
+import { Sandbox } from "@e2b/code-interpreter";
 import { auth } from "@clerk/nextjs/server";
 import { GET } from "../route";
 import { POST as createCompose } from "../../../agent/composes/route";
 
-const mockKillSandbox = vi.mocked(e2bService.killSandbox);
 const mockAuth = vi.mocked(auth);
+const mockSandboxConnect = vi.mocked(Sandbox.connect);
 
 describe("GET /api/cron/cleanup-sandboxes", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -52,6 +52,12 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     initServices();
+
+    // Setup E2B SDK mock - sandbox with kill method
+    const mockSandbox = {
+      kill: vi.fn().mockResolvedValue(undefined),
+    };
+    mockSandboxConnect.mockResolvedValue(mockSandbox as unknown as Sandbox);
 
     // Set CRON_SECRET for tests
     process.env.CRON_SECRET = cronSecret;
@@ -213,8 +219,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(data.results[0].runId).toBe(testRunId1);
       expect(data.results[0].status).toBe("cleaned");
 
-      // Verify sandbox was killed
-      expect(mockKillSandbox).toHaveBeenCalledWith("test-sandbox-123");
+      // Verify sandbox was killed via E2B SDK
+      expect(Sandbox.connect).toHaveBeenCalledWith("test-sandbox-123");
 
       // Verify run status was updated to timeout
       const [updatedRun] = await globalThis.services.db
@@ -256,7 +262,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(data.results).toEqual([]);
 
       // Verify sandbox was NOT killed
-      expect(mockKillSandbox).not.toHaveBeenCalled();
+      expect(Sandbox.connect).not.toHaveBeenCalled();
 
       // Verify run status unchanged
       const [unchangedRun] = await globalThis.services.db
@@ -296,7 +302,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(data.cleaned).toBe(0);
 
       // Verify sandbox was NOT killed
-      expect(mockKillSandbox).not.toHaveBeenCalled();
+      expect(Sandbox.connect).not.toHaveBeenCalled();
     });
 
     it("should cleanup multiple expired sandboxes", async () => {
@@ -341,8 +347,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(data.errors).toBe(0);
       expect(data.results).toHaveLength(2);
 
-      // Verify both sandboxes were killed
-      expect(mockKillSandbox).toHaveBeenCalledTimes(2);
+      // Verify both sandboxes were killed via E2B SDK
+      expect(Sandbox.connect).toHaveBeenCalledTimes(2);
     });
 
     it("should handle sandbox without sandboxId gracefully", async () => {
@@ -372,8 +378,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
       expect(data.cleaned).toBe(1);
 
-      // Verify killSandbox was NOT called (no sandboxId)
-      expect(mockKillSandbox).not.toHaveBeenCalled();
+      // Verify sandbox connect was NOT called (no sandboxId)
+      expect(Sandbox.connect).not.toHaveBeenCalled();
 
       // Verify run status was still updated
       const [updatedRun] = await globalThis.services.db

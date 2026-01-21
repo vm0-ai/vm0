@@ -30,29 +30,62 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(),
 }));
 
-// Mock Clerk auth
+// Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock session history service to avoid R2 dependency
-vi.mock("../../../../../../src/lib/session-history", () => ({
-  sessionHistoryService: {
-    store: vi.fn().mockImplementation(async (content: string) => {
-      // Return a deterministic hash based on content for testing
-      const crypto = await import("crypto");
-      return crypto.createHash("sha256").update(content).digest("hex");
-    }),
-    retrieve: vi.fn().mockResolvedValue("{}"),
-    resolve: vi
-      .fn()
-      .mockImplementation(
-        async (hash: string | null, legacyText: string | null) => {
-          if (hash) return "{}";
-          return legacyText;
+// Mock AWS S3 SDK (external) for blob storage
+vi.mock("@aws-sdk/client-s3", () => {
+  return {
+    S3Client: vi.fn(() => ({})),
+    PutObjectCommand: vi.fn(),
+    GetObjectCommand: vi.fn(),
+    ListObjectsV2Command: vi.fn(),
+    DeleteObjectCommand: vi.fn(),
+    DeleteObjectsCommand: vi.fn(),
+  };
+});
+
+// Mock the AWS SDK send method to handle blob operations
+vi.mock("@aws-sdk/lib-storage", () => {
+  return {
+    Upload: vi.fn().mockImplementation(() => ({
+      done: vi.fn().mockResolvedValue({
+        Location: "https://test-bucket.s3.amazonaws.com/test-key",
+        ETag: '"test-etag"',
+        Bucket: "test-bucket",
+        Key: "test-key",
+      }),
+    })),
+  };
+});
+
+// Setup AWS SDK mock responses
+const { S3Client } = await import("@aws-sdk/client-s3");
+const mockS3Client = S3Client as unknown as ReturnType<typeof vi.fn>;
+mockS3Client.mockImplementation(() => ({
+  send: vi.fn().mockImplementation(async (command: unknown) => {
+    const commandName = (command as { constructor: { name: string } })
+      .constructor.name;
+
+    // Handle GetObjectCommand - return session history content
+    if (commandName === "GetObjectCommand") {
+      const mockContent = "{}";
+      return {
+        Body: {
+          transformToByteArray: async () => Buffer.from(mockContent),
         },
-      ),
-  },
+      };
+    }
+
+    // Handle PutObjectCommand - successful upload
+    if (commandName === "PutObjectCommand") {
+      return { ETag: '"test-etag"' };
+    }
+
+    return {};
+  }),
 }));
 
 import { headers } from "next/headers";

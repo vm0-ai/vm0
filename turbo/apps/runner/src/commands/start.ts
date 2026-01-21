@@ -175,6 +175,7 @@ export const startCommand = new Command("start")
       const proxyManager = initProxyManager({
         apiUrl: config.server.url,
         port: config.proxy.port,
+        caDir: config.proxy.ca_dir,
       });
 
       // Try to start proxy - if mitmproxy is not installed, continue without it

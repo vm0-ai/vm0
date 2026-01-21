@@ -30,24 +30,25 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(),
 }));
 
-// Mock Clerk auth
+// Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock e2b-service
-vi.mock("../../../../../../src/lib/e2b/e2b-service", () => ({
-  e2bService: {
-    killSandbox: vi.fn().mockResolvedValue(undefined),
+// Mock E2B SDK (external)
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    connect: vi.fn(),
   },
 }));
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { e2bService } from "../../../../../../src/lib/e2b/e2b-service";
+import { Sandbox } from "@e2b/code-interpreter";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
+const mockSandboxConnect = vi.mocked(Sandbox.connect);
 
 describe("POST /api/webhooks/agent/complete", () => {
   // Generate unique IDs for this test run
@@ -65,6 +66,12 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     // Initialize services
     initServices();
+
+    // Setup E2B SDK mock - sandbox with kill method
+    const mockSandbox = {
+      kill: vi.fn().mockResolvedValue(undefined),
+    };
+    mockSandboxConnect.mockResolvedValue(mockSandbox as unknown as Sandbox);
 
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);
@@ -394,8 +401,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Run result is now stored directly in the run table (not as vm0_result event)
       expect(updatedRun?.result).toBeDefined();
 
-      // Verify sandbox was killed
-      expect(e2bService.killSandbox).toHaveBeenCalledWith(testSandboxId);
+      // Verify sandbox was killed via E2B SDK
+      expect(Sandbox.connect).toHaveBeenCalledWith(testSandboxId);
     });
 
     it("should handle failed completion (exitCode≠0) and store error in run table", async () => {
@@ -444,8 +451,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Error is now stored directly in the run table (not as vm0_error event)
       expect(updatedRun?.error).toBe("Agent crashed");
 
-      // Verify sandbox was killed
-      expect(e2bService.killSandbox).toHaveBeenCalledWith(testSandboxId);
+      // Verify sandbox was killed via E2B SDK
+      expect(Sandbox.connect).toHaveBeenCalledWith(testSandboxId);
     });
 
     it("should use default error message when exitCode≠0 and no error provided", async () => {
@@ -590,7 +597,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(events).toHaveLength(0);
 
       // Verify sandbox kill was NOT called
-      expect(e2bService.killSandbox).not.toHaveBeenCalled();
+      expect(Sandbox.connect).not.toHaveBeenCalled();
     });
 
     it("should return success without processing for already failed run", async () => {
@@ -637,7 +644,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(events).toHaveLength(0);
 
       // Verify sandbox kill was NOT called
-      expect(e2bService.killSandbox).not.toHaveBeenCalled();
+      expect(Sandbox.connect).not.toHaveBeenCalled();
     });
   });
 });

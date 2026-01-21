@@ -13,11 +13,6 @@ import type { ExecutionContext } from "./api.js";
 export const ENV_JSON_PATH = "/tmp/vm0-env.json";
 
 /**
- * Path to the proxy CA certificate on the runner host (cert only, no private key)
- */
-export const PROXY_CA_CERT_PATH = "/opt/vm0-runner/proxy/mitmproxy-ca-cert.pem";
-
-/**
  * Build environment variables for the agent execution
  */
 export function buildEnvironmentVariables(

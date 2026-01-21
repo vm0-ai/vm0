@@ -23,19 +23,10 @@ vi.mock("@axiomhq/js", () => ({
   Axiom: vi.fn(),
 }));
 
-// Mock axiom/datasets
-vi.mock("../axiom/datasets", () => ({
-  getDatasetName: vi.fn().mockReturnValue("vm0-web-logs-dev"),
-  DATASETS: {
-    WEB_LOGS: "web-logs",
-  },
-}));
-
 // Import after mocks
 import { logger, clearLoggerCache, flushLogs } from "../logger";
 
 describe("logger", () => {
-  const originalEnv = { ...process.env };
   const consoleSpy = {
     log: vi.spyOn(console, "log").mockImplementation(() => {}),
     info: vi.spyOn(console, "info").mockImplementation(() => {}),
@@ -44,19 +35,13 @@ describe("logger", () => {
   };
 
   beforeEach(() => {
-    // Reset environment
-    process.env = { ...originalEnv };
-    (process.env as Record<string, string | undefined>).NODE_ENV = "test";
-    delete process.env.DEBUG;
-    delete process.env.AXIOM_TOKEN;
-
     // Clear all mocks
     vi.clearAllMocks();
     clearLoggerCache();
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   describe("console output", () => {
@@ -106,7 +91,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG matches logger name", () => {
-      process.env.DEBUG = "test";
+      vi.stubEnv("DEBUG", "test");
       clearLoggerCache();
 
       const log = logger("test");
@@ -118,7 +103,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG is wildcard (*)", () => {
-      process.env.DEBUG = "*";
+      vi.stubEnv("DEBUG", "*");
       clearLoggerCache();
 
       const log = logger("test");
@@ -130,7 +115,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG matches prefix wildcard", () => {
-      process.env.DEBUG = "service:*";
+      vi.stubEnv("DEBUG", "service:*");
       clearLoggerCache();
 
       const log = logger("service:e2b");
@@ -142,7 +127,7 @@ describe("logger", () => {
     });
 
     it("should not output debug logs when DEBUG does not match", () => {
-      process.env.DEBUG = "other";
+      vi.stubEnv("DEBUG", "other");
       clearLoggerCache();
 
       const log = logger("test");
@@ -152,8 +137,7 @@ describe("logger", () => {
     });
 
     it("should auto-enable debug in development mode", () => {
-      (process.env as Record<string, string | undefined>).NODE_ENV =
-        "development";
+      vi.stubEnv("NODE_ENV", "development");
       clearLoggerCache();
 
       const log = logger("test");
@@ -167,7 +151,7 @@ describe("logger", () => {
 
   describe("Axiom integration", () => {
     beforeEach(() => {
-      process.env.AXIOM_TOKEN = "test-token";
+      vi.stubEnv("AXIOM_TOKEN", "test-token");
       clearLoggerCache();
     });
 
@@ -193,7 +177,7 @@ describe("logger", () => {
     });
 
     it("should send debug logs to Axiom when DEBUG is enabled", () => {
-      process.env.DEBUG = "*";
+      vi.stubEnv("DEBUG", "*");
       clearLoggerCache();
 
       const log = logger("test");

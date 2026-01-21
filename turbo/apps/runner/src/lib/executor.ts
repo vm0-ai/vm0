@@ -253,7 +253,11 @@ export async function executeJob(
       // Install proxy CA certificate only if MITM is enabled
       // For SNI-only mode (filter without MITM), we don't need CA
       if (mitmEnabled) {
-        await installProxyCA(ssh);
+        const caCertPath = path.join(
+          config.proxy.ca_dir,
+          "mitmproxy-ca-cert.pem",
+        );
+        await installProxyCA(ssh, caCertPath);
       }
     }
 

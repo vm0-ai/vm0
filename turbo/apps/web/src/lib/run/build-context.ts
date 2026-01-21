@@ -224,6 +224,11 @@ export async function buildExecutionContext(
     params.runId,
   );
 
+  // Step 6: Merge credentials into secrets for client-side log masking
+  // Credentials are server-stored user-level secrets and must be masked like CLI secrets
+  // Priority: CLI --secrets > credentials (platform-stored)
+  const mergedSecrets = credentials ? { ...credentials, ...secrets } : secrets;
+
   // Build final execution context
   return {
     runId: params.runId,
@@ -232,7 +237,7 @@ export async function buildExecutionContext(
     agentCompose,
     prompt: params.prompt,
     vars,
-    secrets,
+    secrets: mergedSecrets,
     secretNames,
     sandboxToken: params.sandboxToken,
     artifactName,

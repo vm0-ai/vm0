@@ -31,24 +31,20 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock Axiom module
-vi.mock("../../../../../../src/lib/axiom", () => ({
-  ingestToAxiom: vi.fn().mockResolvedValue(true),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    AGENT_RUN_EVENTS: "agent-run-events",
-  },
-}));
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { ingestToAxiom } from "../../../../../../src/lib/axiom";
+import { Axiom } from "@axiomhq/js";
+import * as axiomModule from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockIngestToAxiom = vi.mocked(ingestToAxiom);
+
+// Spy for ingestToAxiom - will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let ingestToAxiomSpy: any;
 
 describe("POST /api/webhooks/agent/events", () => {
   // Generate unique IDs for this test run to avoid conflicts
@@ -78,6 +74,21 @@ describe("POST /api/webhooks/agent/events", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
+
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Setup spy on ingestToAxiom - returns true by default
+    ingestToAxiomSpy = vi
+      .spyOn(axiomModule, "ingestToAxiom")
+      .mockResolvedValue(true);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -448,7 +459,7 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(data.lastSequence).toBe(2);
 
       // Verify Axiom was called with client-provided sequence numbers
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-agent-run-events-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -537,7 +548,7 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(response.status).toBe(200);
 
       // Verify Axiom was called with correct event types
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-agent-run-events-dev",
         expect.arrayContaining([
           expect.objectContaining({
@@ -610,7 +621,7 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(data.lastSequence).toBe(15);
 
       // Verify Axiom was called with all 15 events
-      expect(mockIngestToAxiom).toHaveBeenCalledWith(
+      expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-agent-run-events-dev",
         expect.arrayContaining(
           events.map((_, i) =>

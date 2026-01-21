@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import {
   runPreflightCheck,
   reportPreflightFailure,
@@ -187,52 +189,59 @@ describe("runPreflightCheck", () => {
 });
 
 describe("reportPreflightFailure", () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
   });
 
   it("calls complete API with correct parameters", async () => {
-    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
-    mockFetch.mockResolvedValue({ ok: true });
+    let capturedRequest: Request | undefined;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
+    );
 
     await reportPreflightFailure(
-      "https://api.example.com",
+      "http://localhost:3000",
       "run-123",
       "token-456",
       "Test error message",
     );
 
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(capturedRequest?.url).toBe(
+      "http://localhost:3000/api/webhooks/agent/complete",
+    );
+    expect(capturedRequest?.method).toBe("POST");
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
 
-    expect(url).toBe("https://api.example.com/api/webhooks/agent/complete");
-    expect(options.method).toBe("POST");
-    expect(options.headers).toEqual({
-      "Content-Type": "application/json",
-      Authorization: "Bearer token-456",
+    const body = await capturedRequest?.json();
+    expect(body).toEqual({
+      runId: "run-123",
+      exitCode: 1,
+      error: "Test error message",
     });
-
-    const body = JSON.parse(options.body as string);
-    expect(body.runId).toBe("run-123");
-    expect(body.exitCode).toBe(1);
-    expect(body.error).toBe("Test error message");
   });
 
   it("logs error when API returns non-ok response", async () => {
-    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    server.use(
+      http.post("http://localhost:3000/api/webhooks/agent/complete", () => {
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await reportPreflightFailure(
-      "https://api.example.com",
+      "http://localhost:3000",
       "run-123",
       "token-456",
       "Test error",
@@ -246,65 +255,87 @@ describe("reportPreflightFailure", () => {
   });
 
   it("logs error when fetch throws", async () => {
-    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
-    mockFetch.mockRejectedValue(new Error("Network error"));
+    server.use(
+      http.post("http://localhost:3000/api/webhooks/agent/complete", () => {
+        return HttpResponse.error();
+      }),
+    );
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await reportPreflightFailure(
-      "https://api.example.com",
+      "http://localhost:3000",
       "run-123",
       "token-456",
       "Test error",
     );
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      "[Executor] Failed to report preflight failure: Error: Network error",
+      "[Executor] Failed to report preflight failure: TypeError: Failed to fetch",
     );
 
     consoleSpy.mockRestore();
   });
 
   it("includes Vercel bypass header when bypassSecret is provided", async () => {
-    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
-    mockFetch.mockResolvedValue({ ok: true });
+    let capturedRequest: Request | undefined;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
+    );
 
     await reportPreflightFailure(
-      "https://api.example.com",
+      "http://localhost:3000",
       "run-123",
       "token-456",
       "Test error message",
       "bypass-secret-789",
     );
 
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-
-    expect(options.headers).toEqual({
-      "Content-Type": "application/json",
-      Authorization: "Bearer token-456",
-      "x-vercel-protection-bypass": "bypass-secret-789",
-    });
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
+    expect(capturedRequest?.headers.get("x-vercel-protection-bypass")).toBe(
+      "bypass-secret-789",
+    );
   });
 
   it("does not include Vercel bypass header when bypassSecret is not provided", async () => {
-    const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
-    mockFetch.mockResolvedValue({ ok: true });
+    let capturedRequest: Request | undefined;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        async ({ request }) => {
+          capturedRequest = request;
+          return HttpResponse.json({}, { status: 200 });
+        },
+      ),
+    );
 
     await reportPreflightFailure(
-      "https://api.example.com",
+      "http://localhost:3000",
       "run-123",
       "token-456",
       "Test error message",
     );
 
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-
-    expect(options.headers).toEqual({
-      "Content-Type": "application/json",
-      Authorization: "Bearer token-456",
-    });
+    expect(capturedRequest?.headers.get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(capturedRequest?.headers.get("Authorization")).toBe(
+      "Bearer token-456",
+    );
+    expect(
+      capturedRequest?.headers.get("x-vercel-protection-bypass"),
+    ).toBeNull();
   });
 });
 

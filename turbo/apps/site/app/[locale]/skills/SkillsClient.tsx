@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * SkillsClient Component
+ *
+ * Displays the VM0 skills marketplace with search and category filtering.
+ * Showcases 74+ pre-built integrations available for agents.
+ */
+
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";

@@ -6,15 +6,6 @@ import {
   decryptSecretsMap,
 } from "../secrets-encryption";
 
-// Mock the logger
-vi.mock("../../logger", () => ({
-  logger: () => ({
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
-}));
-
 // Valid 32-byte hex key for testing
 const TEST_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

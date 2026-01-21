@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as tar from "tar";
-import { apiClient } from "../api/api-client";
+import { prepareStorage, commitStorage } from "../api";
 import { excludeVm0Filter } from "../utils/file-utils";
 
 /**
@@ -274,7 +274,7 @@ export async function directUpload(
 
   // Step 3: Call prepare endpoint
   onProgress?.("Preparing upload...");
-  const prepareResult = await apiClient.prepareStorage({
+  const prepareResult = await prepareStorage({
     storageName,
     storageType,
     files: fileEntries,
@@ -286,7 +286,7 @@ export async function directUpload(
   if (prepareResult.existing) {
     onProgress?.("Version exists, updating HEAD...");
 
-    const commitResult = await apiClient.commitStorage({
+    const commitResult = await commitStorage({
       storageName,
       storageType,
       versionId: prepareResult.versionId,
@@ -333,7 +333,7 @@ export async function directUpload(
 
   // Step 7: Commit the upload
   onProgress?.("Committing...");
-  const commitResult = await apiClient.commitStorage({
+  const commitResult = await commitStorage({
     storageName,
     storageType,
     versionId: prepareResult.versionId,

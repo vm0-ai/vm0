@@ -1,20 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import {
   composeCommand,
   transformExperimentalShorthand,
   getSecretsFromComposeContent,
 } from "../compose";
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import * as yaml from "yaml";
-import { apiClient } from "../../lib/api/api-client";
+import * as config from "../../lib/api/config";
 import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
-vi.mock("yaml");
-vi.mock("../../lib/api/api-client");
 vi.mock("../../lib/domain/yaml-validator");
 vi.mock("../../lib/domain/provider-config", () => ({
   getProviderDefaults: vi.fn().mockReturnValue(undefined),
@@ -24,8 +24,15 @@ vi.mock("../../lib/system-storage", () => ({
   uploadInstructions: vi.fn(),
   uploadSkill: vi.fn(),
 }));
+vi.mock("../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 
 describe("compose command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -36,9 +43,16 @@ describe("compose command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -46,8 +60,6 @@ describe("compose command", () => {
 
   describe("file validation", () => {
     it("should exit with error if file does not exist", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "nonexistent.yaml"]);
       }).rejects.toThrow("process.exit called");
@@ -59,47 +71,51 @@ describe("compose command", () => {
     });
 
     it("should read file when it exists", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("version: 1.0");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "scope-123",
-        slug: "user-abc12345",
-        type: "personal",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "scope-123",
+            slug: "user-abc12345",
+            type: "personal",
+            displayName: null,
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(fs.readFile).toHaveBeenCalledWith("config.yaml", "utf8");
+      const content = await fs.readFile(
+        path.join(tempDir, "config.yaml"),
+        "utf8",
+      );
+      expect(content).toContain("version");
     });
   });
 
   describe("YAML parsing", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-    });
-
     it("should exit with error on invalid YAML", async () => {
-      vi.mocked(yaml.parse).mockImplementation(() => {
-        throw new Error("Invalid YAML");
-      });
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        "invalid: yaml: content:",
+      );
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
@@ -112,47 +128,53 @@ describe("compose command", () => {
     });
 
     it("should parse valid YAML", async () => {
-      const mockConfig = {
-        version: "1.0",
-        agents: { test: { working_dir: "/" } },
-      };
-      vi.mocked(yaml.parse).mockReturnValue(mockConfig);
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "scope-123",
-        slug: "user-abc12345",
-        type: "personal",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "scope-123",
+            slug: "user-abc12345",
+            type: "personal",
+            displayName: null,
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(yaml.parse).toHaveBeenCalled();
-      expect(yamlValidator.validateAgentCompose).toHaveBeenCalledWith(
-        mockConfig,
+      const content = await fs.readFile(
+        path.join(tempDir, "config.yaml"),
+        "utf8",
       );
+      const parsed = yaml.parse(content);
+      expect(parsed.version).toBe("1.0");
+      expect(yamlValidator.validateAgentCompose).toHaveBeenCalled();
     });
   });
 
   describe("compose validation", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
     });
 
     it("should exit with error on invalid compose", async () => {
@@ -172,60 +194,74 @@ describe("compose command", () => {
     });
 
     it("should proceed with valid compose", async () => {
+      let composeApiCalled = false;
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "scope-123",
-        slug: "user-abc12345",
-        type: "personal",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          composeApiCalled = true;
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "scope-123",
+            slug: "user-abc12345",
+            type: "personal",
+            displayName: null,
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
-      expect(apiClient.createOrUpdateCompose).toHaveBeenCalled();
+      expect(composeApiCalled).toBe(true);
     });
   });
 
   describe("API interaction", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "scope-123",
-        slug: "user-abc12345",
-        type: "personal",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "scope-123",
+            slug: "user-abc12345",
+            type: "personal",
+            displayName: null,
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+      );
     });
 
     it("should display loading message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -235,13 +271,17 @@ describe("compose command", () => {
     });
 
     it("should display created message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test-agent",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -254,13 +294,17 @@ describe("compose command", () => {
     });
 
     it("should display 'version exists' message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test-agent",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "existing",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "existing",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -272,13 +316,17 @@ describe("compose command", () => {
     });
 
     it("should display usage instructions", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockResolvedValue({
-        composeId: "cmp-123",
-        name: "test",
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
-        action: "created",
-      });
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+      );
 
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
@@ -289,22 +337,18 @@ describe("compose command", () => {
   });
 
   describe("error handling", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("yaml content");
-      vi.mocked(yaml.parse).mockReturnValue({
-        version: "1.0",
-        agents: { test: { provider: "test", working_dir: "/" } },
-      });
+    beforeEach(async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+      );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
       });
     });
 
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
-        new Error("Not authenticated"),
-      );
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
@@ -320,8 +364,18 @@ describe("compose command", () => {
     });
 
     it("should handle API errors with message", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
-        new Error("Failed to create compose: Invalid name"),
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Failed to create compose: Invalid name",
+                code: "INVALID_NAME",
+              },
+            },
+            { status: 400 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -335,8 +389,10 @@ describe("compose command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.createOrUpdateCompose).mockRejectedValue(
-        "Non-error object",
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.error();
+        }),
       );
 
       await expect(async () => {
@@ -344,7 +400,7 @@ describe("compose command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("unexpected error"),
+        expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

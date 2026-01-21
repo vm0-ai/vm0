@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { setCredential } from "../../lib/api";
 
 export const setCommand = new Command()
   .name("set")
@@ -11,7 +11,7 @@ export const setCommand = new Command()
   .action(
     async (name: string, value: string, options: { description?: string }) => {
       try {
-        const credential = await apiClient.setCredential({
+        const credential = await setCredential({
           name,
           value,
           description: options.description,
