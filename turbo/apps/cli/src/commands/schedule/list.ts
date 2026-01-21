@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { listSchedules } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/domain/schedule-utils";
 
 export const listCommand = new Command()
@@ -9,7 +9,7 @@ export const listCommand = new Command()
   .description("List all schedules")
   .action(async () => {
     try {
-      const result = await apiClient.listSchedules();
+      const result = await listSchedules();
 
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));

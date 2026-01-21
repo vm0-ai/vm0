@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   pgTable,
   uuid,
   varchar,
@@ -8,6 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { agentComposeVersions } from "./agent-compose";
+import { agentSchedules } from "./agent-schedule";
 
 /**
  * Agent Runs table
@@ -24,8 +26,10 @@ export const agentRuns = pgTable(
       .notNull(),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     // References agent_schedules.id if this run was triggered by a schedule
-    // No FK constraint to avoid circular dependency with agent_schedules
-    scheduleId: uuid("schedule_id"),
+    scheduleId: uuid("schedule_id").references(
+      (): AnyPgColumn => agentSchedules.id,
+      { onDelete: "set null" },
+    ),
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
     vars: jsonb("vars"),
