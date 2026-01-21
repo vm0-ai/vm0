@@ -16,11 +16,6 @@ vi.mock("https", () => ({
   },
 }));
 
-// Mock child_process module
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
-
 describe("update-checker", () => {
   describe("detectPackageManager", () => {
     const originalArgv = process.argv;
