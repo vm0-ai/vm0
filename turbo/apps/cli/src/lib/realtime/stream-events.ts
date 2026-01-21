@@ -3,22 +3,21 @@ import { apiClient } from "../api/api-client";
 import { createRealtimeClient, getRunChannelName } from "./client";
 
 /**
- * Message types published by the server
+ * Data payload for events messages (message.name === "events")
  */
-interface EventsMessage {
-  type: "events";
+interface EventsData {
   events: unknown[];
   nextSequence: number;
 }
 
-interface StatusMessage {
-  type: "status";
+/**
+ * Data payload for status messages (message.name === "status")
+ */
+interface StatusData {
   status: "completed" | "failed" | "timeout";
   result?: Record<string, unknown>;
   error?: string;
 }
-
-type RealtimeMessage = EventsMessage | StatusMessage;
 
 /**
  * Result from streaming events
@@ -112,9 +111,8 @@ export async function streamEvents(
     }
 
     function handleMessage(message: InboundMessage): void {
-      const data = message.data as RealtimeMessage;
-
-      if (data.type === "events") {
+      if (message.name === "events") {
+        const data = message.data as EventsData;
         // Process events
         for (const event of data.events) {
           const eventData = event as { sequenceNumber?: number };
@@ -140,7 +138,8 @@ export async function streamEvents(
             startTimestamp,
           });
         }
-      } else if (data.type === "status") {
+      } else if (message.name === "status") {
+        const data = message.data as StatusData;
         // Run completed/failed/timeout
         if (data.status === "completed") {
           onRunCompleted(data.result, {
