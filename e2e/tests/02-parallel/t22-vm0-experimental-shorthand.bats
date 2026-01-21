@@ -39,6 +39,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with experimental_secrets shorthand"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -62,6 +64,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets shorthand"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -112,6 +116,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with vars shorthand"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -158,6 +164,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent requiring secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -195,6 +203,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent requiring vars"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -236,11 +246,14 @@ agents:
   $AGENT_NAME:
     description: "Test precedence of explicit environment over shorthand"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
     experimental_vars:
       - CLOUD_NAME
     environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       OVERRIDE_SECRET: \${{ secrets.DIFFERENT_SECRET }}
       EXPLICIT_VAR: hardcoded-value
 EOF
@@ -287,6 +300,8 @@ version: "1.0"
 agents:
   invalid-agent:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets: "should-be-array"
 EOF
 
@@ -304,6 +319,8 @@ version: "1.0"
 agents:
   invalid-agent:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_vars:
       - 123
 EOF
@@ -322,6 +339,8 @@ version: "1.0"
 agents:
   invalid-agent:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
       - ""
@@ -341,6 +360,8 @@ version: "1.0"
 agents:
   empty-arrays:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets: []
     experimental_vars: []
 EOF

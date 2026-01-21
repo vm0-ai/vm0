@@ -39,6 +39,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with --yes flag"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -61,6 +63,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with -y short flag"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -82,6 +86,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent in non-TTY"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
 EOF
 
     echo "# Step 2: Compose with --yes flag and piped input (non-TTY)"
@@ -105,6 +111,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -131,9 +139,12 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill and environment"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
     environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       CUSTOM_VAR: custom-value
 EOF
@@ -155,6 +166,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -184,6 +197,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill upload"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -208,6 +223,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with multiple skills"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
       - https://github.com/vm0-ai/vm0-skills/tree/main/axiom
@@ -236,6 +253,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -265,6 +284,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -281,6 +302,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
       - https://github.com/vm0-ai/vm0-skills/tree/main/resend
@@ -305,6 +328,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -321,6 +346,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
       - https://github.com/vm0-ai/vm0-skills/tree/main/resend
@@ -344,6 +371,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF

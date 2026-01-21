@@ -48,6 +48,8 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for experimental runner"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_runner:
       group: ${RUNNER_GROUP}
 EOF
@@ -87,6 +89,8 @@ agents:
   valid-runner-agent:
     description: "Test agent with valid runner group"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_runner:
       group: acme/production
 EOF
@@ -104,6 +108,8 @@ agents:
   invalid-runner-agent:
     description: "Test agent with invalid runner group"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_runner:
       group: invalid-no-slash
 EOF

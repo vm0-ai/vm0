@@ -46,6 +46,8 @@ teardown() {
     assert_output --partial 'version: "1.0"'
     assert_output --partial "my-agent:"
     assert_output --partial "framework: claude-code"
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     assert_output --partial "instructions: AGENTS.md"
     assert_output --partial "CLAUDE_CODE_OAUTH_TOKEN"
     assert_output --partial "# Build agentic workflow"

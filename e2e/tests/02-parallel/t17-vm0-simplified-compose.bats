@@ -28,6 +28,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
 EOF
 
     echo "# Running vm0 compose..."
@@ -93,6 +95,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with apps"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github
 EOF
@@ -116,6 +120,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with invalid app"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - invalid-app
 EOF
@@ -135,6 +141,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent with invalid app tag"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github:invalid-tag
 EOF
@@ -409,6 +417,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github:dev
 EOF

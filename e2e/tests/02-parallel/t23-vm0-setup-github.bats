@@ -172,6 +172,8 @@ version: "1.0"
 agents:
   secret-test-agent:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     instructions: AGENTS.md
     experimental_secrets:
       - CUSTOM_API_KEY
@@ -199,6 +201,8 @@ version: "1.0"
 agents:
   vars-test-agent:
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     instructions: AGENTS.md
     experimental_vars:
       - REGION

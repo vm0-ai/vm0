@@ -267,6 +267,7 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       TEST_VAR: "\${{ vars.testVar }}"
       TEST_SECRET: "\${{ secrets.TEST_SECRET }}"
     volumes:
@@ -350,6 +351,7 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       TEST_VAR: "\${{ vars.testVar }}"
       TEST_SECRET: "\${{ secrets.TEST_SECRET }}"
     volumes:

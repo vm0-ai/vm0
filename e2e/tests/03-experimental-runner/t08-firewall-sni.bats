@@ -51,6 +51,8 @@ agents:
   sni-test:
     description: "SNI-only firewall test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -79,6 +81,8 @@ agents:
   ${AGENT_NAME}-allow:
     description: "SNI allow test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -138,6 +142,8 @@ agents:
   ${AGENT_NAME}-block:
     description: "SNI block test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -178,6 +184,8 @@ agents:
   ${AGENT_NAME}-wild:
     description: "SNI wildcard test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}

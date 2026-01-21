@@ -158,6 +158,8 @@ agents:
     working_dir: /home/user/workspace
     image: "vm0/claude-code:dev"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     description: "Deterministic test"
 EOF
 
