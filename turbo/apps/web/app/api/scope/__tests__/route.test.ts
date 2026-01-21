@@ -146,7 +146,8 @@ describe("/api/scope", () => {
       expect(data.error.message).toContain("already have a scope");
     });
 
-    it("should reject invalid slug format", async () => { // Use different user without scope
+    it("should reject invalid slug format", async () => {
+      // Use different user without scope
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -159,7 +160,8 @@ describe("/api/scope", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should reject reserved slugs", async () => { // Use different user without scope
+    it("should reject reserved slugs", async () => {
+      // Use different user without scope
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
