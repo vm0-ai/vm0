@@ -140,8 +140,7 @@ describe("logger", () => {
     });
 
     it("should auto-enable debug in development mode", () => {
-      (process.env as Record<string, string | undefined>).NODE_ENV =
-        "development";
+      vi.stubEnv("NODE_ENV", "development");
       clearLoggerCache();
 
       const log = logger("test");
@@ -155,7 +154,7 @@ describe("logger", () => {
 
   describe("Axiom integration", () => {
     beforeEach(() => {
-      process.env.AXIOM_TOKEN = "test-token";
+      vi.stubEnv("AXIOM_TOKEN", "test-token");
       clearLoggerCache();
     });
 
