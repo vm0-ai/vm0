@@ -246,8 +246,6 @@ agents:
   $AGENT_NAME:
     description: "Test precedence of explicit environment over shorthand"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_secrets:
       - API_KEY
     experimental_vars:

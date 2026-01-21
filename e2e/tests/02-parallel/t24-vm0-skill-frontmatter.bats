@@ -139,8 +139,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill and environment"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
     environment:
