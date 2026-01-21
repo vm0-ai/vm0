@@ -19,6 +19,9 @@
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
 import { generateSandboxToken } from "../lib/auth/sandbox-token";
+import { initServices } from "../lib/init-services";
+import { cliTokens } from "../db/schema/cli-tokens";
+import { eq } from "drizzle-orm";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -72,4 +75,41 @@ export async function createTestSandboxToken(
   runId: string,
 ): Promise<string> {
   return generateSandboxToken(userId, runId);
+}
+
+/**
+ * Create a test CLI token in the database for authentication testing
+ *
+ * @param userId - The user ID to associate with the token
+ * @param expiresAt - When the token expires (default: 1 hour from now)
+ * @returns The generated token string
+ */
+export async function createTestCliToken(
+  userId: string,
+  expiresAt?: Date,
+): Promise<string> {
+  const token = `vm0_live_test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const expiration = expiresAt || new Date(Date.now() + 60 * 60 * 1000); // 1 hour default
+
+  initServices();
+  await globalThis.services.db.insert(cliTokens).values({
+    token,
+    userId,
+    name: "Test Token",
+    expiresAt: expiration,
+  });
+
+  return token;
+}
+
+/**
+ * Clean up test CLI token from database
+ *
+ * @param token - The token string to delete
+ */
+export async function deleteTestCliToken(token: string): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(cliTokens)
+    .where(eq(cliTokens.token, token));
 }
