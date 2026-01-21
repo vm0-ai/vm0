@@ -8,7 +8,12 @@ type NavIconName =
   | "KeyRound"
   | "Receipt"
   | "HelpCircle"
-  | "Rocket";
+  | "Rocket"
+  | "Lock"
+  | "File"
+  | "Files"
+  | "SquareKey"
+  | "Sparkles";
 
 export interface NavItem {
   id: string;

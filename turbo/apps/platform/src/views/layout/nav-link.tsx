@@ -1,29 +1,39 @@
 import { useSet } from "ccstate-react";
 import {
-  Bot,
-  CircleDot,
-  FileBarChart,
-  List,
-  KeyRound,
-  Receipt,
-  HelpCircle,
-  Rocket,
-  type LucideIcon,
-} from "lucide-react";
+  IconRobot,
+  IconCircleDotFilled,
+  IconChartBar,
+  IconList,
+  IconKey,
+  IconReceipt,
+  IconHelpCircle,
+  IconRocket,
+  IconLock,
+  IconFile,
+  IconFiles,
+  IconSquareKey,
+  IconSparkles,
+  type Icon,
+} from "@tabler/icons-react";
 import type { NavItem } from "../../types/navigation.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 
 // eslint-disable-next-line ccstate/no-package-variable -- static readonly icon mapping
 const ICON_MAP = {
-  Bot,
-  CircleDot,
-  FileBarChart,
-  List,
-  KeyRound,
-  Receipt,
-  HelpCircle,
-  Rocket,
-} as const satisfies Record<string, LucideIcon>;
+  Bot: IconRobot,
+  CircleDot: IconCircleDotFilled,
+  FileBarChart: IconChartBar,
+  List: IconList,
+  KeyRound: IconKey,
+  Receipt: IconReceipt,
+  HelpCircle: IconHelpCircle,
+  Rocket: IconRocket,
+  Lock: IconLock,
+  File: IconFile,
+  Files: IconFiles,
+  SquareKey: IconSquareKey,
+  Sparkles: IconSparkles,
+} as const satisfies Record<string, Icon>;
 
 interface NavLinkProps {
   item: NavItem;
@@ -45,7 +55,7 @@ export function NavLink({ item, isActive }: NavLinkProps) {
           : "text-sidebar-foreground hover:bg-sidebar-accent"
       }`}
     >
-      {IconComponent && <IconComponent className="size-4 shrink-0" />}
+      {IconComponent && <IconComponent size={16} className="shrink-0" />}
       <span className="truncate">{item.label}</span>
     </button>
   );

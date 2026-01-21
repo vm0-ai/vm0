@@ -1,7 +1,18 @@
+/* Import Noto Sans from Google Fonts - must be first */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap");
+
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
 
 @theme {
+  /* Font families */
+  --font-family-sans:
+    "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-family-mono:
+    "Fira Code", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+
+  /* Sidebar colors */
   --color-sidebar: #f9f4ef;
   --color-sidebar-foreground: #231f1b;
   --color-sidebar-border: #eed5cb;
@@ -18,10 +29,19 @@
   }
 
   body {
-    font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-      Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    font-family: var(--font-family-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre {
+    font-family: var(--font-family-mono);
+  }
+
+  /* Clerk subscription drawer header styling */
+  .cl-drawerHeader {
+    background-color: #f9f4ef !important; /* sidebar color (gray-50) */
+    border-bottom: 1px solid #e8e2dd !important; /* border token (gray-200) */
   }
 }

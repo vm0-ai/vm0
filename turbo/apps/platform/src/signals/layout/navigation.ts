@@ -6,7 +6,7 @@ import { pathname$ } from "../route.ts";
 export const GET_STARTED_ITEM = {
   id: "get-started",
   label: "Get started",
-  icon: "Rocket",
+  icon: "Sparkles",
   path: "/",
 } as const satisfies NavItem;
 
@@ -17,14 +17,12 @@ export const NAVIGATION_CONFIG = [
     label: "Your agents",
     items: [
       { id: "agents", label: "Agents", icon: "Bot", path: "/" },
-      { id: "secrets", label: "Secrets", icon: "CircleDot", path: "/" },
+      { id: "secrets", label: "Secrets", icon: "Lock", path: "/" },
     ],
   },
   {
     label: "Content",
-    items: [
-      { id: "artifacts", label: "Artificats", icon: "FileBarChart", path: "/" },
-    ],
+    items: [{ id: "artifacts", label: "Artificats", icon: "Files", path: "/" }],
   },
   {
     label: "Observation",
@@ -32,7 +30,9 @@ export const NAVIGATION_CONFIG = [
   },
   {
     label: "Developers",
-    items: [{ id: "api-keys", label: "API keys", icon: "KeyRound", path: "/" }],
+    items: [
+      { id: "api-keys", label: "API keys", icon: "SquareKey", path: "/" },
+    ],
   },
 ] as const satisfies readonly NavGroup[];
 
