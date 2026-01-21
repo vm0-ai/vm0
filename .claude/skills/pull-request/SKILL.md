@@ -9,11 +9,18 @@ You are a Pull Request lifecycle specialist for the vm0 project. Your role is to
 
 ## Operations
 
-This skill supports three main operations. Determine which to use based on user request:
+This skill supports eight main operations. Parse the `args` parameter to determine which operation to perform:
 
-1. **Create** - Create a new PR or update existing one
-2. **Monitor** - Watch CI pipeline and report status
-3. **Merge** - Validate checks and merge PR
+1. **create** - Create a new PR or update existing one
+2. **monitor** - Watch CI pipeline and report status
+3. **merge** - Validate checks and merge PR
+4. **list** - List open pull requests for the repository
+5. **review [pr-id]** - Review a pull request with detailed analysis
+6. **review-and-comment [pr-id]** - Review PR and post the review as a comment
+7. **comment [pr-id]** - Summarize conversation and post as PR comment
+8. **check-and-merge [pr-id]** - Monitor pipeline, auto-fix issues, and merge
+
+When invoked, check the args to determine the operation and execute accordingly.
 
 ---
 
@@ -357,6 +364,221 @@ Actions Completed:
 
 Latest commit: <hash> <message>
 ```
+
+---
+
+# Operation 4: List PRs
+
+List all open pull requests in the current repository.
+
+## Workflow
+
+```bash
+gh pr list --state open
+```
+
+Display the list of open PRs with their numbers, titles, and branch names.
+
+---
+
+# Operation 5: Review PR
+
+Review a pull request with detailed analysis of changes.
+
+## Arguments
+
+- `review [pr-id]` - Review specific PR by ID
+- `review` - Review PR for current branch
+
+## Workflow
+
+### Step 1: Determine PR Number
+
+```bash
+if [ -n "$PR_ID" ]; then
+    PR_NUMBER="$PR_ID"
+else
+    CURRENT_BRANCH=$(git branch --show-current)
+    PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
+
+    if [ -z "$PR_NUMBER" ]; then
+        echo "No PR found for current branch. Please specify a PR number."
+        exit 1
+    fi
+fi
+```
+
+### Step 2: Get PR Information
+
+```bash
+gh pr view "$PR_NUMBER" --json title,body,author,url,commits
+```
+
+Display PR metadata (title, author, URL).
+
+### Step 3: Perform Code Review
+
+Analyze the PR commits for:
+- Code quality issues
+- Pattern violations
+- Test coverage
+- Error handling
+- Interface changes
+
+Generate detailed review findings.
+
+---
+
+# Operation 6: Review and Comment
+
+Review a PR and post the review as a comment.
+
+## Arguments
+
+- `review-and-comment [pr-id]` - Review and comment on specific PR
+
+## Workflow
+
+### Step 1: Perform Review
+
+Follow Operation 5 (Review PR) workflow to analyze the PR.
+
+### Step 2: Generate Review Comment
+
+Structure the review feedback in markdown format suitable for GitHub comment.
+
+### Step 3: Post Comment
+
+```bash
+gh pr comment "$PR_NUMBER" --body "$REVIEW_CONTENT"
+```
+
+Display confirmation with comment URL.
+
+---
+
+# Operation 7: Comment
+
+Summarize conversation discussion and post as PR comment for follow-up.
+
+## Arguments
+
+- `comment [pr-id]` - Post conversation summary to specific PR
+
+## Workflow
+
+### Step 1: Detect PR Number
+
+If PR ID not provided, detect from conversation context or current branch.
+
+### Step 2: Analyze Conversation
+
+Review recent conversation to identify:
+- Key discussion points and decisions
+- Technical findings or analysis results
+- Action items or follow-up tasks
+- Recommendations or suggestions
+- Open questions requiring input
+
+### Step 3: Structure Comment
+
+Organize based on content type (technical memo, follow-up tasks, etc.):
+
+```markdown
+## [Topic from Discussion]
+
+[Summary of key points]
+
+### Action Items
+- [ ] Task 1
+- [ ] Task 2
+
+### Technical Notes
+[If applicable]
+```
+
+### Step 4: Post Comment
+
+```bash
+gh pr comment "$PR_NUMBER" --body "$COMMENT_CONTENT"
+```
+
+---
+
+# Operation 8: Check and Merge
+
+Automated PR pipeline monitoring, issue fixing, and merging workflow.
+
+## Arguments
+
+- `check-and-merge [pr-id]` - Monitor, fix, and merge specific PR
+- `check-and-merge` - Use PR for current branch
+
+## Workflow
+
+### Step 1: Identify Target PR
+
+```bash
+if [ -n "$PR_ID" ]; then
+    pr_id="$PR_ID"
+else
+    pr_id=$(gh pr list --head $(git branch --show-current) --json number --jq '.[0].number')
+fi
+```
+
+### Step 2: Monitor Pipeline
+
+Wait 60 seconds for pipeline to start, then check status repeatedly:
+
+```bash
+gh pr checks "$pr_id"
+```
+
+Retry up to 30 times (30 minutes max) waiting for checks to complete.
+
+### Step 3: Auto-Fix Issues
+
+Based on failure types:
+
+**For lint failures**:
+```bash
+cd turbo && pnpm format
+git add -A && git commit -m "fix: auto-format code" && git push
+```
+
+**For type check failures**:
+```bash
+cd turbo && pnpm check-types
+# Report errors (manual fix required)
+```
+
+**For test failures**:
+```bash
+cd turbo && pnpm test
+# Report failures (manual fix required)
+```
+
+After fixes, wait 60 seconds and re-check pipeline.
+
+### Step 4: Merge PR
+
+Once all checks pass:
+
+```bash
+gh pr merge "$pr_id" --squash --delete-branch
+git checkout main
+git pull origin main
+```
+
+Display success message with merge confirmation.
+
+## Notes
+
+This operation combines monitoring, auto-fixing, and merging into one workflow. It will:
+- Wait for pipeline completion
+- Attempt automatic fixes for lint issues
+- Report other failures for manual intervention
+- Only merge when all checks pass
 
 ---
 
