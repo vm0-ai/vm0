@@ -141,11 +141,24 @@ gh pr view --json url -q .url
 
 ## Workflow
 
-### Step 1: Wait for Pipeline
+### Step 1: Run Code Review
+
+Execute code review on the current PR using the pr-review-and-comment skill:
+
+```bash
+/pr-review-and-comment
+```
+
+This will:
+- Analyze the PR changes
+- Provide comprehensive code review feedback
+- Post review comments directly on the PR
+
+### Step 2: Wait for Pipeline
 
 Wait 60 seconds for the pipeline to stabilize before first check.
 
-### Step 2: Check Pipeline Status
+### Step 3: Check Pipeline Status
 
 ```bash
 gh pr checks {pr-id}
@@ -156,7 +169,7 @@ gh pr checks {pr-id}
 - **Failures detected**: Report failure details and exit
 - **Still running**: Wait 60 seconds and retry (max 30 times, ~30 min timeout)
 
-### Step 3: Retrieve Failure Details
+### Step 4: Retrieve Failure Details
 
 For failed workflows:
 ```bash
@@ -169,7 +182,7 @@ gh run view {run-id} --log-failed
 
 Extract last 50-100 lines of relevant error output.
 
-### Step 4: Report Status
+### Step 5: Report Status
 
 ```
 Pipeline Result
