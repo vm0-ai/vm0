@@ -9,77 +9,2057 @@ context: fork
 
 ## When to Use This Skill
 
-[Placeholder - to be filled in Phase 2/3]
+Use this skill when:
+- Writing new test files
+- Reviewing test code in pull requests
+- Refactoring existing tests to improve quality
+- Investigating test failures or flaky tests
+- Ensuring tests follow project standards
+
+This skill provides:
+- Anti-pattern detection and remediation guidance
+- Standard patterns for different test types
+- Migration workflows for refactoring tests
+- Reference implementations and examples
 
 ---
 
 ## Core Testing Principles
 
-[Placeholder - to be filled in Phase 2/3]
+### The Golden Rules
+
+1. **Only Mock External Dependencies**
+   - Rule: If it starts with `../../` or `../`, don't mock it
+   - Mock third-party packages from `node_modules` only
+   - Use real internal services and database
+
+2. **Test Behavior, Not Implementation**
+   - Don't test that functions were called (vi.spyOn anti-pattern)
+   - Test outcomes and side effects
+   - Don't test UI implementation details
+
+3. **Match Production Flow**
+   - Test initialization should mirror production startup
+   - Use same bootstrap/setup patterns as main.ts
+   - Don't shortcut with direct component rendering
+
+4. **Use Real Infrastructure**
+   - Real database connections (initServices())
+   - Real filesystem with temp directories
+   - Real HTTP with MSW (not fetch mocks)
+
+5. **Fail Fast, No Fallbacks**
+   - Don't hide errors with try/catch
+   - Don't use fallback values
+   - Let errors propagate naturally
+
+6. **Zero Tolerance**
+   - No `any` types
+   - No lint suppressions
+   - No fake timers
+   - No mocking internal code
+
+### The Relative Path Rule
+
+The simplest way to detect AP-4 violations (mocking internal code):
+
+```typescript
+// ✅ GOOD: Third-party package from node_modules
+vi.mock("@clerk/nextjs")
+vi.mock("@aws-sdk/client-s3")
+vi.mock("@e2b/code-interpreter")
+vi.mock("@anthropic-ai/sdk")
+
+// ❌ BAD: Project internal code with relative path
+vi.mock("../../blob/blob-service")        // Internal service!
+vi.mock("../../storage/storage-service")  // Internal service!
+vi.mock("../agent-session-service")       // Internal service!
+```
+
+**If you see `../../` or `../` in a vi.mock() call, it's almost always wrong.**
+
+### Mock Hierarchy
+
+What to mock (from external to internal):
+
+```
+External (MOCK):
+├── Third-party SaaS (Clerk, E2B, AWS, Anthropic)
+├── Node.js built-ins (fs, child_process)
+└── Framework APIs (next/headers)
+
+Internal (USE REAL):
+├── Database (globalThis.services.db)
+├── Internal services (../../lib/*)
+├── Internal utilities (../../utils/*)
+└── Internal modules (../*.ts)
+```
 
 ---
 
 ## Anti-Patterns (Critical Issues)
 
-[Placeholder - to be filled in Phase 2/3]
+### AP-1: Testing Mock Calls Instead of Behavior
+
+**Detection**: Tests that verify `toHaveBeenCalled()` on mocks without verifying actual outcomes.
+
+**Why harmful**:
+- Tests pass when mocks are called, even if real behavior is broken
+- Creates false confidence
+- Doesn't catch actual bugs
+
+**BEFORE (❌ Wrong):**
+```typescript
+it("should call getUser", async () => {
+  await someFunction();
+  expect(mockGetUser).toHaveBeenCalled();
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+it("should retrieve and display user data", async () => {
+  const result = await someFunction();
+  expect(result.userName).toBe("expected-name");
+  expect(result.email).toBe("user@example.com");
+});
+```
+
+---
+
+### AP-2: Direct Fetch Mocking
+
+**Detection**: `vi.fn()` or `vi.stubGlobal()` on `fetch`, `window.fetch`, or `global.fetch`
+
+**PROHIBITION**: Direct fetch mocking is not allowed. Always use MSW.
+
+**Why harmful**:
+- Doesn't accurately represent real HTTP behavior
+- Doesn't test request/response serialization
+- Makes tests brittle and tied to implementation details
+- Misses request URL construction bugs
+- Doesn't verify request headers, body formatting, or HTTP methods
+
+**BEFORE (❌ Wrong):**
+```typescript
+// ❌ Bad: Direct fetch mocking
+const mockFetch = vi.fn().mockResolvedValue(new Response());
+vi.stubGlobal("fetch", mockFetch);
+
+// ❌ Bad: window.fetch assignment
+window.fetch = vi.fn().mockResolvedValue({
+  json: () => Promise.resolve({ data: "test" }),
+});
+
+// ❌ Bad: vi.spyOn on global fetch
+vi.spyOn(global, "fetch").mockResolvedValue(
+  new Response(JSON.stringify({ data: "test" }))
+);
+```
+
+**AFTER (✅ Correct):**
+```typescript
+// ✅ Good: Use MSW for HTTP mocking
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+
+const server = setupServer(
+  http.get('https://api.example.com/users', () => {
+    return HttpResponse.json({ users: [{ id: 1, name: 'Test' }] });
+  }),
+
+  http.post('https://api.example.com/users', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json({ id: 2, ...body }, { status: 201 });
+  })
+);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+it('should fetch users from API', async () => {
+  const users = await fetchUsers();
+  expect(users).toHaveLength(1);
+  expect(users[0].name).toBe('Test');
+});
+```
+
+**Benefits of MSW**:
+- Realistic HTTP behavior (status codes, headers, streaming)
+- Tests actual request construction (URL, headers, body)
+- Declarative API handlers (easier to read and maintain)
+- Works in both Node.js tests and browser
+- Catches request formatting bugs
+- Better error simulation (network errors, timeouts)
+
+**Exception**: For platform signal tests (fetch.test.ts), direct fetch mocking is acceptable when testing the fetch wrapper itself.
+
+**Related commits**: #1419 (58719dcf), #1372 (fa9dcabb)
+
+---
+
+### AP-3: Filesystem Mocking
+
+**Detection**: `vi.mock("fs")` or `vi.mock("fs/promises")`
+
+**PROHIBITION**: Filesystem mocking is not allowed. Use real filesystem with temp directories.
+
+**Why harmful**:
+- Tests mock behavior, not actual file operations
+- Misses file permission issues, race conditions, edge cases
+- Doesn't test actual file writing, atomic operations
+- False confidence in file I/O logic
+
+**BEFORE (❌ Wrong):**
+```typescript
+vi.mock("fs");
+vi.mock("fs/promises");
+
+it("should write file", () => {
+  const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+
+  registry.register("172.16.0.2", "run-123", "token-abc");
+
+  // Only tests that mock was called, not actual file writing
+  expect(mockWriteFileSync).toHaveBeenCalled();
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+import { mkdirSync, rmSync, readFileSync, mkdtempSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+
+let tempDir: string;
+
+beforeEach(() => {
+  // Create real temp directory
+  tempDir = mkdtempSync(join(tmpdir(), "test-"));
+});
+
+afterEach(() => {
+  // Clean up real temp directory
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+it("should write file", () => {
+  const testPath = join(tempDir, "registry.json");
+  const registry = new VMRegistry(testPath);
+
+  registry.register("172.16.0.2", "run-123", "token-abc");
+
+  // Verify actual file was written
+  const content = JSON.parse(readFileSync(testPath, "utf-8"));
+  expect(content.vms["172.16.0.2"]).toMatchObject({
+    runId: "run-123",
+    sandboxToken: "token-abc",
+  });
+});
+```
+
+**Migrated files (9 total)**:
+1. `apps/cli/src/commands/__tests__/init.test.ts`
+2. `apps/cli/src/commands/__tests__/compose.test.ts`
+3. `apps/cli/src/commands/__tests__/cook.test.ts`
+4. `apps/runner/src/lib/proxy/__tests__/vm-registry.test.ts`
+5. `apps/runner/src/__tests__/config.test.ts`
+6. `apps/cli/src/commands/__tests__/setup-github.test.ts`
+7. `apps/cli/src/commands/schedule/__tests__/init.test.ts`
+8. `apps/cli/src/lib/domain/__tests__/cook-state.test.ts`
+9. `apps/runner/src/lib/proxy/__tests__/proxy-manager.test.ts`
+
+**Remaining exception**: `ip-pool.test.ts` (requires code refactoring to accept configurable paths)
+
+**Related commit**: #1420 (889765f1)
+
+---
+
+### AP-4: Mocking Internal Code (HIGHEST PRIORITY)
+
+**Detection**: Any `vi.mock()` with relative path (`../../` or `../`)
+
+**PROHIBITION**: Mocking internal application code is not allowed.
+
+Based on systematic review of 70+ test files, tests should **only mock third-party packages from node_modules**, not project internal code.
+
+**Why harmful**:
+- Hides bugs in the actual code path
+- Creates false confidence (test passes but production fails)
+- Makes refactoring harder (tests depend on implementation details)
+- Reduces test value (you're not testing real behavior)
+- Breaks integration testing (mocks bypass actual logic)
+- Tests verify mock orchestration, not real API behavior
+- Misses real integration bugs (database, auth, services)
+
+**What Counts as AP-4 Violation**:
+
+❌ **Mocking project database**:
+- `globalThis.services.db` (project PostgreSQL database)
+- Database query methods (select, insert, update, delete)
+
+❌ **Mocking project internal services**:
+- `../../blob/blob-service` (internal service)
+- `../../agent-session/agent-session-service` (internal service)
+- `../../storage/storage-service` (internal service)
+- `../../run/run-service` (internal service)
+- `../../e2b/e2b-service` (internal service)
+- `../../lib/auth/get-user-id` (internal auth utility)
+- `../../lib/axiom` (internal logging service)
+- Any relative import path `../../*` or `../*`
+
+❌ **Mocking project infrastructure**:
+- File system operations (use real file system or temp directories)
+- Environment variables (use vi.stubEnv)
+- Internal utilities and helpers
+
+**What is Acceptable to Mock**:
+
+✅ **Third-party external services (from node_modules)**:
+- `@clerk/nextjs` - Authentication SaaS
+- `@aws-sdk/client-s3` - AWS cloud storage
+- `@e2b/code-interpreter` - Sandbox SaaS
+- `@anthropic-ai/sdk` - AI API
+- `@axiomhq/js` - Logging SaaS (external service)
+- Other third-party packages that require API keys or external infrastructure
+
+✅ **Node.js built-ins**:
+- `fs` - File system operations (when testing file I/O logic)
+- `child_process` - Process spawning
+- Other Node.js core modules
+
+✅ **Next.js framework APIs**:
+- `next/headers` - For mocking request headers in tests
+
+**BEFORE (❌ Wrong):**
+```typescript
+// ❌ Mock internal get-user-id utility
+vi.mock("../../../../src/lib/auth/get-user-id", () => ({
+  getUserId: async () => mockUserId,
+}));
+
+// ❌ Mock internal run service
+vi.mock("../../../../src/lib/run", () => ({
+  runService: {
+    buildExecutionContext: vi.fn().mockResolvedValue({}),
+    prepareAndDispatch: vi.fn().mockResolvedValue({ status: "pending" }),
+  },
+}));
+
+// ❌ Mock project database
+const mockDb = {
+  select: vi.fn().mockReturnThis(),
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+};
+
+beforeEach(() => {
+  globalThis.services.db = mockDb;
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+// ✅ Only mock external Clerk auth (third-party SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+import { auth } from "@clerk/nextjs/server";
+const mockAuth = vi.mocked(auth);
+
+beforeAll(() => {
+  initServices(); // Use real database
+});
+
+beforeEach(() => {
+  // Mock only external auth
+  mockAuth.mockResolvedValue({
+    userId: testUserId,
+  } as unknown as Awaited<ReturnType<typeof auth>>);
+
+  // Use real getUserId() service (no mock!)
+  // Use real runService (no mock!)
+});
+
+it("should create a run with real service integration", async () => {
+  const response = await POST(request);
+
+  // Verify run was created in real database
+  const run = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, data.id));
+
+  expect(run).toHaveLength(1);
+  expect(run[0]!.status).toBe("pending");
+});
+```
+
+**Key Points**:
+- **Only mock third-party packages**: `@clerk/nextjs/server`, `@aws-sdk/client-s3`, `@e2b/code-interpreter`
+- **Never mock internal code**: No `../../../../src/lib/*` mocks
+- **Use real database**: Call `initServices()` to get real DB connection
+- **Clean up test data**: Delete in `beforeEach`/`afterAll` using real DB operations
+
+**Summary Table**:
+
+| What | Mock? | Why |
+|------|-------|-----|
+| `@clerk/nextjs` | ✅ Yes | Third-party SaaS, requires API key |
+| `@aws-sdk/client-s3` | ✅ Yes | Third-party cloud, requires credentials |
+| `@e2b/code-interpreter` | ✅ Yes | Third-party SaaS, requires API key |
+| `@anthropic-ai/sdk` | ✅ Yes | Third-party API, requires API key |
+| `fs`, `child_process` | ✅ Yes | Node.js built-ins for I/O operations |
+| `next/headers` | ✅ Yes | Next.js framework API (test setup) |
+| `globalThis.services.db` | ❌ No | Project database, use real connection |
+| `../../blob/blob-service` | ❌ No | Internal service, use real implementation |
+| `../../storage/*` | ❌ No | Internal service, use real implementation |
+| `../../agent-session/*` | ❌ No | Internal service, use real implementation |
+| `../../run/*` | ❌ No | Internal service, use real implementation |
+| `../storage-resolver` | ❌ No | Internal utility, use real implementation |
+
+**Related commits** (11 AP-4 fixes in last 48 hours):
+- #1438 (d2ec699e) - Fix AP-4 in composes API tests (phase 4 pr9)
+- #1427 (6c62fd3d) - Fix AP-4 in v1 API tests (phase 4 pr8)
+- #1422 (fe5c6a0d) - Fix AP-4 in events and webhook API tests (phase 3 pr7)
+- #1416 (aee567b9) - Fix AP-4 in runs telemetry API tests (phase 3 pr6)
+- #1401 (bbdb0496) - Fix AP-4 in storage API tests (phase 2 pr5)
+- #1391 (8e0499f5) - Fix AP-4 in v1/runs route tests (phase 1 pr4)
+- #1384 (9baa677d) - Fix AP-4 in api/agent/runs test (phase 1 pr3)
+- #1378 (09e1ac10) - Fix AP-4 in e2b-service tests (phase 1 pr2)
+- #1376 (27de5a52) - Fix AP-4 in api route tests (phase 1 pr1)
+- #1365 (da1bc906) - Fix AP-4 in proxy-manager test
+- #1364 (084296ca) - Fix 12 AP-4 violations
+
+**Statistics**:
+- **70+ files reviewed** across 30 tasks
+- **690+ test cases** analyzed
+- **Phase 2 (integration tests)**: 100% clean
+- **Overall clean rate**: ~70%
+- **Main issues**: Auth tests and API routes
+
+---
+
+### AP-5: Fake Timers (vi.useFakeTimers)
+
+**Detection**: `vi.useFakeTimers()`, `vi.advanceTimersByTime()`, `vi.setSystemTime()`
+
+**PROHIBITION**: Fake timers mask real timing issues and are not allowed.
+
+**Why harmful**:
+- Mask real timing issues and race conditions
+- Don't test actual async behavior
+- Hide bugs that only appear with real timers
+- Make tests less realistic
+
+**BEFORE (❌ Wrong):**
+```typescript
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it("should use fixed time", () => {
+  const timestamp = Date.now();
+  expect(timestamp).toBe(new Date("2024-01-15T12:00:00Z").getTime());
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+beforeEach(() => {
+  // Mock Date.now specifically, not all timers
+  vi.spyOn(Date, 'now').mockReturnValue(
+    new Date("2024-01-15T12:00:00Z").getTime()
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+it("should use fixed timestamp", () => {
+  const timestamp = Date.now();
+  expect(timestamp).toBe(new Date("2024-01-15T12:00:00Z").getTime());
+});
+```
+
+**Rationale**:
+- Fake timers mask real timing issues
+- More specific mocking (only Date.now, not all timers)
+- Tests handle real async behavior
+- Catches actual race conditions
+
+**Related commit**: #1415 (29c16a60)
+
+---
+
+### AP-6: Partial Internal Mocks (vi.importActual)
+
+**Detection**: `vi.importActual()` used to partially mock internal modules
+
+**Why harmful**:
+- Partial mocks are confusing and brittle
+- Internal modules should use real implementation
+- Tests that need partial mocking usually indicate design issues
+
+**BEFORE (❌ Wrong):**
+```typescript
+vi.mock("@vm0/core", async () => {
+  const actual = await vi.importActual("@vm0/core");
+  return {
+    ...actual,
+    extractVariableReferences: vi.fn(),
+    groupVariablesBySource: vi.fn(),
+  };
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+// Use real @vm0/core implementation
+// Test the actual extractRequiredVarNames function
+import { extractRequiredVarNames } from "../cook";
+
+it("should extract and combine vars and secrets", () => {
+  const config = {
+    vars: { VAR1: "value" },
+    secrets: { SECRET1: "value" },
+  };
+
+  const result = extractRequiredVarNames(config);
+  expect(result).toEqual(["VAR1", "SECRET1"]);
+});
+```
+
+**Related commit**: #1423 (a51cdf04)
+
+---
+
+### AP-7: Testing Implementation Details
+
+**Detection**: Tests that verify internal function calls, keyboard handlers, CSS classes, or React state
+
+**Why harmful**:
+- Makes tests brittle (break on refactoring)
+- Doesn't test user-visible behavior
+- Couples tests to implementation
+
+**BEFORE (❌ Wrong):**
+```typescript
+// ❌ Bad: Testing keyboard handlers
+it("should prevent form submission on Shift+Enter", () => {
+  fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+  expect(mockSubmit).not.toHaveBeenCalled();
+});
+
+// ❌ Bad: Testing CSS classes
+it("should have correct CSS classes", () => {
+  expect(button).toHaveClass("btn-primary");
+});
+
+// ❌ Bad: Testing internal state
+it("should update state correctly", () => {
+  expect(component.state.count).toBe(1);
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+// ✅ Good: Test user-visible behavior
+it("should submit form when user presses send button", () => {
+  userEvent.click(sendButton);
+  expect(screen.getByText("Message sent")).toBeInTheDocument();
+});
+
+// ✅ Good: Test visual output
+it("should display button as primary style", () => {
+  expect(button).toBeVisible();
+  expect(button).toBeEnabled();
+});
+
+// ✅ Good: Test outcome, not state
+it("should increment counter when clicked", () => {
+  userEvent.click(button);
+  expect(screen.getByText("Count: 1")).toBeInTheDocument();
+});
+```
+
+---
+
+### AP-8: Over-Testing
+
+**Detection**: Tests for trivial rendering, every HTTP status code, or schema validation
+
+**Patterns to avoid**:
+
+**Over-testing error responses**:
+```typescript
+// ❌ Bad: Testing every error status
+it("should return 401 when not authenticated", async () => {
+  expect(response.status).toBe(401);
+});
+it("should return 404 when not found", async () => {
+  expect(response.status).toBe(404);
+});
+it("should return 400 when invalid", async () => {
+  expect(response.status).toBe(400);
+});
+
+// ✅ Good: Test meaningful error behavior
+it("should handle authentication flow correctly", async () => {
+  // Test the actual authentication logic and business rules
+});
+```
+
+**Over-testing schema validation**:
+```typescript
+// ❌ Bad: Testing that Zod works
+it("should validate required fields", () => {
+  expect(() => schema.parse({})).toThrow();
+});
+
+// ✅ Good: Trust Zod, test business logic
+it("should process valid user data", () => {
+  const result = processUser(validData);
+  expect(result.role).toBe("member");
+});
+```
+
+**Over-testing trivial rendering**:
+```typescript
+// ❌ Bad: Testing conditional rendering
+it("should show loading spinner when loading", () => {
+  render(<Component isLoading={true} />);
+  expect(screen.getByTestId("spinner")).toBeInTheDocument();
+});
+
+// ✅ Good: Test the logic that produces states
+it("should load data and handle errors", async () => {
+  render(<Component />);
+  await waitFor(() => {
+    expect(screen.getByText("Loaded data")).toBeInTheDocument();
+  });
+});
+```
+
+**Over-testing UI text content**:
+```typescript
+// ❌ Bad: Testing exact text
+it("should display correct heading", () => {
+  expect(screen.getByRole("heading")).toHaveTextContent("Welcome to Dashboard");
+});
+
+// ✅ Good: Test functionality
+it("should allow user to create new project", async () => {
+  await userEvent.click(screen.getByTestId("create-project-button"));
+  expect(screen.getByTestId("project-form")).toBeVisible();
+});
+```
+
+---
+
+### AP-9: Console Mocking Without Assertions
+
+**Detection**: Mocking `console.log` or `console.error` without verifying output
+
+**Why harmful**:
+- Adds no value (just suppresses output)
+- Doesn't verify logging behavior
+- Makes tests less informative
+
+**BEFORE (❌ Wrong):**
+```typescript
+beforeEach(() => {
+  console.log = vi.fn();
+  console.error = vi.fn();
+});
+
+it("should do something", () => {
+  // Test code that logs, but no assertions on logs
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+// Option 1: Assert on logs
+it("should log error details", () => {
+  const consoleSpy = vi.spyOn(console, "error");
+  performAction();
+  expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("error"));
+});
+
+// Option 2: Don't mock (let output appear)
+it("should do something", () => {
+  // Natural console output in tests is fine
+});
+```
+
+---
+
+### AP-10: Direct Component Rendering
+
+**Detection**: Direct `render(<StoreProvider><Component /></StoreProvider>)` in platform tests
+
+**PROHIBITION**: Component tests should follow production initialization flow.
+
+**Why harmful**:
+- Tests don't match production initialization
+- Misses setup commands and bootstrap logic
+- Can't catch initialization bugs
+- Inconsistent with real application flow
+
+**BEFORE (❌ Wrong):**
+```typescript
+it("should render the page", () => {
+  const store = createStore();
+
+  render(
+    <StoreProvider value={store}>
+      <MyPage />
+    </StoreProvider>
+  );
+
+  expect(screen.getByText("Title")).toBeInTheDocument();
+});
+```
+
+**AFTER (✅ Correct):**
+```typescript
+import { bootstrap$ } from "../../../signals/bootstrap.ts";
+import { navigate$ } from "../../../signals/route.ts";
+import { page$ } from "../../../signals/react-router.ts";
+import { setupRouter } from "../../main.tsx";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+it("should render the page", async () => {
+  const { store, signal } = context;
+
+  // Render the router (like main.ts does)
+  const { container } = render(<div id="test-root" />);
+  const rootEl = container.querySelector("#test-root") as HTMLDivElement;
+
+  // Bootstrap the app (like main.ts does)
+  await store.set(
+    bootstrap$,
+    () => {
+      setupRouter(store, (element) => {
+        render(element, { container: rootEl });
+      });
+    },
+    signal,
+  );
+
+  // Navigate to the page (this triggers setupMyPage$ automatically)
+  await store.set(navigate$, "/my-page", {}, signal);
+
+  // Verify page was rendered
+  const pageElement = store.get(page$);
+  expect(pageElement).toBeDefined();
+});
+```
+
+**Key points**:
+1. Use `bootstrap$` to initialize the app
+2. Use `navigate$` to trigger page setup
+3. Use `setupRouter` to establish same rendering context as main.ts
+4. Use `testContext()` for proper cleanup
+5. Follow bootstrap → route → setup → render flow
 
 ---
 
 ## Testing Patterns by Type
 
-[Placeholder - to be filled in Phase 2/3]
+### Pattern 1: API Route Tests
+
+**When to use**: Testing Next.js API route handlers in `app/api/**/route.ts`
+
+**Standard template**:
+
+```typescript
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { initServices } from "../../../../src/lib/init-services";
+
+// ========== MOCKS SECTION ==========
+// Only mock EXTERNAL third-party packages
+
+// Mock Next.js framework API
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
+}));
+
+// Mock external Clerk auth (third-party SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+// ========== IMPORTS SECTION ==========
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+// Import real internal services (NO MOCKS!)
+import { POST } from "./route";
+import { agentRuns } from "../../../../src/lib/db/schema";
+import { eq } from "drizzle-orm";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
+
+// ========== TEST SUITE ==========
+describe("POST /api/agent/runs", () => {
+  const testUserId = "test-user-123";
+
+  beforeAll(() => {
+    // Initialize real database connection
+    initServices();
+  });
+
+  beforeEach(() => {
+    // Clear all mocks
+    vi.clearAllMocks();
+
+    // Configure external mocks
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as Awaited<ReturnType<typeof auth>>);
+
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+  });
+
+  afterEach(async () => {
+    // Clean up test data in real database
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+  });
+
+  it("should create run with real service integration", async () => {
+    const request = new Request("http://localhost/api/agent/runs", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Run" }),
+    });
+
+    // Test with real services and real database
+    const response = await POST(request);
+    const data = await response.json();
+
+    // Verify with real database query
+    const dbRuns = await globalThis.services.db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, data.id));
+
+    expect(dbRuns).toHaveLength(1);
+    expect(dbRuns[0]!.status).toBe("pending");
+  });
+});
+```
+
+**Variations**:
+
+**Webhook endpoints** (double auth setup):
+```typescript
+beforeEach(() => {
+  // First call: Check CLI token (returns null)
+  // Second call: Check Clerk auth
+  mockAuth
+    .mockResolvedValueOnce({ userId: null } as Awaited<ReturnType<typeof auth>>)
+    .mockResolvedValueOnce({ userId: testUserId } as Awaited<ReturnType<typeof auth>>);
+});
+```
+
+**CLI token authentication**:
+```typescript
+beforeEach(() => {
+  mockHeaders.mockResolvedValue({
+    get: vi.fn((name: string) =>
+      name === "Authorization" ? "Bearer vm0_live_test" : null
+    ),
+  } as unknown as Headers);
+});
+```
+
+**Multi-user scenarios**:
+```typescript
+afterEach(async () => {
+  // Clean up all test users
+  await globalThis.services.db
+    .delete(agentRuns)
+    .where(inArray(agentRuns.userId, [testUserId1, testUserId2]));
+});
+```
+
+---
+
+### Pattern 2: Service Tests
+
+**When to use**: Testing internal service modules (e.g., `blob-service.ts`, `run-service.ts`)
+
+**Template**:
+
+```typescript
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { initServices } from "../init-services";
+
+// ========== MOCKS ==========
+// Only mock external third-party packages
+vi.mock("@aws-sdk/client-s3");
+
+import { S3Client } from "@aws-sdk/client-s3";
+const mockS3Client = vi.mocked(S3Client);
+
+// ========== SETUP ==========
+beforeAll(() => {
+  initServices(); // Real database
+});
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+
+  // Mock external S3 operations
+  mockS3Client.prototype.send = vi.fn().mockResolvedValue({});
+
+  // Clean test data with real database
+  await globalThis.services.db
+    .delete(blobs)
+    .where(like(blobs.hash, "test_%"));
+});
+
+it("should use real service with mock external dependency", async () => {
+  const blobService = new BlobService();
+
+  // Use real service implementation
+  const result = await blobService.uploadBlobs(files);
+
+  // Verify with real database
+  const dbBlobs = await globalThis.services.db
+    .select()
+    .from(blobs)
+    .where(eq(blobs.hash, result.hashes.get("file.txt")));
+
+  expect(dbBlobs).toHaveLength(1);
+  expect(dbBlobs[0]!.refCount).toBe(1);
+
+  // Verify external S3 was called
+  expect(mockS3Client.prototype.send).toHaveBeenCalled();
+});
+```
+
+---
+
+### Pattern 3: Pure Function Tests
+
+**When to use**: Testing utility functions with no I/O dependencies
+
+**Template**:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { calculateTotal, formatDate } from "./utils";
+
+describe("calculateTotal", () => {
+  it("should sum positive numbers", () => {
+    expect(calculateTotal([1, 2, 3])).toBe(6);
+  });
+
+  it("should handle empty array", () => {
+    expect(calculateTotal([])).toBe(0);
+  });
+
+  it("should ignore negative numbers", () => {
+    expect(calculateTotal([1, -2, 3])).toBe(4);
+  });
+});
+
+// NO mocks needed for pure functions!
+// NO beforeEach/afterEach needed if no state!
+// Focus on behavior and edge cases
+```
+
+---
+
+### Pattern 4: MSW HTTP Mocking
+
+**When to use**: Mocking external HTTP APIs in tests
+
+**Handler setup**:
+
+```typescript
+// mocks/handlers/api-handlers.ts
+import { http, HttpResponse } from "msw";
+
+export const apiHandlers = [
+  // GET with params
+  http.get("https://api.example.com/users/:id", ({ params }) => {
+    const { id } = params;
+    return HttpResponse.json(
+      { id, name: "Test User" },
+      { status: 200 }
+    );
+  }),
+
+  // POST with request body
+  http.post("https://api.example.com/users", async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      { id: "new-id", ...body },
+      { status: 201 }
+    );
+  }),
+
+  // Error simulation
+  http.get("https://api.example.com/error", () => {
+    return HttpResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }),
+
+  // Network error simulation
+  http.get("https://api.example.com/network-error", () => {
+    return HttpResponse.error();
+  }),
+];
+```
+
+**Test file usage**:
+
+```typescript
+import { setupServer } from 'msw/node';
+import { apiHandlers } from './mocks/handlers/api-handlers';
+
+const server = setupServer(...apiHandlers);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+it("should fetch user data", async () => {
+  // MSW automatically intercepts fetch calls
+  const user = await fetchUser("123");
+  expect(user.name).toBe("Test User");
+});
+
+it("should handle API errors", async () => {
+  // Override handler for specific test
+  server.use(
+    http.get("https://api.example.com/users/:id", () => {
+      return HttpResponse.json({ error: "Not found" }, { status: 404 });
+    })
+  );
+
+  await expect(fetchUser("999")).rejects.toThrow("Not found");
+});
+```
+
+**MSW handler locations**:
+- `turbo/apps/cli/src/mocks/handlers/npm-registry-handlers.ts`
+- `turbo/apps/cli/src/mocks/handlers/api-handlers.ts`
+- `turbo/apps/runner/src/mocks/handlers/webhook-handlers.ts`
+
+**Benefits**:
+- Realistic HTTP behavior
+- Tests actual request construction
+- Works in both Node.js and browser
+- ~70 lines removed in one file migration
+
+**Related commits**: #1419 (58719dcf), #1372 (fa9dcabb)
+
+---
+
+### Pattern 5: Real Filesystem Testing
+
+**When to use**: Testing code that reads/writes files
+
+**Template**:
+
+```typescript
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+
+let tempDir: string;
+
+beforeEach(() => {
+  // Create real temp directory
+  tempDir = mkdtempSync(join(tmpdir(), "test-"));
+});
+
+afterEach(() => {
+  // Clean up real temp directory
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+it("should write config file", () => {
+  const configPath = join(tempDir, "config.json");
+
+  // Use real file operations
+  writeConfig(configPath, { setting: "value" });
+
+  // Verify actual file was written
+  const content = JSON.parse(readFileSync(configPath, "utf-8"));
+  expect(content.setting).toBe("value");
+});
+
+it("should read existing config", () => {
+  const configPath = join(tempDir, "config.json");
+
+  // Setup: Write real file
+  writeFileSync(configPath, JSON.stringify({ setting: "value" }));
+
+  // Test: Read real file
+  const config = readConfig(configPath);
+  expect(config.setting).toBe("value");
+});
+```
+
+**Exception**: `ip-pool.test.ts` still uses fs mocks due to hardcoded paths in production code. Requires refactoring to accept configurable paths.
+
+**Related commit**: #1420 (889765f1)
+
+---
+
+### Pattern 6: Mock Helpers (Reusable Utilities)
+
+**When to use**: Common mock patterns used across multiple test files
+
+**Example: Clerk Mock Helper**
+
+**File**: `turbo/apps/web/src/__tests__/clerk-mock.ts`
+
+```typescript
+import { vi } from "vitest";
+import { auth } from "@clerk/nextjs/server";
+
+const mockAuth = vi.mocked(auth);
+
+/**
+ * Configure Clerk auth mock
+ */
+export function mockClerk(options: { userId: string | null }) {
+  mockAuth.mockResolvedValue({
+    userId: options.userId,
+  } as Awaited<ReturnType<typeof auth>>);
+}
+
+/**
+ * Clear all Clerk mock calls
+ */
+export function clearClerkMock() {
+  mockAuth.mockClear();
+}
+```
+
+**Usage patterns**:
+
+**Standard pattern**:
+```typescript
+import { mockClerk, clearClerkMock } from '@/__tests__/clerk-mock';
+
+beforeEach(() => {
+  mockClerk({ userId: testUserId });
+});
+
+afterEach(() => {
+  clearClerkMock();
+});
+```
+
+**Once pattern** (for tests that need different auth states):
+```typescript
+beforeEach(() => {
+  mockClerk({ userId: testUserId });
+});
+
+it("should reject unauthenticated request", () => {
+  mockClerk({ userId: null }); // Override for this test
+  // ... test code
+});
+```
+
+**Double-set pattern** (for webhook endpoints):
+```typescript
+beforeEach(() => {
+  // First call: CLI token check (returns null)
+  mockClerk({ userId: null });
+  // Second call: Clerk auth check
+  mockClerk({ userId: testUserId });
+});
+```
+
+**Results**:
+- 31 lines reduced in pilot (3 files)
+- All 27 tests passing
+- More maintainable and consistent
+- 14 remaining files to migrate
+
+**Files updated (pilot)**:
+1. `app/api/scope/__tests__/route.test.ts`
+2. `app/v1/composes/__tests__/route.test.ts`
+3. `app/api/storages/create/__tests__/route.test.ts`
+
+**Related commit**: #1418 (6118c2ec)
+**Related issue**: #1421 (expansion to 14 remaining files)
+
+---
+
+### Pattern 7: Environment Variable Stubbing
+
+**When to use**: Tests that need to set environment variables
+
+**Template**:
+
+```typescript
+beforeEach(() => {
+  // Stub environment variables
+  vi.stubEnv("API_KEY", "test-key");
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("DATABASE_URL", "postgresql://test");
+});
+
+afterEach(() => {
+  // Clean up all stubbed env vars
+  vi.unstubAllEnvs();
+});
+
+it("should use environment variable", () => {
+  expect(process.env.API_KEY).toBe("test-key");
+
+  const config = loadConfig();
+  expect(config.apiKey).toBe("test-key");
+});
+```
+
+**Anti-pattern** (manual save/restore):
+```typescript
+// ❌ Bad: Manual save/restore
+let originalEnv: NodeJS.ProcessEnv;
+
+beforeEach(() => {
+  originalEnv = { ...process.env };
+  delete process.env.VM0_TOKEN;
+  process.env.TEST_SECRET = "value";
+});
+
+afterEach(() => {
+  process.env = originalEnv;
+});
+```
+
+**Benefits**:
+- Proper cleanup (no env pollution between tests)
+- Less boilerplate code
+- More reliable test isolation
+
+**Files updated (5)**:
+- `setup-github.test.ts`
+- `config.test.ts`
+- `cook.test.ts`
+- `logger.test.ts`
+- `auth.test.ts`
+
+**Related commit**: #1414 (7f0b0924)
+
+---
+
+### Pattern 8: Component Tests (Platform/React)
+
+**When to use**: Testing React components in platform (`apps/platform`)
+
+**Template**:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { bootstrap$ } from "../../../signals/bootstrap.ts";
+import { navigate$ } from "../../../signals/route.ts";
+import { page$ } from "../../../signals/react-router.ts";
+import { setupRouter } from "../../main.tsx";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { render } from "@testing-library/react";
+
+const context = testContext();
+
+describe("MyPage", () => {
+  it("should render through production flow", async () => {
+    const { store, signal } = context;
+
+    // Render the router (like main.ts does)
+    const { container } = render(<div id="test-root" />);
+    const rootEl = container.querySelector("#test-root") as HTMLDivElement;
+
+    // Bootstrap the app (like main.ts does)
+    await store.set(
+      bootstrap$,
+      () => {
+        setupRouter(store, (element) => {
+          render(element, { container: rootEl });
+        });
+      },
+      signal,
+    );
+
+    // Navigate to the page (triggers setup commands automatically)
+    await store.set(navigate$, "/my-page", {}, signal);
+
+    // Verify page was rendered
+    const pageElement = store.get(page$);
+    expect(pageElement).toBeDefined();
+  });
+});
+```
+
+**Key differences from direct rendering**:
+1. Use `bootstrap$` to initialize app
+2. Use `navigate$` to trigger page setup
+3. Use `setupRouter` for same context as main.ts
+4. Use `testContext()` for proper cleanup
+5. Follow bootstrap → route → setup → render flow
+
+**Anti-pattern** (direct rendering):
+```typescript
+// ❌ Bad: Bypasses production initialization
+render(
+  <StoreProvider value={store}>
+    <MyPage />
+  </StoreProvider>
+);
+```
 
 ---
 
 ## Standard Test File Structure
 
-[Placeholder - to be filled in Phase 2/3]
+All test files should follow this structure:
+
+```typescript
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
+
+// ========== MOCKS SECTION ==========
+// Place ALL vi.mock() calls at the top, before any imports
+// Only mock EXTERNAL third-party packages or framework APIs
+
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
+}));
+
+// ========== IMPORTS SECTION ==========
+// Import mocked modules first
+import { auth } from "@clerk/nextjs/server";
+import { headers } from "next/headers";
+
+// Import test utilities
+import { initServices } from "../../../../src/lib/init-services";
+
+// Import module under test (use REAL implementation)
+import { POST } from "./route";
+
+// Import database schema for cleanup
+import { agentRuns } from "../../../../src/lib/db/schema";
+import { eq } from "drizzle-orm";
+
+// Get typed mock references
+const mockAuth = vi.mocked(auth);
+const mockHeaders = vi.mocked(headers);
+
+// ========== TEST SUITE ==========
+describe("Module Name", () => {
+  // Test data constants
+  const testUserId = "test-user-123";
+  const testRunId = "test-run-456";
+
+  beforeAll(() => {
+    // One-time setup
+    // Initialize real database connection
+    initServices();
+  });
+
+  beforeEach(() => {
+    // Per-test setup
+    // REQUIRED: Clear all mocks
+    vi.clearAllMocks();
+
+    // Configure external mocks
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as Awaited<ReturnType<typeof auth>>);
+
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+  });
+
+  afterEach(async () => {
+    // Per-test cleanup
+    // Clean up test data in real database
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+  });
+
+  afterAll(async () => {
+    // One-time cleanup (if needed)
+  });
+
+  // ========== TEST CASES ==========
+  it("should test real behavior", async () => {
+    // Arrange
+    const request = new Request("http://localhost/api/test", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test" }),
+    });
+
+    // Act
+    const response = await POST(request);
+    const data = await response.json();
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(data.name).toBe("Test");
+
+    // Verify with real database
+    const dbData = await globalThis.services.db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, data.id));
+
+    expect(dbData).toHaveLength(1);
+  });
+});
+```
+
+**Key requirements**:
+1. All `vi.mock()` calls at the top (before imports)
+2. `vi.clearAllMocks()` in `beforeEach` (REQUIRED)
+3. Only mock external dependencies
+4. Use `initServices()` for real database
+5. Clean up test data in `afterEach`
+6. Use real implementations for internal code
 
 ---
 
 ## What to Mock vs What to Use Real
 
-[Placeholder - to be filled in Phase 2/3]
+### External Dependencies (MOCK)
+
+**Third-party SaaS/APIs**:
+- `@clerk/nextjs` - Authentication service
+- `@aws-sdk/client-s3` - Cloud storage
+- `@e2b/code-interpreter` - Sandbox service
+- `@anthropic-ai/sdk` - AI API
+- `@axiomhq/js` - Logging SaaS
+- `@stripe/stripe-js` - Payment API
+
+**Node.js built-ins** (when testing I/O):
+- `fs` - File system operations
+- `child_process` - Process spawning
+- `https` - HTTPS requests (prefer MSW)
+
+**Framework APIs**:
+- `next/headers` - Request headers
+- `next/cookies` - Request cookies
+
+### Internal Implementation (USE REAL)
+
+**Database**:
+- `globalThis.services.db` - Always use real database
+- Database queries and operations
+- Transaction logic
+
+**Internal services**:
+- `../../lib/blob/blob-service` - Use real implementation
+- `../../lib/storage/storage-service` - Use real implementation
+- `../../lib/run/run-service` - Use real implementation
+- `../../lib/auth/get-user-id` - Use real implementation
+- All internal utilities and helpers
+
+**Test data management**:
+- Create test data with real database operations
+- Clean up test data in `beforeEach`/`afterEach`
+- Use unique test IDs or prefixes
+
+### Decision Tree
+
+```
+Is it from node_modules?
+├─ Yes → Is it third-party (not your package)?
+│  ├─ Yes → MOCK IT ✅
+│  └─ No → USE REAL ❌
+└─ No → Is it internal project code?
+   ├─ Yes → USE REAL ✅
+   └─ No → Is it Node.js built-in for I/O?
+      ├─ Yes → MOCK IT ✅
+      └─ No → USE REAL ✅
+```
 
 ---
 
 ## Quick Anti-Pattern Checklist
 
-[Placeholder - to be filled in Phase 2/3]
+Use this checklist when reviewing test code:
+
+**Mocking Issues**:
+- [ ] ❌ Mocking internal services (`../../lib/*`)
+- [ ] ❌ Mocking `globalThis.services.db`
+- [ ] ❌ Direct fetch mocking (use MSW instead)
+- [ ] ❌ Filesystem mocking (use temp directories)
+- [ ] ❌ Partial mocks with `vi.importActual()`
+
+**Timer Issues**:
+- [ ] ❌ Using `vi.useFakeTimers()`
+- [ ] ❌ Using `vi.advanceTimersByTime()`
+- [ ] ❌ Artificial delays (`setTimeout` in tests)
+
+**Test Quality Issues**:
+- [ ] ❌ Testing that mocks were called (not behavior)
+- [ ] ❌ Testing UI text content or CSS classes
+- [ ] ❌ Testing empty/loading states without logic
+- [ ] ❌ Over-testing error status codes
+- [ ] ❌ Over-testing schema validation
+- [ ] ❌ Direct component rendering (use bootstrap$)
+
+**Code Quality Issues**:
+- [ ] ❌ Suppression comments (`@ts-ignore`, `eslint-disable`)
+- [ ] ❌ Using `any` type
+- [ ] ❌ Dynamic imports (`await import()`)
+- [ ] ❌ Hardcoded URLs or configuration
+- [ ] ❌ Fallback patterns (should fail fast)
+
+**Required Practices**:
+- [ ] ✅ `vi.clearAllMocks()` in `beforeEach`
+- [ ] ✅ `initServices()` in `beforeAll` (for database tests)
+- [ ] ✅ Database cleanup in `afterEach`
+- [ ] ✅ Only mock third-party dependencies
+- [ ] ✅ Test real behavior and outcomes
 
 ---
 
 ## Gold Standard Reference Files
 
-[Placeholder - to be filled in Phase 2/3]
+Use these files as templates when writing tests:
+
+### 1. blob-service.test.ts
+
+**Path**: `turbo/apps/web/src/lib/blob/__tests__/blob-service.test.ts`
+
+**What it demonstrates**:
+- Real database + mock external S3 only
+- Proper test data cleanup
+- No internal service mocks
+- Integration testing with real DB
+
+**Key patterns**:
+- Only mocks `@aws-sdk/client-s3` (external)
+- Uses `initServices()` for real database
+- Cleans test data with `like(blobs.hash, "test_%")`
+- Verifies with real database queries
+- Tests blob deduplication and refCount logic
+
+**Why exemplary**:
+- HIGH-VALUE integration test
+- Catches real database constraint bugs
+- Tests actual service behavior
+- No mock orchestration
+
+---
+
+### 2. agent-session-service.test.ts
+
+**Path**: `turbo/apps/web/src/lib/agent-session/__tests__/agent-session-service.test.ts`
+
+**What it demonstrates**:
+- Real services + mock Clerk only
+- Proper user session management
+- Real database CRUD operations
+
+**Key patterns**:
+- Only mocks `@clerk/nextjs` (external auth)
+- Uses real agent session service
+- Tests actual session creation and cleanup
+- Verifies database relationships
+
+**Why exemplary**:
+- Tests real auth integration
+- Verifies actual session lifecycle
+- Catches real constraint bugs
+
+---
+
+### 3. scope-service.spec.ts
+
+**Path**: `turbo/apps/web/src/lib/scope/__tests__/scope-service.spec.ts`
+
+**What it demonstrates**:
+- Real database CRUD operations
+- No mocks at all (pure integration test)
+- Comprehensive scope management testing
+
+**Key patterns**:
+- Zero mocks (all real implementation)
+- Tests actual database operations
+- Verifies foreign key constraints
+- Tests real transaction logic
+
+**Why exemplary**:
+- Purest integration test
+- Highest confidence in DB operations
+- Tests real constraints and relationships
+
+---
+
+### 4. proxy-token-service.test.ts
+
+**Path**: `turbo/apps/runner/src/lib/auth/__tests__/proxy-token-service.test.ts`
+
+**What it demonstrates**:
+- Pure function testing
+- Zero mocks needed
+- Focus on behavior and edge cases
+
+**Key patterns**:
+- No mocks (pure functions)
+- No database (no I/O)
+- Tests logic and edge cases
+- Simple and fast
+
+**Why exemplary**:
+- Perfect for pure functions
+- No unnecessary complexity
+- Clear behavior verification
+
+---
+
+### 5. vm-registry.test.ts
+
+**Path**: `turbo/apps/runner/src/lib/proxy/__tests__/vm-registry.test.ts`
+
+**What it demonstrates**:
+- Correct file I/O testing
+- Mock only Node.js built-in (fs)
+- Tests actual data structure and atomic writes
+
+**Key patterns**:
+- Only mocks `fs` (Node.js built-in)
+- No internal module mocks
+- Tests actual VMRegistry logic
+- Verifies atomic write pattern
+
+**Why exemplary**:
+- Acceptable use of fs mocking
+- Tests real implementation
+- Verifies actual I/O patterns
+
+---
+
+### 6. scope route.test.ts
+
+**Path**: `turbo/apps/web/app/api/scope/__tests__/route.test.ts`
+
+**What it demonstrates**:
+- API route integration testing
+- Real database + mock external auth only
+- Proper test data cleanup
+
+**Key patterns**:
+- Only mocks Clerk auth (external)
+- Uses real database and services
+- Tests actual API route behavior
+- Verifies database state after operations
+
+**Why exemplary**:
+- API routes are main integration points
+- HIGH-VALUE test (catches real bugs)
+- Tests actual request/response flow
 
 ---
 
 ## Migration Workflow
 
-[Placeholder - to be filled in Phase 2/3]
+Use this workflow when refactoring an existing test file:
+
+### Step 1: Identify Mocks
+
+**Tasks**:
+- [ ] List all `vi.mock()` calls in the file
+- [ ] Classify each mock:
+  - External (third-party from node_modules) → KEEP
+  - Internal (relative path `../../` or `../`) → REMOVE
+  - Framework (next/headers, next/cookies) → KEEP
+  - Built-in (fs, child_process) → EVALUATE
+
+**Questions to ask**:
+- Does this import start with `@` or is it a package name? → Likely external
+- Does it use relative path `../../`? → Internal (remove)
+- Is it from `node_modules`? → Check if third-party
+
+---
+
+### Step 2: Remove Internal Mocks
+
+**Tasks**:
+- [ ] Delete `vi.mock()` for internal services
+- [ ] Delete mock implementations (mock functions, objects)
+- [ ] Import real implementations instead
+- [ ] Add `initServices()` if using database
+
+**Example transformation**:
+```typescript
+// BEFORE
+vi.mock("../../lib/run", () => ({
+  runService: {
+    createRun: vi.fn(),
+  },
+}));
+
+// AFTER (remove mock, import real)
+import { runService } from "../../lib/run";
+
+beforeAll(() => {
+  initServices(); // If using database
+});
+```
+
+---
+
+### Step 3: Add Proper Cleanup
+
+**Tasks**:
+- [ ] Add `vi.clearAllMocks()` to `beforeEach` (REQUIRED)
+- [ ] Replace manual env save/restore with `vi.stubEnv()`
+- [ ] Add database cleanup in `beforeEach` or `afterEach`
+- [ ] Add `vi.unstubAllEnvs()` in `afterEach`
+
+**Example**:
+```typescript
+beforeEach(() => {
+  vi.clearAllMocks(); // REQUIRED
+
+  // Stub environment variables
+  vi.stubEnv("API_KEY", "test-key");
+
+  // Configure external mocks
+  mockAuth.mockResolvedValue({ userId: testUserId });
+});
+
+afterEach(async () => {
+  // Clean up environment
+  vi.unstubAllEnvs();
+
+  // Clean up database
+  await globalThis.services.db
+    .delete(testTable)
+    .where(eq(testTable.userId, testUserId));
+});
+```
+
+---
+
+### Step 4: Verify Test Quality
+
+**Tasks**:
+- [ ] Tests verify behavior, not mock calls
+  - Replace `expect(mockFn).toHaveBeenCalled()` with actual outcome checks
+- [ ] Tests use real database queries for verification
+  - Add database queries to verify state
+- [ ] No fake timers or artificial delays
+  - Replace `vi.useFakeTimers()` with `vi.spyOn(Date, 'now')`
+  - Remove `setTimeout` delays
+- [ ] No implementation detail testing
+  - Remove tests for keyboard handlers, CSS classes, internal state
+
+**Anti-patterns to remove**:
+```typescript
+// ❌ Remove: Testing mock calls
+expect(mockService.doSomething).toHaveBeenCalled();
+
+// ✅ Add: Testing actual behavior
+const result = await service.doSomething();
+expect(result.status).toBe("success");
+
+// Verify with real database
+const dbRecord = await globalThis.services.db.select()...
+expect(dbRecord).toMatchObject({ status: "success" });
+```
+
+---
+
+### Step 5: Check for Helpers
+
+**Tasks**:
+- [ ] Can use `mockClerk()` helper?
+  - If mocking Clerk auth, use helper from `@/__tests__/clerk-mock`
+- [ ] Can share MSW handlers?
+  - Move HTTP mocks to `mocks/handlers/` directory
+- [ ] Can extract common test setup?
+  - Create helper functions for repeated setup patterns
+
+**Example helper usage**:
+```typescript
+// BEFORE: Verbose Clerk mock
+vi.mock("@clerk/nextjs/server", () => ({ auth: vi.fn() }));
+const mockAuth = vi.mocked(auth);
+mockAuth.mockResolvedValue({ userId: testUserId });
+
+// AFTER: Use helper
+import { mockClerk } from '@/__tests__/clerk-mock';
+mockClerk({ userId: testUserId });
+```
 
 ---
 
 ## Prohibited Patterns (Zero Tolerance)
 
-[Placeholder - to be filled in Phase 2/3]
+### 1. TypeScript `any` Type
+
+**PROHIBITION**: Project has zero tolerance for `any` types.
+
+```typescript
+// ❌ Bad: Using any
+const data: any = fetchData();
+
+// ✅ Good: Use unknown with type narrowing
+const data: unknown = fetchData();
+if (isValidData(data)) {
+  // Use data with proper type
+}
+
+// ✅ Good: Define proper interfaces
+interface UserData {
+  id: string;
+  name: string;
+}
+const data: UserData = fetchData();
+```
+
+---
+
+### 2. Lint/Type Suppressions
+
+**PROHIBITION**: Zero tolerance for suppression comments.
+
+**Prohibited comments**:
+- `// eslint-disable` or `/* eslint-disable */`
+- `// oxlint-disable` or `/* oxlint-disable */`
+- `// @ts-ignore`
+- `// @ts-nocheck`
+- `// @ts-expect-error`
+- `// prettier-ignore`
+
+**Prohibited plugins**:
+- `eslint-plugin-only-warn`
+
+**Always fix the root cause**:
+```typescript
+// ❌ Bad: Suppressing the warning
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const data: any = fetchData();
+
+// ✅ Good: Fix with proper typing
+const data: unknown = fetchData();
+if (isValidData(data)) {
+  // Use data with type narrowing
+}
+```
+
+---
+
+### 3. Dynamic Imports
+
+**PROHIBITION**: Zero tolerance for dynamic `import()` in production code.
+
+```typescript
+// ❌ Bad: Dynamic import
+async function generateToken() {
+  const crypto = await import("crypto");
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+// ✅ Good: Static import
+import { randomBytes } from "crypto";
+
+function generateToken() {
+  return randomBytes(32).toString("base64url");
+}
+```
+
+**Why harmful**:
+- Break tree-shaking and bundle optimization
+- Add unnecessary async complexity
+- Make dependency analysis harder
+- Hide import errors until runtime
+
+---
+
+### 4. Hardcoded URLs and Configuration
+
+**PROHIBITION**: Never hardcode URLs or environment-specific values.
+
+```typescript
+// ❌ Bad: Hardcoded URL
+const apiUrl = "https://api.vm7.ai";
+
+// ❌ Bad: Hardcoded with fallback
+const apiUrl = process.env.API_URL || "https://api.vm7.ai";
+
+// ✅ Good: Use centralized configuration
+const apiUrl = env().API_URL;
+
+// ✅ Good: Fail fast if missing
+if (!process.env.API_URL) {
+  throw new Error("API_URL not configured");
+}
+```
+
+---
+
+### 5. Fallback Patterns
+
+**PROHIBITION**: No fallback/recovery logic - fail fast.
+
+```typescript
+// ❌ Bad: Fallback to another secret
+const jwtSecret = process.env.JWT_SECRET ||
+                  process.env.SOME_OTHER_SECRET ||
+                  "default-secret";
+
+// ❌ Bad: Silent fallback
+if (!config) {
+  config = getDefaultConfig(); // Hides misconfiguration
+}
+
+// ✅ Good: Fail fast with clear error
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret) {
+  throw new Error("JWT_SECRET not configured");
+}
+```
+
+**Rationale**:
+- Fallbacks make debugging harder
+- Configuration errors should be caught during deployment
+- Explicit failures are easier to fix
+- Less code paths = simpler code
+
+---
+
+### 6. Direct Database Operations in Tests
+
+**PROHIBITION**: Tests should use API endpoints for data setup.
+
+```typescript
+// ❌ Bad: Direct database operation
+await db.insert(PROJECTS_TBL).values({ id, userId, name });
+
+// ✅ Good: Use API endpoint
+await POST("/api/projects", { json: { name } });
+```
+
+**Rationale**:
+- Direct DB operations duplicate business logic
+- Makes tests brittle when schema changes
+- Bypasses validation and business rules
 
 ---
 
 ## Statistics and Context
 
-[Placeholder - to be filled in Phase 2/3]
+### Project Overview
+
+- **Total test files**: 434 files across monorepo
+- **Recent test refactoring**: 30+ commits in last 48 hours
+- **Test file distribution**:
+  - `apps/web`: API routes, services, integration tests
+  - `apps/cli`: Command tests, filesystem tests
+  - `apps/runner`: Proxy, VM, sandbox tests
+  - `apps/platform`: Component tests, signal tests
+
+### AP-4 Review Statistics (Issue #1335)
+
+- **70+ files reviewed** across 30 tasks
+- **690+ test cases** analyzed
+- **Phase 2 (integration tests)**: 100% clean
+- **Overall clean rate**: ~70%
+- **Main issues**: Auth tests (Phase 1) and API routes (Phase 4)
+
+### Recent Refactoring Work (Last 48 Hours)
+
+**AP-4 fixes** (11 commits):
+- Composes API tests (phase 4 pr9)
+- V1 API tests (phase 4 pr8)
+- Events and webhook API tests (phase 3 pr7)
+- Runs telemetry API tests (phase 3 pr6)
+- Storage API tests (phase 2 pr5)
+- V1/runs route tests (phase 1 pr4)
+- API agent runs test (phase 1 pr3)
+- E2b-service tests (phase 1 pr2)
+- API route tests (phase 1 pr1)
+- Proxy-manager test
+- 12 AP-4 violations batch fix
+
+**Other refactoring**:
+- Filesystem migration: 9 files migrated to real fs
+- MSW migration: CLI and runner tests
+- Clerk helper: 3 pilot files, 31 lines reduced
+- Environment stubbing: 5 files standardized
+- Fake timer removal: Multiple files
+- Partial mock removal: @vm0/core tests
+
+### Ongoing Work
+
+**Issue #1421**: Expand Clerk mock helper to 14 remaining files
+- 17 total files use Clerk mocks
+- 3 completed in pilot
+- 14 remaining (standard, once, double-set patterns)
+- Expected: 140-210 lines reduced
+
+**Issue #1371**: API route tests - 28 files with AP-4 violations
+- High impact (widespread issue)
+- API routes should be HIGH-VALUE integration tests
+- Currently LOW-VALUE mock orchestration tests
+
+**Issue #1407**: Remove vi.spyOn() for implementation testing
+- Related to #1440
+- Pattern: Avoid testing that internal functions were called
+
+**Issue #1411**: Clarify next/headers mock necessity
+- Improve auth test coverage
+- Document when framework mocks are needed
 
 ---
 
 ## Document Maintenance
 
 This document consolidates:
-- All testing sections from specs/bad-smell.md
-- Recent refactoring patterns from commits and PRs
+- All testing sections from `specs/bad-smell.md` (sections 1-2, 5-17)
+- Recent refactoring patterns from commits and PRs (last 48 hours)
 - Gold standard reference implementations
+- AP-4 review findings (Issue #1335)
 
 **Update Frequency**: After major test refactoring work or when new patterns emerge
+
+**Maintenance Tasks**:
+- Add new anti-patterns as discovered
+- Update statistics after each refactoring phase
+- Add new gold standard files as identified
+- Document new helper utilities
+- Update commit references for recent fixes
+
+**Related Documents**:
+- `specs/bad-smell.md` - Non-testing code quality issues (sections 3-4)
+- Issue #1335 - AP-4 master tracking issue
+- Issue #1404 - Filesystem migration tracking
+- Issue #1421 - Clerk helper expansion
 
 ---
