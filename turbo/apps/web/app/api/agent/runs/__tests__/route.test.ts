@@ -467,9 +467,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       } as unknown as Headers);
 
       // Mock Clerk to return null (unauthenticated)
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -501,9 +499,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       } as unknown as Headers);
 
       // Mock Clerk to return null (unauthenticated)
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",

@@ -1228,9 +1228,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       } as unknown as Headers);
 
       // Mock Clerk to return null (unauthenticated)
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
