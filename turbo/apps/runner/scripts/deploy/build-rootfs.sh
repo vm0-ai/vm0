@@ -187,7 +187,7 @@ verify_rootfs() {
         echo "  overlay-init: installed"
     fi
 
-    # Check for Codex CLI (for provider: codex)
+    # Check for Codex CLI (for framework: codex)
     if ! sudo chroot "$MOUNT_POINT" /usr/bin/which codex > /dev/null 2>&1; then
         echo "WARNING: Codex CLI not found in rootfs"
     else

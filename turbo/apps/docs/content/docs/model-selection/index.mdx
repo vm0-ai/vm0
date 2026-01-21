@@ -16,7 +16,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code # [!code highlight]
+    framework: claude-code # [!code highlight]
 ```
 
 Required environment variable:
@@ -34,7 +34,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: codex # [!code highlight]
+    framework: codex # [!code highlight]
 ```
 
 Required environment variable:
@@ -56,7 +56,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       ANTHROPIC_BASE_URL: "https://api.example.com/anthropic" # [!code highlight]
       ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]

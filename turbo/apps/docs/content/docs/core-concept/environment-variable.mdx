@@ -39,7 +39,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment: # [!code highlight]
       # Secrets for sensitive data
       ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]

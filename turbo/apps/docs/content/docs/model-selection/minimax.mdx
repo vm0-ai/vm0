@@ -16,7 +16,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic" # [!code highlight]
       ANTHROPIC_AUTH_TOKEN: "${{ secrets.MINIMAX_API_KEY }}" # [!code highlight]

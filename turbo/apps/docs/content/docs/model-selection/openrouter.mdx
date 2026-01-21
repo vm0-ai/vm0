@@ -12,7 +12,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api" # [!code highlight]
       ANTHROPIC_AUTH_TOKEN: "${{ secrets.OPENROUTER_API_KEY }}" # [!code highlight]

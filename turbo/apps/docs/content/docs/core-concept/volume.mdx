@@ -18,7 +18,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md # [!code highlight]
     skills: # [!code highlight]
       - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews # [!code highlight]
@@ -45,7 +45,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code:latest
     volumes: # [!code highlight]
       - claude-files:/home/user/.claude # [!code highlight]
@@ -95,7 +95,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     image: vm0/claude-code:latest
     volumes:

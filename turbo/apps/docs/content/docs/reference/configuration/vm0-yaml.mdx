@@ -12,7 +12,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -25,7 +25,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     apps:
       - github
@@ -55,7 +55,7 @@ volumes:
 
 | Field          | Type   | Required | Default | Description                                                                                       |
 | -------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `provider`     | string | Yes      | -       | Agent provider: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)            |
+| `framework`    | string | Yes      | -       | Agent framework: `claude-code` or `codex`. See [Model Selection](/docs/model-selection)           |
 | `instructions` | string | No       | -       | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
 | `apps`         | array  | No       | `[]`    | Pre-installed tools. Supported: `github`, `github:dev`, `github:latest`                           |
 | `skills`       | array  | No       | `[]`    | List of skill URLs. See [Skills](/docs/core-concept/skills)                                       |

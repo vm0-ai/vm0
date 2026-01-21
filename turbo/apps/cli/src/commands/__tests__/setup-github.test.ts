@@ -188,7 +188,7 @@ describe("setup-github command", () => {
         `version: "1.0"
 agents:
   my-test-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
 `,
       );
@@ -299,7 +299,7 @@ agents:
         `version: "1.0"
 agents:
   my-test-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     experimental_secrets:
       - CUSTOM_SECRET
@@ -334,7 +334,7 @@ agents:
         `version: "1.0"
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
 `,
       );
     });
@@ -414,7 +414,7 @@ agents:
         `version: "1.0"
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
 `,
       );
     });
@@ -449,7 +449,7 @@ agents:
         `version: "1.0"
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
 `,
       );
       await fs.mkdir(".github/workflows", { recursive: true });
@@ -499,7 +499,7 @@ agents:
         `version: "1.0"
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
 `,
       );
     });
@@ -601,7 +601,7 @@ agents:
         `version: "1.0"
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
 `,
       );
 
@@ -671,7 +671,7 @@ agents:
         `version: "1.0"
 agents:
   subdir-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
 `,
       );
@@ -747,7 +747,7 @@ agents:
         `version: "1.0"
 agents:
   root-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
 `,
       );
@@ -795,7 +795,7 @@ agents:
         `version: "1.0"
 agents:
   nested-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
 `,
       );

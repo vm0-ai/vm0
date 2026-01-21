@@ -14,7 +14,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       # Required: One of the following authentication methods
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" # [!code highlight]
@@ -79,7 +79,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
 ```
@@ -93,7 +93,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" # [!code highlight]
 ```
@@ -107,7 +107,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101" # [!code highlight]
@@ -125,7 +125,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
@@ -143,7 +143,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-haiku-4-5-20251001" # [!code highlight]

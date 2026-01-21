@@ -1,9 +1,9 @@
 # Firecracker VM rootfs image (Universal)
 # Based on Node.js 24 with Python 3.11+, SSH server, and agent CLIs
 #
-# This is a universal image that supports all providers and apps:
-# - Claude Code CLI (@anthropic-ai/claude-code) for provider: claude-code
-# - Codex CLI (@openai/codex) for provider: codex
+# This is a universal image that supports all frameworks and apps:
+# - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
+# - Codex CLI (@openai/codex) for framework: codex
 # - GitHub CLI (gh) for apps: [github]
 #
 # This mirrors the e2b template configurations for consistency.
