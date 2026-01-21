@@ -20,6 +20,8 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent for schedule E2E tests"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF

@@ -27,6 +27,8 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for telemetry testing"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     volumes:
       - claude-files:/home/user/.claude
