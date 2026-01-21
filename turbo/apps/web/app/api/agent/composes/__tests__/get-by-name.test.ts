@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../route";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -37,10 +46,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("GET /api/agent/composes?name=<name>", () => {
   const testUserId = "test-user-get-by-name";
@@ -53,11 +64,6 @@ describe("GET /api/agent/composes?name=<name>", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
-
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -75,6 +81,15 @@ describe("GET /api/agent/composes?name=<name>", () => {
       type: "personal",
       ownerId: testUserId,
     });
+  });
+
+  beforeEach(() => {
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
+  afterEach(() => {
+    clearClerkMock();
   });
 
   afterAll(async () => {
@@ -192,9 +207,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     });
 
     // Create compose as user 1
-    mockAuth.mockResolvedValueOnce({
-      userId: user1Id,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: user1Id });
 
     const config = {
       version: "1.0",
@@ -221,9 +234,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(createResponse.status).toBe(201);
 
     // Try to get it as user 2
-    mockAuth.mockResolvedValueOnce({
-      userId: user2Id,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: user2Id });
 
     const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=test-user-isolation",

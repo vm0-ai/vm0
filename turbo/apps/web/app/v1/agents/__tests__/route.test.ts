@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listAgents } from "../route";
 import { GET as getAgent } from "../[id]/route";
@@ -78,10 +87,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("Public API v1 - Agents Endpoints", () => {
   const testUserId = "test-user-public-api";
@@ -95,11 +106,6 @@ describe("Public API v1 - Agents Endpoints", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
-
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -134,6 +140,15 @@ describe("Public API v1 - Agents Endpoints", () => {
       },
     );
     testAgentId = id;
+  });
+
+  beforeEach(() => {
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
+  afterEach(() => {
+    clearClerkMock();
   });
 
   afterAll(async () => {

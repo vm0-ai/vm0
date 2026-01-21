@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
 import { POST } from "../../route";
@@ -37,10 +46,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("GET /api/agent/composes/list", () => {
   const testUserId = "test-user-list";
@@ -54,11 +65,6 @@ describe("GET /api/agent/composes/list", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
-
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -78,6 +84,15 @@ describe("GET /api/agent/composes/list", () => {
     });
   });
 
+  beforeEach(() => {
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
+  afterEach(() => {
+    clearClerkMock();
+  });
+
   afterAll(async () => {
     // Cleanup: Delete test composes and scope
     await globalThis.services.db
@@ -91,9 +106,7 @@ describe("GET /api/agent/composes/list", () => {
 
   it("should return 401 when not authenticated", async () => {
     // Mock Clerk to return no user
-    mockAuth.mockResolvedValueOnce({
-      userId: null,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: null });
 
     const request = createTestRequest(
       "http://localhost:3000/api/agent/composes/list",
@@ -208,9 +221,7 @@ describe("GET /api/agent/composes/list", () => {
     });
 
     // Create compose as other user
-    mockAuth.mockResolvedValueOnce({
-      userId: otherUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: otherUserId });
 
     const config = {
       version: "1.0",
@@ -233,7 +244,8 @@ describe("GET /api/agent/composes/list", () => {
     );
     await POST(createRequest);
 
-    // Switch back to original user and list their composes (uses default mock)
+    // Switch back to original user and list their composes
+    mockClerk({ userId: testUserId });
     const listRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes/list",
     );

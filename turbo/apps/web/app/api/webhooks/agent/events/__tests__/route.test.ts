@@ -35,12 +35,14 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Spy for ingestToAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,9 +67,7 @@ describe("POST /api/webhooks/agent/events", () => {
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     // Mock headers() to return a HeadersList-like object
     // By default, return no Authorization header (for auth failure tests)
@@ -119,12 +119,11 @@ describe("POST /api/webhooks/agent/events", () => {
     testVersionId = data.versionId;
 
     // Reset auth mock for webhook tests (which use token auth)
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     await globalThis.services.db
       .delete(agentRuns)

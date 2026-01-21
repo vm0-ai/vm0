@@ -89,10 +89,12 @@ mockS3Client.mockImplementation(() => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("POST /api/webhooks/agent/checkpoints", () => {
   // Generate unique IDs for this test run
@@ -115,9 +117,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     // Mock headers() to return no Authorization header by default
     mockHeaders.mockResolvedValue({
@@ -167,12 +167,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     testVersionId = data.versionId;
 
     // Reset auth mock for webhook tests (which use token auth)
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     // Delete agent_sessions first (references conversations)
     await globalThis.services.db

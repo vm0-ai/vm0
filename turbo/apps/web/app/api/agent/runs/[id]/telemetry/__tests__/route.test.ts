@@ -31,10 +31,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 /**
  * Helper to create a NextRequest for testing.
@@ -60,10 +62,8 @@ describe("GET /api/agent/runs/:id/telemetry", () => {
     // Initialize services
     initServices();
 
-    // Mock Clerk auth to return the test user ID
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    // Mock Clerk auth to return the test user ID by default
+    mockClerk({ userId: testUserId });
 
     // Mock headers()
     mockHeaders.mockResolvedValue({
@@ -139,6 +139,7 @@ describe("GET /api/agent/runs/:id/telemetry", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     await globalThis.services.db
       .delete(sandboxTelemetry)
@@ -168,9 +169,7 @@ describe("GET /api/agent/runs/:id/telemetry", () => {
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
       // Mock auth to return null
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry`,

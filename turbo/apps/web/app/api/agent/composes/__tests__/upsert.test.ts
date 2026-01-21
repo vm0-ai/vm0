@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "../route";
 import { GET } from "../[id]/route";
@@ -38,10 +47,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("Agent Compose Upsert Behavior", () => {
   const testUserId = "test-user-123";
@@ -54,11 +65,6 @@ describe("Agent Compose Upsert Behavior", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
-
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -76,6 +82,15 @@ describe("Agent Compose Upsert Behavior", () => {
       type: "personal",
       ownerId: testUserId,
     });
+  });
+
+  beforeEach(() => {
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
+  afterEach(() => {
+    clearClerkMock();
   });
 
   afterAll(async () => {
@@ -228,9 +243,7 @@ describe("Agent Compose Upsert Behavior", () => {
       };
 
       // Create compose for user 1
-      mockAuth.mockResolvedValueOnce({
-        userId: "user-1",
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: "user-1" });
 
       const request1 = createTestRequest(
         "http://localhost:3000/api/agent/composes",
@@ -246,9 +259,7 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(response1.status).toBe(201);
 
       // Create compose with same name for user 2 (should succeed)
-      mockAuth.mockResolvedValueOnce({
-        userId: "user-2",
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: "user-2" });
 
       const request2 = createTestRequest(
         "http://localhost:3000/api/agent/composes",

@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
 import { POST } from "../../route";
@@ -41,10 +50,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("GET /api/agent/composes/versions", () => {
   const testUserId = "test-user-versions";
@@ -60,10 +71,8 @@ describe("GET /api/agent/composes/versions", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    // Mock Clerk auth to return test user (needed for compose creation in beforeAll)
+    mockClerk({ userId: testUserId });
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -108,6 +117,15 @@ describe("GET /api/agent/composes/versions", () => {
     const createData = await createResponse.json();
     testComposeId = createData.composeId;
     testVersionId = createData.versionId;
+  });
+
+  beforeEach(() => {
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
+  afterEach(() => {
+    clearClerkMock();
   });
 
   afterAll(async () => {
@@ -251,9 +269,7 @@ describe("GET /api/agent/composes/versions", () => {
 
   it("should isolate versions by user", async () => {
     // Try to access compose as different user
-    mockAuth.mockResolvedValueOnce({
-      userId: "other-user",
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: "other-user" });
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/versions?composeId=${testComposeId}&version=latest`,

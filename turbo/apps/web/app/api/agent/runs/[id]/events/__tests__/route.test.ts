@@ -39,12 +39,14 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Spy for queryAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,10 +88,8 @@ describe("GET /api/agent/runs/:id/events", () => {
     // Initialize services
     initServices();
 
-    // Mock Clerk auth to return the test user ID
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    // Mock Clerk auth to return the test user ID by default
+    mockClerk({ userId: testUserId });
 
     // Mock headers() - not needed for this endpoint since we use Clerk auth
     mockHeaders.mockResolvedValue({
@@ -166,6 +166,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
@@ -196,9 +197,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
       // Mock auth to return null
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,

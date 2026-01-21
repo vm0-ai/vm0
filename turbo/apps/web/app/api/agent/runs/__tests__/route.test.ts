@@ -41,10 +41,12 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
@@ -58,6 +60,9 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
     // Initialize services
     initServices();
+
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
 
     // Setup E2B SDK mock - create sandbox
     const mockSandbox = {
@@ -92,9 +97,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     } as unknown as Headers);
 
     // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     // Clean up test data from previous runs
     await globalThis.services.db
@@ -134,6 +137,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data
     await globalThis.services.db
       .delete(agentRuns)
@@ -351,9 +355,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   describe("Authorization", () => {
     it("should reject unauthenticated request", async () => {
       // Mock Clerk to return no user
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",

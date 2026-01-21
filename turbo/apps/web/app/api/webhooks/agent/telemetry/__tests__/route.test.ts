@@ -26,12 +26,14 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Spy for ingestToAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,9 +55,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -131,6 +131,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));

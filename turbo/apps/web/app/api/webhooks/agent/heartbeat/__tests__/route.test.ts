@@ -24,10 +24,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("POST /api/webhooks/agent/heartbeat", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -44,9 +46,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -77,12 +77,11 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
     testVersionId = data.versionId;
 
     // Reset auth mock for webhook tests (which use token auth)
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Delete runs by ID (some tests create runs with different userIds)
     await globalThis.services.db
       .delete(agentRuns)
