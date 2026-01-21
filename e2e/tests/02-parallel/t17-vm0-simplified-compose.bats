@@ -28,8 +28,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
 EOF
 
     echo "# Running vm0 compose..."
@@ -51,8 +49,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with explicit image"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
 EOF
 
@@ -76,8 +72,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with explicit config"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: vm0/claude-code-github:dev
     working_dir: /custom/path
 EOF
@@ -99,8 +93,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with apps"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github
 EOF
@@ -124,8 +116,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with invalid app"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - invalid-app
 EOF
@@ -145,8 +135,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with invalid app tag"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github:invalid-tag
 EOF
@@ -186,8 +174,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -217,8 +203,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -256,8 +240,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -282,8 +264,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -313,8 +293,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: vm0/claude-code:dev
     instructions: AGENTS.md
     skills:
@@ -350,8 +328,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -396,8 +372,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -435,8 +409,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     apps:
       - github:dev
 EOF
@@ -474,8 +446,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     skills:
       - https://example.com/not-a-github-url
@@ -495,8 +465,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     instructions: ""
 EOF
@@ -515,8 +483,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     instructions: nonexistent-file.md
 EOF

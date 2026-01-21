@@ -34,8 +34,6 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for cook command"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data
@@ -116,7 +114,6 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       API_KEY: \${{ vars.E2E_TEST_API_KEY }}
       SECRET_TOKEN: \${{ secrets.E2E_TEST_SECRET }}
 EOF
@@ -160,7 +157,6 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       API_KEY: \${{ vars.E2E_TEST_VAR }}
 EOF
 
@@ -193,7 +189,6 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       EXISTING_VAR: \${{ vars.EXISTING_VAR }}
       NEW_VAR: \${{ vars.NEW_VAR }}
 EOF
@@ -234,8 +229,6 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for cook with skills"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF

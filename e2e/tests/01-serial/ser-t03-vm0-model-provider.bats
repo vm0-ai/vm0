@@ -1,8 +1,12 @@
 #!/usr/bin/env bats
 
-load '../../helpers/setup'
+# Test VM0 model provider commands
+# Tests the CLI for managing model providers (LLM credentials)
+#
+# This test covers PR #1452: Model provider entity + CLI
+# And sets up default provider for parallel tests (PR #1472)
 
-# Model Provider command tests
+load '../../helpers/setup'
 
 # Generate unique test data for each test run to avoid conflicts
 setup() {
@@ -10,10 +14,21 @@ setup() {
 }
 
 teardown() {
-    # Clean up test model providers if they exist
+    # Clean up test model providers created during individual tests
+    # But NOT the stable provider set up in teardown_file
+    # We only clean up anthropic-api-key and openai-api-key here
+    # claude-code-oauth-token is managed by teardown_file for parallel tests
     $CLI_COMMAND model-provider delete "anthropic-api-key" 2>/dev/null || true
-    $CLI_COMMAND model-provider delete "claude-code-oauth-token" 2>/dev/null || true
     $CLI_COMMAND model-provider delete "openai-api-key" 2>/dev/null || true
+}
+
+teardown_file() {
+    # Set a stable model provider at the end for subsequent parallel tests to use
+    # This ensures all tests in 02-parallel have a default LLM configuration
+    # Using claude-code-oauth-token as the default for claude-code framework
+    $CLI_COMMAND model-provider setup \
+        --type "claude-code-oauth-token" \
+        --credential "mock-oauth-token-for-e2e" >/dev/null 2>&1 || true
 }
 
 # ============================================================================
@@ -70,6 +85,9 @@ teardown() {
 }
 
 @test "vm0 model-provider setup creates claude-code-oauth-token provider" {
+    # First delete any existing one
+    $CLI_COMMAND model-provider delete "claude-code-oauth-token" 2>/dev/null || true
+
     run $CLI_COMMAND model-provider setup --type "claude-code-oauth-token" --credential "$TEST_CREDENTIAL_VALUE"
     assert_success
     assert_output --partial "claude-code-oauth-token"
@@ -106,6 +124,11 @@ teardown() {
 # ============================================================================
 
 @test "vm0 model-provider ls shows empty state" {
+    # Clean up all providers first
+    $CLI_COMMAND model-provider delete "anthropic-api-key" 2>/dev/null || true
+    $CLI_COMMAND model-provider delete "claude-code-oauth-token" 2>/dev/null || true
+    $CLI_COMMAND model-provider delete "openai-api-key" 2>/dev/null || true
+
     run $CLI_COMMAND model-provider ls
     assert_success
     # Should show "No model providers" when empty
@@ -154,6 +177,9 @@ teardown() {
 }
 
 @test "vm0 model-provider delete fails for non-existent provider" {
+    # Make sure it doesn't exist
+    $CLI_COMMAND model-provider delete "anthropic-api-key" 2>/dev/null || true
+
     run $CLI_COMMAND model-provider delete "anthropic-api-key"
     assert_failure
     assert_output --partial "not found"
@@ -164,6 +190,9 @@ teardown() {
 # ============================================================================
 
 @test "vm0 model-provider set-default changes default" {
+    # First delete any existing claude-code-oauth-token
+    $CLI_COMMAND model-provider delete "claude-code-oauth-token" 2>/dev/null || true
+
     # Create two providers for same framework
     $CLI_COMMAND model-provider setup --type "anthropic-api-key" --credential "$TEST_CREDENTIAL_VALUE"
     $CLI_COMMAND model-provider setup --type "claude-code-oauth-token" --credential "$TEST_CREDENTIAL_VALUE"
@@ -175,6 +204,9 @@ teardown() {
 }
 
 @test "vm0 model-provider set-default fails for non-existent provider" {
+    # Make sure it doesn't exist
+    $CLI_COMMAND model-provider delete "anthropic-api-key" 2>/dev/null || true
+
     run $CLI_COMMAND model-provider set-default "anthropic-api-key"
     assert_failure
     assert_output --partial "not found"

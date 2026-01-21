@@ -40,8 +40,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for session testing with runner"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     experimental_runner:
       group: ${RUNNER_GROUP}
     volumes:

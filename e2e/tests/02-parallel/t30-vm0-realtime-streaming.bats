@@ -30,8 +30,6 @@ agents:
     description: "E2E test agent for realtime streaming"
     framework: claude-code
     image: "vm0/claude-code:dev"
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace

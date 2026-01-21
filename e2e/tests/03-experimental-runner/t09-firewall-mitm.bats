@@ -51,8 +51,6 @@ agents:
   mitm-test:
     description: "MITM firewall test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -81,8 +79,6 @@ agents:
   ${AGENT_NAME}-allow:
     description: "MITM allow test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -142,8 +138,6 @@ agents:
   ${AGENT_NAME}-block:
     description: "MITM block test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -198,7 +192,6 @@ agents:
           action: ALLOW
         - final: DENY
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
 EOF
 
@@ -251,7 +244,6 @@ agents:
           action: ALLOW
         - final: DENY
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
 EOF
 

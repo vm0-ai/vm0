@@ -112,8 +112,6 @@ version: "1.0"
 agents:
   test-agent:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "invalid/missing-image"
 EOF
 
@@ -134,8 +132,6 @@ version: "1.0"
 agents:
   test-agent:
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "no-slash-here"
 EOF
 

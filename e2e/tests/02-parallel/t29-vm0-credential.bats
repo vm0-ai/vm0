@@ -188,7 +188,6 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       MY_CREDENTIAL: "\${{ credentials.${TEST_CRED_NAME} }}"
     volumes:
       - claude-files:/home/user/.claude
@@ -262,7 +261,6 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
       API_KEY: "\${{ credentials.${TEST_CRED_NAME} }}"
       CLI_SECRET: "\${{ secrets.CLI_SECRET }}"
     volumes:

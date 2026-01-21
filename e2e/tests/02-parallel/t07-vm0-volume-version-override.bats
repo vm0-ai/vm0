@@ -44,8 +44,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data
@@ -72,8 +70,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data

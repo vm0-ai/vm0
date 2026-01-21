@@ -53,8 +53,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for list command"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -81,8 +79,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version format"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -111,8 +107,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for inspect command"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -139,8 +133,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version specifier"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -166,8 +158,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for latest tag"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -192,8 +182,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for no-sources flag"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -227,8 +215,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version error"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
