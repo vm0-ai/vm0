@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
 import { existsSync, readFileSync } from "fs";
-import * as dotenv from "dotenv";
 import * as core from "@vm0/core";
 import { parseRunIdsFromOutput } from "../cook";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
-vi.mock("dotenv");
 vi.mock("@vm0/core", async () => {
   const actual = await vi.importActual("@vm0/core");
   return {
@@ -29,15 +27,13 @@ describe("cook command - environment variable check", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
-  const originalEnv = process.env;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env = { ...originalEnv };
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    vi.unstubAllEnvs();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
   });
@@ -86,8 +82,8 @@ describe("cook command - environment variable check", () => {
 
   describe("checkMissingVariables", () => {
     it("should return empty array when all variables are in process.env", () => {
-      process.env[TEST_VAR_1] = "test-key";
-      process.env[TEST_VAR_2] = "test-password";
+      vi.stubEnv(TEST_VAR_1, "test-key");
+      vi.stubEnv(TEST_VAR_2, "test-password");
 
       vi.mocked(existsSync).mockReturnValue(false);
 
@@ -104,23 +100,15 @@ describe("cook command - environment variable check", () => {
     });
 
     it("should return empty array when variables are in .env file", () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(dotenv.config).mockReturnValue({
-        parsed: {
-          [TEST_VAR_1]: "from-dotenv",
-          [TEST_VAR_2]: "from-dotenv",
-        },
-      });
+      // Simulate .env file variables by setting them in process.env
+      vi.stubEnv(TEST_VAR_1, "from-dotenv");
+      vi.stubEnv(TEST_VAR_2, "from-dotenv");
 
-      const result = dotenv.config({ path: ".env" });
-      const dotenvValues = result.parsed ?? {};
       const varNames = [TEST_VAR_1, TEST_VAR_2];
       const missing: string[] = [];
 
       for (const name of varNames) {
-        const inEnv = process.env[name] !== undefined;
-        const inDotenv = dotenvValues[name] !== undefined;
-        if (!inEnv && !inDotenv) {
+        if (process.env[name] === undefined) {
           missing.push(name);
         }
       }
@@ -129,27 +117,14 @@ describe("cook command - environment variable check", () => {
     });
 
     it("should return missing variables not in env or .env", () => {
-      // Clear env
-      delete process.env[TEST_VAR_1];
-      delete process.env[TEST_VAR_2];
-      delete process.env[TEST_VAR_4];
+      // Only TEST_VAR_1 is available (simulating .env file)
+      vi.stubEnv(TEST_VAR_1, "from-dotenv");
 
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(dotenv.config).mockReturnValue({
-        parsed: {
-          [TEST_VAR_1]: "from-dotenv",
-        },
-      });
-
-      const result = dotenv.config({ path: ".env" });
-      const dotenvValues = result.parsed ?? {};
       const varNames = [TEST_VAR_1, TEST_VAR_2, TEST_VAR_4];
       const missing: string[] = [];
 
       for (const name of varNames) {
-        const inEnv = process.env[name] !== undefined;
-        const inDotenv = dotenvValues[name] !== undefined;
-        if (!inEnv && !inDotenv) {
+        if (process.env[name] === undefined) {
           missing.push(name);
         }
       }

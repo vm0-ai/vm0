@@ -114,6 +114,7 @@ jobs:
             AXIOM_DATASET_SUFFIX=prod
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
+            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
 
   # Deploy docs app to production
   deploy-docs-production:

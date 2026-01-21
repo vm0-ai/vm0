@@ -8,6 +8,7 @@ import {
   isUUID,
   loadValues,
   pollEvents,
+  streamRealtimeEvents,
   logVerbosePreFlight,
   showNextSteps,
 } from "./shared";
@@ -38,6 +39,10 @@ export const continueCommand = new Command()
     {},
   )
   .option("-v, --verbose", "Show verbose output with timing information")
+  .option(
+    "--experimental-realtime",
+    "Use realtime event streaming instead of polling (experimental)",
+  )
   .option("--debug-no-mock-claude")
   .action(
     async (
@@ -47,6 +52,7 @@ export const continueCommand = new Command()
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
@@ -60,6 +66,7 @@ export const continueCommand = new Command()
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
         verbose?: boolean;
+        experimentalRealtime?: boolean;
         debugNoMockClaude?: boolean;
       };
 
@@ -145,11 +152,18 @@ export const continueCommand = new Command()
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll for events and exit with appropriate code
-        const result = await pollEvents(response.runId, {
-          verbose,
-          startTimestamp,
-        });
+        // 6. Poll or stream for events and exit with appropriate code
+        const experimentalRealtime =
+          options.experimentalRealtime || allOpts.experimentalRealtime;
+        const result = experimentalRealtime
+          ? await streamRealtimeEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            })
+          : await pollEvents(response.runId, {
+              verbose,
+              startTimestamp,
+            });
         if (!result.succeeded) {
           process.exit(1);
         }
@@ -159,6 +173,12 @@ export const continueCommand = new Command()
           if (error.message.includes("Not authenticated")) {
             console.error(
               chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else if (error.message.includes("Realtime connection failed")) {
+            console.error(chalk.red("✗ Realtime streaming failed"));
+            console.error(chalk.dim(`  ${error.message}`));
+            console.error(
+              chalk.dim("  Try running without --experimental-realtime"),
             );
           } else if (error.message.includes("not found")) {
             console.error(

@@ -9,22 +9,14 @@ const CONFIG_DIR = join(homedir(), ".vm0");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 describe("config", () => {
-  // Store original env vars
-  const originalEnv = { ...process.env };
-
   beforeEach(async () => {
     // Clean up any existing test config
     if (existsSync(CONFIG_FILE)) {
       await unlink(CONFIG_FILE);
     }
-    // Reset environment variables
-    delete process.env.VM0_API_URL;
-    delete process.env.VM0_TOKEN;
   });
 
   afterEach(async () => {
-    // Restore original env vars
-    process.env = { ...originalEnv };
     vi.unstubAllEnvs();
     // Clean up test config
     if (existsSync(CONFIG_FILE)) {
@@ -34,19 +26,19 @@ describe("config", () => {
 
   describe("getApiUrl", () => {
     it("should return VM0_API_URL from environment when set with http protocol", async () => {
-      process.env.VM0_API_URL = "http://localhost:3000";
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
       const apiUrl = await getApiUrl();
       expect(apiUrl).toBe("http://localhost:3000");
     });
 
     it("should return VM0_API_URL from environment when set with https protocol", async () => {
-      process.env.VM0_API_URL = "https://api.example.com";
+      vi.stubEnv("VM0_API_URL", "https://api.example.com");
       const apiUrl = await getApiUrl();
       expect(apiUrl).toBe("https://api.example.com");
     });
 
     it("should add https protocol when VM0_API_URL lacks protocol", async () => {
-      process.env.VM0_API_URL = "api.example.com";
+      vi.stubEnv("VM0_API_URL", "api.example.com");
       const apiUrl = await getApiUrl();
       expect(apiUrl).toBe("https://api.example.com");
     });
@@ -66,7 +58,7 @@ describe("config", () => {
     it("should prefer VM0_API_URL environment variable over config file", async () => {
       await mkdir(CONFIG_DIR, { recursive: true });
       await saveConfig({ apiUrl: "https://config.example.com" });
-      process.env.VM0_API_URL = "https://env.example.com";
+      vi.stubEnv("VM0_API_URL", "https://env.example.com");
       const apiUrl = await getApiUrl();
       expect(apiUrl).toBe("https://env.example.com");
     });
@@ -83,7 +75,7 @@ describe("config", () => {
 
   describe("getToken", () => {
     it("should return token from VM0_TOKEN environment variable when set", async () => {
-      process.env.VM0_TOKEN = "env-token-123";
+      vi.stubEnv("VM0_TOKEN", "env-token-123");
       const token = await getToken();
       expect(token).toBe("env-token-123");
     });
@@ -98,7 +90,7 @@ describe("config", () => {
     it("should prefer VM0_TOKEN environment variable over config file", async () => {
       await mkdir(CONFIG_DIR, { recursive: true });
       await saveConfig({ token: "config-token" });
-      process.env.VM0_TOKEN = "env-token";
+      vi.stubEnv("VM0_TOKEN", "env-token");
       const token = await getToken();
       expect(token).toBe("env-token");
     });

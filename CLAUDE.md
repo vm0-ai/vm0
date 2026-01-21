@@ -220,13 +220,18 @@ The `cli-e2e` jobs have a **maximum 8-minute timeout** (5 minutes for serial tes
 
 ## Language Standard
 
-**All project content must be written in English.** This ensures accessibility for international contributors and maintains consistency across the codebase.
+**All project artifacts must be written in English,** but direct communication with users should use the user's preferred language.
 
-### Applies to:
+### English Required For:
 - **Source code** - Variable names, function names, class names
 - **Comments** - Inline comments and documentation comments
 - **Commit messages** - All git commit messages
 - **Pull requests** - PR titles, descriptions, and review comments
 - **Issues** - Bug reports, feature requests, and discussions
 - **Documentation** - README, guides, and all markdown files
+
+### User Communication:
+- **Use the user's language** - When communicating directly with users, respond in their language
+- **Language priority** - If the user uses multiple languages, prioritize them in this order: user's primary language(s) first, English last
+- **Consistency** - Once you identify the user's preferred language, maintain that language throughout the conversation
 

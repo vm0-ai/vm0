@@ -14,6 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/axiom";
+import { publishEvents } from "../../../../../src/lib/realtime/client";
 
 const log = logger("webhook:events");
 
@@ -85,6 +86,10 @@ const router = tsr.router(webhookEventsContract, {
     log.debug(
       `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
     );
+
+    // Publish events to Ably for realtime streaming to CLI
+    // Non-blocking - errors are logged but don't affect response
+    await publishEvents(body.runId, body.events, lastSequence + 1);
 
     return {
       status: 200 as const,

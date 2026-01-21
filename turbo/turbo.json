@@ -30,7 +30,8 @@
     "CRON_SECRET",
     "AXIOM_TOKEN",
     "AXIOM_DATASET_SUFFIX",
-    "WEB_APP_URL"
+    "WEB_APP_URL",
+    "ABLY_API_KEY"
   ],
   "tasks": {
     "build": {

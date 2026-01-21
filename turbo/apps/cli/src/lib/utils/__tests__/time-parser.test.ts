@@ -4,14 +4,14 @@ import { parseTime, formatTimestamp } from "../time-parser";
 describe("time-parser", () => {
   describe("parseTime", () => {
     describe("relative time", () => {
+      const FIXED_TIME = new Date("2024-01-15T12:00:00Z").getTime();
+
       beforeEach(() => {
-        // Mock Date.now() to return a fixed timestamp
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
+        vi.spyOn(Date, "now").mockReturnValue(FIXED_TIME);
       });
 
       afterEach(() => {
-        vi.useRealTimers();
+        vi.restoreAllMocks();
       });
 
       it("parses seconds", () => {

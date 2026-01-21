@@ -2,11 +2,15 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
-import { getEvents } from "../../lib/api";
+import { getEvents, type RunResult } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  streamEvents,
+  type StreamResult,
+} from "../../lib/realtime/stream-events";
 
 /**
  * Collector for --secrets and --vars flags
@@ -175,6 +179,57 @@ interface PollResult {
   runId: string;
   sessionId?: string;
   checkpointId?: string;
+}
+
+/**
+ * Render a single event (used by streamEvents callback)
+ * Returns the event timestamp for elapsed time calculation
+ */
+function renderEvent(
+  event: unknown,
+  options: { verbose?: boolean; previousTimestamp: Date; startTimestamp: Date },
+): Date {
+  const eventData = event as Record<string, unknown>;
+  const parsed = parseEvent(eventData);
+  if (parsed) {
+    EventRenderer.render(parsed, {
+      verbose: options.verbose,
+      previousTimestamp: options.previousTimestamp,
+      startTimestamp: options.startTimestamp,
+    });
+    return parsed.timestamp;
+  }
+  return options.previousTimestamp;
+}
+
+/**
+ * Stream events using Ably realtime (experimental)
+ * @returns Stream result with success status and optional session/checkpoint IDs
+ */
+export async function streamRealtimeEvents(
+  runId: string,
+  options: PollOptions,
+): Promise<StreamResult> {
+  const startTimestamp = options.startTimestamp;
+  const verbose = options.verbose;
+
+  return streamEvents(runId, {
+    verbose,
+    startTimestamp,
+    onEvent: renderEvent,
+    onRunCompleted: (result, opts) => {
+      EventRenderer.renderRunCompleted(result as RunResult | undefined, opts);
+    },
+    onRunFailed: (error, rid) => {
+      EventRenderer.renderRunFailed(error, rid);
+    },
+    onTimeout: (rid) => {
+      console.error(chalk.red("\n✗ Run timed out"));
+      console.error(
+        chalk.dim(`  (use "vm0 logs ${rid} --system" to view system logs)`),
+      );
+    },
+  });
 }
 
 /**
