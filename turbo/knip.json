@@ -62,8 +62,6 @@
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
         "tailwindcss",
-        "@vm0/ui",
-        "@testing-library/react",
         "typescript-eslint",
         "@clerk/clerk-react"
       ]
