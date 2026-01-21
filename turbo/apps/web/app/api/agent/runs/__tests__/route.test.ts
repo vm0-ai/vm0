@@ -14,7 +14,6 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../src/db/schema/scope";
-import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {

@@ -23,6 +23,8 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
+  createTestCliToken,
+  deleteTestCliToken,
 } from "../../../../../../../src/test/api-test-helpers";
 
 // Mock Next.js headers() function
@@ -91,7 +93,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       userId: testUserId,
     } as unknown as Awaited<ReturnType<typeof auth>>);
 
-    // Mock headers() - not needed for this endpoint since we use Clerk auth
+    // Mock headers() to return null Authorization, forcing Clerk auth fallback
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
@@ -1174,6 +1176,73 @@ describe("GET /api/agent/runs/:id/events", () => {
         ),
       ).toEqual([3, 4]);
       expect(secondData.nextSequence).toBe(4);
+    });
+  });
+
+  // ============================================
+  // CLI Token Authentication Tests
+  // ============================================
+
+  describe("CLI Token Authentication", () => {
+    let testCliToken: string;
+
+    beforeEach(async () => {
+      // Create valid CLI token in database
+      testCliToken = await createTestCliToken(testUserId);
+
+      // Mock headers to return Authorization header with CLI token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${testCliToken}` : null
+        ),
+      } as unknown as Headers);
+    });
+
+    afterEach(async () => {
+      // Clean up CLI token
+      await deleteTestCliToken(testCliToken);
+    });
+
+    it("should accept request with valid CLI token", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toBeDefined();
+    });
+
+    it("should reject expired CLI token", async () => {
+      // Create expired token
+      const expiredToken = await createTestCliToken(
+        testUserId,
+        new Date(Date.now() - 1000), // Expired 1 second ago
+      );
+
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${expiredToken}` : null
+        ),
+      } as unknown as Headers);
+
+      // Mock Clerk to return null (unauthenticated)
+      mockAuth.mockResolvedValue({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+
+      // Clean up expired token
+      await deleteTestCliToken(expiredToken);
     });
   });
 });
