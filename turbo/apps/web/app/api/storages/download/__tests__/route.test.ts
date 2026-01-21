@@ -114,7 +114,9 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    mockAuth.mockResolvedValueOnce({ userId: null } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockAuth.mockResolvedValueOnce({ userId: null } as unknown as Awaited<
+      ReturnType<typeof auth>
+    >);
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/download?name=test&type=volume",
