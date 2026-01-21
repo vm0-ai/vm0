@@ -1,23 +1,22 @@
 ---
 name: pull-request
-description: Complete PR lifecycle management - create PRs with proper commits, monitor CI pipeline status, and merge with validation
+description: PR lifecycle management - create PRs with proper commits, merge with validation, and manage PR comments
 allowed-tools: Bash, Read, Grep
 context: fork
 ---
 
-You are a Pull Request lifecycle specialist for the vm0 project. Your role is to handle the complete PR workflow: creating PRs with proper commits, monitoring CI pipelines, and safely merging after validation.
+You are a Pull Request lifecycle specialist for the vm0 project. Your role is to handle PR creation, merging, and comment management.
+
+**Note**: For CI monitoring and auto-fixing, use the `pr-check` skill. For code review, use the `pr-review` skill.
 
 ## Operations
 
-This skill supports seven main operations. Parse the `args` parameter to determine which operation to perform:
+This skill supports four main operations. Parse the `args` parameter to determine which operation to perform:
 
 1. **create** - Create a new PR or update existing one
-2. **monitor** - Watch CI pipeline and report status
-3. **merge** - Validate checks and merge PR
-4. **list** - List open pull requests for the repository
-5. **review [pr-id]** - Review a pull request and post findings as PR comment
-6. **comment [pr-id]** - Summarize conversation and post as PR comment
-7. **check-and-merge [pr-id]** - Monitor pipeline, auto-fix issues, and merge
+2. **merge** - Validate checks and merge PR
+3. **list** - List open pull requests for the repository
+4. **comment [pr-id]** - Summarize conversation and post as PR comment
 
 When invoked, check the args to determine the operation and execute accordingly.
 
@@ -143,83 +142,7 @@ gh pr view --json url -q .url
 
 ---
 
-# Operation 2: Monitor Pipeline
-
-## Workflow
-
-### Step 1: Run Code Review
-
-Execute the review operation to analyze the PR and post findings as a comment:
-
-```bash
-/pr-review
-```
-
-This will:
-- Analyze the PR changes
-- Provide comprehensive code review feedback
-- Post review comments directly on the PR
-
-### Step 2: Wait for Pipeline
-
-Wait 60 seconds for the pipeline to stabilize before first check.
-
-### Step 3: Check Pipeline Status
-
-```bash
-gh pr checks {pr-id}
-```
-
-**Outcomes:**
-- **All passing**: Report success and exit
-- **Failures detected**: Report failure details and exit
-- **Still running**: Wait 60 seconds and retry (max 30 times, ~30 min timeout)
-
-### Step 4: Retrieve Failure Details
-
-For failed workflows:
-```bash
-# Get failed run ID
-gh run list --branch {branch} --status failure -L 1
-
-# Get failure logs
-gh run view {run-id} --log-failed
-```
-
-Extract last 50-100 lines of relevant error output.
-
-### Step 5: Report Status
-
-```
-Pipeline Result
-
-PR: #{pr_id} - {title}
-Branch: {branch}
-Status: All Passed | Failed | Still Running
-
-Checks:
-  lint: passed/failed
-  build: passed/failed
-  test: passed/failed
-
-[If failed, include relevant error logs]
-```
-
-## Configuration
-
-- **Initial wait**: 60 seconds
-- **Retry attempts**: Maximum 30
-- **Retry delay**: 60 seconds
-- **Total timeout**: ~30 minutes
-
-## Important
-
-- **Do NOT attempt any fixes** - just report
-- **Do NOT merge** - just report status
-
----
-
-# Operation 3: Merge PR
+# Operation 2: Merge PR
 
 ## Workflow
 
@@ -325,20 +248,6 @@ Actions Completed:
 Pull Request: <PR URL>
 ```
 
-## Monitor Output:
-```
-Pipeline Result
-
-PR: #<number> - <title>
-Branch: <branch>
-Status: All Passed | Failed | Still Running
-
-Checks:
-  lint: passed
-  build: passed
-  test: passed
-```
-
 ## Merge Output:
 ```
 PR Merge Workflow
@@ -366,7 +275,7 @@ Latest commit: <hash> <message>
 
 ---
 
-# Operation 4: List PRs
+# Operation 3: List PRs
 
 List all open pull requests in the current repository.
 
@@ -380,83 +289,7 @@ Display the list of open PRs with their numbers, titles, and branch names.
 
 ---
 
-# Operation 5: Review PR
-
-Review a pull request with detailed analysis and post findings as a PR comment.
-
-## Arguments
-
-- `review [pr-id]` - Review specific PR by ID
-- `review` - Review PR for current branch
-
-## Workflow
-
-### Step 1: Determine PR Number
-
-```bash
-if [ -n "$PR_ID" ]; then
-    PR_NUMBER="$PR_ID"
-else
-    CURRENT_BRANCH=$(git branch --show-current)
-    PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
-
-    if [ -z "$PR_NUMBER" ]; then
-        echo "No PR found for current branch. Please specify a PR number."
-        exit 1
-    fi
-fi
-```
-
-### Step 2: Get PR Information
-
-```bash
-gh pr view "$PR_NUMBER" --json title,body,author,url,commits
-```
-
-Display PR metadata (title, author, URL).
-
-### Step 3: Perform Code Review
-
-Analyze the PR commits against quality standards:
-
-**For testing-related changes**, refer to:
-- `.claude/skills/testing/SKILL.md` - Comprehensive testing patterns and anti-patterns
-  - Check for AP-4 violations (mocking internal code)
-  - Verify MSW usage for HTTP mocking
-  - Check test initialization patterns
-  - Verify mock cleanup and proper practices
-
-**For non-testing code changes**, refer to:
-- `specs/bad-smell.md` - Code quality anti-patterns
-  - Error handling issues
-  - Dynamic imports
-  - Fallback patterns
-  - Configuration hardcoding
-
-Analyze for:
-- Code quality issues
-- Pattern violations
-- Test coverage
-- Error handling
-- Interface changes
-
-Generate detailed review findings.
-
-### Step 4: Generate Review Comment
-
-Structure the review feedback in markdown format suitable for GitHub comment.
-
-### Step 5: Post Comment
-
-```bash
-gh pr comment "$PR_NUMBER" --body "$REVIEW_CONTENT"
-```
-
-Display confirmation with comment URL.
-
----
-
-# Operation 6: Comment
+# Operation 4: Comment
 
 Summarize conversation discussion and post as PR comment for follow-up.
 
@@ -504,92 +337,19 @@ gh pr comment "$PR_NUMBER" --body "$COMMENT_CONTENT"
 
 ---
 
-# Operation 7: Check and Merge
-
-Automated PR pipeline monitoring, issue fixing, and merging workflow.
-
-## Arguments
-
-- `check-and-merge [pr-id]` - Monitor, fix, and merge specific PR
-- `check-and-merge` - Use PR for current branch
-
-## Workflow
-
-### Step 1: Identify Target PR
-
-```bash
-if [ -n "$PR_ID" ]; then
-    pr_id="$PR_ID"
-else
-    pr_id=$(gh pr list --head $(git branch --show-current) --json number --jq '.[0].number')
-fi
-```
-
-### Step 2: Monitor Pipeline
-
-Wait 60 seconds for pipeline to start, then check status repeatedly:
-
-```bash
-gh pr checks "$pr_id"
-```
-
-Retry up to 30 times (30 minutes max) waiting for checks to complete.
-
-### Step 3: Auto-Fix Issues
-
-Based on failure types:
-
-**For lint failures**:
-```bash
-cd turbo && pnpm format
-git add -A && git commit -m "fix: auto-format code" && git push
-```
-
-**For type check failures**:
-```bash
-cd turbo && pnpm check-types
-# Report errors (manual fix required)
-```
-
-**For test failures**:
-```bash
-cd turbo && pnpm test
-# Report failures (manual fix required)
-```
-
-After fixes, wait 60 seconds and re-check pipeline.
-
-### Step 4: Merge PR
-
-Once all checks pass:
-
-```bash
-gh pr merge "$pr_id" --squash --delete-branch
-git checkout main
-git pull origin main
-```
-
-Display success message with merge confirmation.
-
-## Notes
-
-This operation combines monitoring, auto-fixing, and merging into one workflow. It will:
-- Wait for pipeline completion
-- Attempt automatic fixes for lint issues
-- Report other failures for manual intervention
-- Only merge when all checks pass
-
----
-
 # Best Practices
 
 1. **Always check branch status first** - Don't assume the current state
 2. **Run pre-commit checks** - Never skip quality checks
-3. **Auto-fix when possible** - Format and lint can be auto-corrected
-4. **Never merge with failing checks** - Code quality is non-negotiable
-5. **Use squash merge** - Keeps main history clean
-6. **Confirm merge completion** - Verify PR state is MERGED
-7. **Keep user informed** - Clear status at each step
+3. **Never merge with failing checks** - Code quality is non-negotiable
+4. **Use squash merge** - Keeps main history clean
+5. **Confirm merge completion** - Verify PR state is MERGED
+6. **Keep user informed** - Clear status at each step
+
+## Related Skills
+
+- **pr-check** - CI monitoring and auto-fixing
+- **pr-review** - Code review and feedback
 
 ## Prerequisites
 
