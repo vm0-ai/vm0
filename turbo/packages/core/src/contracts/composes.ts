@@ -124,7 +124,7 @@ const agentDefinitionSchema = z.object({
    * This field will be removed in a future version.
    */
   image: z.string().optional(),
-  provider: z.string().min(1, "Provider is required"),
+  framework: z.string().min(1, "Framework is required"),
   /**
    * Array of pre-installed apps/tools for the agent environment.
    * Format: "app" or "app:tag" (e.g., "github", "github:dev", "github:latest")

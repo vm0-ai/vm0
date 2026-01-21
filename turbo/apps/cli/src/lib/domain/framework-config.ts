@@ -1,9 +1,9 @@
 /**
- * Provider configuration for auto-resolving working_dir and image
- * When a provider is specified, these defaults can be used if not explicitly set
+ * Framework configuration for auto-resolving working_dir and image
+ * When a framework is specified, these defaults can be used if not explicitly set
  */
 
-interface ProviderDefaults {
+interface FrameworkDefaults {
   workingDir: string;
   image: {
     production: string;
@@ -12,9 +12,9 @@ interface ProviderDefaults {
 }
 
 /**
- * Mapping of provider names to their default configurations
+ * Mapping of framework names to their default configurations
  */
-const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
+const FRAMEWORK_DEFAULTS: Record<string, FrameworkDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
     image: {
@@ -32,40 +32,40 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
 };
 
 /**
- * Get default configuration for a provider
- * @param provider - The provider name
- * @returns Provider defaults or undefined if provider is not recognized
+ * Get default configuration for a framework
+ * @param framework - The framework name
+ * @returns Framework defaults or undefined if framework is not recognized
  */
-export function getProviderDefaults(
-  provider: string,
-): ProviderDefaults | undefined {
-  return PROVIDER_DEFAULTS[provider];
+export function getFrameworkDefaults(
+  framework: string,
+): FrameworkDefaults | undefined {
+  return FRAMEWORK_DEFAULTS[framework];
 }
 
 /**
- * Check if a provider is supported (has default configuration)
- * @param provider - The provider name
- * @returns True if provider is supported
+ * Check if a framework is supported (has default configuration)
+ * @param framework - The framework name
+ * @returns True if framework is supported
  */
-export function isProviderSupported(provider: string): boolean {
-  return provider in PROVIDER_DEFAULTS;
+export function isFrameworkSupported(framework: string): boolean {
+  return framework in FRAMEWORK_DEFAULTS;
 }
 
 /**
- * Get the list of supported providers
- * @returns Array of supported provider names
+ * Get the list of supported frameworks
+ * @returns Array of supported framework names
  */
-export function getSupportedProviders(): string[] {
-  return Object.keys(PROVIDER_DEFAULTS);
+export function getSupportedFrameworks(): string[] {
+  return Object.keys(FRAMEWORK_DEFAULTS);
 }
 
 /**
- * Get the default image for a provider based on the current environment
- * @param provider - The provider name
- * @returns Default image string or undefined if provider is not recognized
+ * Get the default image for a framework based on the current environment
+ * @param framework - The framework name
+ * @returns Default image string or undefined if framework is not recognized
  */
-export function getDefaultImage(provider: string): string | undefined {
-  const defaults = PROVIDER_DEFAULTS[provider];
+export function getDefaultImage(framework: string): string | undefined {
+  const defaults = FRAMEWORK_DEFAULTS[framework];
   if (!defaults) return undefined;
 
   // Use dev image only when NODE_ENV is explicitly "development" or "test"
@@ -77,9 +77,9 @@ export function getDefaultImage(provider: string): string | undefined {
 
 /**
  * Image variants for apps
- * Maps provider + apps combination to the appropriate image
+ * Maps framework + apps combination to the appropriate image
  */
-const PROVIDER_APPS_IMAGES: Record<
+const FRAMEWORK_APPS_IMAGES: Record<
   string,
   Record<string, { production: string; development: string }>
 > = {
@@ -114,28 +114,28 @@ function parseAppString(appString: string): {
 }
 
 /**
- * Get the default image for a provider with optional apps
- * @param provider - The provider name
+ * Get the default image for a framework with optional apps
+ * @param framework - The framework name
  * @param apps - Optional array of apps in format "app" or "app:tag"
- * @returns Default image string or undefined if provider is not recognized
+ * @returns Default image string or undefined if framework is not recognized
  */
 export function getDefaultImageWithApps(
-  provider: string,
+  framework: string,
   apps?: string[],
 ): string | undefined {
-  const defaults = PROVIDER_DEFAULTS[provider];
+  const defaults = FRAMEWORK_DEFAULTS[framework];
   if (!defaults) return undefined;
 
   // Check if apps require a special image variant
   if (apps && apps.length > 0) {
-    const providerApps = PROVIDER_APPS_IMAGES[provider];
-    if (providerApps) {
+    const frameworkApps = FRAMEWORK_APPS_IMAGES[framework];
+    if (frameworkApps) {
       // Currently we only support single app (github)
       // For future: could combine apps or use most specific variant
       const firstApp = apps[0];
       if (firstApp) {
         const { app, tag } = parseAppString(firstApp);
-        const appImage = providerApps[app];
+        const appImage = frameworkApps[app];
         if (appImage) {
           // Use the tag from the app string (dev or latest)
           return tag === "dev" ? appImage.development : appImage.production;

@@ -91,7 +91,7 @@ describe("E2B Service", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/workspace",
           },
         },
@@ -143,7 +143,7 @@ describe("E2B Service", () => {
     agents: {
       "test-agent": {
         image: "vm0/claude-code",
-        provider: "claude-code",
+        framework: "claude-code",
         working_dir: "/workspace",
         ...overrides,
       },
@@ -461,7 +461,7 @@ describe("E2B Service", () => {
             "test-agent": {
               description: "Test agent with working dir",
               image: "vm0/claude-code",
-              provider: "claude-code",
+              framework: "claude-code",
               working_dir: "/home/user/workspace",
             },
           },
@@ -513,7 +513,7 @@ describe("E2B Service", () => {
             "test-agent": {
               description: "Test agent without working dir",
               image: "vm0/claude-code",
-              provider: "claude-code",
+              framework: "claude-code",
               working_dir: "",
             },
           },
@@ -605,7 +605,7 @@ describe("E2B Service", () => {
             "test-agent": {
               description: "Test agent with custom image",
               image: "vm0/codex",
-              provider: "claude-code",
+              framework: "claude-code",
               working_dir: "/workspace",
             },
           },

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
-import { isProviderSupported } from "./provider-config";
+import { isFrameworkSupported } from "./framework-config";
 
 /**
  * CLI-specific agent name schema that allows 3-character names.
@@ -26,28 +26,28 @@ export function validateGitHubTreeUrl(url: string): boolean {
 }
 
 /**
- * CLI-extended agent definition schema with provider auto-config and skills URL validation
+ * CLI-extended agent definition schema with framework auto-config and skills URL validation
  */
 const cliAgentDefinitionSchema = agentDefinitionSchema.superRefine(
   (agent, ctx) => {
-    const providerSupported = isProviderSupported(agent.provider);
+    const frameworkSupported = isFrameworkSupported(agent.framework);
 
-    // Provider auto-config: image required when provider not supported
-    if (!agent.image && !providerSupported) {
+    // Framework auto-config: image required when framework not supported
+    if (!agent.image && !frameworkSupported) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Missing agent.image (required when provider is not auto-configured)",
+          "Missing agent.image (required when framework is not auto-configured)",
         path: ["image"],
       });
     }
 
-    // Provider auto-config: working_dir required when provider not supported
-    if (!agent.working_dir && !providerSupported) {
+    // Framework auto-config: working_dir required when framework not supported
+    if (!agent.working_dir && !frameworkSupported) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Missing agent.working_dir (required when provider is not auto-configured)",
+          "Missing agent.working_dir (required when framework is not auto-configured)",
         path: ["working_dir"],
       });
     }
@@ -245,12 +245,41 @@ export function normalizeAgentName(name: string): string | null {
 }
 
 /**
+ * Checks for deprecated 'provider' field and returns migration error message
+ */
+function checkForDeprecatedProvider(config: unknown): string | null {
+  if (!config || typeof config !== "object") return null;
+  const cfg = config as Record<string, unknown>;
+  const agents = cfg.agents as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (!agents || typeof agents !== "object" || Array.isArray(agents))
+    return null;
+
+  for (const agent of Object.values(agents)) {
+    if (agent && typeof agent === "object" && !Array.isArray(agent)) {
+      if ("provider" in agent && !("framework" in agent)) {
+        const providerValue = agent.provider;
+        return `'provider' field is deprecated. Use 'framework' instead.\n\nChange in your vm0.yaml:\n  - provider: ${providerValue}\n  + framework: ${providerValue}`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Validates agent compose structure using Zod schemas
  */
 export function validateAgentCompose(config: unknown): {
   valid: boolean;
   error?: string;
 } {
+  // Pre-check: Deprecated 'provider' field
+  const deprecationError = checkForDeprecatedProvider(config);
+  if (deprecationError) {
+    return { valid: false, error: deprecationError };
+  }
+
   // Pre-check: Better error for array agents (common mistake)
   if (
     config &&

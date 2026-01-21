@@ -110,7 +110,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -128,7 +128,7 @@ describe("validateAgentCompose", () => {
           "test-agent": {
             description: "Test description",
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["claude-files:/home/user/.config/claude"],
           },
@@ -151,7 +151,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "My-Test-Agent-123": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -186,7 +186,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -235,12 +235,12 @@ describe("validateAgentCompose", () => {
         agents: {
           "agent-1": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/workspace",
           },
           "agent-2": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/workspace",
           },
         },
@@ -260,7 +260,7 @@ describe("validateAgentCompose", () => {
           ab: {
             // Too short
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -277,7 +277,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "-invalid": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -294,7 +294,7 @@ describe("validateAgentCompose", () => {
         agents: {
           my_agent: {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
           },
         },
@@ -305,13 +305,13 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with missing working_dir when provider not supported", () => {
+    it("should reject config with missing working_dir when framework not supported", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             image: "custom-image",
-            provider: "custom-provider",
+            framework: "custom-framework",
           },
         },
       };
@@ -321,12 +321,12 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("agent.working_dir");
     });
 
-    it("should reject config with missing image when provider not supported", () => {
+    it("should reject config with missing image when framework not supported", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "custom-provider",
+            framework: "custom-framework",
             working_dir: "/home/user/workspace",
           },
         },
@@ -337,7 +337,7 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("agent.image");
     });
 
-    it("should reject config with missing provider", () => {
+    it("should reject config with missing framework", () => {
       const config = {
         version: "1.0",
         agents: {
@@ -350,7 +350,27 @@ describe("validateAgentCompose", () => {
 
       const result = validateAgentCompose(config);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.provider");
+      expect(result.error).toContain("agent.framework");
+    });
+
+    it("should reject config with deprecated provider field and show migration message", () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            provider: "claude-code",
+            image: "vm0/claude-code:dev",
+            working_dir: "/home/user/workspace",
+          },
+        },
+      };
+
+      const result = validateAgentCompose(config);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("'provider' field is deprecated");
+      expect(result.error).toContain("Use 'framework' instead");
+      expect(result.error).toContain("- provider: claude-code");
+      expect(result.error).toContain("+ framework: claude-code");
     });
 
     it("should reject config with volume reference missing from volumes section", () => {
@@ -359,7 +379,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["missing-vol:/path"],
           },
@@ -383,7 +403,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
@@ -406,7 +426,7 @@ describe("validateAgentCompose", () => {
         agents: {
           "test-agent": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/home/user/workspace",
             volumes: ["data:/path"],
           },
@@ -424,13 +444,13 @@ describe("validateAgentCompose", () => {
     });
   });
 
-  describe("provider auto-config", () => {
-    it("should accept config without working_dir when provider is claude-code", () => {
+  describe("framework auto-config", () => {
+    it("should accept config without working_dir when framework is claude-code", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             image: "vm0/claude-code:dev",
           },
         },
@@ -440,12 +460,12 @@ describe("validateAgentCompose", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should accept config without image when provider is claude-code (auto-configurable)", () => {
+    it("should accept config without image when framework is claude-code (auto-configurable)", () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
           },
         },
       };
@@ -459,7 +479,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             image: "vm0/claude-code:dev",
             instructions: "AGENTS.md",
           },
@@ -475,7 +495,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             image: "vm0/claude-code:dev",
             skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/github"],
           },
@@ -491,7 +511,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             image: "vm0/claude-code:dev",
             instructions: "",
           },
@@ -508,7 +528,7 @@ describe("validateAgentCompose", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             image: "vm0/claude-code:dev",
             skills: ["https://example.com/not-github"],
           },
@@ -527,7 +547,7 @@ describe("experimental_secrets validation", () => {
     version: "1.0",
     agents: {
       "test-agent": {
-        provider: "claude-code",
+        framework: "claude-code",
         ...agentOverrides,
       },
     },
@@ -580,7 +600,7 @@ describe("experimental_vars validation", () => {
     version: "1.0",
     agents: {
       "test-agent": {
-        provider: "claude-code",
+        framework: "claude-code",
         ...agentOverrides,
       },
     },
@@ -633,7 +653,7 @@ describe("combined experimental fields", () => {
     version: "1.0",
     agents: {
       "test-agent": {
-        provider: "claude-code",
+        framework: "claude-code",
         ...agentOverrides,
       },
     },

@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
-} from "../../../test/api-test-helpers";
+} from "../../../__tests__/api-test-helpers";
 
 // Mock Clerk auth (needed for compose API)
 vi.mock("@clerk/nextjs/server", () => ({
@@ -25,10 +25,8 @@ vi.mock("next/headers", () => ({
   })),
 }));
 
-import { auth } from "@clerk/nextjs/server";
+import { mockClerk, clearClerkMock } from "../../../__tests__/clerk-mock";
 import { POST as createCompose } from "../../../../app/api/agent/composes/route";
-
-const mockAuth = vi.mocked(auth);
 
 describe("AgentSessionService", () => {
   let service: AgentSessionService;
@@ -45,10 +43,8 @@ describe("AgentSessionService", () => {
     initServices();
     service = new AgentSessionService();
 
-    // Mock Clerk auth for compose API
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    // Mock Clerk auth for compose API (default for all tests)
+    mockClerk({ userId: testUserId });
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -113,6 +109,7 @@ describe("AgentSessionService", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data
     await globalThis.services.db
       .delete(agentSessions)

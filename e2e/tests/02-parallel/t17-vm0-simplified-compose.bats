@@ -27,7 +27,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
-    provider: claude-code
+    framework: claude-code
 EOF
 
     echo "# Running vm0 compose..."
@@ -48,7 +48,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with explicit image"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
 EOF
 
@@ -71,7 +71,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with explicit config"
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code-github:dev
     working_dir: /custom/path
 EOF
@@ -92,7 +92,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with apps"
-    provider: claude-code
+    framework: claude-code
     apps:
       - github
 EOF
@@ -115,7 +115,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with invalid app"
-    provider: claude-code
+    framework: claude-code
     apps:
       - invalid-app
 EOF
@@ -134,7 +134,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with invalid app tag"
-    provider: claude-code
+    framework: claude-code
     apps:
       - github:invalid-tag
 EOF
@@ -145,15 +145,15 @@ EOF
     assert_output --partial "Invalid app tag"
 }
 
-@test "vm0 compose requires image for unsupported provider" {
-    echo "# Creating config without image for unsupported provider..."
+@test "vm0 compose requires image for unsupported framework" {
+    echo "# Creating config without image for unsupported framework..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     description: "Test agent without image"
-    provider: unsupported-provider
+    framework: unsupported-framework
 EOF
 
     echo "# Running vm0 compose (should fail)..."
@@ -173,7 +173,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -202,7 +202,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -239,7 +239,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -263,7 +263,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -292,7 +292,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code:dev
     instructions: AGENTS.md
     skills:
@@ -327,7 +327,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     instructions: AGENTS.md
 EOF
@@ -371,7 +371,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: vm0/claude-code:dev
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -408,7 +408,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     apps:
       - github:dev
 EOF
@@ -445,7 +445,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     skills:
       - https://example.com/not-a-github-url
@@ -464,7 +464,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     instructions: ""
 EOF
@@ -482,7 +482,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     instructions: nonexistent-file.md
 EOF

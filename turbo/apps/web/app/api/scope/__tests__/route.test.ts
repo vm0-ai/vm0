@@ -5,11 +5,21 @@ import { initServices } from "../../../../src/lib/init-services";
 import { scopes } from "../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 
-// Mock the auth module
-let mockUserId: string | null = "test-user-scope-api";
-vi.mock("../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
+
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 describe("/api/scope", () => {
   const testUserId = "test-user-scope-api";
@@ -17,6 +27,16 @@ describe("/api/scope", () => {
 
   beforeAll(() => {
     initServices();
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
   });
 
   afterAll(async () => {
@@ -31,7 +51,9 @@ describe("/api/scope", () => {
 
   describe("GET /api/scope", () => {
     it("should require authentication", async () => {
-      mockUserId = null;
+      mockAuth.mockResolvedValueOnce({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "GET",
@@ -42,12 +64,12 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(401);
       expect(data.error.message).toContain("Not authenticated");
-
-      mockUserId = testUserId;
     });
 
     it("should return 404 if user has no scope", async () => {
-      mockUserId = "user-with-no-scope";
+      mockAuth.mockResolvedValueOnce({
+        userId: "user-with-no-scope",
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "GET",
@@ -58,14 +80,14 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.message).toContain("No scope configured");
-
-      mockUserId = testUserId;
     });
   });
 
   describe("POST /api/scope", () => {
     it("should require authentication", async () => {
-      mockUserId = null;
+      mockAuth.mockResolvedValueOnce({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -78,8 +100,6 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(401);
       expect(data.error.message).toContain("Not authenticated");
-
-      mockUserId = testUserId;
     });
 
     it("should create a scope successfully", async () => {
@@ -127,7 +147,7 @@ describe("/api/scope", () => {
     });
 
     it("should reject invalid slug format", async () => {
-      mockUserId = testUserId2; // Use different user without scope
+      // Use different user without scope
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -138,12 +158,10 @@ describe("/api/scope", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(400);
-
-      mockUserId = testUserId;
     });
 
     it("should reject reserved slugs", async () => {
-      mockUserId = testUserId2; // Use different user without scope
+      // Use different user without scope
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -156,14 +174,14 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.message).toContain("reserved");
-
-      mockUserId = testUserId;
     });
   });
 
   describe("PUT /api/scope", () => {
     it("should require authentication", async () => {
-      mockUserId = null;
+      mockAuth.mockResolvedValueOnce({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "PUT",
@@ -176,8 +194,6 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(401);
       expect(data.error.message).toContain("Not authenticated");
-
-      mockUserId = testUserId;
     });
 
     it("should require force flag to update", async () => {

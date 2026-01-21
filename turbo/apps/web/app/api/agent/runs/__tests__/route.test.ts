@@ -19,7 +19,9 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
-} from "../../../../../src/test/api-test-helpers";
+  createTestCliToken,
+  deleteTestCliToken,
+} from "../../../../../src/__tests__/api-test-helpers";
 import { Sandbox } from "@e2b/code-interpreter";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
@@ -41,10 +43,12 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   // Generate unique IDs for this test run
@@ -58,6 +62,9 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
     // Initialize services
     initServices();
+
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
 
     // Setup E2B SDK mock - create sandbox
     const mockSandbox = {
@@ -86,15 +93,13 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
     vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
-    // Mock headers() - not needed for this endpoint since we use Clerk auth
+    // Mock headers() to return null Authorization, forcing Clerk auth fallback
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
     // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     // Clean up test data from previous runs
     await globalThis.services.db
@@ -134,6 +139,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data
     await globalThis.services.db
       .delete(agentRuns)
@@ -351,9 +357,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
   describe("Authorization", () => {
     it("should reject unauthenticated request", async () => {
       // Mock Clerk to return no user
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = new NextRequest("http://localhost:3000/api/agent/runs", {
         method: "POST",
@@ -392,6 +396,127 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.message).toContain("Agent compose");
+    });
+  });
+
+  // ============================================
+  // CLI Token Authentication Tests
+  // ============================================
+
+  describe("CLI Token Authentication", () => {
+    let testCliToken: string;
+
+    beforeEach(async () => {
+      // Create valid CLI token in database
+      testCliToken = await createTestCliToken(testUserId);
+
+      // Mock headers to return Authorization header with CLI token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${testCliToken}` : null,
+        ),
+      } as unknown as Headers);
+    });
+
+    afterEach(async () => {
+      // Clean up CLI token
+      await deleteTestCliToken(testCliToken);
+    });
+
+    it("should authenticate with valid CLI token", async () => {
+      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          prompt: "Test with CLI token",
+        }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.runId).toBeDefined();
+      expect(data.status).toBe("running");
+
+      // Verify run was created with correct user
+      const [run] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, data.runId))
+        .limit(1);
+
+      expect(run).toBeDefined();
+      expect(run!.userId).toBe(testUserId);
+    });
+
+    it("should reject expired CLI token and fall back to Clerk", async () => {
+      // Create expired token
+      const expiredToken = await createTestCliToken(
+        testUserId,
+        new Date(Date.now() - 1000), // Expired 1 second ago
+      );
+
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${expiredToken}` : null,
+        ),
+      } as unknown as Headers);
+
+      // Mock Clerk to return null (unauthenticated)
+      mockClerk({ userId: null });
+
+      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          prompt: "Test with expired token",
+        }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.message).toContain("Not authenticated");
+
+      // Clean up expired token
+      await deleteTestCliToken(expiredToken);
+    });
+
+    it("should reject invalid CLI token and fall back to Clerk", async () => {
+      // Use invalid token (not in database)
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? "Bearer vm0_live_invalid_token" : null,
+        ),
+      } as unknown as Headers);
+
+      // Mock Clerk to return null (unauthenticated)
+      mockClerk({ userId: null });
+
+      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          prompt: "Test with invalid token",
+        }),
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.message).toContain("Not authenticated");
     });
   });
 });

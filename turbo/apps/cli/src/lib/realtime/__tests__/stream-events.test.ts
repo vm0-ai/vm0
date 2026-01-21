@@ -117,7 +117,8 @@ describe("streamEvents", () => {
 
     // Simulate completion
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed", result: {} },
+      name: "status",
+      data: { status: "completed", result: {} },
     });
 
     const result = await streamPromise;
@@ -140,7 +141,8 @@ describe("streamEvents", () => {
       { type: "text", sequenceNumber: 1, text: "World" },
     ];
     capturedMessageHandler?.({
-      data: { type: "events", events, nextSequence: 2 },
+      name: "events",
+      data: { events, nextSequence: 2 },
     });
 
     expect(options.onEventMock).toHaveBeenCalledTimes(2);
@@ -157,7 +159,8 @@ describe("streamEvents", () => {
 
     // Complete the stream
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed" },
+      name: "status",
+      data: { status: "completed" },
     });
 
     await streamPromise;
@@ -177,7 +180,8 @@ describe("streamEvents", () => {
       agentSessionId: "session-456",
     };
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed", result },
+      name: "status",
+      data: { status: "completed", result },
     });
 
     const streamResult = await streamPromise;
@@ -202,7 +206,8 @@ describe("streamEvents", () => {
     });
 
     capturedMessageHandler?.({
-      data: { type: "status", status: "failed", error: "Something went wrong" },
+      name: "status",
+      data: { status: "failed", error: "Something went wrong" },
     });
 
     const streamResult = await streamPromise;
@@ -225,7 +230,8 @@ describe("streamEvents", () => {
     });
 
     capturedMessageHandler?.({
-      data: { type: "status", status: "timeout" },
+      name: "status",
+      data: { status: "timeout" },
     });
 
     const streamResult = await streamPromise;
@@ -244,7 +250,8 @@ describe("streamEvents", () => {
     });
 
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed" },
+      name: "status",
+      data: { status: "completed" },
     });
 
     await streamPromise;
@@ -265,8 +272,8 @@ describe("streamEvents", () => {
 
     // Send events with a gap (skip sequence 0)
     capturedMessageHandler?.({
+      name: "events",
       data: {
-        type: "events",
         events: [{ type: "text", sequenceNumber: 5 }],
         nextSequence: 6,
       },
@@ -278,7 +285,8 @@ describe("streamEvents", () => {
 
     // Complete
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed" },
+      name: "status",
+      data: { status: "completed" },
     });
 
     await streamPromise;
@@ -296,8 +304,8 @@ describe("streamEvents", () => {
     });
 
     capturedMessageHandler?.({
+      name: "events",
       data: {
-        type: "events",
         events: [{ type: "text", sequenceNumber: 0 }],
         nextSequence: 1,
       },
@@ -309,7 +317,8 @@ describe("streamEvents", () => {
     );
 
     capturedMessageHandler?.({
-      data: { type: "status", status: "completed" },
+      name: "status",
+      data: { status: "completed" },
     });
 
     await streamPromise;

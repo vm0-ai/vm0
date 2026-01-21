@@ -253,12 +253,12 @@ export async function pollEvents(
       since: nextSequence,
     });
 
-    // Render agent events (use appropriate renderer based on provider from API)
+    // Render agent events (use appropriate renderer based on framework from API)
     for (const event of response.events) {
       const eventData = event.eventData as Record<string, unknown>;
 
-      if (response.provider === "codex") {
-        // Use Codex renderer for Codex provider
+      if (response.framework === "codex") {
+        // Use Codex renderer for Codex framework
         CodexEventRenderer.render(eventData);
       } else {
         // Use Claude Code renderer (default)

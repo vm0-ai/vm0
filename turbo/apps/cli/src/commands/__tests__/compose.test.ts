@@ -16,9 +16,10 @@ import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
 vi.mock("../../lib/domain/yaml-validator");
-vi.mock("../../lib/domain/provider-config", () => ({
-  getProviderDefaults: vi.fn().mockReturnValue(undefined),
+vi.mock("../../lib/domain/framework-config", () => ({
+  getFrameworkDefaults: vi.fn().mockReturnValue(undefined),
   getDefaultImage: vi.fn().mockReturnValue(undefined),
+  getDefaultImageWithApps: vi.fn().mockReturnValue(undefined),
 }));
 vi.mock("../../lib/system-storage", () => ({
   uploadInstructions: vi.fn(),
@@ -73,7 +74,7 @@ describe("compose command", () => {
     it("should read file when it exists", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
       );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
@@ -173,7 +174,7 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
       );
     });
 
@@ -340,7 +341,7 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    provider: test\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
       );
       vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
         valid: true,
@@ -410,7 +411,7 @@ describe("compose command", () => {
 describe("transformExperimentalShorthand", () => {
   it("should transform experimental_secrets to environment", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_secrets: ["API_KEY", "DB_URL"],
     };
     transformExperimentalShorthand(agent);
@@ -424,7 +425,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should transform experimental_vars to environment", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_vars: ["CLOUD_NAME", "REGION"],
     };
     transformExperimentalShorthand(agent);
@@ -438,7 +439,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should preserve explicit environment over shorthand (secrets)", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_secrets: ["API_KEY"],
       environment: {
         API_KEY: "${{ secrets.DIFFERENT_KEY }}",
@@ -453,7 +454,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should preserve explicit environment over shorthand (vars)", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_vars: ["CLOUD_NAME"],
       environment: {
         CLOUD_NAME: "explicit-value",
@@ -468,7 +469,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should combine all three sources correctly", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_secrets: ["SECRET1", "SECRET2"],
       experimental_vars: ["VAR1"],
       environment: {
@@ -490,7 +491,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should not modify agent without shorthand fields", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       environment: { KEY: "value" },
     };
     transformExperimentalShorthand(agent);
@@ -502,7 +503,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should handle empty arrays", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_secrets: [],
       experimental_vars: [],
     };
@@ -515,7 +516,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should create environment when only shorthand provided", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
       experimental_secrets: ["API_KEY"],
     };
     transformExperimentalShorthand(agent);
@@ -527,7 +528,7 @@ describe("transformExperimentalShorthand", () => {
 
   it("should handle agent with no shorthand or environment", () => {
     const agent: Record<string, unknown> = {
-      provider: "claude-code",
+      framework: "claude-code",
     };
     transformExperimentalShorthand(agent);
 
@@ -541,7 +542,7 @@ describe("getSecretsFromComposeContent", () => {
       version: "1.0",
       agents: {
         myAgent: {
-          provider: "claude-code",
+          framework: "claude-code",
           environment: {
             API_KEY: "${{ secrets.API_KEY }}",
             DB_URL: "${{ secrets.DB_URL }}",
@@ -563,7 +564,7 @@ describe("getSecretsFromComposeContent", () => {
       version: "1.0",
       agents: {
         myAgent: {
-          provider: "claude-code",
+          framework: "claude-code",
           environment: {
             REGION: "${{ vars.REGION }}",
             STATIC: "static-value",
@@ -581,7 +582,7 @@ describe("getSecretsFromComposeContent", () => {
       version: "1.0",
       agents: {
         myAgent: {
-          provider: "claude-code",
+          framework: "claude-code",
         },
       },
     };

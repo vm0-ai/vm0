@@ -28,7 +28,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "E2E test agent for session testing"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     volumes:
       - claude-files:/home/user/.claude
@@ -263,7 +263,7 @@ version: "1.0"
 agents:
   ${ENV_AGENT_NAME}:
     description: "Test agent for environment variable expansion"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
@@ -346,7 +346,7 @@ version: "1.0"
 agents:
   ${ENV_AGENT_NAME}:
     description: "Test agent for environment variable expansion"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:

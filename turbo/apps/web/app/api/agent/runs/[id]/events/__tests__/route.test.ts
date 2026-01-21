@@ -23,7 +23,9 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
-} from "../../../../../../../src/test/api-test-helpers";
+  createTestCliToken,
+  deleteTestCliToken,
+} from "../../../../../../../src/__tests__/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -39,12 +41,14 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Spy for queryAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,12 +90,10 @@ describe("GET /api/agent/runs/:id/events", () => {
     // Initialize services
     initServices();
 
-    // Mock Clerk auth to return the test user ID
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    // Mock Clerk auth to return the test user ID by default
+    mockClerk({ userId: testUserId });
 
-    // Mock headers() - not needed for this endpoint since we use Clerk auth
+    // Mock headers() to return null Authorization, forcing Clerk auth fallback
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
@@ -166,6 +168,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
@@ -196,9 +199,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
       // Mock auth to return null
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
@@ -708,11 +709,11 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   // ============================================
-  // Provider Field Tests
+  // Framework Field Tests
   // ============================================
 
-  describe("Provider Field", () => {
-    it("should return default provider 'claude-code' for compose without provider", async () => {
+  describe("Framework Field", () => {
+    it("should return default framework 'claude-code' for compose without framework", async () => {
       queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
@@ -723,10 +724,10 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
     });
 
-    it("should return 'codex' provider when compose has codex provider", async () => {
+    it("should return 'codex' framework when compose has codex framework", async () => {
       // Create a compose with codex provider
       const codexComposeId = randomUUID();
       const codexVersionId =
@@ -748,7 +749,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         composeId: codexComposeId,
         content: {
           agent: {
-            provider: "codex",
+            framework: "codex",
             model: "codex",
           },
         },
@@ -775,7 +776,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("codex");
+      expect(data.framework).toBe("codex");
 
       // Clean up
       await globalThis.services.db
@@ -789,8 +790,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         .where(eq(agentComposes.id, codexComposeId));
     });
 
-    it("should return explicit provider from compose configuration", async () => {
-      // Create a compose with explicit claude-code provider
+    it("should return explicit framework from compose configuration", async () => {
+      // Create a compose with explicit claude-code framework
       const explicitComposeId = randomUUID();
       const explicitVersionId =
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
@@ -811,7 +812,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         composeId: explicitComposeId,
         content: {
           agent: {
-            provider: "claude-code",
+            framework: "claude-code",
             model: "claude-3-5-sonnet-20241022",
           },
         },
@@ -838,7 +839,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
 
       // Clean up
       await globalThis.services.db
@@ -1174,6 +1175,71 @@ describe("GET /api/agent/runs/:id/events", () => {
         ),
       ).toEqual([3, 4]);
       expect(secondData.nextSequence).toBe(4);
+    });
+  });
+
+  // ============================================
+  // CLI Token Authentication Tests
+  // ============================================
+
+  describe("CLI Token Authentication", () => {
+    let testCliToken: string;
+
+    beforeEach(async () => {
+      // Create valid CLI token in database
+      testCliToken = await createTestCliToken(testUserId);
+
+      // Mock headers to return Authorization header with CLI token
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${testCliToken}` : null,
+        ),
+      } as unknown as Headers);
+    });
+
+    afterEach(async () => {
+      // Clean up CLI token
+      await deleteTestCliToken(testCliToken);
+    });
+
+    it("should accept request with valid CLI token", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.events).toBeDefined();
+    });
+
+    it("should reject expired CLI token", async () => {
+      // Create expired token
+      const expiredToken = await createTestCliToken(
+        testUserId,
+        new Date(Date.now() - 1000), // Expired 1 second ago
+      );
+
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${expiredToken}` : null,
+        ),
+      } as unknown as Headers);
+
+      // Mock Clerk to return null (unauthenticated)
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+
+      // Clean up expired token
+      await deleteTestCliToken(expiredToken);
     });
   });
 });

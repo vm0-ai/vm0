@@ -12,42 +12,42 @@ import {
   getInstructionsStorageName,
   getSkillStorageName,
   parseGitHubTreeUrl,
-  getValidatedProvider,
+  getValidatedFramework,
 } from "@vm0/core";
 
 /**
- * Get the mount path for instructions based on provider
+ * Get the mount path for instructions based on framework
  *
- * Each provider expects instructions at a specific location:
+ * Each framework expects instructions at a specific location:
  * - claude-code: ~/.claude/
  * - codex: ~/.codex/
  *
- * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @param framework - The framework name (e.g., "claude-code", "codex")
  * @returns The mount path for instructions
- * @throws Error if provider is defined but not supported
+ * @throws Error if framework is defined but not supported
  */
-export function getInstructionsMountPath(provider?: string): string {
-  const validatedProvider = getValidatedProvider(provider);
-  if (validatedProvider === "codex") {
+export function getInstructionsMountPath(framework?: string): string {
+  const validatedFramework = getValidatedFramework(framework);
+  if (validatedFramework === "codex") {
     return "/home/user/.codex";
   }
   return "/home/user/.claude";
 }
 
 /**
- * Get the base path for skills based on provider
+ * Get the base path for skills based on framework
  *
- * Each provider expects skills at a specific location:
+ * Each framework expects skills at a specific location:
  * - claude-code: ~/.claude/skills/
  * - codex: ~/.codex/skills/
  *
- * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @param framework - The framework name (e.g., "claude-code", "codex")
  * @returns The base path for skills
- * @throws Error if provider is defined but not supported
+ * @throws Error if framework is defined but not supported
  */
-export function getSkillsBasePath(provider?: string): string {
-  const validatedProvider = getValidatedProvider(provider);
-  if (validatedProvider === "codex") {
+export function getSkillsBasePath(framework?: string): string {
+  const validatedFramework = getValidatedFramework(framework);
+  if (validatedFramework === "codex") {
     return "/home/user/.codex/skills";
   }
   return "/home/user/.claude/skills";
@@ -257,8 +257,8 @@ export function resolveVolumes(
     }
   }
 
-  // Get provider for mount path resolution
-  const provider = agent?.provider as string | undefined;
+  // Get framework for mount path resolution
+  const framework = agent?.framework as string | undefined;
 
   // Process instructions if specified
   if (agent?.instructions) {
@@ -266,7 +266,7 @@ export function resolveVolumes(
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
       const storageName = getInstructionsStorageName(agentName);
-      const instructionsMountPath = getInstructionsMountPath(provider);
+      const instructionsMountPath = getInstructionsMountPath(framework);
       volumes.push({
         name: storageName,
         driver: "vas",
@@ -279,7 +279,7 @@ export function resolveVolumes(
 
   // Process skills if specified
   if (agent?.skills && agent.skills.length > 0) {
-    const skillsBasePath = getSkillsBasePath(provider);
+    const skillsBasePath = getSkillsBasePath(framework);
     for (const skillUrl of agent.skills) {
       const parsed = parseGitHubTreeUrl(skillUrl);
       if (parsed) {

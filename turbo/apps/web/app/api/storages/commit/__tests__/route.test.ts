@@ -38,10 +38,12 @@ process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 // Static imports - mocks are already in place due to hoisting
 import { POST } from "../route";
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Test constants
 const TEST_USER_ID = "test-user-commit";
@@ -55,6 +57,9 @@ describe("POST /api/storages/commit", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: TEST_USER_ID });
+
     // Setup S3 mocks
     vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValue(true);
     vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
@@ -65,10 +70,9 @@ describe("POST /api/storages/commit", () => {
     } as unknown as Headers);
 
     // Mock Clerk auth to return test user by default
-    mockAuth.mockResolvedValue({
-      userId: TEST_USER_ID,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: TEST_USER_ID });
 
+    clearClerkMock();
     // Clean up test data
     await globalThis.services.db
       .update(storages)
@@ -115,9 +119,7 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    mockAuth.mockResolvedValueOnce({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/commit",

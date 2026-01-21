@@ -24,21 +24,18 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(),
 }));
 
-// Mock Clerk auth
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../../../src/lib/axiom";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 // Spy for queryAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,9 +88,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     vi.clearAllMocks();
     initServices();
 
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -177,6 +172,8 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
+
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -196,9 +193,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -577,8 +572,8 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
   });
 
-  describe("Provider Field", () => {
-    it("should return default provider 'claude-code' for compose without provider", async () => {
+  describe("Framework Field", () => {
+    it("should return default framework 'claude-code' for compose without framework", async () => {
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
       );
@@ -587,10 +582,10 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
     });
 
-    it("should return 'codex' provider when compose has codex provider", async () => {
+    it("should return 'codex' framework when compose has codex framework", async () => {
       // Create a compose with codex provider
       const codexComposeId = randomUUID();
       const codexVersionId =
@@ -612,7 +607,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         composeId: codexComposeId,
         content: {
           agent: {
-            provider: "codex",
+            framework: "codex",
             model: "codex",
           },
         },
@@ -637,7 +632,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("codex");
+      expect(data.framework).toBe("codex");
 
       // Clean up
       await globalThis.services.db
@@ -651,8 +646,8 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         .where(eq(agentComposes.id, codexComposeId));
     });
 
-    it("should return explicit provider from compose configuration", async () => {
-      // Create a compose with explicit claude-code provider
+    it("should return explicit framework from compose configuration", async () => {
+      // Create a compose with explicit claude-code framework
       const explicitComposeId = randomUUID();
       const explicitVersionId =
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
@@ -673,7 +668,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         composeId: explicitComposeId,
         content: {
           agent: {
-            provider: "claude-code",
+            framework: "claude-code",
             model: "claude-3-5-sonnet-20241022",
           },
         },
@@ -698,7 +693,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
 
       // Clean up
       await globalThis.services.db

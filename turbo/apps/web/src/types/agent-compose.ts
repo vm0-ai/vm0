@@ -50,10 +50,10 @@ export interface ExperimentalFirewall {
  */
 interface AgentDefinition {
   description?: string;
-  image?: string; // Optional when provider supports auto-config
-  provider: string;
+  image?: string; // Optional when framework supports auto-config
+  framework: string;
   volumes?: string[]; // Format: "volume-key:/mount/path"
-  working_dir?: string; // Optional when provider supports auto-config
+  working_dir?: string; // Optional when framework supports auto-config
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
    * Path to instructions file (e.g., AGENTS.md).

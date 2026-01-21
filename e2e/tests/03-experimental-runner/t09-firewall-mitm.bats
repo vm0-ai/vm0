@@ -50,7 +50,7 @@ version: "1.0"
 agents:
   mitm-test:
     description: "MITM firewall test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -78,7 +78,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-allow:
     description: "MITM allow test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -137,7 +137,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-block:
     description: "MITM block test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -179,7 +179,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-seal:
     description: "MITM seal_secrets test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -231,7 +231,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-noseal:
     description: "MITM without seal_secrets"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}

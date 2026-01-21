@@ -228,7 +228,7 @@ async function showAgentEvents(
     options.order === "desc" ? [...response.events].reverse() : response.events;
 
   for (const event of events) {
-    renderAgentEvent(event, response.provider);
+    renderAgentEvent(event, response.framework);
   }
 
   if (response.hasMore) {

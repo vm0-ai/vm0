@@ -30,10 +30,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("/api/usage", () => {
   const testUserId = `test-user-usage-${Date.now()}-${process.pid}`;
@@ -98,6 +100,9 @@ describe("/api/usage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+
     // Mock headers() to return no Authorization header by default
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -105,6 +110,7 @@ describe("/api/usage", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up runs created during tests
     await globalThis.services.db
       .delete(agentRuns)
@@ -114,9 +120,7 @@ describe("/api/usage", () => {
   describe("GET /api/usage", () => {
     it("should require authentication", async () => {
       // Mock Clerk auth to return no user
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = new NextRequest("http://localhost:3000/api/usage", {
         method: "GET",
@@ -131,9 +135,7 @@ describe("/api/usage", () => {
 
     it("should return usage data with default 7 day range", async () => {
       // Mock Clerk auth to return test user
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       // Create test runs with completed data
       const now = new Date();
@@ -185,9 +187,7 @@ describe("/api/usage", () => {
     });
 
     it("should accept custom date range", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       const now = new Date();
       const threeDaysAgo = new Date(now);
@@ -209,9 +209,7 @@ describe("/api/usage", () => {
     });
 
     it("should reject invalid start_date format", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       const request = new NextRequest(
         "http://localhost:3000/api/usage?start_date=invalid",
@@ -228,9 +226,7 @@ describe("/api/usage", () => {
     });
 
     it("should reject invalid end_date format", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       const request = new NextRequest(
         "http://localhost:3000/api/usage?end_date=invalid",
@@ -247,9 +243,7 @@ describe("/api/usage", () => {
     });
 
     it("should reject start_date after end_date", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       const now = new Date();
       const yesterday = new Date(now);
@@ -272,9 +266,7 @@ describe("/api/usage", () => {
     });
 
     it("should reject range exceeding 30 days", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       const now = new Date();
       const fortyDaysAgo = new Date(now);
@@ -295,9 +287,7 @@ describe("/api/usage", () => {
     });
 
     it("should return daily breakdown with run counts and run times", async () => {
-      mockAuth.mockResolvedValue({
-        userId: testUserId,
-      } as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: testUserId });
 
       // Create test runs on different days
       const now = new Date();

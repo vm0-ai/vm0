@@ -373,7 +373,7 @@ describe("resolveVolumes", () => {
       const config: AgentVolumeConfig = {
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/workspace",
             instructions: "AGENTS.md",
           },
@@ -393,7 +393,7 @@ describe("resolveVolumes", () => {
       const config: AgentVolumeConfig = {
         agents: {
           "test-agent": {
-            provider: "codex",
+            framework: "codex",
             working_dir: "/workspace",
             instructions: "AGENTS.md",
           },
@@ -434,7 +434,7 @@ describe("resolveVolumes", () => {
       const config: AgentVolumeConfig = {
         agents: {
           "test-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             working_dir: "/workspace",
             skills: ["https://github.com/owner/repo/tree/main/skills/my-skill"],
           },
@@ -452,7 +452,7 @@ describe("resolveVolumes", () => {
       const config: AgentVolumeConfig = {
         agents: {
           "test-agent": {
-            provider: "codex",
+            framework: "codex",
             working_dir: "/workspace",
             skills: ["https://github.com/owner/repo/tree/main/skills/my-skill"],
           },
@@ -498,29 +498,29 @@ describe("getInstructionsMountPath", () => {
     expect(getInstructionsMountPath(undefined)).toBe("/home/user/.claude");
   });
 
-  test("throws for unknown provider", () => {
+  test("throws for unknown framework", () => {
     expect(() => getInstructionsMountPath("unknown")).toThrow(
-      'Unsupported provider "unknown"',
+      'Unsupported framework "unknown"',
     );
   });
 });
 
 describe("getSkillsBasePath", () => {
-  test("returns ~/.claude/skills for claude-code provider", () => {
+  test("returns ~/.claude/skills for claude-code framework", () => {
     expect(getSkillsBasePath("claude-code")).toBe("/home/user/.claude/skills");
   });
 
-  test("returns ~/.codex/skills for codex provider", () => {
+  test("returns ~/.codex/skills for codex framework", () => {
     expect(getSkillsBasePath("codex")).toBe("/home/user/.codex/skills");
   });
 
-  test("returns ~/.claude/skills for undefined provider", () => {
+  test("returns ~/.claude/skills for undefined framework", () => {
     expect(getSkillsBasePath(undefined)).toBe("/home/user/.claude/skills");
   });
 
-  test("throws for unknown provider", () => {
+  test("throws for unknown framework", () => {
     expect(() => getSkillsBasePath("unknown")).toThrow(
-      'Unsupported provider "unknown"',
+      'Unsupported framework "unknown"',
     );
   });
 });

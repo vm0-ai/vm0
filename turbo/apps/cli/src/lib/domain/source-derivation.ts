@@ -14,7 +14,7 @@ import {
 interface AgentDefinition {
   description?: string;
   image?: string;
-  provider: string;
+  framework: string;
   apps?: string[];
   volumes?: string[];
   working_dir?: string;

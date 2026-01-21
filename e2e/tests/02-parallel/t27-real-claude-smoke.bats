@@ -37,7 +37,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Real Claude smoke test"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:

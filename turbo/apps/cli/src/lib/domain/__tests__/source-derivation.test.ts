@@ -184,7 +184,7 @@ describe("source-derivation", () => {
   describe("deriveAgentVariableSources", () => {
     it("should return empty sources for agent without environment", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
       };
 
       const result = await deriveAgentVariableSources(agent);
@@ -195,7 +195,7 @@ describe("source-derivation", () => {
 
     it("should return agent environment as source when no skills", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           API: "${API_KEY}",
           HOST: "${SERVER_HOST}",
@@ -214,7 +214,7 @@ describe("source-derivation", () => {
 
     it("should return agent environment as source when skipNetwork is true", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           API: "${API_KEY}",
         },
@@ -234,7 +234,7 @@ describe("source-derivation", () => {
 
     it("should attribute secrets to skill when skill declares them", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           API: "${OPENAI_API_KEY}",
           HOST: "${SERVER_HOST}",
@@ -264,7 +264,7 @@ describe("source-derivation", () => {
 
     it("should attribute vars to skill when skill declares them", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           MODEL: "${OPENAI_MODEL}",
           HOST: "${SERVER_HOST}",
@@ -293,7 +293,7 @@ describe("source-derivation", () => {
 
     it("should handle skill download failure gracefully", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           API: "${API_KEY}",
         },
@@ -312,7 +312,7 @@ describe("source-derivation", () => {
 
     it("should handle multiple skills", async () => {
       const agent = {
-        provider: "claude-code",
+        framework: "claude-code",
         environment: {
           API: "${OPENAI_API_KEY}",
           GH: "${GITHUB_TOKEN}",
@@ -362,13 +362,13 @@ describe("source-derivation", () => {
         version: "1.0",
         agents: {
           "main-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             environment: {
               API: "${API_KEY}",
             },
           },
           "worker-agent": {
-            provider: "claude-code",
+            framework: "claude-code",
             environment: {
               HOST: "${SERVER_HOST}",
             },
@@ -398,7 +398,7 @@ describe("source-derivation", () => {
         version: "1.0",
         agents: {
           solo: {
-            provider: "claude-code",
+            framework: "claude-code",
             environment: {
               TOKEN: "${AUTH_TOKEN}",
             },
@@ -421,7 +421,7 @@ describe("source-derivation", () => {
         version: "1.0",
         agents: {
           simple: {
-            provider: "claude-code",
+            framework: "claude-code",
           },
         },
       };

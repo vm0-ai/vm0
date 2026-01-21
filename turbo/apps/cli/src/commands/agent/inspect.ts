@@ -16,7 +16,7 @@ import {
 interface AgentDefinition {
   description?: string;
   image?: string;
-  provider: string;
+  framework: string;
   apps?: string[];
   volumes?: string[];
   working_dir?: string;
@@ -61,7 +61,7 @@ function formatComposeOutput(
   console.log(chalk.bold("Agents:"));
   for (const [agentName, agent] of Object.entries(content.agents)) {
     console.log(`  ${chalk.cyan(agentName)}:`);
-    console.log(`    Provider: ${agent.provider}`);
+    console.log(`    Framework: ${agent.framework}`);
 
     if (agent.image) {
       console.log(`    Image:    ${agent.image}`);

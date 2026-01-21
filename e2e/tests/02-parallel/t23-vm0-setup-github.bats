@@ -171,7 +171,7 @@ check_setup_github_prereqs() {
 version: "1.0"
 agents:
   secret-test-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     experimental_secrets:
       - CUSTOM_API_KEY
@@ -198,7 +198,7 @@ EOF
 version: "1.0"
 agents:
   vars-test-agent:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     experimental_vars:
       - REGION

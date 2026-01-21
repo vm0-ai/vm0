@@ -13,9 +13,9 @@ import {
 import { getComposeByName, createOrUpdateCompose, getScope } from "../lib/api";
 import { validateAgentCompose } from "../lib/domain/yaml-validator";
 import {
-  getProviderDefaults,
+  getFrameworkDefaults,
   getDefaultImageWithApps,
-} from "../lib/domain/provider-config";
+} from "../lib/domain/framework-config";
 import {
   uploadInstructions,
   uploadSkill,
@@ -148,15 +148,15 @@ export const composeCommand = new Command()
       const agent = agents[agentName]!;
       const basePath = dirname(configFile);
 
-      // Apply provider auto-configuration for image and working_dir if not explicitly set
-      if (agent.provider) {
-        const defaults = getProviderDefaults(agent.provider as string);
+      // Apply framework auto-configuration for image and working_dir if not explicitly set
+      if (agent.framework) {
+        const defaults = getFrameworkDefaults(agent.framework as string);
         if (defaults) {
           if (!agent.image) {
             // Use apps-aware image selection
             const apps = agent.apps as string[] | undefined;
             const defaultImage = getDefaultImageWithApps(
-              agent.provider as string,
+              agent.framework as string,
               apps,
             );
             if (defaultImage) {
@@ -180,13 +180,13 @@ export const composeCommand = new Command()
       // Upload instructions if specified
       if (agent.instructions) {
         const instructionsPath = agent.instructions as string;
-        const provider = agent.provider as string | undefined;
+        const framework = agent.framework as string | undefined;
         console.log(`Uploading instructions: ${instructionsPath}`);
         const result = await uploadInstructions(
           agentName,
           instructionsPath,
           basePath,
-          provider,
+          framework,
         );
         console.log(
           chalk.green(

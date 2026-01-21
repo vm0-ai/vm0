@@ -38,7 +38,7 @@ const router = tsr.router(runAgentEventsContract, {
       };
     }
 
-    // Verify run exists and belongs to user, join with compose version to get provider
+    // Verify run exists and belongs to user, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db
       .select({
         id: agentRuns.id,
@@ -62,11 +62,11 @@ const router = tsr.router(runAgentEventsContract, {
       };
     }
 
-    // Extract provider from compose content
+    // Extract framework from compose content
     const composeContent = runWithCompose.composeContent as {
-      agent?: { provider?: string };
+      agent?: { framework?: string };
     } | null;
-    const provider = composeContent?.agent?.provider ?? "claude-code";
+    const framework = composeContent?.agent?.framework ?? "claude-code";
 
     const { since, limit, order } = query;
 
@@ -91,7 +91,7 @@ ${sinceFilter}
         body: {
           events: [],
           hasMore: false,
-          provider,
+          framework,
         },
       };
     }
@@ -110,7 +110,7 @@ ${sinceFilter}
           createdAt: e._time,
         })),
         hasMore,
-        provider,
+        framework,
       },
     };
   },
