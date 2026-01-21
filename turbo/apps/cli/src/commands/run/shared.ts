@@ -169,12 +169,12 @@ export function parseIdentifier(identifier: string): {
   return { scope, name: rest };
 }
 
-export interface PollOptions {
+interface PollOptions {
   verbose?: boolean;
   startTimestamp: Date;
 }
 
-export interface PollResult {
+interface PollResult {
   succeeded: boolean;
   runId: string;
   sessionId?: string;
