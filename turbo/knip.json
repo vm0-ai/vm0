@@ -64,7 +64,8 @@
         "tailwindcss",
         "@vm0/ui",
         "@testing-library/react",
-        "typescript-eslint"
+        "typescript-eslint",
+        "@clerk/clerk-react"
       ]
     },
     "apps/runner": {
