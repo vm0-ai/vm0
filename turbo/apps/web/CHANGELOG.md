@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.17.0](https://github.com/vm0-ai/vm0/compare/web-v9.16.1...web-v9.17.0) (2026-01-21)
+
+
+### Features
+
+* **cli:** add experimental realtime event streaming with ably ([#1383](https://github.com/vm0-ai/vm0/issues/1383)) ([a37b177](https://github.com/vm0-ai/vm0/commit/a37b1776819c9c1653f214a513c206032e37af01))
+
+
+### Bug Fixes
+
+* add missing foreign key constraint on agent_runs.scheduleId ([#1393](https://github.com/vm0-ai/vm0/issues/1393)) ([c2319ac](https://github.com/vm0-ai/vm0/commit/c2319ac5890de7551eb4c92ee51909206a08a841)), closes [#1387](https://github.com/vm0-ai/vm0/issues/1387)
+* **run:** merge credentials into secrets for client-side log masking ([#1409](https://github.com/vm0-ai/vm0/issues/1409)) ([dea6d04](https://github.com/vm0-ai/vm0/commit/dea6d04a675e930dc848ea2901c81139cc39841b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.9.0
+
 ## [9.16.1](https://github.com/vm0-ai/vm0/compare/web-v9.16.0...web-v9.16.1) (2026-01-20)
 
 
