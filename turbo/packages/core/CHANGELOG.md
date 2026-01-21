@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.0](https://github.com/vm0-ai/vm0/compare/core-v5.0.0...core-v5.1.0) (2026-01-21)
+
+
+### Features
+
+* add model provider entity and CLI commands ([#1452](https://github.com/vm0-ai/vm0/issues/1452)) ([86900d2](https://github.com/vm0-ai/vm0/commit/86900d2aa26420e1b940c039a87755c3feda531b))
+
 ## [5.0.0](https://github.com/vm0-ai/vm0/compare/core-v4.9.0...core-v5.0.0) (2026-01-21)
 
 

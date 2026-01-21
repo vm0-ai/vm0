@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.1.0](https://github.com/vm0-ai/vm0/compare/cli-v6.0.0...cli-v6.1.0) (2026-01-21)
+
+
+### Features
+
+* add model provider entity and CLI commands ([#1452](https://github.com/vm0-ai/vm0/issues/1452)) ([86900d2](https://github.com/vm0-ai/vm0/commit/86900d2aa26420e1b940c039a87755c3feda531b))
+
+
+### Bug Fixes
+
+* **cli:** hide --debug-no-mock-claude option from help output ([#1459](https://github.com/vm0-ai/vm0/issues/1459)) ([a0dd095](https://github.com/vm0-ai/vm0/commit/a0dd095f879aaae993092d3405489be9c1f2b8cd)), closes [#1458](https://github.com/vm0-ai/vm0/issues/1458)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.1.0
+
 ## [6.0.0](https://github.com/vm0-ai/vm0/compare/cli-v5.10.0...cli-v6.0.0) (2026-01-21)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [10.1.0](https://github.com/vm0-ai/vm0/compare/web-v10.0.0...web-v10.1.0) (2026-01-21)
+
+
+### Features
+
+* add environment-aware cors support for platform logs page in preview deployments ([#1456](https://github.com/vm0-ai/vm0/issues/1456)) ([a482dbf](https://github.com/vm0-ai/vm0/commit/a482dbfbda96151408000a9f767012f67f93e3cd))
+* add model provider entity and CLI commands ([#1452](https://github.com/vm0-ai/vm0/issues/1452)) ([86900d2](https://github.com/vm0-ai/vm0/commit/86900d2aa26420e1b940c039a87755c3feda531b))
+* **ui:** enhance design system with color tokens and improve navigation icons and clerk styling ([#1466](https://github.com/vm0-ai/vm0/issues/1466)) ([be12e83](https://github.com/vm0-ai/vm0/commit/be12e83029093b9beab0afc5307926ccecb30571))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.1.0
+
 ## [10.0.0](https://github.com/vm0-ai/vm0/compare/web-v9.18.0...web-v10.0.0) (2026-01-21)
 
 
