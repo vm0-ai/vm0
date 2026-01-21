@@ -76,11 +76,12 @@ teardown() {
     assert_success
 
     # Step 2: Run agent with --experimental-realtime flag
+    # Note: Use bash command as prompt since mock-claude executes prompts as bash commands
     echo "# Step 2: Running agent with --experimental-realtime..."
     run timeout 120 $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --experimental-realtime \
-        "Read the readme.txt file and tell me what it contains"
+        "cat readme.txt && echo 'realtime test complete'"
 
     # Step 3: Verify run completed successfully
     echo "# Step 3: Verifying output..."
@@ -111,11 +112,12 @@ teardown() {
     assert_success
 
     # Step 2: Run with realtime streaming
+    # Note: Use bash command as prompt since mock-claude executes prompts as bash commands
     echo "# Step 2: Running with --experimental-realtime..."
     run timeout 120 $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME-compare" \
         --experimental-realtime \
-        "echo 'realtime test' > output.txt"
+        "echo 'realtime test' > output.txt && cat output.txt"
 
     assert_success
     REALTIME_OUTPUT="$output"
