@@ -190,7 +190,7 @@ agents:
   my-test-agent:
     provider: claude-code
     instructions: AGENTS.md
-`
+`,
       );
 
       vi.mocked(spawnSync).mockReturnValue({
@@ -204,7 +204,12 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
       // Read the actual file that was written
-      const publishPath = path.join(tempDir, ".github", "workflows", "publish.yml");
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
       expect(existsSync(publishPath)).toBe(true);
       const content = await fs.readFile(publishPath, "utf-8");
 
@@ -300,7 +305,7 @@ agents:
       - CUSTOM_SECRET
     experimental_vars:
       - CUSTOM_VAR
-`
+`,
       );
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
@@ -330,17 +335,14 @@ agents:
 agents:
   my-agent:
     provider: claude-code
-`
+`,
       );
     });
 
     it("should prompt to overwrite existing files", async () => {
       // Create existing workflow file
       await fs.mkdir(".github/workflows", { recursive: true });
-      await fs.writeFile(
-        ".github/workflows/publish.yml",
-        "existing content"
-      );
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false); // No, don't overwrite
 
@@ -357,10 +359,7 @@ agents:
     it("should overwrite files with --force option", async () => {
       // Create existing workflow file
       await fs.mkdir(".github/workflows", { recursive: true });
-      await fs.writeFile(
-        ".github/workflows/publish.yml",
-        "existing content"
-      );
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       await setupGithubCommand.parseAsync([
         "node",
@@ -370,7 +369,10 @@ agents:
       ]);
 
       // Verify file was overwritten
-      const content = await fs.readFile(".github/workflows/publish.yml", "utf-8");
+      const content = await fs.readFile(
+        ".github/workflows/publish.yml",
+        "utf-8",
+      );
       expect(content).not.toBe("existing content");
       expect(content).toContain("name: Publish Agent");
 
@@ -382,10 +384,7 @@ agents:
     it("should work with -f short option", async () => {
       // Create existing workflow file
       await fs.mkdir(".github/workflows", { recursive: true });
-      await fs.writeFile(
-        ".github/workflows/publish.yml",
-        "existing content"
-      );
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       await setupGithubCommand.parseAsync([
         "node",
@@ -416,7 +415,7 @@ agents:
 agents:
   my-agent:
     provider: claude-code
-`
+`,
       );
     });
 
@@ -451,13 +450,10 @@ agents:
 agents:
   my-agent:
     provider: claude-code
-`
+`,
       );
       await fs.mkdir(".github/workflows", { recursive: true });
-      await fs.writeFile(
-        ".github/workflows/publish.yml",
-        "existing content"
-      );
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
@@ -472,7 +468,10 @@ agents:
 
       // Should have proceeded with overwriting and setting secrets
       expect(existsSync(".github/workflows/publish.yml")).toBe(true);
-      const content = await fs.readFile(".github/workflows/publish.yml", "utf-8");
+      const content = await fs.readFile(
+        ".github/workflows/publish.yml",
+        "utf-8",
+      );
       expect(content).toContain("name: Publish Agent");
     });
 
@@ -501,7 +500,7 @@ agents:
 agents:
   my-agent:
     provider: claude-code
-`
+`,
       );
     });
 
@@ -603,7 +602,7 @@ agents:
 agents:
   my-agent:
     provider: claude-code
-`
+`,
       );
 
       vi.mocked(spawnSync).mockReturnValue({
@@ -674,7 +673,7 @@ agents:
   subdir-agent:
     provider: claude-code
     instructions: AGENTS.md
-`
+`,
       );
 
       vi.mocked(spawnSync).mockReturnValue({
@@ -691,7 +690,12 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
       // Read the actual file that was written
-      const publishPath = path.join(tempDir, ".github", "workflows", "publish.yml");
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
       const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).toContain("working-directory: .vm0");
@@ -703,7 +707,12 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
       // Verify files were written to git root
-      const publishPath = path.join(tempDir, ".github", "workflows", "publish.yml");
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
       const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
 
       expect(existsSync(publishPath)).toBe(true);
@@ -740,7 +749,7 @@ agents:
   root-agent:
     provider: claude-code
     instructions: AGENTS.md
-`
+`,
       );
 
       vi.mocked(spawnSync).mockReturnValue({
@@ -752,7 +761,12 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
       // Read the actual file that was written
-      const publishPath = path.join(tempDir, ".github", "workflows", "publish.yml");
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
       const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).not.toContain("working-directory");
@@ -783,7 +797,7 @@ agents:
   nested-agent:
     provider: claude-code
     instructions: AGENTS.md
-`
+`,
       );
 
       vi.mocked(spawnSync).mockReturnValue({
@@ -800,7 +814,12 @@ agents:
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
       // Read the actual file that was written
-      const publishPath = path.join(tempDir, ".github", "workflows", "publish.yml");
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
       const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).toContain("working-directory: configs/agents");

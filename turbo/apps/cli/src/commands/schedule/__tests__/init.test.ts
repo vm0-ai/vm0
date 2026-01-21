@@ -132,7 +132,7 @@ agents:
     experimental_secrets:
       - DATABASE_URL
       - API_SECRET
-`
+`,
       );
 
       const result = extractVarsAndSecrets();
@@ -154,7 +154,7 @@ agents:
       MY_VAR: "\${{ vars.MY_VAR }}"
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
       ANOTHER: "\${{ vars.ANOTHER }}"
-`
+`,
       );
 
       const result = extractVarsAndSecrets();
@@ -176,7 +176,7 @@ agents:
     environment:
       KEY1: "\${{ vars.API_KEY }}"
       KEY2: "\${{ vars.API_KEY }}"
-`
+`,
       );
 
       const result = extractVarsAndSecrets();

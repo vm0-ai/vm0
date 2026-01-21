@@ -38,7 +38,9 @@ describe("ProxyManager", () => {
       const config = proxyManager.getConfig();
 
       expect(config.caDir).toBe(path.join(tempDir, "proxy"));
-      expect(config.addonPath).toBe(path.join(tempDir, "proxy", "mitm_addon.py"));
+      expect(config.addonPath).toBe(
+        path.join(tempDir, "proxy", "mitm_addon.py"),
+      );
     });
 
     it("should merge custom config with defaults", () => {

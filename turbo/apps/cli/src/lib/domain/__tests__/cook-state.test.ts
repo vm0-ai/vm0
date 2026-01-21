@@ -57,7 +57,7 @@ describe("cook-state", () => {
               lastActiveAt: Date.now(),
             },
           },
-        })
+        }),
       );
 
       const { loadCookState } = await import("../cook-state");
@@ -82,7 +82,7 @@ describe("cook-state", () => {
               lastActiveAt: Date.now(),
             },
           },
-        })
+        }),
       );
 
       const { loadCookState } = await import("../cook-state");
@@ -99,7 +99,7 @@ describe("cook-state", () => {
         JSON.stringify({
           lastRunId: "old-run",
           lastSessionId: "old-session",
-        })
+        }),
       );
 
       const { loadCookState } = await import("../cook-state");
@@ -116,7 +116,7 @@ describe("cook-state", () => {
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "cook.json"),
-        "not valid json {{{"
+        "not valid json {{{",
       );
 
       const { loadCookState } = await import("../cook-state");
@@ -143,7 +143,7 @@ describe("cook-state", () => {
       // Read the real file (note: the file is named cook.json, not cook-state.json)
       const content = await fs.readFile(
         path.join(tempDir, ".vm0", "cook.json"),
-        "utf-8"
+        "utf-8",
       );
       const written = JSON.parse(content) as {
         ppid: Record<string, { lastRunId: string; lastActiveAt: number }>;
@@ -175,7 +175,7 @@ describe("cook-state", () => {
               lastActiveAt: now - 1000, // 1 second ago
             },
           },
-        })
+        }),
       );
 
       const { saveCookState } = await import("../cook-state");
@@ -184,7 +184,7 @@ describe("cook-state", () => {
       // Read the real file
       const content = await fs.readFile(
         path.join(tempDir, ".vm0", "cook.json"),
-        "utf-8"
+        "utf-8",
       );
       const written = JSON.parse(content) as {
         ppid: Record<string, unknown>;
@@ -209,7 +209,7 @@ describe("cook-state", () => {
               lastActiveAt: Date.now() - 1000,
             },
           },
-        })
+        }),
       );
 
       const { saveCookState } = await import("../cook-state");
@@ -218,7 +218,7 @@ describe("cook-state", () => {
       // Read the real file
       const content = await fs.readFile(
         path.join(tempDir, ".vm0", "cook.json"),
-        "utf-8"
+        "utf-8",
       );
       const written = JSON.parse(content) as {
         ppid: Record<string, { lastRunId: string; lastSessionId: string }>;
@@ -239,7 +239,7 @@ describe("cook-state", () => {
           lastRunId: "old-run",
           lastSessionId: "old-session",
           lastCheckpointId: "old-checkpoint",
-        })
+        }),
       );
 
       const { saveCookState } = await import("../cook-state");
@@ -250,7 +250,7 @@ describe("cook-state", () => {
       // Read the real file
       const content = await fs.readFile(
         path.join(tempDir, ".vm0", "cook.json"),
-        "utf-8"
+        "utf-8",
       );
       const written = JSON.parse(content) as {
         ppid: Record<

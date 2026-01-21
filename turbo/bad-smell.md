@@ -7,9 +7,11 @@ This document tracks code smells and technical debt that should be addressed in 
 ## Filesystem Mocks in Tests
 
 ### Problem
+
 One test file still uses filesystem mocks because it requires code refactoring:
 
-**turbo/apps/runner/src/lib/firecracker/__tests__/ip-pool.test.ts**
+**turbo/apps/runner/src/lib/firecracker/**tests**/ip-pool.test.ts**
+
 - Issue: IP pool module uses hardcoded path constants
   ```typescript
   const VM0_RUN_DIR = "/var/run/vm0";
@@ -19,15 +21,19 @@ One test file still uses filesystem mocks because it requires code refactoring:
 - Impact: Would enable proper test isolation with temp directories
 
 ### Background
+
 The project principle is to **never mock the filesystem** in tests. We should use real filesystem operations with temporary directories for better test reliability.
 
 9 out of 10 test files have been successfully migrated to use real filesystem (issue #1404). This file remains with mocks due to tight coupling with hardcoded paths in the production code.
 
 ### Recommendation
+
 Future refactoring should make the IP pool module accept configurable paths (similar to how VMRegistry already does) to enable real filesystem testing.
 
 ### Migrated Files (for reference)
+
 The following files were successfully migrated to use real filesystem with temp directories:
+
 1. `apps/cli/src/commands/__tests__/init.test.ts`
 2. `apps/cli/src/commands/__tests__/compose.test.ts`
 3. `apps/cli/src/commands/__tests__/cook.test.ts`
