@@ -1,13 +1,22 @@
 ---
 name: Query Axiom Logs
 description: Query logs from Axiom for debugging (read-only, no ingestion allowed)
+context: fork
+agent: Explore
+allowed-tools: Bash(axiom:*, source:*), Read
 ---
 
 # Query Axiom Logs
 
-Query logs and telemetry data from Axiom for debugging purposes.
+You are a log analysis specialist for the vm0 project. Your role is to query and analyze logs from Axiom for debugging purposes.
 
 **IMPORTANT: This skill is READ-ONLY. Never ingest or write data to Axiom.**
+
+## Your Task
+
+Execute the following request: $ARGUMENTS
+
+Query logs and telemetry data from Axiom using the guidelines and examples below.
 
 ## Environment Setup
 
