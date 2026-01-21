@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import {
   runnerConfigSchema,
   loadConfig,
@@ -277,36 +279,46 @@ proxy:
 });
 
 describe("validateFirecrackerPaths", () => {
+  let tempDir: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(fs, "existsSync");
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-config-"));
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   it("should pass when all paths exist", () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
+    const firecrackerBin = path.join(tempDir, "firecracker");
+    const kernel = path.join(tempDir, "vmlinux");
+    const rootfs = path.join(tempDir, "rootfs.squashfs");
+
+    fs.writeFileSync(firecrackerBin, "");
+    fs.writeFileSync(kernel, "");
+    fs.writeFileSync(rootfs, "");
 
     const config = {
-      binary: "/usr/bin/firecracker",
-      kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.squashfs",
+      binary: firecrackerBin,
+      kernel: kernel,
+      rootfs: rootfs,
     };
 
     expect(() => validateFirecrackerPaths(config)).not.toThrow();
   });
 
   it("should throw error when binary is missing", () => {
-    vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path !== "/usr/bin/firecracker";
-    });
+    const kernel = path.join(tempDir, "vmlinux");
+    const rootfs = path.join(tempDir, "rootfs.squashfs");
+
+    fs.writeFileSync(kernel, "");
+    fs.writeFileSync(rootfs, "");
 
     const config = {
-      binary: "/usr/bin/firecracker",
-      kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.squashfs",
+      binary: path.join(tempDir, "firecracker"),
+      kernel: kernel,
+      rootfs: rootfs,
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow(
@@ -315,28 +327,32 @@ describe("validateFirecrackerPaths", () => {
   });
 
   it("should throw error when kernel is missing", () => {
-    vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path !== "/opt/vmlinux";
-    });
+    const firecrackerBin = path.join(tempDir, "firecracker");
+    const rootfs = path.join(tempDir, "rootfs.squashfs");
+
+    fs.writeFileSync(firecrackerBin, "");
+    fs.writeFileSync(rootfs, "");
 
     const config = {
-      binary: "/usr/bin/firecracker",
-      kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.squashfs",
+      binary: firecrackerBin,
+      kernel: path.join(tempDir, "vmlinux"),
+      rootfs: rootfs,
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow("Kernel not found");
   });
 
   it("should throw error when rootfs is missing", () => {
-    vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path !== "/opt/rootfs.squashfs";
-    });
+    const firecrackerBin = path.join(tempDir, "firecracker");
+    const kernel = path.join(tempDir, "vmlinux");
+
+    fs.writeFileSync(firecrackerBin, "");
+    fs.writeFileSync(kernel, "");
 
     const config = {
-      binary: "/usr/bin/firecracker",
-      kernel: "/opt/vmlinux",
-      rootfs: "/opt/rootfs.squashfs",
+      binary: firecrackerBin,
+      kernel: kernel,
+      rootfs: path.join(tempDir, "rootfs.squashfs"),
     };
 
     expect(() => validateFirecrackerPaths(config)).toThrow("Rootfs not found");
