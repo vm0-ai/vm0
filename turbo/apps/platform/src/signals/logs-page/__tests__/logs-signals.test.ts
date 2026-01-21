@@ -7,7 +7,6 @@ import {
   currentCursor$,
   hasMore$,
   loadMore$,
-  navigateToRunDetail$,
 } from "../logs-signals.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 
@@ -30,17 +29,6 @@ vi.mock("@clerk/clerk-js", () => ({
     };
   },
 }));
-
-// Mock navigateInReact$
-vi.mock("../route.ts", async () => {
-  const actual = await vi.importActual("../route.ts");
-  return {
-    ...actual,
-    navigateInReact$: {
-      init: vi.fn(),
-    },
-  };
-});
 
 const context = testContext();
 
@@ -198,18 +186,6 @@ describe("logs-signals", () => {
 
       expect(cursor).toBeNull();
       expect(hasMore).toBeFalsy();
-    });
-  });
-
-  describe("navigateToRunDetail$", () => {
-    it("should be callable", () => {
-      const { store } = context;
-
-      // navigateToRunDetail$ requires rootSignal$ which isn't set up in tests
-      // Just verify the command exists and is callable
-      expect(() => {
-        store.set(navigateToRunDetail$);
-      }).toThrow("No root signal");
     });
   });
 });

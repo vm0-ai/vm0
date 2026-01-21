@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.18.0](https://github.com/vm0-ai/vm0/compare/web-v9.17.0...web-v9.18.0) (2026-01-21)
+
+
+### Features
+
+* **pricing:** redesign pricing page with enhanced visual effects and improved UX ([#1396](https://github.com/vm0-ai/vm0/issues/1396)) ([ee958b3](https://github.com/vm0-ai/vm0/commit/ee958b39f0f9b24a37e3824db5fe9ad63970934f))
+
 ## [9.17.0](https://github.com/vm0-ai/vm0/compare/web-v9.16.1...web-v9.17.0) (2026-01-21)
 
 

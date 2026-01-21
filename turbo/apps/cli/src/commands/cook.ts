@@ -209,7 +209,7 @@ export function parseRunIdsFromOutput(output: string): ParsedRunIds {
  * Extract all required variable names from compose config
  * Returns unique names from both vars and secrets references
  */
-function extractRequiredVarNames(config: AgentComposeConfig): string[] {
+export function extractRequiredVarNames(config: AgentComposeConfig): string[] {
   const refs = extractVariableReferences(config);
   const grouped = groupVariablesBySource(refs);
   // Combine vars and secrets names (both are loaded from .env)

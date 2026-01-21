@@ -1,6 +1,5 @@
 import { state, computed, command, type Computed } from "ccstate";
 import type { LogResponse } from "./types.ts";
-import { navigateInReact$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 
 // Internal state: Array of computed promises, each representing a batch of data
@@ -90,11 +89,4 @@ export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
 
   set(internalLogs$, (prev) => [...prev, nextBatch$]);
-});
-
-// Command: Navigate to run detail page
-export const navigateToRunDetail$ = command(({ set }) => {
-  // TODO: Add /runs/:id to RoutePath type once run detail page is implemented
-  // For now, navigate to home as placeholder
-  set(navigateInReact$, "/");
 });
