@@ -24,28 +24,8 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
 import { Sandbox } from "@e2b/code-interpreter";
+import * as s3Client from "../../../../src/lib/s3/s3-client";
 import { Axiom } from "@axiomhq/js";
-
-// Mock s3-client module
-vi.mock("../../../../src/lib/s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn(),
-  downloadBlob: vi.fn(),
-  generatePresignedUrl: vi.fn(),
-  listS3Objects: vi.fn(),
-  deleteS3Objects: vi.fn(),
-  s3ObjectExists: vi.fn(),
-  verifyS3FilesExist: vi.fn(),
-  uploadStorageVersionArchive: vi.fn(),
-  downloadManifest: vi.fn(),
-  generatePresignedPutUrl: vi.fn(),
-  parseS3Uri: vi.fn(),
-}));
-
-import {
-  generatePresignedUrl,
-  listS3Objects,
-  uploadS3Buffer,
-} from "../../../../src/lib/s3/s3-client";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -197,11 +177,11 @@ describe("Public API v1 - Runs Endpoints", () => {
     );
 
     // Setup S3 mocks
-    vi.mocked(generatePresignedUrl).mockResolvedValue(
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
       "https://mock-presigned-url",
     );
-    vi.mocked(listS3Objects).mockResolvedValue([]);
-    vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
     // Mock Axiom SDK
     const mockAxiomClient = {

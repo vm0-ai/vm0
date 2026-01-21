@@ -21,6 +21,7 @@ import {
   createDefaultComposeConfig,
 } from "../../../../../src/test/api-test-helpers";
 import { Sandbox } from "@e2b/code-interpreter";
+import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -38,27 +39,6 @@ vi.mock("@e2b/code-interpreter");
 // Mock AWS SDK (external) for S3 operations
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-
-// Mock s3-client module
-vi.mock("../../../../../src/lib/s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn(),
-  downloadBlob: vi.fn(),
-  generatePresignedUrl: vi.fn(),
-  listS3Objects: vi.fn(),
-  deleteS3Objects: vi.fn(),
-  s3ObjectExists: vi.fn(),
-  verifyS3FilesExist: vi.fn(),
-  uploadStorageVersionArchive: vi.fn(),
-  downloadManifest: vi.fn(),
-  generatePresignedPutUrl: vi.fn(),
-  parseS3Uri: vi.fn(),
-}));
-
-import {
-  generatePresignedUrl,
-  listS3Objects,
-  uploadS3Buffer,
-} from "../../../../../src/lib/s3/s3-client";
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
@@ -100,11 +80,11 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     );
 
     // Setup S3 mocks
-    vi.mocked(generatePresignedUrl).mockResolvedValue(
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
       "https://mock-presigned-url",
     );
-    vi.mocked(listS3Objects).mockResolvedValue([]);
-    vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
     // Mock headers() - not needed for this endpoint since we use Clerk auth
     mockHeaders.mockResolvedValue({

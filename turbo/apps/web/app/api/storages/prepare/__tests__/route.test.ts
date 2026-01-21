@@ -14,6 +14,7 @@ import {
   storages,
   storageVersions,
 } from "../../../../../src/db/schema/storage";
+import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -28,27 +29,6 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock AWS SDK (external) for S3 operations
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-
-// Mock s3-client module
-vi.mock("../../../../../src/lib/s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn(),
-  downloadBlob: vi.fn(),
-  generatePresignedUrl: vi.fn(),
-  listS3Objects: vi.fn(),
-  deleteS3Objects: vi.fn(),
-  s3ObjectExists: vi.fn(),
-  verifyS3FilesExist: vi.fn(),
-  uploadStorageVersionArchive: vi.fn(),
-  downloadManifest: vi.fn(),
-  generatePresignedPutUrl: vi.fn(),
-  parseS3Uri: vi.fn(),
-}));
-
-import {
-  generatePresignedPutUrl,
-  downloadManifest,
-  verifyS3FilesExist,
-} from "../../../../../src/lib/s3/s3-client";
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
@@ -74,17 +54,17 @@ describe("POST /api/storages/prepare", () => {
     vi.clearAllMocks();
 
     // Setup S3 mocks
-    vi.mocked(generatePresignedPutUrl).mockResolvedValue(
+    vi.spyOn(s3Client, "generatePresignedPutUrl").mockResolvedValue(
       "https://s3.example.com/presigned-url",
     );
-    vi.mocked(downloadManifest).mockResolvedValue({
+    vi.spyOn(s3Client, "downloadManifest").mockResolvedValue({
       version: "1.0",
       createdAt: new Date().toISOString(),
       totalSize: 0,
       fileCount: 0,
       files: [],
     });
-    vi.mocked(verifyS3FilesExist).mockResolvedValue(true);
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
 
     // Mock headers() - return empty headers so auth falls through to Clerk
     mockHeaders.mockResolvedValue({
@@ -388,7 +368,7 @@ describe("POST /api/storages/prepare", () => {
     });
 
     // Mock S3 files as missing
-    vi.mocked(verifyS3FilesExist).mockResolvedValueOnce(false);
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValueOnce(false);
 
     // Prepare again with same files - should get upload URLs since S3 missing
     const request2 = new NextRequest(

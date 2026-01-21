@@ -10,27 +10,11 @@ import {
 import { eq, like } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { blobs } from "../../../db/schema/blob";
+import * as s3Client from "../../s3/s3-client";
 import type { FileEntry } from "../../storage/content-hash";
 
 // Mock AWS SDK (third-party external dependency)
 vi.mock("@aws-sdk/client-s3");
-
-// Mock s3-client module
-vi.mock("../../s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn(),
-  downloadBlob: vi.fn(),
-  generatePresignedUrl: vi.fn(),
-  listS3Objects: vi.fn(),
-  deleteS3Objects: vi.fn(),
-  s3ObjectExists: vi.fn(),
-  verifyS3FilesExist: vi.fn(),
-  uploadStorageVersionArchive: vi.fn(),
-  downloadManifest: vi.fn(),
-  generatePresignedPutUrl: vi.fn(),
-  parseS3Uri: vi.fn(),
-}));
-
-import { uploadS3Buffer } from "../../s3/s3-client";
 
 // Set required environment variables before initServices
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-blobs-bucket";
@@ -55,8 +39,8 @@ describe("BlobService", () => {
     blobService = new BlobService();
     vi.clearAllMocks();
 
-    // Setup s3Client mock - returns success by default
-    vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+    // Mock s3Client functions (spying on real module)
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
     // Clean up test blobs before each test
     await globalThis.services.db
@@ -82,7 +66,7 @@ describe("BlobService", () => {
         bytesUploaded: 0,
       });
 
-      expect(uploadS3Buffer).not.toHaveBeenCalled();
+      expect(s3Client.uploadS3Buffer).not.toHaveBeenCalled();
     });
 
     it("should upload new blobs to S3 and insert into database", async () => {
@@ -91,14 +75,14 @@ describe("BlobService", () => {
         { path: "file2.txt", content: Buffer.from("content2") },
       ];
 
-      vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+      vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
       const result = await blobService.uploadBlobs(files);
 
       expect(result.newBlobsCount).toBe(2);
       expect(result.existingBlobsCount).toBe(0);
       expect(result.hashes.size).toBe(2);
-      expect(uploadS3Buffer).toHaveBeenCalledTimes(2);
+      expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(2);
 
       // Verify blobs were actually inserted into database
       const hash1 = result.hashes.get("file1.txt")!;
@@ -144,7 +128,7 @@ describe("BlobService", () => {
       expect(result.newBlobsCount).toBe(0);
       expect(result.existingBlobsCount).toBe(1);
       expect(result.bytesUploaded).toBe(0);
-      expect(uploadS3Buffer).not.toHaveBeenCalled();
+      expect(s3Client.uploadS3Buffer).not.toHaveBeenCalled();
 
       // Verify ref count was incremented
       const dbBlobs = await globalThis.services.db
@@ -185,14 +169,14 @@ describe("BlobService", () => {
         { path: "existing.txt", content: existingContent },
       ];
 
-      vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+      vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
       const result = await blobService.uploadBlobs(files);
 
       expect(result.newBlobsCount).toBe(1);
       expect(result.existingBlobsCount).toBe(1);
       expect(result.hashes.size).toBe(2);
-      expect(uploadS3Buffer).toHaveBeenCalledTimes(1);
+      expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(1);
 
       // Clean up
       const newHash = result.hashes.get("new.txt")!;
@@ -208,14 +192,14 @@ describe("BlobService", () => {
         { path: "file2.txt", content: Buffer.from("same-content-dedup") },
       ];
 
-      vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+      vi.mocked(s3Client.uploadS3Buffer).mockResolvedValue(undefined);
 
       const result = await blobService.uploadBlobs(files);
 
       // Two files but only one unique blob
       expect(result.hashes.size).toBe(2);
       expect(result.newBlobsCount).toBe(1);
-      expect(uploadS3Buffer).toHaveBeenCalledTimes(1);
+      expect(s3Client.uploadS3Buffer).toHaveBeenCalledTimes(1);
 
       // Both files should have the same hash
       const hash1 = result.hashes.get("file1.txt");

@@ -29,32 +29,12 @@ import {
 import { scopes } from "../../../db/schema/scope";
 import { randomUUID } from "crypto";
 import type { ExecutionContext } from "../../run/types";
+import * as s3Client from "../../s3/s3-client";
 
 // Mock third-party SDKs only (E2B, AWS)
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-
-// Mock s3-client module
-vi.mock("../../s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn(),
-  downloadBlob: vi.fn(),
-  generatePresignedUrl: vi.fn(),
-  listS3Objects: vi.fn(),
-  deleteS3Objects: vi.fn(),
-  s3ObjectExists: vi.fn(),
-  verifyS3FilesExist: vi.fn(),
-  uploadStorageVersionArchive: vi.fn(),
-  downloadManifest: vi.fn(),
-  generatePresignedPutUrl: vi.fn(),
-  parseS3Uri: vi.fn(),
-}));
-
-import {
-  generatePresignedUrl,
-  listS3Objects,
-  uploadS3Buffer,
-} from "../../s3/s3-client";
 
 // Set required environment variables for e2b config
 process.env.E2B_TEMPLATE_NAME = "mock-template";
@@ -123,12 +103,12 @@ describe("E2B Service", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // Mock s3Client functions
-    vi.mocked(generatePresignedUrl).mockResolvedValue(
+    // Mock s3Client functions (spying on real module)
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
       "https://mock-presigned-url",
     );
-    vi.mocked(listS3Objects).mockResolvedValue([]);
-    vi.mocked(uploadS3Buffer).mockResolvedValue(undefined);
+    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
     // Clean up test runs
     await globalThis.services.db
