@@ -74,6 +74,7 @@ describe("/api/usage", () => {
     const composes = await globalThis.services.db
       .insert(agentComposes)
       .values({
+        userId: testUserId,
         scopeId: testScopeId,
         name: "test-compose",
         createdAt: new Date(),
@@ -148,6 +149,7 @@ describe("/api/usage", () => {
       // Create 2 completed runs
       await globalThis.services.db.insert(agentRuns).values([
         {
+          userId: testUserId,
           agentComposeVersionId: testVersionId,
           status: "completed",
           prompt: "Test prompt 1",
@@ -156,6 +158,7 @@ describe("/api/usage", () => {
           completedAt: new Date(twoDaysAgo.getTime() + 60000), // 1 minute
         },
         {
+          userId: testUserId,
           agentComposeVersionId: testVersionId,
           status: "completed",
           prompt: "Test prompt 2",
@@ -297,6 +300,7 @@ describe("/api/usage", () => {
 
       await globalThis.services.db.insert(agentRuns).values([
         {
+          userId: testUserId,
           agentComposeVersionId: testVersionId,
           status: "completed",
           prompt: "Test prompt 3",
@@ -305,6 +309,7 @@ describe("/api/usage", () => {
           completedAt: new Date(oneDayAgo.getTime() + 30000), // 30 seconds
         },
         {
+          userId: testUserId,
           agentComposeVersionId: testVersionId,
           status: "completed",
           prompt: "Test prompt 4",
