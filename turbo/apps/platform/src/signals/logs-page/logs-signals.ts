@@ -71,6 +71,7 @@ export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const cursor = await get(currentCursor$);
+  signal.throwIfAborted();
 
   // Load next batch with cursor
   const nextBatch$ = computed(async (get) => {

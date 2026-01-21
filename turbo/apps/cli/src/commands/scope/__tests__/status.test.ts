@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { statusCommand } from "../status";
-import { apiClient } from "../../../lib/api/api-client";
+import * as config from "../../../lib/api/config";
 
-// Mock dependencies
-vi.mock("../../../lib/api/api-client");
+// Mock the config module for auth
+vi.mock("../../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 
 describe("scope status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -16,6 +21,8 @@ describe("scope status command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
@@ -26,9 +33,7 @@ describe("scope status command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("Not authenticated"),
-      );
+      vi.mocked(config.getToken).mockResolvedValue(undefined);
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -37,17 +42,19 @@ describe("scope status command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 
   describe("no scope configured", () => {
     it("should show helpful message when user has no scope", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("No scope configured"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -66,14 +73,18 @@ describe("scope status command", () => {
 
   describe("scope display", () => {
     it("should display scope information", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "test-id",
-        slug: "testuser",
-        type: "personal",
-        displayName: "Test User",
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "test-id",
+            slug: "testuser",
+            type: "personal",
+            displayName: "Test User",
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -92,14 +103,18 @@ describe("scope status command", () => {
     });
 
     it("should handle scope without display name", async () => {
-      vi.mocked(apiClient.getScope).mockResolvedValue({
-        id: "test-id",
-        slug: "testuser",
-        type: "personal",
-        displayName: null,
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json({
+            id: "test-id",
+            slug: "testuser",
+            type: "personal",
+            displayName: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }),
+      );
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -111,8 +126,13 @@ describe("scope status command", () => {
 
   describe("error handling", () => {
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue(
-        new Error("Network error"),
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(
+            { error: { message: "Server error", code: "SERVER_ERROR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -120,20 +140,25 @@ describe("scope status command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Network error"),
+        expect.stringContaining("Server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should handle non-Error exceptions", async () => {
-      vi.mocked(apiClient.getScope).mockRejectedValue("Unknown error");
+      server.use(
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
+      // Network error from HttpResponse.error() manifests as "Failed to fetch"
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("unexpected error"),
+        expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -46,6 +46,8 @@ export default createRule<[], MessageIds>({
   create(context) {
     let signalParamName: string | null = null;
     let inCommand = false;
+    let functionDepth = 0;
+    let commandCallback: TSESTree.Node | null = null;
 
     function isCommandCall(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
@@ -55,23 +57,31 @@ export default createRule<[], MessageIds>({
     function getSignalParamName(
       node: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
     ): string | null {
-      const firstParam = node.params[0];
-      if (!firstParam) {
-        return null;
-      }
+      // 遍历所有参数，不只是第一个
+      for (const param of node.params) {
+        // 情况1: 独立参数 signal: AbortSignal
+        if (param.type === "Identifier" && param.name === "signal") {
+          return "signal";
+        }
 
-      if (firstParam.type === "ObjectPattern") {
-        for (const prop of firstParam.properties) {
-          if (
-            prop.type === "Property" &&
-            prop.key.type === "Identifier" &&
-            prop.key.name === "signal"
-          ) {
-            if (prop.value.type === "Identifier") {
-              return prop.value.name;
-            }
-            return "signal";
+        // 情况2: 解构参数 { signal } 或 { signal: customName }
+        if (param.type !== "ObjectPattern") {
+          continue;
+        }
+
+        for (const prop of param.properties) {
+          if (prop.type !== "Property") {
+            continue;
           }
+          if (prop.key.type !== "Identifier" || prop.key.name !== "signal") {
+            continue;
+          }
+
+          // 找到了 signal 属性
+          if (prop.value.type === "Identifier") {
+            return prop.value.name;
+          }
+          return "signal";
         }
       }
 
@@ -151,6 +161,8 @@ export default createRule<[], MessageIds>({
             if (callback.async) {
               inCommand = true;
               signalParamName = getSignalParamName(callback);
+              functionDepth = 0;
+              commandCallback = callback; // Save reference to command callback
             }
           }
         }
@@ -159,10 +171,57 @@ export default createRule<[], MessageIds>({
         if (isCommandCall(node)) {
           inCommand = false;
           signalParamName = null;
+          functionDepth = 0;
+          commandCallback = null;
+        }
+      },
+      ArrowFunctionExpression(node) {
+        // Track nested async functions inside command (but not the command callback itself)
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback
+        ) {
+          functionDepth++;
+        }
+      },
+      "ArrowFunctionExpression:exit"(node: TSESTree.ArrowFunctionExpression) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback &&
+          functionDepth > 0
+        ) {
+          functionDepth--;
+        }
+      },
+      FunctionExpression(node) {
+        // Track nested async functions inside command (but not the command callback itself)
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback
+        ) {
+          functionDepth++;
+        }
+      },
+      "FunctionExpression:exit"(node: TSESTree.FunctionExpression) {
+        if (
+          inCommand &&
+          signalParamName &&
+          node.async &&
+          node !== commandCallback &&
+          functionDepth > 0
+        ) {
+          functionDepth--;
         }
       },
       BlockStatement(node) {
-        if (inCommand && signalParamName) {
+        // Only check await in the command's direct block, not nested functions
+        if (inCommand && signalParamName && functionDepth === 0) {
           checkAwaitInBlock(node.body);
         }
       },

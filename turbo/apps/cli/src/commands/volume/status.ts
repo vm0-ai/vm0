@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
-import { apiClient } from "../../lib/api/api-client";
+import { getStorageDownload } from "../../lib/api";
 
 /**
  * Format bytes to human-readable format
@@ -43,7 +43,7 @@ export const statusCommand = new Command()
       console.log(`Checking volume: ${config.name}`);
 
       // Call API
-      const info = await apiClient.getStorageDownload({
+      const info = await getStorageDownload({
         name: config.name,
         type: "volume",
       });
