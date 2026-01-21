@@ -253,7 +253,7 @@ version: "1.0"
 
 agents:
   [agent-name]:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/skill-name"
@@ -440,7 +440,7 @@ version: "1.0"
 
 agents:
   news-digest:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/hackernews"
@@ -501,7 +501,7 @@ version: "1.0"
 
 agents:
   issue-analyzer:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/github"
@@ -567,7 +567,7 @@ version: "1.0"
 
 agents:
   content-farm:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/rss-fetch"
@@ -623,7 +623,7 @@ version: "1.0"
 
 agents:
   price-monitor:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl"
@@ -695,7 +695,7 @@ version: "1.0"
 
 agents:
   research-assistant:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/tavily"

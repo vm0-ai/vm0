@@ -136,7 +136,7 @@ describe("GET /api/agent/composes/list", () => {
       agents: {
         "test-list-agent-1": {
           description: "First agent",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -147,7 +147,7 @@ describe("GET /api/agent/composes/list", () => {
       agents: {
         "test-list-agent-2": {
           description: "Second agent",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -228,7 +228,7 @@ describe("GET /api/agent/composes/list", () => {
       agents: {
         "test-other-agent": {
           description: "Other user's agent",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -314,7 +314,7 @@ describe("GET /api/agent/composes/list", () => {
       agents: {
         "test-scope-agent": {
           description: "Agent with scope",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },

@@ -16,11 +16,11 @@ describe("event-parser-factory", () => {
     });
   });
 
-  describe("parseEvent with invalid provider", () => {
-    test("throws for unknown provider", () => {
+  describe("parseEvent with invalid framework", () => {
+    test("throws for unknown framework", () => {
       const rawEvent = { type: "system", subtype: "init" };
       expect(() => parseEvent(rawEvent, "unknown")).toThrow(
-        'Unsupported provider "unknown"',
+        'Unsupported framework "unknown"',
       );
     });
   });

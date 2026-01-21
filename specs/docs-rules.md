@@ -89,7 +89,7 @@ version: "1.0"
 
 agents:
   my-agent:
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/apify # [!code highlight]
 ```

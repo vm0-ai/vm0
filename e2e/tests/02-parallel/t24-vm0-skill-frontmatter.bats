@@ -38,7 +38,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with --yes flag"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -60,7 +60,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with -y short flag"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -81,7 +81,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent in non-TTY"
-    provider: claude-code
+    framework: claude-code
 EOF
 
     echo "# Step 2: Compose with --yes flag and piped input (non-TTY)"
@@ -104,7 +104,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with skill"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -130,7 +130,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with skill and environment"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
     environment:
@@ -154,7 +154,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with skill"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -183,7 +183,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with skill upload"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -207,7 +207,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with multiple skills"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
       - https://github.com/vm0-ai/vm0-skills/tree/main/axiom
@@ -235,7 +235,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -264,7 +264,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -280,7 +280,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
       - https://github.com/vm0-ai/vm0-skills/tree/main/resend
@@ -304,7 +304,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF
@@ -320,7 +320,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
       - https://github.com/vm0-ai/vm0-skills/tree/main/resend
@@ -343,7 +343,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
 EOF

@@ -2,7 +2,7 @@ version: "1.0"
 
 agents:
   docs-writer:
-    provider: claude-code
+    framework: claude-code
     instructions: AGENTS.md
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github

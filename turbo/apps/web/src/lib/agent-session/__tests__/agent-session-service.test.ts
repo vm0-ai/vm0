@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
-} from "../../../test/api-test-helpers";
+} from "../../../__tests__/api-test-helpers";
 
 // Mock Clerk auth (needed for compose API)
 vi.mock("@clerk/nextjs/server", () => ({

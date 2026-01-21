@@ -33,7 +33,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "E2E test agent for cook command"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data
@@ -110,7 +110,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
@@ -153,7 +153,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
@@ -185,7 +185,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
@@ -228,7 +228,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "E2E test agent for cook with skills"
-    provider: claude-code
+    framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF

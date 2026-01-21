@@ -19,7 +19,7 @@ import {
   createTestRequest,
   createDefaultComposeConfig,
   createTestSandboxToken,
-} from "../../../../../../src/test/api-test-helpers";
+} from "../../../../../../src/__tests__/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({

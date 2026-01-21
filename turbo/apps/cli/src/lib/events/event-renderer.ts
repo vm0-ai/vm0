@@ -11,7 +11,7 @@
 import chalk from "chalk";
 import type { ParsedEvent } from "./claude-event-parser";
 import type { RunResult } from "../api";
-import { getProviderDisplayName, isSupportedProvider } from "@vm0/core";
+import { getFrameworkDisplayName, isSupportedFramework } from "@vm0/core";
 
 /**
  * Info about a started run
@@ -172,10 +172,10 @@ export class EventRenderer {
     prefix: string,
     suffix: string,
   ): void {
-    const providerStr = String(event.data.provider || "claude-code");
-    const displayName = isSupportedProvider(providerStr)
-      ? getProviderDisplayName(providerStr)
-      : providerStr;
+    const frameworkStr = String(event.data.framework || "claude-code");
+    const displayName = isSupportedFramework(frameworkStr)
+      ? getFrameworkDisplayName(frameworkStr)
+      : frameworkStr;
     console.log(prefix + "[init]" + suffix + ` Starting ${displayName} agent`);
     console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
     if (event.data.model) {

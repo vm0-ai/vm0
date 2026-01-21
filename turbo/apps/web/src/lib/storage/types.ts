@@ -60,9 +60,9 @@ export interface AgentVolumeConfig {
   agents?: Record<
     string,
     {
-      provider?: string; // Provider name (e.g., "claude-code", "codex") for mount path resolution
+      framework?: string; // Framework name (e.g., "claude-code", "codex") for mount path resolution
       volumes?: string[];
-      working_dir?: string; // Optional when provider supports auto-config
+      working_dir?: string; // Optional when framework supports auto-config
       instructions?: string; // Path to instructions file (stored as agent-instructions@{name} volume)
       skills?: string[]; // GitHub tree URLs (stored as agent-skills@{path} volumes)
     }

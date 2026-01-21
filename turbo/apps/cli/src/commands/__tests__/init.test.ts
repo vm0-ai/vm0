@@ -159,7 +159,7 @@ describe("init command", () => {
 
       expect(content).toContain('version: "1.0"');
       expect(content).toContain("test-agent:");
-      expect(content).toContain("provider: claude-code");
+      expect(content).toContain("framework: claude-code");
       expect(content).toContain("instructions: AGENTS.md");
       expect(content).toContain(
         "# Build agentic workflow using natural language",

@@ -52,7 +52,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for list command"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -78,7 +78,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for version format"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -106,7 +106,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for inspect command"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -121,7 +121,7 @@ EOF
     assert_output --partial "Name:"
     assert_output --partial "Version:"
     assert_output --partial "Agents:"
-    assert_output --partial "Provider:"
+    assert_output --partial "Framework:"
 }
 
 @test "vm0 agent inspect with version specifier" {
@@ -132,7 +132,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for version specifier"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -157,7 +157,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for latest tag"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -181,7 +181,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for no-sources flag"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -214,7 +214,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for version error"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF

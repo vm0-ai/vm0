@@ -38,7 +38,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "E2E test agent for telemetry testing with runner"
-    provider: claude-code
+    framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
     volumes:

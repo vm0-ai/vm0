@@ -10,7 +10,7 @@ import {
 import { scopes } from "../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { createTestSandboxToken } from "../../../../../../src/test/api-test-helpers";
+import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
