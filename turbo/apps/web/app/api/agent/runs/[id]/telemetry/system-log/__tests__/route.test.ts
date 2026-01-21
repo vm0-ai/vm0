@@ -24,11 +24,6 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(),
 }));
 
-// Mock Clerk auth
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
 // Mock Axiom module
 vi.mock("../../../../../../../../src/lib/axiom", () => ({
   queryAxiom: vi.fn(),
@@ -45,11 +40,13 @@ vi.mock("../../../../../../../../src/lib/axiom", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
 import { queryAxiom } from "../../../../../../../../src/lib/axiom";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 const mockQueryAxiom = vi.mocked(queryAxiom);
 
 /**
@@ -71,9 +68,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     vi.clearAllMocks();
     initServices();
 
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -147,6 +142,8 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
+
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
@@ -166,9 +163,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
@@ -294,7 +289,6 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
         {
           _time: new Date().toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Test log entry\n",
         },
       ]);
@@ -318,19 +312,16 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
         {
           _time: new Date(Date.now() - 2000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] First entry\n",
         },
         {
           _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Second entry\n",
         },
         {
           _time: new Date().toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Third entry\n",
         },
       ]);
@@ -372,19 +363,16 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
         {
           _time: new Date(Date.now() - 3000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Entry 1\n",
         },
         {
           _time: new Date(Date.now() - 2000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Entry 2\n",
         },
         {
           _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Entry 3\n",
         },
       ]);
@@ -409,7 +397,6 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
         {
           _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
-          userId: testUserId,
           log: "[INFO] Recent entry\n",
         },
       ]);
