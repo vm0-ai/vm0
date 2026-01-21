@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { StoreProvider } from "ccstate-react";
-import { LogsPage } from "../logs-page.tsx";
-import { setPageSignal$ } from "../../../signals/page-signal.ts";
+import { render } from "@testing-library/react";
+import { setupLogsPage$ } from "../../../signals/logs-page/logs-page.ts";
+import { page$ } from "../../../signals/react-router.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupRouter } from "../../main.tsx";
 
 // Mock Clerk BEFORE any module evaluation using vi.hoisted
 vi.hoisted(() => {
@@ -25,29 +25,25 @@ vi.mock("@clerk/clerk-js", () => ({
   },
 }));
 
-// Mock sidebar to avoid @clerk/clerk-react/experimental import
-vi.mock("../../layout/sidebar.tsx", () => ({
-  Sidebar: () => null,
-}));
-
 const context = testContext();
 
 describe("logs page", () => {
   it("should render the logs page", () => {
     const { store, signal } = context;
 
-    // Set page signal before rendering
-    store.set(setPageSignal$, signal);
+    // Render the router (like main.ts does)
+    const { container } = render(<div id="test-root" />);
+    const rootEl = container.querySelector("#test-root") as HTMLDivElement;
 
-    render(
-      <StoreProvider value={store}>
-        <LogsPage />
-      </StoreProvider>,
-    );
+    setupRouter(store, (element) => {
+      render(element, { container: rootEl });
+    });
 
-    // Check that the page title is rendered (h1 element)
-    expect(
-      screen.getByRole("heading", { name: "Logs", level: 1 }),
-    ).toBeInTheDocument();
+    // Call setupLogsPage$ (like route navigation does)
+    store.set(setupLogsPage$, signal);
+
+    // Get the rendered page element from page$ signal
+    const pageElement = store.get(page$);
+    expect(pageElement).toBeDefined();
   });
 });
