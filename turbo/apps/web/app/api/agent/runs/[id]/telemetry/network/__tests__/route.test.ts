@@ -29,28 +29,20 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock Axiom module
-vi.mock("../../../../../../../../src/lib/axiom", () => ({
-  queryAxiom: vi.fn(),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    SANDBOX_TELEMETRY_NETWORK: "sandbox-telemetry-network",
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { queryAxiom } from "../../../../../../../../src/lib/axiom";
+import { Axiom } from "@axiomhq/js";
+import * as axiomModule from "../../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const queryAxiomSpy = vi.mocked(queryAxiom);
+
+// Spy for queryAxiom - will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let queryAxiomSpy: any;
 
 /**
  * Helper to create a NextRequest for testing.
@@ -113,8 +105,18 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Default: Axiom returns empty array
-    queryAxiomSpy.mockResolvedValue([]);
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Setup spy on queryAxiom - returns empty array by default
+    queryAxiomSpy = vi.spyOn(axiomModule, "queryAxiom").mockResolvedValue([]);
 
     // Clean up any existing test data
     await globalThis.services.db

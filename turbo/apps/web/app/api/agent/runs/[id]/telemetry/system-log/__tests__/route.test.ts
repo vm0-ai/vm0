@@ -41,7 +41,8 @@ const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
 // Spy for queryAxiom - will be set up in beforeEach
-let queryAxiomSpy: ReturnType<typeof vi.fn>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let queryAxiomSpy: any;
 
 /**
  * Helper to create a NextRequest for testing.
