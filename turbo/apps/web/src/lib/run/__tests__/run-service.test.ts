@@ -33,12 +33,24 @@ vi.mock("../../agent-session", () => ({
   },
 }));
 
+// Mock credential service for testing credential merging
+vi.mock("../../credential/credential-service", () => ({
+  getCredentialValues: vi.fn(),
+}));
+
+// Mock scope service for credential tests
+vi.mock("../../scope/scope-service", () => ({
+  getUserScopeByClerkId: vi.fn(),
+}));
+
 // Import after mocks
 let calculateSessionHistoryPath: typeof import("../run-service").calculateSessionHistoryPath;
 let RunService: typeof import("../run-service").RunService;
 let NotFoundError: typeof import("../../errors").NotFoundError;
 let UnauthorizedError: typeof import("../../errors").UnauthorizedError;
 let agentSessionService: typeof import("../../agent-session").agentSessionService;
+let getCredentialValues: typeof import("../../credential/credential-service").getCredentialValues;
+let getUserScopeByClerkId: typeof import("../../scope/scope-service").getUserScopeByClerkId;
 
 // Test user ID and scope for isolation
 const TEST_USER_ID = "test-user-run-service";
@@ -57,6 +69,14 @@ describe("run-service", () => {
 
     const agentSessionModule = await import("../../agent-session");
     agentSessionService = agentSessionModule.agentSessionService;
+
+    const credentialModule = await import(
+      "../../credential/credential-service"
+    );
+    getCredentialValues = credentialModule.getCredentialValues;
+
+    const scopeModule = await import("../../scope/scope-service");
+    getUserScopeByClerkId = scopeModule.getUserScopeByClerkId;
 
     // Create test scope for the user (required for compose creation)
     await globalThis.services.db
@@ -385,6 +405,199 @@ describe("run-service", () => {
               userId: TEST_USER_ID,
             }),
           ).rejects.toThrow(NotFoundError);
+        });
+      });
+
+      describe("credential merging into secrets", () => {
+        test("merges credentials into secrets for masking", async () => {
+          // Create a compose with credential references in environment
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: TEST_USER_ID,
+              scopeId: TEST_SCOPE_ID,
+              name: "test-compose-credential-merge",
+            })
+            .returning();
+
+          const versionId = "test-version-credential-merge-123";
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  working_dir: "/workspace",
+                  environment: {
+                    MY_CRED: "${{ credentials.MY_CREDENTIAL }}",
+                  },
+                },
+              },
+            },
+            createdBy: TEST_USER_ID,
+          });
+
+          // Mock scope and credential service
+          vi.mocked(getUserScopeByClerkId).mockResolvedValueOnce({
+            id: TEST_SCOPE_ID,
+            slug: "test-scope",
+          } as never);
+
+          vi.mocked(getCredentialValues).mockResolvedValueOnce({
+            MY_CREDENTIAL: "credential-secret-value",
+          });
+
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: "run-credential-test",
+            sandboxToken: "token",
+            userId: TEST_USER_ID,
+          });
+
+          // Credentials should be merged into secrets for masking
+          expect(context.secrets).toEqual({
+            MY_CREDENTIAL: "credential-secret-value",
+          });
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+        });
+
+        test("CLI secrets take priority over credentials on collision", async () => {
+          // Create a compose with credential references
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: TEST_USER_ID,
+              scopeId: TEST_SCOPE_ID,
+              name: "test-compose-priority",
+            })
+            .returning();
+
+          const versionId = "test-version-priority-123";
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  working_dir: "/workspace",
+                  environment: {
+                    API_KEY: "${{ credentials.API_KEY }}",
+                  },
+                },
+              },
+            },
+            createdBy: TEST_USER_ID,
+          });
+
+          // Mock scope and credential service
+          vi.mocked(getUserScopeByClerkId).mockResolvedValueOnce({
+            id: TEST_SCOPE_ID,
+            slug: "test-scope",
+          } as never);
+
+          vi.mocked(getCredentialValues).mockResolvedValueOnce({
+            API_KEY: "credential-value",
+          });
+
+          // Pass CLI secret with same name
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: "run-priority-test",
+            sandboxToken: "token",
+            userId: TEST_USER_ID,
+            secrets: { API_KEY: "cli-secret-value" },
+          });
+
+          // CLI secret should win over credential
+          expect(context.secrets).toEqual({
+            API_KEY: "cli-secret-value",
+          });
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+        });
+
+        test("merges multiple credentials with multiple CLI secrets", async () => {
+          // Create a compose with multiple credential references
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: TEST_USER_ID,
+              scopeId: TEST_SCOPE_ID,
+              name: "test-compose-multi",
+            })
+            .returning();
+
+          const versionId = "test-version-multi-123";
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  working_dir: "/workspace",
+                  environment: {
+                    CRED_A: "${{ credentials.CRED_A }}",
+                    CRED_B: "${{ credentials.CRED_B }}",
+                  },
+                },
+              },
+            },
+            createdBy: TEST_USER_ID,
+          });
+
+          // Mock scope and credential service
+          vi.mocked(getUserScopeByClerkId).mockResolvedValueOnce({
+            id: TEST_SCOPE_ID,
+            slug: "test-scope",
+          } as never);
+
+          vi.mocked(getCredentialValues).mockResolvedValueOnce({
+            CRED_A: "cred-a-value",
+            CRED_B: "cred-b-value",
+          });
+
+          // Pass CLI secrets (some overlap, some new)
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: "run-multi-test",
+            sandboxToken: "token",
+            userId: TEST_USER_ID,
+            secrets: {
+              CRED_B: "cli-b-value", // Overlaps with credential
+              CLI_SECRET: "cli-only-value", // CLI only
+            },
+          });
+
+          // Should have all values with CLI taking priority
+          expect(context.secrets).toEqual({
+            CRED_A: "cred-a-value", // From credential
+            CRED_B: "cli-b-value", // CLI wins over credential
+            CLI_SECRET: "cli-only-value", // CLI only
+          });
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
         });
       });
     });
