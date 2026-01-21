@@ -224,7 +224,7 @@ describe("extractRequiredVarNames", () => {
       version: "1.0",
       agents: {
         "test-agent": {
-          provider: "anthropic",
+          framework: "claude-code",
           image: "test",
           working_dir: "/workspace",
           environment: {
@@ -249,7 +249,7 @@ describe("extractRequiredVarNames", () => {
       version: "1.0",
       agents: {
         "test-agent": {
-          provider: "anthropic",
+          framework: "claude-code",
           image: "test",
           working_dir: "/workspace",
           environment: {
@@ -273,7 +273,7 @@ describe("extractRequiredVarNames", () => {
       version: "1.0",
       agents: {
         "test-agent": {
-          provider: "anthropic",
+          framework: "claude-code",
           image: "test",
           working_dir: "/workspace",
           environment: {
@@ -293,7 +293,7 @@ describe("extractRequiredVarNames", () => {
       version: "1.0",
       agents: {
         "test-agent": {
-          provider: "anthropic",
+          framework: "claude-code",
           image: "test",
           working_dir: "/workspace",
           environment: {
