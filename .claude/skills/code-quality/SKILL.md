@@ -51,25 +51,23 @@ review "authentication changes"     # Review by description
    - Add review criteria section
 
 4. **Review Each Commit Against Bad Smells**
-   - Read the bad smell documentation from `/workspaces/vm07/specs/bad-smell.md`
-   - For each commit, analyze code changes against all 17 bad smell categories
+   - Read the bad smell documentation from `/workspaces/vm02/specs/bad-smell.md`
+   - For testing-related changes, read testing skill from `.claude/skills/testing/SKILL.md`
+   - For each commit, analyze code changes against all code quality issues
    - Create individual review file: `codereviews/YYYYMMDD/review-{short-hash}.md`
 
 5. **Review Criteria (Bad Smell Analysis)**
 
    Analyze each commit for these code quality issues:
 
-   **Mock Analysis (Bad Smell #1)**
-   - Identify new mock implementations
-   - Flag direct fetch mocking (must use MSW instead)
-   - Flag mocking of internal code (only mock third-party packages)
-   - Suggest alternatives where possible
-
-   **Test Coverage (Bad Smell #2)**
+   **Testing Patterns** (refer to `.claude/skills/testing/SKILL.md`)
+   - Check for AP-4 violations (mocking internal code with relative paths)
+   - Verify MSW usage for HTTP mocking (not direct fetch mocking)
+   - Verify real filesystem usage (not fs mocks)
+   - Check test initialization follows production flow
    - Evaluate test quality and completeness
-   - Check for missing test scenarios
-   - Verify tests follow production initialization patterns
-   - Assess test maintainability
+   - Check for fake timers, partial mocks, implementation detail testing
+   - Verify proper mock cleanup (vi.clearAllMocks)
 
    **Error Handling (Bad Smell #3)**
    - Identify unnecessary try/catch blocks
@@ -289,7 +287,7 @@ review "authentication changes"     # Review by description
 - Use `git show --stat {commit}` for change summary
 - Use `git show {commit}` to analyze actual code changes
 - Generate review files in date-based directory structure
-- Cross-reference with `/workspaces/vm07/specs/bad-smell.md` for criteria
+- Cross-reference with `/workspaces/vm02/specs/bad-smell.md` for criteria
 
 ## Operation 2: Defensive Code Cleanup
 
@@ -523,6 +521,7 @@ codereviews/
 
 ## References
 
-- Bad smell documentation: `/workspaces/vm07/specs/bad-smell.md`
-- Project principles: `/workspaces/vm07/CLAUDE.md`
+- Bad smell documentation: `/workspaces/vm02/specs/bad-smell.md` (non-testing patterns)
+- Testing skill: `.claude/skills/testing/SKILL.md` (comprehensive testing patterns and anti-patterns)
+- Project principles: `/workspaces/vm02/CLAUDE.md`
 - Conventional commits: https://www.conventionalcommits.org/

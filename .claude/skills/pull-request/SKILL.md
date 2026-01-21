@@ -418,7 +418,23 @@ Display PR metadata (title, author, URL).
 
 ### Step 3: Perform Code Review
 
-Analyze the PR commits for:
+Analyze the PR commits against quality standards:
+
+**For testing-related changes**, refer to:
+- `.claude/skills/testing/SKILL.md` - Comprehensive testing patterns and anti-patterns
+  - Check for AP-4 violations (mocking internal code)
+  - Verify MSW usage for HTTP mocking
+  - Check test initialization patterns
+  - Verify mock cleanup and proper practices
+
+**For non-testing code changes**, refer to:
+- `specs/bad-smell.md` - Code quality anti-patterns
+  - Error handling issues
+  - Dynamic imports
+  - Fallback patterns
+  - Configuration hardcoding
+
+Analyze for:
 - Code quality issues
 - Pattern violations
 - Test coverage
@@ -441,7 +457,9 @@ Review a PR and post the review as a comment.
 
 ### Step 1: Perform Review
 
-Follow Operation 5 (Review PR) workflow to analyze the PR.
+Follow Operation 5 (Review PR) workflow to analyze the PR against:
+- `.claude/skills/testing/SKILL.md` (for testing-related changes)
+- `specs/bad-smell.md` (for non-testing code quality issues)
 
 ### Step 2: Generate Review Comment
 

@@ -233,30 +233,44 @@ done
 
 **Objective**: Review code changes against bad-smell.md standards.
 
-**Read and analyze against bad-smell.md:**
+**Read and analyze against quality standards:**
 
 ```bash
 # Get project root
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
-# Read the bad smell document (if exists)
+# Read the bad smell document (non-testing patterns)
 if [ -f "$PROJECT_ROOT/specs/bad-smell.md" ]; then
   cat "$PROJECT_ROOT/specs/bad-smell.md"
 elif [ -f "$PROJECT_ROOT/spec/bad-smell.md" ]; then
   cat "$PROJECT_ROOT/spec/bad-smell.md"
 fi
 
+# Read testing patterns skill
+if [ -f "$PROJECT_ROOT/.claude/skills/testing/SKILL.md" ]; then
+  cat "$PROJECT_ROOT/.claude/skills/testing/SKILL.md"
+fi
+
 # Get PR diff for analysis
 gh pr diff $PR_NUMBER
 ```
 
-**Bad Smell Categories to Check:**
+**Code Quality Categories to Check:**
 
-1. **Mock Analysis**: New mocks that could use real implementations?
-2. **Test Coverage**: Missing test scenarios or edge cases?
-3. **Error Handling**: Unnecessary try/catch blocks?
-4. **Timer/Delay**: Any artificial delays or fake timers?
-5. **TypeScript any**: Any usage of `any` type?
+**From testing skill** (`.claude/skills/testing/SKILL.md`):
+1. **AP-4 (Mocking Internal Code)**: Check for vi.mock() with relative paths (../../)
+2. **MSW Usage**: Verify HTTP mocking uses MSW, not direct fetch mocking
+3. **Real Database**: Tests use initServices() and real database, not mocks
+4. **Test Initialization**: Component tests follow production bootstrap flow
+5. **Mock Cleanup**: Tests call vi.clearAllMocks() in beforeEach
+6. **Fake Timers**: No vi.useFakeTimers() usage
+7. **Test Quality**: Tests verify behavior, not mock calls
+
+**From bad-smell.md** (non-testing patterns):
+1. **Error Handling**: Unnecessary try/catch blocks?
+2. **Dynamic Imports**: Any dynamic import() usage?
+3. **Fallback Patterns**: Using fallbacks instead of failing fast?
+4. **TypeScript any**: Any usage of `any` type?
 6. **Database Mocking**: Tests mocking `globalThis.services`?
 7. **Direct DB Operations**: Tests using DB directly instead of APIs?
 8. **Fallback Patterns**: Any silent fallbacks instead of fail-fast?
@@ -418,7 +432,7 @@ Feature Development Complete!
 3. **Fail Fast**: Stop at first failure, fix before continuing
 4. **Iterate**: If bad smells found, fix and restart from CI checks
 5. **Clear Communication**: Keep user informed at each phase
-6. **Follow Standards**: Strict adherence to CLAUDE.md and bad-smell.md
+6. **Follow Standards**: Strict adherence to CLAUDE.md, bad-smell.md, and testing skill (`.claude/skills/testing/SKILL.md`)
 7. **Quality Over Speed**: Never bypass checks to go faster
 
 ## Prerequisites
