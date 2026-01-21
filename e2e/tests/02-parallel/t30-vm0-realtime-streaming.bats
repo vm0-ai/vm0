@@ -28,7 +28,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "E2E test agent for realtime streaming"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     volumes:
       - claude-files:/home/user/.claude
