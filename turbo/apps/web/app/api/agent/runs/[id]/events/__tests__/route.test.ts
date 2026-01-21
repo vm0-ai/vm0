@@ -50,11 +50,13 @@ vi.mock("../../../../../../../src/lib/axiom", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
 import { queryAxiom } from "../../../../../../../src/lib/axiom";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 const mockQueryAxiom = vi.mocked(queryAxiom);
 
 /**
@@ -94,9 +96,7 @@ describe("GET /api/agent/runs/:id/events", () => {
     initServices();
 
     // Mock Clerk auth to return the test user ID
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
 
     // Mock headers() - not needed for this endpoint since we use Clerk auth
     mockHeaders.mockResolvedValue({
@@ -163,6 +163,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // Clean up test data after each test
     // Delete agent_runs first - CASCADE will delete related events
     await globalThis.services.db
@@ -193,9 +194,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
       // Mock auth to return null
-      mockAuth.mockResolvedValue({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,

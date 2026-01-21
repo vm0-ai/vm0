@@ -66,10 +66,12 @@ vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("Public API v1 - Runs Endpoints", () => {
   const testUserId = "test-user-runs-api";
@@ -199,9 +201,12 @@ describe("Public API v1 - Runs Endpoints", () => {
     } as unknown as Headers);
 
     // Mock Clerk auth to return test user by default
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: testUserId });
+  });
+
+  beforeEach(() => {
+    clearClerkMock();
+    mockClerk({ userId: testUserId });
   });
 
   afterAll(async () => {
@@ -266,9 +271,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
     it("should return 401 for unauthenticated request", async () => {
       // Mock Clerk to return no user
-      mockAuth.mockResolvedValueOnce({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
       const request = createTestRequest("http://localhost:3000/v1/runs");
 

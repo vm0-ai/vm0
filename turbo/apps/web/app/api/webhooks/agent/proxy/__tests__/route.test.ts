@@ -21,10 +21,12 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 
 describe("POST /api/webhooks/agent/proxy", () => {
   const testUserId = `test-user-proxy-${Date.now()}-${process.pid}`;
@@ -39,9 +41,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return null (webhook uses token auth)
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
 
     // Default: no auth header
     mockHeaders.mockResolvedValue({
@@ -50,6 +50,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     // No cleanup needed for JWT tokens (stateless)
   });
 

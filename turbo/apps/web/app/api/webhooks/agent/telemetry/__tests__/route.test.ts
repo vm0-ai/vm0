@@ -40,11 +40,13 @@ vi.mock("../../../../../../src/lib/axiom", () => ({
 }));
 
 import { headers } from "next/headers";
-import { auth } from "@clerk/nextjs/server";
 import { ingestToAxiom } from "../../../../../../src/lib/axiom";
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 const mockHeaders = vi.mocked(headers);
-const mockAuth = vi.mocked(auth);
 const mockIngestToAxiom = vi.mocked(ingestToAxiom);
 
 describe("POST /api/webhooks/agent/telemetry", () => {
@@ -63,9 +65,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
-    mockAuth.mockResolvedValue({ userId: null } as unknown as Awaited<
-      ReturnType<typeof auth>
-    >);
+    mockClerk({ userId: null });
 
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
@@ -126,6 +126,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   });
 
   afterEach(async () => {
+    clearClerkMock();
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, testRunId));
