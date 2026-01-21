@@ -8,17 +8,17 @@ on:
   merge_group:
 
 concurrency:
-  group: ${{ github.head_ref || github.ref }}
-  cancel-in-progress: ${{ github.head_ref != '' }}
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Detect changes in apps to optimize CI pipeline
-  change-detection:
+  # Prepare: detect changes and set job-ref identifier
+  prepare:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    # Run for all events, but only do actual detection for PRs
     outputs:
+      job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
       site-changed: ${{ steps.detect.outputs.site-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
@@ -60,6 +60,20 @@ jobs:
               echo "${app}-changed=false" >> $GITHUB_OUTPUT
             fi
           done
+
+      - name: Set job-ref
+        id: set-job-ref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "job-ref=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "Job ref set to: pr-${{ github.event.pull_request.number }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "job-ref=" >> $GITHUB_OUTPUT
+            echo "Job ref set to: (empty - merge_group will skip deployments)"
+          else
+            echo "job-ref=staging" >> $GITHUB_OUTPUT
+            echo "Job ref set to: staging"
+          fi
 
   lint:
     runs-on: ubuntu-latest
@@ -141,15 +155,15 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection]
-    # Deploy if it's a PR and web, CLI, runner, site, or platform changed
+    needs: [prepare]
+    # Deploy if job-ref is set (PR or main) and web, CLI, runner, site, or platform changed
     if: |
-      github.event_name == 'pull_request' && (
-        needs.change-detection.outputs.web-changed == 'true' ||
-        needs.change-detection.outputs.cli-changed == 'true' ||
-        needs.change-detection.outputs.runner-changed == 'true' ||
-        needs.change-detection.outputs.site-changed == 'true' ||
-        needs.change-detection.outputs.platform-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true' ||
+        needs.prepare.outputs.site-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true'
       )
     outputs:
       preview-url: ${{ steps.deploy.outputs.url }}
@@ -168,7 +182,7 @@ jobs:
         with:
           neon-api-key: ${{ secrets.NEON_API_KEY }}
           neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "${{ github.head_ref }}"
+          branch-name: "${{ needs.prepare.outputs.job-ref }}"
           action: "create"
 
       # Step 2: Deploy to Vercel with database URL
@@ -199,17 +213,17 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.CI_ABLY_API_KEY }}
             DEBUG=*
-          meta-branch: ${{ github.head_ref }}
-          meta-pr: ${{ github.event.pull_request.number }}
+          meta-branch: ${{ github.head_ref || github.ref_name }}
+          meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
   # Deploy docs application
   deploy-docs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection]
-    # Only deploy if it's a PR and docs changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.docs-changed == 'true'
+    needs: [prepare]
+    # Deploy if job-ref is set (PR or main) and docs changed
+    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -227,17 +241,17 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: preview
           deployment-env: docs
-          meta-branch: ${{ github.head_ref }}
-          meta-pr: ${{ github.event.pull_request.number }}
+          meta-branch: ${{ github.head_ref || github.ref_name }}
+          meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
   # Deploy site application (SEO landing pages)
   deploy-site:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web]
-    # Only deploy if it's a PR and site changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.site-changed == 'true'
+    needs: [prepare, deploy-web]
+    # Deploy if job-ref is set (PR or main) and site changed
+    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -259,17 +273,17 @@ jobs:
             WEB_APP_URL=${{ needs.deploy-web.outputs.preview-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-          meta-branch: ${{ github.head_ref }}
-          meta-pr: ${{ github.event.pull_request.number }}
+          meta-branch: ${{ github.head_ref || github.ref_name }}
+          meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
   # Deploy platform (Vite SPA)
   deploy-platform:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web]
-    # Only deploy if it's a PR and platform changed
-    if: github.event_name == 'pull_request' && needs.change-detection.outputs.platform-changed == 'true'
+    needs: [prepare, deploy-web]
+    # Deploy if job-ref is set (PR or main) and platform changed
+    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -290,19 +304,21 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
-          meta-branch: ${{ github.head_ref }}
-          meta-pr: ${{ github.event.pull_request.number }}
+          meta-branch: ${{ github.head_ref || github.ref_name }}
+          meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
   # Authenticate for E2E tests (shared by cli-e2e jobs and api-e2e-test)
   e2e-auth:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web]
+    needs: [prepare, deploy-web]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     steps:
       - uses: actions/checkout@v4
         with:
@@ -351,8 +367,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, e2e-auth, deploy-web]
-    if: needs.change-detection.outputs.web-changed == 'true'
+    needs: [prepare, e2e-auth, deploy-web]
+    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -379,11 +395,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, e2e-auth, deploy-web, lint, test]
+    needs: [prepare, e2e-auth, deploy-web, lint, test]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -446,11 +464,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, cli-e2e-01-serial, deploy-web]
+    needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -517,11 +537,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, cli-e2e-01-serial, deploy-web, deploy-runner-start]
+    needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -567,13 +589,13 @@ jobs:
       - name: Run Runner E2E Tests
         run: |
           echo "=== Running Runner E2E Tests (4 parallel) ==="
-          RUNNER_GROUP="vm0/development-pr-${PR_NUMBER}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+          RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
 
       - name: Stop Cron Simulator
@@ -589,12 +611,12 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection]
+    needs: [prepare]
     if: |
-      github.event_name == 'pull_request' && (
-        needs.change-detection.outputs.web-changed == 'true' ||
-        needs.change-detection.outputs.cli-changed == 'true' ||
-        needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
       )
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
@@ -607,7 +629,7 @@ jobs:
         id: lock
         shell: bash
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
@@ -643,16 +665,16 @@ jobs:
 
             if [ "$lock_exists" = "yes" ]; then
               lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
-              lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "unknown")
+              lock_ref=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/ref 2>/dev/null" || echo "unknown")
 
               if [ -n "$lock_time" ]; then
                 now=$(date +%s)
                 age=$((now - lock_time))
                 if [ $age -gt 1800 ]; then
-                  echo "  Stale lock found (PR $lock_pr, ${age}s old), removing..."
+                  echo "  Stale lock found ($lock_ref, ${age}s old), removing..."
                   ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
                 else
-                  echo "  Host is locked by PR $lock_pr (lock age: ${age}s)"
+                  echo "  Host is locked by $lock_ref (lock age: ${age}s)"
                   return 1
                 fi
               else
@@ -674,7 +696,7 @@ jobs:
             fi
             mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
             if [ "$mkdir_result" = "SUCCESS" ]; then
-              ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${PR_NUMBER} > /opt/vm0-runner/.lock/pr && date +%s > /opt/vm0-runner/.lock/timestamp"
+              ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${JOB_REF} > /opt/vm0-runner/.lock/ref && date +%s > /opt/vm0-runner/.lock/timestamp"
               echo "  Lock acquired!"
               return 0
             else
@@ -683,10 +705,10 @@ jobs:
             fi
           }
 
-          # Preferred host based on PR number (use hash for even distribution)
-          HASH=$(echo -n "$PR_NUMBER" | md5sum | cut -c1-8)
+          # Preferred host based on job-ref (use hash for even distribution)
+          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
           PREFERRED_INDEX=$((16#$HASH % NUM_HOSTS))
-          echo "Preferred host index: $PREFERRED_INDEX (hash of PR $PR_NUMBER % $NUM_HOSTS)"
+          echo "Preferred host index: $PREFERRED_INDEX (hash of $JOB_REF % $NUM_HOSTS)"
 
           # Exponential backoff: 0, 2min, 4min, 8min
           BACKOFF_TIMES=(0 120 240 480)
@@ -755,13 +777,14 @@ jobs:
       - name: Prepare runner (deploy bundle, install deps)
         id: prepare
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ steps.lock.outputs.host }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          RUNNER_DIR="/opt/vm0-runner/pr-${PR_NUMBER}"
-          PROXY_PORT=$((8080 + PR_NUMBER % 1000))
+          RUNNER_DIR="/opt/vm0-runner/${JOB_REF}"
+          # Use numeric hash of job-ref for proxy port to ensure consistency
+          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -777,7 +800,7 @@ jobs:
             --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
-            -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
+            -e "pm2_process_name=vm0-runner-${JOB_REF}" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
             -e "force_rebuild_rootfs=true" \
@@ -793,11 +816,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-runner-prepare]
+    needs: [prepare, deploy-runner-prepare]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     steps:
       - uses: actions/checkout@v4
 
@@ -836,11 +861,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
-    needs: [change-detection, deploy-web, deploy-runner-prepare]
+    needs: [prepare, deploy-web, deploy-runner-prepare]
     if: |
-      needs.change-detection.outputs.web-changed == 'true' ||
-      needs.change-detection.outputs.cli-changed == 'true' ||
-      needs.change-detection.outputs.runner-changed == 'true'
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true'
+      )
     outputs:
       runner-deployed: ${{ steps.start.outputs.runner-deployed }}
       runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
@@ -852,7 +879,7 @@ jobs:
       - name: Start runner (configure and launch)
         id: start
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
@@ -862,7 +889,7 @@ jobs:
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
-          PROXY_PORT=$((8080 + PR_NUMBER % 1000))
+          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -878,8 +905,8 @@ jobs:
             --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
-            -e "runner_group=vm0/development-pr-${PR_NUMBER}" \
-            -e "pm2_process_name=vm0-runner-pr-${PR_NUMBER}" \
+            -e "runner_group=vm0/development-${JOB_REF}" \
+            -e "pm2_process_name=vm0-runner-${JOB_REF}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
