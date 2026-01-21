@@ -15,6 +15,7 @@ import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
 import * as credentialSchema from "./schema/credential";
+import * as modelProviderSchema from "./schema/model-provider";
 
 export const schema = {
   ...userSchema,
@@ -34,4 +35,5 @@ export const schema = {
   ...runnerSchema,
   ...agentScheduleSchema,
   ...credentialSchema,
+  ...modelProviderSchema,
 };

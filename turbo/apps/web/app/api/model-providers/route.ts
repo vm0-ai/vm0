@@ -4,24 +4,25 @@ import {
   TsRestResponse,
 } from "../../../src/lib/ts-rest-handler";
 import {
-  credentialsMainContract,
+  modelProvidersMainContract,
   createErrorResponse,
   ApiError,
+  getCredentialNameForType,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
-  listCredentials,
-  setCredential,
-} from "../../../src/lib/credential/credential-service";
+  listModelProviders,
+  upsertModelProvider,
+} from "../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../src/lib/logger";
-import { BadRequestError } from "../../../src/lib/errors";
+import { BadRequestError, ConflictError } from "../../../src/lib/errors";
 
-const log = logger("api:credentials");
+const log = logger("api:model-providers");
 
-const router = tsr.router(credentialsMainContract, {
+const router = tsr.router(modelProvidersMainContract, {
   /**
-   * GET /api/credentials - List all credentials
+   * GET /api/model-providers - List all model providers
    */
   list: async () => {
     initServices();
@@ -31,27 +32,28 @@ const router = tsr.router(credentialsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const credentials = await listCredentials(userId);
+    const providers = await listModelProviders(userId);
 
     return {
       status: 200 as const,
       body: {
-        credentials: credentials.map((c) => ({
-          id: c.id,
-          name: c.name,
-          description: c.description,
-          type: c.type,
-          createdAt: c.createdAt.toISOString(),
-          updatedAt: c.updatedAt.toISOString(),
+        modelProviders: providers.map((p) => ({
+          id: p.id,
+          type: p.type,
+          framework: p.framework,
+          credentialName: p.credentialName,
+          isDefault: p.isDefault,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
         })),
       },
     };
   },
 
   /**
-   * PUT /api/credentials - Create or update a credential
+   * PUT /api/model-providers - Create or update a model provider
    */
-  set: async ({ body }) => {
+  upsert: async ({ body }) => {
     initServices();
 
     const userId = await getUserId();
@@ -59,27 +61,48 @@ const router = tsr.router(credentialsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { name, value, description } = body;
+    const { type, credential, convert } = body;
 
-    log.debug("setting credential", { userId, name });
+    log.debug("upserting model provider", { userId, type });
 
     try {
-      const credential = await setCredential(userId, name, value, description);
+      const { provider, created } = await upsertModelProvider(
+        userId,
+        type,
+        credential,
+        convert,
+      );
 
       return {
-        status: 200 as const,
+        status: (created ? 201 : 200) as 200 | 201,
         body: {
-          id: credential.id,
-          name: credential.name,
-          description: credential.description,
-          type: credential.type,
-          createdAt: credential.createdAt.toISOString(),
-          updatedAt: credential.updatedAt.toISOString(),
+          provider: {
+            id: provider.id,
+            type: provider.type,
+            framework: provider.framework,
+            credentialName: provider.credentialName,
+            isDefault: provider.isDefault,
+            createdAt: provider.createdAt.toISOString(),
+            updatedAt: provider.updatedAt.toISOString(),
+          },
+          created,
         },
       };
     } catch (error) {
       if (error instanceof BadRequestError) {
         return createErrorResponse("BAD_REQUEST", error.message);
+      }
+      if (error instanceof ConflictError) {
+        return {
+          status: 409 as const,
+          body: {
+            error: {
+              message: error.message,
+              code: "CONFLICT",
+              credentialName: getCredentialNameForType(type),
+            },
+          },
+        };
       }
       throw error;
     }
@@ -87,7 +110,7 @@ const router = tsr.router(credentialsMainContract, {
 });
 
 /**
- * Custom error handler for credentials API
+ * Custom error handler for model providers API
  */
 function errorHandler(err: unknown): TsRestResponse | void {
   // Handle ts-rest RequestValidationError
@@ -120,7 +143,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(credentialsMainContract, router, {
+const handler = createHandler(modelProvidersMainContract, router, {
   errorHandler,
 });
 

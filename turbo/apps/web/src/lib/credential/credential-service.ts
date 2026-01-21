@@ -1,4 +1,5 @@
 import { eq, and } from "drizzle-orm";
+import type { CredentialType } from "@vm0/core";
 import { credentials } from "../../db/schema/credential";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { BadRequestError, NotFoundError } from "../errors";
@@ -37,6 +38,7 @@ interface CredentialInfo {
   id: string;
   name: string;
   description: string | null;
+  type: CredentialType;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +59,7 @@ export async function listCredentials(
       id: credentials.id,
       name: credentials.name,
       description: credentials.description,
+      type: credentials.type,
       createdAt: credentials.createdAt,
       updatedAt: credentials.updatedAt,
     })
@@ -64,7 +67,10 @@ export async function listCredentials(
     .where(eq(credentials.scopeId, scope.id))
     .orderBy(credentials.name);
 
-  return result;
+  return result.map((row) => ({
+    ...row,
+    type: row.type as CredentialType,
+  }));
 }
 
 /**
@@ -84,6 +90,7 @@ export async function getCredential(
       id: credentials.id,
       name: credentials.name,
       description: credentials.description,
+      type: credentials.type,
       createdAt: credentials.createdAt,
       updatedAt: credentials.updatedAt,
     })
@@ -91,7 +98,14 @@ export async function getCredential(
     .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
     .limit(1);
 
-  return result[0] ?? null;
+  if (!result[0]) {
+    return null;
+  }
+
+  return {
+    ...result[0],
+    type: result[0].type as CredentialType,
+  };
 }
 
 /**
@@ -190,12 +204,16 @@ export async function setCredential(
         id: credentials.id,
         name: credentials.name,
         description: credentials.description,
+        type: credentials.type,
         createdAt: credentials.createdAt,
         updatedAt: credentials.updatedAt,
       });
 
     log.debug("credential updated", { credentialId: updated!.id, name });
-    return updated!;
+    return {
+      ...updated!,
+      type: updated!.type as CredentialType,
+    };
   }
 
   // Create new credential
@@ -211,12 +229,16 @@ export async function setCredential(
       id: credentials.id,
       name: credentials.name,
       description: credentials.description,
+      type: credentials.type,
       createdAt: credentials.createdAt,
       updatedAt: credentials.updatedAt,
     });
 
   log.debug("credential created", { credentialId: created!.id, name });
-  return created!;
+  return {
+    ...created!,
+    type: created!.type as CredentialType,
+  };
 }
 
 /**

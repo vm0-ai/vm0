@@ -4,56 +4,21 @@ import {
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
 import {
-  credentialsByNameContract,
+  modelProvidersByTypeContract,
   createErrorResponse,
   ApiError,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import {
-  getCredential,
-  deleteCredential,
-} from "../../../../src/lib/credential/credential-service";
+import { deleteModelProvider } from "../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../src/lib/logger";
 import { NotFoundError } from "../../../../src/lib/errors";
 
-const log = logger("api:credentials");
+const log = logger("api:model-providers");
 
-const router = tsr.router(credentialsByNameContract, {
+const router = tsr.router(modelProvidersByTypeContract, {
   /**
-   * GET /api/credentials/:name - Get a credential by name
-   */
-  get: async ({ params }) => {
-    initServices();
-
-    const userId = await getUserId();
-    if (!userId) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
-
-    const credential = await getCredential(userId, params.name);
-    if (!credential) {
-      return createErrorResponse(
-        "NOT_FOUND",
-        `Credential "${params.name}" not found`,
-      );
-    }
-
-    return {
-      status: 200 as const,
-      body: {
-        id: credential.id,
-        name: credential.name,
-        description: credential.description,
-        type: credential.type,
-        createdAt: credential.createdAt.toISOString(),
-        updatedAt: credential.updatedAt.toISOString(),
-      },
-    };
-  },
-
-  /**
-   * DELETE /api/credentials/:name - Delete a credential
+   * DELETE /api/model-providers/:type - Delete a model provider
    */
   delete: async ({ params }) => {
     initServices();
@@ -63,10 +28,10 @@ const router = tsr.router(credentialsByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    log.debug("deleting credential", { userId, name: params.name });
+    log.debug("deleting model provider", { userId, type: params.type });
 
     try {
-      await deleteCredential(userId, params.name);
+      await deleteModelProvider(userId, params.type);
 
       return {
         status: 204 as const,
@@ -82,7 +47,7 @@ const router = tsr.router(credentialsByNameContract, {
 });
 
 /**
- * Custom error handler for credentials by name API
+ * Custom error handler for model providers by type API
  */
 function errorHandler(err: unknown): TsRestResponse | void {
   // Handle ts-rest RequestValidationError
@@ -111,8 +76,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(credentialsByNameContract, router, {
+const handler = createHandler(modelProvidersByTypeContract, router, {
   errorHandler,
 });
 
-export { handler as GET, handler as DELETE };
+export { handler as DELETE };
