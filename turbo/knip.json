@@ -62,9 +62,8 @@
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
         "tailwindcss",
-        "@vm0/ui",
-        "@testing-library/react",
-        "typescript-eslint"
+        "typescript-eslint",
+        "@clerk/clerk-react"
       ]
     },
     "apps/runner": {
@@ -125,6 +124,8 @@
     "apps/platform/src/signals/page-signal.ts",
     "apps/platform/src/signals/utils.ts",
     "apps/platform/src/views/router/link.tsx",
+    "apps/platform/src/test/mocks/clerk-react.ts",
+    "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/runner/src/lib/firecracker/index.ts",
     "apps/runner/src/lib/firecracker/guest.ts",
     "apps/runner/src/lib/firecracker/network.ts",

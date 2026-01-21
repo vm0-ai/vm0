@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
-import { apiClient } from "../../lib/api/api-client";
+import { getStorageDownload } from "../../lib/api";
 import { listTarFiles, removeExtraFiles } from "../../lib/utils/file-utils";
 import { handleEmptyStorageResponse } from "../../lib/storage/pull-utils";
 
@@ -45,7 +45,7 @@ export const pullCommand = new Command()
       // Get download URL from API
       console.log(chalk.dim("Getting download URL..."));
 
-      const downloadInfo = await apiClient.getStorageDownload({
+      const downloadInfo = await getStorageDownload({
         name: config.name,
         type: "volume",
         version: versionId,

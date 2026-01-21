@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient, type GetComposeResponse } from "../../lib/api/api-client";
+import {
+  getComposeByName,
+  getComposeVersion,
+  type GetComposeResponse,
+} from "../../lib/api";
 import {
   deriveComposeVariableSources,
   type AgentVariableSources,
@@ -156,7 +160,7 @@ export const inspectCommand = new Command()
         // Get compose by name
         let compose: GetComposeResponse;
         try {
-          compose = await apiClient.getComposeByName(name, options.scope);
+          compose = await getComposeByName(name, options.scope);
         } catch (error) {
           if (error instanceof Error && error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent compose not found: ${name}`));
@@ -174,10 +178,7 @@ export const inspectCommand = new Command()
           if (version.length < 64) {
             // Resolve the version prefix
             try {
-              const versionInfo = await apiClient.getComposeVersion(
-                compose.id,
-                version,
-              );
+              const versionInfo = await getComposeVersion(compose.id, version);
               resolvedVersionId = versionInfo.versionId;
             } catch (error) {
               if (

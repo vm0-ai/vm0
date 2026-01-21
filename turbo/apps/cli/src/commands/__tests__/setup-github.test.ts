@@ -37,6 +37,7 @@ describe("setup-github command", () => {
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("prerequisite checks", () => {
@@ -527,8 +528,7 @@ agents:
     it("should detect secrets from environment variables", async () => {
       // Use bracket notation to avoid turbo env var lint warnings
       const TEST_SECRET = "CUSTOM_TEST_SECRET";
-      const originalEnv = process.env[TEST_SECRET];
-      process.env[TEST_SECRET] = "test-secret-value";
+      vi.stubEnv(TEST_SECRET, "test-secret-value");
 
       vi.mocked(core.extractVariableReferences).mockReturnValue([
         {
@@ -562,8 +562,6 @@ agents:
           input: "test-secret-value",
         }),
       );
-
-      process.env[TEST_SECRET] = originalEnv;
     });
 
     it("should show manual setup instructions when declining auto-setup", async () => {

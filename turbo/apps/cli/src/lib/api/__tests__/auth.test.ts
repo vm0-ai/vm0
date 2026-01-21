@@ -10,7 +10,6 @@ const CONFIG_DIR = join(homedir(), ".vm0");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 describe("auth", () => {
-  const originalEnv = { ...process.env };
   const originalExit = process.exit;
   const mockExit = vi.fn() as unknown as typeof process.exit;
 
@@ -19,15 +18,12 @@ describe("auth", () => {
     if (existsSync(CONFIG_FILE)) {
       await unlink(CONFIG_FILE);
     }
-    // Reset environment variables
-    delete process.env.VM0_TOKEN;
     // Mock process.exit
     process.exit = mockExit;
   });
 
   afterEach(async () => {
-    // Restore original env vars
-    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
     // Restore process.exit
     process.exit = originalExit;
     vi.restoreAllMocks();
@@ -53,7 +49,7 @@ describe("auth", () => {
     });
 
     it("should output token with human-readable format when authenticated via VM0_TOKEN env var", async () => {
-      process.env.VM0_TOKEN = "vm0_live_envtoken456";
+      vi.stubEnv("VM0_TOKEN", "vm0_live_envtoken456");
       const consoleSpy = vi.spyOn(console, "log");
 
       await setupToken();

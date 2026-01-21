@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET as listRuns, POST as createRun } from "../route";
 import { GET as getRun } from "../[id]/route";
@@ -15,6 +23,9 @@ import { scopes } from "../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
+import { Sandbox } from "@e2b/code-interpreter";
+import * as s3Client from "../../../../src/lib/s3/s3-client";
+import { Axiom } from "@axiomhq/js";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -34,43 +45,31 @@ function createTestRequest(
   });
 }
 
-// Mock the auth module
-let mockUserId = "test-user-runs-api";
-vi.mock("../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
 
-// Mock runService for create tests
-vi.mock("../../../../src/lib/run", () => ({
-  runService: {
-    validateCheckpoint: vi.fn(),
-    validateAgentSession: vi.fn(),
-    buildExecutionContext: vi.fn().mockResolvedValue({}),
-    prepareAndDispatch: vi.fn().mockResolvedValue({ status: "pending" }),
-  },
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
 
-// Mock sandbox token generation
-vi.mock("../../../../src/lib/auth/sandbox-token", () => ({
-  generateSandboxToken: vi.fn().mockResolvedValue("mock-sandbox-token"),
-}));
+// Mock E2B SDK (external)
+vi.mock("@e2b/code-interpreter");
 
-// Mock Axiom for logs and metrics
-vi.mock("../../../../src/lib/axiom", () => ({
-  queryAxiom: vi.fn().mockResolvedValue([]),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-test`),
-  DATASETS: {
-    SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
-    SANDBOX_TELEMETRY_METRICS: "sandbox-telemetry-metrics",
-    SANDBOX_TELEMETRY_NETWORK: "sandbox-telemetry-network",
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+// Mock AWS SDK (external) for S3 operations
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
+
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 describe("Public API v1 - Runs Endpoints", () => {
   const testUserId = "test-user-runs-api";
@@ -111,6 +110,7 @@ describe("Public API v1 - Runs Endpoints", () => {
         "test-agent-runs": {
           image: "vm0/claude-code:dev",
           provider: "claude-code",
+          working_dir: "/home/user/workspace",
         },
       },
     };
@@ -151,6 +151,57 @@ describe("Public API v1 - Runs Endpoints", () => {
       .returning();
 
     testRunId = run!.id;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Setup E2B SDK mock - create sandbox
+    const mockSandbox = {
+      sandboxId: "test-sandbox-123",
+      getHostname: () => "test-sandbox.e2b.dev",
+      files: {
+        write: vi.fn().mockResolvedValue(undefined),
+      },
+      commands: {
+        run: vi.fn().mockResolvedValue({
+          stdout: "Mock output",
+          stderr: "",
+          exitCode: 0,
+        }),
+      },
+      kill: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Sandbox.create).mockResolvedValue(
+      mockSandbox as unknown as Sandbox,
+    );
+
+    // Setup S3 mocks
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
+      "https://mock-presigned-url",
+    );
+    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
+    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
+
+    // Mock Axiom SDK
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user by default
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
   });
 
   afterAll(async () => {
@@ -214,7 +265,10 @@ describe("Public API v1 - Runs Endpoints", () => {
     });
 
     it("should return 401 for unauthenticated request", async () => {
-      mockUserId = "";
+      // Mock Clerk to return no user
+      mockAuth.mockResolvedValueOnce({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = createTestRequest("http://localhost:3000/v1/runs");
 
@@ -223,8 +277,6 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(401);
       expect(data.error.type).toBe("authentication_error");
-
-      mockUserId = testUserId;
     });
   });
 

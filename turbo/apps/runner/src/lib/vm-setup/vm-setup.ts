@@ -10,7 +10,6 @@ import type { SSHClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { getAllScripts } from "../scripts/utils.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
-import { PROXY_CA_CERT_PATH } from "../executor-env.js";
 
 /**
  * Upload all scripts to VM individually via SSH
@@ -110,16 +109,22 @@ export async function restoreSessionHistory(
 /**
  * Install proxy CA certificate in VM for network security mode
  * This allows the VM to trust the runner's mitmproxy for HTTPS interception
+ *
+ * @param ssh - SSH client connected to the VM
+ * @param caCertPath - Path to the CA certificate file on the runner host
  */
-export async function installProxyCA(ssh: SSHClient): Promise<void> {
+export async function installProxyCA(
+  ssh: SSHClient,
+  caCertPath: string,
+): Promise<void> {
   // Read CA certificate from runner host
-  if (!fs.existsSync(PROXY_CA_CERT_PATH)) {
+  if (!fs.existsSync(caCertPath)) {
     throw new Error(
-      `Proxy CA certificate not found at ${PROXY_CA_CERT_PATH}. Run generate-proxy-ca.sh first.`,
+      `Proxy CA certificate not found at ${caCertPath}. Run generate-proxy-ca.sh first.`,
     );
   }
 
-  const caCert = fs.readFileSync(PROXY_CA_CERT_PATH, "utf-8");
+  const caCert = fs.readFileSync(caCertPath, "utf-8");
   console.log(
     `[Executor] Installing proxy CA certificate (${caCert.length} bytes)`,
   );

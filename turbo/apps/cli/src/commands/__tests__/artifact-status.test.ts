@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import { statusCommand } from "../artifact/status";
 import * as storageUtils from "../../lib/storage/storage-utils";
-import { apiClient } from "../../lib/api/api-client";
+import * as config from "../../lib/api/config";
 
 // Mock dependencies
 vi.mock("../../lib/storage/storage-utils");
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 
 describe("artifact status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -18,6 +23,8 @@ describe("artifact status command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
   });
 
   afterEach(() => {
@@ -72,13 +79,17 @@ describe("artifact status command", () => {
     });
 
     it("should show start message", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-        url: "https://example.com/download",
-        fileCount: 100,
-        size: 1024000,
-      });
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+            url: "https://example.com/download",
+            fileCount: 100,
+            size: 1024000,
+          });
+        }),
+      );
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -88,8 +99,18 @@ describe("artifact status command", () => {
     });
 
     it("should exit with error if remote returns 404", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
-        new Error('Storage "test-artifact" not found'),
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: 'Storage "test-artifact" not found',
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -106,13 +127,17 @@ describe("artifact status command", () => {
     });
 
     it("should display version info when remote exists", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-        url: "https://example.com/download",
-        fileCount: 100,
-        size: 1024000,
-      });
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+            url: "https://example.com/download",
+            fileCount: 100,
+            size: 1024000,
+          });
+        }),
+      );
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -131,13 +156,17 @@ describe("artifact status command", () => {
     });
 
     it("should display empty indicator for empty storage", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockResolvedValue({
-        versionId:
-          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
-        empty: true,
-        fileCount: 0,
-        size: 0,
-      });
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4",
+            empty: true,
+            fileCount: 0,
+            size: 0,
+          });
+        }),
+      );
 
       await statusCommand.parseAsync(["node", "cli"]);
 
@@ -159,8 +188,18 @@ describe("artifact status command", () => {
     });
 
     it("should handle API errors", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
-        new Error("Internal server error"),
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Internal server error",
+                code: "SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -174,8 +213,13 @@ describe("artifact status command", () => {
     });
 
     it("should handle network errors", async () => {
-      vi.mocked(apiClient.getStorageDownload).mockRejectedValue(
-        new Error("Network error"),
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            { error: { message: "Network error", code: "SERVER_ERROR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(async () => {

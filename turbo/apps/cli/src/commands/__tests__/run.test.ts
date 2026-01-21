@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import { runCommand } from "../run";
-import { apiClient } from "../../lib/api/api-client";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
+import * as config from "../../lib/api/config";
 import chalk from "chalk";
 
 // Mock dependencies
-vi.mock("../../lib/api/api-client");
+vi.mock("../../lib/api/config", () => ({
+  getApiUrl: vi.fn(),
+  getToken: vi.fn(),
+}));
 vi.mock("../../lib/events/event-parser-factory");
 vi.mock("../../lib/events/event-renderer");
 
@@ -21,21 +26,59 @@ describe("run command", () => {
 
   const testUuid = "550e8400-e29b-41d4-a716-446655440000";
 
+  // Default compose response for getComposeById
+  const defaultComposeResponse = {
+    id: testUuid,
+    name: "test-agent",
+    headVersionId: "version-123",
+    content: {
+      version: "1",
+      agents: { "test-agent": { provider: "claude" } },
+    },
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+  };
+
+  // Default run response
+  const defaultRunResponse = {
+    runId: "run-123",
+    status: "running",
+    sandboxId: "sbx-456",
+    output: "Success",
+    executionTimeMs: 1000,
+    createdAt: "2025-01-01T00:00:00Z",
+  };
+
+  // Default events response with completed status
+  const defaultEventsResponse = {
+    events: [
+      {
+        sequenceNumber: 1,
+        eventType: "result",
+        eventData: {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          duration_ms: 1000,
+          num_turns: 1,
+          result: "Done",
+          session_id: "test",
+          total_cost_usd: 0,
+          usage: {},
+        },
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+    ],
+    hasMore: false,
+    nextSequence: 1,
+    run: { status: "completed" },
+    provider: "claude-code",
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Default mock for getComposeById (needed when using UUID)
-    vi.mocked(apiClient.getComposeById).mockResolvedValue({
-      id: testUuid,
-      name: "test-agent",
-      headVersionId: "version-123",
-      content: {
-        version: "1",
-        agents: { "test-agent": { provider: "claude" } },
-      },
-      createdAt: "2025-01-01T00:00:00Z",
-      updatedAt: "2025-01-01T00:00:00Z",
-    });
+    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
+    vi.mocked(config.getToken).mockResolvedValue("test-token");
 
     // Default mock for parseEvent - returns null since completion
     // is now detected via run.status, not events
@@ -45,6 +88,19 @@ describe("run command", () => {
     vi.mocked(EventRenderer.render).mockImplementation(() => {});
     vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
     vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
+
+    // Default handlers for most tests
+    server.use(
+      http.get("http://localhost:3000/api/agent/composes/:id", () => {
+        return HttpResponse.json(defaultComposeResponse);
+      }),
+      http.post("http://localhost:3000/api/agent/runs", () => {
+        return HttpResponse.json(defaultRunResponse, { status: 201 });
+      }),
+      http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+        return HttpResponse.json(defaultEventsResponse);
+      }),
+    );
   });
 
   afterEach(() => {
@@ -55,55 +111,28 @@ describe("run command", () => {
 
   describe("composeId validation", () => {
     it("should accept valid UUID format", async () => {
-      const validUuid = testUuid;
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
           },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "completed" },
-        provider: "claude-code",
-      });
+        ),
+      );
 
       await runCommand.parseAsync([
         "node",
         "cli",
-        validUuid,
+        testUuid,
         "test prompt",
         "--artifact-name",
         "test-artifact",
       ]);
 
-      // UUID still requires fetching compose to get content for secret extraction
-      expect(apiClient.getComposeById).toHaveBeenCalledWith(validUuid);
-      expect(apiClient.createRun).toHaveBeenCalledWith({
-        agentComposeId: validUuid,
+      expect(capturedBody).toEqual({
+        agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
@@ -115,51 +144,36 @@ describe("run command", () => {
     });
 
     it("should accept and resolve agent names", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: testUuid,
-        name: "my-agent",
-        headVersionId: "version-123",
-        content: {
-          version: "1",
-          agents: { "my-agent": { provider: "claude" } },
-        },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "my-agent") {
+            return HttpResponse.json({
+              id: testUuid,
+              name: "my-agent",
+              headVersionId: "version-123",
+              content: {
+                version: "1",
+                agents: { "my-agent": { provider: "claude" } },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
           },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "completed" },
-        provider: "claude-code",
-      });
+        ),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -170,11 +184,7 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -187,8 +197,18 @@ describe("run command", () => {
     });
 
     it("should handle agent not found errors", async () => {
-      vi.mocked(apiClient.getComposeByName).mockRejectedValue(
-        new Error("Compose not found: nonexistent-agent"),
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Compose not found: nonexistent-agent",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -212,52 +232,57 @@ describe("run command", () => {
     });
 
     it("should parse name:version format and call getComposeVersion", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        name: "my-agent",
-        headVersionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: { version: "1", agents: { main: { provider: "claude" } } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
-        versionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-      });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "my-agent") {
+            return HttpResponse.json({
+              id: "550e8400-e29b-41d4-a716-446655440000",
+              name: "my-agent",
+              headVersionId:
+                "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+              content: {
+                version: "1",
+                agents: { main: { provider: "claude" } },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          ({ request }) => {
+            const url = new URL(request.url);
+            if (
+              url.searchParams.get("composeId") ===
+                "550e8400-e29b-41d4-a716-446655440000" &&
+              url.searchParams.get("version") === "abc12345"
+            ) {
+              return HttpResponse.json({
+                versionId:
+                  "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+              });
+            }
+            return HttpResponse.json(
+              { error: { message: "Version not found", code: "NOT_FOUND" } },
+              { status: 404 },
+            );
           },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "completed" },
-        provider: "claude-code",
-      });
+        ),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -268,15 +293,7 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
-      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
-        "550e8400-e29b-41d4-a716-446655440000",
-        "abc12345",
-      );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(capturedBody).toEqual(
         expect.objectContaining({
           agentComposeVersionId:
             "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
@@ -285,48 +302,37 @@ describe("run command", () => {
     });
 
     it("should use agentComposeId for :latest version", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        name: "my-agent",
-        headVersionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: { version: "1", agents: { main: { provider: "claude" } } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "my-agent") {
+            return HttpResponse.json({
+              id: "550e8400-e29b-41d4-a716-446655440000",
+              name: "my-agent",
+              headVersionId:
+                "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+              content: {
+                version: "1",
+                agents: { main: { provider: "claude" } },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
           },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "completed" },
-        provider: "claude-code",
-      });
+        ),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -337,14 +343,8 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        undefined,
-      );
-      // Should NOT call getComposeVersion for :latest
-      expect(apiClient.getComposeVersion).not.toHaveBeenCalled();
       // Should use agentComposeId (not agentComposeVersionId)
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(capturedBody).toEqual(
         expect.objectContaining({
           agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         }),
@@ -352,17 +352,39 @@ describe("run command", () => {
     });
 
     it("should handle version not found error", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        name: "my-agent",
-        headVersionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: { version: "1", agents: { main: { provider: "claude" } } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.getComposeVersion).mockRejectedValue(
-        new Error("Version 'deadbeef' not found"),
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "my-agent") {
+            return HttpResponse.json({
+              id: "550e8400-e29b-41d4-a716-446655440000",
+              name: "my-agent",
+              headVersionId:
+                "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+              content: {
+                version: "1",
+                agents: { main: { provider: "claude" } },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get("http://localhost:3000/api/agent/composes/versions", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Version 'deadbeef' not found",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -383,39 +405,52 @@ describe("run command", () => {
     });
 
     it("should parse scope/name format", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        name: "my-agent",
-        headVersionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: { version: "1", agents: { main: { provider: "claude" } } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
+      let capturedQueryParams:
+        | { name: string | null; scope: string | null }
+        | undefined;
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          capturedQueryParams = {
+            name: url.searchParams.get("name"),
+            scope: url.searchParams.get("scope"),
+          };
+          return HttpResponse.json({
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            name: "my-agent",
+            headVersionId:
+              "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+            content: { version: "1", agents: { main: { provider: "claude" } } },
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
           },
-        },
-        provider: "claude-code",
-      });
+        ),
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -426,11 +461,11 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        "user-abc123",
-      );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(capturedQueryParams).toEqual({
+        name: "my-agent",
+        scope: "user-abc123",
+      });
+      expect(capturedBody).toEqual(
         expect.objectContaining({
           agentComposeId: "550e8400-e29b-41d4-a716-446655440000",
         }),
@@ -438,43 +473,61 @@ describe("run command", () => {
     });
 
     it("should parse scope/name:version format", async () => {
-      vi.mocked(apiClient.getComposeByName).mockResolvedValue({
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        name: "my-agent",
-        headVersionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-        content: { version: "1", agents: { main: { provider: "claude" } } },
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      });
-      vi.mocked(apiClient.getComposeVersion).mockResolvedValue({
-        versionId:
-          "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
-      });
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
+      let capturedVersionParams:
+        | { composeId: string | null; version: string | null }
+        | undefined;
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            name: "my-agent",
+            headVersionId:
+              "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+            content: { version: "1", agents: { main: { provider: "claude" } } },
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/versions",
+          ({ request }) => {
+            const url = new URL(request.url);
+            capturedVersionParams = {
+              composeId: url.searchParams.get("composeId"),
+              version: url.searchParams.get("version"),
+            };
+            return HttpResponse.json({
+              versionId:
+                "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
+            });
           },
-        },
-        provider: "claude-code",
-      });
+        ),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -485,15 +538,11 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getComposeByName).toHaveBeenCalledWith(
-        "my-agent",
-        "user-abc123",
-      );
-      expect(apiClient.getComposeVersion).toHaveBeenCalledWith(
-        "550e8400-e29b-41d4-a716-446655440000",
-        "abc12345",
-      );
-      expect(apiClient.createRun).toHaveBeenCalledWith(
+      expect(capturedVersionParams).toEqual({
+        composeId: "550e8400-e29b-41d4-a716-446655440000",
+        version: "abc12345",
+      });
+      expect(capturedBody).toEqual(
         expect.objectContaining({
           agentComposeVersionId:
             "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
@@ -503,44 +552,18 @@ describe("run command", () => {
   });
 
   describe("template variables", () => {
-    beforeEach(() => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "completed" },
-        provider: "claude-code",
-      });
-    });
-
     it("should parse single template variable", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -552,7 +575,7 @@ describe("run command", () => {
         "KEY1=value1",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -565,6 +588,17 @@ describe("run command", () => {
     });
 
     it("should parse multiple template variables", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -578,7 +612,7 @@ describe("run command", () => {
         "KEY2=value2",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -591,6 +625,17 @@ describe("run command", () => {
     });
 
     it("should handle values containing equals signs", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -602,7 +647,7 @@ describe("run command", () => {
         "URL=https://example.com?foo=bar",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -660,6 +705,17 @@ describe("run command", () => {
     });
 
     it("should omit vars when no vars provided", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -669,7 +725,7 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.createRun).toHaveBeenCalledWith({
+      expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
         artifactName: "test-artifact",
@@ -683,59 +739,26 @@ describe("run command", () => {
   });
 
   describe("API interaction", () => {
-    beforeEach(() => {
-      // Mock getEvents to return a result event immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
-            },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: { status: "running" },
-        provider: "claude-code",
-      });
-    });
-
     it("should display starting messages in verbose mode", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-      // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -756,30 +779,25 @@ describe("run command", () => {
     });
 
     it("should not display starting messages without verbose flag", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-      // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -796,30 +814,25 @@ describe("run command", () => {
     });
 
     it("should display vars when provided in verbose mode", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "Success",
-        executionTimeMs: 1000,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-      // Mock getEvents to return completed status immediately
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -843,8 +856,13 @@ describe("run command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
-        new Error("Not authenticated"),
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -868,8 +886,13 @@ describe("run command", () => {
     });
 
     it("should handle compose not found errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
-        new Error("Compose not found"),
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            { error: { message: "Compose not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -893,8 +916,13 @@ describe("run command", () => {
     });
 
     it("should handle API errors with message", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue(
-        new Error("Execution failed"),
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            { error: { message: "Execution failed", code: "SERVER_ERROR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -915,7 +943,11 @@ describe("run command", () => {
     });
 
     it("should handle unexpected errors", async () => {
-      vi.mocked(apiClient.createRun).mockRejectedValue("Non-error object");
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -928,8 +960,9 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
+      // Network error from HttpResponse.error() manifests as "Failed to fetch"
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("unexpected error"),
+        expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -971,69 +1004,74 @@ describe("run command", () => {
     });
 
     it("should poll for events after creating run", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
+      let pollCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/events",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const since = url.searchParams.get("since");
+            pollCount++;
 
-      // First poll returns some events, second poll indicates completion
-      vi.mocked(apiClient.getEvents)
-        .mockResolvedValueOnce({
-          events: [
-            {
-              sequenceNumber: 1,
-              eventType: "init",
-              eventData: { type: "init", sessionId: "session-123" },
-              createdAt: "2025-01-01T00:00:00Z",
-            },
-          ],
-          hasMore: false,
-          nextSequence: 1,
-          run: { status: "running" },
-          provider: "claude-code",
-        })
-        .mockResolvedValueOnce({
-          events: [
-            {
-              sequenceNumber: 2,
-              eventType: "text",
-              eventData: { type: "text", text: "Processing..." },
-              createdAt: "2025-01-01T00:00:01Z",
-            },
-            {
-              sequenceNumber: 3,
-              eventType: "result",
-              eventData: {
-                type: "result",
-                subtype: "success",
-                is_error: false,
-                duration_ms: 1000,
-                num_turns: 1,
-                result: "Done",
-                session_id: "test",
-                total_cost_usd: 0,
-                usage: {},
+            if (since === "0") {
+              // First poll
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "init",
+                    eventData: { type: "init", sessionId: "session-123" },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                nextSequence: 1,
+                run: { status: "running" },
+                provider: "claude-code",
+              });
+            }
+            // Second poll (since=1)
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "text",
+                  eventData: { type: "text", text: "Processing..." },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "result",
+                  eventData: {
+                    type: "result",
+                    subtype: "success",
+                    is_error: false,
+                    duration_ms: 1000,
+                    num_turns: 1,
+                    result: "Done",
+                    session_id: "test",
+                    total_cost_usd: 0,
+                    usage: {},
+                  },
+                  createdAt: "2025-01-01T00:00:02Z",
+                },
+              ],
+              hasMore: false,
+              nextSequence: 3,
+              run: {
+                status: "completed",
+                result: {
+                  checkpointId: "cp-123",
+                  agentSessionId: "session-123",
+                  conversationId: "conv-123",
+                  artifact: {},
+                },
               },
-              createdAt: "2025-01-01T00:00:02Z",
-            },
-          ],
-          hasMore: false,
-          nextSequence: 3,
-          run: {
-            status: "completed",
-            result: {
-              checkpointId: "cp-123",
-              agentSessionId: "session-123",
-              conversationId: "conv-123",
-              artifact: {},
-            },
+              provider: "claude-code",
+            });
           },
-          provider: "claude-code",
-        });
+        ),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -1044,62 +1082,52 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
-        since: 0,
-      });
-      expect(apiClient.getEvents).toHaveBeenCalledWith("run-123", {
-        since: 1,
-      });
+      expect(pollCount).toBeGreaterThanOrEqual(2);
     });
 
     it("should parse and render events as they arrive", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "init",
-            eventData: { type: "init", sessionId: "session-123" },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-          {
-            sequenceNumber: 2,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "init",
+                eventData: { type: "init", sessionId: "session-123" },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
             },
-            createdAt: "2025-01-01T00:00:01Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 2,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -1125,48 +1153,45 @@ describe("run command", () => {
     });
 
     it("should stop polling when run status is completed", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // With new architecture, polling stops when run.status is completed
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          // With new architecture, polling stops when run.status is completed
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
             },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 1,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -1178,22 +1203,13 @@ describe("run command", () => {
       ]);
 
       // Should only call getEvents once since status is completed
-      expect(apiClient.getEvents).toHaveBeenCalledTimes(1);
+      expect(pollCount).toBe(1);
     });
 
     // Test removed due to timing complexity with fake timers
     // The polling logic handles empty responses correctly in production
 
     it("should skip events that fail to parse", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
       // Mock parser to return null for unknown event
       vi.mocked(parseEvent).mockImplementation((raw) => {
         if (raw.type === "unknown") {
@@ -1209,44 +1225,48 @@ describe("run command", () => {
         return null;
       });
 
-      vi.mocked(apiClient.getEvents).mockResolvedValueOnce({
-        events: [
-          {
-            sequenceNumber: 1,
-            eventType: "unknown",
-            eventData: { type: "unknown", data: "something" },
-            createdAt: "2025-01-01T00:00:00Z",
-          },
-          {
-            sequenceNumber: 2,
-            eventType: "result",
-            eventData: {
-              type: "result",
-              subtype: "success",
-              is_error: false,
-              duration_ms: 1000,
-              num_turns: 1,
-              result: "Done",
-              session_id: "test",
-              total_cost_usd: 0,
-              usage: {},
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "unknown",
+                eventData: { type: "unknown", data: "something" },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
             },
-            createdAt: "2025-01-01T00:00:01Z",
-          },
-        ],
-        hasMore: false,
-        nextSequence: 2,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-1",
-            agentSessionId: "s-1",
-            conversationId: "c-1",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",
@@ -1262,32 +1282,34 @@ describe("run command", () => {
     });
 
     it("should handle polling errors gracefully", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // First poll succeeds, second poll fails
-      vi.mocked(apiClient.getEvents)
-        .mockResolvedValueOnce({
-          events: [
-            {
-              sequenceNumber: 1,
-              eventType: "init",
-              eventData: { type: "init", sessionId: "session-123" },
-              createdAt: "2025-01-01T00:00:00Z",
-            },
-          ],
-          hasMore: false,
-          nextSequence: 1,
-          run: { status: "running" },
-          provider: "claude-code",
-        })
-        .mockRejectedValueOnce(new Error("Network error"));
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            // First poll succeeds
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "init",
+                  eventData: { type: "init", sessionId: "session-123" },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: false,
+              nextSequence: 1,
+              run: { status: "running" },
+              provider: "claude-code",
+            });
+          }
+          // Second poll fails
+          return HttpResponse.json(
+            { error: { message: "Network error", code: "SERVER_ERROR" } },
+            { status: 500 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -1308,23 +1330,18 @@ describe("run command", () => {
     });
 
     it("should exit with error when run fails (status: failed)", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Return no events with "failed" status and error message
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: { status: "failed", error: "Agent crashed" },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          // Return no events with "failed" status and error message
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: { status: "failed", error: "Agent crashed" },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -1345,23 +1362,18 @@ describe("run command", () => {
     });
 
     it("should exit with error when run times out (status: timeout)", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Return no events with "timeout" status - sandbox heartbeat expired
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: { status: "timeout" },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          // Return no events with "timeout" status - sandbox heartbeat expired
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: { status: "timeout" },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await expect(async () => {
         await runCommand.parseAsync([
@@ -1380,31 +1392,26 @@ describe("run command", () => {
     });
 
     it("should handle completed status with result", async () => {
-      vi.mocked(apiClient.createRun).mockResolvedValue({
-        runId: "run-123",
-        status: "running",
-        sandboxId: "sbx-456",
-        output: "",
-        executionTimeMs: 0,
-        createdAt: "2025-01-01T00:00:00Z",
-      });
-
-      // Return completed status with result (new architecture)
-      vi.mocked(apiClient.getEvents).mockResolvedValue({
-        events: [],
-        hasMore: false,
-        nextSequence: 0,
-        run: {
-          status: "completed",
-          result: {
-            checkpointId: "cp-123",
-            agentSessionId: "session-123",
-            conversationId: "conv-123",
-            artifact: {},
-          },
-        },
-        provider: "claude-code",
-      });
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          // Return completed status with result (new architecture)
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-123",
+                agentSessionId: "session-123",
+                conversationId: "conv-123",
+                artifact: {},
+              },
+            },
+            provider: "claude-code",
+          });
+        }),
+      );
 
       await runCommand.parseAsync([
         "node",

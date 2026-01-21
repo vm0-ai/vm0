@@ -77,10 +77,162 @@ it('should fetch users from API', async () => {
 
 **Exception**: For platform signal tests (fetch.test.ts), direct fetch mocking is acceptable when testing the fetch wrapper itself, not actual HTTP calls.
 
+### Never Mock Your Own Code - Only Mock Third-Party Dependencies
+
+**PROHIBITION: Mocking internal application code is not allowed**
+
+Tests should NEVER mock internal modules, components, or functions from your own codebase. Only mock third-party dependencies (npm packages).
+
+**Why mocking your own code is harmful:**
+- Hides bugs in the actual code path
+- Creates false confidence (test passes but production fails)
+- Makes refactoring harder (tests depend on implementation details)
+- Reduces test value (you're not testing real behavior)
+- Breaks integration testing (mocks bypass actual logic)
+
+**Prohibited patterns:**
+```typescript
+// ❌ Bad: Mocking your own component
+vi.mock("../../layout/sidebar.tsx", () => ({
+  Sidebar: () => null,
+}));
+
+// ❌ Bad: Mocking your own utility function
+vi.mock("../../lib/utils.ts", () => ({
+  formatDate: vi.fn().mockReturnValue("2024-01-01"),
+}));
+
+// ❌ Bad: Mocking your own service
+vi.mock("../../services/user-service.ts", () => ({
+  getUser: vi.fn().mockResolvedValue({ id: "123" }),
+}));
+```
+
+**Correct approach - Mock only third-party dependencies:**
+```typescript
+// ✅ Good: Mock third-party package
+vi.mock("@clerk/clerk-js", () => ({
+  Clerk: function MockClerk() {
+    return { /* mock implementation */ };
+  },
+}));
+
+// ✅ Good: Use MSW for API calls (not mocking your own code)
+server.use(
+  http.get("/api/users", () => HttpResponse.json({ users: [] }))
+);
+
+// ✅ Good: For missing third-party exports, use vitest.config.ts alias
+// vitest.config.ts
+resolve: {
+  alias: {
+    "@clerk/clerk-react/experimental": path.resolve(
+      __dirname,
+      "./src/test/mocks/clerk-react-experimental.tsx",
+    ),
+  },
+}
+```
+
+**What to do instead:**
+- If a component is complex, extract testable logic into smaller units
+- Test the full integration path rather than mocking parts of it
+- Use MSW for external API dependencies
+- Use dependency injection if you need to swap implementations
+- For missing third-party modules, create stub files and use vitest alias
+
+**Benefits of not mocking your own code:**
+- Tests catch real bugs in production code paths
+- Refactoring is easier (tests don't depend on internals)
+- Higher confidence in test results
+- Integration testing happens naturally
+- Forces better code organization
+
 ## 2. Test Coverage
 - Evaluate test quality and completeness
 - Check for missing test scenarios
 - Assess test maintainability
+
+### Test Initialization Pattern - Match Production Startup Flow
+
+**PROHIBITION: Direct component rendering with StoreProvider is not allowed**
+
+Component tests should follow the same initialization flow as production (main.ts) instead of directly rendering components with StoreProvider.
+
+**Why direct StoreProvider rendering is harmful:**
+- Tests don't match production initialization
+- Misses setup commands and bootstrap logic
+- Can't catch initialization bugs
+- Inconsistent with real application flow
+- Lower confidence in test results
+
+**Prohibited patterns:**
+```typescript
+// ❌ Bad: Direct component rendering
+it("should render the page", () => {
+  const store = createStore();
+
+  render(
+    <StoreProvider value={store}>
+      <MyPage />
+    </StoreProvider>
+  );
+
+  expect(screen.getByText("Title")).toBeInTheDocument();
+});
+```
+
+**Correct approach - Use bootstrap + navigate like main.ts:**
+```typescript
+// ✅ Good: Use bootstrap$ and navigate$ to match production flow
+import { bootstrap$ } from "../../../signals/bootstrap.ts";
+import { navigate$ } from "../../../signals/route.ts";
+import { page$ } from "../../../signals/react-router.ts";
+import { setupRouter } from "../../main.tsx";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+it("should render the page", async () => {
+  const { store, signal } = context;
+
+  // Render the router (like main.ts does)
+  const { container } = render(<div id="test-root" />);
+  const rootEl = container.querySelector("#test-root") as HTMLDivElement;
+
+  // Bootstrap the app (like main.ts does)
+  await store.set(
+    bootstrap$,
+    () => {
+      setupRouter(store, (element) => {
+        render(element, { container: rootEl });
+      });
+    },
+    signal,
+  );
+
+  // Navigate to the page (this triggers setupMyPage$ automatically)
+  await store.set(navigate$, "/my-page", {}, signal);
+
+  // Verify page was rendered
+  const pageElement = store.get(page$);
+  expect(pageElement).toBeDefined();
+});
+```
+
+**Key points:**
+1. Use `bootstrap$` to initialize the app (sets up routes, auth, etc.)
+2. Use `navigate$` to trigger page setup (don't call setup commands directly)
+3. Use `setupRouter` to establish the same rendering context as main.ts
+4. Use `testContext()` for proper cleanup and signal management
+5. Follow the same bootstrap → route → setup → render flow as production
+
+**Benefits of matching production flow:**
+- Catches initialization bugs
+- Tests run through same code path as production
+- Higher confidence in test results
+- Makes tests resilient to refactoring
+- Easier to debug when tests fail (matches production)
 
 ## 3. Error Handling
 - Identify unnecessary try/catch blocks
