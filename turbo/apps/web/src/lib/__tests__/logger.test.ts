@@ -35,9 +35,6 @@ describe("logger", () => {
   };
 
   beforeEach(() => {
-    // Set test environment
-    vi.stubEnv("NODE_ENV", "test");
-
     // Clear all mocks
     vi.clearAllMocks();
     clearLoggerCache();
@@ -94,7 +91,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG matches logger name", () => {
-      process.env.DEBUG = "test";
+      vi.stubEnv("DEBUG", "test");
       clearLoggerCache();
 
       const log = logger("test");
@@ -106,7 +103,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG is wildcard (*)", () => {
-      process.env.DEBUG = "*";
+      vi.stubEnv("DEBUG", "*");
       clearLoggerCache();
 
       const log = logger("test");
@@ -118,7 +115,7 @@ describe("logger", () => {
     });
 
     it("should output debug logs when DEBUG matches prefix wildcard", () => {
-      process.env.DEBUG = "service:*";
+      vi.stubEnv("DEBUG", "service:*");
       clearLoggerCache();
 
       const log = logger("service:e2b");
@@ -130,7 +127,7 @@ describe("logger", () => {
     });
 
     it("should not output debug logs when DEBUG does not match", () => {
-      process.env.DEBUG = "other";
+      vi.stubEnv("DEBUG", "other");
       clearLoggerCache();
 
       const log = logger("test");
@@ -180,7 +177,7 @@ describe("logger", () => {
     });
 
     it("should send debug logs to Axiom when DEBUG is enabled", () => {
-      process.env.DEBUG = "*";
+      vi.stubEnv("DEBUG", "*");
       clearLoggerCache();
 
       const log = logger("test");
