@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { listStorages } from "../../lib/api";
 import { formatBytes, formatRelativeTime } from "../../lib/utils/file-utils";
 
 export const listCommand = new Command()
@@ -10,7 +10,7 @@ export const listCommand = new Command()
   .action(async () => {
     try {
       // Call API
-      const items = await apiClient.listStorages({ type: "volume" });
+      const items = await listStorages({ type: "volume" });
 
       if (items.length === 0) {
         console.log(chalk.dim("No volumes found"));

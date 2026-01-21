@@ -1,18 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import { spawn } from "child_process";
-import { ProxyManager, DEFAULT_PROXY_CONFIG } from "../proxy-manager";
+import { ProxyManager } from "../proxy-manager";
 
 // Mock modules
 vi.mock("fs");
 vi.mock("child_process");
+
+// Test configuration with required caDir
+const TEST_CA_DIR = "/test/proxy";
+const TEST_CONFIG = {
+  caDir: TEST_CA_DIR,
+  port: 8080,
+  apiUrl: "https://test.api.com",
+};
 
 describe("ProxyManager", () => {
   let proxyManager: ProxyManager;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    proxyManager = new ProxyManager();
+    proxyManager = new ProxyManager(TEST_CONFIG);
   });
 
   afterEach(() => {
@@ -20,16 +28,16 @@ describe("ProxyManager", () => {
   });
 
   describe("constructor", () => {
-    it("should use default config when not specified", () => {
+    it("should use provided caDir and derive addonPath", () => {
       const config = proxyManager.getConfig();
 
-      expect(config.port).toBe(DEFAULT_PROXY_CONFIG.port);
-      expect(config.caDir).toBe(DEFAULT_PROXY_CONFIG.caDir);
-      expect(config.addonPath).toBe(DEFAULT_PROXY_CONFIG.addonPath);
+      expect(config.caDir).toBe(TEST_CA_DIR);
+      expect(config.addonPath).toBe(`${TEST_CA_DIR}/mitm_addon.py`);
     });
 
     it("should merge custom config with defaults", () => {
       const customManager = new ProxyManager({
+        caDir: "/custom/proxy",
         port: 9090,
         apiUrl: "https://custom.api.com",
       });
@@ -38,7 +46,19 @@ describe("ProxyManager", () => {
 
       expect(config.port).toBe(9090);
       expect(config.apiUrl).toBe("https://custom.api.com");
-      expect(config.caDir).toBe(DEFAULT_PROXY_CONFIG.caDir); // Default value
+      expect(config.caDir).toBe("/custom/proxy");
+      expect(config.addonPath).toBe("/custom/proxy/mitm_addon.py");
+    });
+
+    it("should use default port when not specified", () => {
+      const minimalManager = new ProxyManager({
+        caDir: "/minimal/proxy",
+      });
+
+      const config = minimalManager.getConfig();
+
+      expect(config.port).toBe(8080);
+      expect(config.caDir).toBe("/minimal/proxy");
     });
   });
 
@@ -97,12 +117,11 @@ describe("ProxyManager", () => {
 
       proxyManager.ensureAddonScript();
 
-      expect(mockMkdirSync).toHaveBeenCalledWith(
-        expect.stringContaining("proxy"),
-        { recursive: true },
-      );
+      expect(mockMkdirSync).toHaveBeenCalledWith(TEST_CA_DIR, {
+        recursive: true,
+      });
       expect(mockWriteFileSync).toHaveBeenCalledWith(
-        DEFAULT_PROXY_CONFIG.addonPath,
+        `${TEST_CA_DIR}/mitm_addon.py`,
         expect.any(String),
         { mode: 0o755 },
       );
@@ -135,7 +154,7 @@ describe("ProxyManager", () => {
     it("should throw error if CA certificate does not exist", () => {
       const mockExistsSync = vi.mocked(fs.existsSync);
       mockExistsSync.mockImplementation((path) => {
-        if (path === DEFAULT_PROXY_CONFIG.caDir) return true;
+        if (path === TEST_CA_DIR) return true;
         return false; // CA cert doesn't exist
       });
 

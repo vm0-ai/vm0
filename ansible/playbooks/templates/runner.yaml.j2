@@ -21,3 +21,4 @@ firecracker:
 
 proxy:
   port: {{ proxy_port | default(8080) }}
+  ca_dir: {{ runner_base_dir }}/proxy

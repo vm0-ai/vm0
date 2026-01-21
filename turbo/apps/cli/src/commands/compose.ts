@@ -10,7 +10,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
 } from "@vm0/core";
-import { apiClient } from "../lib/api/api-client";
+import { getComposeByName, createOrUpdateCompose, getScope } from "../lib/api";
 import { validateAgentCompose } from "../lib/domain/yaml-validator";
 import {
   getProviderDefaults,
@@ -249,7 +249,7 @@ export const composeCommand = new Command()
       // Fetch HEAD version to compare secrets (for smart confirmation)
       let headSecrets = new Set<string>();
       try {
-        const existingCompose = await apiClient.getComposeByName(agentName);
+        const existingCompose = await getComposeByName(agentName);
         if (existingCompose.content) {
           headSecrets = getSecretsFromComposeContent(existingCompose.content);
         }
@@ -336,12 +336,12 @@ export const composeCommand = new Command()
       // 5. Call API
       console.log("Uploading compose...");
 
-      const response = await apiClient.createOrUpdateCompose({
+      const response = await createOrUpdateCompose({
         content: config,
       });
 
       // Get user's scope for display (must exist if compose succeeded)
-      const scopeResponse = await apiClient.getScope();
+      const scopeResponse = await getScope();
 
       // 6. Display result
       const shortVersionId = response.versionId.slice(0, 8);

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
-import { apiClient } from "../../lib/api/api-client";
+import { getComposeByName, deploySchedule } from "../../lib/api";
 import { scheduleYamlSchema, type ScheduleDefinition } from "@vm0/core";
 import { toISODateTime } from "../../lib/domain/schedule-utils";
 
@@ -133,7 +133,7 @@ export const deployCommand = new Command()
           ? namePart.split(":")[0]!
           : namePart;
 
-        const compose = await apiClient.getComposeByName(agentName);
+        const compose = await getComposeByName(agentName);
         composeId = compose.id;
       } catch {
         console.error(chalk.red(`✗ Agent not found: ${agentRef}`));
@@ -164,7 +164,7 @@ export const deployCommand = new Command()
       };
 
       // Call API
-      const deployResult = await apiClient.deploySchedule(body);
+      const deployResult = await deploySchedule(body);
 
       // Display result
       if (deployResult.created) {

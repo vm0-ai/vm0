@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { apiClient } from "../../lib/api/api-client";
+import { getCredential, deleteCredential } from "../../lib/api";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -11,7 +11,7 @@ export const deleteCommand = new Command()
     try {
       // Verify credential exists first
       try {
-        await apiClient.getCredential(name);
+        await getCredential(name);
       } catch {
         console.error(chalk.red(`✗ Credential "${name}" not found`));
         process.exit(1);
@@ -43,7 +43,7 @@ export const deleteCommand = new Command()
         }
       }
 
-      await apiClient.deleteCredential(name);
+      await deleteCredential(name);
       console.log(chalk.green(`✓ Credential "${name}" deleted`));
     } catch (error) {
       if (error instanceof Error) {
