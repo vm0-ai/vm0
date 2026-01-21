@@ -49,7 +49,7 @@ import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockQueryAxiom = vi.mocked(queryAxiom);
+const queryAxiomSpy = vi.mocked(queryAxiom);
 
 /**
  * Helper to create a NextRequest for testing.
@@ -107,7 +107,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     } as unknown as Headers);
 
     // Default: Axiom returns empty array
-    mockQueryAxiom.mockResolvedValue([]);
+    queryAxiomSpy.mockResolvedValue([]);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -303,7 +303,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty events when Axiom returns empty", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -318,7 +318,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
 
     it("should return empty events when Axiom is not configured", async () => {
-      mockQueryAxiom.mockResolvedValue(null);
+      queryAxiomSpy.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -333,7 +333,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
 
     it("should return agent events from Axiom", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           1,
@@ -363,7 +363,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.hasMore).toBe(false);
 
       // Verify Axiom was queried with correct APL
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining(`where runId == "${testRunId}"`),
       );
     });
@@ -371,7 +371,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Multiple Events", () => {
     it("should return events in chronological order", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           1,
@@ -426,7 +426,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   describe("Pagination", () => {
     it("should respect limit parameter and indicate hasMore", async () => {
       // Mock Axiom returning limit+1 records (indicating more data exists)
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           1,
@@ -476,13 +476,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining("limit 4"),
       );
     });
 
     it("should include since filter in Axiom query", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:10Z",
           2,
@@ -506,7 +506,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.events[0].eventType).toBe("recent_event");
 
       // Verify since filter was included in APL query
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining("where _time > datetime"),
       );
     });
@@ -514,7 +514,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Event Data", () => {
     it("should include createdAt as ISO string", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-15T10:30:00.000Z",
           1,
@@ -551,7 +551,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         },
       };
 
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           1,
