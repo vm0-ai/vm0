@@ -6,5 +6,5 @@ interface ClerkProviderProps {
 }
 
 export function ClerkProvider({ children }: ClerkProviderProps) {
-  return <>{children}</>;
+  return children;
 }

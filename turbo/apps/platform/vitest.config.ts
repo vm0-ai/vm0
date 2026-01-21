@@ -8,11 +8,11 @@ export default defineConfig({
     alias: {
       "@clerk/clerk-react/experimental": path.resolve(
         __dirname,
-        "./src/test/mocks/clerk-react-experimental.tsx",
+        "./src/test/mocks/clerk-react-experimental.ts",
       ),
       "@clerk/clerk-react": path.resolve(
         __dirname,
-        "./src/test/mocks/clerk-react.tsx",
+        "./src/test/mocks/clerk-react.ts",
       ),
     },
   },
