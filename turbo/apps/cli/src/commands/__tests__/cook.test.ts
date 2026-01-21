@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
 import { existsSync, readFileSync } from "fs";
-import { parseRunIdsFromOutput } from "../cook";
+import { parseRunIdsFromOutput, extractRequiredVarNames } from "../cook";
 
 // Mock dependencies
 vi.mock("fs/promises");
@@ -206,5 +206,104 @@ without the completion marker
     expect(result.runId).toBe("ae715364-657c-462f-88ad-3c8d4ec7edf2");
     expect(result.sessionId).toBeUndefined();
     expect(result.checkpointId).toBeUndefined();
+  });
+});
+
+describe("extractRequiredVarNames", () => {
+  it("should extract and combine variable names from vars and secrets", () => {
+    const config = {
+      version: "1.0",
+      agents: {
+        "test-agent": {
+          provider: "anthropic",
+          image: "test",
+          working_dir: "/workspace",
+          environment: {
+            VAR1: "${{ vars.API_KEY }}",
+            VAR2: "${{ secrets.DB_PASSWORD }}",
+            VAR3: "${{ vars.BASE_URL }}",
+          },
+        },
+      },
+    };
+
+    const result = extractRequiredVarNames(config);
+
+    expect(result).toHaveLength(3);
+    expect(result).toContain("API_KEY");
+    expect(result).toContain("DB_PASSWORD");
+    expect(result).toContain("BASE_URL");
+  });
+
+  it("should deduplicate variable names", () => {
+    const config = {
+      version: "1.0",
+      agents: {
+        "test-agent": {
+          provider: "anthropic",
+          image: "test",
+          working_dir: "/workspace",
+          environment: {
+            VAR1: "${{ vars.DUPLICATE }}",
+            VAR2: "${{ secrets.DUPLICATE }}",
+            VAR3: "${{ vars.UNIQUE }}",
+          },
+        },
+      },
+    };
+
+    const result = extractRequiredVarNames(config);
+
+    expect(result).toHaveLength(2);
+    expect(result).toContain("DUPLICATE");
+    expect(result).toContain("UNIQUE");
+  });
+
+  it("should return empty array for config without variables", () => {
+    const config = {
+      version: "1.0",
+      agents: {
+        "test-agent": {
+          provider: "anthropic",
+          image: "test",
+          working_dir: "/workspace",
+          environment: {
+            STATIC: "value",
+          },
+        },
+      },
+    };
+
+    const result = extractRequiredVarNames(config);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it("should ignore env and credentials sources", () => {
+    const config = {
+      version: "1.0",
+      agents: {
+        "test-agent": {
+          provider: "anthropic",
+          image: "test",
+          working_dir: "/workspace",
+          environment: {
+            VAR1: "${{ env.ENV_VAR }}",
+            VAR2: "${{ vars.VARS_VAR }}",
+            VAR3: "${{ credentials.CRED_VAR }}",
+            VAR4: "${{ secrets.SECRET_VAR }}",
+          },
+        },
+      },
+    };
+
+    const result = extractRequiredVarNames(config);
+
+    // Only vars and secrets should be included
+    expect(result).toHaveLength(2);
+    expect(result).toContain("VARS_VAR");
+    expect(result).toContain("SECRET_VAR");
+    expect(result).not.toContain("ENV_VAR");
+    expect(result).not.toContain("CRED_VAR");
   });
 });
