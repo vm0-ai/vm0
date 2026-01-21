@@ -21,7 +21,7 @@ Run both operations together for a complete pre-commit workflow.
 ## Commands
 
 ```bash
-cd /workspaces/vm0/turbo
+cd turbo
 
 pnpm format           # Auto-format code
 pnpm lint             # Check for linting issues

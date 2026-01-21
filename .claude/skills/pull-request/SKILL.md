@@ -80,7 +80,7 @@ fi
 **CRITICAL**: All checks MUST pass before committing.
 
 ```bash
-cd /workspaces/vm0/turbo
+cd turbo
 
 pnpm install
 pnpm format           # Auto-format code

@@ -51,7 +51,7 @@ review "authentication changes"     # Review by description
    - Add review criteria section
 
 4. **Review Each Commit Against Bad Smells**
-   - Read the bad smell documentation from `/workspaces/vm02/specs/bad-smell.md`
+   - Read the bad smell documentation from `specs/bad-smell.md`
    - For testing-related changes, read testing skill from `.claude/skills/testing/SKILL.md`
    - For each commit, analyze code changes against all code quality issues
    - Create individual review file: `codereviews/YYYYMMDD/review-{short-hash}.md`
@@ -287,7 +287,7 @@ review "authentication changes"     # Review by description
 - Use `git show --stat {commit}` for change summary
 - Use `git show {commit}` to analyze actual code changes
 - Generate review files in date-based directory structure
-- Cross-reference with `/workspaces/vm02/specs/bad-smell.md` for criteria
+- Cross-reference with `specs/bad-smell.md` for criteria
 
 ## Operation 2: Defensive Code Cleanup
 
@@ -521,7 +521,7 @@ codereviews/
 
 ## References
 
-- Bad smell documentation: `/workspaces/vm02/specs/bad-smell.md` (non-testing patterns)
+- Bad smell documentation: `specs/bad-smell.md` (non-testing patterns)
 - Testing skill: `.claude/skills/testing/SKILL.md` (comprehensive testing patterns and anti-patterns)
-- Project principles: `/workspaces/vm02/CLAUDE.md`
+- Project principles: `CLAUDE.md`
 - Conventional commits: https://www.conventionalcommits.org/
