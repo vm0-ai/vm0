@@ -20,6 +20,7 @@ import { setupGithubCommand } from "./commands/setup-github";
 import { scheduleCommand } from "./commands/schedule";
 import { usageCommand } from "./commands/usage";
 import { credentialCommand } from "./commands/credential";
+import { modelProviderCommand } from "./commands/model-provider";
 
 const program = new Command();
 
@@ -88,6 +89,7 @@ program.addCommand(setupGithubCommand);
 program.addCommand(scheduleCommand);
 program.addCommand(usageCommand);
 program.addCommand(credentialCommand);
+program.addCommand(modelProviderCommand);
 
 export { program };
 

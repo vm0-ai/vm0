@@ -36,3 +36,9 @@ export class ForbiddenError extends ApiError {
     super(403, message, "FORBIDDEN");
   }
 }
+
+export class ConflictError extends ApiError {
+  constructor(message = "Conflict") {
+    super(409, message, "CONFLICT");
+  }
+}

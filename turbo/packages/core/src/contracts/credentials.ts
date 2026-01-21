@@ -22,12 +22,20 @@ export const credentialNameSchema = z
   );
 
 /**
+ * Credential type schema
+ */
+export const credentialTypeSchema = z.enum(["user", "model-provider"]);
+
+export type CredentialType = z.infer<typeof credentialTypeSchema>;
+
+/**
  * Credential metadata response (value is never returned)
  */
 export const credentialResponseSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   description: z.string().nullable(),
+  type: credentialTypeSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });

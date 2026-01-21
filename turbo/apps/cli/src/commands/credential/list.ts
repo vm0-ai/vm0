@@ -29,7 +29,11 @@ export const listCommand = new Command()
       console.log();
 
       for (const credential of result.credentials) {
-        console.log(`  ${chalk.cyan(credential.name)}`);
+        const typeIndicator =
+          credential.type === "model-provider"
+            ? chalk.dim(" [model-provider]")
+            : "";
+        console.log(`  ${chalk.cyan(credential.name)}${typeIndicator}`);
         if (credential.description) {
           console.log(`    ${chalk.dim(credential.description)}`);
         }

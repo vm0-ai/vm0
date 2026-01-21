@@ -48,5 +48,15 @@ export {
   deleteCredential,
 } from "./domains/credentials";
 
+// Domain modules - Model Providers
+export {
+  listModelProviders,
+  upsertModelProvider,
+  checkModelProviderCredential,
+  deleteModelProvider,
+  convertModelProviderCredential,
+  setModelProviderDefault,
+} from "./domains/model-providers";
+
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";

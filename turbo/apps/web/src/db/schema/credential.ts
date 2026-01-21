@@ -26,11 +26,13 @@ export const credentials = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),
+    type: varchar("type", { length: 50 }).notNull().default("user"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex("idx_credentials_scope_name").on(table.scopeId, table.name),
     index("idx_credentials_scope").on(table.scopeId),
+    index("idx_credentials_type").on(table.type),
   ],
 );
