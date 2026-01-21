@@ -3,69 +3,17 @@ command: dev-auth
 description: Authenticate with local development server and get CLI token
 ---
 
-Automates the CLI authentication flow against the local development server. This command uses Playwright to login via Clerk and authorize the CLI device code, then saves the auth token to `~/.vm0/config.json`.
+Authenticate CLI with local development server using the dev-server skill with context fork isolation.
 
-Usage: `/dev-auth`
+```typescript
+await Skill({
+  skill: "dev-server",
+  args: "auth"
+});
+```
 
-Prerequisites:
-- Dev server must be running (use `/dev-start` first)
-- Clerk test credentials must be configured in environment
+**Usage**: `/dev-auth`
 
-## What to do:
+**Prerequisites**: Dev server must be running (use `/dev-start` first)
 
-1. **Check if dev server is running:**
-   Use `/bashes` to list background shells and look for one running "pnpm dev".
-
-   If no dev server found:
-   ```
-   ❌ No dev server found. Please run `/dev-start` first.
-   ```
-   Stop execution.
-
-2. **Install CLI globally (if not already installed):**
-   ```bash
-   PROJECT_ROOT=$(git rev-parse --show-toplevel)
-   cd "$PROJECT_ROOT/turbo/apps/cli" && pnpm link --global
-   ```
-
-3. **Run authentication automation:**
-   ```bash
-   PROJECT_ROOT=$(git rev-parse --show-toplevel)
-   cd "$PROJECT_ROOT" && npx tsx e2e/cli-auth-automation.ts http://localhost:3000
-   ```
-
-4. **Verify authentication:**
-   Check if auth token was saved:
-   ```bash
-   cat ~/.vm0/config.json
-   ```
-
-5. **Display results:**
-   Show the auth status and token information:
-   ```
-   ✅ CLI authentication successful!
-
-   Auth token saved to: ~/.vm0/config.json
-
-   You can now use the CLI with local dev server:
-   - vm0 auth status
-   - vm0 project list
-   ```
-
-## Technical details:
-
-The authentication script (`e2e/cli-auth-automation.ts`):
-- Spawns `vm0 auth login` with `VM0_API_URL=http://localhost:3000`
-- Launches Playwright browser in headless mode
-- Logs in via Clerk using `e2e+clerk_test@vm0.ai`
-- Automatically enters the CLI device code
-- Clicks "Authorize Device" button
-- Waits for authentication success
-- Verifies token saved to `~/.vm0/config.json`
-
-## Error handling:
-
-If authentication fails:
-- Check dev server logs with `/dev-logs`
-- Verify Clerk test credentials are configured
-- Try running manually: `cd $(git rev-parse --show-toplevel) && npx tsx e2e/cli-auth-automation.ts http://localhost:3000`
+**What it does**: Uses Playwright to automate Clerk login and authorize CLI device code, saving auth token to `~/.vm0/config.json`.
