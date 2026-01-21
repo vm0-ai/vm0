@@ -109,7 +109,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       agents: {
         "test-agent-runs": {
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },

@@ -111,7 +111,7 @@ version: "1.0"
 
 agents:
   test-agent:
-    provider: claude-code
+    framework: claude-code
     image: "invalid/missing-image"
 EOF
 
@@ -131,7 +131,7 @@ version: "1.0"
 
 agents:
   test-agent:
-    provider: claude-code
+    framework: claude-code
     image: "no-slash-here"
 EOF
 

@@ -128,7 +128,7 @@ describe("Public API v1 - Agents Endpoints", () => {
         agents: {
           "test-agent-v1": {
             image: "vm0/claude-code:dev",
-            provider: "claude-code",
+            framework: "claude-code",
           },
         },
       },

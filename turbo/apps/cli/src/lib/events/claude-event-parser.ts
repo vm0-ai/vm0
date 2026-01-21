@@ -107,7 +107,7 @@ export class ClaudeEventParser {
       type: "init",
       timestamp: new Date(),
       data: {
-        provider: "claude-code",
+        framework: "claude-code",
         sessionId: event.session_id,
         model: event.model,
         tools: event.tools,

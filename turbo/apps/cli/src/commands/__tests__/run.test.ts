@@ -72,7 +72,7 @@ describe("run command", () => {
     hasMore: false,
     nextSequence: 1,
     run: { status: "completed" },
-    provider: "claude-code",
+    framework: "claude-code",
   };
 
   beforeEach(() => {
@@ -447,7 +447,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -524,7 +524,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -755,7 +755,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -794,7 +794,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -829,7 +829,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1027,7 +1027,7 @@ describe("run command", () => {
                 hasMore: false,
                 nextSequence: 1,
                 run: { status: "running" },
-                provider: "claude-code",
+                framework: "claude-code",
               });
             }
             // Second poll (since=1)
@@ -1067,7 +1067,7 @@ describe("run command", () => {
                   artifact: {},
                 },
               },
-              provider: "claude-code",
+              framework: "claude-code",
             });
           },
         ),
@@ -1124,7 +1124,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1188,7 +1188,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1263,7 +1263,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1300,7 +1300,7 @@ describe("run command", () => {
               hasMore: false,
               nextSequence: 1,
               run: { status: "running" },
-              provider: "claude-code",
+              framework: "claude-code",
             });
           }
           // Second poll fails
@@ -1338,7 +1338,7 @@ describe("run command", () => {
             hasMore: false,
             nextSequence: 0,
             run: { status: "failed", error: "Agent crashed" },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1370,7 +1370,7 @@ describe("run command", () => {
             hasMore: false,
             nextSequence: 0,
             run: { status: "timeout" },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );
@@ -1408,7 +1408,7 @@ describe("run command", () => {
                 artifact: {},
               },
             },
-            provider: "claude-code",
+            framework: "claude-code",
           });
         }),
       );

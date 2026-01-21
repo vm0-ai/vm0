@@ -1,54 +1,54 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
-  getProviderDefaults,
-  isProviderSupported,
-  getSupportedProviders,
+  getFrameworkDefaults,
+  isFrameworkSupported,
+  getSupportedFrameworks,
   getDefaultImage,
-} from "../provider-config";
+} from "../framework-config";
 
-describe("provider-config", () => {
-  describe("getProviderDefaults", () => {
-    it("returns defaults for claude-code provider", () => {
-      const defaults = getProviderDefaults("claude-code");
+describe("framework-config", () => {
+  describe("getFrameworkDefaults", () => {
+    it("returns defaults for claude-code framework", () => {
+      const defaults = getFrameworkDefaults("claude-code");
       expect(defaults).toBeDefined();
       expect(defaults?.workingDir).toBe("/home/user/workspace");
       expect(defaults?.image.production).toBe("vm0/claude-code:latest");
       expect(defaults?.image.development).toBe("vm0/claude-code:dev");
     });
 
-    it("returns defaults for codex provider", () => {
-      const defaults = getProviderDefaults("codex");
+    it("returns defaults for codex framework", () => {
+      const defaults = getFrameworkDefaults("codex");
       expect(defaults).toBeDefined();
       expect(defaults?.workingDir).toBe("/home/user/workspace");
       expect(defaults?.image.production).toBe("vm0/codex:latest");
       expect(defaults?.image.development).toBe("vm0/codex:dev");
     });
 
-    it("returns undefined for unknown provider", () => {
-      const defaults = getProviderDefaults("unknown");
+    it("returns undefined for unknown framework", () => {
+      const defaults = getFrameworkDefaults("unknown");
       expect(defaults).toBeUndefined();
     });
   });
 
-  describe("isProviderSupported", () => {
+  describe("isFrameworkSupported", () => {
     it("returns true for claude-code", () => {
-      expect(isProviderSupported("claude-code")).toBe(true);
+      expect(isFrameworkSupported("claude-code")).toBe(true);
     });
 
     it("returns true for codex", () => {
-      expect(isProviderSupported("codex")).toBe(true);
+      expect(isFrameworkSupported("codex")).toBe(true);
     });
 
-    it("returns false for unknown provider", () => {
-      expect(isProviderSupported("unknown")).toBe(false);
+    it("returns false for unknown framework", () => {
+      expect(isFrameworkSupported("unknown")).toBe(false);
     });
   });
 
-  describe("getSupportedProviders", () => {
+  describe("getSupportedFrameworks", () => {
     it("returns array containing claude-code and codex", () => {
-      const providers = getSupportedProviders();
-      expect(providers).toContain("claude-code");
-      expect(providers).toContain("codex");
+      const frameworks = getSupportedFrameworks();
+      expect(frameworks).toContain("claude-code");
+      expect(frameworks).toContain("codex");
     });
   });
 
@@ -59,7 +59,7 @@ describe("provider-config", () => {
       process.env.NODE_ENV = originalEnv;
     });
 
-    describe("claude-code provider", () => {
+    describe("claude-code framework", () => {
       it("returns production image when NODE_ENV is production", () => {
         process.env.NODE_ENV = "production";
         expect(getDefaultImage("claude-code")).toBe("vm0/claude-code:latest");
@@ -76,7 +76,7 @@ describe("provider-config", () => {
       });
     });
 
-    describe("codex provider", () => {
+    describe("codex framework", () => {
       it("returns production image when NODE_ENV is production", () => {
         process.env.NODE_ENV = "production";
         expect(getDefaultImage("codex")).toBe("vm0/codex:latest");
@@ -93,7 +93,7 @@ describe("provider-config", () => {
       });
     });
 
-    it("returns undefined for unknown provider", () => {
+    it("returns undefined for unknown framework", () => {
       expect(getDefaultImage("unknown")).toBeUndefined();
     });
 

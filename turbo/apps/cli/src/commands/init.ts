@@ -14,7 +14,7 @@ function generateVm0Yaml(agentName: string): string {
 
 agents:
   ${agentName}:
-    provider: claude-code
+    framework: claude-code
     # Build agentic workflow using natural language
     instructions: AGENTS.md
     # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills

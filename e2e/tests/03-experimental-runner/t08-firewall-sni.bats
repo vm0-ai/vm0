@@ -50,7 +50,7 @@ version: "1.0"
 agents:
   sni-test:
     description: "SNI-only firewall test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -78,7 +78,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-allow:
     description: "SNI allow test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -137,7 +137,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-block:
     description: "SNI block test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -177,7 +177,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}-wild:
     description: "SNI wildcard test"
-    provider: claude-code
+    framework: claude-code
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}

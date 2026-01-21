@@ -45,7 +45,7 @@ teardown() {
     run cat vm0.yaml
     assert_output --partial 'version: "1.0"'
     assert_output --partial "my-agent:"
-    assert_output --partial "provider: claude-code"
+    assert_output --partial "framework: claude-code"
     assert_output --partial "instructions: AGENTS.md"
     assert_output --partial "CLAUDE_CODE_OAUTH_TOKEN"
     assert_output --partial "# Build agentic workflow"

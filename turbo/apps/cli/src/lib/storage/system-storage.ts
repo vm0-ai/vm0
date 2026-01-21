@@ -11,7 +11,7 @@ import {
   type SkillFrontmatter,
 } from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
-import { getValidatedProvider } from "@vm0/core";
+import { getValidatedFramework } from "@vm0/core";
 
 interface StorageUploadResult {
   name: string;
@@ -28,19 +28,19 @@ export interface SkillUploadResult extends StorageUploadResult {
 }
 
 /**
- * Get the canonical instructions filename for a provider
+ * Get the canonical instructions filename for a framework
  *
- * Each provider expects instructions at a specific filename:
+ * Each framework expects instructions at a specific filename:
  * - claude-code: CLAUDE.md (read from ~/.claude/)
  * - codex: AGENTS.md (read from ~/.codex/)
  *
- * @param provider - The provider name (e.g., "claude-code", "codex")
+ * @param framework - The framework name (e.g., "claude-code", "codex")
  * @returns The canonical filename for instructions
- * @throws Error if provider is defined but not supported
+ * @throws Error if framework is defined but not supported
  */
-export function getInstructionsFilename(provider?: string): string {
-  const validatedProvider = getValidatedProvider(provider);
-  if (validatedProvider === "codex") {
+export function getInstructionsFilename(framework?: string): string {
+  const validatedFramework = getValidatedFramework(framework);
+  if (validatedFramework === "codex") {
     return "AGENTS.md";
   }
   return "CLAUDE.md";
@@ -52,14 +52,14 @@ export function getInstructionsFilename(provider?: string): string {
  * @param agentName - Name of the agent (used for storage name)
  * @param instructionsFilePath - Path to the instructions file (e.g., AGENTS.md)
  * @param basePath - Base path for resolving relative paths
- * @param provider - Provider name for determining canonical filename
+ * @param framework - Framework name for determining canonical filename
  * @returns Upload result with storage name and version
  */
 export async function uploadInstructions(
   agentName: string,
   instructionsFilePath: string,
   basePath: string,
-  provider?: string,
+  framework?: string,
 ): Promise<StorageUploadResult> {
   const storageName = getInstructionsStorageName(agentName);
 
@@ -76,8 +76,8 @@ export async function uploadInstructions(
   const instructionsDir = path.join(tmpDir, "instructions");
   await fs.mkdir(instructionsDir);
 
-  // Write file with provider-specific name (CLAUDE.md for claude-code, AGENTS.md for codex)
-  const filename = getInstructionsFilename(provider);
+  // Write file with framework-specific name (CLAUDE.md for claude-code, AGENTS.md for codex)
+  const filename = getInstructionsFilename(framework);
   await fs.writeFile(path.join(instructionsDir, filename), content);
 
   try {

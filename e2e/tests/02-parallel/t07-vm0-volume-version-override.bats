@@ -43,7 +43,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data
@@ -69,7 +69,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data

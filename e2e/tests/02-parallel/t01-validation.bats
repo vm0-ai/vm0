@@ -15,7 +15,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Test agent for template variable validation"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     volumes:

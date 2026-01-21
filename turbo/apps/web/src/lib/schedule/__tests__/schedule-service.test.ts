@@ -92,7 +92,7 @@ describe("ScheduleService", () => {
       .values({
         id: TEST_VERSION_ID,
         composeId: TEST_COMPOSE_ID,
-        content: { agents: { "test-agent": { provider: "test" } } },
+        content: { agents: { "test-agent": { framework: "test" } } },
         createdBy: TEST_USER_ID,
         createdAt: new Date(),
       })

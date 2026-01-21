@@ -710,11 +710,11 @@ describe("GET /api/agent/runs/:id/events", () => {
   });
 
   // ============================================
-  // Provider Field Tests
+  // Framework Field Tests
   // ============================================
 
-  describe("Provider Field", () => {
-    it("should return default provider 'claude-code' for compose without provider", async () => {
+  describe("Framework Field", () => {
+    it("should return default framework 'claude-code' for compose without framework", async () => {
       queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
@@ -725,10 +725,10 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
     });
 
-    it("should return 'codex' provider when compose has codex provider", async () => {
+    it("should return 'codex' framework when compose has codex framework", async () => {
       // Create a compose with codex provider
       const codexComposeId = randomUUID();
       const codexVersionId =
@@ -750,7 +750,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         composeId: codexComposeId,
         content: {
           agent: {
-            provider: "codex",
+            framework: "codex",
             model: "codex",
           },
         },
@@ -777,7 +777,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("codex");
+      expect(data.framework).toBe("codex");
 
       // Clean up
       await globalThis.services.db
@@ -791,8 +791,8 @@ describe("GET /api/agent/runs/:id/events", () => {
         .where(eq(agentComposes.id, codexComposeId));
     });
 
-    it("should return explicit provider from compose configuration", async () => {
-      // Create a compose with explicit claude-code provider
+    it("should return explicit framework from compose configuration", async () => {
+      // Create a compose with explicit claude-code framework
       const explicitComposeId = randomUUID();
       const explicitVersionId =
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
@@ -813,7 +813,7 @@ describe("GET /api/agent/runs/:id/events", () => {
         composeId: explicitComposeId,
         content: {
           agent: {
-            provider: "claude-code",
+            framework: "claude-code",
             model: "claude-3-5-sonnet-20241022",
           },
         },
@@ -840,7 +840,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.provider).toBe("claude-code");
+      expect(data.framework).toBe("claude-code");
 
       // Clean up
       await globalThis.services.db

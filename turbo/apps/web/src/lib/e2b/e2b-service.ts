@@ -184,11 +184,11 @@ class E2BService {
         );
       }
 
-      // Set CLI_AGENT_TYPE based on provider (defaults to "claude-code")
+      // Set CLI_AGENT_TYPE based on framework (defaults to "claude-code")
       // This is used by run-agent.py to determine which CLI to invoke
-      const provider = firstAgent.provider || "claude-code";
-      sandboxEnvVars.CLI_AGENT_TYPE = provider;
-      log.debug(`CLI_AGENT_TYPE set to: ${provider}`);
+      const framework = firstAgent.framework || "claude-code";
+      sandboxEnvVars.CLI_AGENT_TYPE = framework;
+      log.debug(`CLI_AGENT_TYPE set to: ${framework}`);
 
       // Pass secret values to sandbox for client-side masking
       // Values are base64 encoded and comma-separated
@@ -241,7 +241,7 @@ class E2BService {
           context.resumeSession.sessionId,
           context.resumeSession.sessionHistory,
           context.resumeSession.workingDir,
-          provider,
+          framework,
         );
       }
 

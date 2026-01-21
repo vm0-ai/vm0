@@ -37,7 +37,7 @@ const router = tsr.router(runEventsContract, {
 
     const { since, limit } = query;
 
-    // Verify run exists and belongs to user, join with compose version to get provider
+    // Verify run exists and belongs to user, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db
       .select({
         id: agentRuns.id,
@@ -64,11 +64,11 @@ const router = tsr.router(runEventsContract, {
       };
     }
 
-    // Extract provider from compose content
+    // Extract framework from compose content
     const composeContent = runWithCompose.composeContent as {
-      agent?: { provider?: string };
+      agent?: { framework?: string };
     } | null;
-    const provider = composeContent?.agent?.provider ?? "claude-code";
+    const framework = composeContent?.agent?.framework ?? "claude-code";
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
@@ -122,7 +122,7 @@ const router = tsr.router(runEventsContract, {
         hasMore,
         nextSequence,
         run: runState,
-        provider,
+        framework,
       },
     };
   },

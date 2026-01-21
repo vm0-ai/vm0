@@ -89,7 +89,7 @@ describe("GET /api/agent/composes/versions", () => {
         "test-version-agent": {
           description: "Test agent for version tests",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -317,7 +317,7 @@ describe("GET /api/agent/composes/versions", () => {
         "test-version-agent-b": {
           description: "Second agent for cross-compose test",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -379,7 +379,7 @@ describe("GET /api/agent/composes/versions", () => {
         "test-version-agent-c": {
           description: "Third agent for cross-compose exact match test",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },

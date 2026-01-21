@@ -26,7 +26,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for version display"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -49,7 +49,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for deduplication"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -89,7 +89,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Initial description"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -107,7 +107,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Updated description"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -138,7 +138,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Deterministic test"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -157,7 +157,7 @@ agents:
   $AGENT_NAME:
     working_dir: /home/user/workspace
     image: "vm0/claude-code:dev"
-    provider: claude-code
+    framework: claude-code
     description: "Deterministic test"
 EOF
 
@@ -190,7 +190,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Version 1"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -208,7 +208,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Version 2"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -243,7 +243,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Latest version test"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -276,7 +276,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Error test"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -303,7 +303,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Backward compatibility test"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF

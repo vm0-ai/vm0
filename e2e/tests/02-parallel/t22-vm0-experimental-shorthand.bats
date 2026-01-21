@@ -38,7 +38,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with experimental_secrets shorthand"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -61,7 +61,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with secrets shorthand"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -111,7 +111,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent with vars shorthand"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -157,7 +157,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent requiring secrets"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -194,7 +194,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent requiring vars"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - DB_URL
@@ -235,7 +235,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test precedence of explicit environment over shorthand"
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
     experimental_vars:
@@ -286,7 +286,7 @@ version: "1.0"
 
 agents:
   invalid-agent:
-    provider: claude-code
+    framework: claude-code
     experimental_secrets: "should-be-array"
 EOF
 
@@ -303,7 +303,7 @@ version: "1.0"
 
 agents:
   invalid-agent:
-    provider: claude-code
+    framework: claude-code
     experimental_vars:
       - 123
 EOF
@@ -321,7 +321,7 @@ version: "1.0"
 
 agents:
   invalid-agent:
-    provider: claude-code
+    framework: claude-code
     experimental_secrets:
       - API_KEY
       - ""
@@ -340,7 +340,7 @@ version: "1.0"
 
 agents:
   empty-arrays:
-    provider: claude-code
+    framework: claude-code
     experimental_secrets: []
     experimental_vars: []
 EOF

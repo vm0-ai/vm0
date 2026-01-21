@@ -96,7 +96,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         "test-get-by-name-success": {
           description: "Test description",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -202,7 +202,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         "test-user-isolation": {
           description: "Test",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -255,7 +255,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
         "test-agent-with-hyphens": {
           description: "Test description",
           image: "vm0/claude-code:dev",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },

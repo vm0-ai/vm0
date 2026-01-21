@@ -24,7 +24,7 @@ version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Test agent for environment variable expansion"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
@@ -233,7 +233,7 @@ version: "1.0"
 agents:
   multi-secrets:
     description: "Test agent with multiple secrets"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:

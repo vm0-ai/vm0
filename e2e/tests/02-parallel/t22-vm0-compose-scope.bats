@@ -32,7 +32,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for scope display"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -58,7 +58,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for run instructions"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -84,7 +84,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for scope/name run"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -126,7 +126,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for scope/name:version run"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -177,7 +177,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for scope/name:latest"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -254,7 +254,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for version error"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -295,7 +295,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for scope isolation"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -327,7 +327,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for backward compatibility"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -358,7 +358,7 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     description: "Test agent for name:version format"
-    provider: claude-code
+    framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF

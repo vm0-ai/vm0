@@ -13,10 +13,10 @@ import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core
 const log = logger("context:preparer");
 
 /**
- * Provider to auto-injected domain mappings
+ * Framework to auto-injected domain mappings
  * These domains are automatically allowed when firewall is enabled
  */
-const PROVIDER_AUTO_DOMAINS: Record<string, string[]> = {
+const FRAMEWORK_AUTO_DOMAINS: Record<string, string[]> = {
   "claude-code": ["*.anthropic.com"],
   codex: ["*.openai.com"],
 };
@@ -82,11 +82,11 @@ function processFirewallConfig(
     autoRules.push({ domain, action: "ALLOW" });
   }
 
-  // 3. Add provider-specific domains
-  const provider = firstAgent.provider;
-  const providerDomains = PROVIDER_AUTO_DOMAINS[provider];
-  if (providerDomains) {
-    for (const domain of providerDomains) {
+  // 3. Add framework-specific domains
+  const framework = firstAgent.framework;
+  const frameworkDomains = FRAMEWORK_AUTO_DOMAINS[framework];
+  if (frameworkDomains) {
+    for (const domain of frameworkDomains) {
       autoRules.push({ domain, action: "ALLOW" });
     }
   }
@@ -146,7 +146,7 @@ function extractCliAgentType(agentCompose: unknown): string {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return "claude-code";
   const agents = Object.values(compose.agents);
-  return agents[0]?.provider || "claude-code";
+  return agents[0]?.framework || "claude-code";
 }
 
 /**

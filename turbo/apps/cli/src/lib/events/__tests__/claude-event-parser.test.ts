@@ -22,7 +22,7 @@ describe("ClaudeEventParser", () => {
       expect(parsed).toBeDefined();
       expect(parsed!.type).toBe("init");
       expect(parsed!.data).toEqual({
-        provider: "claude-code",
+        framework: "claude-code",
         sessionId: "45123049-1ebd-4293-a0d3-89834fbd6f4c",
         model: "claude-sonnet-4-5-20250929",
         tools: ["Task", "Bash", "Glob", "Grep", "Read", "Write", "Edit"],

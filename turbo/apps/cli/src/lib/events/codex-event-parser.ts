@@ -126,7 +126,7 @@ export class CodexEventParser {
       type: "init",
       timestamp: new Date(),
       data: {
-        provider: "codex",
+        framework: "codex",
         sessionId: event.thread_id,
         tools: [],
       },
