@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { initCommand } from "../init";
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import * as yamlValidator from "../../lib/domain/yaml-validator";
 
 // Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
 vi.mock("../../lib/domain/yaml-validator");
 vi.mock("../../lib/utils/prompt-utils");
 
@@ -16,6 +16,9 @@ import * as promptUtils from "../../lib/utils/prompt-utils";
 vi.mocked(promptUtils.isInteractive).mockReturnValue(true);
 
 describe("init command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -26,9 +29,14 @@ describe("init command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-init-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -36,9 +44,7 @@ describe("init command", () => {
 
   describe("file existence check", () => {
     it("should exit with error if vm0.yaml exists without --force", async () => {
-      vi.mocked(existsSync).mockImplementation((path) => {
-        return path === "vm0.yaml";
-      });
+      await fs.writeFile(path.join(tempDir, "vm0.yaml"), "existing content");
 
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli"]);
@@ -54,9 +60,7 @@ describe("init command", () => {
     });
 
     it("should exit with error if AGENTS.md exists without --force", async () => {
-      vi.mocked(existsSync).mockImplementation((path) => {
-        return path === "AGENTS.md";
-      });
+      await fs.writeFile(path.join(tempDir, "AGENTS.md"), "existing content");
 
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli"]);
@@ -69,7 +73,8 @@ describe("init command", () => {
     });
 
     it("should exit with error if both files exist without --force", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
+      await fs.writeFile(path.join(tempDir, "vm0.yaml"), "existing content");
+      await fs.writeFile(path.join(tempDir, "AGENTS.md"), "existing content");
 
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli"]);
@@ -86,10 +91,6 @@ describe("init command", () => {
   });
 
   describe("agent name validation", () => {
-    beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(false);
-    });
-
     it("should exit with error for invalid agent name", async () => {
       vi.mocked(promptUtils.promptText).mockResolvedValue("ab"); // Too short
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(false);
@@ -118,9 +119,7 @@ describe("init command", () => {
 
   describe("successful initialization", () => {
     beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     });
 
     it("should create vm0.yaml and AGENTS.md with valid agent name", async () => {
@@ -128,14 +127,21 @@ describe("init command", () => {
 
       await initCommand.parseAsync(["node", "cli"]);
 
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "vm0.yaml",
-        expect.stringContaining("my-agent"),
+      expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
+      expect(existsSync(path.join(tempDir, "AGENTS.md"))).toBe(true);
+
+      const yamlContent = await fs.readFile(
+        path.join(tempDir, "vm0.yaml"),
+        "utf8",
       );
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "AGENTS.md",
-        expect.stringContaining("Agent Instructions"),
+      expect(yamlContent).toContain("my-agent");
+
+      const mdContent = await fs.readFile(
+        path.join(tempDir, "AGENTS.md"),
+        "utf8",
       );
+      expect(mdContent).toContain("Agent Instructions");
+
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Created vm0.yaml"),
       );
@@ -149,11 +155,7 @@ describe("init command", () => {
 
       await initCommand.parseAsync(["node", "cli"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0] === "vm0.yaml");
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      const content = await fs.readFile(path.join(tempDir, "vm0.yaml"), "utf8");
 
       expect(content).toContain('version: "1.0"');
       expect(content).toContain("test-agent:");
@@ -187,60 +189,65 @@ describe("init command", () => {
   describe("--force option", () => {
     beforeEach(() => {
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     });
 
     it("should overwrite existing files with --force", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
+      await fs.writeFile(path.join(tempDir, "vm0.yaml"), "old content");
+      await fs.writeFile(path.join(tempDir, "AGENTS.md"), "old content");
       vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli", "--force"]);
 
-      expect(fs.writeFile).toHaveBeenCalledWith("vm0.yaml", expect.any(String));
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "AGENTS.md",
-        expect.any(String),
+      const yamlContent = await fs.readFile(
+        path.join(tempDir, "vm0.yaml"),
+        "utf8",
       );
+      const mdContent = await fs.readFile(
+        path.join(tempDir, "AGENTS.md"),
+        "utf8",
+      );
+
+      expect(yamlContent).not.toBe("old content");
+      expect(mdContent).not.toBe("old content");
+      expect(yamlContent).toContain("my-agent");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("(overwritten)"),
       );
     });
 
     it("should work with -f short option", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
+      await fs.writeFile(path.join(tempDir, "vm0.yaml"), "old content");
+      await fs.writeFile(path.join(tempDir, "AGENTS.md"), "old content");
       vi.mocked(promptUtils.promptText).mockResolvedValue("my-agent");
 
       await initCommand.parseAsync(["node", "cli", "-f"]);
 
-      expect(fs.writeFile).toHaveBeenCalled();
+      expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
+      expect(existsSync(path.join(tempDir, "AGENTS.md"))).toBe(true);
     });
   });
 
   describe("--name option", () => {
     beforeEach(() => {
-      vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     });
 
     it("should skip interactive prompt when --name is provided", async () => {
       await initCommand.parseAsync(["node", "cli", "--name", "cli-agent"]);
 
       expect(promptUtils.promptText).not.toHaveBeenCalled();
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "vm0.yaml",
-        expect.stringContaining("cli-agent"),
-      );
+
+      const content = await fs.readFile(path.join(tempDir, "vm0.yaml"), "utf8");
+      expect(content).toContain("cli-agent");
     });
 
     it("should work with -n short option", async () => {
       await initCommand.parseAsync(["node", "cli", "-n", "short-agent"]);
 
       expect(promptUtils.promptText).not.toHaveBeenCalled();
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "vm0.yaml",
-        expect.stringContaining("short-agent"),
-      );
+
+      const content = await fs.readFile(path.join(tempDir, "vm0.yaml"), "utf8");
+      expect(content).toContain("short-agent");
     });
 
     it("should validate agent name from --name option", async () => {
@@ -256,7 +263,8 @@ describe("init command", () => {
     });
 
     it("should work with --name and --force together", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
+      await fs.writeFile(path.join(tempDir, "vm0.yaml"), "old content");
+      await fs.writeFile(path.join(tempDir, "AGENTS.md"), "old content");
 
       await initCommand.parseAsync([
         "node",
@@ -266,10 +274,9 @@ describe("init command", () => {
         "--force",
       ]);
 
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "vm0.yaml",
-        expect.stringContaining("forced-agent"),
-      );
+      const content = await fs.readFile(path.join(tempDir, "vm0.yaml"), "utf8");
+      expect(content).toContain("forced-agent");
+      expect(content).not.toBe("old content");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("(overwritten)"),
       );

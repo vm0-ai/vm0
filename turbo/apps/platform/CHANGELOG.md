@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/platform-v0.13.0...platform-v0.14.0) (2026-01-21)
+
+
+### Features
+
+* implement logs page signal architecture (Phase 1 & 2) ([#1373](https://github.com/vm0-ai/vm0/issues/1373)) ([5488e1b](https://github.com/vm0-ai/vm0/commit/5488e1b114a561f17d3532d21471f8e5100c9cda))
+* implement logs page view components (Phase 3) ([#1394](https://github.com/vm0-ai/vm0/issues/1394)) ([4e54930](https://github.com/vm0-ai/vm0/commit/4e549306af27c645c50ad82f831b8fbcbed9464d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.9.0
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/platform-v0.12.0...platform-v0.13.0) (2026-01-20)
 
 
