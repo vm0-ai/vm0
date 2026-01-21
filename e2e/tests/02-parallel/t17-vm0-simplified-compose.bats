@@ -145,15 +145,15 @@ EOF
     assert_output --partial "Invalid app tag"
 }
 
-@test "vm0 compose requires image for unsupported provider" {
-    echo "# Creating config without image for unsupported provider..."
+@test "vm0 compose requires image for unsupported framework" {
+    echo "# Creating config without image for unsupported framework..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
     description: "Test agent without image"
-    provider: unsupported-provider
+    framework: unsupported-framework
 EOF
 
     echo "# Running vm0 compose (should fail)..."
