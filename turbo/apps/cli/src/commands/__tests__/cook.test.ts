@@ -2,26 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
 import { existsSync, readFileSync } from "fs";
 import * as dotenv from "dotenv";
-import * as core from "@vm0/core";
 import { parseRunIdsFromOutput } from "../cook";
 
 // Mock dependencies
 vi.mock("fs/promises");
 vi.mock("fs");
 vi.mock("dotenv");
-vi.mock("@vm0/core", async () => {
-  const actual = await vi.importActual("@vm0/core");
-  return {
-    ...actual,
-    extractVariableReferences: vi.fn(),
-    groupVariablesBySource: vi.fn(),
-  };
-});
 
 // Test variable names (using constants to avoid turbo env var lint warnings)
 const TEST_VAR_1 = "TEST_VAR_1";
 const TEST_VAR_2 = "TEST_VAR_2";
-const TEST_VAR_3 = "TEST_VAR_3";
 const TEST_VAR_4 = "TEST_VAR_4";
 
 describe("cook command - environment variable check", () => {
@@ -40,48 +30,6 @@ describe("cook command - environment variable check", () => {
     process.env = originalEnv;
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-  });
-
-  describe("extractRequiredVarNames", () => {
-    it("should extract variable names from vars and secrets references", () => {
-      const mockRefs = [
-        {
-          source: "vars" as const,
-          name: TEST_VAR_1,
-          fullMatch: `\${{ vars.${TEST_VAR_1} }}`,
-        },
-        {
-          source: "secrets" as const,
-          name: TEST_VAR_2,
-          fullMatch: `\${{ secrets.${TEST_VAR_2} }}`,
-        },
-        {
-          source: "vars" as const,
-          name: TEST_VAR_3,
-          fullMatch: `\${{ vars.${TEST_VAR_3} }}`,
-        },
-      ];
-
-      vi.mocked(core.extractVariableReferences).mockReturnValue(mockRefs);
-      vi.mocked(core.groupVariablesBySource).mockReturnValue({
-        env: [],
-        vars: [mockRefs[0]!, mockRefs[2]!],
-        secrets: [mockRefs[1]!],
-        credentials: [],
-      });
-
-      // The actual function is internal, so we verify the logic through integration
-      const result = core.groupVariablesBySource(
-        core.extractVariableReferences({}),
-      );
-      const varNames = result.vars.map((r) => r.name);
-      const secretNames = result.secrets.map((r) => r.name);
-      const combined = [...new Set([...varNames, ...secretNames])];
-
-      expect(combined).toContain(TEST_VAR_1);
-      expect(combined).toContain(TEST_VAR_2);
-      expect(combined).toContain(TEST_VAR_3);
-    });
   });
 
   describe("checkMissingVariables", () => {
