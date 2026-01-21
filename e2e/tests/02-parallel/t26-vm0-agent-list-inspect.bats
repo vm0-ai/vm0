@@ -121,7 +121,7 @@ EOF
     assert_output --partial "Name:"
     assert_output --partial "Version:"
     assert_output --partial "Agents:"
-    assert_output --partial "Provider:"
+    assert_output --partial "Framework:"
 }
 
 @test "vm0 agent inspect with version specifier" {
