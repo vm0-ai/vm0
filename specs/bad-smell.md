@@ -182,41 +182,50 @@ it("should render the page", () => {
 });
 ```
 
-**Correct approach - Use setup commands like main.ts:**
+**Correct approach - Use bootstrap + navigate like main.ts:**
 ```typescript
-// ✅ Good: Use setup command and setupRouter
-import { setupMyPage$ } from "../../../signals/my-page/my-page.ts";
+// ✅ Good: Use bootstrap$ and navigate$ to match production flow
+import { bootstrap$ } from "../../../signals/bootstrap.ts";
+import { navigate$ } from "../../../signals/route.ts";
 import { page$ } from "../../../signals/react-router.ts";
 import { setupRouter } from "../../main.tsx";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-it("should render the page", () => {
+it("should render the page", async () => {
   const { store, signal } = context;
 
   // Render the router (like main.ts does)
   const { container } = render(<div id="test-root" />);
   const rootEl = container.querySelector("#test-root") as HTMLDivElement;
 
-  setupRouter(store, (element) => {
-    render(element, { container: rootEl });
-  });
+  // Bootstrap the app (like main.ts does)
+  await store.set(
+    bootstrap$,
+    () => {
+      setupRouter(store, (element) => {
+        render(element, { container: rootEl });
+      });
+    },
+    signal,
+  );
 
-  // Call setup command (like route navigation does)
-  store.set(setupMyPage$, signal);
+  // Navigate to the page (this triggers setupMyPage$ automatically)
+  await store.set(navigate$, "/my-page", {}, signal);
 
-  // Verify page element was created
+  // Verify page was rendered
   const pageElement = store.get(page$);
   expect(pageElement).toBeDefined();
 });
 ```
 
 **Key points:**
-1. Use `setupRouter` to establish the same rendering context as main.ts
-2. Call the page's setup command (e.g., `setupLogsPage$`) instead of directly rendering the component
-3. Use `testContext()` for proper cleanup and signal management
-4. Follow the same bootstrap → setup → render flow as production
+1. Use `bootstrap$` to initialize the app (sets up routes, auth, etc.)
+2. Use `navigate$` to trigger page setup (don't call setup commands directly)
+3. Use `setupRouter` to establish the same rendering context as main.ts
+4. Use `testContext()` for proper cleanup and signal management
+5. Follow the same bootstrap → route → setup → render flow as production
 
 **Benefits of matching production flow:**
 - Catches initialization bugs

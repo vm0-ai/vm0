@@ -71,16 +71,34 @@ function MyComponent() {
 }
 ```
 
-### Setting pageSignal$ in Setup Commands
+### pageSignal$ is Automatically Set by Route System
+
+**Important**: You do NOT need to manually set `pageSignal$` in your setup commands. The route system automatically handles this through `setupPageWrapper`.
 
 ```typescript
-import { command } from "ccstate";
-import { setPageSignal$ } from "../page-signal.ts";
+// ✅ Correct: setupPageWrapper automatically sets pageSignal$
+export const setupLogsPage$ = command(({ set }, signal: AbortSignal) => {
+  // NO need to call set(setPageSignal$, signal) - it's automatic!
 
-export const setupMyPage$ = command(({ set }, signal: AbortSignal) => {
-  // Always set page signal first
-  set(setPageSignal$, signal);
-
-  // ... rest of setup
+  // Just do your page-specific initialization
+  set(initLogs$, signal);
+  set(updatePage$, createElement(LogsPage));
 });
+
+// In bootstrap.ts, routes use setupAuthPageWrapper which calls setupPageWrapper:
+const ROUTE_CONFIG = [
+  {
+    path: "/logs",
+    setup: setupAuthPageWrapper(setupLogsPage$),  // Wrapper sets pageSignal$ automatically
+  },
+];
 ```
+
+**How it works**:
+1. Route navigation triggers `loadRoute$` (in route.ts)
+2. `loadRoute$` calls `setupAuthPageWrapper(setupLogsPage$)`
+3. `setupAuthPageWrapper` internally calls `setupPageWrapper`
+4. `setupPageWrapper` sets `pageSignal$` before calling your setup command
+5. Your setup command receives the signal and can access `pageSignal$` in components
+
+**Never manually set pageSignal$ in setup commands** - the wrapper does it for you.

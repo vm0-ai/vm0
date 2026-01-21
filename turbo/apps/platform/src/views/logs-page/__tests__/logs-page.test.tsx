@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
-import { setupLogsPage$ } from "../../../signals/logs-page/logs-page.ts";
+import { bootstrap$ } from "../../../signals/bootstrap.ts";
+import { navigate$ } from "../../../signals/route.ts";
 import { page$ } from "../../../signals/react-router.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupRouter } from "../../main.tsx";
@@ -15,7 +16,10 @@ vi.hoisted(() => {
 vi.mock("@clerk/clerk-js", () => ({
   Clerk: function MockClerk() {
     return {
-      user: null,
+      user: {
+        id: "test-user",
+        fullName: "Test User",
+      },
       session: {
         getToken: () => Promise.resolve("mock-token"),
       },
@@ -28,21 +32,28 @@ vi.mock("@clerk/clerk-js", () => ({
 const context = testContext();
 
 describe("logs page", () => {
-  it("should render the logs page", () => {
+  it("should render the logs page", async () => {
     const { store, signal } = context;
 
     // Render the router (like main.ts does)
     const { container } = render(<div id="test-root" />);
     const rootEl = container.querySelector("#test-root") as HTMLDivElement;
 
-    setupRouter(store, (element) => {
-      render(element, { container: rootEl });
-    });
+    // Bootstrap the app (like main.ts does)
+    await store.set(
+      bootstrap$,
+      () => {
+        setupRouter(store, (element) => {
+          render(element, { container: rootEl });
+        });
+      },
+      signal,
+    );
 
-    // Call setupLogsPage$ (like route navigation does)
-    store.set(setupLogsPage$, signal);
+    // Navigate to /logs (this triggers setupLogsPage$ automatically)
+    await store.set(navigate$, "/logs", {}, signal);
 
-    // Get the rendered page element from page$ signal
+    // Verify page was rendered
     const pageElement = store.get(page$);
     expect(pageElement).toBeDefined();
   });
