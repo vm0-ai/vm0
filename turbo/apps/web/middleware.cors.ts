@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { env } from "./src/env";
+
 // Define allowed origins
 const allowedOrigins = [
   // Production domains
@@ -7,15 +9,49 @@ const allowedOrigins = [
   "https://vm0.ai",
 ];
 
+/**
+ * Environment-aware origin validation
+ *
+ * Security Model:
+ * - Production: Strict *.vm0.ai only
+ * - Preview: Allows *.vercel.app + production domains (mitigated by Clerk auth)
+ * - Development: Allows localhost + preview + production
+ *
+ * @param origin - The origin header from the request
+ * @returns true if origin is allowed for the current environment
+ */
 function isOriginAllowed(origin: string | null): boolean {
   if (!origin) return false;
 
-  // Check exact match
-  if (allowedOrigins.includes(origin)) return true;
+  try {
+    // Check exact match against allowlist
+    if (allowedOrigins.includes(origin)) return true;
 
-  // Allow any *.vm0.ai subdomain
-  const url = new URL(origin);
-  return url.hostname.endsWith(".vm0.ai");
+    const url = new URL(origin);
+    const hostname = url.hostname;
+
+    // Always allow *.vm0.ai subdomains
+    if (hostname.endsWith(".vm0.ai")) return true;
+
+    // Get deployment environment
+    const vercelEnv = env().VERCEL_ENV;
+
+    // Preview environment: additionally allow *.vercel.app
+    if (vercelEnv === "preview") {
+      if (hostname.endsWith(".vercel.app")) return true;
+    }
+
+    // Development environment: additionally allow localhost and *.vercel.app
+    if (vercelEnv === "development" || !vercelEnv) {
+      if (hostname === "localhost") return true;
+      if (hostname.endsWith(".vercel.app")) return true;
+    }
+
+    return false;
+  } catch {
+    // Invalid origin URL - reject
+    return false;
+  }
 }
 
 export function handleCors(request: NextRequest) {
