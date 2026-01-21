@@ -186,8 +186,6 @@ agents:
   ${AGENT_NAME}-seal:
     description: "MITM seal_secrets test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -241,8 +239,6 @@ agents:
   ${AGENT_NAME}-noseal:
     description: "MITM without seal_secrets"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "mock-api-key-for-e2e"
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
