@@ -206,21 +206,25 @@ export async function upsertModelProvider(
       })
       .returning();
 
+    if (!created) {
+      throw new Error("Failed to create model provider");
+    }
+
     log.debug("model provider created from existing credential", {
-      providerId: created!.id,
+      providerId: created.id,
       type,
       converted: existingCredential.type === "user",
     });
 
     return {
       provider: {
-        id: created!.id,
+        id: created.id,
         type,
         framework,
         credentialName,
-        isDefault: created!.isDefault,
-        createdAt: created!.createdAt,
-        updatedAt: created!.updatedAt,
+        isDefault: created.isDefault,
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
       },
       created: true,
     };
@@ -244,32 +248,40 @@ export async function upsertModelProvider(
     })
     .returning();
 
+  if (!newCredential) {
+    throw new Error("Failed to create credential");
+  }
+
   const [newProvider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       scopeId: scope.id,
       type,
-      credentialId: newCredential!.id,
+      credentialId: newCredential.id,
       isDefault: !hasProviderForFramework,
     })
     .returning();
 
+  if (!newProvider) {
+    throw new Error("Failed to create model provider");
+  }
+
   log.debug("model provider created", {
-    providerId: newProvider!.id,
-    credentialId: newCredential!.id,
+    providerId: newProvider.id,
+    credentialId: newCredential.id,
     type,
-    isDefault: newProvider!.isDefault,
+    isDefault: newProvider.isDefault,
   });
 
   return {
     provider: {
-      id: newProvider!.id,
+      id: newProvider.id,
       type,
       framework,
       credentialName,
-      isDefault: newProvider!.isDefault,
-      createdAt: newProvider!.createdAt,
-      updatedAt: newProvider!.updatedAt,
+      isDefault: newProvider.isDefault,
+      createdAt: newProvider.createdAt,
+      updatedAt: newProvider.updatedAt,
     },
     created: true,
   };
@@ -335,20 +347,24 @@ export async function convertCredentialToModelProvider(
     })
     .returning();
 
+  if (!newProvider) {
+    throw new Error("Failed to create model provider");
+  }
+
   log.debug("credential converted to model provider", {
-    providerId: newProvider!.id,
+    providerId: newProvider.id,
     credentialId: existingCredential.id,
     type,
   });
 
   return {
-    id: newProvider!.id,
+    id: newProvider.id,
     type,
     framework,
     credentialName,
-    isDefault: newProvider!.isDefault,
-    createdAt: newProvider!.createdAt,
-    updatedAt: newProvider!.updatedAt,
+    isDefault: newProvider.isDefault,
+    createdAt: newProvider.createdAt,
+    updatedAt: newProvider.updatedAt,
   };
 }
 

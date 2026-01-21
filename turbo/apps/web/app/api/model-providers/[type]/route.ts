@@ -1,13 +1,9 @@
 import {
   createHandler,
   tsr,
-  TsRestResponse,
+  validationErrorHandler,
 } from "../../../../src/lib/ts-rest-handler";
-import {
-  modelProvidersByTypeContract,
-  createErrorResponse,
-  ApiError,
-} from "@vm0/core";
+import { modelProvidersByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { deleteModelProvider } from "../../../../src/lib/model-provider/model-provider-service";
@@ -46,38 +42,8 @@ const router = tsr.router(modelProvidersByTypeContract, {
   },
 });
 
-/**
- * Custom error handler for model providers by type API
- */
-function errorHandler(err: unknown): TsRestResponse | void {
-  // Handle ts-rest RequestValidationError
-  if (err && typeof err === "object" && "pathParamsError" in err) {
-    const validationError = err as {
-      pathParamsError: {
-        issues: Array<{ path: string[]; message: string }>;
-      } | null;
-    };
-
-    // Handle path params validation errors
-    if (validationError.pathParamsError) {
-      const issue = validationError.pathParamsError.issues[0];
-      if (issue) {
-        const message = issue.message;
-
-        return TsRestResponse.fromJson(
-          { error: { message, code: ApiError.BAD_REQUEST.code } },
-          { status: ApiError.BAD_REQUEST.status },
-        );
-      }
-    }
-  }
-
-  // Let other errors propagate
-  return undefined;
-}
-
 const handler = createHandler(modelProvidersByTypeContract, router, {
-  errorHandler,
+  errorHandler: validationErrorHandler,
 });
 
 export { handler as DELETE };

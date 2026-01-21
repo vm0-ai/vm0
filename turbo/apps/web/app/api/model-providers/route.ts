@@ -1,12 +1,11 @@
 import {
   createHandler,
   tsr,
-  TsRestResponse,
+  validationErrorHandler,
 } from "../../../src/lib/ts-rest-handler";
 import {
   modelProvidersMainContract,
   createErrorResponse,
-  ApiError,
   getCredentialNameForType,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
@@ -109,42 +108,8 @@ const router = tsr.router(modelProvidersMainContract, {
   },
 });
 
-/**
- * Custom error handler for model providers API
- */
-function errorHandler(err: unknown): TsRestResponse | void {
-  // Handle ts-rest RequestValidationError
-  if (
-    err &&
-    typeof err === "object" &&
-    "bodyError" in err &&
-    "queryError" in err
-  ) {
-    const validationError = err as {
-      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
-      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
-    };
-
-    // Handle body validation errors
-    if (validationError.bodyError) {
-      const issue = validationError.bodyError.issues[0];
-      if (issue) {
-        const message = issue.message;
-
-        return TsRestResponse.fromJson(
-          { error: { message, code: ApiError.BAD_REQUEST.code } },
-          { status: ApiError.BAD_REQUEST.status },
-        );
-      }
-    }
-  }
-
-  // Let other errors propagate
-  return undefined;
-}
-
 const handler = createHandler(modelProvidersMainContract, router, {
-  errorHandler,
+  errorHandler: validationErrorHandler,
 });
 
 export { handler as GET, handler as PUT };
