@@ -36,11 +36,10 @@ This skill provides:
 2. **Test Behavior, Not Implementation**
    - Don't test that functions were called (vi.spyOn anti-pattern)
    - Test outcomes and side effects
-   - Don't test UI implementation details
 
 3. **Match Production Flow**
    - Test initialization should mirror production startup
-   - Use same bootstrap/setup patterns as main.ts
+   - For example, in turbo/apps/platform, use same bootstrap/setup patterns as main.ts
    - Don't shortcut with direct component rendering
 
 4. **Use Real Infrastructure**
@@ -420,26 +419,6 @@ it("should create a run with real service integration", async () => {
 | `../../run/*` | ❌ No | Internal service, use real implementation |
 | `../storage-resolver` | ❌ No | Internal utility, use real implementation |
 
-**Related commits** (11 AP-4 fixes in last 48 hours):
-- #1438 (d2ec699e) - Fix AP-4 in composes API tests (phase 4 pr9)
-- #1427 (6c62fd3d) - Fix AP-4 in v1 API tests (phase 4 pr8)
-- #1422 (fe5c6a0d) - Fix AP-4 in events and webhook API tests (phase 3 pr7)
-- #1416 (aee567b9) - Fix AP-4 in runs telemetry API tests (phase 3 pr6)
-- #1401 (bbdb0496) - Fix AP-4 in storage API tests (phase 2 pr5)
-- #1391 (8e0499f5) - Fix AP-4 in v1/runs route tests (phase 1 pr4)
-- #1384 (9baa677d) - Fix AP-4 in api/agent/runs test (phase 1 pr3)
-- #1378 (09e1ac10) - Fix AP-4 in e2b-service tests (phase 1 pr2)
-- #1376 (27de5a52) - Fix AP-4 in api route tests (phase 1 pr1)
-- #1365 (da1bc906) - Fix AP-4 in proxy-manager test
-- #1364 (084296ca) - Fix 12 AP-4 violations
-
-**Statistics**:
-- **70+ files reviewed** across 30 tasks
-- **690+ test cases** analyzed
-- **Phase 2 (integration tests)**: 100% clean
-- **Overall clean rate**: ~70%
-- **Main issues**: Auth tests and API routes
-
 ---
 
 ### AP-5: Fake Timers (vi.useFakeTimers)
@@ -537,8 +516,6 @@ it("should extract and combine vars and secrets", () => {
   expect(result).toEqual(["VAR1", "SECRET1"]);
 });
 ```
-
-**Related commit**: #1423 (a51cdf04)
 
 ---
 
@@ -1061,18 +1038,10 @@ it("should handle API errors", async () => {
 });
 ```
 
-**MSW handler locations**:
-- `turbo/apps/cli/src/mocks/handlers/npm-registry-handlers.ts`
-- `turbo/apps/cli/src/mocks/handlers/api-handlers.ts`
-- `turbo/apps/runner/src/mocks/handlers/webhook-handlers.ts`
-
 **Benefits**:
 - Realistic HTTP behavior
 - Tests actual request construction
 - Works in both Node.js and browser
-- ~70 lines removed in one file migration
-
-**Related commits**: #1419 (58719dcf), #1372 (fa9dcabb)
 
 ---
 
@@ -1195,20 +1164,6 @@ beforeEach(() => {
   mockClerk({ userId: testUserId });
 });
 ```
-
-**Results**:
-- 31 lines reduced in pilot (3 files)
-- All 27 tests passing
-- More maintainable and consistent
-- 14 remaining files to migrate
-
-**Files updated (pilot)**:
-1. `app/api/scope/__tests__/route.test.ts`
-2. `app/v1/composes/__tests__/route.test.ts`
-3. `app/api/storages/create/__tests__/route.test.ts`
-
-**Related commit**: #1418 (6118c2ec)
-**Related issue**: #1421 (expansion to 14 remaining files)
 
 ---
 
@@ -1462,11 +1417,6 @@ describe("Module Name", () => {
 - `@axiomhq/js` - Logging SaaS
 - `@stripe/stripe-js` - Payment API
 
-**Node.js built-ins** (when testing I/O):
-- `fs` - File system operations
-- `child_process` - Process spawning
-- `https` - HTTPS requests (prefer MSW)
-
 **Framework APIs**:
 - `next/headers` - Request headers
 - `next/cookies` - Request cookies
@@ -1489,20 +1439,6 @@ describe("Module Name", () => {
 - Create test data with real database operations
 - Clean up test data in `beforeEach`/`afterEach`
 - Use unique test IDs or prefixes
-
-### Decision Tree
-
-```
-Is it from node_modules?
-├─ Yes → Is it third-party (not your package)?
-│  ├─ Yes → MOCK IT ✅
-│  └─ No → USE REAL ❌
-└─ No → Is it internal project code?
-   ├─ Yes → USE REAL ✅
-   └─ No → Is it Node.js built-in for I/O?
-      ├─ Yes → MOCK IT ✅
-      └─ No → USE REAL ✅
-```
 
 ---
 
@@ -1543,145 +1479,6 @@ Use this checklist when reviewing test code:
 - [ ] ✅ Database cleanup in `afterEach`
 - [ ] ✅ Only mock third-party dependencies
 - [ ] ✅ Test real behavior and outcomes
-
----
-
-## Gold Standard Reference Files
-
-Use these files as templates when writing tests:
-
-### 1. blob-service.test.ts
-
-**Path**: `turbo/apps/web/src/lib/blob/__tests__/blob-service.test.ts`
-
-**What it demonstrates**:
-- Real database + mock external S3 only
-- Proper test data cleanup
-- No internal service mocks
-- Integration testing with real DB
-
-**Key patterns**:
-- Only mocks `@aws-sdk/client-s3` (external)
-- Uses `initServices()` for real database
-- Cleans test data with `like(blobs.hash, "test_%")`
-- Verifies with real database queries
-- Tests blob deduplication and refCount logic
-
-**Why exemplary**:
-- HIGH-VALUE integration test
-- Catches real database constraint bugs
-- Tests actual service behavior
-- No mock orchestration
-
----
-
-### 2. agent-session-service.test.ts
-
-**Path**: `turbo/apps/web/src/lib/agent-session/__tests__/agent-session-service.test.ts`
-
-**What it demonstrates**:
-- Real services + mock Clerk only
-- Proper user session management
-- Real database CRUD operations
-
-**Key patterns**:
-- Only mocks `@clerk/nextjs` (external auth)
-- Uses real agent session service
-- Tests actual session creation and cleanup
-- Verifies database relationships
-
-**Why exemplary**:
-- Tests real auth integration
-- Verifies actual session lifecycle
-- Catches real constraint bugs
-
----
-
-### 3. scope-service.spec.ts
-
-**Path**: `turbo/apps/web/src/lib/scope/__tests__/scope-service.spec.ts`
-
-**What it demonstrates**:
-- Real database CRUD operations
-- No mocks at all (pure integration test)
-- Comprehensive scope management testing
-
-**Key patterns**:
-- Zero mocks (all real implementation)
-- Tests actual database operations
-- Verifies foreign key constraints
-- Tests real transaction logic
-
-**Why exemplary**:
-- Purest integration test
-- Highest confidence in DB operations
-- Tests real constraints and relationships
-
----
-
-### 4. proxy-token-service.test.ts
-
-**Path**: `turbo/apps/runner/src/lib/auth/__tests__/proxy-token-service.test.ts`
-
-**What it demonstrates**:
-- Pure function testing
-- Zero mocks needed
-- Focus on behavior and edge cases
-
-**Key patterns**:
-- No mocks (pure functions)
-- No database (no I/O)
-- Tests logic and edge cases
-- Simple and fast
-
-**Why exemplary**:
-- Perfect for pure functions
-- No unnecessary complexity
-- Clear behavior verification
-
----
-
-### 5. vm-registry.test.ts
-
-**Path**: `turbo/apps/runner/src/lib/proxy/__tests__/vm-registry.test.ts`
-
-**What it demonstrates**:
-- Correct file I/O testing
-- Mock only Node.js built-in (fs)
-- Tests actual data structure and atomic writes
-
-**Key patterns**:
-- Only mocks `fs` (Node.js built-in)
-- No internal module mocks
-- Tests actual VMRegistry logic
-- Verifies atomic write pattern
-
-**Why exemplary**:
-- Acceptable use of fs mocking
-- Tests real implementation
-- Verifies actual I/O patterns
-
----
-
-### 6. scope route.test.ts
-
-**Path**: `turbo/apps/web/app/api/scope/__tests__/route.test.ts`
-
-**What it demonstrates**:
-- API route integration testing
-- Real database + mock external auth only
-- Proper test data cleanup
-
-**Key patterns**:
-- Only mocks Clerk auth (external)
-- Uses real database and services
-- Tests actual API route behavior
-- Verifies database state after operations
-
-**Why exemplary**:
-- API routes are main integration points
-- HIGH-VALUE test (catches real bugs)
-- Tests actual request/response flow
 
 ---
 
@@ -1970,96 +1767,3 @@ await POST("/api/projects", { json: { name } });
 - Direct DB operations duplicate business logic
 - Makes tests brittle when schema changes
 - Bypasses validation and business rules
-
----
-
-## Statistics and Context
-
-### Project Overview
-
-- **Total test files**: 434 files across monorepo
-- **Recent test refactoring**: 30+ commits in last 48 hours
-- **Test file distribution**:
-  - `apps/web`: API routes, services, integration tests
-  - `apps/cli`: Command tests, filesystem tests
-  - `apps/runner`: Proxy, VM, sandbox tests
-  - `apps/platform`: Component tests, signal tests
-
-### AP-4 Review Statistics (Issue #1335)
-
-- **70+ files reviewed** across 30 tasks
-- **690+ test cases** analyzed
-- **Phase 2 (integration tests)**: 100% clean
-- **Overall clean rate**: ~70%
-- **Main issues**: Auth tests (Phase 1) and API routes (Phase 4)
-
-### Recent Refactoring Work (Last 48 Hours)
-
-**AP-4 fixes** (11 commits):
-- Composes API tests (phase 4 pr9)
-- V1 API tests (phase 4 pr8)
-- Events and webhook API tests (phase 3 pr7)
-- Runs telemetry API tests (phase 3 pr6)
-- Storage API tests (phase 2 pr5)
-- V1/runs route tests (phase 1 pr4)
-- API agent runs test (phase 1 pr3)
-- E2b-service tests (phase 1 pr2)
-- API route tests (phase 1 pr1)
-- Proxy-manager test
-- 12 AP-4 violations batch fix
-
-**Other refactoring**:
-- Filesystem migration: 9 files migrated to real fs
-- MSW migration: CLI and runner tests
-- Clerk helper: 3 pilot files, 31 lines reduced
-- Environment stubbing: 5 files standardized
-- Fake timer removal: Multiple files
-- Partial mock removal: @vm0/core tests
-
-### Ongoing Work
-
-**Issue #1421**: Expand Clerk mock helper to 14 remaining files
-- 17 total files use Clerk mocks
-- 3 completed in pilot
-- 14 remaining (standard, once, double-set patterns)
-- Expected: 140-210 lines reduced
-
-**Issue #1371**: API route tests - 28 files with AP-4 violations
-- High impact (widespread issue)
-- API routes should be HIGH-VALUE integration tests
-- Currently LOW-VALUE mock orchestration tests
-
-**Issue #1407**: Remove vi.spyOn() for implementation testing
-- Related to #1440
-- Pattern: Avoid testing that internal functions were called
-
-**Issue #1411**: Clarify next/headers mock necessity
-- Improve auth test coverage
-- Document when framework mocks are needed
-
----
-
-## Document Maintenance
-
-This document consolidates:
-- All testing sections from `specs/bad-smell.md` (sections 1-2, 5-17)
-- Recent refactoring patterns from commits and PRs (last 48 hours)
-- Gold standard reference implementations
-- AP-4 review findings (Issue #1335)
-
-**Update Frequency**: After major test refactoring work or when new patterns emerge
-
-**Maintenance Tasks**:
-- Add new anti-patterns as discovered
-- Update statistics after each refactoring phase
-- Add new gold standard files as identified
-- Document new helper utilities
-- Update commit references for recent fixes
-
-**Related Documents**:
-- `specs/bad-smell.md` - Non-testing code quality issues (sections 3-4)
-- Issue #1335 - AP-4 master tracking issue
-- Issue #1404 - Filesystem migration tracking
-- Issue #1421 - Clerk helper expansion
-
----
