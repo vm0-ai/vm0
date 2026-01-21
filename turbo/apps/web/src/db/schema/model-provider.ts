@@ -11,17 +11,6 @@ import { scopes } from "./scope";
 import { credentials } from "./credential";
 
 /**
- * Model provider type values
- * - 'claude-code-oauth-token': OAuth token for Claude Code (framework: claude-code)
- * - 'anthropic-api-key': API key from Anthropic Console (framework: claude-code)
- * - 'openai-api-key': API key from OpenAI (framework: codex)
- */
-export type ModelProviderType =
-  | "claude-code-oauth-token"
-  | "anthropic-api-key"
-  | "openai-api-key";
-
-/**
  * Model Providers table
  * Stores metadata for LLM backend configurations
  * Actual credentials stored in credentials table via FK

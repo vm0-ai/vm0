@@ -100,7 +100,6 @@ export async function convertModelProviderCredential(
 
   const result = await client.convert({
     params: { type },
-    body: undefined,
   });
 
   if (result.status === 200) {
@@ -121,7 +120,6 @@ export async function setModelProviderDefault(
 
   const result = await client.setDefault({
     params: { type },
-    body: undefined,
   });
 
   if (result.status === 200) {

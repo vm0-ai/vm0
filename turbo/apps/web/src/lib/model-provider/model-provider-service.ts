@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
@@ -455,21 +455,34 @@ export async function setModelProviderDefault(
     };
   }
 
-  // Get all providers for the same framework and update defaults
+  // Get all providers for the same framework to clear their defaults
   const allProviders = await globalThis.services.db
     .select({ id: modelProviders.id, type: modelProviders.type })
     .from(modelProviders)
     .where(eq(modelProviders.scopeId, scope.id));
 
-  for (const p of allProviders) {
-    const pFramework = getFrameworkForType(p.type as ModelProviderType);
-    if (pFramework === framework) {
-      await globalThis.services.db
+  const sameFrameworkIds = allProviders
+    .filter(
+      (p) => getFrameworkForType(p.type as ModelProviderType) === framework,
+    )
+    .map((p) => p.id);
+
+  // Use transaction to ensure atomicity
+  await globalThis.services.db.transaction(async (tx) => {
+    // Clear all defaults for this framework
+    if (sameFrameworkIds.length > 0) {
+      await tx
         .update(modelProviders)
-        .set({ isDefault: p.id === target.id, updatedAt: new Date() })
-        .where(eq(modelProviders.id, p.id));
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(inArray(modelProviders.id, sameFrameworkIds));
     }
-  }
+
+    // Set new default
+    await tx
+      .update(modelProviders)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(eq(modelProviders.id, target.id));
+  });
 
   log.debug("model provider set as default", { type, framework });
 
