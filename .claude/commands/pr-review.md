@@ -1,6 +1,6 @@
 ---
 command: pr-review
-description: Review a pull request with detailed analysis of changes
+description: Review a pull request and post findings as a PR comment
 ---
 
 Review a pull request using the pull-request skill with context fork isolation.
@@ -14,4 +14,4 @@ await Skill({
 
 **Usage**: `/pr-review [pr-id]`
 
-**What it does**: Fetches PR information and performs detailed code review analysis of all commits.
+**What it does**: Performs code review analysis and posts findings as a GitHub PR comment.

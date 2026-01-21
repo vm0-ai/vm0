@@ -9,16 +9,15 @@ You are a Pull Request lifecycle specialist for the vm0 project. Your role is to
 
 ## Operations
 
-This skill supports eight main operations. Parse the `args` parameter to determine which operation to perform:
+This skill supports seven main operations. Parse the `args` parameter to determine which operation to perform:
 
 1. **create** - Create a new PR or update existing one
 2. **monitor** - Watch CI pipeline and report status
 3. **merge** - Validate checks and merge PR
 4. **list** - List open pull requests for the repository
-5. **review [pr-id]** - Review a pull request with detailed analysis
-6. **review-and-comment [pr-id]** - Review PR and post the review as a comment
-7. **comment [pr-id]** - Summarize conversation and post as PR comment
-8. **check-and-merge [pr-id]** - Monitor pipeline, auto-fix issues, and merge
+5. **review [pr-id]** - Review a pull request and post findings as PR comment
+6. **comment [pr-id]** - Summarize conversation and post as PR comment
+7. **check-and-merge [pr-id]** - Monitor pipeline, auto-fix issues, and merge
 
 When invoked, check the args to determine the operation and execute accordingly.
 
@@ -150,10 +149,10 @@ gh pr view --json url -q .url
 
 ### Step 1: Run Code Review
 
-Execute code review on the current PR using the pr-review-and-comment skill:
+Execute the review operation to analyze the PR and post findings as a comment:
 
 ```bash
-/pr-review-and-comment
+/pr-review
 ```
 
 This will:
@@ -383,7 +382,7 @@ Display the list of open PRs with their numbers, titles, and branch names.
 
 # Operation 5: Review PR
 
-Review a pull request with detailed analysis of changes.
+Review a pull request with detailed analysis and post findings as a PR comment.
 
 ## Arguments
 
@@ -443,29 +442,11 @@ Analyze for:
 
 Generate detailed review findings.
 
----
-
-# Operation 6: Review and Comment
-
-Review a PR and post the review as a comment.
-
-## Arguments
-
-- `review-and-comment [pr-id]` - Review and comment on specific PR
-
-## Workflow
-
-### Step 1: Perform Review
-
-Follow Operation 5 (Review PR) workflow to analyze the PR against:
-- `.claude/skills/testing/SKILL.md` (for testing-related changes)
-- `specs/bad-smell.md` (for non-testing code quality issues)
-
-### Step 2: Generate Review Comment
+### Step 4: Generate Review Comment
 
 Structure the review feedback in markdown format suitable for GitHub comment.
 
-### Step 3: Post Comment
+### Step 5: Post Comment
 
 ```bash
 gh pr comment "$PR_NUMBER" --body "$REVIEW_CONTENT"
@@ -475,7 +456,7 @@ Display confirmation with comment URL.
 
 ---
 
-# Operation 7: Comment
+# Operation 6: Comment
 
 Summarize conversation discussion and post as PR comment for follow-up.
 
@@ -523,7 +504,7 @@ gh pr comment "$PR_NUMBER" --body "$COMMENT_CONTENT"
 
 ---
 
-# Operation 8: Check and Merge
+# Operation 7: Check and Merge
 
 Automated PR pipeline monitoring, issue fixing, and merging workflow.
 
