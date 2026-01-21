@@ -26,11 +26,21 @@ function createTestRequest(
   });
 }
 
-// Mock the auth module
-let mockUserId = "test-user-get-by-name";
-vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
+
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 describe("GET /api/agent/composes?name=<name>", () => {
   const testUserId = "test-user-get-by-name";
@@ -38,6 +48,16 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
   beforeAll(async () => {
     initServices();
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -172,7 +192,10 @@ describe("GET /api/agent/composes?name=<name>", () => {
     });
 
     // Create compose as user 1
-    mockUserId = user1Id;
+    mockAuth.mockResolvedValueOnce({
+      userId: user1Id,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
+
     const config = {
       version: "1.0",
       agents: {
@@ -198,7 +221,10 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(createResponse.status).toBe(201);
 
     // Try to get it as user 2
-    mockUserId = user2Id;
+    mockAuth.mockResolvedValueOnce({
+      userId: user2Id,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
+
     const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=test-user-isolation",
       { method: "GET" },
@@ -219,9 +245,6 @@ describe("GET /api/agent/composes?name=<name>", () => {
       .where(eq(agentComposes.userId, user2Id));
     await globalThis.services.db.delete(scopes).where(eq(scopes.id, scope1Id));
     await globalThis.services.db.delete(scopes).where(eq(scopes.id, scope2Id));
-
-    // Reset mockUserId
-    mockUserId = "test-user-get-by-name";
   });
 
   it("should handle URL-encoded names correctly", async () => {
