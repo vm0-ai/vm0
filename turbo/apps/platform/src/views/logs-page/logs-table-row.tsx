@@ -1,5 +1,3 @@
-import { useSet } from "ccstate-react";
-import { navigateToRunDetail$ } from "../../signals/logs-page/logs-signals.ts";
 import type { Run } from "../../signals/logs-page/types.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 
@@ -8,14 +6,9 @@ interface LogsTableRowProps {
 }
 
 export function LogsTableRow({ run }: LogsTableRowProps) {
-  const navigate = useSet(navigateToRunDetail$);
-
-  const handleClick = () => {
-    navigate();
-  };
-
+  // TODO: Add navigation to run detail page once it's implemented
   return (
-    <TableRow onClick={handleClick} className="cursor-pointer hover:bg-gray-50">
+    <TableRow>
       <TableCell>{run.id}</TableCell>
       <TableCell>{run.agent_name}</TableCell>
       <TableCell>{new Date(run.created_at).toLocaleString()}</TableCell>
