@@ -1,3 +1,4 @@
+// Test change detection
 import { Command } from "commander";
 import chalk from "chalk";
 import {
