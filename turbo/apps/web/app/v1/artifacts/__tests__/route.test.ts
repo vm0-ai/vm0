@@ -27,11 +27,21 @@ function createTestRequest(
   });
 }
 
-// Mock the auth module
-let mockUserId = "test-user-artifacts-api";
-vi.mock("../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
+
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+}));
+
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 describe("Public API v1 - Artifacts Endpoints", () => {
   const testUserId = "test-user-artifacts-api";
@@ -40,6 +50,16 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
   beforeAll(async () => {
     initServices();
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user
+    mockAuth.mockResolvedValue({
+      userId: testUserId,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -113,7 +133,10 @@ describe("Public API v1 - Artifacts Endpoints", () => {
     });
 
     it("should return 401 for unauthenticated request", async () => {
-      mockUserId = "";
+      // Mock Clerk to return no user
+      mockAuth.mockResolvedValueOnce({
+        userId: null,
+      } as unknown as Awaited<ReturnType<typeof auth>>);
 
       const request = createTestRequest("http://localhost:3000/v1/artifacts");
 
@@ -122,8 +145,6 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
       expect(response.status).toBe(401);
       expect(data.error.type).toBe("authentication_error");
-
-      mockUserId = testUserId;
     });
   });
 
