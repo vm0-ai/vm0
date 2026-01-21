@@ -1,34 +1,37 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { handleCors } from "../middleware.cors";
-
-// Mock the env module
-vi.mock("../middleware.cors", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../middleware.cors")>();
-  return {
-    ...actual,
-  };
-});
-
-vi.mock("../src/env", () => ({
-  env: vi.fn(),
-}));
-
-import { env } from "../src/env";
+import type { handleCors as HandleCorsType } from "../middleware.cors";
 
 describe("handleCors", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  const originalVercelEnv = process.env.VERCEL_ENV;
+
+  // Helper to get handleCors with fresh env
+  async function getHandleCors(
+    vercelEnv: "production" | "preview" | "development" | undefined,
+  ): Promise<typeof HandleCorsType> {
+    if (vercelEnv !== undefined) {
+      process.env.VERCEL_ENV = vercelEnv;
+    } else {
+      delete process.env.VERCEL_ENV;
+    }
+    const { handleCors } = await import("../middleware.cors");
+    return handleCors;
+  }
+
+  afterEach(() => {
+    // Restore original VERCEL_ENV
+    if (originalVercelEnv !== undefined) {
+      process.env.VERCEL_ENV = originalVercelEnv;
+    } else {
+      delete process.env.VERCEL_ENV;
+    }
+    // Clear module cache to allow fresh env() initialization
+    vi.resetModules();
   });
 
   describe("Production Environment (VERCEL_ENV=production)", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "production",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should accept exact match: https://www.vm0.ai", () => {
+    it("should accept exact match: https://www.vm0.ai", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
@@ -43,7 +46,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept exact match: https://vm0.ai", () => {
+    it("should accept exact match: https://vm0.ai", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://vm0.ai" },
       });
@@ -55,7 +59,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", () => {
+    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -67,7 +72,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept any *.vm0.ai subdomain", () => {
+    it("should accept any *.vm0.ai subdomain", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://any-subdomain.vm0.ai" },
       });
@@ -79,7 +85,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should reject *.vercel.app origin", () => {
+    it("should reject *.vercel.app origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://example-app.vercel.app" },
       });
@@ -89,7 +96,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should reject localhost origin", () => {
+    it("should reject localhost origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:3000" },
       });
@@ -99,7 +107,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should reject invalid origin", () => {
+    it("should reject invalid origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://malicious.com" },
       });
@@ -111,13 +120,8 @@ describe("handleCors", () => {
   });
 
   describe("Preview Environment (VERCEL_ENV=preview)", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "preview",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should accept production domain: https://www.vm0.ai", () => {
+    it("should accept production domain: https://www.vm0.ai", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
@@ -129,7 +133,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", () => {
+    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -141,7 +146,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vercel.app origin: https://vm0-platform-abc123.vercel.app", () => {
+    it("should accept *.vercel.app origin: https://vm0-platform-abc123.vercel.app", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://vm0-platform-abc123.vercel.app" },
       });
@@ -153,7 +159,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept any *.vercel.app subdomain", () => {
+    it("should accept any *.vercel.app subdomain", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://any-app-xyz.vercel.app" },
       });
@@ -165,7 +172,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should reject localhost origin", () => {
+    it("should reject localhost origin", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:3000" },
       });
@@ -175,7 +183,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should reject invalid origin", () => {
+    it("should reject invalid origin", async () => {
+      const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://malicious.com" },
       });
@@ -187,13 +196,8 @@ describe("handleCors", () => {
   });
 
   describe("Development Environment (VERCEL_ENV=development)", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "development",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should accept production domain: https://www.vm0.ai", () => {
+    it("should accept production domain: https://www.vm0.ai", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
@@ -205,7 +209,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept localhost:3000", () => {
+    it("should accept localhost:3000", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:3000" },
       });
@@ -217,7 +222,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept localhost:5173", () => {
+    it("should accept localhost:5173", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:5173" },
       });
@@ -229,7 +235,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept localhost with any port", () => {
+    it("should accept localhost with any port", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:8080" },
       });
@@ -241,7 +248,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vercel.app origin", () => {
+    it("should accept *.vercel.app origin", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://vm0-platform-abc.vercel.app" },
       });
@@ -253,7 +261,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should reject invalid origin", () => {
+    it("should reject invalid origin", async () => {
+      const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://malicious.com" },
       });
@@ -265,13 +274,8 @@ describe("handleCors", () => {
   });
 
   describe("Undefined Environment (VERCEL_ENV=undefined, treats as development)", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: undefined,
-      } as ReturnType<typeof env>);
-    });
-
-    it("should accept localhost origin", () => {
+    it("should accept localhost origin", async () => {
+      const handleCors = await getHandleCors(undefined);
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://localhost:3000" },
       });
@@ -283,7 +287,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vercel.app origin", () => {
+    it("should accept *.vercel.app origin", async () => {
+      const handleCors = await getHandleCors(undefined);
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://test-app.vercel.app" },
       });
@@ -295,7 +300,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vm0.ai subdomain", () => {
+    it("should accept *.vm0.ai subdomain", async () => {
+      const handleCors = await getHandleCors(undefined);
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -309,13 +315,8 @@ describe("handleCors", () => {
   });
 
   describe("Edge Cases", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "production",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should reject null origin", () => {
+    it("should reject null origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs");
 
       const response = handleCors(request);
@@ -323,7 +324,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should reject undefined origin", () => {
+    it("should reject undefined origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: {},
       });
@@ -333,7 +335,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should handle malformed origin URL gracefully", () => {
+    it("should handle malformed origin URL gracefully", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "not-a-valid-url" },
       });
@@ -343,7 +346,8 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("should handle origin with unusual port", () => {
+    it("should handle origin with unusual port", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://platform.vm0.ai:8443" },
       });
@@ -355,7 +359,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should handle HTTP vs HTTPS correctly", () => {
+    it("should handle HTTP vs HTTPS correctly", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "http://platform.vm0.ai" },
       });
@@ -367,10 +372,9 @@ describe("handleCors", () => {
       );
     });
 
-    it("should handle case sensitivity in hostname (lowercase vercel.app)", () => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "preview",
-      } as ReturnType<typeof env>);
+    it("should handle case sensitivity in hostname (lowercase vercel.app)", async () => {
+      const handleCors = await getHandleCors("production");
+      process.env.VERCEL_ENV = "preview";
 
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         headers: { origin: "https://test-app.VERCEL.APP" },
@@ -386,13 +390,8 @@ describe("handleCors", () => {
   });
 
   describe("Preflight Request Tests (OPTIONS)", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "production",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should handle OPTIONS request with correct headers", () => {
+    it("should handle OPTIONS request with correct headers", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "OPTIONS",
         headers: { origin: "https://platform.vm0.ai" },
@@ -416,10 +415,9 @@ describe("handleCors", () => {
       expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
     });
 
-    it("should handle OPTIONS request in preview environment", () => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "preview",
-      } as ReturnType<typeof env>);
+    it("should handle OPTIONS request in preview environment", async () => {
+      const handleCors = await getHandleCors("production");
+      process.env.VERCEL_ENV = "preview";
 
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "OPTIONS",
@@ -434,10 +432,9 @@ describe("handleCors", () => {
       );
     });
 
-    it("should handle OPTIONS request in development environment", () => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "development",
-      } as ReturnType<typeof env>);
+    it("should handle OPTIONS request in development environment", async () => {
+      const handleCors = await getHandleCors("production");
+      process.env.VERCEL_ENV = "development";
 
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "OPTIONS",
@@ -452,7 +449,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should not set CORS headers for OPTIONS with disallowed origin", () => {
+    it("should not set CORS headers for OPTIONS with disallowed origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "OPTIONS",
         headers: { origin: "https://malicious.com" },
@@ -466,13 +464,8 @@ describe("handleCors", () => {
   });
 
   describe("GET Request Tests", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "production",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should set CORS headers for GET request with allowed origin", () => {
+    it("should set CORS headers for GET request with allowed origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "GET",
         headers: { origin: "https://platform.vm0.ai" },
@@ -488,7 +481,8 @@ describe("handleCors", () => {
       );
     });
 
-    it("should not return preflight headers for GET request", () => {
+    it("should not return preflight headers for GET request", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "GET",
         headers: { origin: "https://platform.vm0.ai" },
@@ -504,13 +498,8 @@ describe("handleCors", () => {
   });
 
   describe("POST Request Tests", () => {
-    beforeEach(() => {
-      vi.mocked(env).mockReturnValue({
-        VERCEL_ENV: "production",
-      } as ReturnType<typeof env>);
-    });
-
-    it("should set CORS headers for POST request with allowed origin", () => {
+    it("should set CORS headers for POST request with allowed origin", async () => {
+      const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "POST",
         headers: { origin: "https://platform.vm0.ai" },
