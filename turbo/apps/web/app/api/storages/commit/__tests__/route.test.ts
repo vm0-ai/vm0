@@ -381,7 +381,7 @@ describe("POST /api/storages/commit", () => {
     expect(updatedStorage!.headVersionId).toBe(versionId);
 
     // Verify s3ObjectExists was only called once (for manifest, not archive)
-    expect(s3ObjectExists).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(s3Client.s3ObjectExists)).toHaveBeenCalledTimes(1);
   });
 
   it("should return deduplicated=true when version already exists", async () => {
