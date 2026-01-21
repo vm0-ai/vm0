@@ -29,28 +29,20 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock Axiom module
-vi.mock("../../../../../../../../src/lib/axiom", () => ({
-  queryAxiom: vi.fn(),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    SANDBOX_TELEMETRY_METRICS: "sandbox-telemetry-metrics",
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+// Mock Axiom SDK (external)
+vi.mock("@axiomhq/js");
 
 import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
-import { queryAxiom } from "../../../../../../../../src/lib/axiom";
+import { Axiom } from "@axiomhq/js";
+import * as axiomModule from "../../../../../../../../src/lib/axiom";
 
 const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
-const mockQueryAxiom = vi.mocked(queryAxiom);
+
+// Spy for queryAxiom - will be set up in beforeEach
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let queryAxiomSpy: any;
 
 /**
  * Helper to create a NextRequest for testing.
@@ -109,8 +101,18 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Default: Axiom returns empty array
-    mockQueryAxiom.mockResolvedValue([]);
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Setup spy on queryAxiom - returns empty array by default
+    queryAxiomSpy = vi.spyOn(axiomModule, "queryAxiom").mockResolvedValue([]);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -306,7 +308,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty metrics when Axiom returns empty", async () => {
-      mockQueryAxiom.mockResolvedValue([]);
+      queryAxiomSpy.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
@@ -321,7 +323,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
     });
 
     it("should return empty metrics when Axiom is not configured", async () => {
-      mockQueryAxiom.mockResolvedValue(null);
+      queryAxiomSpy.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/metrics`,
@@ -336,7 +338,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
     });
 
     it("should return metrics from Axiom", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomMetricEvent(
           "2024-01-01T00:00:00Z",
           50,
@@ -360,7 +362,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       expect(data.hasMore).toBe(false);
 
       // Verify Axiom was queried with correct APL
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining(`where runId == "${testRunId}"`),
       );
     });
@@ -368,7 +370,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
 
   describe("Retrieval from Axiom", () => {
     it("should return multiple metrics in order", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomMetricEvent(
           "2024-01-01T00:00:00Z",
           10,
@@ -415,7 +417,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
   describe("Pagination", () => {
     it("should respect limit parameter and indicate hasMore", async () => {
       // Mock Axiom returning limit+1 records (indicating more data exists)
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomMetricEvent(
           "2024-01-01T00:00:00Z",
           10,
@@ -457,13 +459,13 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining("limit 4"),
       );
     });
 
     it("should include since filter in Axiom query", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      queryAxiomSpy.mockResolvedValue([
         createAxiomMetricEvent(
           "2024-01-01T00:00:10Z",
           50,
@@ -485,7 +487,7 @@ describe("GET /api/agent/runs/:id/telemetry/metrics", () => {
       expect(data.metrics[0].cpu).toBe(50);
 
       // Verify since filter was included in APL query
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(queryAxiomSpy).toHaveBeenCalledWith(
         expect.stringContaining("where _time > datetime"),
       );
     });
