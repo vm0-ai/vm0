@@ -411,7 +411,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       // Mock headers to return Authorization header with CLI token
       mockHeaders.mockResolvedValue({
         get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${testCliToken}` : null
+          name === "Authorization" ? `Bearer ${testCliToken}` : null,
         ),
       } as unknown as Headers);
     });
@@ -460,7 +460,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
       mockHeaders.mockResolvedValue({
         get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${expiredToken}` : null
+          name === "Authorization" ? `Bearer ${expiredToken}` : null,
         ),
       } as unknown as Headers);
 
@@ -494,7 +494,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       // Use invalid token (not in database)
       mockHeaders.mockResolvedValue({
         get: vi.fn((name: string) =>
-          name === "Authorization" ? "Bearer vm0_live_invalid_token" : null
+          name === "Authorization" ? "Bearer vm0_live_invalid_token" : null,
         ),
       } as unknown as Headers);
 

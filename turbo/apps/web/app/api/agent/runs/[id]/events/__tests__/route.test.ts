@@ -1193,7 +1193,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       // Mock headers to return Authorization header with CLI token
       mockHeaders.mockResolvedValue({
         get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${testCliToken}` : null
+          name === "Authorization" ? `Bearer ${testCliToken}` : null,
         ),
       } as unknown as Headers);
     });
@@ -1224,7 +1224,7 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       mockHeaders.mockResolvedValue({
         get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${expiredToken}` : null
+          name === "Authorization" ? `Bearer ${expiredToken}` : null,
         ),
       } as unknown as Headers);
 
