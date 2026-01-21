@@ -1,5 +1,28 @@
 # Changelog
 
+## [6.0.0](https://github.com/vm0-ai/vm0/compare/cli-v5.10.0...cli-v6.0.0) (2026-01-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* The `provider` field in vm0.yaml has been renamed to `framework`. Users must update their vm0.yaml files to use `framework` instead of `provider`.
+
+### Features
+
+* rename provider to framework in vm0.yaml configuration ([#1430](https://github.com/vm0-ai/vm0/issues/1430)) ([e2a242e](https://github.com/vm0-ai/vm0/commit/e2a242ef2b9c337b29dc992524abf6ebf2181804))
+
+
+### Bug Fixes
+
+* use message.name instead of data.type for realtime event handling ([#1434](https://github.com/vm0-ai/vm0/issues/1434)) ([50e368e](https://github.com/vm0-ai/vm0/commit/50e368e37ae885d3b7011ad5fa3cae9f69d64e2f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.0.0
+
 ## [5.10.0](https://github.com/vm0-ai/vm0/compare/cli-v5.9.1...cli-v5.10.0) (2026-01-21)
 
 

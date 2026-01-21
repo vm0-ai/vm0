@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.1](https://github.com/vm0-ai/vm0/compare/platform-v0.14.0...platform-v0.14.1) (2026-01-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.0.0
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/platform-v0.13.0...platform-v0.14.0) (2026-01-21)
 
 
