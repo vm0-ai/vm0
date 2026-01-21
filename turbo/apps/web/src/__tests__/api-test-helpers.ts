@@ -44,6 +44,7 @@ export function createTestRequest(
 
 /**
  * Default compose configuration for testing
+ * Includes ANTHROPIC_API_KEY in environment to satisfy model provider validation
  */
 export function createDefaultComposeConfig(
   agentName: string,
@@ -56,6 +57,9 @@ export function createDefaultComposeConfig(
         image: "vm0/claude-code:dev",
         framework: "claude-code",
         working_dir: "/home/user/workspace",
+        environment: {
+          ANTHROPIC_API_KEY: "test-api-key",
+        },
         ...overrides,
       },
     },

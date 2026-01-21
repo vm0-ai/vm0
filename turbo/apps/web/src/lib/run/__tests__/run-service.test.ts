@@ -270,7 +270,12 @@ describe("run-service", () => {
             id: versionId,
             composeId: compose!.id,
             content: {
-              agents: { "test-agent": { working_dir: "/workspace" } },
+              agents: {
+                "test-agent": {
+                  working_dir: "/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                },
+              },
             },
             createdBy: TEST_USER_ID,
           });
@@ -440,6 +445,7 @@ describe("run-service", () => {
                 "test-agent": {
                   working_dir: "/workspace",
                   environment: {
+                    ANTHROPIC_API_KEY: "test-api-key",
                     MY_CRED: "${{ credentials.MY_CREDENTIAL }}",
                   },
                 },
@@ -518,6 +524,7 @@ describe("run-service", () => {
                 "test-agent": {
                   working_dir: "/workspace",
                   environment: {
+                    ANTHROPIC_API_KEY: "test-api-key",
                     API_KEY: "${{ credentials.API_KEY }}",
                   },
                 },
@@ -608,6 +615,7 @@ describe("run-service", () => {
                 "test-agent": {
                   working_dir: "/workspace",
                   environment: {
+                    ANTHROPIC_API_KEY: "test-api-key",
                     CRED_A: "${{ credentials.CRED_A }}",
                     CRED_B: "${{ credentials.CRED_B }}",
                   },

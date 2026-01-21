@@ -114,6 +114,9 @@ describe("Public API v1 - Runs Endpoints", () => {
           image: "vm0/claude-code:dev",
           framework: "claude-code",
           working_dir: "/home/user/workspace",
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+          },
         },
       },
     };
