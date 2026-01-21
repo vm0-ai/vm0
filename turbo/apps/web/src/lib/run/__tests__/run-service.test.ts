@@ -18,6 +18,7 @@ import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
 import { scopes } from "../../../db/schema/scope";
 import { credentials } from "../../../db/schema/credential";
+import { modelProviders } from "../../../db/schema/model-provider";
 import { randomUUID } from "crypto";
 import { encryptCredentialValue } from "../../crypto";
 
@@ -40,6 +41,7 @@ let calculateSessionHistoryPath: typeof import("../run-service").calculateSessio
 let RunService: typeof import("../run-service").RunService;
 let NotFoundError: typeof import("../../errors").NotFoundError;
 let UnauthorizedError: typeof import("../../errors").UnauthorizedError;
+let BadRequestError: typeof import("../../errors").BadRequestError;
 let agentSessionService: typeof import("../../agent-session").agentSessionService;
 
 // Test user ID and scope for isolation
@@ -56,6 +58,7 @@ describe("run-service", () => {
     const errorsModule = await import("../../errors");
     NotFoundError = errorsModule.NotFoundError;
     UnauthorizedError = errorsModule.UnauthorizedError;
+    BadRequestError = errorsModule.BadRequestError;
 
     const agentSessionModule = await import("../../agent-session");
     agentSessionService = agentSessionModule.agentSessionService;
@@ -635,6 +638,557 @@ describe("run-service", () => {
           });
 
           // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(credentials)
+            .where(eq(credentials.scopeId, testScopeId));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+      });
+
+      describe("model provider credential injection", () => {
+        test("skips injection when compose has explicit ANTHROPIC_API_KEY", async () => {
+          const testUserId = `model-provider-skip-anthro-${Date.now()}`;
+          const testScopeId = randomUUID();
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-skip-anthro-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create a compose with explicit LLM config
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-explicit-anthropic",
+            })
+            .returning();
+
+          const versionId = `test-version-explicit-anthro-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {
+                    // Explicit LLM config - model provider should be skipped
+                    ANTHROPIC_API_KEY: "explicit-api-key-value",
+                  },
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // Build context - should NOT throw even without model provider configured
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: `run-explicit-anthro-${Date.now()}`,
+            sandboxToken: "token",
+            userId: testUserId,
+          });
+
+          // No credentials injected from model provider (compose has explicit config)
+          expect(context.secrets).toBeUndefined();
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("skips injection when compose has explicit OPENAI_API_KEY", async () => {
+          const testUserId = `model-provider-skip-openai-${Date.now()}`;
+          const testScopeId = randomUUID();
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-skip-openai-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-explicit-openai",
+            })
+            .returning();
+
+          const versionId = `test-version-explicit-openai-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "codex",
+                  working_dir: "/workspace",
+                  environment: {
+                    OPENAI_API_KEY: "explicit-openai-key",
+                  },
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: `run-explicit-openai-${Date.now()}`,
+            sandboxToken: "token",
+            userId: testUserId,
+          });
+
+          expect(context.secrets).toBeUndefined();
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("uses specified model provider when --model-provider is passed", async () => {
+          const testUserId = `model-provider-explicit-${Date.now()}`;
+          const testScopeId = randomUUID();
+          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-explicit-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create credential for the model provider
+          const [credential] = await globalThis.services.db
+            .insert(credentials)
+            .values({
+              scopeId: testScopeId,
+              name: "ANTHROPIC_API_KEY",
+              encryptedValue: encryptCredentialValue(
+                "test-anthropic-api-key-value",
+                encryptionKey,
+              ),
+            })
+            .returning();
+
+          // Create model provider
+          await globalThis.services.db.insert(modelProviders).values({
+            scopeId: testScopeId,
+            type: "anthropic-api-key",
+            credentialId: credential!.id,
+            isDefault: false,
+          });
+
+          // Create compose WITHOUT explicit LLM config
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-no-llm-config",
+            })
+            .returning();
+
+          const versionId = `test-version-no-llm-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {
+                    SOME_VAR: "some-value",
+                  },
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: `run-explicit-mp-${Date.now()}`,
+            sandboxToken: "token",
+            userId: testUserId,
+            modelProvider: "anthropic-api-key",
+          });
+
+          // Credential should be injected
+          expect(context.secrets).toEqual({
+            ANTHROPIC_API_KEY: "test-anthropic-api-key-value",
+          });
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(modelProviders)
+            .where(eq(modelProviders.scopeId, testScopeId));
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(credentials)
+            .where(eq(credentials.scopeId, testScopeId));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("uses default model provider when no explicit config", async () => {
+          const testUserId = `model-provider-default-${Date.now()}`;
+          const testScopeId = randomUUID();
+          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-default-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create credential for the default model provider
+          const [credential] = await globalThis.services.db
+            .insert(credentials)
+            .values({
+              scopeId: testScopeId,
+              name: "ANTHROPIC_API_KEY",
+              encryptedValue: encryptCredentialValue(
+                "default-provider-key-value",
+                encryptionKey,
+              ),
+            })
+            .returning();
+
+          // Create default model provider
+          await globalThis.services.db.insert(modelProviders).values({
+            scopeId: testScopeId,
+            type: "anthropic-api-key",
+            credentialId: credential!.id,
+            isDefault: true, // This is the default!
+          });
+
+          // Create compose WITHOUT explicit LLM config
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-default-mp",
+            })
+            .returning();
+
+          const versionId = `test-version-default-mp-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {},
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // No modelProvider param - should use default
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: `run-default-mp-${Date.now()}`,
+            sandboxToken: "token",
+            userId: testUserId,
+          });
+
+          // Default credential should be injected
+          expect(context.secrets).toEqual({
+            ANTHROPIC_API_KEY: "default-provider-key-value",
+          });
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(modelProviders)
+            .where(eq(modelProviders.scopeId, testScopeId));
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(credentials)
+            .where(eq(credentials.scopeId, testScopeId));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("throws BadRequestError when no LLM config and no model provider", async () => {
+          const testUserId = `model-provider-none-${Date.now()}`;
+          const testScopeId = randomUUID();
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-none-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create compose WITHOUT explicit LLM config and NO model provider
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-no-mp",
+            })
+            .returning();
+
+          const versionId = `test-version-no-mp-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {},
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // Should throw helpful error
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-no-mp-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+            }),
+          ).rejects.toThrow(BadRequestError);
+
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-no-mp-2-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+            }),
+          ).rejects.toThrow(/No LLM configuration found/);
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("throws BadRequestError when model provider type is invalid", async () => {
+          const testUserId = `model-provider-invalid-${Date.now()}`;
+          const testScopeId = randomUUID();
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-invalid-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-invalid-mp",
+            })
+            .returning();
+
+          const versionId = `test-version-invalid-mp-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {},
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // Pass invalid model provider type
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-invalid-mp-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+              modelProvider: "non-existent-provider",
+            }),
+          ).rejects.toThrow(BadRequestError);
+
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-invalid-mp-2-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+              modelProvider: "non-existent-provider",
+            }),
+          ).rejects.toThrow(/Unknown model provider type/);
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
+        test("throws BadRequestError when model provider incompatible with framework", async () => {
+          const testUserId = `model-provider-mismatch-${Date.now()}`;
+          const testScopeId = randomUUID();
+          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-mismatch-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create credential for OpenAI
+          const [credential] = await globalThis.services.db
+            .insert(credentials)
+            .values({
+              scopeId: testScopeId,
+              name: "OPENAI_API_KEY",
+              encryptedValue: encryptCredentialValue(
+                "test-openai-key",
+                encryptionKey,
+              ),
+            })
+            .returning();
+
+          // Create OpenAI model provider
+          await globalThis.services.db.insert(modelProviders).values({
+            scopeId: testScopeId,
+            type: "openai-api-key",
+            credentialId: credential!.id,
+            isDefault: false,
+          });
+
+          // Create claude-code compose (incompatible with openai-api-key)
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-mismatch",
+            })
+            .returning();
+
+          const versionId = `test-version-mismatch-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code", // claude-code agent
+                  working_dir: "/workspace",
+                  environment: {},
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // Try to use OpenAI provider with claude-code framework
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-mismatch-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+              modelProvider: "openai-api-key",
+            }),
+          ).rejects.toThrow(BadRequestError);
+
+          await expect(
+            runService.buildExecutionContext({
+              agentComposeVersionId: versionId,
+              prompt: "test prompt",
+              runId: `run-mismatch-2-${Date.now()}`,
+              sandboxToken: "token",
+              userId: testUserId,
+              modelProvider: "openai-api-key",
+            }),
+          ).rejects.toThrow(/not compatible with framework/);
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(modelProviders)
+            .where(eq(modelProviders.scopeId, testScopeId));
           await globalThis.services.db
             .delete(agentComposeVersions)
             .where(eq(agentComposeVersions.id, versionId));

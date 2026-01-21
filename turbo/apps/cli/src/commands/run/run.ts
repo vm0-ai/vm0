@@ -61,6 +61,10 @@ export const mainRunCommand = new Command()
     "--experimental-realtime",
     "Use realtime event streaming instead of polling (experimental)",
   )
+  .option(
+    "--model-provider <type>",
+    "Override model provider for LLM credentials (e.g., anthropic-api-key)",
+  )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
@@ -75,6 +79,7 @@ export const mainRunCommand = new Command()
         conversation?: string;
         verbose?: boolean;
         experimentalRealtime?: boolean;
+        modelProvider?: string;
         debugNoMockClaude?: boolean;
       },
     ) => {
@@ -212,6 +217,7 @@ export const mainRunCommand = new Command()
               ? options.volumeVersion
               : undefined,
           conversationId: options.conversation,
+          modelProvider: options.modelProvider,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 

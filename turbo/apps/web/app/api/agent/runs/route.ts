@@ -374,6 +374,7 @@ const router = tsr.router(runsMainContract, {
         resumedFromCheckpointId: body.checkpointId,
         continuedFromSessionId: body.sessionId,
         debugNoMockClaude: body.debugNoMockClaude,
+        modelProvider: body.modelProvider,
       });
 
       // Prepare and dispatch to executor (unified path for E2B and runner)

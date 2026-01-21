@@ -1,7 +1,15 @@
 import { eq } from "drizzle-orm";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+  getFrameworkForType,
+  getCredentialNameForType,
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderType,
+  type ModelProviderFramework,
+} from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { NotFoundError } from "../errors";
+import { BadRequestError, NotFoundError } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -13,7 +21,11 @@ import {
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
 import { getUserScopeByClerkId } from "../scope/scope-service";
-import { getCredentialValues } from "../credential/credential-service";
+import {
+  getCredentialValue,
+  getCredentialValues,
+} from "../credential/credential-service";
+import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 
 const log = logger("run:build-context");
 
@@ -43,6 +55,8 @@ export interface BuildContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
+  // Model provider for automatic LLM credential injection
+  modelProvider?: string;
 }
 
 /**
@@ -187,7 +201,10 @@ export async function buildExecutionContext(
 
   // Extract variable references from compose to check for credentials
   const compose = agentCompose as {
-    agents?: Record<string, { environment?: Record<string, string> }>;
+    agents?: Record<
+      string,
+      { environment?: Record<string, string>; framework?: string }
+    >;
   };
   if (compose?.agents) {
     const agents = Object.values(compose.agents);
@@ -208,6 +225,85 @@ export async function buildExecutionContext(
           log.debug(
             `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
           );
+        }
+      }
+    }
+
+    // Step 4b: Model provider credential injection
+    // Only inject if no explicit LLM config in compose environment
+    const LLM_ENV_VARS = [
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_BASE_URL",
+      "OPENAI_API_KEY",
+    ];
+
+    const hasExplicitLLMConfig = LLM_ENV_VARS.some(
+      (v) => firstAgent?.environment?.[v] !== undefined,
+    );
+
+    if (!hasExplicitLLMConfig) {
+      const framework = (firstAgent?.framework || "claude-code") as
+        | ModelProviderFramework
+        | "aider";
+
+      // Skip model provider injection for frameworks that don't use it
+      if (framework === "claude-code" || framework === "codex") {
+        const userScope = await getUserScopeByClerkId(params.userId);
+
+        if (userScope) {
+          // Resolve model provider (explicit or default)
+          let providerType: ModelProviderType | undefined;
+
+          if (params.modelProvider) {
+            // Validate that the specified model provider type is valid
+            if (!(params.modelProvider in MODEL_PROVIDER_TYPES)) {
+              throw new BadRequestError(
+                `Unknown model provider type "${params.modelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
+              );
+            }
+            providerType = params.modelProvider as ModelProviderType;
+          } else {
+            // Get default provider for framework
+            const defaultProvider = await getDefaultModelProvider(
+              userScope.id,
+              framework,
+            );
+            providerType = defaultProvider?.type;
+          }
+
+          if (providerType) {
+            // Validate framework compatibility
+            const providerFramework = getFrameworkForType(providerType);
+            if (providerFramework !== framework) {
+              throw new BadRequestError(
+                `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
+                  `This provider is for "${providerFramework}" agents.`,
+              );
+            }
+
+            // Get credential and inject
+            const credentialName = getCredentialNameForType(providerType);
+            const credentialValue = await getCredentialValue(
+              userScope.id,
+              credentialName,
+            );
+
+            if (credentialValue) {
+              credentials = credentials || {};
+              credentials[credentialName] = credentialValue;
+              log.debug(
+                `Injected model provider credential: ${credentialName}`,
+              );
+            }
+          } else {
+            // No model provider configured - throw helpful error
+            throw new BadRequestError(
+              "No LLM configuration found. " +
+                "Run 'vm0 model-provider setup' to configure a model provider, " +
+                "or add environment variables to your vm0.yaml.",
+            );
+          }
         }
       }
     }
