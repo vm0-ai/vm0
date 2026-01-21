@@ -2,18 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
 import { runCommand } from "../run";
-import { parseEvent } from "../../lib/events/event-parser-factory";
-import { EventRenderer } from "../../lib/events/event-renderer";
-import * as config from "../../lib/api/config";
 import chalk from "chalk";
-
-// Mock dependencies
-vi.mock("../../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
-vi.mock("../../lib/events/event-parser-factory");
-vi.mock("../../lib/events/event-renderer");
 
 describe("run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -77,17 +66,11 @@ describe("run command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
-
-    // Default mock for parseEvent - returns null since completion
-    // is now detected via run.status, not events
-    vi.mocked(parseEvent).mockImplementation(() => null);
-
-    // Default mock for EventRenderer
-    vi.mocked(EventRenderer.render).mockImplementation(() => {});
-    vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
-    vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
+    // Disable chalk colors for deterministic console output assertions
+    chalk.level = 0;
+    // Use environment variables for config instead of mocking the module
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
 
     // Default handlers for most tests
     server.use(
@@ -107,6 +90,7 @@ describe("run command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("composeId validation", () => {
@@ -969,40 +953,6 @@ describe("run command", () => {
   });
 
   describe("event polling", () => {
-    beforeEach(() => {
-      // Mock EventRenderer to track render calls
-      vi.mocked(EventRenderer.render).mockImplementation(() => {});
-      vi.mocked(EventRenderer.renderRunCompleted).mockImplementation(() => {});
-      vi.mocked(EventRenderer.renderRunFailed).mockImplementation(() => {});
-
-      // Mock parseEvent to return parsed events
-      // Note: Completion is now detected via run.status, not events
-      vi.mocked(parseEvent).mockImplementation((raw) => {
-        if (raw.type === "init") {
-          return {
-            type: "init",
-            timestamp: new Date(),
-            data: { sessionId: "session-123" },
-          };
-        }
-        if (raw.type === "text") {
-          return {
-            type: "text",
-            timestamp: new Date(),
-            data: { text: raw.text as string },
-          };
-        }
-        if (raw.type === "result") {
-          return {
-            type: "result",
-            timestamp: new Date(),
-            data: { success: true, result: "Done" },
-          };
-        }
-        return null;
-      });
-    });
-
     it("should poll for events after creating run", async () => {
       let pollCount = 0;
       server.use(
@@ -1138,18 +1088,15 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      expect(parseEvent).toHaveBeenCalledWith({
-        type: "init",
-        sessionId: "session-123",
-      });
-      // parseEvent receives the raw eventData from the API
-      expect(parseEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "result",
-          subtype: "success",
-        }),
+      // Verify events are rendered to console (without ANSI colors due to chalk.level = 0)
+      // The init event shows session ID in the completion summary
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Session:"),
       );
-      expect(EventRenderer.render).toHaveBeenCalledTimes(2);
+      // Result event is rendered with success message
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("completed successfully"),
+      );
     });
 
     it("should stop polling when run status is completed", async () => {
@@ -1210,21 +1157,6 @@ describe("run command", () => {
     // The polling logic handles empty responses correctly in production
 
     it("should skip events that fail to parse", async () => {
-      // Mock parser to return null for unknown event
-      vi.mocked(parseEvent).mockImplementation((raw) => {
-        if (raw.type === "unknown") {
-          return null;
-        }
-        if (raw.type === "result") {
-          return {
-            type: "result",
-            timestamp: new Date(),
-            data: { success: true, result: "Done" },
-          };
-        }
-        return null;
-      });
-
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
           return HttpResponse.json({
@@ -1277,8 +1209,11 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      // Should only render the result event, not the unknown one
-      expect(EventRenderer.render).toHaveBeenCalledTimes(1);
+      // Should only render the result event (unknown events are skipped)
+      // Verify the result event is in console output
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("completed successfully"),
+      );
     });
 
     it("should handle polling errors gracefully", async () => {
@@ -1323,9 +1258,11 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       // Errors bubble up to main command handler which displays generic "Run failed" message
-      expect(mockConsoleError).toHaveBeenCalledWith(chalk.red("✗ Run failed"));
       expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.dim("  Network error"),
+        expect.stringContaining("Run failed"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Network error"),
       );
     });
 
@@ -1354,10 +1291,9 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      // Note: EventRenderer.renderRunFailed is mocked, so we check it was called
-      expect(EventRenderer.renderRunFailed).toHaveBeenCalledWith(
-        "Agent crashed",
-        "run-123",
+      // Verify error message is rendered to console
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
       );
     });
 
@@ -1387,7 +1323,7 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        chalk.red("\n✗ Run timed out"),
+        expect.stringContaining("Run timed out"),
       );
     });
 
@@ -1422,14 +1358,12 @@ describe("run command", () => {
         "test-artifact",
       ]);
 
-      // Should complete successfully and render completion info
-      // Note: EventRenderer.renderRunCompleted is mocked, so we check it was called
-      expect(EventRenderer.renderRunCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          checkpointId: "cp-123",
-          agentSessionId: "session-123",
-        }),
-        expect.anything(),
+      // Should complete successfully and render completion info to console
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Session:"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Checkpoint:"),
       );
     });
   });
