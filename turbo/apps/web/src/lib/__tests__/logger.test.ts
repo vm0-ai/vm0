@@ -27,7 +27,6 @@ vi.mock("@axiomhq/js", () => ({
 import { logger, clearLoggerCache, flushLogs } from "../logger";
 
 describe("logger", () => {
-  const originalEnv = { ...process.env };
   const consoleSpy = {
     log: vi.spyOn(console, "log").mockImplementation(() => {}),
     info: vi.spyOn(console, "info").mockImplementation(() => {}),
@@ -36,11 +35,8 @@ describe("logger", () => {
   };
 
   beforeEach(() => {
-    // Reset environment
-    process.env = { ...originalEnv };
-    (process.env as Record<string, string | undefined>).NODE_ENV = "test";
-    delete process.env.DEBUG;
-    delete process.env.AXIOM_TOKEN;
+    // Set test environment
+    vi.stubEnv("NODE_ENV", "test");
 
     // Clear all mocks
     vi.clearAllMocks();
@@ -48,7 +44,7 @@ describe("logger", () => {
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   describe("console output", () => {
