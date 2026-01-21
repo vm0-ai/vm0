@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setupGithubCommand } from "../setup-github";
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import { execSync, spawnSync, SpawnSyncReturns } from "child_process";
 import * as config from "../../lib/api/config";
 import * as core from "@vm0/core";
 
 // Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
 vi.mock("child_process");
 vi.mock("../../lib/api/config");
 vi.mock("@vm0/core");
@@ -22,6 +22,9 @@ describe("setup-github command", () => {
   }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
+  let tempDir: string;
+  let originalCwd: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
     // Default mocks for core functions
@@ -32,12 +35,21 @@ describe("setup-github command", () => {
       secrets: [],
       credentials: [],
     });
+
+    // Create temporary directory and change to it
+    originalCwd = process.cwd();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-setup-github-"));
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     vi.unstubAllEnvs();
+
+    // Restore original directory and clean up
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
   describe("prerequisite checks", () => {
@@ -138,15 +150,12 @@ describe("setup-github command", () => {
     it("should exit with error if vm0.yaml does not exist", async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return "/repo";
+          return tempDir;
         }
         return Buffer.from("");
       });
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return false;
-        return false;
-      });
+      // Don't create vm0.yaml file - it should not exist
 
       await expect(async () => {
         await setupGithubCommand.parseAsync(["node", "cli"]);
@@ -163,31 +172,27 @@ describe("setup-github command", () => {
   });
 
   describe("workflow file generation", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
-      // Pass all prerequisites - mock git root at /repo, cwd at /repo (git root)
+    beforeEach(async () => {
+      // Pass all prerequisites - mock git root at tempDir, already in tempDir
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-test-agent:
     provider: claude-code
     instructions: AGENTS.md
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
@@ -198,11 +203,15 @@ agents:
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("publish.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
+      expect(existsSync(publishPath)).toBe(true);
+      const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).toContain("name: Publish Agent");
       expect(content).toContain("branches: [main]");
@@ -217,11 +226,10 @@ agents:
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("run.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
+      expect(existsSync(runPath)).toBe(true);
+      const content = await fs.readFile(runPath, "utf-8");
 
       expect(content).toContain("name: Run Agent");
       expect(content).toContain("workflow_dispatch:");
@@ -253,11 +261,9 @@ agents:
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("run.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
+      const content = await fs.readFile(runPath, "utf-8");
 
       expect(content).toContain("secrets: |");
       expect(content).toContain("API_KEY=${{ secrets.API_KEY }}");
@@ -278,19 +284,19 @@ agents:
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("run.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
+      const content = await fs.readFile(runPath, "utf-8");
 
       expect(content).toContain("vars: |");
       expect(content).toContain("REGION=${{ vars.REGION }}");
     });
 
     it("should handle experimental_secrets and experimental_vars", async () => {
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+      // Overwrite vm0.yaml with experimental fields
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-test-agent:
     provider: claude-code
@@ -299,15 +305,13 @@ agents:
       - CUSTOM_SECRET
     experimental_vars:
       - CUSTOM_VAR
-`);
+`,
+      );
 
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("run.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const content = await fs.readFile(".github/workflows/run.yml", "utf-8");
 
       expect(content).toContain("CUSTOM_SECRET=${{ secrets.CUSTOM_SECRET }}");
       expect(content).toContain("CUSTOM_VAR=${{ vars.CUSTOM_VAR }}");
@@ -315,33 +319,30 @@ agents:
   });
 
   describe("existing file handling", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
     });
 
     it("should prompt to overwrite existing files", async () => {
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        if (String(path).includes("publish.yml")) return true;
-        return false;
-      });
+      // Create existing workflow file
+      await fs.mkdir(".github/workflows", { recursive: true });
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       vi.mocked(promptUtils.promptConfirm).mockResolvedValue(false); // No, don't overwrite
 
@@ -356,11 +357,9 @@ agents:
     });
 
     it("should overwrite files with --force option", async () => {
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        if (String(path).includes("publish.yml")) return true;
-        return false;
-      });
+      // Create existing workflow file
+      await fs.mkdir(".github/workflows", { recursive: true });
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       await setupGithubCommand.parseAsync([
         "node",
@@ -369,21 +368,23 @@ agents:
         "--skip-secrets",
       ]);
 
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("publish.yml"),
-        expect.any(String),
+      // Verify file was overwritten
+      const content = await fs.readFile(
+        ".github/workflows/publish.yml",
+        "utf-8",
       );
+      expect(content).not.toBe("existing content");
+      expect(content).toContain("name: Publish Agent");
+
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Overwrote"),
       );
     });
 
     it("should work with -f short option", async () => {
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        if (String(path).includes("publish.yml")) return true;
-        return false;
-      });
+      // Create existing workflow file
+      await fs.mkdir(".github/workflows", { recursive: true });
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
 
       await setupGithubCommand.parseAsync([
         "node",
@@ -392,34 +393,30 @@ agents:
         "--skip-secrets",
       ]);
 
-      expect(fs.writeFile).toHaveBeenCalled();
+      // Verify file was written
+      expect(existsSync(".github/workflows/publish.yml")).toBe(true);
     });
   });
 
   describe("--skip-secrets option", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
     });
 
     it("should skip secrets setup with --skip-secrets", async () => {
@@ -437,30 +434,27 @@ agents:
   });
 
   describe("--yes option", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        if (String(path).includes("publish.yml")) return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file and existing workflow file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+      await fs.mkdir(".github/workflows", { recursive: true });
+      await fs.writeFile(".github/workflows/publish.yml", "existing content");
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
@@ -471,42 +465,43 @@ agents:
 
       // Should not have prompted the user
       expect(promptUtils.promptConfirm).not.toHaveBeenCalled();
+
       // Should have proceeded with overwriting and setting secrets
-      expect(fs.writeFile).toHaveBeenCalled();
+      expect(existsSync(".github/workflows/publish.yml")).toBe(true);
+      const content = await fs.readFile(
+        ".github/workflows/publish.yml",
+        "utf-8",
+      );
+      expect(content).toContain("name: Publish Agent");
     });
 
     it("should work with -y short option", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "-y"]);
 
       expect(promptUtils.promptConfirm).not.toHaveBeenCalled();
-      expect(fs.writeFile).toHaveBeenCalled();
+      expect(existsSync(".github/workflows/publish.yml")).toBe(true);
     });
   });
 
   describe("secrets setup", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
     });
 
     it("should set VM0_TOKEN secret when auto-setup is confirmed", async () => {
@@ -591,29 +586,25 @@ agents:
   });
 
   describe("display messages", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   my-agent:
     provider: claude-code
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
@@ -660,45 +651,52 @@ agents:
   });
 
   describe("subdirectory execution", () => {
-    const mockGitRoot = "/repo";
-    const mockSubdir = "/repo/.vm0";
+    beforeEach(async () => {
+      // Create subdirectory and change to it
+      await fs.mkdir(".vm0", { recursive: true });
+      process.chdir(".vm0");
 
-    beforeEach(() => {
-      // Mock git root at /repo, cwd at /repo/.vm0 (subdirectory)
+      // Mock git root at tempDir (parent), cwd is now in subdirectory
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockGitRoot;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockSubdir);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file in current directory (subdirectory)
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   subdir-agent:
     provider: claude-code
     instructions: AGENTS.md
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
     });
 
+    afterEach(() => {
+      // Return to tempDir after subdirectory tests
+      process.chdir(tempDir);
+    });
+
     it("should include working-directory in publish.yml when run from subdirectory", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("publish.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
+      const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).toContain("working-directory: .vm0");
       expect(content).toContain("'.vm0/vm0.yaml'");
@@ -708,58 +706,52 @@ agents:
     it("should write workflow files to git root .github directory", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      expect(fs.mkdir).toHaveBeenCalledWith("/repo/.github/workflows", {
-        recursive: true,
-      });
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "/repo/.github/workflows/publish.yml",
-        expect.any(String),
+      // Verify files were written to git root
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
       );
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        "/repo/.github/workflows/run.yml",
-        expect.any(String),
-      );
+      const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
+
+      expect(existsSync(publishPath)).toBe(true);
+      expect(existsSync(runPath)).toBe(true);
     });
 
     it("should NOT include working-directory in run.yml (run-action does not need it)", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("run.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const runPath = path.join(tempDir, ".github", "workflows", "run.yml");
+      const content = await fs.readFile(runPath, "utf-8");
 
       expect(content).not.toContain("working-directory");
     });
   });
 
   describe("git root execution (no subdirectory)", () => {
-    const mockCwd = "/repo";
-
-    beforeEach(() => {
-      // Mock git root and cwd both at /repo (at git root)
+    beforeEach(async () => {
+      // Mock git root and cwd both at tempDir (at git root)
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockCwd;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file at git root (current directory)
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   root-agent:
     provider: claude-code
     instructions: AGENTS.md
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
@@ -768,11 +760,14 @@ agents:
     it("should NOT include working-directory when run from git root", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("publish.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
+      const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).not.toContain("working-directory");
       expect(content).toContain("'vm0.yaml'");
@@ -781,44 +776,51 @@ agents:
   });
 
   describe("nested subdirectory execution", () => {
-    const mockGitRoot = "/repo";
-    const mockNestedSubdir = "/repo/configs/agents";
+    beforeEach(async () => {
+      // Create nested subdirectory and change to it
+      await fs.mkdir("configs/agents", { recursive: true });
+      process.chdir("configs/agents");
 
-    beforeEach(() => {
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "git rev-parse --show-toplevel") {
-          return mockGitRoot;
+          return tempDir;
         }
         return Buffer.from("");
       });
-      vi.spyOn(process, "cwd").mockReturnValue(mockNestedSubdir);
       vi.mocked(config.getToken).mockResolvedValue("test-token");
-      vi.mocked(existsSync).mockImplementation((path) => {
-        if (path === "vm0.yaml") return true;
-        return false;
-      });
-      vi.mocked(fs.readFile).mockResolvedValue(`
-version: "1.0"
+
+      // Create real vm0.yaml file in current directory (nested subdirectory)
+      await fs.writeFile(
+        "vm0.yaml",
+        `version: "1.0"
 agents:
   nested-agent:
     provider: claude-code
     instructions: AGENTS.md
-`);
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+`,
+      );
+
       vi.mocked(spawnSync).mockReturnValue({
         status: 0,
       } as SpawnSyncReturns<Buffer>);
     });
 
+    afterEach(() => {
+      // Return to tempDir after nested subdirectory tests
+      process.chdir(tempDir);
+    });
+
     it("should handle nested subdirectory paths correctly", async () => {
       await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
 
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => String(call[0]).includes("publish.yml"));
-      expect(writeCall).toBeDefined();
-      const content = writeCall![1] as string;
+      // Read the actual file that was written
+      const publishPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "publish.yml",
+      );
+      const content = await fs.readFile(publishPath, "utf-8");
 
       expect(content).toContain("working-directory: configs/agents");
       expect(content).toContain("'configs/agents/vm0.yaml'");

@@ -1,29 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import { spawn } from "child_process";
 import { ProxyManager } from "../proxy-manager";
 
-// Mock modules
-vi.mock("fs");
+// Mock child_process only
 vi.mock("child_process");
-
-// Test configuration with required caDir
-const TEST_CA_DIR = "/test/proxy";
-const TEST_CONFIG = {
-  caDir: TEST_CA_DIR,
-  port: 8080,
-  apiUrl: "https://test.api.com",
-};
 
 describe("ProxyManager", () => {
   let proxyManager: ProxyManager;
+  let tempDir: string;
+  let originalCwd: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    proxyManager = new ProxyManager(TEST_CONFIG);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-proxy-manager-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    // Use tempDir for caDir
+    proxyManager = new ProxyManager({
+      caDir: path.join(tempDir, "proxy"),
+      port: 8080,
+      apiUrl: "https://test.api.com",
+    });
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -31,13 +37,16 @@ describe("ProxyManager", () => {
     it("should use provided caDir and derive addonPath", () => {
       const config = proxyManager.getConfig();
 
-      expect(config.caDir).toBe(TEST_CA_DIR);
-      expect(config.addonPath).toBe(`${TEST_CA_DIR}/mitm_addon.py`);
+      expect(config.caDir).toBe(path.join(tempDir, "proxy"));
+      expect(config.addonPath).toBe(
+        path.join(tempDir, "proxy", "mitm_addon.py"),
+      );
     });
 
     it("should merge custom config with defaults", () => {
+      const customDir = path.join(tempDir, "custom", "proxy");
       const customManager = new ProxyManager({
-        caDir: "/custom/proxy",
+        caDir: customDir,
         port: 9090,
         apiUrl: "https://custom.api.com",
       });
@@ -46,19 +55,20 @@ describe("ProxyManager", () => {
 
       expect(config.port).toBe(9090);
       expect(config.apiUrl).toBe("https://custom.api.com");
-      expect(config.caDir).toBe("/custom/proxy");
-      expect(config.addonPath).toBe("/custom/proxy/mitm_addon.py");
+      expect(config.caDir).toBe(customDir);
+      expect(config.addonPath).toBe(path.join(customDir, "mitm_addon.py"));
     });
 
     it("should use default port when not specified", () => {
+      const minimalDir = path.join(tempDir, "minimal", "proxy");
       const minimalManager = new ProxyManager({
-        caDir: "/minimal/proxy",
+        caDir: minimalDir,
       });
 
       const config = minimalManager.getConfig();
 
       expect(config.port).toBe(8080);
-      expect(config.caDir).toBe("/minimal/proxy");
+      expect(config.caDir).toBe(minimalDir);
     });
   });
 
@@ -109,54 +119,48 @@ describe("ProxyManager", () => {
 
   describe("ensureAddonScript", () => {
     it("should create directory and write addon script", () => {
-      const mockExistsSync = vi.mocked(fs.existsSync);
-      const mockMkdirSync = vi.mocked(fs.mkdirSync);
-      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+      const caDir = path.join(tempDir, "proxy");
+      const addonPath = path.join(caDir, "mitm_addon.py");
 
-      mockExistsSync.mockReturnValue(false);
+      // Ensure directory doesn't exist
+      expect(fs.existsSync(caDir)).toBe(false);
 
       proxyManager.ensureAddonScript();
 
-      expect(mockMkdirSync).toHaveBeenCalledWith(TEST_CA_DIR, {
-        recursive: true,
-      });
-      expect(mockWriteFileSync).toHaveBeenCalledWith(
-        `${TEST_CA_DIR}/mitm_addon.py`,
-        expect.any(String),
-        { mode: 0o755 },
-      );
+      // Verify directory was created
+      expect(fs.existsSync(caDir)).toBe(true);
+      // Verify addon script was written
+      expect(fs.existsSync(addonPath)).toBe(true);
+      // Verify file content
+      const content = fs.readFileSync(addonPath, "utf-8");
+      expect(content).toContain("def request");
     });
 
     it("should not create directory if it exists", () => {
-      const mockExistsSync = vi.mocked(fs.existsSync);
-      const mockMkdirSync = vi.mocked(fs.mkdirSync);
-      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+      const caDir = path.join(tempDir, "proxy");
+      const addonPath = path.join(caDir, "mitm_addon.py");
 
-      mockExistsSync.mockReturnValue(true);
+      // Create directory first
+      fs.mkdirSync(caDir, { recursive: true });
 
       proxyManager.ensureAddonScript();
 
-      expect(mockMkdirSync).not.toHaveBeenCalled();
-      expect(mockWriteFileSync).toHaveBeenCalled();
+      // Verify addon script was still written
+      expect(fs.existsSync(addonPath)).toBe(true);
     });
   });
 
   describe("validateConfig", () => {
     it("should throw error if CA directory does not exist", () => {
-      const mockExistsSync = vi.mocked(fs.existsSync);
-      mockExistsSync.mockReturnValue(false);
-
+      // Directory doesn't exist yet
       expect(() => proxyManager.validateConfig()).toThrow(
         "Proxy CA directory not found",
       );
     });
 
     it("should throw error if CA certificate does not exist", () => {
-      const mockExistsSync = vi.mocked(fs.existsSync);
-      mockExistsSync.mockImplementation((path) => {
-        if (path === TEST_CA_DIR) return true;
-        return false; // CA cert doesn't exist
-      });
+      // Create directory but not the certificate
+      fs.mkdirSync(path.join(tempDir, "proxy"), { recursive: true });
 
       expect(() => proxyManager.validateConfig()).toThrow(
         "Proxy CA certificate not found",
@@ -164,15 +168,18 @@ describe("ProxyManager", () => {
     });
 
     it("should pass validation and write addon script when CA exists", () => {
-      const mockExistsSync = vi.mocked(fs.existsSync);
-      const mockWriteFileSync = vi.mocked(fs.writeFileSync);
+      const caDir = path.join(tempDir, "proxy");
+      const caCertPath = path.join(caDir, "mitmproxy-ca.pem");
+      const addonPath = path.join(caDir, "mitm_addon.py");
 
-      mockExistsSync.mockReturnValue(true);
+      // Create directory and CA certificate
+      fs.mkdirSync(caDir, { recursive: true });
+      fs.writeFileSync(caCertPath, "fake cert content");
 
       proxyManager.validateConfig();
 
       // Should write addon script as part of validation
-      expect(mockWriteFileSync).toHaveBeenCalled();
+      expect(fs.existsSync(addonPath)).toBe(true);
     });
   });
 

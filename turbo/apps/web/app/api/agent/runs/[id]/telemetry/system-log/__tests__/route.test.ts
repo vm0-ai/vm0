@@ -74,7 +74,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Default: queryAxiom returns empty array (no logs)
+    // Setup mockQueryAxiom - returns empty array by default
     mockQueryAxiom.mockResolvedValue([]);
 
     // Clean up any existing test data

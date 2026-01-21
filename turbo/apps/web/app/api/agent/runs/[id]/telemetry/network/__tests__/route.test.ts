@@ -108,7 +108,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Default: Axiom returns empty array
+    // Setup mockQueryAxiom - returns empty array by default
     mockQueryAxiom.mockResolvedValue([]);
 
     // Clean up any existing test data

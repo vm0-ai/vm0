@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
-import { existsSync, readFileSync } from "fs";
+import { readFileSync, mkdtempSync, rmSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import * as core from "@vm0/core";
 import { parseRunIdsFromOutput } from "../cook";
 
 // Mock dependencies
-vi.mock("fs/promises");
-vi.mock("fs");
 vi.mock("@vm0/core", async () => {
   const actual = await vi.importActual("@vm0/core");
   return {
@@ -23,6 +23,9 @@ const TEST_VAR_3 = "TEST_VAR_3";
 const TEST_VAR_4 = "TEST_VAR_4";
 
 describe("cook command - environment variable check", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -30,9 +33,14 @@ describe("cook command - environment variable check", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-cook-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     vi.unstubAllEnvs();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -85,8 +93,6 @@ describe("cook command - environment variable check", () => {
       vi.stubEnv(TEST_VAR_1, "test-key");
       vi.stubEnv(TEST_VAR_2, "test-password");
 
-      vi.mocked(existsSync).mockReturnValue(false);
-
       const varNames = [TEST_VAR_1, TEST_VAR_2];
       const missing: string[] = [];
 
@@ -137,52 +143,57 @@ describe("cook command - environment variable check", () => {
 
   describe("generateEnvPlaceholders", () => {
     it("should create new .env file with placeholders", async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-      const mockWriteFile = vi.mocked(fs.writeFile).mockResolvedValue();
-
       const missingVars = ["API_KEY", "DB_PASSWORD"];
       const placeholders = missingVars.map((name) => `${name}=`).join("\n");
 
-      await fs.writeFile(".env", `${placeholders}\n`);
+      await fs.writeFile(path.join(tempDir, ".env"), `${placeholders}\n`);
 
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        ".env",
-        "API_KEY=\nDB_PASSWORD=\n",
-      );
+      const content = await fs.readFile(path.join(tempDir, ".env"), "utf8");
+      expect(content).toBe("API_KEY=\nDB_PASSWORD=\n");
     });
 
     it("should append to existing .env file", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue("EXISTING_VAR=value\n");
-      const mockAppendFile = vi.mocked(fs.appendFile).mockResolvedValue();
+      await fs.writeFile(path.join(tempDir, ".env"), "EXISTING_VAR=value\n");
 
-      const existingContent = readFileSync(".env", "utf8");
+      const existingContent = readFileSync(path.join(tempDir, ".env"), "utf8");
       const needsNewline =
         existingContent.length > 0 && !existingContent.endsWith("\n");
       const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
       const placeholders = missingVars.map((name) => `${name}=`).join("\n");
 
-      await fs.appendFile(".env", `${prefix}${placeholders}\n`);
+      await fs.appendFile(
+        path.join(tempDir, ".env"),
+        `${prefix}${placeholders}\n`,
+      );
 
-      expect(mockAppendFile).toHaveBeenCalledWith(".env", "NEW_VAR=\n");
+      const finalContent = await fs.readFile(
+        path.join(tempDir, ".env"),
+        "utf8",
+      );
+      expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
     });
 
     it("should add newline before appending if file doesn't end with newline", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue("EXISTING_VAR=value"); // No trailing newline
-      const mockAppendFile = vi.mocked(fs.appendFile).mockResolvedValue();
+      await fs.writeFile(path.join(tempDir, ".env"), "EXISTING_VAR=value"); // No trailing newline
 
-      const existingContent = readFileSync(".env", "utf8");
+      const existingContent = readFileSync(path.join(tempDir, ".env"), "utf8");
       const needsNewline =
         existingContent.length > 0 && !existingContent.endsWith("\n");
       const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
       const placeholders = missingVars.map((name) => `${name}=`).join("\n");
 
-      await fs.appendFile(".env", `${prefix}${placeholders}\n`);
+      await fs.appendFile(
+        path.join(tempDir, ".env"),
+        `${prefix}${placeholders}\n`,
+      );
 
-      expect(mockAppendFile).toHaveBeenCalledWith(".env", "\nNEW_VAR=\n");
+      const finalContent = await fs.readFile(
+        path.join(tempDir, ".env"),
+        "utf8",
+      );
+      expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
     });
   });
 });

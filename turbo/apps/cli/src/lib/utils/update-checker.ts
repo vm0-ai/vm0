@@ -1,4 +1,3 @@
-import https from "https";
 import { spawn } from "child_process";
 import chalk from "chalk";
 
@@ -42,34 +41,26 @@ export function buildRerunCommand(prompt: string | undefined): string {
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
-export function getLatestVersion(): Promise<string | null> {
-  return new Promise((resolve) => {
-    const req = https.get(NPM_REGISTRY_URL, (res) => {
-      let data = "";
+export async function getLatestVersion(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-      res.on("data", (chunk: Buffer) => {
-        data += chunk.toString();
-      });
-
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(data) as { version?: string };
-          resolve(json.version ?? null);
-        } catch {
-          resolve(null);
-        }
-      });
+    const response = await fetch(NPM_REGISTRY_URL, {
+      signal: controller.signal,
     });
 
-    req.on("error", () => {
-      resolve(null);
-    });
+    clearTimeout(timeoutId);
 
-    req.setTimeout(TIMEOUT_MS, () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = (await response.json()) as { version?: string };
+    return json.version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

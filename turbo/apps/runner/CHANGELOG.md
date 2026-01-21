@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.13.2](https://github.com/vm0-ai/vm0/compare/runner-v2.13.1...runner-v2.13.2) (2026-01-21)
+
+
+### Bug Fixes
+
+* **runner:** move mitmproxy CA to per-runner directory to fix race condition ([#1398](https://github.com/vm0-ai/vm0/issues/1398)) ([6936a11](https://github.com/vm0-ai/vm0/commit/6936a1178902c961b834e02d8da8e3ac6163ccaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 4.9.0
+
 ## [2.13.1](https://github.com/vm0-ai/vm0/compare/runner-v2.13.0...runner-v2.13.1) (2026-01-20)
 
 
