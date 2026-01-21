@@ -16,27 +16,32 @@ import {
 } from "../../../../../src/db/schema/storage";
 import { blobs } from "../../../../../src/db/schema/blob";
 import { computeContentHashFromHashes } from "../../../../../src/lib/storage/content-hash";
+import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
-// Mock external dependencies
-vi.mock("../../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: vi.fn().mockResolvedValue("test-user-commit"),
+// Mock Next.js headers() function
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
 }));
 
-vi.mock("../../../../../src/lib/s3/s3-client", () => ({
-  s3ObjectExists: vi.fn().mockResolvedValue(true),
-  verifyS3FilesExist: vi.fn().mockResolvedValue(true),
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
+
+// Mock AWS SDK (external) for S3 operations
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
 // Set required environment variables
 process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
 
 // Static imports - mocks are already in place due to hoisting
 import { POST } from "../route";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import {
-  s3ObjectExists,
-  verifyS3FilesExist,
-} from "../../../../../src/lib/s3/s3-client";
+import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
+
+const mockHeaders = vi.mocked(headers);
+const mockAuth = vi.mocked(auth);
 
 // Test constants
 const TEST_USER_ID = "test-user-commit";
@@ -49,6 +54,20 @@ describe("POST /api/storages/commit", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Setup S3 mocks
+    vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValue(true);
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
+
+    // Mock headers() - return empty headers so auth falls through to Clerk
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Mock Clerk auth to return test user by default
+    mockAuth.mockResolvedValue({
+      userId: TEST_USER_ID,
+    } as unknown as Awaited<ReturnType<typeof auth>>);
 
     // Clean up test data
     await globalThis.services.db
@@ -96,7 +115,9 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    vi.mocked(getUserId).mockResolvedValueOnce(null);
+    mockAuth.mockResolvedValueOnce({ userId: null } as unknown as Awaited<
+      ReturnType<typeof auth>
+    >);
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/commit",
@@ -187,7 +208,7 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should return 400 when S3 objects do not exist", async () => {
-    vi.mocked(s3ObjectExists).mockResolvedValueOnce(false); // manifest doesn't exist
+    vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValueOnce(false); // manifest doesn't exist
 
     const storageName = `${TEST_PREFIX}missing-s3`;
 
@@ -308,7 +329,7 @@ describe("POST /api/storages/commit", () => {
     // This test verifies the fix for issue #617:
     // Empty artifacts (fileCount === 0) should not require archive.tar.gz in S3
     // Mock: manifest exists (only one call expected for empty artifact)
-    vi.mocked(s3ObjectExists).mockResolvedValueOnce(true); // manifest exists
+    vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValueOnce(true); // manifest exists
 
     const storageName = `${TEST_PREFIX}empty`;
 
@@ -360,7 +381,7 @@ describe("POST /api/storages/commit", () => {
     expect(updatedStorage!.headVersionId).toBe(versionId);
 
     // Verify s3ObjectExists was only called once (for manifest, not archive)
-    expect(s3ObjectExists).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(s3Client.s3ObjectExists)).toHaveBeenCalledTimes(1);
   });
 
   it("should return deduplicated=true when version already exists", async () => {
@@ -431,7 +452,7 @@ describe("POST /api/storages/commit", () => {
     // This test verifies the fix for issue #658:
     // Commit should fail with 409 if S3 files are missing for existing version
     // Mock S3 files as missing for existing version
-    vi.mocked(verifyS3FilesExist).mockResolvedValueOnce(false);
+    vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValueOnce(false);
 
     const storageName = `${TEST_PREFIX}s3missing`;
 

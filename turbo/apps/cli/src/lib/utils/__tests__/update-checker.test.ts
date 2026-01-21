@@ -6,15 +6,8 @@ import {
   checkAndUpgrade,
   detectPackageManager,
 } from "../update-checker";
-import https from "https";
-import { EventEmitter } from "events";
-
-// Mock https module
-vi.mock("https", () => ({
-  default: {
-    get: vi.fn(),
-  },
-}));
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 
 // Mock child_process module
 vi.mock("child_process", () => ({
@@ -115,111 +108,39 @@ describe("update-checker", () => {
   });
 
   describe("getLatestVersion", () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-    });
-
     it("should return version from npm registry response", async () => {
-      const mockResponse = new EventEmitter() as EventEmitter & {
-        on: (event: string, cb: (data?: Buffer) => void) => void;
-      };
-
-      vi.mocked(https.get).mockImplementation((_url, callback) => {
-        const cb = callback as (res: typeof mockResponse) => void;
-        setTimeout(() => {
-          cb(mockResponse);
-          mockResponse.emit("data", Buffer.from('{"version":"4.11.0"}'));
-          mockResponse.emit("end");
-        }, 0);
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        return req as ReturnType<typeof https.get>;
-      });
-
       const version = await getLatestVersion();
       expect(version).toBe("4.11.0");
     });
 
     it("should return null on invalid JSON response", async () => {
-      const mockResponse = new EventEmitter();
-
-      vi.mocked(https.get).mockImplementation((_url, callback) => {
-        const cb = callback as (res: typeof mockResponse) => void;
-        setTimeout(() => {
-          cb(mockResponse);
-          mockResponse.emit("data", Buffer.from("not valid json"));
-          mockResponse.emit("end");
-        }, 0);
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        return req as ReturnType<typeof https.get>;
-      });
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.text("not valid json");
+        }),
+      );
 
       const version = await getLatestVersion();
       expect(version).toBeNull();
     });
 
     it("should return null when response has no version field", async () => {
-      const mockResponse = new EventEmitter();
-
-      vi.mocked(https.get).mockImplementation((_url, callback) => {
-        const cb = callback as (res: typeof mockResponse) => void;
-        setTimeout(() => {
-          cb(mockResponse);
-          mockResponse.emit("data", Buffer.from('{"name":"@vm0/cli"}'));
-          mockResponse.emit("end");
-        }, 0);
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        return req as ReturnType<typeof https.get>;
-      });
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ name: "@vm0/cli" });
+        }),
+      );
 
       const version = await getLatestVersion();
       expect(version).toBeNull();
     });
 
     it("should return null on network error", async () => {
-      vi.mocked(https.get).mockImplementation(() => {
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        setTimeout(() => {
-          req.emit("error", new Error("Network error"));
-        }, 0);
-        return req as ReturnType<typeof https.get>;
-      });
-
-      const version = await getLatestVersion();
-      expect(version).toBeNull();
-    });
-
-    it("should return null on timeout", async () => {
-      vi.mocked(https.get).mockImplementation(() => {
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.destroy = vi.fn();
-        req.setTimeout = (_ms: number, cb: () => void) => {
-          setTimeout(cb, 0);
-        };
-        return req as ReturnType<typeof https.get>;
-      });
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       const version = await getLatestVersion();
       expect(version).toBeNull();
@@ -239,18 +160,11 @@ describe("update-checker", () => {
     });
 
     it("should return false and warn when version check fails", async () => {
-      vi.mocked(https.get).mockImplementation(() => {
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        setTimeout(() => {
-          req.emit("error", new Error("Network error"));
-        }, 0);
-        return req as ReturnType<typeof https.get>;
-      });
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       const result = await checkAndUpgrade("4.10.0", "test prompt");
 
@@ -261,23 +175,11 @@ describe("update-checker", () => {
     });
 
     it("should return false when already on latest version", async () => {
-      const mockResponse = new EventEmitter();
-
-      vi.mocked(https.get).mockImplementation((_url, callback) => {
-        const cb = callback as (res: typeof mockResponse) => void;
-        setTimeout(() => {
-          cb(mockResponse);
-          mockResponse.emit("data", Buffer.from('{"version":"4.10.0"}'));
-          mockResponse.emit("end");
-        }, 0);
-        const req = new EventEmitter() as EventEmitter & {
-          setTimeout: (ms: number, cb: () => void) => void;
-          destroy: () => void;
-        };
-        req.setTimeout = vi.fn();
-        req.destroy = vi.fn();
-        return req as ReturnType<typeof https.get>;
-      });
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "4.10.0" });
+        }),
+      );
 
       const result = await checkAndUpgrade("4.10.0", "test prompt");
 

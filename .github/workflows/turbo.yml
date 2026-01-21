@@ -188,6 +188,7 @@ jobs:
             AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
+            ABLY_API_KEY=${{ secrets.CI_ABLY_API_KEY }}
             DEBUG=*
           meta-branch: ${{ github.head_ref }}
           meta-pr: ${{ github.event.pull_request.number }}
