@@ -171,7 +171,7 @@ teardown() {
     # Set second as default
     run $CLI_COMMAND model-provider set-default "claude-code-oauth-token"
     assert_success
-    assert_output --partial "default"
+    assert_output --partial "Default"
 }
 
 @test "vm0 model-provider set-default fails for non-existent provider" {
