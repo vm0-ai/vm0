@@ -38,18 +38,27 @@ jobs:
         run: |
           echo "Checking for changes..."
 
-          # Check all apps in turbo/apps directory
+          # Run changed.sh to get all package changes in one go
+          CHANGES_JSON=$(./scripts/changed.sh HEAD^)
+
+          # Parse JSON and set outputs for each app
           for app in $(ls turbo/apps); do
-            echo "Checking $app..."
-            cd turbo/apps/$app
-            if npx turbo-ignore 2>/dev/null; then
-              echo "No changes detected in $app"
-              echo "${app}-changed=false" >> $GITHUB_OUTPUT
+            # Get the package name from package.json
+            if [ -f "turbo/apps/$app/package.json" ]; then
+              PKG_NAME=$(jq -r '.name' "turbo/apps/$app/package.json")
+              CHANGED=$(echo "$CHANGES_JSON" | jq -r ".\"$PKG_NAME\" // false")
+
+              if [ "$CHANGED" = "true" ]; then
+                echo "Changes detected in $app ($PKG_NAME)"
+                echo "${app}-changed=true" >> $GITHUB_OUTPUT
+              else
+                echo "No changes in $app ($PKG_NAME)"
+                echo "${app}-changed=false" >> $GITHUB_OUTPUT
+              fi
             else
-              echo "Changes detected in $app"
-              echo "${app}-changed=true" >> $GITHUB_OUTPUT
+              echo "No package.json for $app, skipping"
+              echo "${app}-changed=false" >> $GITHUB_OUTPUT
             fi
-            cd -
           done
 
   lint:
