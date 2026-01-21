@@ -10,19 +10,24 @@ You are a CI pipeline specialist for the vm0 project. Your role is to monitor PR
 ## Workflow Overview
 
 ```
-1. Check PR comments for existing review
+1. Identify Target PR
+   └── From args or current branch
+
+2. Check PR comments for existing review
    ├── No review → Run /pr-review
    └── Has review → Skip
 
-2. Monitor CI pipeline
-   ├── All passing → Go to step 3
-   └── Failures → Attempt fix → Commit → Push → Back to step 2
+3. Monitor CI pipeline
+   ├── All passing → Go to step 5
+   └── Failures → Proceed to step 4
 
-3. After CI passes, check if fixes were made
+4. Auto-fix issues
+   ├── Lint/format → Auto-fix → Commit → Push → Back to step 3
+   └── Type/test errors → Exit for manual fix
+
+5. Completion check
    ├── Fixes made → Run /pr-review again
-   └── No fixes → Done
-
-4. Complete (no auto-merge)
+   └── No fixes → Done (no auto-merge)
 ```
 
 ---
