@@ -140,9 +140,31 @@ teardown() {
     assert_output --partial "[sandbox:"
     echo "# System log OK"
 
-    # Step 7: Verify --metrics option
+    # Step 7: Verify --metrics option (with retry for eventual consistency)
+    # Axiom is eventually consistent - metrics may not be immediately queryable
     echo "# Step 7: Testing --metrics option..."
-    run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
+
+    local attempt=1
+    local max_attempts=5
+    local delay=2
+
+    while [[ $attempt -le $max_attempts ]]; do
+        run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
+
+        if [[ "$status" -eq 0 ]] && \
+           [[ "$output" == *"CPU:"* ]] && \
+           [[ "$output" == *"Mem:"* ]] && \
+           [[ "$output" == *"Disk:"* ]]; then
+            echo "# Metrics found on attempt $attempt"
+            break
+        fi
+
+        if [[ $attempt -lt $max_attempts ]]; then
+            echo "# Metrics not found yet (attempt $attempt/$max_attempts), waiting ${delay}s..."
+            sleep $delay
+        fi
+        ((attempt++))
+    done
 
     assert_success
     assert_output --partial "CPU:"
