@@ -134,7 +134,7 @@ RUN printf '%s\n' \
     '' \
     '[Service]' \
     'Type=simple' \
-    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:"stdbuf -o0 cat"' \
+    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork SYSTEM:"while read line; do echo \\$line; done"' \
     'Restart=always' \
     'RestartSec=1' \
     '' \

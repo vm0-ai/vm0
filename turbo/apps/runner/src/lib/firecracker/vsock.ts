@@ -54,10 +54,8 @@ async function testVsockEcho(
         if (str.startsWith("OK ")) {
           connected = true;
           console.log(`[Vsock] Connected to guest, sending message`);
-          // Send test message to guest
-          socket.write(message);
-          // Close write side to signal end of input
-          socket.end();
+          // Send test message with newline (for line-based echo service)
+          socket.write(message + "\n");
         } else {
           clearTimeout(timeout);
           socket.destroy();
@@ -66,6 +64,8 @@ async function testVsockEcho(
       } else {
         // Collecting response from guest
         response += str;
+        // Close connection after receiving response (echo service sends one line)
+        socket.end();
       }
     });
 
@@ -109,7 +109,7 @@ export async function waitForVsock(
   while (Date.now() - startTime < timeoutMs) {
     try {
       const response = await testVsockEcho(vsockPath, testMessage);
-      if (response === testMessage) {
+      if (response.trim() === testMessage) {
         return; // Success - vsock echo is working
       }
     } catch {
