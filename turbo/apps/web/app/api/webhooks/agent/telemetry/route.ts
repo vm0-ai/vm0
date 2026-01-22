@@ -139,6 +139,7 @@ const router = tsr.router(webhookTelemetryContract, {
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
+    // Sandbox operations include: init_total, storage_download, cli_execution, checkpoint, cleanup
     if (body.sandboxOperations && body.sandboxOperations.length > 0) {
       // Determine sandbox type by checking if run exists in runner_job_queue
       const [runnerJob] = await globalThis.services.db
