@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.1](https://github.com/vm0-ai/vm0/compare/cli-v6.2.0...cli-v6.2.1) (2026-01-22)
+
+
+### Bug Fixes
+
+* **cli:** update description to accurately reflect VM0's purpose ([#1483](https://github.com/vm0-ai/vm0/issues/1483)) ([dd7f41e](https://github.com/vm0-ai/vm0/commit/dd7f41ef3f0f3679ca5e86812b14588ecdfae17f))
+
 ## [6.2.0](https://github.com/vm0-ai/vm0/compare/cli-v6.1.0...cli-v6.2.0) (2026-01-22)
 
 

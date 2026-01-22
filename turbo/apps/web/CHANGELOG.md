@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.3.0](https://github.com/vm0-ai/vm0/compare/web-v10.2.0...web-v10.3.0) (2026-01-22)
+
+
+### Features
+
+* **eslint:** add naming convention rule to base config ([#1487](https://github.com/vm0-ai/vm0/issues/1487)) ([91d948c](https://github.com/vm0-ai/vm0/commit/91d948c56a4a6032e541d956edd190224b4d59b5))
+
 ## [10.2.0](https://github.com/vm0-ai/vm0/compare/web-v10.1.0...web-v10.2.0) (2026-01-22)
 
 
