@@ -238,6 +238,15 @@
         mode: '0644'
       tags: [prepare]
 
+    - name: Copy bundled scripts for vsock agent extraction
+      copy:
+        src: "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/bundled.ts"
+        dest: "{{ runner_base_dir }}/deploy-runner/bundled.ts"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      tags: [prepare]
+
     # ========================================
     # Phase 4: Install Dependencies (if needed)
     # ========================================
@@ -287,6 +296,7 @@
             "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
             "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
             "{{ runner_base_dir }}/deploy-runner/vm0-vsock-agent.service" \
+            "{{ runner_base_dir }}/deploy-runner/bundled.ts" \
         | sha256sum | cut -d' ' -f1
       register: rootfs_inputs_hash
       changed_when: false

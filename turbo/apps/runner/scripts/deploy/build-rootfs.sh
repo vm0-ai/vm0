@@ -57,9 +57,53 @@ check_dependencies() {
     echo "[OK] All dependencies available"
 }
 
+# Generate vsock-agent.mjs from bundled scripts
+generate_vsock_agent() {
+    echo "[GENERATE] Extracting vsock-agent.mjs from bundled scripts..."
+
+    # The vsock-agent.mjs is bundled in @vm0/core package
+    # In CI, bundled.ts is copied to the deploy-runner directory
+    # In local dev, it's at the relative path from the repo
+    local BUNDLED_TS="${SCRIPT_DIR}/bundled.ts"
+
+    if [ ! -f "$BUNDLED_TS" ]; then
+        # Try repo-relative path for local development
+        BUNDLED_TS="${SCRIPT_DIR}/../../packages/core/src/sandbox/scripts/dist/bundled.ts"
+    fi
+
+    if [ ! -f "$BUNDLED_TS" ]; then
+        echo "ERROR: Bundled scripts not found"
+        echo "For local dev: Run 'pnpm turbo run build --filter=@vm0/core' first"
+        echo "For CI: Ensure bundled.ts is copied to deploy directory"
+        exit 1
+    fi
+
+    echo "[GENERATE] Using bundled.ts from: $BUNDLED_TS"
+
+    # Extract VSOCK_AGENT_SCRIPT constant value using node
+    # The bundled.ts file exports it as: export const VSOCK_AGENT_SCRIPT = "...";
+    node -e "
+      const fs = require('fs');
+      const content = fs.readFileSync('$BUNDLED_TS', 'utf-8');
+      const match = content.match(/export const VSOCK_AGENT_SCRIPT = (\".*?\");/s);
+      if (!match) {
+        console.error('Could not find VSOCK_AGENT_SCRIPT in bundled.ts');
+        process.exit(1);
+      }
+      const script = JSON.parse(match[1]);
+      fs.writeFileSync('$SCRIPT_DIR/vsock-agent.mjs', script);
+      console.log('Wrote vsock-agent.mjs (' + script.length + ' bytes)');
+    "
+
+    echo "[OK] Generated vsock-agent.mjs"
+}
+
 # Build Docker image
 build_image() {
     echo "[BUILD] Building Docker image..."
+
+    # Generate vsock-agent.mjs before Docker build
+    generate_vsock_agent
 
     $DOCKER build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 
