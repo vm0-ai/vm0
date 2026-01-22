@@ -271,6 +271,32 @@ describe("handleCors", () => {
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
+
+    it("should accept *.vm7.ai local dev domain: https://platform.vm7.ai:8443", async () => {
+      const handleCors = await getHandleCors("development");
+      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+        headers: { origin: "https://platform.vm7.ai:8443" },
+      });
+
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://platform.vm7.ai:8443",
+      );
+    });
+
+    it("should accept *.vm7.ai with any port", async () => {
+      const handleCors = await getHandleCors("development");
+      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+        headers: { origin: "https://www.vm7.ai:32796" },
+      });
+
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://www.vm7.ai:32796",
+      );
+    });
   });
 
   describe("Undefined Environment (VERCEL_ENV=undefined, treats as development)", () => {
@@ -310,6 +336,19 @@ describe("handleCors", () => {
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
         "https://platform.vm0.ai",
+      );
+    });
+
+    it("should accept *.vm7.ai local dev domain", async () => {
+      const handleCors = await getHandleCors(undefined);
+      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+        headers: { origin: "https://platform.vm7.ai:8443" },
+      });
+
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://platform.vm7.ai:8443",
       );
     });
   });

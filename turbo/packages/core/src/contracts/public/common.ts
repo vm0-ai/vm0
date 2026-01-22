@@ -173,4 +173,5 @@ export const ID_PREFIXES = {
 export const TOKEN_PREFIXES = {
   CLI: "vm0_live_",
   TEST: "vm0_test_",
+  SANDBOX: "vm0_sandbox_",
 } as const;

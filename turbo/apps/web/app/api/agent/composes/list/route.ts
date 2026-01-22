@@ -59,12 +59,12 @@ const router = tsr.router(composesListContract, {
       const userScope = await getUserScopeByClerkId(userId);
       if (!userScope) {
         return {
-          status: 400 as const,
+          status: 403 as const,
           body: {
             error: {
               message:
                 "Please set up your scope first. Login again with: vm0 login",
-              code: "BAD_REQUEST",
+              code: "SCOPE_NOT_CONFIGURED",
             },
           },
         };

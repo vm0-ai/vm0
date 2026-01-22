@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync, randomBytes } from "crypto";
+import { TOKEN_PREFIXES } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 
@@ -158,19 +159,27 @@ export async function generateSandboxToken(
     exp: now + expiresIn,
   };
 
-  const token = createJwt(payload);
-  log.debug(`Generated sandbox JWT for run ${runId}`);
+  const jwt = createJwt(payload);
+  const token = `${TOKEN_PREFIXES.SANDBOX}${jwt}`;
+  log.debug(`Generated sandbox token for run ${runId}`);
   return token;
 }
 
 /**
- * Verify a sandbox JWT token and extract auth info
+ * Verify a sandbox token and extract auth info
  * Returns null if token is invalid, expired, or not a sandbox token
  *
- * @param token - The JWT token (without "Bearer " prefix)
+ * @param token - The full token with vm0_sandbox_ prefix (without "Bearer " prefix)
  */
 export function verifySandboxToken(token: string): SandboxAuth | null {
-  const payload = verifyJwt(token);
+  // Must have the sandbox prefix
+  if (!token.startsWith(TOKEN_PREFIXES.SANDBOX)) {
+    return null;
+  }
+
+  // Extract the JWT part (remove prefix)
+  const jwt = token.slice(TOKEN_PREFIXES.SANDBOX.length);
+  const payload = verifyJwt(jwt);
   if (!payload) {
     return null;
   }
@@ -182,9 +191,8 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
 }
 
 /**
- * Check if a token looks like a sandbox JWT token
- * (has 3 parts separated by dots)
+ * Check if a token is a sandbox token by its prefix
  */
 export function isSandboxToken(token: string): boolean {
-  return token.split(".").length === 3;
+  return token.startsWith(TOKEN_PREFIXES.SANDBOX);
 }

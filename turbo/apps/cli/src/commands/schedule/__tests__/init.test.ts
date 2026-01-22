@@ -297,4 +297,8 @@ agents:
       expect(result2).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
     });
   });
+
+  // Note: resolveScheduleByName is tested via E2E tests in
+  // e2e/tests/02-parallel/t20-vm0-schedule.bats (global resolution tests)
+  // since it requires real API calls and mocking internal modules is not acceptable
 });

@@ -74,7 +74,7 @@ describe("Credential Service", () => {
   });
 
   describe("Database Operations", () => {
-    const testUserId = "test-credential-service-user";
+    const testUserId = `test-credential-service-user-${Date.now()}`;
     const testSlug = `test-cred-scope-${Date.now()}`;
     let testScopeId: string;
 
