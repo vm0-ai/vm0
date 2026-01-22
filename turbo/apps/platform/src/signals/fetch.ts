@@ -52,6 +52,7 @@ function mergeHeadersWithAutoIds(
 }
 
 export const fetch$ = computed((get) => {
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const token = await clerk.session?.getToken();
