@@ -56,6 +56,14 @@ export async function getUserId(): Promise<string | null> {
       return null;
     }
 
+    // Check if it's a Clerk JWT token (starts with eyJ)
+    if (token.startsWith("eyJ")) {
+      // Clerk JWT token - verify using Clerk auth
+      // The token should be automatically verified by Clerk middleware
+      const { userId } = await auth();
+      return userId;
+    }
+
     // Unknown token format
     return null;
   }

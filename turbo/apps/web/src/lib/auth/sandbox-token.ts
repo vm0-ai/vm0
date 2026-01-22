@@ -182,9 +182,19 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
 }
 
 /**
- * Check if a token looks like a sandbox JWT token
- * (has 3 parts separated by dots)
+ * Check if a token is a sandbox JWT token
+ * Decodes the payload and checks for scope: "sandbox"
  */
 export function isSandboxToken(token: string): boolean {
-  return token.split(".").length === 3;
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(parts[1]!).toString());
+    return payload.scope === "sandbox";
+  } catch {
+    return false;
+  }
 }

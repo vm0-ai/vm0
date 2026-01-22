@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { env } from "./src/env";
-
 // Define allowed origins
 const allowedOrigins = [
   // Production domains
@@ -33,18 +31,19 @@ function isOriginAllowed(origin: string | null): boolean {
     // Always allow *.vm0.ai subdomains
     if (hostname.endsWith(".vm0.ai")) return true;
 
-    // Get deployment environment
-    const vercelEnv = env().VERCEL_ENV;
+    // Get deployment environment (use process.env directly to avoid env() validation in middleware edge context)
+    const vercelEnv = process.env.VERCEL_ENV;
 
     // Preview environment: additionally allow *.vercel.app
     if (vercelEnv === "preview") {
       if (hostname.endsWith(".vercel.app")) return true;
     }
 
-    // Development environment: additionally allow localhost and *.vercel.app
+    // Development environment: additionally allow localhost, *.vercel.app, and *.vm7.ai (local dev domain)
     if (vercelEnv === "development" || !vercelEnv) {
       if (hostname === "localhost") return true;
       if (hostname.endsWith(".vercel.app")) return true;
+      if (hostname.endsWith(".vm7.ai")) return true;
     }
 
     return false;

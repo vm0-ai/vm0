@@ -109,9 +109,17 @@ describe("sandbox-token", () => {
   });
 
   describe("isSandboxToken", () => {
-    it("should return true for JWT-like tokens", () => {
-      expect(isSandboxToken("a.b.c")).toBe(true);
-      expect(isSandboxToken("header.payload.signature")).toBe(true);
+    it("should return true for sandbox tokens with scope: sandbox", async () => {
+      // Generate a real sandbox token to test
+      const token = await generateSandboxToken("user_123", "run_456");
+      expect(isSandboxToken(token)).toBe(true);
+    });
+
+    it("should return false for Clerk JWT tokens (no sandbox scope)", () => {
+      // Clerk JWT token has different payload structure
+      const clerkPayload = { sub: "user_123", iat: 123, exp: 456 };
+      const fakeClerkToken = `eyJhbGciOiJSUzI1NiJ9.${Buffer.from(JSON.stringify(clerkPayload)).toString("base64url")}.signature`;
+      expect(isSandboxToken(fakeClerkToken)).toBe(false);
     });
 
     it("should return false for CLI tokens", () => {
@@ -122,6 +130,13 @@ describe("sandbox-token", () => {
       expect(isSandboxToken("not-a-token")).toBe(false);
       expect(isSandboxToken("only.two.parts.extra")).toBe(false);
       expect(isSandboxToken("")).toBe(false);
+    });
+
+    it("should return false for malformed JWT payloads", () => {
+      // Invalid base64
+      expect(isSandboxToken("a.!!!invalid!!!.c")).toBe(false);
+      // Valid base64 but not JSON
+      expect(isSandboxToken("a.bm90anNvbg.c")).toBe(false);
     });
   });
 
