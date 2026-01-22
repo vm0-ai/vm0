@@ -9,8 +9,8 @@
  *
  * Design:
  * - Uses socat to bridge vsock to Unix socket (Node.js lacks native vsock support)
- * - Connects to host CID 2 on VSOCK_PORT to signal readiness
- * - Handles incoming requests and sends responses
+ * - Listens on VSOCK_PORT for host connections (Firecracker creates vsock.sock_PORT on host)
+ * - Sends ready signal when host connects, then handles requests
  * - Runs as a systemd service for automatic restart on failure
  */
 import * as fs from "fs";
@@ -22,7 +22,6 @@ import * as crypto from "crypto";
  * Vsock protocol constants (must match host-side constants)
  */
 const VSOCK_PORT = 1000;
-const HOST_CID = 2;
 const HEADER_SIZE = 4;
 const MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB
 
@@ -337,10 +336,17 @@ async function handleMessage(
 }
 
 /**
- * Start socat to bridge vsock to Unix socket
- * Returns the path to the Unix socket
+ * Start a Unix socket server to handle connections forwarded from socat
+ *
+ * Flow:
+ * 1. Create Unix socket server
+ * 2. Start socat to listen on vsock and forward to our Unix socket
+ * 3. When host connects to vsock.sock_1000, socat accepts and connects to our Unix socket
+ * 4. We handle the connection and send ready signal
  */
-function startSocatBridge(): string {
+async function startVsockServer(): Promise<void> {
+  logInfo(`Starting vsock agent server...`);
+
   const socketPath = `/tmp/vsock-bridge-${process.pid}.sock`;
 
   // Clean up any existing socket
@@ -348,66 +354,12 @@ function startSocatBridge(): string {
     fs.unlinkSync(socketPath);
   }
 
-  // Start socat in background
-  // vsock-connect:CID:PORT connects to host (CID 2) on specified port
-  const socatProc = spawn(
-    "socat",
-    [
-      `UNIX-LISTEN:${socketPath},fork`,
-      `VSOCK-CONNECT:${HOST_CID}:${VSOCK_PORT}`,
-    ],
-    {
-      stdio: ["ignore", "ignore", "pipe"],
-      detached: true,
-    },
-  );
+  // Create Unix socket server
+  const server = net.createServer((socket) => {
+    logInfo("Host connected via vsock");
+    const decoder = new MessageDecoder();
 
-  socatProc.unref();
-
-  socatProc.on("error", (err) => {
-    logError(`Socat error: ${err.message}`);
-  });
-
-  if (socatProc.stderr) {
-    socatProc.stderr.on("data", (data: Buffer) => {
-      logError(`Socat stderr: ${data.toString()}`);
-    });
-  }
-
-  // Wait a bit for socat to start
-  logInfo(`Started socat bridge on ${socketPath}`);
-  return socketPath;
-}
-
-/**
- * Connect to host via vsock bridge and handle communication
- */
-async function connectToHost(): Promise<void> {
-  logInfo(`Connecting to host CID ${HOST_CID} port ${VSOCK_PORT}...`);
-
-  // Start socat bridge
-  const socketPath = startSocatBridge();
-
-  // Wait for socket to be created
-  for (let i = 0; i < 50; i++) {
-    if (fs.existsSync(socketPath)) {
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  if (!fs.existsSync(socketPath)) {
-    throw new Error(`Socat socket not created at ${socketPath}`);
-  }
-
-  // Connect to the Unix socket
-  const socket = net.createConnection(socketPath);
-  const decoder = new MessageDecoder();
-
-  socket.on("connect", () => {
-    logInfo("Connected to host via vsock bridge");
-
-    // Send ready signal
+    // Send ready signal immediately upon connection
     const readyMessage: VsockMessage = {
       type: "ready",
       id: crypto.randomUUID(),
@@ -415,37 +367,69 @@ async function connectToHost(): Promise<void> {
     };
     socket.write(encodeMessage(readyMessage));
     logInfo("Sent ready signal to host");
-  });
 
-  socket.on("data", (data: Buffer) => {
-    const processData = async (): Promise<void> => {
-      try {
-        const messages = decoder.decode(data);
+    socket.on("data", (data: Buffer) => {
+      const processData = async (): Promise<void> => {
+        try {
+          const messages = decoder.decode(data);
 
-        for (const message of messages) {
-          const response = await handleMessage(message);
-          if (response) {
-            socket.write(encodeMessage(response));
+          for (const message of messages) {
+            const response = await handleMessage(message);
+            if (response) {
+              socket.write(encodeMessage(response));
+            }
           }
+        } catch (error) {
+          logError(`Error processing data: ${error}`);
         }
-      } catch (error) {
-        logError(`Error processing data: ${error}`);
-      }
-    };
+      };
 
-    processData().catch((err) => logError(`Unhandled error: ${err}`));
+      processData().catch((err) => logError(`Unhandled error: ${err}`));
+    });
+
+    socket.on("error", (err) => {
+      logError(`Socket error: ${err.message}`);
+    });
+
+    socket.on("close", () => {
+      logInfo("Host disconnected");
+    });
   });
 
-  socket.on("error", (err) => {
-    logError(`Socket error: ${err.message}`);
-  });
+  // Start listening on Unix socket
+  server.listen(socketPath, () => {
+    logInfo(`Unix socket server listening on ${socketPath}`);
 
-  socket.on("close", () => {
-    logInfo("Connection closed by host");
-    // Clean up socket file
-    if (fs.existsSync(socketPath)) {
-      fs.unlinkSync(socketPath);
+    // Now start socat to bridge vsock to our Unix socket
+    // VSOCK-LISTEN:PORT listens for vsock connections from host
+    // UNIX-CONNECT:path forwards the connection to our Unix socket server
+    const socatProc = spawn(
+      "socat",
+      [`VSOCK-LISTEN:${VSOCK_PORT},fork`, `UNIX-CONNECT:${socketPath}`],
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+
+    socatProc.on("error", (err) => {
+      logError(`Socat error: ${err.message}`);
+    });
+
+    if (socatProc.stderr) {
+      socatProc.stderr.on("data", (data: Buffer) => {
+        logError(`Socat stderr: ${data.toString()}`);
+      });
     }
+
+    socatProc.on("exit", (code) => {
+      logInfo(`Socat exited with code ${code}`);
+    });
+
+    logInfo(`Started socat vsock listener on port ${VSOCK_PORT}`);
+  });
+
+  server.on("error", (err) => {
+    logError(`Server error: ${err.message}`);
   });
 }
 
@@ -471,11 +455,11 @@ async function main(): Promise<void> {
   // Ensure virtio-vsock module is loaded
   ensureVsockModule();
 
-  // Connect to host and handle communication
+  // Start vsock server and wait for host connections
   try {
-    await connectToHost();
+    await startVsockServer();
   } catch (error) {
-    logError(`Failed to connect to host: ${error}`);
+    logError(`Failed to start vsock server: ${error}`);
     process.exit(1);
   }
 
