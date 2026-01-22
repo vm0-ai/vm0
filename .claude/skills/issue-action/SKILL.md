@@ -2,7 +2,6 @@
 name: issue-action
 description: Continue working on GitHub issue from conversation context
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Task
-context: fork
 ---
 
 # Issue Action Skill
