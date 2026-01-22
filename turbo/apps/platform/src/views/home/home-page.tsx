@@ -1,3 +1,5 @@
+import { OnboardingModal } from "./onboarding-modal.tsx";
+
 export function HomePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
@@ -5,6 +7,7 @@ export function HomePage() {
       <p className="mt-4 text-lg text-gray-600">
         Build and deploy your applications with ease
       </p>
+      <OnboardingModal />
     </div>
   );
 }

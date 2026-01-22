@@ -1,4 +1,4 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
 import { clerk$ } from "./auth.ts";
@@ -196,36 +196,6 @@ export const setupAuthPageWrapper = (
     if (!clerk.user) {
       await clerk.redirectToSignIn();
       signal.throwIfAborted();
-      return;
-    }
-
-    await set(setupPageWrapper(fn), signal);
-  });
-};
-
-/**
- * Wraps a page setup function with authentication AND scope requirement.
- * Redirects to sign-in if not authenticated, or to /onboarding if no scope.
- */
-export const setupScopeRequiredPageWrapper = (
-  fn: Command<Promise<void> | void, [AbortSignal]>,
-  checkHasScope: Computed<Promise<boolean>>,
-) => {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-
-    if (!clerk.user) {
-      await clerk.redirectToSignIn();
-      signal.throwIfAborted();
-      return;
-    }
-
-    const scopeExists = await get(checkHasScope);
-    signal.throwIfAborted();
-
-    if (!scopeExists) {
-      set(navigateInReact$, "/onboarding");
       return;
     }
 

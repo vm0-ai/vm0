@@ -3,6 +3,44 @@ import { user$ } from "./auth.ts";
 import { fetch$ } from "./fetch.ts";
 
 /**
+ * Internal state for onboarding modal visibility.
+ */
+const internalShowOnboardingModal$ = state(false);
+
+/**
+ * Internal state for scope initialization completion.
+ */
+const internalOnboardingComplete$ = state(false);
+
+/**
+ * Whether the onboarding modal is currently shown.
+ */
+export const showOnboardingModal$ = computed((get) =>
+  get(internalShowOnboardingModal$),
+);
+
+/**
+ * Whether scope initialization has completed (for modal close button).
+ */
+export const onboardingComplete$ = computed((get) =>
+  get(internalOnboardingComplete$),
+);
+
+/**
+ * Show the onboarding modal.
+ */
+export const openOnboardingModal$ = command(({ set }) => {
+  set(internalShowOnboardingModal$, true);
+});
+
+/**
+ * Mark onboarding as complete.
+ */
+export const markOnboardingComplete$ = command(({ set }) => {
+  set(internalOnboardingComplete$, true);
+});
+
+/**
  * Reload trigger for scope signals.
  * Increment to force recomputation of scope$.
  */
@@ -23,8 +61,9 @@ export interface Scope {
 /**
  * Current user's scope.
  * Returns undefined if user has no scope or is not authenticated.
+ * Internal computed, used by hasScope$.
  */
-export const scope$ = computed(async (get) => {
+const scope$ = computed(async (get) => {
   get(internalReloadScope$); // Subscribe to reload trigger
   const user = await get(user$);
   if (!user) {
@@ -96,4 +135,12 @@ export const initScope$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   set(internalReloadScope$, (x) => x + 1);
+});
+
+/**
+ * Close the onboarding modal and reset state.
+ */
+export const closeOnboardingModal$ = command(({ set }) => {
+  set(internalShowOnboardingModal$, false);
+  set(internalOnboardingComplete$, false);
 });
