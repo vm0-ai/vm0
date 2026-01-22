@@ -56,8 +56,8 @@ class RunnerExecutor implements Executor {
     };
 
     // Insert into runner job queue
-    // TTL: 24 hours for job expiration
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // TTL: 2 hours for job expiration
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await globalThis.services.db.insert(runnerJobQueue).values({
       runId: context.runId,
       runnerGroup,

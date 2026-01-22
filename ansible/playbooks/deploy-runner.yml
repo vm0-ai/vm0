@@ -51,7 +51,7 @@
 #   - runner_group: Runner group name (default: vm0/production)
 #   - pm2_process_name: PM2 process name (default: vm0-runner-production)
 #   - enable_drain: Whether to drain before stopping (default: true)
-#   - drain_timeout: Max seconds to wait for drain (default: 86400 = 24h)
+#   - drain_timeout: Max seconds to wait for drain (default: 7200 = 2h)
 #   - extra_env: Additional environment variables as JSON (default: {})
 
 - name: Deploy VM0 Runner
@@ -65,7 +65,7 @@
     runner_group: vm0/production
     pm2_process_name: vm0-runner-production
     enable_drain: true
-    drain_timeout: 86400  # 24 hours
+    drain_timeout: 7200  # 2 hours
     extra_env: {}
     # Rootfs configuration - CI should override for per-PR isolation
     rootfs_path: /opt/firecracker/rootfs.squashfs

@@ -56,7 +56,7 @@ The compute layer executes agent workflows in isolated sandbox environments.
 - Third-party managed sandbox service (e2b.dev)
 - Container-based isolation
 - Template system for environment configuration
-- 24-hour timeout (production), 1-hour (development)
+- 2-hour timeout (production), 1-hour (development)
 - Fire-and-forget execution with webhook callbacks
 
 **2. Firecracker (Experimental)**

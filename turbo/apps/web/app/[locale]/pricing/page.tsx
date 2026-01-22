@@ -415,7 +415,7 @@ export default function PricingPage() {
                     feature="Session length"
                     description="Maximum duration for a single agent execution session"
                     free="1 hour"
-                    pro="24 hours"
+                    pro="2 hours"
                   />
 
                   <TableSection title="Storage & Data" />

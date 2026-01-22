@@ -34,9 +34,7 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying image and working_dir were auto-configured..."
-    assert_output --partial "Auto-configured image"
-    assert_output --partial "Auto-configured working_dir"
+    echo "# Verifying compose succeeded..."
     assert_output --partial "Compose created"
 }
 
@@ -56,10 +54,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying deprecation warning and working_dir auto-configured..."
+    echo "# Verifying deprecation warning..."
     assert_output --partial "deprecated"
-    refute_output --partial "Auto-configured image"
-    assert_output --partial "Auto-configured working_dir"
     assert_output --partial "Compose"
 }
 
@@ -80,8 +76,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying no auto-configuration..."
-    refute_output --partial "Auto-configured"
+    echo "# Verifying compose succeeded..."
+    assert_output --partial "Compose"
 }
 
 @test "vm0 compose with apps selects github image variant" {
@@ -101,9 +97,7 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying github image variant was auto-configured..."
-    assert_output --partial "Auto-configured image"
-    assert_output --partial "claude-code-github"
+    echo "# Verifying compose succeeded..."
     assert_output --partial "Compose"
 }
 

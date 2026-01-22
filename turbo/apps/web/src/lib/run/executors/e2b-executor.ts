@@ -296,7 +296,7 @@ class E2BExecutor implements Executor {
     userId: string,
   ): Promise<Sandbox> {
     const isVercelProduction = process.env.VERCEL_ENV === "production";
-    const timeoutMs = isVercelProduction ? 86_400_000 : 3_600_000;
+    const timeoutMs = isVercelProduction ? 7_200_000 : 3_600_000;
 
     const agent = getFirstAgent(agentCompose);
     const imageAlias = agent?.image || e2bConfig.defaultTemplate;

@@ -162,18 +162,10 @@ export const composeCommand = new Command()
             );
             if (defaultImage) {
               agent.image = defaultImage;
-              console.log(
-                chalk.dim(`  Auto-configured image: ${defaultImage}`),
-              );
             }
           }
           if (!agent.working_dir) {
             agent.working_dir = defaults.workingDir;
-            console.log(
-              chalk.dim(
-                `  Auto-configured working_dir: ${defaults.workingDir}`,
-              ),
-            );
           }
         }
       }

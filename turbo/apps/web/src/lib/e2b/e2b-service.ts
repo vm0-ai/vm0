@@ -379,9 +379,9 @@ class E2BService {
     agentCompose: AgentComposeYaml | undefined,
     userId: string,
   ): Promise<Sandbox> {
-    // Use 24 hour timeout for Vercel production, 1 hour for other environments
+    // Use 2 hour timeout for Vercel production, 1 hour for other environments
     const isVercelProduction = process.env.VERCEL_ENV === "production";
-    const timeoutMs = isVercelProduction ? 86_400_000 : 3_600_000;
+    const timeoutMs = isVercelProduction ? 7_200_000 : 3_600_000;
 
     const sandboxOptions = {
       timeoutMs,
