@@ -10,11 +10,14 @@ vi.mock("@clerk/clerk-js", () => ({
   },
 }));
 
+vi.hoisted(() => {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+});
+
 // Start MSW server before all tests
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "bypass" });
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
-  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
 });
 
 // Reset handlers after each test
