@@ -5,6 +5,6 @@
     "frontend-design@claude-plugins-official": true,
     "code-review@claude-plugins-official": false,
     "security-guidance@claude-plugins-official": false,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": false
   }
 }
