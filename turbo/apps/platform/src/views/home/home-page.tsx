@@ -1,13 +1,16 @@
+import { AppShell } from "../layout/app-shell.tsx";
 import { OnboardingModal } from "./onboarding-modal.tsx";
 
 export function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
-      <h1 className="text-4xl font-bold text-gray-900">Welcome to vm0</h1>
-      <p className="mt-4 text-lg text-gray-600">
-        Build and deploy your applications with ease
-      </p>
-      <OnboardingModal />
-    </div>
+    <AppShell
+      breadcrumb={["Get started"]}
+      title="Welcome, You're in."
+      subtitle="A few things you can explore with VM0"
+    >
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
+        <OnboardingModal />
+      </div>
+    </AppShell>
   );
 }

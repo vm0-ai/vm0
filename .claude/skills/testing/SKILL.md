@@ -1226,67 +1226,282 @@ afterEach(() => {
 
 ---
 
-### Pattern 8: Component Tests (Platform/React)
+### Pattern 8: Platform Component Tests (apps/platform)
 
-**When to use**: Testing React components in platform (`apps/platform`)
+**When to use**: Testing React components and signals in the platform app (`apps/platform`)
 
-**Template**:
+The platform uses **ccstate** for state management and requires tests to follow the production initialization flow. This pattern uses centralized test helpers that mirror `main.ts` startup.
+
+#### Test Infrastructure Files
+
+**1. Centralized Clerk Mock** (`src/__tests__/mock-auth.ts`):
+
+```typescript
+import { vi } from "vitest";
+
+let internalMockedUser: { id: string; fullName: string } | null = null;
+let internalMockedSession: { token: string } | null = null;
+
+export function mockUser(
+  user: { id: string; fullName: string } | null,
+  session: { token: string } | null,
+) {
+  internalMockedUser = user;
+  internalMockedSession = session;
+}
+
+export function clearMockedAuth() {
+  internalMockedUser = null;
+  internalMockedSession = null;
+}
+
+export const mockedClerk = {
+  get user() {
+    return internalMockedUser;
+  },
+  get session() {
+    return {
+      getToken: () => Promise.resolve(internalMockedSession?.token ?? ""),
+    };
+  },
+  load: () => Promise.resolve(),
+  addListener: () => () => {},
+  redirectToSignIn: vi.fn(),
+};
+```
+
+**2. Global Test Setup** (`src/test/setup.ts`):
+
+```typescript
+import "@testing-library/jest-dom/vitest";
+import { server } from "../mocks/server.ts";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { mockedClerk } from "../__tests__/mock-auth.ts";
+
+// Mock @clerk/clerk-js globally (only external dependency)
+vi.mock("@clerk/clerk-js", () => ({
+  Clerk: function MockClerk() {
+    return mockedClerk;
+  },
+}));
+
+// Start MSW server before all tests
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "bypass" });
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+});
+
+// Reset handlers after each test
+afterEach(() => server.resetHandlers());
+
+// Close server after all tests
+afterAll(() => server.close());
+```
+
+**3. Page Setup Helper** (`src/__tests__/helper.ts`):
+
+```typescript
+import { act, render } from "@testing-library/react";
+import type { TestContext } from "../signals/__tests__/test-helpers";
+import { clearMockedAuth, mockUser } from "./mock-auth";
+import { bootstrap$ } from "../signals/bootstrap";
+import { setupRouter } from "../views/main";
+import { setPathname } from "../signals/location";
+
+export async function setupPage(options: {
+  context: TestContext;
+  path: string;
+  user?: { id: string; fullName: string } | null;
+  session?: { token: string } | null;
+}) {
+  setPathname(options.path);
+
+  mockUser(
+    options.user !== undefined
+      ? options.user
+      : { id: "test-user-123", fullName: "Test User" },
+    options.session ?? { token: "test-token" },
+  );
+  options.context.signal.addEventListener("abort", () => {
+    clearMockedAuth();
+  });
+
+  const rootEl = document.createElement("div");
+  document.body.appendChild(rootEl);
+  options.context.signal.addEventListener("abort", () => {
+    rootEl.remove();
+  });
+
+  // Bootstrap the app (like main.ts does)
+  await act(async () => {
+    await options.context.store.set(
+      bootstrap$,
+      () => {
+        setupRouter(options.context.store, (element) => {
+          render(element, { container: rootEl });
+        });
+      },
+      options.context.signal,
+    );
+  });
+}
+```
+
+#### Test Template
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { bootstrap$ } from "../../../signals/bootstrap.ts";
-import { navigate$ } from "../../../signals/route.ts";
-import { page$ } from "../../../signals/react-router.ts";
-import { setupRouter } from "../../main.tsx";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { render } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server.ts";
+import { testContext } from "./test-helpers.ts";
+import { setupPage } from "../../__tests__/helper.ts";
+import { pathname$ } from "../route.ts";
+import { screen } from "@testing-library/react";
 
 const context = testContext();
 
 describe("MyPage", () => {
-  it("should render through production flow", async () => {
-    const { store, signal } = context;
-
-    // Render the router (like main.ts does)
-    const { container } = render(<div id="test-root" />);
-    const rootEl = container.querySelector("#test-root") as HTMLDivElement;
-
-    // Bootstrap the app (like main.ts does)
-    await store.set(
-      bootstrap$,
-      () => {
-        setupRouter(store, (element) => {
-          render(element, { container: rootEl });
-        });
-      },
-      signal,
+  it("should render the page", async () => {
+    // Setup MSW handlers for this test (optional)
+    server.use(
+      http.get("/api/scope", () => {
+        return HttpResponse.json({ id: "scope_123", slug: "user-123" });
+      }),
     );
 
-    // Navigate to the page (triggers setup commands automatically)
-    await store.set(navigate$, "/my-page", {}, signal);
+    // Bootstrap app and navigate to path
+    await setupPage({
+      context,
+      path: "/my-page",
+    });
 
     // Verify page was rendered
-    const pageElement = store.get(page$);
-    expect(pageElement).toBeDefined();
+    expect(screen.getByText("Expected Content")).toBeDefined();
+    expect(context.store.get(pathname$)).toBe("/my-page");
+  });
+
+  it("should redirect when user has no scope", async () => {
+    // Override handler to return 404
+    server.use(
+      http.get("/api/scope", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/protected-page",
+    });
+
+    // Verify redirect occurred
+    expect(context.store.get(pathname$)).toBe("/");
+  });
+
+  it("should handle unauthenticated user", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      user: null, // No user logged in
+    });
+
+    // Test unauthenticated behavior
   });
 });
 ```
 
-**Key differences from direct rendering**:
-1. Use `bootstrap$` to initialize app
-2. Use `navigate$` to trigger page setup
-3. Use `setupRouter` for same context as main.ts
-4. Use `testContext()` for proper cleanup
-5. Follow bootstrap → route → setup → render flow
+#### Key Principles
 
-**Anti-pattern** (direct rendering):
+1. **Mock only `@clerk/clerk-js`** - This is the external auth package. Never mock internal `auth.ts` or other internal modules.
+
+2. **Use MSW for HTTP mocking** - All API calls (`/api/scope`, etc.) are mocked via MSW handlers, not direct fetch mocking.
+
+3. **Use `setupPage()` helper** - This mirrors `main.ts` bootstrap flow:
+   - Sets pathname via `setPathname()`
+   - Configures auth via `mockUser()`
+   - Bootstraps app via `bootstrap$`
+   - Renders via `setupRouter()`
+
+4. **Use `testContext()`** - Provides `store` and `signal` with automatic cleanup between tests.
+
+5. **Configure auth per test** - Use `user` and `session` options in `setupPage()`:
+   ```typescript
+   // Default: authenticated user
+   await setupPage({ context, path: "/" });
+
+   // Unauthenticated
+   await setupPage({ context, path: "/", user: null });
+
+   // Custom user
+   await setupPage({
+     context,
+     path: "/",
+     user: { id: "custom-id", fullName: "Custom User" },
+   });
+   ```
+
+6. **Override MSW handlers per test** - Use `server.use()` to customize API responses:
+   ```typescript
+   server.use(
+     http.get("/api/scope", () => {
+       return new HttpResponse(null, { status: 404 });
+     }),
+   );
+   ```
+
+#### Anti-patterns
+
 ```typescript
-// ❌ Bad: Bypasses production initialization
+// ❌ Bad: Mocking internal auth.ts
+vi.mock("../auth.ts", () => ({
+  user$: computed(() => mockUser),
+}));
+
+// ❌ Bad: Direct component rendering
 render(
   <StoreProvider value={store}>
     <MyPage />
   </StoreProvider>
 );
+
+// ❌ Bad: Direct fetch mocking
+vi.stubGlobal("fetch", vi.fn());
+
+// ❌ Bad: Manual Clerk mock in each test file
+vi.mock("@clerk/clerk-js", () => ({ ... }));
+```
+
+#### Signal-Only Tests
+
+For testing signals without rendering React components:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server.ts";
+import { testContext } from "./test-helpers.ts";
+import { scope$, hasScope$ } from "../scope.ts";
+
+const context = testContext();
+
+describe("scope signals", () => {
+  it("hasScope$ returns true when user has scope", async () => {
+    // Default MSW handler returns a scope
+    const hasScope = await context.store.get(hasScope$);
+    expect(hasScope).toBeTruthy();
+  });
+
+  it("hasScope$ returns false when no scope (404)", async () => {
+    server.use(
+      http.get("/api/scope", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    const hasScope = await context.store.get(hasScope$);
+    expect(hasScope).toBeFalsy();
+  });
+});
 ```
 
 ---

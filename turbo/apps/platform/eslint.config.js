@@ -61,6 +61,7 @@ export default [
       "vitest.config.ts",
       "custom-eslint/**",
       "src/mocks/**",
+      "src/__tests__/**",
     ],
   },
 ];

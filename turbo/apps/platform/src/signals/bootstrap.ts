@@ -9,6 +9,9 @@ import {
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { hasScope$ } from "./scope.ts";
+import { logger } from "./log.ts";
+
+const L = logger("bootstrap");
 
 const ROUTE_CONFIG = [
   {
@@ -46,6 +49,7 @@ function setupScopeRequiredPageWrapper(
     command(async ({ get, set }, signal: AbortSignal) => {
       const scopeExists = await get(hasScope$);
       signal.throwIfAborted();
+      L.debug("scopeExists", scopeExists);
 
       if (!scopeExists) {
         set(navigateInReact$, "/");
@@ -53,6 +57,7 @@ function setupScopeRequiredPageWrapper(
       }
 
       await set(fn, signal);
+      signal.throwIfAborted();
     }),
   );
 }

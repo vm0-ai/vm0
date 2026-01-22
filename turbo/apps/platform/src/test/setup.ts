@@ -1,9 +1,20 @@
 import "@testing-library/jest-dom/vitest";
 import { server } from "../mocks/server.ts";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { mockedClerk } from "../__tests__/mock-auth.ts";
+
+vi.mock("@clerk/clerk-js", () => ({
+  Clerk: function MockClerk() {
+    return mockedClerk;
+  },
+}));
 
 // Start MSW server before all tests
-beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "bypass" });
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+});
 
 // Reset handlers after each test
 afterEach(() => server.resetHandlers());
