@@ -58,6 +58,7 @@ export class VsockClient implements GuestClient {
   private readyReject: ((error: Error) => void) | null = null;
   private connected: boolean = false;
   private handshakeComplete: boolean = false;
+  private waitingForReady: boolean = false; // True when awaiting ready signal after successful connect
 
   /**
    * Create a new VsockClient
@@ -275,12 +276,14 @@ export class VsockClient implements GuestClient {
       this.pendingRequests.delete(id);
     }
 
-    // Reject ready promise if pending
-    if (this.readyReject) {
+    // Reject ready promise only if we're actually waiting for ready signal
+    // During connection phase, let connect() handle its own rejection
+    if (this.readyReject && this.waitingForReady) {
       this.readyReject(new Error("Connection closed"));
       this.readyResolve = null;
       this.readyReject = null;
     }
+    this.waitingForReady = false;
 
     if (this.socket) {
       this.socket.destroy();
@@ -428,7 +431,8 @@ export class VsockClient implements GuestClient {
     while (Date.now() - startTime < timeoutMs) {
       try {
         await this.connect();
-        // Connection succeeded, now wait for ready signal
+        // Connection succeeded, now we're waiting for ready signal
+        this.waitingForReady = true;
         break;
       } catch (error) {
         // Connection failed - guest vsock-agent probably not ready yet
