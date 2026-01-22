@@ -11,8 +11,6 @@ import { hasScope$, initScope$ } from "../scope.ts";
  */
 export const setupOnboardingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-
     // Check if already has scope (direct access case)
     const scopeExists = await get(hasScope$);
     signal.throwIfAborted();

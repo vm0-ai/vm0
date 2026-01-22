@@ -6,7 +6,7 @@ import { fetch$ } from "./fetch.ts";
  * Reload trigger for scope signals.
  * Increment to force recomputation of scope$.
  */
-const reloadScope$ = state(0);
+const internalReloadScope$ = state(0);
 
 /**
  * Scope response type from API
@@ -25,7 +25,7 @@ export interface Scope {
  * Returns undefined if user has no scope or is not authenticated.
  */
 export const scope$ = computed(async (get) => {
-  get(reloadScope$); // Subscribe to reload trigger
+  get(internalReloadScope$); // Subscribe to reload trigger
   const user = await get(user$);
   if (!user) {
     return undefined;
@@ -65,7 +65,7 @@ async function generateDefaultSlug(userId: string): Promise<string> {
   const hashHex = hashArray
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `user-${hashHex.slice(0, 8)}`;
+  return `${hashHex.slice(0, 8)}`;
 }
 
 /**
@@ -92,13 +92,8 @@ export const initScope$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!response.ok) {
-    // If 409 Conflict, scope already exists - that's fine
-    if (response.status === 409) {
-      set(reloadScope$, (x) => x + 1);
-      return;
-    }
     throw new Error(`Failed to create scope: ${response.status}`);
   }
 
-  set(reloadScope$, (x) => x + 1);
+  set(internalReloadScope$, (x) => x + 1);
 });
