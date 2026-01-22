@@ -357,9 +357,9 @@ export async function executeJob(
     }
 
     // Poll for completion by checking if exit code file exists
-    // Timeout after 24 hours (same as E2B sandbox timeout)
+    // Timeout after 2 hours (same as E2B sandbox timeout)
     const pollIntervalMs = 2000; // Check every 2 seconds
-    const maxWaitMs = 24 * 60 * 60 * 1000; // 24 hours max
+    const maxWaitMs = 2 * 60 * 60 * 1000; // 2 hours max
     let exitCode = 1;
     let completed = false;
 
