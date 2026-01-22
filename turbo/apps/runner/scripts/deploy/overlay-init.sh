@@ -42,6 +42,10 @@ mkdir -p /rom /rw
 mount --move /oldroot/rom /rom
 mount --move /oldroot/rw /rw
 
+# Move devtmpfs from old root to new root
+# This is critical for /dev/vsock and other device nodes created by the kernel
+mount --move /oldroot/dev /dev
+
 # Clean up old root reference
 umount -l /oldroot 2>/dev/null || true
 
