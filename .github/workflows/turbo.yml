@@ -100,6 +100,7 @@ jobs:
         run: git config --global --add safe.directory /__w/vm0/vm0
 
       - name: Check file sizes
+        shell: bash
         run: |
           # Define whitelist of allowed large files
           WHITELIST=(
