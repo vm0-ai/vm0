@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Enable Tailwind dark: variant with data-theme attribute */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /*
  * VM0 Design System
  * Based on Figma: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
@@ -230,7 +233,7 @@
     --popover-foreground: var(--gray-950); /* background-950 */
 
     --primary: var(--primary-700); /* primary-700 */
-    --primary-foreground: var(--gray-0); /* background-0 */
+    --primary-foreground: 0 0% 100%; /* white text for contrast on primary */
 
     --secondary: var(--gray-100); /* background-100 */
     --secondary-foreground: var(--gray-950); /* background-950 */

@@ -122,6 +122,15 @@ export default function CliAuthPage(): React.JSX.Element {
               width={82}
               height={20}
               priority
+              className="dark:hidden"
+            />
+            <Image
+              src="/assets/vm0-logo.svg"
+              alt="VM0"
+              width={82}
+              height={20}
+              priority
+              className="hidden dark:block"
             />
             <span className="text-2xl text-foreground">Platform</span>
           </div>
