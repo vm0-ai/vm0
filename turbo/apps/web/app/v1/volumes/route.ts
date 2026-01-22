@@ -41,11 +41,11 @@ const router = tsr.router(publicVolumesListContract, {
     const userScope = await getUserScopeByClerkId(auth.userId);
     if (!userScope) {
       return {
-        status: 403 as const,
+        status: 401 as const,
         body: {
           error: {
-            type: "authorization_error" as const,
-            code: "scope_not_configured",
+            type: "authentication_error" as const,
+            code: "invalid_api_key",
             message:
               "Please set up your scope first. Login again with: vm0 login",
           },

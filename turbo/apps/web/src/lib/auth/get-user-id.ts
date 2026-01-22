@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
-import { TOKEN_PREFIXES } from "@vm0/core";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken } from "./sandbox-token";
@@ -24,15 +23,15 @@ export async function getUserId(): Promise<string | null> {
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7); // Remove "Bearer "
 
-    // Reject sandbox tokens on normal APIs
+    // Reject sandbox JWT tokens on normal APIs
     // They must use webhook endpoints with getSandboxAuth()
     if (isSandboxToken(token)) {
-      log.debug("Rejected sandbox token on normal API endpoint");
+      log.debug("Rejected sandbox JWT token on normal API endpoint");
       return null;
     }
 
     // Check for CLI token format (vm0_live_)
-    if (token.startsWith(TOKEN_PREFIXES.CLI)) {
+    if (token.startsWith("vm0_live_")) {
       initServices();
 
       const [tokenRecord] = await globalThis.services.db
@@ -57,10 +56,8 @@ export async function getUserId(): Promise<string | null> {
       return null;
     }
 
-    // Not a CLI or sandbox token - must be Clerk JWT
-    // Verify using Clerk auth (token is automatically verified by Clerk middleware)
-    const { userId } = await auth();
-    return userId;
+    // Unknown token format
+    return null;
   }
 
   // Fall back to Clerk session auth
