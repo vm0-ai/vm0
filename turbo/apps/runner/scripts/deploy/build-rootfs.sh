@@ -57,9 +57,52 @@ check_dependencies() {
     echo "[OK] All dependencies available"
 }
 
+# Generate vsock-agent.mjs from bundled.ts
+generate_vsock_agent() {
+    echo "[GENERATE] Generating vsock-agent.mjs from bundled.ts..."
+
+    # Path to the bundled.ts file containing all scripts
+    BUNDLED_TS="$SCRIPT_DIR/../../../../packages/core/src/sandbox/scripts/dist/bundled.ts"
+
+    if [ ! -f "$BUNDLED_TS" ]; then
+        echo "[BUILD] Building sandbox scripts first..."
+        (cd "$SCRIPT_DIR/../../../../packages/core" && pnpm run build:sandbox-scripts)
+    fi
+
+    if [ ! -f "$BUNDLED_TS" ]; then
+        echo "ERROR: bundled.ts not found at $BUNDLED_TS"
+        echo "Run 'pnpm run build:sandbox-scripts' in packages/core first"
+        exit 1
+    fi
+
+    # Extract VSOCK_AGENT_SCRIPT from bundled.ts using Node.js
+    node -e "
+        const fs = require('fs');
+        const content = fs.readFileSync('$BUNDLED_TS', 'utf-8');
+        const match = content.match(/export const VSOCK_AGENT_SCRIPT = \"(.*)\";/s);
+        if (!match) {
+            console.error('ERROR: VSOCK_AGENT_SCRIPT not found in bundled.ts');
+            process.exit(1);
+        }
+        // The script is JSON-escaped in bundled.ts, so parse it
+        const script = JSON.parse('\"' + match[1] + '\"');
+        fs.writeFileSync('$SCRIPT_DIR/vsock-agent.mjs', script);
+    "
+
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to extract vsock-agent script from bundled.ts"
+        exit 1
+    fi
+
+    echo "[OK] vsock-agent.mjs generated from bundled.ts"
+}
+
 # Build Docker image
 build_image() {
     echo "[BUILD] Building Docker image..."
+
+    # Generate vsock-agent.mjs from bundled.ts before Docker build
+    generate_vsock_agent
 
     $DOCKER build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 

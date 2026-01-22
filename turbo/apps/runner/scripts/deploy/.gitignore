@@ -1,0 +1,2 @@
+# Generated from bundled.ts during build-rootfs.sh
+vsock-agent.mjs

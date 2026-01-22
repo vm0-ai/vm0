@@ -125,29 +125,24 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 # Re-enable essential services
 RUN systemctl enable ssh
 
-# Create vsock echo script with logging
-RUN printf '%s\n' \
-    '#!/bin/sh' \
-    'echo "[vsock-echo] Connection received" >&2' \
-    'while IFS= read -r line; do' \
-    '    echo "[vsock-echo] Received: $line" >&2' \
-    '    echo "$line"' \
-    '    echo "[vsock-echo] Sent: $line" >&2' \
-    'done' \
-    'echo "[vsock-echo] Connection closed" >&2' \
-    > /usr/local/bin/vsock-echo.sh \
-    && chmod +x /usr/local/bin/vsock-echo.sh
+# Create vm0-agent directory and copy vsock-agent script
+# Generated from bundled.ts during build-rootfs.sh
+# Protocol: 4-byte length prefix (big endian) + JSON message
+# Messages: ready, ping/pong, exec/exec_result
+RUN mkdir -p /usr/local/bin/vm0-agent
+COPY vsock-agent.mjs /usr/local/bin/vm0-agent/vsock-agent.mjs
+RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.mjs
 
-# Create vsock echo service for host-guest communication testing
-# Uses socat to listen on vsock port 1000 and run the echo script
+# Create vsock-agent systemd service
+# Uses socat to bridge vsock to Unix socket, then Node.js handles the protocol
 RUN printf '%s\n' \
     '[Unit]' \
-    'Description=Vsock Echo Service' \
+    'Description=VM0 Vsock Agent' \
     'After=network.target' \
     '' \
     '[Service]' \
     'Type=simple' \
-    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:/usr/local/bin/vsock-echo.sh' \
+    'ExecStart=/usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs' \
     'Restart=always' \
     'RestartSec=1' \
     'StandardOutput=journal+console' \
@@ -155,7 +150,7 @@ RUN printf '%s\n' \
     '' \
     '[Install]' \
     'WantedBy=multi-user.target' \
-    > /etc/systemd/system/vsock-echo.service \
-    && systemctl enable vsock-echo
+    > /etc/systemd/system/vsock-agent.service \
+    && systemctl enable vsock-agent
 
 CMD ["/lib/systemd/systemd"]
