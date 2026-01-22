@@ -126,6 +126,9 @@ const router = tsr.router(publicRunsListContract, {
   },
 
   create: async ({ body }) => {
+    // Capture API start time for E2E timing measurement
+    const apiStartTime = Date.now();
+
     initServices();
 
     const auth = await authenticatePublicApi();
@@ -339,6 +342,7 @@ const router = tsr.router(publicRunsListContract, {
       agentName: agentCompose?.name,
       resumedFromCheckpointId: body.checkpoint_id,
       continuedFromSessionId: body.session_id,
+      apiStartTime,
     });
 
     const result = await runService.prepareAndDispatch(context);

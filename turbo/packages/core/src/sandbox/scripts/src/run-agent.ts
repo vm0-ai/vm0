@@ -28,6 +28,7 @@ import {
   AGENT_LOG_FILE,
   CLI_AGENT_TYPE,
   OPENAI_MODEL,
+  API_START_TIME,
   validateConfig,
   recordSandboxOp,
 } from "./lib/common.js";
@@ -158,6 +159,16 @@ async function run(): Promise<[number, string]> {
   // Lifecycle: Initialization
   logInfo("▷ Initialization");
   const initStartTime = Date.now();
+
+  // Record E2E time from API to agent start if available
+  if (API_START_TIME) {
+    const apiStartTimeMs = parseInt(API_START_TIME, 10);
+    if (!isNaN(apiStartTimeMs)) {
+      const e2eTimeMs = Date.now() - apiStartTimeMs;
+      recordSandboxOp("api_to_agent_start", e2eTimeMs, true);
+      logInfo(`E2E time from API to agent start: ${e2eTimeMs}ms`);
+    }
+  }
 
   logInfo(`Working directory: ${WORKING_DIR}`);
 

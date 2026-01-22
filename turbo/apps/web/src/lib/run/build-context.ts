@@ -57,6 +57,8 @@ export interface BuildContextParams {
   debugNoMockClaude?: boolean;
   // Model provider for automatic LLM credential injection
   modelProvider?: string;
+  // API start time for E2E timing measurement (milliseconds since epoch)
+  apiStartTime?: number;
 }
 
 /**
@@ -348,5 +350,7 @@ export async function buildExecutionContext(
     continuedFromSessionId: params.continuedFromSessionId,
     // Debug flag
     debugNoMockClaude: params.debugNoMockClaude,
+    // API start time for E2E timing
+    apiStartTime: params.apiStartTime,
   };
 }

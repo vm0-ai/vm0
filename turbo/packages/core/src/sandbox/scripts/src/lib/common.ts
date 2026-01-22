@@ -11,6 +11,7 @@ export const API_TOKEN = process.env.VM0_API_TOKEN ?? "";
 export const PROMPT = process.env.VM0_PROMPT ?? "";
 export const VERCEL_BYPASS = process.env.VERCEL_PROTECTION_BYPASS ?? "";
 export const RESUME_SESSION_ID = process.env.VM0_RESUME_SESSION_ID ?? "";
+export const API_START_TIME = process.env.VM0_API_START_TIME ?? "";
 
 // CLI agent type - determines which CLI to invoke (claude-code or codex)
 export const CLI_AGENT_TYPE = process.env.CLI_AGENT_TYPE ?? "claude-code";

@@ -66,6 +66,11 @@ export function buildEnvironmentVariables(
       .join(",");
   }
 
+  // Pass API start time for E2E timing measurement
+  if (context.apiStartTime) {
+    envVars.VM0_API_START_TIME = String(context.apiStartTime);
+  }
+
   // Add user-defined vars
   if (context.vars) {
     for (const [key, value] of Object.entries(context.vars)) {

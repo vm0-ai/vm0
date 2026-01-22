@@ -284,6 +284,11 @@ class E2BExecutor implements Executor {
       sandboxEnvVars.VM0_SECRET_VALUES = encodedValues.join(",");
     }
 
+    // Pass API start time for E2E timing measurement
+    if (context.apiStartTime) {
+      sandboxEnvVars.VM0_API_START_TIME = String(context.apiStartTime);
+    }
+
     return sandboxEnvVars;
   }
 

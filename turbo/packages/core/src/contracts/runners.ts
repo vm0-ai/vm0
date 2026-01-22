@@ -127,6 +127,8 @@ export const storedExecutionContextSchema = z.object({
   experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
+  // API start time for E2E timing measurement (milliseconds since epoch)
+  apiStartTime: z.number().optional(),
 });
 
 /**
@@ -151,6 +153,8 @@ export const executionContextSchema = z.object({
   experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
+  // API start time for E2E timing measurement (milliseconds since epoch)
+  apiStartTime: z.number().optional(),
 });
 
 /**
