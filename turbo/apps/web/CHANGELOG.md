@@ -1,5 +1,19 @@
 # Changelog
 
+## [10.4.0](https://github.com/vm0-ai/vm0/compare/web-v10.3.0...web-v10.4.0) (2026-01-22)
+
+
+### Features
+
+* add cyclomatic complexity checking to eslint ([#1502](https://github.com/vm0-ai/vm0/issues/1502)) ([d3b2859](https://github.com/vm0-ai/vm0/commit/d3b2859ca7374964c78fc5a4f0a76566c01551e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.0
+
 ## [10.3.0](https://github.com/vm0-ai/vm0/compare/web-v10.2.0...web-v10.3.0) (2026-01-22)
 
 

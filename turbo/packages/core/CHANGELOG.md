@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.0](https://github.com/vm0-ai/vm0/compare/core-v5.2.0...core-v5.3.0) (2026-01-22)
+
+
+### Features
+
+* add cyclomatic complexity checking to eslint ([#1502](https://github.com/vm0-ai/vm0/issues/1502)) ([d3b2859](https://github.com/vm0-ai/vm0/commit/d3b2859ca7374964c78fc5a4f0a76566c01551e3))
+
 ## [5.2.0](https://github.com/vm0-ai/vm0/compare/core-v5.1.0...core-v5.2.0) (2026-01-22)
 
 
