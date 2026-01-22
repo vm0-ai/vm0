@@ -10,7 +10,6 @@ import {
   agentComposeVersions,
 } from "../../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../../src/db/schema/scope";
-import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -557,8 +556,8 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
 describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
   const testUserId = `runner-user-${Date.now()}-${process.pid}`;
-  const testScopeId = randomUUID();
   const testAgentName = `test-runner-telemetry-${Date.now()}`;
+  let testScopeId: string;
   let testComposeId: string;
   let testRunId: string;
   let testToken: string;
@@ -566,6 +565,9 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     initServices();
+
+    // Generate unique test scope ID for this test
+    testScopeId = randomUUID();
 
     // Mock Clerk auth
     mockClerk({ userId: testUserId });
@@ -605,19 +607,6 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       () => mockAxiomClient as unknown as Axiom,
     );
 
-    // Clean up test data from previous runs
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
     // Create test scope (required for compose creation)
     await globalThis.services.db.insert(scopes).values({
       id: testScopeId,
@@ -626,8 +615,12 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       ownerId: testUserId,
     });
 
-    // Create test compose via API
-    const config = createDefaultComposeConfig(testAgentName);
+    // Create test compose with experimental_runner
+    const config = createDefaultComposeConfig(testAgentName, {
+      experimental_runner: {
+        group: "vm0/test-runner-group",
+      },
+    });
     const composeRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes",
       {
@@ -641,7 +634,7 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
     const composeData = await composeResponse.json();
     testComposeId = composeData.composeId;
 
-    // Create test run via API (will create E2B sandbox)
+    // Create test run via API (will create runner job in queue)
     const runRequest = new NextRequest("http://localhost:3000/api/agent/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -662,42 +655,10 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
     } as unknown as Headers);
-
-    // Add runner job queue entry to mark this as a runner sandbox
-    // (This is the only direct DB operation, as there's no API to create runner jobs)
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
-    await globalThis.services.db.insert(runnerJobQueue).values({
-      runId: testRunId,
-      runnerGroup: "test-group",
-      claimedAt: new Date(),
-      executionContext: {
-        runId: testRunId,
-        prompt: "Test prompt for telemetry",
-        workingDir: "/workspace",
-        cliAgentType: "claude-code",
-        sandboxToken: testToken,
-        apiStartTime: Date.now(),
-      },
-      createdAt: new Date(),
-      expiresAt,
-    });
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     clearClerkMock();
-    // Clean up test data (cascade deletes will handle related records)
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
   });
 
   it("should determine sandbox type as runner and record metrics", async () => {
@@ -789,6 +750,22 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
+    // Create a separate E2B compose without experimental_runner
+    const e2bAgentName = `test-e2b-telemetry-${Date.now()}`;
+    const e2bConfig = createDefaultComposeConfig(e2bAgentName);
+    const e2bComposeRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: e2bConfig }),
+      },
+    );
+
+    const e2bComposeResponse = await createCompose(e2bComposeRequest);
+    const e2bComposeData = await e2bComposeResponse.json();
+    const e2bComposeId = e2bComposeData.composeId;
+
     // Create a separate E2B run via API (will not be in runner_job_queue)
     const e2bRunRequest = new NextRequest(
       "http://localhost:3000/api/agent/runs",
@@ -796,7 +773,7 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentComposeId: e2bComposeId,
           prompt: "E2B test prompt",
         }),
       },
