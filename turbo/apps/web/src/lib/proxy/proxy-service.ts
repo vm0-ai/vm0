@@ -189,6 +189,7 @@ export async function forwardRequest(
  * - [::], [::1] (IPv6 loopback)
  * - Internal hostnames
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 function isPrivateOrInternalHost(hostname: string): boolean {
   // Normalize hostname (remove brackets for IPv6)
   const normalizedHost = hostname.toLowerCase().replace(/^\[|\]$/g, "");

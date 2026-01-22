@@ -29,6 +29,7 @@ interface RunResult {
 }
 
 const router = tsr.router(publicRunByIdContract, {
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   get: async ({ params }) => {
     initServices();
 

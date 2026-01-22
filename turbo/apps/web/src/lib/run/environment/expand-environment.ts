@@ -33,6 +33,7 @@ interface ExpandedEnvironmentResult {
  * @param runId Run ID for token binding (required for seal_secrets)
  * @returns Expanded environment variables and seal_secrets flag
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,

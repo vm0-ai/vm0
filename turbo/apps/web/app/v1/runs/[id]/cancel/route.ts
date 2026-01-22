@@ -32,6 +32,7 @@ interface RunResult {
 const CANCELLABLE_STATUSES = ["pending", "running"];
 
 const router = tsr.router(publicRunCancelContract, {
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   cancel: async ({ params }) => {
     initServices();
 

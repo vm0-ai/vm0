@@ -125,6 +125,7 @@ const router = tsr.router(publicRunsListContract, {
     };
   },
 
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   create: async ({ body }) => {
     initServices();
 

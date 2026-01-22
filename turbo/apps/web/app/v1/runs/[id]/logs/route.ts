@@ -56,6 +56,7 @@ interface LogEntry {
 }
 
 const router = tsr.router(publicRunLogsContract, {
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   getLogs: async ({ params, query }) => {
     initServices();
 

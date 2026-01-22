@@ -119,6 +119,7 @@ async function loadAgentComposeForNewRun(
  * @param params Unified run parameters
  * @returns Execution context for executors
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function buildExecutionContext(
   params: BuildContextParams,
 ): Promise<ExecutionContext> {
