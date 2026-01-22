@@ -127,18 +127,20 @@ RUN systemctl enable ssh
 
 # Create vsock echo service for host-guest communication testing
 # Uses socat to listen on vsock port 1000 and echo back received data
-RUN echo '[Unit]\n\
-Description=Vsock Echo Service\n\
-After=network.target\n\
-\n\
-[Service]\n\
-Type=simple\n\
-ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:cat\n\
-Restart=always\n\
-RestartSec=1\n\
-\n\
-[Install]\n\
-WantedBy=multi-user.target' > /etc/systemd/system/vsock-echo.service \
+RUN printf '%s\n' \
+    '[Unit]' \
+    'Description=Vsock Echo Service' \
+    'After=network.target' \
+    '' \
+    '[Service]' \
+    'Type=simple' \
+    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:cat' \
+    'Restart=always' \
+    'RestartSec=1' \
+    '' \
+    '[Install]' \
+    'WantedBy=multi-user.target' \
+    > /etc/systemd/system/vsock-echo.service \
     && systemctl enable vsock-echo
 
 CMD ["/lib/systemd/systemd"]

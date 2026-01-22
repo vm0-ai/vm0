@@ -34,22 +34,26 @@ async function testVsockEcho(
     let response = "";
 
     const timeout = setTimeout(() => {
+      console.log(`[Vsock] Timeout waiting for response`);
       socket.destroy();
       reject(new Error("Vsock connection timeout"));
     }, CONNECT_TIMEOUT_MS);
 
     socket.on("connect", () => {
       // Send Firecracker vsock CONNECT command
+      console.log(`[Vsock] Connected, sending CONNECT ${VSOCK_PORT}`);
       socket.write(`CONNECT ${VSOCK_PORT}\n`);
     });
 
     socket.on("data", (data) => {
       const str = data.toString();
+      console.log(`[Vsock] Received: ${str.trim()}`);
 
       if (!connected) {
         // Waiting for OK response from Firecracker
         if (str.startsWith("OK ")) {
           connected = true;
+          console.log(`[Vsock] Connected to guest, sending message`);
           // Send test message to guest
           socket.write(message);
           // Close write side to signal end of input
@@ -66,6 +70,7 @@ async function testVsockEcho(
     });
 
     socket.on("end", () => {
+      console.log(`[Vsock] Connection ended, response: ${response}`);
       clearTimeout(timeout);
       if (connected) {
         resolve(response);
@@ -75,11 +80,13 @@ async function testVsockEcho(
     });
 
     socket.on("error", (err) => {
+      console.log(`[Vsock] Error: ${err.message}`);
       clearTimeout(timeout);
       reject(new Error(`Vsock error: ${err.message}`));
     });
 
     socket.on("close", () => {
+      console.log(`[Vsock] Socket closed, connected=${connected}`);
       clearTimeout(timeout);
       if (!connected) {
         reject(new Error("Vsock socket closed unexpectedly"));
