@@ -50,7 +50,7 @@ EOF
     echo "test data" > "$VOLUME_NAME/data.txt"
 
     echo "# Step 3: Run cook without prompt (preparation only)..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --no-auto-update
     assert_success
 
     echo "# Step 4: Verify output..."
@@ -72,7 +72,7 @@ EOF
 
     echo "# Step 7: Run cook with prompt to test auto-pull..."
     # Use bash command for mock agent compatibility
-    run $CLI_COMMAND cook "echo 'hello' > /home/user/workspace/result.txt"
+    run $CLI_COMMAND cook --no-auto-update "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
     # Check for [init] event which indicates agent started (replaces vm0_start)
@@ -95,7 +95,7 @@ EOF
     cd "$TEST_DIR"
 
     echo "# Run cook without vm0.yaml..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --no-auto-update
     assert_failure
     assert_output --partial "Config file not found"
 }
@@ -122,7 +122,7 @@ EOF
     rm -f .env
 
     echo "# Step 3: Run cook (should fail due to missing vars)..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --no-auto-update
     assert_failure
 
     echo "# Step 4: Verify error message mentions missing variables..."
@@ -166,7 +166,7 @@ E2E_TEST_VAR=test-value-123
 EOF
 
     echo "# Step 3: Run cook (should succeed)..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --no-auto-update
     assert_success
 
     echo "# Step 4: Verify normal cook output..."
@@ -199,7 +199,7 @@ EXISTING_VAR=existing-value
 EOF
 
     echo "# Step 3: Run cook (should fail due to missing NEW_VAR)..."
-    run $CLI_COMMAND cook
+    run $CLI_COMMAND cook --no-auto-update
     assert_failure
 
     echo "# Step 4: Verify error message mentions only the missing variable..."
@@ -234,7 +234,7 @@ agents:
 EOF
 
     echo "# Step 2: Run cook without prompt (preparation only)..."
-    run $CLI_COMMAND cook --yes
+    run $CLI_COMMAND cook --no-auto-update --yes
     assert_success
 
     echo "# Step 3: Verify compose was called and skill was processed..."

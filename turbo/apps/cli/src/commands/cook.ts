@@ -318,15 +318,22 @@ cookCmd
   .argument("[prompt]", "Prompt for the agent")
   .option("-y, --yes", "Skip confirmation prompts")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
+  .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     async (
       prompt: string | undefined,
-      options: { yes?: boolean; debugNoMockClaude?: boolean },
+      options: {
+        yes?: boolean;
+        debugNoMockClaude?: boolean;
+        noAutoUpdate?: boolean;
+      },
     ) => {
       // Step 0: Check for updates and auto-upgrade if needed
-      const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
-      if (shouldExit) {
-        process.exit(0);
+      if (!options.noAutoUpdate) {
+        const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
+        if (shouldExit) {
+          process.exit(0);
+        }
       }
 
       const cwd = process.cwd();
