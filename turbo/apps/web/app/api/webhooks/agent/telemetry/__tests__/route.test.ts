@@ -50,6 +50,13 @@ const mockHeaders = vi.mocked(headers);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ingestToAxiomSpy: any;
 
+// Mock Axiom client - will be set up in beforeEach
+let mockAxiomClient: {
+  query: ReturnType<typeof vi.fn>;
+  ingest: ReturnType<typeof vi.fn>;
+  flush: ReturnType<typeof vi.fn>;
+};
+
 describe("POST /api/webhooks/agent/telemetry", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
   const testScopeId = randomUUID();
@@ -72,8 +79,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
+    // Set AXIOM_TOKEN for tests so getAxiomClient() returns the mocked client
+    process.env.AXIOM_TOKEN = "test-axiom-token";
+
     // Setup Axiom SDK mock
-    const mockAxiomClient = {
+    mockAxiomClient = {
       query: vi.fn().mockResolvedValue({ matches: [] }),
       ingest: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
@@ -598,8 +608,11 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       mockSandbox as unknown as Sandbox,
     );
 
+    // Set AXIOM_TOKEN for tests so getAxiomClient() returns the mocked client
+    process.env.AXIOM_TOKEN = "test-axiom-token";
+
     // Setup Axiom SDK mock
-    const mockAxiomClient = {
+    mockAxiomClient = {
       query: vi.fn().mockResolvedValue({ matches: [] }),
       ingest: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
@@ -668,11 +681,8 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       .spyOn(axiomModule, "ingestToAxiom")
       .mockResolvedValue(true);
 
-    // Spy on recordSandboxInternalOperation to verify sandbox type
-    const recordMetricsSpy = vi.spyOn(
-      await import("../../../../../../src/lib/metrics"),
-      "recordSandboxInternalOperation",
-    );
+    // Spy on ingestSandboxOpLog to verify what gets sent to Axiom
+    const ingestSandboxOpLogSpy = vi.spyOn(axiomModule, "ingestSandboxOpLog");
 
     // Simulate telemetry from runner sandbox
     const sandboxOperations = [
@@ -724,22 +734,22 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       ]),
     );
 
-    // Verify sandbox operations were recorded with correct sandbox type
-    expect(recordMetricsSpy).toHaveBeenCalledWith(
+    // Verify sandbox operations were ingested to Axiom with correct sandbox type
+    expect(ingestSandboxOpLogSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        actionType: "init_total",
-        sandboxType: "runner",
-        durationMs: 1500,
-        success: true,
+        source: "sandbox",
+        op_type: "init_total",
+        sandbox_type: "runner",
+        duration_ms: 1500,
       }),
     );
 
-    expect(recordMetricsSpy).toHaveBeenCalledWith(
+    expect(ingestSandboxOpLogSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        actionType: "cli_execution",
-        sandboxType: "runner",
-        durationMs: 200,
-        success: true,
+        source: "sandbox",
+        op_type: "cli_execution",
+        sandbox_type: "runner",
+        duration_ms: 200,
       }),
     );
   });
@@ -791,11 +801,8 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       get: vi.fn().mockReturnValue(`Bearer ${e2bToken}`),
     } as unknown as Headers);
 
-    // Spy on recordSandboxInternalOperation
-    const recordMetricsSpy = vi.spyOn(
-      await import("../../../../../../src/lib/metrics"),
-      "recordSandboxInternalOperation",
-    );
+    // Spy on ingestSandboxOpLog to verify what gets sent to Axiom
+    const ingestSandboxOpLogSpy = vi.spyOn(axiomModule, "ingestSandboxOpLog");
 
     const sandboxOperations = [
       {
@@ -825,13 +832,13 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
 
     expect(response.status).toBe(200);
 
-    // Verify sandbox type was determined as e2b
-    expect(recordMetricsSpy).toHaveBeenCalledWith(
+    // Verify sandbox operations were ingested to Axiom with correct sandbox type
+    expect(ingestSandboxOpLogSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        actionType: "api_to_agent_start",
-        sandboxType: "e2b",
-        durationMs: 500,
-        success: true,
+        source: "sandbox",
+        op_type: "api_to_agent_start",
+        sandbox_type: "e2b",
+        duration_ms: 500,
       }),
     );
 
