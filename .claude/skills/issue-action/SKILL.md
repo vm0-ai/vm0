@@ -91,33 +91,18 @@ Review new comments for:
 
 1. Push branch and create Pull Request
 
-2. Wait 60 seconds for CI workflows to start
+2. Run `/pr-check` skill to monitor and fix CI pipeline
+   - The pr-check skill will auto-fix lint/format issues
+   - If type or test errors occur, pr-check will exit with details for manual intervention
 
-3. Check and fix pipeline issues:
-   - Use `gh pr checks` to check pipeline status
-   - **If checks still running**: Wait 30 seconds and retry (up to 10 times total)
-   - **If checks failing**: Attempt automatic fixes:
-     - **Lint failures** (if output contains "lint" and "fail"):
-       1. Run `cd turbo && pnpm format`
-       2. If changes detected: `git add -A && git commit -m "fix: auto-format code" && git push`
-       3. Wait 60 seconds and re-check pipeline
-     - **Type check failures** (if output contains "type" or "check-types" and "fail"):
-       1. Run `cd turbo && pnpm check-types`
-       2. Report errors (manual fix required)
-     - **Test failures** (if output contains "test" and "fail"):
-       1. Run `cd turbo && pnpm vitest`
-       2. Report failures (manual fix required)
-     - After pushing fixes, wait 60 seconds and re-check pipeline
-     - Retry fix attempts up to 2 times
-   - **If checks pass** (after fixes or initially): Post success comment to issue
-   - **If unable to fix after retries**: Post comment with failure details and add "pending" label, then exit
-
-4. Post comment to issue:
+3. **If pr-check completes successfully**: Post comment to issue:
    ```bash
    gh issue comment {issue-id} --body "Work completed. PR created: {pr-url}
 
    All CI checks passing"
    ```
+
+4. **If pr-check exits with manual intervention required**: Add "pending" label and exit
 
 5. Keep issue open (user will close it after merging PR)
 
