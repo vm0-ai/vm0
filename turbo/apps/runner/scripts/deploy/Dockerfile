@@ -125,8 +125,21 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 # Re-enable essential services
 RUN systemctl enable ssh
 
+# Create vsock echo script with logging
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'echo "[vsock-echo] Connection received" >&2' \
+    'while IFS= read -r line; do' \
+    '    echo "[vsock-echo] Received: $line" >&2' \
+    '    echo "$line"' \
+    '    echo "[vsock-echo] Sent: $line" >&2' \
+    'done' \
+    'echo "[vsock-echo] Connection closed" >&2' \
+    > /usr/local/bin/vsock-echo.sh \
+    && chmod +x /usr/local/bin/vsock-echo.sh
+
 # Create vsock echo service for host-guest communication testing
-# Uses socat to listen on vsock port 1000 and echo back received data
+# Uses socat to listen on vsock port 1000 and run the echo script
 RUN printf '%s\n' \
     '[Unit]' \
     'Description=Vsock Echo Service' \
@@ -134,9 +147,11 @@ RUN printf '%s\n' \
     '' \
     '[Service]' \
     'Type=simple' \
-    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork SYSTEM:"while read line; do echo \\$line; done"' \
+    'ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:/usr/local/bin/vsock-echo.sh' \
     'Restart=always' \
     'RestartSec=1' \
+    'StandardOutput=journal+console' \
+    'StandardError=journal+console' \
     '' \
     '[Install]' \
     'WantedBy=multi-user.target' \
