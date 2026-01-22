@@ -36,6 +36,7 @@ export const killCommand = new Command("kill")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--force", "Skip confirmation prompt")
   .action(
+    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       runIdArg: string,
       options: { config: string; force?: boolean },
