@@ -142,6 +142,7 @@ const cliComposeSchema = z
 /**
  * Formats a Zod error into a user-friendly string
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 function formatZodError(error: z.ZodError): string {
   const issue = error.issues[0];
   if (!issue) return "Validation failed";

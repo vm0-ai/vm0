@@ -526,3 +526,81 @@ EOF
     assert_success
     assert_output --partial "(one-time)"
 }
+
+# ============================================================
+# Global resolution tests (commands work from any directory)
+# Issue #1496: Schedule commands should resolve by name globally
+# ============================================================
+
+@test "vm0 schedule status should work from any directory (global resolution)" {
+    cd "$TEST_DIR"
+
+    # Deploy schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Change to a completely different directory (NOT the agent's directory)
+    cd /tmp
+
+    # Status should still work with just the schedule name
+    run $CLI_COMMAND schedule status "$SCHEDULE_NAME"
+    assert_success
+    assert_output --partial "Schedule: $SCHEDULE_NAME"
+    assert_output --partial "enabled"
+}
+
+@test "vm0 schedule disable should work from any directory (global resolution)" {
+    cd "$TEST_DIR"
+
+    # Deploy schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Change to a different directory
+    cd /tmp
+
+    # Disable should still work with just the schedule name
+    run $CLI_COMMAND schedule disable "$SCHEDULE_NAME"
+    assert_success
+    assert_output --partial "Disabled"
+}
+
+@test "vm0 schedule enable should work from any directory (global resolution)" {
+    cd "$TEST_DIR"
+
+    # Deploy and disable schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    run $CLI_COMMAND schedule disable "$SCHEDULE_NAME"
+    assert_success
+
+    # Change to a different directory
+    cd /tmp
+
+    # Enable should still work with just the schedule name
+    run $CLI_COMMAND schedule enable "$SCHEDULE_NAME"
+    assert_success
+    assert_output --partial "Enabled"
+}
+
+@test "vm0 schedule delete should work from any directory (global resolution)" {
+    cd "$TEST_DIR"
+
+    # Deploy schedule first
+    run $CLI_COMMAND schedule deploy schedule.yaml
+    assert_success
+
+    # Change to a different directory
+    cd /tmp
+
+    # Delete should still work with just the schedule name
+    run $CLI_COMMAND schedule delete "$SCHEDULE_NAME" --force
+    assert_success
+    assert_output --partial "Deleted"
+
+    # Verify it's gone
+    run $CLI_COMMAND schedule list
+    assert_success
+    assert_output --partial "No schedules found"
+}

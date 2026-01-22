@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
+import { listSchedules } from "../api";
 
 const CONFIG_FILE = "vm0.yaml";
 const SCHEDULE_FILE = "schedule.yaml";
@@ -347,4 +348,36 @@ export function toISODateTime(dateTimeStr: string): string {
   const isoStr = dateTimeStr.replace(" ", "T") + ":00";
   const date = new Date(isoStr);
   return date.toISOString();
+}
+
+/**
+ * Result of resolving a schedule by name
+ */
+interface ResolveScheduleResult {
+  name: string;
+  composeId: string;
+  composeName: string;
+}
+
+/**
+ * Resolve a schedule by name using the list API.
+ * Searches across all user's schedules globally.
+ * @throws Error if schedule not found
+ */
+export async function resolveScheduleByName(
+  name: string,
+): Promise<ResolveScheduleResult> {
+  const { schedules } = await listSchedules();
+
+  const schedule = schedules.find((s) => s.name === name);
+
+  if (!schedule) {
+    throw new Error(`Schedule "${name}" not found`);
+  }
+
+  return {
+    name: schedule.name,
+    composeId: schedule.composeId,
+    composeName: schedule.composeName,
+  };
 }

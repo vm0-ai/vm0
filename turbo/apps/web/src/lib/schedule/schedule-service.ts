@@ -174,6 +174,7 @@ export class ScheduleService {
    * Deploy (create or update) a schedule
    * Idempotent: creates if doesn't exist, updates if exists
    */
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   async deploy(
     userId: string,
     request: DeployScheduleRequest,

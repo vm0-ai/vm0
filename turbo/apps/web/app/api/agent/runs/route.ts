@@ -22,6 +22,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   create: async ({ body }) => {
     // Capture API start time for E2E timing measurement
     const apiStartTime = Date.now();

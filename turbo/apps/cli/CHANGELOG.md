@@ -1,5 +1,41 @@
 # Changelog
 
+## [6.3.0](https://github.com/vm0-ai/vm0/compare/cli-v6.2.1...cli-v6.3.0) (2026-01-22)
+
+
+### Features
+
+* add cyclomatic complexity checking to eslint ([#1502](https://github.com/vm0-ai/vm0/issues/1502)) ([d3b2859](https://github.com/vm0-ai/vm0/commit/d3b2859ca7374964c78fc5a4f0a76566c01551e3))
+* **cli:** add --no-auto-update flag to vm0 cook command ([#1495](https://github.com/vm0-ai/vm0/issues/1495)) ([e3fdf4d](https://github.com/vm0-ai/vm0/commit/e3fdf4dd4947b6c1dd5cd617636a530dc3521e95)), closes [#1492](https://github.com/vm0-ai/vm0/issues/1492)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.0
+
+## [6.2.1](https://github.com/vm0-ai/vm0/compare/cli-v6.2.0...cli-v6.2.1) (2026-01-22)
+
+
+### Bug Fixes
+
+* **cli:** update description to accurately reflect VM0's purpose ([#1483](https://github.com/vm0-ai/vm0/issues/1483)) ([dd7f41e](https://github.com/vm0-ai/vm0/commit/dd7f41ef3f0f3679ca5e86812b14588ecdfae17f))
+
+## [6.2.0](https://github.com/vm0-ai/vm0/compare/cli-v6.1.0...cli-v6.2.0) (2026-01-22)
+
+
+### Features
+
+* **run:** integrate model provider with vm0 run command ([#1472](https://github.com/vm0-ai/vm0/issues/1472)) ([74c0a4c](https://github.com/vm0-ai/vm0/commit/74c0a4cfbc10683359065249dfbd9b8e282c2b84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.2.0
+
 ## [6.1.0](https://github.com/vm0-ai/vm0/compare/cli-v6.0.0...cli-v6.1.0) (2026-01-21)
 
 

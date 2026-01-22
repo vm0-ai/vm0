@@ -172,6 +172,7 @@ export async function reportPreflightFailure(
 /**
  * Execute a job in a Firecracker VM
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,

@@ -165,6 +165,7 @@ export class CodexEventParser {
     };
   }
 
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   private static parseItemEvent(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
     if (!item) {

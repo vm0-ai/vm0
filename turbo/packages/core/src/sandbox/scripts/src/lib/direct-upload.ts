@@ -162,6 +162,7 @@ export function createManifest(
  * @param message - Optional commit message
  * @returns Object with versionId on success, null on failure
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function createDirectUploadSnapshot(
   mountPath: string,
   storageName: string,

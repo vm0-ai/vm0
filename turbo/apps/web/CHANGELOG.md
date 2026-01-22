@@ -1,5 +1,40 @@
 # Changelog
 
+## [10.4.0](https://github.com/vm0-ai/vm0/compare/web-v10.3.0...web-v10.4.0) (2026-01-22)
+
+
+### Features
+
+* add cyclomatic complexity checking to eslint ([#1502](https://github.com/vm0-ai/vm0/issues/1502)) ([d3b2859](https://github.com/vm0-ai/vm0/commit/d3b2859ca7374964c78fc5a4f0a76566c01551e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.0
+
+## [10.3.0](https://github.com/vm0-ai/vm0/compare/web-v10.2.0...web-v10.3.0) (2026-01-22)
+
+
+### Features
+
+* **eslint:** add naming convention rule to base config ([#1487](https://github.com/vm0-ai/vm0/issues/1487)) ([91d948c](https://github.com/vm0-ai/vm0/commit/91d948c56a4a6032e541d956edd190224b4d59b5))
+
+## [10.2.0](https://github.com/vm0-ai/vm0/compare/web-v10.1.0...web-v10.2.0) (2026-01-22)
+
+
+### Features
+
+* **run:** integrate model provider with vm0 run command ([#1472](https://github.com/vm0-ai/vm0/issues/1472)) ([74c0a4c](https://github.com/vm0-ai/vm0/commit/74c0a4cfbc10683359065249dfbd9b8e282c2b84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.2.0
+
 ## [10.1.0](https://github.com/vm0-ai/vm0/compare/web-v10.0.0...web-v10.1.0) (2026-01-21)
 
 

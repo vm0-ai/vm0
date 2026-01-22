@@ -105,6 +105,7 @@ export class CodexEventRenderer {
     );
   }
 
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   private static renderItem(event: CodexEvent): void {
     const item = event.item;
     if (!item) return;

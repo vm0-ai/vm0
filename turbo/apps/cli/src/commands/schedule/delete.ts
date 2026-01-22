@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
-import { getComposeByName, deleteSchedule } from "../../lib/api";
+import { deleteSchedule } from "../../lib/api";
 import {
-  loadAgentName,
   loadScheduleName,
+  resolveScheduleByName,
 } from "../../lib/domain/schedule-utils";
 
 /**
@@ -55,29 +55,8 @@ export const deleteCommand = new Command()
         name = scheduleResult.scheduleName;
       }
 
-      // Load vm0.yaml to get agent name
-      const result = loadAgentName();
-      if (result.error) {
-        console.error(chalk.red(`✗ Invalid vm0.yaml: ${result.error}`));
-        process.exit(1);
-      }
-      if (!result.agentName) {
-        console.error(chalk.red("✗ No vm0.yaml found in current directory"));
-        console.error(chalk.dim("  Run this command from the agent directory"));
-        process.exit(1);
-      }
-      const agentName = result.agentName;
-
-      // Get compose ID
-      let composeId: string;
-      try {
-        const compose = await getComposeByName(agentName);
-        composeId = compose.id;
-      } catch {
-        console.error(chalk.red(`✗ Agent not found: ${agentName}`));
-        console.error(chalk.dim("  Make sure the agent is pushed first"));
-        process.exit(1);
-      }
+      // Resolve schedule by name (searches globally across all agents)
+      const resolved = await resolveScheduleByName(name);
 
       // Confirm deletion
       if (!options.force) {
@@ -89,7 +68,7 @@ export const deleteCommand = new Command()
       }
 
       // Call API
-      await deleteSchedule({ name, composeId });
+      await deleteSchedule({ name, composeId: resolved.composeId });
 
       console.log(chalk.green(`✓ Deleted schedule ${chalk.cyan(name)}`));
     } catch (error) {
@@ -99,6 +78,7 @@ export const deleteCommand = new Command()
           console.error(chalk.dim("  Run: vm0 auth login"));
         } else if (error.message.toLowerCase().includes("not found")) {
           console.error(chalk.dim(`  Schedule "${name}" not found`));
+          console.error(chalk.dim("  Run: vm0 schedule list"));
         } else {
           console.error(chalk.dim(`  ${error.message}`));
         }

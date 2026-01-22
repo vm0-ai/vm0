@@ -2,7 +2,6 @@
 name: issue-plan
 description: Start working on GitHub issue with deep-dive workflow (research, innovate, plan phases)
 allowed-tools: Bash, Read, Write, Grep, Glob
-context: fork
 ---
 
 # Issue Planning Skill

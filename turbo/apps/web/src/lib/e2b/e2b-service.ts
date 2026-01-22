@@ -48,6 +48,7 @@ class E2BService {
    * @param context Execution context containing all necessary information
    * @returns Run result
    */
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   async execute(context: ExecutionContext): Promise<RunResult> {
     const startTime = Date.now();
     const isResume = !!context.resumeSession;

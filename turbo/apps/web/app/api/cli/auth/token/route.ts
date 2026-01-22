@@ -23,12 +23,12 @@ const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
     initServices();
 
-    const { device_code } = body;
+    const { device_code: deviceCode } = body;
 
     const [session] = await globalThis.services.db
       .select()
       .from(deviceCodes)
-      .where(eq(deviceCodes.code, device_code))
+      .where(eq(deviceCodes.code, deviceCode))
       .limit(1);
 
     if (!session) {
@@ -68,7 +68,7 @@ const router = tsr.router(cliAuthTokenContract, {
         // Clean up
         await globalThis.services.db
           .delete(deviceCodes)
-          .where(eq(deviceCodes.code, device_code));
+          .where(eq(deviceCodes.code, deviceCode));
 
         return {
           status: 400 as const,
@@ -127,7 +127,7 @@ const router = tsr.router(cliAuthTokenContract, {
         // Clean up device code
         await globalThis.services.db
           .delete(deviceCodes)
-          .where(eq(deviceCodes.code, device_code));
+          .where(eq(deviceCodes.code, deviceCode));
 
         return {
           status: 200 as const,

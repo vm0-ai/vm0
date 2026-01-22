@@ -50,7 +50,7 @@ ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 EOF
 
     echo "# Step 3: Run cook with --debug-no-mock-claude flag..."
-    run timeout 120 $CLI_COMMAND cook --debug-no-mock-claude "1+1=?"
+    run timeout 120 $CLI_COMMAND cook --no-auto-update --debug-no-mock-claude "1+1=?"
 
     echo "# Step 4: Verify run completed with result..."
     assert_success

@@ -142,7 +142,7 @@ jobs:
 
   # Deploy site app to production
   deploy-site-production:
-    needs: [release-please, deploy-web-production]
+    needs: release-please
     if: ${{ needs.release-please.outputs.site_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
@@ -170,7 +170,7 @@ jobs:
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
-    needs: [release-please, deploy-web-production]
+    needs: release-please
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:

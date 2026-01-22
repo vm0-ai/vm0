@@ -178,6 +178,7 @@ function resolveArtifact(
  * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
  * @returns Resolution result with resolved volumes, artifact, and errors
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 export function resolveVolumes(
   config: AgentVolumeConfig,
   vars: Record<string, string> = {},

@@ -90,6 +90,7 @@ export const initCommand = new Command()
   .option("--no-vars", "Don't include vars from vm0.yaml")
   .option("--force", "Overwrite existing schedule.yaml")
   .action(
+    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (options: {
       name?: string;
       frequency?: string;

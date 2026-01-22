@@ -48,6 +48,7 @@ interface AgentComposeContent {
 /**
  * Format the compose content for display
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 function formatComposeOutput(
   name: string,
   versionId: string,
