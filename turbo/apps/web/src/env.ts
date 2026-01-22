@@ -65,3 +65,7 @@ export function env() {
 
 // Export type for type inference
 export type Env = ReturnType<typeof env>;
+
+export function reloadEnv() {
+  _env = initEnv();
+}
