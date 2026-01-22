@@ -24,7 +24,7 @@ set -e
 
 ARCH=$(uname -m)
 WORKDIR=~/fc-vsock-test
-FC_VERSION="v1.14.1"
+FC_VERSION="v1.10.1"  # Same as vm0 runner
 VSOCK_PORT=5000
 
 echo "=============================================="
@@ -51,16 +51,16 @@ fi
 ./firecracker --version 2>&1 | head -1
 
 echo ""
-echo "[2/7] Downloading kernel (PCI-enabled, v1.14-def)..."
+echo "[2/7] Downloading kernel (v1.10, same as vm0 runner)..."
 if [ ! -f vmlinux ]; then
-    curl -sSL -o vmlinux "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14-def/${ARCH}/vmlinux-6.1.150"
+    curl -sSL -o vmlinux "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.10/${ARCH}/vmlinux-6.1.102"
 fi
 ls -lh vmlinux
 
 echo ""
 echo "[3/7] Downloading and preparing rootfs..."
 if [ ! -f rootfs.squashfs ]; then
-    curl -sSL -o rootfs.squashfs "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14-def/${ARCH}/ubuntu-24.04.squashfs"
+    curl -sSL -o rootfs.squashfs "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.10/${ARCH}/ubuntu-22.04.squashfs"
 fi
 
 # Always recreate ext4 to ensure clean state
@@ -166,10 +166,11 @@ sudo umount /tmp/sq_mount
 ls -lh rootfs.ext4
 
 echo ""
-echo "[5/7] Starting Firecracker with --enable-pci..."
+echo "[5/7] Starting Firecracker (NO --enable-pci, matching vm0 runner)..."
 sudo rm -f /tmp/firecracker.socket /tmp/v.sock
 
-sudo ./firecracker --api-sock /tmp/firecracker.socket --enable-pci > /tmp/fc-boot.log 2>&1 &
+# NOTE: vm0 runner does NOT use --enable-pci
+sudo ./firecracker --api-sock /tmp/firecracker.socket > /tmp/fc-boot.log 2>&1 &
 FC_PID=$!
 sleep 1
 echo "Firecracker PID: $FC_PID"
@@ -177,14 +178,14 @@ echo "Firecracker PID: $FC_PID"
 echo ""
 echo "[6/7] Configuring VM..."
 
-# Boot source
+# Boot source (matching vm0 runner: pci=off)
 curl -s --unix-socket /tmp/firecracker.socket -X PUT "http://localhost/boot-source" \
     -H "Content-Type: application/json" \
     -d "{
         \"kernel_image_path\": \"$WORKDIR/vmlinux\",
-        \"boot_args\": \"console=ttyS0 reboot=k panic=1\"
+        \"boot_args\": \"console=ttyS0 reboot=k panic=1 pci=off\"
     }"
-echo "- Boot source configured"
+echo "- Boot source configured (pci=off)"
 
 # Root drive
 curl -s --unix-socket /tmp/firecracker.socket -X PUT "http://localhost/drives/rootfs" \
