@@ -8,8 +8,7 @@
  * - File read/write operations
  *
  * Design:
- * - Uses Python vsock-bridge to bridge vsock to Unix socket
- *   (socat's VSOCK-LISTEN doesn't work reliably on aarch64, but Python's native vsock does)
+ * - Uses socat to bridge vsock to Unix socket (Node.js lacks native vsock support)
  * - Listens on VSOCK_PORT for host connections (Firecracker creates vsock.sock_PORT on host)
  * - Sends ready signal when host connects, then handles requests
  * - Runs as a systemd service for automatic restart on failure
@@ -401,39 +400,44 @@ async function startVsockServer(): Promise<void> {
   server.listen(socketPath, () => {
     logInfo(`Unix socket server listening on ${socketPath}`);
 
-    // Start Python vsock-bridge to bridge vsock to our Unix socket
-    // We use Python instead of socat because socat's VSOCK-LISTEN doesn't work
-    // reliably on aarch64, but Python's native vsock support does.
-    const bridgeScript = "/usr/local/bin/vm0-agent/vsock-bridge.py";
-    const bridgeArgs = [bridgeScript, String(VSOCK_PORT), socketPath];
-    logInfo(`Starting vsock-bridge: python3 ${bridgeArgs.join(" ")}`);
+    // Start socat to bridge vsock to our Unix socket
+    // VSOCK-LISTEN:PORT listens for vsock connections from host
+    // UNIX-CONNECT:path forwards the connection to our Unix socket server
+    const socatArgs = [
+      "-d",
+      "-d",
+      `VSOCK-LISTEN:${VSOCK_PORT},reuseaddr,fork`,
+      `UNIX-CONNECT:${socketPath}`,
+    ];
+    logInfo(`Starting socat: socat ${socatArgs.join(" ")}`);
 
-    const bridgeProc = spawn("python3", bridgeArgs, {
+    const socatProc = spawn("socat", socatArgs, {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     // Capture stdout for debugging
-    if (bridgeProc.stdout) {
-      bridgeProc.stdout.on("data", (data: Buffer) => {
-        logInfo(`Bridge: ${data.toString().trim()}`);
+    if (socatProc.stdout) {
+      socatProc.stdout.on("data", (data: Buffer) => {
+        logInfo(`socat: ${data.toString().trim()}`);
       });
     }
 
-    bridgeProc.on("error", (err) => {
-      logError(`Bridge error: ${err.message}`);
+    socatProc.on("error", (err) => {
+      logError(`socat error: ${err.message}`);
     });
 
-    if (bridgeProc.stderr) {
-      bridgeProc.stderr.on("data", (data: Buffer) => {
-        logError(`Bridge stderr: ${data.toString()}`);
+    if (socatProc.stderr) {
+      socatProc.stderr.on("data", (data: Buffer) => {
+        // socat -d -d outputs to stderr, treat as info
+        logInfo(`socat: ${data.toString().trim()}`);
       });
     }
 
-    bridgeProc.on("exit", (code) => {
-      logInfo(`Bridge exited with code ${code}`);
+    socatProc.on("exit", (code) => {
+      logError(`socat exited with code ${code}`);
     });
 
-    logInfo(`Started vsock-bridge listener on port ${VSOCK_PORT}`);
+    logInfo(`Started socat vsock listener on port ${VSOCK_PORT}`);
   });
 
   server.on("error", (err) => {

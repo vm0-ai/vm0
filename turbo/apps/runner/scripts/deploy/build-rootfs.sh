@@ -57,9 +57,9 @@ check_dependencies() {
     echo "[OK] All dependencies available"
 }
 
-# Generate vsock-agent.mjs and vsock-bridge.py from bundled scripts
+# Generate vsock-agent.mjs from bundled scripts
 generate_vsock_agent() {
-    echo "[GENERATE] Extracting vsock scripts from bundled scripts..."
+    echo "[GENERATE] Extracting vsock-agent.mjs from bundled scripts..."
 
     # The vsock scripts are bundled in @vm0/core package
     # In CI, bundled.ts is copied to the deploy-runner directory
@@ -80,21 +80,18 @@ generate_vsock_agent() {
 
     echo "[GENERATE] Using bundled.ts from: $BUNDLED_TS"
 
-    # Extract VSOCK_AGENT_SCRIPT and VSOCK_BRIDGE_SCRIPT constants using node
+    # Extract VSOCK_AGENT_SCRIPT constant using node
     # Import the bundled.ts file directly as a module
     # Using tsx to handle TypeScript imports
     npx tsx << EXTRACT_EOF
 import { writeFileSync } from 'fs';
-import { VSOCK_AGENT_SCRIPT, VSOCK_BRIDGE_SCRIPT } from '${BUNDLED_TS}';
+import { VSOCK_AGENT_SCRIPT } from '${BUNDLED_TS}';
 const agentPath = '${SCRIPT_DIR}/vsock-agent.mjs';
-const bridgePath = '${SCRIPT_DIR}/vsock-bridge.py';
 writeFileSync(agentPath, VSOCK_AGENT_SCRIPT);
 console.log('Wrote vsock-agent.mjs (' + VSOCK_AGENT_SCRIPT.length + ' bytes)');
-writeFileSync(bridgePath, VSOCK_BRIDGE_SCRIPT);
-console.log('Wrote vsock-bridge.py (' + VSOCK_BRIDGE_SCRIPT.length + ' bytes)');
 EXTRACT_EOF
 
-    echo "[OK] Generated vsock-agent.mjs and vsock-bridge.py"
+    echo "[OK] Generated vsock-agent.mjs"
 }
 
 # Build Docker image
