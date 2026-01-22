@@ -29,7 +29,7 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("vm0")
-  .description("VM0 CLI - A modern build tool")
+  .description("VM0 CLI - Build and run agents with natural language")
   .version(__CLI_VERSION__);
 
 program
