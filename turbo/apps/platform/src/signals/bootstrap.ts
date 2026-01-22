@@ -9,6 +9,7 @@ import {
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { setupOnboardingPage$ } from "./onboarding/onboarding-page.ts";
+import { hasScope$ } from "./scope.ts";
 
 const ROUTE_CONFIG = [
   {
@@ -17,11 +18,11 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/",
-    setup: setupScopeRequiredPageWrapper(setupHomePage$),
+    setup: setupScopeRequiredPageWrapper(setupHomePage$, hasScope$),
   },
   {
     path: "/logs",
-    setup: setupScopeRequiredPageWrapper(setupLogsPage$),
+    setup: setupScopeRequiredPageWrapper(setupLogsPage$, hasScope$),
   },
 ] as const;
 

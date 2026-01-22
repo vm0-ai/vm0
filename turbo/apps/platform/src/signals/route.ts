@@ -1,11 +1,10 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
 import { clerk$ } from "./auth.ts";
 import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { hasScope$ } from "./scope.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
 
 const reloadPathname$ = state(0);
@@ -210,6 +209,7 @@ export const setupAuthPageWrapper = (
  */
 export const setupScopeRequiredPageWrapper = (
   fn: Command<Promise<void> | void, [AbortSignal]>,
+  checkHasScope: Computed<Promise<boolean>>,
 ) => {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
@@ -221,7 +221,7 @@ export const setupScopeRequiredPageWrapper = (
       return;
     }
 
-    const scopeExists = await get(hasScope$);
+    const scopeExists = await get(checkHasScope);
     signal.throwIfAborted();
 
     if (!scopeExists) {
