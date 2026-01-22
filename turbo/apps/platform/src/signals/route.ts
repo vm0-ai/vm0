@@ -5,6 +5,7 @@ import { clerk$ } from "./auth.ts";
 import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { hasScope$ } from "./scope.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
 
 const reloadPathname$ = state(0);
@@ -196,6 +197,35 @@ export const setupAuthPageWrapper = (
     if (!clerk.user) {
       await clerk.redirectToSignIn();
       signal.throwIfAborted();
+      return;
+    }
+
+    await set(setupPageWrapper(fn), signal);
+  });
+};
+
+/**
+ * Wraps a page setup function with authentication AND scope requirement.
+ * Redirects to sign-in if not authenticated, or to /onboarding if no scope.
+ */
+export const setupScopeRequiredPageWrapper = (
+  fn: Command<Promise<void> | void, [AbortSignal]>,
+) => {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!clerk.user) {
+      await clerk.redirectToSignIn();
+      signal.throwIfAborted();
+      return;
+    }
+
+    const scopeExists = await get(hasScope$);
+    signal.throwIfAborted();
+
+    if (!scopeExists) {
+      set(navigateInReact$, "/onboarding");
       return;
     }
 

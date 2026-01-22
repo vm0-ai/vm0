@@ -1,1 +1,1 @@
-export type RoutePath = "/" | "/logs" | `/projects/${string}`;
+export type RoutePath = "/" | "/logs" | "/onboarding" | `/projects/${string}`;

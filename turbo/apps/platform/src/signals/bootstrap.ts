@@ -1,18 +1,27 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
+import {
+  initRoutes$,
+  setupAuthPageWrapper,
+  setupScopeRequiredPageWrapper,
+} from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
+import { setupOnboardingPage$ } from "./onboarding/onboarding-page.ts";
 
 const ROUTE_CONFIG = [
   {
+    path: "/onboarding",
+    setup: setupAuthPageWrapper(setupOnboardingPage$),
+  },
+  {
     path: "/",
-    setup: setupAuthPageWrapper(setupHomePage$),
+    setup: setupScopeRequiredPageWrapper(setupHomePage$),
   },
   {
     path: "/logs",
-    setup: setupAuthPageWrapper(setupLogsPage$),
+    setup: setupScopeRequiredPageWrapper(setupLogsPage$),
   },
 ] as const;
 
