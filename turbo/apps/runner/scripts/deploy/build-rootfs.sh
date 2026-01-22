@@ -81,19 +81,15 @@ generate_vsock_agent() {
     echo "[GENERATE] Using bundled.ts from: $BUNDLED_TS"
 
     # Extract VSOCK_AGENT_SCRIPT constant value using node
-    # The bundled.ts file exports it as: export const VSOCK_AGENT_SCRIPT = "...";
-    node -e "
-      const fs = require('fs');
-      const content = fs.readFileSync('$BUNDLED_TS', 'utf-8');
-      const match = content.match(/export const VSOCK_AGENT_SCRIPT = (\".*?\");/s);
-      if (!match) {
-        console.error('Could not find VSOCK_AGENT_SCRIPT in bundled.ts');
-        process.exit(1);
-      }
-      const script = JSON.parse(match[1]);
-      fs.writeFileSync('$SCRIPT_DIR/vsock-agent.mjs', script);
-      console.log('Wrote vsock-agent.mjs (' + script.length + ' bytes)');
-    "
+    # Import the bundled.ts file directly as a module
+    # Using tsx to handle TypeScript imports
+    npx tsx << EXTRACT_EOF
+import { writeFileSync } from 'fs';
+import { VSOCK_AGENT_SCRIPT } from '${BUNDLED_TS}';
+const outputPath = '${SCRIPT_DIR}/vsock-agent.mjs';
+writeFileSync(outputPath, VSOCK_AGENT_SCRIPT);
+console.log('Wrote vsock-agent.mjs (' + VSOCK_AGENT_SCRIPT.length + ' bytes)');
+EXTRACT_EOF
 
     echo "[OK] Generated vsock-agent.mjs"
 }
