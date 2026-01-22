@@ -7,8 +7,9 @@
  *
  * Architecture:
  * - Firecracker creates a Unix socket at {workDir}/vsock.sock
- * - Host connects to vsock.sock_{PORT} to communicate with guest
- * - Guest vsock-agent connects to host CID 2 on the same port
+ * - Host connects to vsock.sock and sends "CONNECT PORT\n" to reach guest
+ * - Guest vsock-agent listens on the vsock port using VSOCK-LISTEN
+ * - Firecracker bridges the connection between host and guest
  */
 
 import * as net from "node:net";
@@ -43,8 +44,8 @@ interface PendingRequest {
  * Vsock Client for Firecracker VM communication
  *
  * Uses the vsock Unix socket created by Firecracker for host-guest communication.
- * Firecracker creates per-port sockets at {vsockPath}_{PORT} when a connection
- * is made to that port from the guest.
+ * The host connects to vsock.sock and sends "CONNECT PORT\n" to reach the guest.
+ * The guest must be listening on that port using VSOCK-LISTEN.
  */
 export class VsockClient implements GuestClient {
   private vsockBasePath: string;
@@ -56,6 +57,7 @@ export class VsockClient implements GuestClient {
   private readyResolve: (() => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
   private connected: boolean = false;
+  private handshakeComplete: boolean = false;
 
   /**
    * Create a new VsockClient
@@ -68,52 +70,88 @@ export class VsockClient implements GuestClient {
   }
 
   /**
-   * Get the vsock socket path for the specified port
-   * Firecracker creates sockets at {vsockPath}_{PORT}
-   */
-  private getSocketPath(port: number = VSOCK_CONSTANTS.PORT): string {
-    return `${this.vsockBasePath}_${port}`;
-  }
-
-  /**
    * Connect to the vsock socket and set up message handling
+   *
+   * Firecracker vsock protocol for host-to-guest connections:
+   * 1. Host connects to the base vsock.sock Unix socket
+   * 2. Host sends "CONNECT PORT\n" where PORT is the guest's listening port
+   * 3. Firecracker responds with "OK HOST_PORT\n" if guest is listening
+   * 4. Connection is then bridged to the guest
    */
   private async connect(): Promise<void> {
-    if (this.connected && this.socket) {
+    if (this.connected && this.socket && this.handshakeComplete) {
       return;
     }
 
-    const socketPath = this.getSocketPath();
-
-    // Wait for socket file to be created by Firecracker when guest connects
+    // Wait for base socket file to exist
     const maxWait = 30000; // 30 seconds
     const startTime = Date.now();
 
-    while (!fs.existsSync(socketPath)) {
+    while (!fs.existsSync(this.vsockBasePath)) {
       if (Date.now() - startTime > maxWait) {
         throw new Error(
-          `Vsock socket not created at ${socketPath} after ${maxWait}ms`,
+          `Vsock base socket not created at ${this.vsockBasePath} after ${maxWait}ms`,
         );
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.socket = net.createConnection(socketPath);
+      this.socket = net.createConnection(this.vsockBasePath);
+      let handshakeBuffer = "";
 
-      this.socket.on("connect", () => {
+      const onConnect = (): void => {
         this.connected = true;
-        console.log(`[VsockClient] Connected to ${socketPath}`);
-        resolve();
-      });
+        console.log(`[VsockClient] Connected to ${this.vsockBasePath}`);
 
-      this.socket.on("data", (data: Buffer) => {
-        this.handleData(data);
-      });
+        // Send CONNECT command to Firecracker to reach the guest
+        const connectCmd = `CONNECT ${VSOCK_CONSTANTS.PORT}\n`;
+        console.log(`[VsockClient] Sending: CONNECT ${VSOCK_CONSTANTS.PORT}`);
+        this.socket!.write(connectCmd);
+      };
+
+      const onData = (data: Buffer): void => {
+        if (!this.handshakeComplete) {
+          // Still in handshake phase - looking for "OK PORT\n"
+          handshakeBuffer += data.toString();
+          const lines = handshakeBuffer.split("\n");
+
+          for (let i = 0; i < lines.length - 1; i++) {
+            const line = lines[i] ?? "";
+            if (line.startsWith("OK ")) {
+              console.log(`[VsockClient] Handshake response: ${line}`);
+              this.handshakeComplete = true;
+
+              // Remove handshake data and switch to normal message handling
+              this.socket!.removeListener("data", onData);
+              this.socket!.on("data", (d: Buffer) => this.handleData(d));
+
+              // Process any remaining data after the handshake
+              const remaining = lines.slice(i + 1).join("\n");
+              if (remaining.length > 0) {
+                this.handleData(Buffer.from(remaining));
+              }
+
+              resolve();
+              return;
+            } else if (line.length > 0) {
+              // Unexpected response - connection might have failed
+              console.error(
+                `[VsockClient] Unexpected handshake response: ${line}`,
+              );
+            }
+          }
+          // Keep the incomplete line for next data event
+          handshakeBuffer = lines[lines.length - 1] ?? "";
+        }
+      };
+
+      this.socket.on("connect", onConnect);
+      this.socket.on("data", onData);
 
       this.socket.on("error", (err) => {
         console.error(`[VsockClient] Socket error: ${err.message}`);
-        if (!this.connected) {
+        if (!this.handshakeComplete) {
           reject(err);
         }
         this.cleanup();
@@ -121,8 +159,23 @@ export class VsockClient implements GuestClient {
 
       this.socket.on("close", () => {
         console.log("[VsockClient] Socket closed");
+        if (!this.handshakeComplete) {
+          reject(new Error("Connection closed during handshake"));
+        }
         this.cleanup();
       });
+
+      // Timeout for handshake
+      setTimeout(() => {
+        if (!this.handshakeComplete) {
+          this.cleanup();
+          reject(
+            new Error(
+              `Vsock handshake timeout - guest may not be listening on port ${VSOCK_CONSTANTS.PORT}`,
+            ),
+          );
+        }
+      }, 30000);
     });
   }
 
@@ -213,6 +266,7 @@ export class VsockClient implements GuestClient {
    */
   private cleanup(): void {
     this.connected = false;
+    this.handshakeComplete = false;
 
     // Reject all pending requests
     for (const [id, pending] of this.pendingRequests) {
@@ -338,12 +392,11 @@ export class VsockClient implements GuestClient {
   }
 
   /**
-   * Check if the guest is reachable (ready signal received)
+   * Check if the guest is reachable (base vsock socket exists)
    */
   async isReachable(): Promise<boolean> {
     try {
-      const socketPath = this.getSocketPath();
-      return fs.existsSync(socketPath);
+      return fs.existsSync(this.vsockBasePath);
     } catch {
       return false;
     }
