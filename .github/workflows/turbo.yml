@@ -160,7 +160,8 @@ jobs:
               done
 
               if [ "$IS_WHITELISTED" -eq 0 ]; then
-                SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
+                # Calculate size in MB using awk (more portable than bc)
+                SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $SIZE / 1048576}")
                 echo "❌ File exceeds 1MB limit: $file (${SIZE_MB}MB)"
                 FOUND_LARGE_FILES=1
               fi
