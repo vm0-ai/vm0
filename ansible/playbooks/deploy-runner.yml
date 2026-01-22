@@ -229,6 +229,15 @@
         mode: '0644'
       tags: [prepare]
 
+    - name: Copy vsock agent service file for rootfs build
+      copy:
+        src: "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/vm0-vsock-agent.service"
+        dest: "{{ runner_base_dir }}/deploy-runner/vm0-vsock-agent.service"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      tags: [prepare]
+
     # ========================================
     # Phase 4: Install Dependencies (if needed)
     # ========================================
@@ -277,6 +286,7 @@
         cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
             "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
             "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
+            "{{ runner_base_dir }}/deploy-runner/vm0-vsock-agent.service" \
         | sha256sum | cut -d' ' -f1
       register: rootfs_inputs_hash
       changed_when: false
