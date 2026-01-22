@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y \
 # This is needed for e2e tests in CI
 RUN npx playwright install-deps chromium
 
+---
 # Stage 2: Development environment with additional tools
 FROM toolchain AS development
 
@@ -113,9 +114,6 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && apt-get update \
     && apt-get install -y 1password-cli \
     && rm -rf /var/lib/apt/lists/*
-
-# Install TypeScript tooling for IDE/editor support
-RUN npm install -g typescript typescript-language-server
 
 # Install agent-browser for browser automation
 RUN npm install -g agent-browser \
