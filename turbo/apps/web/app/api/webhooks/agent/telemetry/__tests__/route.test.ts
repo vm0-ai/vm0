@@ -10,6 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../../src/db/schema/scope";
+import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -838,6 +839,68 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
     await globalThis.services.db
       .delete(agentRuns)
       .where(eq(agentRuns.id, e2bRunId));
+  });
+
+  it("should verify runner run is in job queue and system log uploads correctly", async () => {
+    // Step 1: Verify run is in runner_job_queue (created by API)
+    const [runnerJob] = await globalThis.services.db
+      .select()
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, testRunId))
+      .limit(1);
+
+    expect(runnerJob).toBeDefined();
+    expect(runnerJob!.runId).toBe(testRunId);
+    expect(runnerJob!.runnerGroup).toBe("vm0/test-runner-group");
+
+    // Step 2: Send telemetry with system log
+    const ingestToAxiomSpy = vi
+      .spyOn(axiomModule, "ingestToAxiom")
+      .mockResolvedValue(true);
+
+    // Simulate realistic system log from run-agent.ts
+    const systemLog = `[2025-01-22T10:00:00.123Z] [INFO] [sandbox:init] Starting sandbox initialization
+[2025-01-22T10:00:00.234Z] [INFO] [sandbox:init] E2E time from API to agent start: 1234ms
+[2025-01-22T10:00:00.345Z] [INFO] [sandbox:init] Working directory: /home/user/workspace
+[2025-01-22T10:00:01.456Z] [INFO] [sandbox:cli] Starting Claude Code agent
+[2025-01-22T10:00:02.567Z] [INFO] [sandbox:telemetry] Telemetry upload started (interval: 30s)
+`;
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/webhooks/agent/telemetry",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          runId: testRunId,
+          systemLog,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // Step 3: Verify system log was ingested to Axiom
+    expect(ingestToAxiomSpy).toHaveBeenCalledWith(
+      "vm0-sandbox-telemetry-system-dev",
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: testRunId,
+          userId: testUserId,
+          log: systemLog,
+        }),
+      ]),
+    );
+
+    // Step 4: Verify log contains expected patterns (matches E2E test expectations)
+    expect(systemLog).toContain("[INFO]");
+    expect(systemLog).toContain("[sandbox:");
+    expect(systemLog).toContain("E2E time from API to agent start");
   });
 
   it("should upload complete telemetry with all data types", async () => {
