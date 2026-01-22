@@ -1,4 +1,4 @@
-// Test change detection
+// CI trigger: issue #1522 - simplify model-provider e2e tests
 import { Command } from "commander";
 import chalk from "chalk";
 import {
