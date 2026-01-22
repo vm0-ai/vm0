@@ -51,9 +51,14 @@ describe("update-checker", () => {
       expect(detectPackageManager()).toBe("npm");
     });
 
-    it("should return 'npm' when argv[1] is undefined", () => {
+    it("should return 'unknown' when argv[1] is undefined", () => {
       process.argv = ["/usr/bin/node"];
-      expect(detectPackageManager()).toBe("npm");
+      expect(detectPackageManager()).toBe("unknown");
+    });
+
+    it("should return 'unknown' for unrecognized path", () => {
+      process.argv = ["/usr/bin/node", "/some/random/path/vm0"];
+      expect(detectPackageManager()).toBe("unknown");
     });
 
     it("should return 'bun' when path contains /.bun/", () => {
@@ -247,6 +252,27 @@ describe("update-checker", () => {
         );
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("yarn global add @vm0/cli@latest"),
+        );
+      });
+
+      it("should return false and show manual instructions for unknown package manager", async () => {
+        process.argv = ["/usr/bin/node", "/some/random/path/vm0"];
+        server.use(
+          http.get("https://registry.npmjs.org/*/latest", () => {
+            return HttpResponse.json({ version: "5.0.0" });
+          }),
+        );
+
+        const result = await checkAndUpgrade("4.10.0", "test prompt");
+
+        expect(result).toBe(false);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "Could not detect your package manager for auto-upgrade",
+          ),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("npm install -g @vm0/cli@latest"),
         );
       });
     });

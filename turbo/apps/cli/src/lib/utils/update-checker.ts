@@ -5,11 +5,12 @@ const PACKAGE_NAME = "@vm0/cli";
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE_NAME)}/latest`;
 const TIMEOUT_MS = 5000;
 
-type PackageManager = "npm" | "pnpm" | "bun" | "yarn";
+type PackageManager = "npm" | "pnpm" | "bun" | "yarn" | "unknown";
 
 /**
  * Detect which package manager was used to install the CLI
- * by checking the executable path for known package manager patterns
+ * by checking the executable path for known package manager patterns.
+ * Returns "unknown" if no known pattern is matched.
  */
 export function detectPackageManager(): PackageManager {
   const execPath = process.argv[1] ?? "";
@@ -29,8 +30,24 @@ export function detectPackageManager(): PackageManager {
     return "yarn";
   }
 
-  // Default to npm (supported for auto-upgrade)
-  return "npm";
+  // Check for npm (supported for auto-upgrade)
+  // Common npm paths: /usr/local/, nvm, fnm, volta, nodenv, n, or node_modules
+  if (
+    execPath.includes("/usr/local/") ||
+    execPath.includes("/.nvm/") ||
+    execPath.includes("/.fnm/") ||
+    execPath.includes("/.volta/") ||
+    execPath.includes("/.nodenv/") ||
+    execPath.includes("/.n/") ||
+    execPath.includes("/node_modules/") ||
+    execPath.includes("\\npm\\") || // Windows: AppData\Roaming\npm
+    execPath.includes("\\nodejs\\") // Windows: Program Files\nodejs
+  ) {
+    return "npm";
+  }
+
+  // Unknown package manager - don't assume npm
+  return "unknown";
 }
 
 /**
@@ -51,7 +68,9 @@ function getManualUpgradeCommand(pm: PackageManager): string {
       return `yarn global add ${PACKAGE_NAME}@latest`;
     case "pnpm":
       return `pnpm add -g ${PACKAGE_NAME}@latest`;
-    default:
+    case "npm":
+      return `npm install -g ${PACKAGE_NAME}@latest`;
+    case "unknown":
       return `npm install -g ${PACKAGE_NAME}@latest`;
   }
 }
@@ -172,9 +191,15 @@ export async function checkAndUpgrade(
 
   // For unsupported package managers, show manual upgrade instructions and continue
   if (!isAutoUpgradeSupported(packageManager)) {
-    console.log(
-      chalk.yellow(`Auto-upgrade is not supported for ${packageManager}.`),
-    );
+    if (packageManager === "unknown") {
+      console.log(
+        chalk.yellow("Could not detect your package manager for auto-upgrade."),
+      );
+    } else {
+      console.log(
+        chalk.yellow(`Auto-upgrade is not supported for ${packageManager}.`),
+      );
+    }
     console.log(chalk.yellow("Please upgrade manually:"));
     console.log(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
     console.log();
