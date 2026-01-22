@@ -1,0 +1,14 @@
+[Unit]
+Description=VM0 Vsock Agent for Host-Guest Communication
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

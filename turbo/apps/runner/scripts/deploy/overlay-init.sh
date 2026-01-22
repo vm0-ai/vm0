@@ -45,5 +45,9 @@ mount --move /oldroot/rw /rw
 # Clean up old root reference
 umount -l /oldroot 2>/dev/null || true
 
+# Load virtio-vsock kernel module for host-guest communication
+# This must be done before systemd starts the vsock-agent service
+modprobe virtio-vsock 2>/dev/null || true
+
 # Start the real init (systemd)
 exec /lib/systemd/systemd "$@"

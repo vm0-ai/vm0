@@ -19,6 +19,7 @@ import {
   generateNetworkBootArgs,
   type VMNetworkConfig,
 } from "./network.js";
+import { allocateCID, releaseCID } from "./cid-pool.js";
 
 /**
  * VM configuration options
@@ -56,12 +57,15 @@ export class FirecrackerVM {
   private workDir: string;
   private socketPath: string;
   private vmOverlayPath: string; // Per-VM sparse overlay for writes
+  private vsockPath: string; // Path to vsock Unix domain socket
+  private vsockCid: number | null = null; // Guest CID for vsock communication
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
+    this.vsockPath = path.join(this.workDir, "vsock.sock");
   }
 
   /**
@@ -93,6 +97,22 @@ export class FirecrackerVM {
   }
 
   /**
+   * Get the vsock socket path (for host-guest communication)
+   * Returns null if vsock is not configured
+   */
+  getVsockPath(): string | null {
+    return this.vsockCid !== null ? this.vsockPath : null;
+  }
+
+  /**
+   * Get the vsock CID (Context ID) for guest communication
+   * Returns null if vsock is not configured
+   */
+  getVsockCid(): number | null {
+    return this.vsockCid;
+  }
+
+  /**
    * Start the VM
    * This spawns Firecracker, configures it via API, and boots the VM
    */
@@ -121,7 +141,11 @@ export class FirecrackerVM {
       fs.closeSync(fd);
       execSync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`, { stdio: "ignore" });
 
-      // Set up network first
+      // Allocate CID for vsock communication
+      console.log(`[VM ${this.config.vmId}] Allocating vsock CID...`);
+      this.vsockCid = await allocateCID(this.config.vmId);
+
+      // Set up network
       console.log(`[VM ${this.config.vmId}] Setting up network...`);
       this.networkConfig = await createTapDevice(this.config.vmId);
 
@@ -261,6 +285,18 @@ export class FirecrackerVM {
       guest_mac: this.networkConfig.guestMac,
       host_dev_name: this.networkConfig.tapDevice,
     });
+
+    // Configure vsock device for host-guest communication
+    if (this.vsockCid !== null) {
+      console.log(
+        `[VM ${this.config.vmId}] Vsock: CID ${this.vsockCid}, path ${this.vsockPath}`,
+      );
+      await this.client.setVsock({
+        vsock_id: "vsock0",
+        guest_cid: this.vsockCid,
+        uds_path: this.vsockPath,
+      });
+    }
   }
 
   /**
@@ -318,6 +354,12 @@ export class FirecrackerVM {
         this.networkConfig.guestIp,
       );
       this.networkConfig = null;
+    }
+
+    // Release CID back to pool
+    if (this.vsockCid !== null) {
+      await releaseCID(this.vsockCid);
+      this.vsockCid = null;
     }
 
     // Clean up entire workDir (includes socket and rootfs)

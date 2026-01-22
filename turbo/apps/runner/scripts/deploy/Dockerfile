@@ -32,6 +32,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - iproute2: Network utilities (ip command)
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
+# - socat: Bridge for vsock communication (vsock agent uses this)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
     python3 \
@@ -46,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
+    socat \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -122,5 +124,13 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 
 # Re-enable essential services
 RUN systemctl enable ssh
+
+# Create directory for vsock agent script
+# The vsock-agent.mjs is deployed by the runner at runtime (uploaded like other scripts)
+RUN mkdir -p /usr/local/bin/vm0-agent
+
+# Copy and enable vsock agent service
+COPY vm0-vsock-agent.service /etc/systemd/system/vm0-vsock-agent.service
+RUN systemctl enable vm0-vsock-agent
 
 CMD ["/lib/systemd/systemd"]

@@ -1,8 +1,8 @@
 /**
- * Guest Communication Client
+ * Guest Communication Client (SSH Implementation)
  *
- * Provides communication with Firecracker VM guests.
- * Uses SSH for command execution and file transfer.
+ * Provides communication with Firecracker VM guests via SSH.
+ * Implements the GuestClient interface for compatibility with vsock alternative.
  *
  * This module abstracts the communication protocol (SSH) from the rest of the codebase,
  * allowing for potential future changes (e.g., vsock) without affecting consumers.
@@ -13,17 +13,12 @@ import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import type { GuestClient, ExecResult } from "./guest-client.js";
 
 const execAsync = promisify(exec);
 
-/**
- * Result of command execution
- */
-export interface ExecResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
+// Re-export ExecResult from guest-client for backwards compatibility
+export type { ExecResult } from "./guest-client.js";
 
 /**
  * SSH client configuration
@@ -57,8 +52,9 @@ const DEFAULT_SSH_OPTIONS = [
 
 /**
  * SSH Client for VM communication
+ * Implements GuestClient interface for interchangeability with VsockClient
  */
-export class SSHClient {
+export class SSHClient implements GuestClient {
   private config: SSHConfig;
   private sshOptions: string[];
 

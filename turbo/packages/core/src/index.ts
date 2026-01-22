@@ -8,3 +8,4 @@ export * from "./frameworks";
 export * from "./sandbox/scripts";
 export * from "./feature-switch-key";
 export * from "./feature-switch";
+export * from "./vsock-protocol";
