@@ -223,10 +223,10 @@
     --background: var(--gray-0); /* background-0 */
     --foreground: var(--gray-950); /* background-950 */
 
-    --card: 0 0% 100%; /* white */
+    --card: var(--gray-100); /* background-100 - dark background */
     --card-foreground: var(--gray-950); /* background-950 */
 
-    --popover: 0 0% 100%; /* white */
+    --popover: var(--gray-100); /* background-100 - dark background */
     --popover-foreground: var(--gray-950); /* background-950 */
 
     --primary: var(--primary-700); /* primary-700 */
