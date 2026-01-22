@@ -35,6 +35,41 @@ export const config = [
         { ignoreVoid: false },
       ],
       "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/naming-convention": [
+        "error",
+        // Variables and parameters: camelCase, UPPER_CASE, or PascalCase
+        {
+          selector: ["variable", "parameter"],
+          format: ["camelCase", "UPPER_CASE", "PascalCase"],
+          leadingUnderscore: "allow",
+          trailingUnderscore: "allow",
+          filter: {
+            // Exclude magic variables like __CLI_VERSION__
+            regex: "^__.*__$",
+            match: false,
+          },
+        },
+        // Properties: allow any format (API fields, etc may use snake_case)
+        {
+          selector: "property",
+          format: null,
+        },
+        // Functions: camelCase or PascalCase (React components)
+        {
+          selector: "function",
+          format: ["camelCase", "PascalCase"],
+        },
+        // Type-like: PascalCase
+        {
+          selector: "typeLike",
+          format: ["PascalCase"],
+        },
+        // Enum members: flexible
+        {
+          selector: "enumMember",
+          format: ["camelCase", "UPPER_CASE", "PascalCase"],
+        },
+      ],
     },
   },
   {
