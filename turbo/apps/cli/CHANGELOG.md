@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.2.0](https://github.com/vm0-ai/vm0/compare/cli-v6.1.0...cli-v6.2.0) (2026-01-22)
+
+
+### Features
+
+* **run:** integrate model provider with vm0 run command ([#1472](https://github.com/vm0-ai/vm0/issues/1472)) ([74c0a4c](https://github.com/vm0-ai/vm0/commit/74c0a4cfbc10683359065249dfbd9b8e282c2b84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.2.0
+
 ## [6.1.0](https://github.com/vm0-ai/vm0/compare/cli-v6.0.0...cli-v6.1.0) (2026-01-21)
 
 
