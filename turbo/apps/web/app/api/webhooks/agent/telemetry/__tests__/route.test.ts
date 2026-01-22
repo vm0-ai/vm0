@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
+import { POST as createCompose } from "../../../../agent/composes/route";
+import { POST as createRun } from "../../../../agent/runs/route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -11,7 +13,11 @@ import { scopes } from "../../../../../../src/db/schema/scope";
 import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestSandboxToken,
+  createTestRequest,
+  createDefaultComposeConfig,
+} from "../../../../../../src/__tests__/api-test-helpers";
 
 // Mock Next.js headers() function
 vi.mock("next/headers", () => ({
@@ -26,7 +32,11 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
+// Mock E2B SDK (external)
+vi.mock("@e2b/code-interpreter");
+
 import { headers } from "next/headers";
+import { Sandbox } from "@e2b/code-interpreter";
 import {
   mockClerk,
   clearClerkMock,
@@ -548,25 +558,42 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
   const testUserId = `runner-user-${Date.now()}-${process.pid}`;
   const testScopeId = randomUUID();
-  const testRunId = randomUUID();
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  const testAgentName = `test-runner-telemetry-${Date.now()}`;
+  let testComposeId: string;
+  let testRunId: string;
   let testToken: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     initServices();
 
-    // Generate JWT token for sandbox auth
-    testToken = await createTestSandboxToken(testUserId, testRunId);
-
-    mockClerk({ userId: null });
+    // Mock Clerk auth
+    mockClerk({ userId: testUserId });
 
     const mockHeaders = vi.mocked(headers);
     mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+      get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
+
+    // Setup E2B SDK mock
+    const mockSandbox = {
+      sandboxId: `test-sandbox-${Date.now()}`,
+      getHostname: () => "test-sandbox.e2b.dev",
+      files: {
+        write: vi.fn().mockResolvedValue(undefined),
+      },
+      commands: {
+        run: vi.fn().mockResolvedValue({
+          stdout: "Mock output",
+          stderr: "",
+          exitCode: 0,
+        }),
+      },
+      kill: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Sandbox.create).mockResolvedValue(
+      mockSandbox as unknown as Sandbox,
+    );
 
     // Setup Axiom SDK mock
     const mockAxiomClient = {
@@ -578,28 +605,20 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       () => mockAxiomClient as unknown as Axiom,
     );
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, testRunId));
-
+    // Clean up test data from previous runs
     await globalThis.services.db
       .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
+      .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
     await globalThis.services.db
       .delete(scopes)
       .where(eq(scopes.id, testScopeId));
 
-    // Create test scope
+    // Create test scope (required for compose creation)
     await globalThis.services.db.insert(scopes).values({
       id: testScopeId,
       slug: `test-${testScopeId.slice(0, 8)}`,
@@ -607,45 +626,45 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       ownerId: testUserId,
     });
 
-    // Create test agent compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      scopeId: testScopeId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
+    // Create test compose via API
+    const config = createDefaultComposeConfig(testAgentName);
+    const composeRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
       },
-      createdBy: testUserId,
-      createdAt: new Date(),
+    );
+
+    const composeResponse = await createCompose(composeRequest);
+    const composeData = await composeResponse.json();
+    testComposeId = composeData.composeId;
+
+    // Create test run via API (will create E2B sandbox)
+    const runRequest = new NextRequest("http://localhost:3000/api/agent/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentComposeId: testComposeId,
+        prompt: "Test prompt for telemetry",
+      }),
     });
 
-    // Create test run
-    await globalThis.services.db.insert(agentRuns).values({
-      id: testRunId,
-      userId: testUserId,
-      agentComposeVersionId: testVersionId,
-      status: "running",
-      prompt: "Test prompt",
-      createdAt: new Date(),
-    });
+    const runResponse = await createRun(runRequest);
+    const runData = await runResponse.json();
+    testRunId = runData.runId;
 
-    // Create runner job queue entry (marks this as a runner sandbox)
+    // Generate sandbox token for this run
+    testToken = await createTestSandboxToken(testUserId, testRunId);
+
+    // Mock headers to use sandbox token for webhook requests
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+    } as unknown as Headers);
+
+    // Add runner job queue entry to mark this as a runner sandbox
+    // (This is the only direct DB operation, as there's no API to create runner jobs)
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 1);
     await globalThis.services.db.insert(runnerJobQueue).values({
@@ -654,10 +673,10 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
       claimedAt: new Date(),
       executionContext: {
         runId: testRunId,
-        prompt: "Test prompt",
+        prompt: "Test prompt for telemetry",
         workingDir: "/workspace",
         cliAgentType: "claude-code",
-        sandboxToken: "test-token",
+        sandboxToken: testToken,
         apiStartTime: Date.now(),
       },
       createdAt: new Date(),
@@ -667,21 +686,14 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
 
   afterEach(async () => {
     clearClerkMock();
-    await globalThis.services.db
-      .delete(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, testRunId));
-
+    // Clean up test data (cascade deletes will handle related records)
     await globalThis.services.db
       .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
+      .where(eq(agentRuns.userId, testUserId));
 
     await globalThis.services.db
       .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
+      .where(eq(agentComposes.userId, testUserId));
 
     await globalThis.services.db
       .delete(scopes)
@@ -771,23 +783,35 @@ describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
   });
 
   it("should determine sandbox type as e2b when not in runner queue", async () => {
-    // Create a separate E2B run (not in runner_job_queue)
-    const e2bRunId = randomUUID();
+    // Temporarily reset headers mock to allow Clerk auth for run creation
+    const mockHeaders = vi.mocked(headers);
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(null),
+    } as unknown as Headers);
+
+    // Create a separate E2B run via API (will not be in runner_job_queue)
+    const e2bRunRequest = new NextRequest(
+      "http://localhost:3000/api/agent/runs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          prompt: "E2B test prompt",
+        }),
+      },
+    );
+
+    const e2bRunResponse = await createRun(e2bRunRequest);
+    const e2bRunData = await e2bRunResponse.json();
+    const e2bRunId = e2bRunData.runId;
+
     const e2bToken = await createTestSandboxToken(testUserId, e2bRunId);
 
-    const mockHeaders = vi.mocked(headers);
+    // Restore headers mock to use e2b sandbox token for webhook requests
     mockHeaders.mockResolvedValue({
       get: vi.fn().mockReturnValue(`Bearer ${e2bToken}`),
     } as unknown as Headers);
-
-    await globalThis.services.db.insert(agentRuns).values({
-      id: e2bRunId,
-      userId: testUserId,
-      agentComposeVersionId: testVersionId,
-      status: "running",
-      prompt: "E2B test prompt",
-      createdAt: new Date(),
-    });
 
     // Spy on recordSandboxInternalOperation
     const recordMetricsSpy = vi.spyOn(
