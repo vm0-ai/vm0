@@ -7,8 +7,8 @@ Type=simple
 ExecStart=/usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs
 Restart=always
 RestartSec=1
-StandardOutput=journal
-StandardError=journal
+StandardOutput=journal+console
+StandardError=journal+console
 
 [Install]
 WantedBy=multi-user.target
