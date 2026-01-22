@@ -32,6 +32,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - iproute2: Network utilities (ip command)
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
+# - socat: Socket relay for vsock communication
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
     python3 \
@@ -46,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
+    socat \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -122,5 +124,21 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 
 # Re-enable essential services
 RUN systemctl enable ssh
+
+# Create vsock echo service for host-guest communication testing
+# Uses socat to listen on vsock port 1000 and echo back received data
+RUN echo '[Unit]\n\
+Description=Vsock Echo Service\n\
+After=network.target\n\
+\n\
+[Service]\n\
+Type=simple\n\
+ExecStart=/usr/bin/socat VSOCK-LISTEN:1000,reuseaddr,fork EXEC:cat\n\
+Restart=always\n\
+RestartSec=1\n\
+\n\
+[Install]\n\
+WantedBy=multi-user.target' > /etc/systemd/system/vsock-echo.service \
+    && systemctl enable vsock-echo
 
 CMD ["/lib/systemd/systemd"]
