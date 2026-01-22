@@ -2,12 +2,8 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { HomePage } from "../../views/home/home-page.tsx";
 import { updatePage$ } from "../react-router.ts";
-import {
-  hasScope$,
-  initScope$,
-  openOnboardingModal$,
-  markOnboardingComplete$,
-} from "../scope.ts";
+import { hasScope$ } from "../scope.ts";
+import { startOnboarding$ } from "../onboarding.ts";
 
 export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -18,12 +14,8 @@ export const setupHomePage$ = command(
     signal.throwIfAborted();
 
     if (!scopeExists) {
-      // Show modal and start initialization simultaneously
-      set(openOnboardingModal$);
-      await set(initScope$, signal);
-      signal.throwIfAborted();
-      // Mark initialization as complete
-      set(markOnboardingComplete$);
+      // Start onboarding flow - shows modal and initializes scope
+      await set(startOnboarding$, signal);
     }
   },
 );

@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
@@ -8,16 +8,18 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
+import { scope$ } from "../../signals/scope.ts";
 import {
   showOnboardingModal$,
-  onboardingComplete$,
   closeOnboardingModal$,
-} from "../../signals/scope.ts";
+} from "../../signals/onboarding.ts";
 
 export function OnboardingModal() {
   const isOpen = useGet(showOnboardingModal$);
-  const isComplete = useGet(onboardingComplete$);
+  const scope = useLastResolved(scope$);
   const closeModal = useSet(closeOnboardingModal$);
+
+  const isComplete = scope !== undefined;
 
   return (
     <Dialog open={isOpen}>

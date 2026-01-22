@@ -1,9 +1,14 @@
-import { command } from "ccstate";
+import { command, type Command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
+import {
+  initRoutes$,
+  navigateInReact$,
+  setupAuthPageWrapper,
+} from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
+import { hasScope$ } from "./scope.ts";
 
 const ROUTE_CONFIG = [
   {
@@ -12,7 +17,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/logs",
-    setup: setupAuthPageWrapper(setupLogsPage$),
+    setup: setupScopeRequiredPageWrapper(setupLogsPage$),
   },
 ] as const;
 
@@ -33,3 +38,21 @@ export const bootstrap$ = command(
     signal.throwIfAborted();
   },
 );
+
+function setupScopeRequiredPageWrapper(
+  fn: Command<Promise<void> | void, [AbortSignal]>,
+) {
+  return setupAuthPageWrapper(
+    command(async ({ get, set }, signal: AbortSignal) => {
+      const scopeExists = await get(hasScope$);
+      signal.throwIfAborted();
+
+      if (!scopeExists) {
+        set(navigateInReact$, "/");
+        return;
+      }
+
+      await set(fn, signal);
+    }),
+  );
+}
