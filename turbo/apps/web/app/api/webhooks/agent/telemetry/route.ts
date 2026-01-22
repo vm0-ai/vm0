@@ -6,6 +6,7 @@ import {
 import { webhookTelemetryContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { runnerJobQueue } from "../../../../../src/db/schema/runner-job-queue";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
@@ -138,12 +139,20 @@ const router = tsr.router(webhookTelemetryContract, {
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
-    // Note: Currently only runner sandbox sends internal operations. E2B support can be added later.
     if (body.sandboxOperations && body.sandboxOperations.length > 0) {
+      // Determine sandbox type by checking if run exists in runner_job_queue
+      const [runnerJob] = await globalThis.services.db
+        .select({ runId: runnerJobQueue.runId })
+        .from(runnerJobQueue)
+        .where(eq(runnerJobQueue.runId, body.runId))
+        .limit(1);
+
+      const sandboxType = runnerJob ? "runner" : "e2b";
+
       for (const op of body.sandboxOperations) {
         recordSandboxInternalOperation({
           actionType: op.action_type,
-          sandboxType: "runner",
+          sandboxType,
           durationMs: op.duration_ms,
           success: op.success,
         });
