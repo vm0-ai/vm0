@@ -39,7 +39,6 @@ RUN apt-get update && apt-get install -y \
 # This is needed for e2e tests in CI
 RUN npx playwright install-deps chromium
 
----
 # Stage 2: Development environment with additional tools
 FROM toolchain AS development
 
