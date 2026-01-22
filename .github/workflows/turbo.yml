@@ -162,6 +162,49 @@ jobs:
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: pnpm test
 
+  # Build runner bundle and upload as artifact (for turbo-runner.yml validation)
+  build-runner-bundle:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+    needs: [prepare]
+    if: |
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.runner-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.web-changed == 'true'
+      )
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build Core Package
+        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+
+      - name: Build Runner
+        run: cd turbo && pnpm --filter @vm0/runner build
+
+      - name: Create Runner Bundle
+        run: |
+          STAGING_DIR="/tmp/vm0-runner-bundle"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
+          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
+
+          cd "$STAGING_DIR" && npm install --omit=dev
+
+          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
+
+          echo "Bundle created:"
+          ls -lh /tmp/vm0-runner-bundle.tar.gz
+
+      - name: Upload Runner Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-bundle
+          path: /tmp/vm0-runner-bundle.tar.gz
+          retention-days: 1
+
   # Deploy web application with database
   deploy-web:
     runs-on: ubuntu-latest

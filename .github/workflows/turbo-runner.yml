@@ -1,0 +1,190 @@
+name: Turbo Runner Validation
+
+on:
+  workflow_run:
+    workflows: ["Turbo"]
+    types:
+      - requested
+
+jobs:
+  validate-api-access:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display workflow_run event data
+        run: |
+          echo "=== Workflow Run Event Data ==="
+          echo "Run ID: ${{ github.event.workflow_run.id }}"
+          echo "Head SHA: ${{ github.event.workflow_run.head_sha }}"
+          echo "Head Branch: ${{ github.event.workflow_run.head_branch }}"
+          echo "Event: ${{ github.event.workflow_run.event }}"
+          echo "Workflow Name: ${{ github.event.workflow_run.name }}"
+
+      - name: Checkout using workflow_run SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Verify checkout succeeded
+        run: |
+          echo "Current commit: $(git rev-parse HEAD)"
+          echo "Expected commit: ${{ github.event.workflow_run.head_sha }}"
+          if [ "$(git rev-parse HEAD)" != "${{ github.event.workflow_run.head_sha }}" ]; then
+            echo "ERROR: Commit mismatch!"
+            exit 1
+          fi
+          echo "SUCCESS: Commit SHA matches"
+
+      - name: Poll for prepare job completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "Polling for prepare job in workflow run $PARENT_RUN_ID..."
+
+          MAX_ATTEMPTS=60
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS"
+
+            JOBS_JSON=$(gh api "/repos/${{ github.repository }}/actions/runs/$PARENT_RUN_ID/jobs" --jq '.jobs')
+            PREPARE_JOB=$(echo "$JOBS_JSON" | jq -r '.[] | select(.name=="prepare")')
+
+            if [ -n "$PREPARE_JOB" ]; then
+              STATUS=$(echo "$PREPARE_JOB" | jq -r '.status')
+              CONCLUSION=$(echo "$PREPARE_JOB" | jq -r '.conclusion')
+
+              echo "Prepare job status: $STATUS, conclusion: $CONCLUSION"
+
+              if [ "$STATUS" == "completed" ]; then
+                echo "SUCCESS: Prepare job completed with conclusion: $CONCLUSION"
+                exit 0
+              fi
+            else
+              echo "Prepare job not found yet..."
+            fi
+
+            sleep 10
+          done
+
+          echo "ERROR: Timed out waiting for prepare job"
+          exit 1
+
+      - name: Poll for turbo.yml workflow status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "Polling turbo.yml workflow status..."
+
+          RUN_JSON=$(gh api "/repos/${{ github.repository }}/actions/runs/$PARENT_RUN_ID")
+
+          STATUS=$(echo "$RUN_JSON" | jq -r '.status')
+          CONCLUSION=$(echo "$RUN_JSON" | jq -r '.conclusion')
+
+          echo "=== Turbo Workflow Status ==="
+          echo "Status: $STATUS"
+          echo "Conclusion: $CONCLUSION"
+
+          echo ""
+          echo "=== Jobs Summary ==="
+          gh api "/repos/${{ github.repository }}/actions/runs/$PARENT_RUN_ID/jobs" \
+            --jq '.jobs[] | "\(.name): \(.status) (\(.conclusion // "pending"))"'
+
+          echo ""
+          echo "SUCCESS: Can poll workflow status"
+
+      - name: Check GitHub Deployments API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking GitHub Deployments API..."
+
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          echo "Looking for deployments on branch: $BRANCH"
+
+          DEPLOYMENTS=$(gh api "/repos/${{ github.repository }}/deployments?ref=$BRANCH&per_page=5")
+
+          echo "=== Recent Deployments ==="
+          echo "$DEPLOYMENTS" | jq -r '.[] | "ID: \(.id), Env: \(.environment), Created: \(.created_at)"' || echo "No deployments found"
+
+          DEPLOYMENT_ID=$(echo "$DEPLOYMENTS" | jq -r '.[0].id // empty')
+
+          if [ -n "$DEPLOYMENT_ID" ]; then
+            echo ""
+            echo "=== Latest Deployment Status ==="
+            STATUSES=$(gh api "/repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses")
+            echo "$STATUSES" | jq -r '.[0] | "State: \(.state), URL: \(.environment_url // "N/A")"'
+          else
+            echo "No deployments found for this branch (expected if deploy-web hasn't run yet)"
+          fi
+
+          echo ""
+          echo "SUCCESS: Deployments API is accessible"
+
+  download-artifact-test:
+    needs: validate-api-access
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for build-runner-bundle job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "Waiting for build-runner-bundle job..."
+
+          MAX_ATTEMPTS=90
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+
+            BUNDLE_JOB=$(gh api "/repos/${{ github.repository }}/actions/runs/$PARENT_RUN_ID/jobs" \
+              --jq '.jobs[] | select(.name=="build-runner-bundle")' 2>/dev/null || echo "")
+
+            if [ -n "$BUNDLE_JOB" ]; then
+              STATUS=$(echo "$BUNDLE_JOB" | jq -r '.status')
+              CONCLUSION=$(echo "$BUNDLE_JOB" | jq -r '.conclusion')
+
+              echo "build-runner-bundle: $STATUS ($CONCLUSION)"
+
+              if [ "$STATUS" == "completed" ]; then
+                if [ "$CONCLUSION" == "success" ]; then
+                  echo "SUCCESS: build-runner-bundle completed"
+                  exit 0
+                else
+                  echo "ERROR: build-runner-bundle failed with conclusion: $CONCLUSION"
+                  exit 1
+                fi
+              fi
+            else
+              echo "build-runner-bundle job not found yet (may be skipped or not started)"
+            fi
+
+            sleep 10
+          done
+
+          echo "WARN: Timed out waiting for build-runner-bundle (job may have been skipped)"
+
+      - name: Download Runner Bundle from Parent Workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: runner-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Verify Downloaded Artifact
+        run: |
+          if [ -f "vm0-runner-bundle.tar.gz" ]; then
+            echo "SUCCESS: Artifact downloaded"
+            ls -lh vm0-runner-bundle.tar.gz
+
+            echo ""
+            echo "Extracting to verify contents..."
+            tar -tzf vm0-runner-bundle.tar.gz | head -20
+          else
+            echo "WARN: Artifact not found (build-runner-bundle job may have been skipped)"
+            echo "This is expected if no runner/cli/web changes were detected"
+          fi
