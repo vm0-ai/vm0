@@ -49,5 +49,12 @@ umount -l /oldroot 2>/dev/null || true
 # This must be done before systemd starts the vsock-agent service
 modprobe virtio-vsock 2>/dev/null || true
 
+# Verify /dev/vsock exists (for debugging)
+if [ -e /dev/vsock ]; then
+    echo "[overlay-init] /dev/vsock exists"
+else
+    echo "[overlay-init] WARNING: /dev/vsock does not exist after modprobe"
+fi
+
 # Start the real init (systemd)
 exec /lib/systemd/systemd "$@"

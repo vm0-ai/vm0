@@ -403,13 +403,23 @@ async function startVsockServer(): Promise<void> {
     // Now start socat to bridge vsock to our Unix socket
     // VSOCK-LISTEN:PORT listens for vsock connections from host
     // UNIX-CONNECT:path forwards the connection to our Unix socket server
-    const socatProc = spawn(
-      "socat",
-      [`VSOCK-LISTEN:${VSOCK_PORT},fork`, `UNIX-CONNECT:${socketPath}`],
-      {
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    );
+    // Options: reuseaddr allows rebinding, fork handles multiple connections
+    const socatArgs = [
+      `VSOCK-LISTEN:${VSOCK_PORT},reuseaddr,fork`,
+      `UNIX-CONNECT:${socketPath}`,
+    ];
+    logInfo(`Starting socat with args: ${socatArgs.join(" ")}`);
+
+    const socatProc = spawn("socat", socatArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    // Capture stdout for debugging
+    if (socatProc.stdout) {
+      socatProc.stdout.on("data", (data: Buffer) => {
+        logInfo(`Socat stdout: ${data.toString().trim()}`);
+      });
+    }
 
     socatProc.on("error", (err) => {
       logError(`Socat error: ${err.message}`);
@@ -434,13 +444,20 @@ async function startVsockServer(): Promise<void> {
 }
 
 /**
- * Load virtio-vsock kernel module if needed
+ * Load virtio-vsock kernel module if needed and verify /dev/vsock exists
  */
 function ensureVsockModule(): void {
   logInfo("Checking virtio-vsock kernel module...");
   try {
     execSync("modprobe virtio-vsock 2>/dev/null || true", { stdio: "ignore" });
     logInfo("virtio-vsock module loaded");
+
+    // Verify /dev/vsock exists
+    if (fs.existsSync("/dev/vsock")) {
+      logInfo("/dev/vsock device exists");
+    } else {
+      logError("/dev/vsock device does NOT exist - vsock will not work");
+    }
   } catch {
     logInfo("virtio-vsock module already loaded or not needed");
   }
