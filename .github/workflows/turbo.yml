@@ -847,7 +847,7 @@ jobs:
       - name: Run benchmark command for VM performance testing
         env:
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          RUNNER_HOST: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS_LY }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
