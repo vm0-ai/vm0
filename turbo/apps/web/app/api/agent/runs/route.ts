@@ -23,6 +23,9 @@ const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
   create: async ({ body }) => {
+    // Capture API start time for E2E timing measurement
+    const apiStartTime = Date.now();
+
     initServices();
 
     const userId = await getUserId();
@@ -375,6 +378,7 @@ const router = tsr.router(runsMainContract, {
         continuedFromSessionId: body.sessionId,
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
+        apiStartTime,
       });
 
       // Prepare and dispatch to executor (unified path for E2B and runner)
