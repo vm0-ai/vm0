@@ -133,6 +133,11 @@ RUN mkdir -p /usr/local/bin/vm0-agent
 COPY vsock-agent.mjs /usr/local/bin/vm0-agent/vsock-agent.mjs
 RUN chmod 755 /usr/local/bin/vm0-agent/vsock-agent.mjs
 
+# Copy vsock bridge script (Python, bridges vsock to Unix socket)
+# Required because socat's VSOCK-LISTEN doesn't work reliably on aarch64
+COPY vsock-bridge.py /usr/local/bin/vm0-agent/vsock-bridge.py
+RUN chmod 755 /usr/local/bin/vm0-agent/vsock-bridge.py
+
 # Copy and enable vsock agent service
 COPY vm0-vsock-agent.service /etc/systemd/system/vm0-vsock-agent.service
 RUN systemctl enable vm0-vsock-agent
