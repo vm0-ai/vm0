@@ -1,6 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { user$ } from "./auth.ts";
 import { fetch$ } from "./fetch.ts";
+import { logger } from "./log.ts";
+
+const L = logger("Scope");
 
 /**
  * Reload trigger for scope signals.
@@ -34,6 +37,7 @@ export const scope$ = computed(async (get) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn("/api/scope");
 
+  L.debug(`Fetched /api/scope with status ${response.status}`);
   if (response.status === 404) {
     return undefined;
   }

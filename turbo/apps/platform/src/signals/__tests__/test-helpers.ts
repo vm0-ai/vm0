@@ -1,6 +1,6 @@
 import { createStore, type Store } from "ccstate";
 import { afterEach } from "vitest";
-import { logger, Level } from "../log";
+import { logger } from "../log";
 
 const L = logger("Test");
 
@@ -13,14 +13,6 @@ export interface TestFixtureConfig {
 export interface TestContext {
   readonly signal: AbortSignal;
   readonly store: Store;
-}
-
-export function enableDebugLogger(...loggers: string[]): Record<string, Level> {
-  const config: Record<string, Level> = {};
-  for (const logger of loggers) {
-    config[logger] = Level.Debug;
-  }
-  return config;
 }
 
 export function testContext(): TestContext {

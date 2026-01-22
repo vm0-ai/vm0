@@ -6,6 +6,9 @@ import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
+import { logger } from "./log.ts";
+
+const L = logger("Route");
 
 const reloadPathname$ = state(0);
 
@@ -76,6 +79,7 @@ const loadRoute$ = command(async ({ get, set }, signal?: AbortSignal) => {
   if (!currentRoute) {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
+  L.debug("loading route", currentRoute.path);
 
   await set(currentRoute.setup, routeSignal);
 });
@@ -126,7 +130,9 @@ export const navigate$ = command(
     const searchParams = options.searchParams
       ? `?${options.searchParams.toString()}`
       : "";
-    pushState({}, "", `${pathname}${searchParams}`);
+    const newPath = `${pathname}${searchParams}`;
+    L.debug("navigating to", newPath);
+    pushState({}, "", newPath);
     set(reloadPathname$, (x) => x + 1);
     await set(loadRoute$, signal);
   },

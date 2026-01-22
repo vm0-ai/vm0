@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
+import { clearAllDetached } from "../signals/utils.ts";
 
 vi.mock("@clerk/clerk-js", () => ({
   Clerk: function MockClerk() {
@@ -20,4 +21,8 @@ beforeAll(() => {
 afterEach(() => server.resetHandlers());
 
 // Close server after all tests
-afterAll(() => server.close());
+afterAll(() => {
+  server.close();
+
+  return clearAllDetached();
+});

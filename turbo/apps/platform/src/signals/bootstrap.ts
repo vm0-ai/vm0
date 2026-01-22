@@ -47,11 +47,14 @@ function setupScopeRequiredPageWrapper(
 ) {
   return setupAuthPageWrapper(
     command(async ({ get, set }, signal: AbortSignal) => {
+      L.debug("enter setupScopeRequiredPageWrapper");
+
       const scopeExists = await get(hasScope$);
       signal.throwIfAborted();
       L.debug("scopeExists", scopeExists);
 
       if (!scopeExists) {
+        L.debug("redirect to homepage because scope does not exist");
         set(navigateInReact$, "/");
         return;
       }

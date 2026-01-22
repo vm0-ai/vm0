@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
-import { mockLocation, mockPushState } from "../location.ts";
+import { mockLocation } from "../location.ts";
 import {
   initRoutes$,
   navigate$,
@@ -10,25 +10,9 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { testContext } from "./test-helpers.ts";
+import { createPushStateMock } from "../../__tests__/helper.ts";
 
 const context = testContext();
-
-// Helper to create a pushState mock that updates mockLocation
-function createPushStateMock(signal: AbortSignal) {
-  const fn = vi.fn(
-    (_data: unknown, _unused: string, url?: string | URL | null) => {
-      if (typeof url === "string") {
-        const urlObj = new URL(url, "http://localhost");
-        mockLocation(
-          { pathname: urlObj.pathname, search: urlObj.search },
-          signal,
-        );
-      }
-    },
-  ) as unknown as typeof window.history.pushState;
-  mockPushState(fn, signal);
-  return fn;
-}
 
 describe("route", () => {
   describe("searchParams$", () => {
