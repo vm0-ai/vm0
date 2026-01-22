@@ -57,10 +57,10 @@ export async function getUserId(): Promise<string | null> {
       return null;
     }
 
-    // Not a CLI or sandbox token - must be Clerk JWT
-    // Verify using Clerk auth (token is automatically verified by Clerk middleware)
-    const { userId } = await auth();
-    return userId;
+    // Unknown token format - reject it
+    // This prevents hanging on invalid tokens passed to Clerk auth()
+    log.debug("Rejected unknown token format");
+    return null;
   }
 
   // Fall back to Clerk session auth
