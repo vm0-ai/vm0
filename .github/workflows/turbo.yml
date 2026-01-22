@@ -87,6 +87,107 @@ jobs:
             echo "Job ref set to: staging"
           fi
 
+  file-size-check:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory /__w/vm0/vm0
+
+      - name: Check file sizes
+        run: |
+          # Define whitelist of allowed large files
+          WHITELIST=(
+            "turbo/apps/web/public/og-image.png"
+            "turbo/apps/site/public/og-image.png"
+            "turbo/apps/web/public/assets/cta-ellipse.png"
+            "turbo/apps/site/public/assets/cta-ellipse.png"
+            "turbo/apps/web/public/assets/code_illustration.svg"
+            "turbo/apps/site/public/assets/code_illustration.svg"
+          )
+
+          # Size limit in bytes (1MB = 1048576 bytes)
+          SIZE_LIMIT=1048576
+
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            echo "PR mode: checking files changed since $BASE_REF"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+            echo "Merge queue mode: checking files changed since $BASE_REF"
+          else
+            BASE_REF="HEAD^"
+            echo "Main push mode: checking files changed since HEAD^"
+          fi
+
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR $BASE_REF)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed, skipping file size check"
+            exit 0
+          fi
+
+          echo "Checking file sizes for changed files..."
+          echo ""
+
+          FOUND_LARGE_FILES=0
+
+          for file in $CHANGED_FILES; do
+            # Skip if file doesn't exist (deleted files)
+            if [ ! -f "$file" ]; then
+              continue
+            fi
+
+            # Get file size in bytes
+            SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+
+            # Check if file exceeds size limit
+            if [ "$SIZE" -gt "$SIZE_LIMIT" ]; then
+              # Check if file is in whitelist
+              IS_WHITELISTED=0
+              for whitelisted in "${WHITELIST[@]}"; do
+                if [ "$file" = "$whitelisted" ]; then
+                  IS_WHITELISTED=1
+                  break
+                fi
+              done
+
+              if [ "$IS_WHITELISTED" -eq 0 ]; then
+                SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
+                echo "❌ File exceeds 1MB limit: $file (${SIZE_MB}MB)"
+                FOUND_LARGE_FILES=1
+              fi
+            fi
+          done
+
+          if [ "$FOUND_LARGE_FILES" -eq 1 ]; then
+            echo ""
+            echo "================================================"
+            echo "ERROR: Large files detected in this PR"
+            echo "================================================"
+            echo ""
+            echo "Files larger than 1MB are not allowed to prevent"
+            echo "repository bloat. Please consider:"
+            echo ""
+            echo "  1. Optimize images/assets (compress, resize)"
+            echo "  2. Use Git LFS for large binary files"
+            echo "  3. Remove unnecessary large files"
+            echo ""
+            echo "If this file must be committed as-is, discuss"
+            echo "with the team about adding it to the whitelist."
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ All changed files are within size limits"
+
   lint:
     runs-on: ubuntu-latest
     container:
