@@ -43,6 +43,7 @@ function formatMetric(metric: TelemetryMetric): string {
  * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
  * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 function formatNetworkLog(entry: NetworkLogEntry): string {
   // SNI-only mode: show connection info
   if (entry.mode === "sni" || !entry.method) {

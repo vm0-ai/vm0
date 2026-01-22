@@ -463,6 +463,7 @@ export const setupGithubCommand = new Command()
   .option("-y, --yes", "Auto-confirm all prompts")
   .option("--skip-secrets", "Skip automatic secrets/variables setup")
   .action(
+    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (options: {
       force?: boolean;
       yes?: boolean;

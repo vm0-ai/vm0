@@ -18,6 +18,7 @@ export const config = [
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
+      complexity: ["error", { max: 20 }],
     },
   },
   {

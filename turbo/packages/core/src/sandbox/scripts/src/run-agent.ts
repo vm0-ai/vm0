@@ -148,6 +148,7 @@ async function cleanup(exitCode: number, errorMessage: string): Promise<void> {
  * Throws exceptions on failure instead of calling process.exit().
  * Returns [exit_code, error_message] tuple on completion.
  */
+// eslint-disable-next-line complexity -- TODO: refactor complex function
 async function run(): Promise<[number, string]> {
   // Validate configuration - throws if invalid
   validateConfig();

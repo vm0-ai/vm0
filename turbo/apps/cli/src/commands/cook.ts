@@ -319,6 +319,7 @@ cookCmd
   .option("-y, --yes", "Skip confirmation prompts")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
+    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       prompt: string | undefined,
       options: { yes?: boolean; debugNoMockClaude?: boolean },

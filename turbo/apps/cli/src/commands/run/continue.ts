@@ -49,6 +49,7 @@ export const continueCommand = new Command()
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
+    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       agentSessionId: string,
       prompt: string,

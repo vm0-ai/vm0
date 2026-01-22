@@ -70,6 +70,7 @@ export const statusCommand = new Command()
     "Number of recent runs to show (0 to hide)",
     "5",
   )
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   .action(async (nameArg: string | undefined, options: { limit: string }) => {
     try {
       // Auto-detect schedule name if not provided

@@ -85,6 +85,7 @@ export const composeCommand = new Command()
   .description("Create or update agent compose")
   .argument("<config-file>", "Path to config YAML file")
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
+  // eslint-disable-next-line complexity -- TODO: refactor complex function
   .action(async (configFile: string, options: { yes?: boolean }) => {
     try {
       // 1. Read file
