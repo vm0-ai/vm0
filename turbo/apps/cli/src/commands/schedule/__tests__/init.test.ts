@@ -11,7 +11,9 @@ import {
   getTomorrowDateLocal,
   getCurrentTimeLocal,
   toISODateTime,
+  resolveScheduleByName,
 } from "../../../lib/domain/schedule-utils";
+import * as api from "../../../lib/api";
 
 describe("schedule init utilities", () => {
   let tempDir: string;
@@ -295,6 +297,140 @@ agents:
 
       const result2 = toISODateTime("2025-01-01 00:00");
       expect(result2).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
+    });
+  });
+
+  describe("resolveScheduleByName", () => {
+    it("should resolve schedule by name from global list", async () => {
+      vi.spyOn(api, "listSchedules").mockResolvedValue({
+        schedules: [
+          {
+            id: "sched-1",
+            name: "my-schedule",
+            composeId: "compose-123",
+            composeName: "my-agent",
+            enabled: true,
+            prompt: "test prompt",
+            scopeSlug: "user/scope",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            atTime: null,
+            nextRunAt: "2025-01-15T09:00:00Z",
+            vars: {},
+            secretNames: [],
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: {},
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+      });
+
+      const result = await resolveScheduleByName("my-schedule");
+
+      expect(result).toEqual({
+        name: "my-schedule",
+        composeId: "compose-123",
+        composeName: "my-agent",
+      });
+      expect(api.listSchedules).toHaveBeenCalledOnce();
+    });
+
+    it("should find schedule among multiple schedules", async () => {
+      vi.spyOn(api, "listSchedules").mockResolvedValue({
+        schedules: [
+          {
+            id: "sched-1",
+            name: "schedule-1",
+            composeId: "compose-1",
+            composeName: "agent-1",
+            enabled: true,
+            prompt: "prompt 1",
+            scopeSlug: "user/scope",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            atTime: null,
+            nextRunAt: null,
+            vars: {},
+            secretNames: [],
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: {},
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          },
+          {
+            id: "sched-2",
+            name: "schedule-2",
+            composeId: "compose-2",
+            composeName: "agent-2",
+            enabled: false,
+            prompt: "prompt 2",
+            scopeSlug: "user/scope",
+            cronExpression: "0 10 * * *",
+            timezone: "UTC",
+            atTime: null,
+            nextRunAt: null,
+            vars: {},
+            secretNames: [],
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: {},
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+      });
+
+      const result = await resolveScheduleByName("schedule-2");
+
+      expect(result).toEqual({
+        name: "schedule-2",
+        composeId: "compose-2",
+        composeName: "agent-2",
+      });
+    });
+
+    it("should throw error when schedule not found", async () => {
+      vi.spyOn(api, "listSchedules").mockResolvedValue({
+        schedules: [
+          {
+            id: "sched-1",
+            name: "other-schedule",
+            composeId: "compose-123",
+            composeName: "my-agent",
+            enabled: true,
+            prompt: "test prompt",
+            scopeSlug: "user/scope",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            atTime: null,
+            nextRunAt: null,
+            vars: {},
+            secretNames: [],
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: {},
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          },
+        ],
+      });
+
+      await expect(resolveScheduleByName("non-existent")).rejects.toThrow(
+        'Schedule "non-existent" not found',
+      );
+    });
+
+    it("should throw error when no schedules exist", async () => {
+      vi.spyOn(api, "listSchedules").mockResolvedValue({
+        schedules: [],
+      });
+
+      await expect(resolveScheduleByName("my-schedule")).rejects.toThrow(
+        'Schedule "my-schedule" not found',
+      );
     });
   });
 });
