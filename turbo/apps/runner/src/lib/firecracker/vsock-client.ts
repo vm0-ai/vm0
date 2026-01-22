@@ -165,7 +165,7 @@ export class VsockClient implements GuestClient {
         this.cleanup();
       });
 
-      // Timeout for handshake
+      // Timeout for handshake (5 seconds - allows faster retries if guest not ready)
       setTimeout(() => {
         if (!this.handshakeComplete) {
           this.cleanup();
@@ -175,7 +175,7 @@ export class VsockClient implements GuestClient {
             ),
           );
         }
-      }, 30000);
+      }, 5000);
     });
   }
 
@@ -405,8 +405,16 @@ export class VsockClient implements GuestClient {
   /**
    * Wait for the guest to become reachable
    * Unlike SSH, vsock uses push-based ready signal from guest
+   *
+   * This method retries connecting until:
+   * 1. The connection succeeds and handshake completes
+   * 2. The ready signal is received from guest
+   * 3. The timeout expires
    */
   async waitUntilReachable(timeoutMs: number = 120000): Promise<void> {
+    const startTime = Date.now();
+    const retryIntervalMs = 500; // Retry every 500ms if connection fails
+
     // Create ready promise if not already waiting
     if (!this.readyPromise) {
       this.readyPromise = new Promise<void>((resolve, reject) => {
@@ -415,19 +423,54 @@ export class VsockClient implements GuestClient {
       });
     }
 
-    // Try to connect and wait for ready signal
-    await this.connect();
+    // Retry connecting until success or timeout
+    // The guest's vsock-agent may not be ready immediately after VM boots
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        await this.connect();
+        // Connection succeeded, now wait for ready signal
+        break;
+      } catch (error) {
+        // Connection failed - guest vsock-agent probably not ready yet
+        const elapsed = Date.now() - startTime;
+        const remaining = timeoutMs - elapsed;
 
-    // Set up timeout
-    const timeout = setTimeout(() => {
-      if (this.readyReject) {
-        this.readyReject(
-          new Error(`Guest not ready after ${timeoutMs}ms via vsock`),
+        if (remaining <= 0) {
+          throw new Error(
+            `Vsock connection failed after ${timeoutMs}ms: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        // Clean up failed connection state before retry
+        this.cleanup();
+
+        // Reset ready promise for next attempt
+        this.readyPromise = new Promise<void>((resolve, reject) => {
+          this.readyResolve = resolve;
+          this.readyReject = reject;
+        });
+
+        // Wait before retrying
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(retryIntervalMs, remaining)),
         );
-        this.readyResolve = null;
-        this.readyReject = null;
       }
-    }, timeoutMs);
+    }
+
+    // Set up timeout for ready signal
+    const remaining = timeoutMs - (Date.now() - startTime);
+    const timeout = setTimeout(
+      () => {
+        if (this.readyReject) {
+          this.readyReject(
+            new Error(`Guest not ready after ${timeoutMs}ms via vsock`),
+          );
+          this.readyResolve = null;
+          this.readyReject = null;
+        }
+      },
+      Math.max(remaining, 0),
+    );
 
     try {
       await this.readyPromise;
