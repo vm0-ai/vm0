@@ -19,7 +19,7 @@ const c = initContract();
 const agentEventSchema = z
   .object({
     type: z.string(),
-    sequenceNumber: z.number().int().positive(),
+    sequenceNumber: z.number().int().nonnegative(),
   })
   .passthrough();
 

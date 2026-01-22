@@ -181,7 +181,7 @@ export const runEventsContract = c.router({
       id: z.string().min(1, "Run ID is required"),
     }),
     query: z.object({
-      since: z.coerce.number().default(0),
+      since: z.coerce.number().default(-1),
       limit: z.coerce.number().default(100),
     }),
     responses: {

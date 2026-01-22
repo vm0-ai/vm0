@@ -31,7 +31,7 @@ interface AgentEvent {
  * Masks secrets before sending.
  *
  * @param event - Event dictionary to send
- * @param sequenceNumber - Sequence number for this event (1-based, maintained by caller)
+ * @param sequenceNumber - Sequence number for this event (0-based, maintained by caller)
  * @returns true on success, false on failure
  */
 export async function sendEvent(

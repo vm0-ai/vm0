@@ -50,7 +50,7 @@ export async function getEvents(
   const result = await client.getEvents({
     params: { id: runId },
     query: {
-      since: options?.since ?? 0,
+      since: options?.since ?? -1,
       limit: options?.limit ?? 100,
     },
   });

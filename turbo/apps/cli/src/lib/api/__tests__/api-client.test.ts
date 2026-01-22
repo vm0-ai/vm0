@@ -364,7 +364,7 @@ describe("ApiClient", () => {
       const result = await apiClient.getEvents("run-123");
 
       expect(capturedRequest?.url).toBe(
-        "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=100",
+        "http://localhost:3000/api/agent/runs/run-123/events?since=-1&limit=100",
       );
       expect(capturedRequest?.method).toBe("GET");
       expect(capturedRequest?.headers.get("authorization")).toBe(
@@ -430,7 +430,7 @@ describe("ApiClient", () => {
       await apiClient.getEvents("run-123", { limit: 50 });
 
       expect(capturedRequest?.url).toBe(
-        "http://localhost:3000/api/agent/runs/run-123/events?since=0&limit=50",
+        "http://localhost:3000/api/agent/runs/run-123/events?since=-1&limit=50",
       );
     });
 
@@ -469,20 +469,20 @@ describe("ApiClient", () => {
       const mockResponse = {
         events: [
           {
-            sequenceNumber: 1,
+            sequenceNumber: 0,
             eventType: "init",
             eventData: { sessionId: "session-123" },
             createdAt: "2025-01-01T00:00:00Z",
           },
           {
-            sequenceNumber: 2,
+            sequenceNumber: 1,
             eventType: "text",
             eventData: { text: "Processing..." },
             createdAt: "2025-01-01T00:00:01Z",
           },
         ],
         hasMore: false,
-        nextSequence: 2,
+        nextSequence: 1,
       };
 
       server.use(
@@ -495,13 +495,13 @@ describe("ApiClient", () => {
 
       expect(result.events).toHaveLength(2);
       expect(result.events[0]).toEqual({
-        sequenceNumber: 1,
+        sequenceNumber: 0,
         eventType: "init",
         eventData: { sessionId: "session-123" },
         createdAt: "2025-01-01T00:00:00Z",
       });
       expect(result.events[1]).toEqual({
-        sequenceNumber: 2,
+        sequenceNumber: 1,
         eventType: "text",
         eventData: { text: "Processing..." },
         createdAt: "2025-01-01T00:00:01Z",

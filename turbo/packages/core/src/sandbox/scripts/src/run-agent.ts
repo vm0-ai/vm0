@@ -380,9 +380,9 @@ async function run(): Promise<[number, string]> {
         try {
           const event = JSON.parse(stripped) as Record<string, unknown>;
 
-          // Valid JSONL - send immediately with sequence number
-          eventSequence++;
+          // Valid JSONL - send immediately with sequence number (0-based)
           await sendEvent(event, eventSequence);
+          eventSequence++;
 
           // Extract result from "result" event for stdout
           if (event.type === "result") {

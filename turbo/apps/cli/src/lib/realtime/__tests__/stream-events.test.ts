@@ -135,14 +135,14 @@ describe("streamEvents", () => {
       expect(capturedMessageHandler).not.toBeNull();
     });
 
-    // Simulate events message (sequences are 1-based, matching production behavior)
+    // Simulate events message (sequences are 0-based)
     const events = [
-      { type: "text", sequenceNumber: 1, text: "Hello" },
-      { type: "text", sequenceNumber: 2, text: "World" },
+      { type: "text", sequenceNumber: 0, text: "Hello" },
+      { type: "text", sequenceNumber: 1, text: "World" },
     ];
     capturedMessageHandler?.({
       name: "events",
-      data: { events, nextSequence: 3 },
+      data: { events, nextSequence: 2 },
     });
 
     expect(options.onEventMock).toHaveBeenCalledTimes(2);
@@ -270,7 +270,7 @@ describe("streamEvents", () => {
       expect(capturedMessageHandler).not.toBeNull();
     });
 
-    // Send event with a gap (expecting 1, receiving 5 skips sequences 1-4)
+    // Send event with a gap (expecting 0, receiving 5 skips sequences 0-4)
     capturedMessageHandler?.({
       name: "events",
       data: {
@@ -306,8 +306,8 @@ describe("streamEvents", () => {
     capturedMessageHandler?.({
       name: "events",
       data: {
-        events: [{ type: "text", sequenceNumber: 1 }],
-        nextSequence: 2,
+        events: [{ type: "text", sequenceNumber: 0 }],
+        nextSequence: 1,
       },
     });
 

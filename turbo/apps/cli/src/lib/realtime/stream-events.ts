@@ -93,8 +93,8 @@ export async function streamEvents(
     });
 
     let result: StreamResult = { succeeded: true, runId };
-    // Sandbox sends 1-based sequence numbers (first event has sequenceNumber: 1)
-    let nextExpectedSequence = 1;
+    // Sandbox sends 0-based sequence numbers (first event has sequenceNumber: 0)
+    let nextExpectedSequence = 0;
 
     // Handle connection errors
     ablyClient.connection.on("failed", (stateChange: ConnectionStateChange) => {

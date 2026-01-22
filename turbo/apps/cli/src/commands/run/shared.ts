@@ -240,7 +240,7 @@ export async function pollEvents(
   runId: string,
   options: PollOptions,
 ): Promise<PollResult> {
-  let nextSequence = 0;
+  let nextSequence = -1;
   let complete = false;
   let result: PollResult = { succeeded: true, runId };
   const pollIntervalMs = 1000;

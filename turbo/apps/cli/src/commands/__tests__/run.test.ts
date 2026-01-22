@@ -42,7 +42,7 @@ describe("run command", () => {
   const defaultEventsResponse = {
     events: [
       {
-        sequenceNumber: 1,
+        sequenceNumber: 0,
         eventType: "result",
         eventData: {
           type: "result",
@@ -59,7 +59,7 @@ describe("run command", () => {
       },
     ],
     hasMore: false,
-    nextSequence: 1,
+    nextSequence: 0,
     run: { status: "completed" },
     framework: "claude-code",
   };
@@ -963,34 +963,34 @@ describe("run command", () => {
             const since = url.searchParams.get("since");
             pollCount++;
 
-            if (since === "0") {
-              // First poll
+            if (since === "-1") {
+              // First poll (since=-1 to get event 0)
               return HttpResponse.json({
                 events: [
                   {
-                    sequenceNumber: 1,
+                    sequenceNumber: 0,
                     eventType: "init",
                     eventData: { type: "init", sessionId: "session-123" },
                     createdAt: "2025-01-01T00:00:00Z",
                   },
                 ],
                 hasMore: false,
-                nextSequence: 1,
+                nextSequence: 0,
                 run: { status: "running" },
                 framework: "claude-code",
               });
             }
-            // Second poll (since=1)
+            // Second poll (since=0)
             return HttpResponse.json({
               events: [
                 {
-                  sequenceNumber: 2,
+                  sequenceNumber: 1,
                   eventType: "text",
                   eventData: { type: "text", text: "Processing..." },
                   createdAt: "2025-01-01T00:00:01Z",
                 },
                 {
-                  sequenceNumber: 3,
+                  sequenceNumber: 2,
                   eventType: "result",
                   eventData: {
                     type: "result",
@@ -1007,7 +1007,7 @@ describe("run command", () => {
                 },
               ],
               hasMore: false,
-              nextSequence: 3,
+              nextSequence: 2,
               run: {
                 status: "completed",
                 result: {
@@ -1041,13 +1041,13 @@ describe("run command", () => {
           return HttpResponse.json({
             events: [
               {
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 eventType: "init",
                 eventData: { type: "init", sessionId: "session-123" },
                 createdAt: "2025-01-01T00:00:00Z",
               },
               {
-                sequenceNumber: 2,
+                sequenceNumber: 1,
                 eventType: "result",
                 eventData: {
                   type: "result",
@@ -1064,7 +1064,7 @@ describe("run command", () => {
               },
             ],
             hasMore: false,
-            nextSequence: 2,
+            nextSequence: 1,
             run: {
               status: "completed",
               result: {
@@ -1108,7 +1108,7 @@ describe("run command", () => {
           return HttpResponse.json({
             events: [
               {
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 eventType: "result",
                 eventData: {
                   type: "result",
@@ -1125,7 +1125,7 @@ describe("run command", () => {
               },
             ],
             hasMore: false,
-            nextSequence: 1,
+            nextSequence: 0,
             run: {
               status: "completed",
               result: {
@@ -1162,13 +1162,13 @@ describe("run command", () => {
           return HttpResponse.json({
             events: [
               {
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 eventType: "unknown",
                 eventData: { type: "unknown", data: "something" },
                 createdAt: "2025-01-01T00:00:00Z",
               },
               {
-                sequenceNumber: 2,
+                sequenceNumber: 1,
                 eventType: "result",
                 eventData: {
                   type: "result",
@@ -1185,7 +1185,7 @@ describe("run command", () => {
               },
             ],
             hasMore: false,
-            nextSequence: 2,
+            nextSequence: 1,
             run: {
               status: "completed",
               result: {
@@ -1226,14 +1226,14 @@ describe("run command", () => {
             return HttpResponse.json({
               events: [
                 {
-                  sequenceNumber: 1,
+                  sequenceNumber: 0,
                   eventType: "init",
                   eventData: { type: "init", sessionId: "session-123" },
                   createdAt: "2025-01-01T00:00:00Z",
                 },
               ],
               hasMore: false,
-              nextSequence: 1,
+              nextSequence: 0,
               run: { status: "running" },
               framework: "claude-code",
             });

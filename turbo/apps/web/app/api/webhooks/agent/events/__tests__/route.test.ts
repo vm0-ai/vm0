@@ -160,7 +160,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "test",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: {},
               },
@@ -199,7 +199,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "test",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: {},
               },
@@ -240,7 +240,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "test",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: {},
               },
@@ -334,7 +334,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "test",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: {},
               },
@@ -381,7 +381,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "test",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: {},
               },
@@ -432,13 +432,13 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "tool_use",
-                sequenceNumber: 1,
+                sequenceNumber: 0,
                 timestamp: Date.now(),
                 data: { tool: "bash", command: "ls" },
               },
               {
                 type: "tool_result",
-                sequenceNumber: 2,
+                sequenceNumber: 1,
                 timestamp: Date.now(),
                 data: { exitCode: 0, stdout: "file1.txt\nfile2.txt" },
               },
@@ -454,8 +454,8 @@ describe("POST /api/webhooks/agent/events", () => {
 
       const data = await response.json();
       expect(data.received).toBe(2);
-      expect(data.firstSequence).toBe(1);
-      expect(data.lastSequence).toBe(2);
+      expect(data.firstSequence).toBe(0);
+      expect(data.lastSequence).toBe(1);
 
       // Verify Axiom was called with client-provided sequence numbers
       expect(ingestToAxiomSpy).toHaveBeenCalledWith(
@@ -464,13 +464,13 @@ describe("POST /api/webhooks/agent/events", () => {
           expect.objectContaining({
             runId: testRunId,
             userId: testUserId,
-            sequenceNumber: 1,
+            sequenceNumber: 0,
             eventType: "tool_use",
           }),
           expect.objectContaining({
             runId: testRunId,
             userId: testUserId,
-            sequenceNumber: 2,
+            sequenceNumber: 1,
             eventType: "tool_result",
           }),
         ]),
@@ -502,13 +502,13 @@ describe("POST /api/webhooks/agent/events", () => {
       const testEvents = [
         {
           type: "thinking",
-          sequenceNumber: 1,
+          sequenceNumber: 0,
           timestamp: 1234567890,
           data: { text: "Analyzing the problem..." },
         },
         {
           type: "tool_use",
-          sequenceNumber: 2,
+          sequenceNumber: 1,
           timestamp: 1234567891,
           data: {
             tool: "bash",
@@ -518,7 +518,7 @@ describe("POST /api/webhooks/agent/events", () => {
         },
         {
           type: "tool_result",
-          sequenceNumber: 3,
+          sequenceNumber: 2,
           timestamp: 1234567892,
           data: {
             exitCode: 0,
@@ -588,12 +588,12 @@ describe("POST /api/webhooks/agent/events", () => {
         createdAt: new Date(),
       });
 
-      // Create 15 events with client-provided sequence numbers
+      // Create 15 events with client-provided sequence numbers (0-based)
       const events = Array.from({ length: 15 }, (_, i) => ({
-        type: `event_${i + 1}`,
-        sequenceNumber: i + 1,
+        type: `event_${i}`,
+        sequenceNumber: i,
         timestamp: Date.now() + i,
-        data: { index: i + 1, message: `Event number ${i + 1}` },
+        data: { index: i, message: `Event number ${i}` },
       }));
 
       const request = new NextRequest(
@@ -616,8 +616,8 @@ describe("POST /api/webhooks/agent/events", () => {
 
       const data = await response.json();
       expect(data.received).toBe(15);
-      expect(data.firstSequence).toBe(1);
-      expect(data.lastSequence).toBe(15);
+      expect(data.firstSequence).toBe(0);
+      expect(data.lastSequence).toBe(14);
 
       // Verify Axiom was called with all 15 events
       expect(ingestToAxiomSpy).toHaveBeenCalledWith(
@@ -625,8 +625,8 @@ describe("POST /api/webhooks/agent/events", () => {
         expect.arrayContaining(
           events.map((_, i) =>
             expect.objectContaining({
-              sequenceNumber: i + 1,
-              eventType: `event_${i + 1}`,
+              sequenceNumber: i,
+              eventType: `event_${i}`,
             }),
           ),
         ),

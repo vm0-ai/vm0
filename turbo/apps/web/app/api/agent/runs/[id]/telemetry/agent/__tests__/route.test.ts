@@ -334,7 +334,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
-          1,
+          0,
           "init",
           { type: "init", model: "claude-3" },
           testRunId,
@@ -351,7 +351,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.events).toHaveLength(1);
-      expect(data.events[0].sequenceNumber).toBe(1);
+      expect(data.events[0].sequenceNumber).toBe(0);
       expect(data.events[0].eventType).toBe("init");
       expect(data.events[0].eventData).toEqual({
         type: "init",
@@ -372,7 +372,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
-          1,
+          0,
           "init",
           { type: "init" },
           testRunId,
@@ -380,7 +380,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:01Z",
-          2,
+          1,
           "text",
           { type: "text", content: "Hello" },
           testRunId,
@@ -388,7 +388,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:02Z",
-          3,
+          2,
           "tool_use",
           { type: "tool_use", name: "bash" },
           testRunId,
@@ -396,7 +396,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:03Z",
-          4,
+          3,
           "result",
           { type: "result", success: true },
           testRunId,
@@ -427,6 +427,14 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
+          0,
+          "event0",
+          { type: "event0" },
+          testRunId,
+          testUserId,
+        ),
+        createAxiomAgentEvent(
+          "2024-01-01T00:00:01Z",
           1,
           "event1",
           { type: "event1" },
@@ -434,7 +442,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           testUserId,
         ),
         createAxiomAgentEvent(
-          "2024-01-01T00:00:01Z",
+          "2024-01-01T00:00:02Z",
           2,
           "event2",
           { type: "event2" },
@@ -442,18 +450,10 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           testUserId,
         ),
         createAxiomAgentEvent(
-          "2024-01-01T00:00:02Z",
+          "2024-01-01T00:00:03Z",
           3,
           "event3",
           { type: "event3" },
-          testRunId,
-          testUserId,
-        ),
-        createAxiomAgentEvent(
-          "2024-01-01T00:00:03Z",
-          4,
-          "event4",
-          { type: "event4" },
           testRunId,
           testUserId,
         ), // Extra record
@@ -468,9 +468,9 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.events).toHaveLength(3);
-      expect(data.events[0].sequenceNumber).toBe(1);
-      expect(data.events[1].sequenceNumber).toBe(2);
-      expect(data.events[2].sequenceNumber).toBe(3);
+      expect(data.events[0].sequenceNumber).toBe(0);
+      expect(data.events[1].sequenceNumber).toBe(1);
+      expect(data.events[2].sequenceNumber).toBe(2);
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
@@ -483,7 +483,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:10Z",
-          2,
+          1,
           "recent_event",
           { type: "recent" },
           testRunId,
@@ -515,7 +515,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-15T10:30:00.000Z",
-          1,
+          0,
           "test",
           { type: "test" },
           testRunId,
@@ -552,7 +552,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       queryAxiomSpy.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
-          1,
+          0,
           "tool_result",
           complexEventData,
           testRunId,
