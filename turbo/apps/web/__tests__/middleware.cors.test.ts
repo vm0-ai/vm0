@@ -197,6 +197,19 @@ describe("handleCors", () => {
       );
     });
 
+    it("should accept local dev domain: https://platform.vm7.ai", async () => {
+      const handleCors = await getHandleCors("development");
+      const request = new NextRequest("https://www.vm7.ai:8443/v1/runs", {
+        headers: { origin: "https://platform.vm7.ai:8443" },
+      });
+
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://platform.vm7.ai:8443",
+      );
+    });
+
     it("should accept localhost:3000", async () => {
       const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
