@@ -372,7 +372,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.vm0
-          key: e2e-auth-${{ github.run_id }}
+          key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Run API E2E tests (lightweight, fast)
   api-e2e-test:
@@ -391,7 +391,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.vm0
-          key: e2e-auth-${{ github.run_id }}
+          key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
           fail-on-cache-miss: true
 
       - name: Run API E2E Tests
@@ -440,7 +440,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.vm0
-          key: e2e-auth-${{ github.run_id }}
+          key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -512,7 +512,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.vm0
-          key: e2e-auth-${{ github.run_id }}
+          key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -585,7 +585,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.vm0
-          key: e2e-auth-${{ github.run_id }}
+          key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
