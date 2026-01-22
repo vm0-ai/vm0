@@ -8,6 +8,7 @@ import {
   agentComposeVersions,
 } from "../../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../../src/db/schema/scope";
+import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
@@ -542,4 +543,394 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   // Secrets are now masked client-side in the sandbox before being sent to the server.
   // The server never has access to secret values (only secret names for validation).
   // See: feat: separate secrets from vars in checkpoint/session system
+});
+
+describe("POST /api/webhooks/agent/telemetry - Runner Integration", () => {
+  const testUserId = `runner-user-${Date.now()}-${process.pid}`;
+  const testScopeId = randomUUID();
+  const testRunId = randomUUID();
+  const testComposeId = randomUUID();
+  const testVersionId =
+    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let testToken: string;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    initServices();
+
+    // Generate JWT token for sandbox auth
+    testToken = await createTestSandboxToken(testUserId, testRunId);
+
+    mockClerk({ userId: null });
+
+    const mockHeaders = vi.mocked(headers);
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
+    } as unknown as Headers);
+
+    // Setup Axiom SDK mock
+    const mockAxiomClient = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(
+      () => mockAxiomClient as unknown as Axiom,
+    );
+
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, testRunId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.id, testRunId));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+
+    // Create test scope
+    await globalThis.services.db.insert(scopes).values({
+      id: testScopeId,
+      slug: `test-${testScopeId.slice(0, 8)}`,
+      type: "personal",
+      ownerId: testUserId,
+    });
+
+    // Create test agent compose
+    await globalThis.services.db.insert(agentComposes).values({
+      id: testComposeId,
+      userId: testUserId,
+      scopeId: testScopeId,
+      name: "test-agent",
+      headVersionId: testVersionId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create test agent version
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: testVersionId,
+      composeId: testComposeId,
+      content: {
+        agents: {
+          "test-agent": {
+            name: "test-agent",
+            model: "claude-3-5-sonnet-20241022",
+            working_dir: "/workspace",
+          },
+        },
+      },
+      createdBy: testUserId,
+      createdAt: new Date(),
+    });
+
+    // Create test run
+    await globalThis.services.db.insert(agentRuns).values({
+      id: testRunId,
+      userId: testUserId,
+      agentComposeVersionId: testVersionId,
+      status: "running",
+      prompt: "Test prompt",
+      createdAt: new Date(),
+    });
+
+    // Create runner job queue entry (marks this as a runner sandbox)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+    await globalThis.services.db.insert(runnerJobQueue).values({
+      runId: testRunId,
+      runnerGroup: "test-group",
+      claimedAt: new Date(),
+      executionContext: {
+        runId: testRunId,
+        prompt: "Test prompt",
+        workingDir: "/workspace",
+        cliAgentType: "claude-code",
+        sandboxToken: "test-token",
+        apiStartTime: Date.now(),
+      },
+      createdAt: new Date(),
+      expiresAt,
+    });
+  });
+
+  afterEach(async () => {
+    clearClerkMock();
+    await globalThis.services.db
+      .delete(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, testRunId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.id, testRunId));
+
+    await globalThis.services.db
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, testVersionId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, testComposeId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
+  });
+
+  it("should determine sandbox type as runner and record metrics", async () => {
+    // Spy on ingestToAxiom
+    const ingestToAxiomSpy = vi
+      .spyOn(axiomModule, "ingestToAxiom")
+      .mockResolvedValue(true);
+
+    // Spy on recordSandboxInternalOperation to verify sandbox type
+    const recordMetricsSpy = vi.spyOn(
+      await import("../../../../../../src/lib/metrics"),
+      "recordSandboxInternalOperation",
+    );
+
+    // Simulate telemetry from runner sandbox
+    const sandboxOperations = [
+      {
+        ts: "2025-01-22T10:00:00Z",
+        action_type: "init_total",
+        duration_ms: 1500,
+        success: true,
+      },
+      {
+        ts: "2025-01-22T10:00:02Z",
+        action_type: "cli_execution",
+        duration_ms: 200,
+        success: true,
+      },
+    ];
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/webhooks/agent/telemetry",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          runId: testRunId,
+          systemLog: "[INFO] Test log from runner\n",
+          sandboxOperations,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+
+    // Verify system log was sent to Axiom
+    expect(ingestToAxiomSpy).toHaveBeenCalledWith(
+      "vm0-sandbox-telemetry-system-dev",
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: testRunId,
+          userId: testUserId,
+          log: "[INFO] Test log from runner\n",
+        }),
+      ]),
+    );
+
+    // Verify sandbox operations were recorded with correct sandbox type
+    expect(recordMetricsSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "init_total",
+        sandboxType: "runner",
+        durationMs: 1500,
+        success: true,
+      }),
+    );
+
+    expect(recordMetricsSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "cli_execution",
+        sandboxType: "runner",
+        durationMs: 200,
+        success: true,
+      }),
+    );
+  });
+
+  it("should determine sandbox type as e2b when not in runner queue", async () => {
+    // Create a separate E2B run (not in runner_job_queue)
+    const e2bRunId = randomUUID();
+    const e2bToken = await createTestSandboxToken(testUserId, e2bRunId);
+
+    const mockHeaders = vi.mocked(headers);
+    mockHeaders.mockResolvedValue({
+      get: vi.fn().mockReturnValue(`Bearer ${e2bToken}`),
+    } as unknown as Headers);
+
+    await globalThis.services.db.insert(agentRuns).values({
+      id: e2bRunId,
+      userId: testUserId,
+      agentComposeVersionId: testVersionId,
+      status: "running",
+      prompt: "E2B test prompt",
+      createdAt: new Date(),
+    });
+
+    // Spy on recordSandboxInternalOperation
+    const recordMetricsSpy = vi.spyOn(
+      await import("../../../../../../src/lib/metrics"),
+      "recordSandboxInternalOperation",
+    );
+
+    const sandboxOperations = [
+      {
+        ts: "2025-01-22T10:00:00Z",
+        action_type: "api_to_agent_start",
+        duration_ms: 500,
+        success: true,
+      },
+    ];
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/webhooks/agent/telemetry",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${e2bToken}`,
+        },
+        body: JSON.stringify({
+          runId: e2bRunId,
+          sandboxOperations,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // Verify sandbox type was determined as e2b
+    expect(recordMetricsSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "api_to_agent_start",
+        sandboxType: "e2b",
+        durationMs: 500,
+        success: true,
+      }),
+    );
+
+    // Cleanup
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.id, e2bRunId));
+  });
+
+  it("should upload complete telemetry with all data types", async () => {
+    const ingestToAxiomSpy = vi
+      .spyOn(axiomModule, "ingestToAxiom")
+      .mockResolvedValue(true);
+
+    const testMetrics = [
+      {
+        ts: "2025-01-22T10:00:00Z",
+        cpu: 25.5,
+        mem_used: 167190528,
+        mem_total: 1033142272,
+        disk_used: 1556893696,
+        disk_total: 22797680640,
+      },
+    ];
+
+    const testNetworkLogs = [
+      {
+        timestamp: "2025-01-22T10:00:00Z",
+        mode: "sni" as const,
+        action: "ALLOW" as const,
+        host: "api.example.com",
+        port: 443,
+        rule_matched: "allow-all",
+      },
+    ];
+
+    const sandboxOperations = [
+      {
+        ts: "2025-01-22T10:00:00Z",
+        action_type: "storage_download",
+        duration_ms: 1200,
+        success: true,
+      },
+    ];
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/webhooks/agent/telemetry",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          runId: testRunId,
+          systemLog: "[INFO] Complete telemetry test\n",
+          metrics: testMetrics,
+          networkLogs: testNetworkLogs,
+          sandboxOperations,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // Verify system log ingestion
+    expect(ingestToAxiomSpy).toHaveBeenCalledWith(
+      "vm0-sandbox-telemetry-system-dev",
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: testRunId,
+          log: "[INFO] Complete telemetry test\n",
+        }),
+      ]),
+    );
+
+    // Verify metrics ingestion
+    expect(ingestToAxiomSpy).toHaveBeenCalledWith(
+      "vm0-sandbox-telemetry-metrics-dev",
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: testRunId,
+          cpu: 25.5,
+          mem_used: 167190528,
+        }),
+      ]),
+    );
+
+    // Verify network logs ingestion
+    expect(ingestToAxiomSpy).toHaveBeenCalledWith(
+      "vm0-sandbox-telemetry-network-dev",
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: testRunId,
+          mode: "sni",
+          action: "ALLOW",
+          host: "api.example.com",
+        }),
+      ]),
+    );
+  });
 });
