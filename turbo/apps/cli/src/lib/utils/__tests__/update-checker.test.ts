@@ -55,6 +55,26 @@ describe("update-checker", () => {
       process.argv = ["/usr/bin/node"];
       expect(detectPackageManager()).toBe("npm");
     });
+
+    it("should return 'bun' when path contains /.bun/", () => {
+      process.argv = ["/usr/bin/node", "/home/user/.bun/bin/vm0"];
+      expect(detectPackageManager()).toBe("bun");
+    });
+
+    it("should return 'bun' when path contains /bun/", () => {
+      process.argv = ["/usr/bin/node", "/opt/bun/bin/vm0"];
+      expect(detectPackageManager()).toBe("bun");
+    });
+
+    it("should return 'yarn' when path contains /.yarn/", () => {
+      process.argv = ["/usr/bin/node", "/home/user/.yarn/bin/vm0"];
+      expect(detectPackageManager()).toBe("yarn");
+    });
+
+    it("should return 'yarn' when path contains /yarn/", () => {
+      process.argv = ["/usr/bin/node", "/opt/yarn/bin/vm0"];
+      expect(detectPackageManager()).toBe("yarn");
+    });
   });
 
   describe("escapeForShell", () => {
@@ -183,6 +203,52 @@ describe("update-checker", () => {
       expect(consoleSpy).not.toHaveBeenCalledWith(
         expect.stringContaining("Early Access"),
       );
+    });
+
+    describe("unsupported package managers", () => {
+      const originalArgv = process.argv;
+
+      afterEach(() => {
+        process.argv = originalArgv;
+      });
+
+      it("should return false and show manual instructions for bun", async () => {
+        process.argv = ["/usr/bin/node", "/home/user/.bun/bin/vm0"];
+        server.use(
+          http.get("https://registry.npmjs.org/*/latest", () => {
+            return HttpResponse.json({ version: "5.0.0" });
+          }),
+        );
+
+        const result = await checkAndUpgrade("4.10.0", "test prompt");
+
+        expect(result).toBe(false);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("Auto-upgrade is not supported for bun"),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("bun add -g @vm0/cli@latest"),
+        );
+      });
+
+      it("should return false and show manual instructions for yarn", async () => {
+        process.argv = ["/usr/bin/node", "/home/user/.yarn/bin/vm0"];
+        server.use(
+          http.get("https://registry.npmjs.org/*/latest", () => {
+            return HttpResponse.json({ version: "5.0.0" });
+          }),
+        );
+
+        const result = await checkAndUpgrade("4.10.0", "test prompt");
+
+        expect(result).toBe(false);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("Auto-upgrade is not supported for yarn"),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("yarn global add @vm0/cli@latest"),
+        );
+      });
     });
   });
 });

@@ -5,18 +5,55 @@ const PACKAGE_NAME = "@vm0/cli";
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE_NAME)}/latest`;
 const TIMEOUT_MS = 5000;
 
-type PackageManager = "npm" | "pnpm";
+type PackageManager = "npm" | "pnpm" | "bun" | "yarn";
 
 /**
  * Detect which package manager was used to install the CLI
- * by checking if the executable path contains "pnpm"
+ * by checking the executable path for known package manager patterns
  */
 export function detectPackageManager(): PackageManager {
   const execPath = process.argv[1] ?? "";
+
+  // Check for pnpm (supported for auto-upgrade)
   if (execPath.includes("pnpm")) {
     return "pnpm";
   }
+
+  // Check for bun (unsupported - manual upgrade only)
+  if (execPath.includes("/.bun/") || execPath.includes("/bun/")) {
+    return "bun";
+  }
+
+  // Check for yarn (unsupported - manual upgrade only)
+  if (execPath.includes("/.yarn/") || execPath.includes("/yarn/")) {
+    return "yarn";
+  }
+
+  // Default to npm (supported for auto-upgrade)
   return "npm";
+}
+
+/**
+ * Check if the package manager supports auto-upgrade
+ */
+function isAutoUpgradeSupported(pm: PackageManager): pm is "npm" | "pnpm" {
+  return pm === "npm" || pm === "pnpm";
+}
+
+/**
+ * Get the manual upgrade command for a package manager
+ */
+function getManualUpgradeCommand(pm: PackageManager): string {
+  switch (pm) {
+    case "bun":
+      return `bun add -g ${PACKAGE_NAME}@latest`;
+    case "yarn":
+      return `yarn global add ${PACKAGE_NAME}@latest`;
+    case "pnpm":
+      return `pnpm add -g ${PACKAGE_NAME}@latest`;
+    default:
+      return `npm install -g ${PACKAGE_NAME}@latest`;
+  }
 }
 
 /**
@@ -69,7 +106,7 @@ export async function getLatestVersion(): Promise<string | null> {
  * - pnpm: pnpm add -g @vm0/cli@latest
  * Returns true on success, false on failure
  */
-function performUpgrade(packageManager: PackageManager): Promise<boolean> {
+function performUpgrade(packageManager: "npm" | "pnpm"): Promise<boolean> {
   return new Promise((resolve) => {
     const isWindows = process.platform === "win32";
     const command = isWindows ? `${packageManager}.cmd` : packageManager;
@@ -96,7 +133,7 @@ function performUpgrade(packageManager: PackageManager): Promise<boolean> {
 /**
  * Check for updates and perform upgrade if needed
  * Returns true if caller should exit (upgrade happened or failed)
- * Returns false if caller should continue (no update needed or check failed)
+ * Returns false if caller should continue (no update needed, check failed, or unsupported PM)
  */
 export async function checkAndUpgrade(
   currentVersion: string,
@@ -130,8 +167,21 @@ export async function checkAndUpgrade(
   );
   console.log();
 
-  // Perform upgrade
+  // Check package manager
   const packageManager = detectPackageManager();
+
+  // For unsupported package managers, show manual upgrade instructions and continue
+  if (!isAutoUpgradeSupported(packageManager)) {
+    console.log(
+      chalk.yellow(`Auto-upgrade is not supported for ${packageManager}.`),
+    );
+    console.log(chalk.yellow("Please upgrade manually:"));
+    console.log(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
+    console.log();
+    return false;
+  }
+
+  // Perform upgrade for supported package managers (npm, pnpm)
   console.log(`Upgrading via ${packageManager}...`);
   const success = await performUpgrade(packageManager);
 
@@ -146,9 +196,7 @@ export async function checkAndUpgrade(
   // Upgrade failed - show manual instructions
   console.log();
   console.log(chalk.red("Upgrade failed. Please run manually:"));
-  console.log(chalk.cyan(`  npm install -g ${PACKAGE_NAME}@latest`));
-  console.log(chalk.dim("  # or"));
-  console.log(chalk.cyan(`  pnpm add -g ${PACKAGE_NAME}@latest`));
+  console.log(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
   console.log();
   console.log("Then re-run:");
   console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
