@@ -20,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install required packages
 # Core:
 # - openssh-server: SSH access for runner communication
-# - python3: Python 3.11+ for agent scripts
+# - python3: Python 3.11+ for agent scripts and vsock-agent
 # - systemd: Init system for VM boot
 # Development tools (matching e2b template):
 # - curl: HTTP client
@@ -32,7 +32,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - iproute2: Network utilities (ip command)
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
-# - socat: Socket relay for vsock communication
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
     python3 \
@@ -47,7 +46,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
-    socat \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -125,32 +123,15 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 # Re-enable essential services
 RUN systemctl enable ssh
 
-# Create vm0-agent directory and copy vsock-agent script
-# Generated from bundled.ts during build-rootfs.sh
+# Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
 # Protocol: 4-byte length prefix (big endian) + JSON message
 # Messages: ready, ping/pong, exec/exec_result
 RUN mkdir -p /usr/local/bin/vm0-agent
-COPY vsock-agent.mjs /usr/local/bin/vm0-agent/vsock-agent.mjs
-RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.mjs
+COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
+RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Create vsock-agent systemd service
-# Uses socat to bridge vsock to Unix socket, then Node.js handles the protocol
-RUN printf '%s\n' \
-    '[Unit]' \
-    'Description=VM0 Vsock Agent' \
-    'After=network.target' \
-    '' \
-    '[Service]' \
-    'Type=simple' \
-    'ExecStart=/usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs' \
-    'Restart=always' \
-    'RestartSec=1' \
-    'StandardOutput=journal+console' \
-    'StandardError=journal+console' \
-    '' \
-    '[Install]' \
-    'WantedBy=multi-user.target' \
-    > /etc/systemd/system/vsock-agent.service \
-    && systemctl enable vsock-agent
+# Install vsock-agent systemd service
+COPY vsock-agent.service /etc/systemd/system/vsock-agent.service
+RUN systemctl enable vsock-agent
 
 CMD ["/lib/systemd/systemd"]
