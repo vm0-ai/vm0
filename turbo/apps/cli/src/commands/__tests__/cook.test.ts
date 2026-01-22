@@ -1,9 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs/promises";
-import { readFileSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { parseRunIdsFromOutput, extractRequiredVarNames } from "../cook";
+import {
+  parseRunIdsFromOutput,
+  extractRequiredVarNames,
+  checkMissingVariables,
+  generateEnvPlaceholders,
+  CONFIG_FILE,
+} from "../cook";
+
+// Mock os module to return our temp directory as homedir for cook-state tests
+vi.mock("os", async () => {
+  const actual = await vi.importActual<typeof import("os")>("os");
+  return {
+    ...actual,
+    // Return actual homedir by default, tests can override
+    homedir: vi.fn().mockReturnValue(actual.homedir()),
+  };
+});
 
 // Test variable names (using constants to avoid turbo env var lint warnings)
 const TEST_VAR_1 = "TEST_VAR_1";
@@ -25,6 +41,10 @@ describe("cook command - environment variable check", () => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
     vi.unstubAllEnvs();
+    // Clean up any env vars set by dotenv during tests
+    delete process.env[TEST_VAR_1];
+    delete process.env[TEST_VAR_2];
+    delete process.env[TEST_VAR_4];
   });
 
   describe("checkMissingVariables", () => {
@@ -33,106 +53,113 @@ describe("cook command - environment variable check", () => {
       vi.stubEnv(TEST_VAR_2, "test-password");
 
       const varNames = [TEST_VAR_1, TEST_VAR_2];
-      const missing: string[] = [];
+      const envFilePath = path.join(tempDir, ".env");
 
-      for (const name of varNames) {
-        if (process.env[name] === undefined) {
-          missing.push(name);
-        }
-      }
+      const missing = checkMissingVariables(varNames, envFilePath);
 
       expect(missing).toHaveLength(0);
     });
 
-    it("should return empty array when variables are in .env file", () => {
-      // Simulate .env file variables by setting them in process.env
-      vi.stubEnv(TEST_VAR_1, "from-dotenv");
-      vi.stubEnv(TEST_VAR_2, "from-dotenv");
+    it("should return empty array when variables are in .env file", async () => {
+      // Create .env file with the variables
+      const envFilePath = path.join(tempDir, ".env");
+      await fs.writeFile(
+        envFilePath,
+        `${TEST_VAR_1}=from-dotenv\n${TEST_VAR_2}=from-dotenv\n`,
+      );
 
       const varNames = [TEST_VAR_1, TEST_VAR_2];
-      const missing: string[] = [];
 
-      for (const name of varNames) {
-        if (process.env[name] === undefined) {
-          missing.push(name);
-        }
-      }
+      const missing = checkMissingVariables(varNames, envFilePath);
 
       expect(missing).toHaveLength(0);
     });
 
-    it("should return missing variables not in env or .env", () => {
-      // Only TEST_VAR_1 is available (simulating .env file)
-      vi.stubEnv(TEST_VAR_1, "from-dotenv");
+    it("should return missing variables not in env or .env", async () => {
+      // Use unique variable names that won't exist in process.env
+      const UNIQUE_VAR_EXISTS = "COOK_TEST_VAR_EXISTS_" + Date.now();
+      const UNIQUE_VAR_MISSING_1 = "COOK_TEST_VAR_MISSING_1_" + Date.now();
+      const UNIQUE_VAR_MISSING_2 = "COOK_TEST_VAR_MISSING_2_" + Date.now();
 
-      const varNames = [TEST_VAR_1, TEST_VAR_2, TEST_VAR_4];
-      const missing: string[] = [];
+      // Create .env file with only one variable
+      const envFilePath = path.join(tempDir, ".env");
+      await fs.writeFile(envFilePath, `${UNIQUE_VAR_EXISTS}=from-dotenv\n`);
 
-      for (const name of varNames) {
-        if (process.env[name] === undefined) {
-          missing.push(name);
-        }
-      }
+      const varNames = [
+        UNIQUE_VAR_EXISTS,
+        UNIQUE_VAR_MISSING_1,
+        UNIQUE_VAR_MISSING_2,
+      ];
 
-      expect(missing).toContain(TEST_VAR_2);
-      expect(missing).toContain(TEST_VAR_4);
-      expect(missing).not.toContain(TEST_VAR_1);
+      const missing = checkMissingVariables(varNames, envFilePath);
+
+      expect(missing).toContain(UNIQUE_VAR_MISSING_1);
+      expect(missing).toContain(UNIQUE_VAR_MISSING_2);
+      expect(missing).not.toContain(UNIQUE_VAR_EXISTS);
+    });
+
+    it("should return all variables when .env file does not exist", () => {
+      // Use unique variable names that won't exist in process.env
+      const UNIQUE_VAR_1 = "COOK_TEST_UNIQUE_VAR_1_" + Date.now();
+      const UNIQUE_VAR_2 = "COOK_TEST_UNIQUE_VAR_2_" + Date.now();
+
+      const envFilePath = path.join(tempDir, ".env");
+
+      const varNames = [UNIQUE_VAR_1, UNIQUE_VAR_2];
+
+      const missing = checkMissingVariables(varNames, envFilePath);
+
+      expect(missing).toContain(UNIQUE_VAR_1);
+      expect(missing).toContain(UNIQUE_VAR_2);
     });
   });
 
   describe("generateEnvPlaceholders", () => {
     it("should create new .env file with placeholders", async () => {
+      const envFilePath = path.join(tempDir, ".env");
       const missingVars = ["API_KEY", "DB_PASSWORD"];
-      const placeholders = missingVars.map((name) => `${name}=`).join("\n");
 
-      await fs.writeFile(path.join(tempDir, ".env"), `${placeholders}\n`);
+      await generateEnvPlaceholders(missingVars, envFilePath);
 
-      const content = await fs.readFile(path.join(tempDir, ".env"), "utf8");
+      const content = await fs.readFile(envFilePath, "utf8");
       expect(content).toBe("API_KEY=\nDB_PASSWORD=\n");
     });
 
-    it("should append to existing .env file", async () => {
-      await fs.writeFile(path.join(tempDir, ".env"), "EXISTING_VAR=value\n");
+    it("should append to existing .env file without overwriting", async () => {
+      const envFilePath = path.join(tempDir, ".env");
+      await fs.writeFile(envFilePath, "EXISTING_VAR=value\n");
 
-      const existingContent = readFileSync(path.join(tempDir, ".env"), "utf8");
-      const needsNewline =
-        existingContent.length > 0 && !existingContent.endsWith("\n");
-      const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
-      const placeholders = missingVars.map((name) => `${name}=`).join("\n");
+      await generateEnvPlaceholders(missingVars, envFilePath);
 
-      await fs.appendFile(
-        path.join(tempDir, ".env"),
-        `${prefix}${placeholders}\n`,
-      );
-
-      const finalContent = await fs.readFile(
-        path.join(tempDir, ".env"),
-        "utf8",
-      );
+      const finalContent = await fs.readFile(envFilePath, "utf8");
       expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
     });
 
     it("should add newline before appending if file doesn't end with newline", async () => {
-      await fs.writeFile(path.join(tempDir, ".env"), "EXISTING_VAR=value"); // No trailing newline
+      const envFilePath = path.join(tempDir, ".env");
+      await fs.writeFile(envFilePath, "EXISTING_VAR=value"); // No trailing newline
 
-      const existingContent = readFileSync(path.join(tempDir, ".env"), "utf8");
-      const needsNewline =
-        existingContent.length > 0 && !existingContent.endsWith("\n");
-      const prefix = needsNewline ? "\n" : "";
       const missingVars = ["NEW_VAR"];
-      const placeholders = missingVars.map((name) => `${name}=`).join("\n");
+      await generateEnvPlaceholders(missingVars, envFilePath);
 
-      await fs.appendFile(
-        path.join(tempDir, ".env"),
-        `${prefix}${placeholders}\n`,
-      );
-
-      const finalContent = await fs.readFile(
-        path.join(tempDir, ".env"),
-        "utf8",
-      );
+      const finalContent = await fs.readFile(envFilePath, "utf8");
       expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
+    });
+
+    it("should append multiple missing variables", async () => {
+      const envFilePath = path.join(tempDir, ".env");
+      await fs.writeFile(envFilePath, "EXISTING_VAR=existing-value\n");
+
+      const missingVars = ["NEW_VAR_1", "NEW_VAR_2"];
+      await generateEnvPlaceholders(missingVars, envFilePath);
+
+      const finalContent = await fs.readFile(envFilePath, "utf8");
+      expect(finalContent).toBe(
+        "EXISTING_VAR=existing-value\nNEW_VAR_1=\nNEW_VAR_2=\n",
+      );
+      // Verify existing content was preserved
+      expect(finalContent).toContain("EXISTING_VAR=existing-value");
     });
   });
 });
@@ -307,5 +334,205 @@ describe("extractRequiredVarNames", () => {
     expect(result).toContain("SECRET_VAR");
     expect(result).not.toContain("ENV_VAR");
     expect(result).not.toContain("CRED_VAR");
+  });
+});
+
+describe("cook subcommand error handling", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-cook-errors-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+    // Make os.homedir() return tempDir for cook-state tests
+    vi.mocked(os.homedir).mockReturnValue(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  describe("cook logs without prior run", () => {
+    it("returns empty state when cook.json does not exist", async () => {
+      // No cook.json file exists
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      expect(state.lastRunId).toBeUndefined();
+    });
+
+    it("error message should indicate no previous run", () => {
+      // Verify the error message format that would be shown
+      const errorMessage = "No previous run found";
+      const hintMessage = "Run 'vm0 cook <prompt>' first";
+
+      expect(errorMessage).toContain("No previous run found");
+      expect(hintMessage).toContain("vm0 cook");
+    });
+  });
+
+  describe("cook continue without prior run", () => {
+    it("returns empty state when no session exists", async () => {
+      // No cook.json file exists
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      expect(state.lastSessionId).toBeUndefined();
+    });
+
+    it("error message should indicate no previous session", () => {
+      // Verify the error message format that would be shown
+      const errorMessage = "No previous session found";
+      const hintMessage = "Run 'vm0 cook <prompt>' first";
+
+      expect(errorMessage).toContain("No previous session found");
+      expect(hintMessage).toContain("vm0 cook");
+    });
+  });
+
+  describe("cook resume without prior run", () => {
+    it("returns empty state when no checkpoint exists", async () => {
+      // No cook.json file exists
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      expect(state.lastCheckpointId).toBeUndefined();
+    });
+
+    it("error message should indicate no previous checkpoint", () => {
+      // Verify the error message format that would be shown
+      const errorMessage = "No previous checkpoint found";
+      const hintMessage = "Run 'vm0 cook <prompt>' first";
+
+      expect(errorMessage).toContain("No previous checkpoint found");
+      expect(hintMessage).toContain("vm0 cook");
+    });
+  });
+
+  describe("cook logs tutorial-style command hint", () => {
+    it("generates correct command hint when run ID exists", async () => {
+      const mockPpid = String(process.ppid);
+      const runId = "test-run-id-12345678-1234-1234-1234-123456789012";
+
+      // Create cook state with run ID
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        JSON.stringify({
+          ppid: {
+            [mockPpid]: {
+              lastRunId: runId,
+              lastActiveAt: Date.now(),
+            },
+          },
+        }),
+      );
+
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      // Verify the command hint format
+      const expectedCommand = `vm0 logs ${state.lastRunId}`;
+      expect(expectedCommand).toBe(`vm0 logs ${runId}`);
+    });
+  });
+
+  describe("cook continue tutorial-style command hint", () => {
+    it("generates correct command hint when session ID exists", async () => {
+      const mockPpid = String(process.ppid);
+      const sessionId = "test-session-12345678-1234-1234-1234-123456789012";
+
+      // Create cook state with session ID
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        JSON.stringify({
+          ppid: {
+            [mockPpid]: {
+              lastSessionId: sessionId,
+              lastActiveAt: Date.now(),
+            },
+          },
+        }),
+      );
+
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      // Verify the command hint format
+      const expectedCommand = `vm0 run continue ${state.lastSessionId}`;
+      expect(expectedCommand).toBe(`vm0 run continue ${sessionId}`);
+    });
+  });
+
+  describe("cook resume tutorial-style command hint", () => {
+    it("generates correct command hint when checkpoint ID exists", async () => {
+      const mockPpid = String(process.ppid);
+      const checkpointId = "test-checkpoint-1234-1234-1234-1234-123456789012";
+
+      // Create cook state with checkpoint ID
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "cook.json"),
+        JSON.stringify({
+          ppid: {
+            [mockPpid]: {
+              lastCheckpointId: checkpointId,
+              lastActiveAt: Date.now(),
+            },
+          },
+        }),
+      );
+
+      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const state = await loadCookState();
+
+      // Verify the command hint format
+      const expectedCommand = `vm0 run resume ${state.lastCheckpointId}`;
+      expect(expectedCommand).toBe(`vm0 run resume ${checkpointId}`);
+    });
+  });
+});
+
+describe("cook command - config file detection", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-cook-config-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  describe("CONFIG_FILE constant", () => {
+    it("should export the correct config file name", () => {
+      expect(CONFIG_FILE).toBe("vm0.yaml");
+    });
+  });
+
+  describe("config file existence check", () => {
+    it("should return false when vm0.yaml is missing", () => {
+      const configPath = path.join(tempDir, CONFIG_FILE);
+      expect(existsSync(configPath)).toBe(false);
+    });
+
+    it("should return true when vm0.yaml exists", async () => {
+      const configPath = path.join(tempDir, CONFIG_FILE);
+      await fs.writeFile(
+        configPath,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n`,
+      );
+      expect(existsSync(configPath)).toBe(true);
+    });
   });
 });

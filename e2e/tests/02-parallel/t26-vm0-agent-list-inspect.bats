@@ -3,6 +3,11 @@
 load '../../helpers/setup'
 
 # vm0 agent list and inspect command tests
+#
+# Note: Help/alias tests (command description, name, alias) have been moved to unit tests:
+# turbo/apps/cli/src/__tests__/agent-commands.test.ts
+#
+# This file contains integration tests that require actual API interaction.
 
 setup() {
     # Create temporary test directory
@@ -16,28 +21,6 @@ teardown() {
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
-}
-
-# ============================================
-# Help Tests
-# ============================================
-
-@test "vm0 agent list --help shows command description" {
-    run $CLI_COMMAND agent list --help
-    assert_success
-    assert_output --partial "List all agent composes"
-}
-
-@test "vm0 agent ls alias works" {
-    run $CLI_COMMAND agent ls --help
-    assert_success
-    assert_output --partial "List all agent composes"
-}
-
-@test "vm0 agent inspect --help shows command description" {
-    run $CLI_COMMAND agent inspect --help
-    assert_success
-    assert_output --partial "Inspect an agent compose"
 }
 
 # ============================================

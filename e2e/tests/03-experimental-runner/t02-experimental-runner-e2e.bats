@@ -78,37 +78,7 @@ EOF
     assert_output --partial "Run completed successfully"
 }
 
-@test "experimental_runner: compose validation accepts valid group format" {
-    echo "# Create config with valid experimental_runner"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  valid-runner-agent:
-    description: "Test agent with valid runner group"
-    framework: claude-code
-    experimental_runner:
-      group: acme/production
-EOF
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-}
-
-@test "experimental_runner: compose validation rejects invalid group format" {
-    echo "# Create config with invalid runner group (missing slash)"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  invalid-runner-agent:
-    description: "Test agent with invalid runner group"
-    framework: claude-code
-    experimental_runner:
-      group: invalid-no-slash
-EOF
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "scope/name format"
-}
+# NOTE: Runner group format validation tests have been moved to unit tests
+# See: turbo/apps/cli/src/__tests__/runner-validation.test.ts
+# - "compose validation accepts valid group format"
+# - "compose validation rejects invalid group format"

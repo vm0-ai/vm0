@@ -27,7 +27,23 @@ setup_artifact() {
 }
 
 # ============================================
-# Transformation tests
+# E2E Integration Tests
+# ============================================
+# These tests require actual runtime execution and cannot be
+# unit tested because they verify:
+# - Full CLI compose/run pipeline
+# - Secret masking in live output
+# - Runtime variable expansion
+#
+# Schema validation tests (non-array, non-string, empty string)
+# are covered by unit tests in:
+#   turbo/apps/cli/src/lib/domain/__tests__/yaml-validator.test.ts
+#
+# Transformation and precedence tests are covered by unit tests in:
+#   turbo/apps/cli/src/commands/__tests__/compose.test.ts
+#
+# Missing required values tests are covered by unit tests in:
+#   turbo/apps/web/src/lib/run/environment/__tests__/expand-environment.test.ts
 # ============================================
 
 @test "vm0 compose transforms experimental_secrets shorthand to environment" {
@@ -143,209 +159,4 @@ EOF
     echo "# Step 5: Verify vars are expanded correctly"
     assert_output --partial "CLOUD_NAME=${CLOUD_NAME_VALUE}"
     assert_output --partial "REGION=${REGION_VALUE}"
-}
-
-# ============================================
-# Missing required values tests
-# ============================================
-
-@test "vm0 run fails when experimental_secrets shorthand secrets are missing" {
-    echo "# Step 1: Create config with experimental_secrets"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent requiring secrets"
-    framework: claude-code
-    experimental_secrets:
-      - API_KEY
-      - DB_URL
-    experimental_vars:
-      - CLOUD_NAME
-      - REGION
-EOF
-
-    echo "# Step 2: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 3: Compose the config"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 4: Run without providing required secrets"
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --vars "CLOUD_NAME=cloud" \
-        --vars "REGION=region" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-    assert_failure
-
-    echo "# Step 5: Verify error mentions missing secrets"
-    assert_output --partial "Missing required secrets"
-    assert_output --partial "API_KEY"
-}
-
-@test "vm0 run fails when experimental_vars shorthand vars are missing" {
-    echo "# Step 1: Create config with experimental_vars"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent requiring vars"
-    framework: claude-code
-    experimental_secrets:
-      - API_KEY
-      - DB_URL
-    experimental_vars:
-      - CLOUD_NAME
-      - REGION
-EOF
-
-    echo "# Step 2: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 3: Compose the config"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 4: Run without providing required vars"
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --secrets "API_KEY=secret1" \
-        --secrets "DB_URL=secret2" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-    assert_failure
-
-    echo "# Step 5: Verify error mentions missing vars"
-    assert_output --partial "Missing required"
-    assert_output --partial "CLOUD_NAME"
-}
-
-# ============================================
-# Precedence tests
-# ============================================
-
-@test "vm0 compose explicit environment takes precedence over experimental_secrets shorthand" {
-    echo "# Step 1: Create config with both shorthand and explicit environment"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test precedence of explicit environment over shorthand"
-    framework: claude-code
-    experimental_secrets:
-      - API_KEY
-    experimental_vars:
-      - CLOUD_NAME
-    environment:
-      OVERRIDE_SECRET: \${{ secrets.DIFFERENT_SECRET }}
-      EXPLICIT_VAR: hardcoded-value
-EOF
-
-    echo "# Step 2: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 3: Compose the config with precedence test"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 4: Run with secrets - OVERRIDE_SECRET should use DIFFERENT_SECRET"
-    local API_KEY_VALUE="api-key-${UNIQUE_ID}"
-    local DIFFERENT_SECRET_VALUE="different-${UNIQUE_ID}"
-    local CLOUD_NAME_VALUE="cloud-${UNIQUE_ID}"
-
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --secrets "API_KEY=${API_KEY_VALUE}" \
-        --secrets "DIFFERENT_SECRET=${DIFFERENT_SECRET_VALUE}" \
-        --vars "CLOUD_NAME=${CLOUD_NAME_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo API_KEY=\$API_KEY && echo OVERRIDE_SECRET=\$OVERRIDE_SECRET && echo EXPLICIT_VAR=\$EXPLICIT_VAR"
-    assert_success
-
-    echo "# Step 5: Verify API_KEY is masked (from shorthand)"
-    assert_output --partial "API_KEY=***"
-
-    echo "# Step 6: Verify OVERRIDE_SECRET is masked (from explicit environment pointing to DIFFERENT_SECRET)"
-    assert_output --partial "OVERRIDE_SECRET=***"
-
-    echo "# Step 7: Verify EXPLICIT_VAR has hardcoded value"
-    assert_output --partial "EXPLICIT_VAR=hardcoded-value"
-}
-
-# ============================================
-# Validation tests
-# ============================================
-
-@test "vm0 compose validation rejects invalid experimental_secrets (non-array)" {
-    echo "# Step 1: Create invalid config"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  invalid-agent:
-    framework: claude-code
-    experimental_secrets: "should-be-array"
-EOF
-
-    echo "# Step 2: Try to compose - should fail validation"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "must be an array"
-}
-
-@test "vm0 compose validation rejects invalid experimental_vars (non-string entry)" {
-    echo "# Step 1: Create invalid config"
-    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
-version: "1.0"
-
-agents:
-  invalid-agent:
-    framework: claude-code
-    experimental_vars:
-      - 123
-EOF
-
-    echo "# Step 2: Try to compose - should fail validation"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "must be a string"
-}
-
-@test "vm0 compose validation rejects empty string in experimental_secrets" {
-    echo "# Step 1: Create invalid config"
-    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
-version: "1.0"
-
-agents:
-  invalid-agent:
-    framework: claude-code
-    experimental_secrets:
-      - API_KEY
-      - ""
-EOF
-
-    echo "# Step 2: Try to compose - should fail validation"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "cannot be empty"
-}
-
-@test "vm0 compose accepts empty experimental_secrets array" {
-    echo "# Step 1: Create config with empty arrays"
-    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
-version: "1.0"
-
-agents:
-  empty-arrays:
-    framework: claude-code
-    experimental_secrets: []
-    experimental_vars: []
-EOF
-
-    echo "# Step 2: Compose should succeed"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
 }

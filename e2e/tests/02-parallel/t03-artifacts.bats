@@ -1,5 +1,20 @@
 #!/usr/bin/env bats
 
+# E2E Integration Tests for Artifact Commands
+#
+# These tests verify end-to-end artifact workflows that require real API interaction.
+# Unit tests for validation, error messages, and configuration are in:
+#   turbo/apps/cli/src/__tests__/artifact-command.test.ts
+#   turbo/apps/cli/src/commands/__tests__/artifact-status.test.ts
+#
+# Tests in this file:
+# - Push artifact with files (core integration)
+# - Multiple pushes create different versions (versioning)
+# - Pull artifact gets HEAD version (core pull)
+# - Pull specific version by versionId (versioning)
+# - Pull non-existent version fails (API error handling)
+# - Status shows version info after push (full workflow)
+
 load '../../helpers/setup'
 
 setup() {
@@ -14,51 +29,6 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
-}
-
-@test "Initialize artifact in directory with --name flag" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-
-    run $CLI_COMMAND artifact init --name "$ARTIFACT_NAME"
-    assert_success
-    assert_output --partial "$ARTIFACT_NAME"
-
-    # Verify .vm0/storage.yaml file is created with type: artifact
-    [ -f ".vm0/storage.yaml" ]
-    run cat .vm0/storage.yaml
-    assert_output --partial "type: artifact"
-}
-
-@test "Initialize artifact with --name flag using custom name" {
-    mkdir -p "$TEST_ARTIFACT_DIR/my-project"
-    cd "$TEST_ARTIFACT_DIR/my-project"
-    run $CLI_COMMAND artifact init --name "my-project"
-    assert_success
-    assert_output --partial "my-project"
-}
-
-@test "artifact init rejects invalid artifact name with --name flag" {
-    mkdir -p "$TEST_ARTIFACT_DIR/test-dir"
-    cd "$TEST_ARTIFACT_DIR/test-dir"
-
-    run $CLI_COMMAND artifact init --name "INVALID_NAME"
-    assert_failure
-    assert_output --partial "Invalid artifact name"
-}
-
-@test "Push empty artifact to cloud succeeds" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    # Push without any files (empty artifact)
-    run $CLI_COMMAND artifact push
-    assert_success
-    assert_output --partial "No files found (empty artifact)"
-    assert_output --partial "Version:"
-    assert_output --partial "Files: 0"
-    assert_output --regexp "[0-9a-f]{8}"
 }
 
 @test "Push artifact to cloud and returns versionId" {
@@ -208,40 +178,14 @@ EOF
     rm -rf "$NEW_DIR"
 }
 
-@test "artifact status fails without init" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-
-    # No .vm0/storage.yaml exists
-    run $CLI_COMMAND artifact status
-    assert_failure
-    assert_output --partial "No artifact initialized"
-    assert_output --partial "vm0 artifact init"
-}
-
-@test "artifact status fails when not pushed to remote" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    # Init but no push - remote doesn't exist
-    run $CLI_COMMAND artifact status
-    assert_failure
-    assert_output --partial "Checking artifact"
-    assert_output --partial "Not found on remote"
-    assert_output --partial "vm0 artifact push"
-}
-
 @test "artifact status shows version info after push" {
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
-    echo "# Step 1: Push artifact..."
     echo "test content" > test-file.txt
     $CLI_COMMAND artifact push >/dev/null
 
-    echo "# Step 2: Check status..."
     run $CLI_COMMAND artifact status
     assert_success
     assert_output --partial "Checking artifact"
@@ -250,20 +194,4 @@ EOF
     assert_output --partial "Files:"
     assert_output --partial "Size:"
     assert_output --regexp "[0-9a-f]{8}"
-}
-
-@test "artifact status shows empty indicator for empty artifact" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    echo "# Step 1: Push empty artifact..."
-    $CLI_COMMAND artifact push >/dev/null
-
-    echo "# Step 2: Check status..."
-    run $CLI_COMMAND artifact status
-    assert_success
-    assert_output --partial "Checking artifact"
-    assert_output --partial "Found (empty)"
-    assert_output --partial "Version:"
 }

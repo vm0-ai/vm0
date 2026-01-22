@@ -3,6 +3,8 @@
 load '../../helpers/setup'
 
 # vm0 init command tests
+# E2E tests focus on: help, happy path file creation, and --force overwrite
+# Other tests (validation, template content, short options) are covered by unit tests
 
 setup() {
     # Create a temporary directory for each test
@@ -35,51 +37,11 @@ teardown() {
     # Verify files were created
     [ -f "vm0.yaml" ]
     [ -f "AGENTS.md" ]
-}
 
-@test "vm0 init generates correct vm0.yaml content" {
-    run $CLI_COMMAND init --name my-agent
-    assert_success
-
-    # Verify vm0.yaml content
+    # Verify basic content
     run cat vm0.yaml
-    assert_output --partial 'version: "1.0"'
-    assert_output --partial "my-agent:"
+    assert_output --partial "test-agent:"
     assert_output --partial "framework: claude-code"
-    assert_output --partial "instructions: AGENTS.md"
-    assert_output --partial "CLAUDE_CODE_OAUTH_TOKEN"
-    assert_output --partial "# Build agentic workflow"
-}
-
-@test "vm0 init generates correct AGENTS.md content" {
-    run $CLI_COMMAND init --name my-agent
-    assert_success
-
-    # Verify AGENTS.md content
-    run cat AGENTS.md
-    assert_output --partial "Agent Instructions"
-    assert_output --partial "HackerNews"
-    assert_output --partial "Workflow"
-}
-
-@test "vm0 init fails when vm0.yaml already exists" {
-    # Create existing vm0.yaml
-    echo "existing content" > vm0.yaml
-
-    run $CLI_COMMAND init --name test-agent
-    assert_failure
-    assert_output --partial "vm0.yaml already exists"
-    assert_output --partial "vm0 init --force"
-}
-
-@test "vm0 init fails when AGENTS.md already exists" {
-    # Create existing AGENTS.md
-    echo "existing content" > AGENTS.md
-
-    run $CLI_COMMAND init --name test-agent
-    assert_failure
-    assert_output --partial "AGENTS.md already exists"
-    assert_output --partial "vm0 init --force"
 }
 
 @test "vm0 init --force overwrites existing files" {
@@ -95,66 +57,4 @@ teardown() {
     # Verify new content
     run cat vm0.yaml
     assert_output --partial "new-agent:"
-}
-
-@test "vm0 init -f short option works" {
-    # Create existing files
-    echo "old content" > vm0.yaml
-    echo "old content" > AGENTS.md
-
-    run $CLI_COMMAND init --name short-flag-agent -f
-    assert_success
-    assert_output --partial "Created vm0.yaml"
-}
-
-@test "vm0 init rejects invalid agent name (too short)" {
-    run $CLI_COMMAND init --name ab
-    assert_failure
-    assert_output --partial "Invalid agent name"
-}
-
-@test "vm0 init requires --name in non-interactive mode" {
-    # In non-TTY environment without --name, should fail with clear message
-    run $CLI_COMMAND init
-    assert_failure
-    assert_output --partial "--name flag is required"
-}
-
-@test "vm0 init --name creates files without interactive prompt" {
-    run $CLI_COMMAND init --name cli-agent
-    assert_success
-    assert_output --partial "Created vm0.yaml"
-    assert_output --partial "Created AGENTS.md"
-
-    # Verify file content
-    run cat vm0.yaml
-    assert_output --partial "cli-agent:"
-}
-
-@test "vm0 init -n short option works" {
-    run $CLI_COMMAND init -n short-name-agent
-    assert_success
-    assert_output --partial "Created vm0.yaml"
-
-    run cat vm0.yaml
-    assert_output --partial "short-name-agent:"
-}
-
-@test "vm0 init --name with --force overwrites existing files" {
-    # Create existing files
-    echo "old content" > vm0.yaml
-    echo "old content" > AGENTS.md
-
-    run $CLI_COMMAND init --name new-cli-agent --force
-    assert_success
-    assert_output --partial "(overwritten)"
-
-    run cat vm0.yaml
-    assert_output --partial "new-cli-agent:"
-}
-
-@test "vm0 init --name rejects invalid agent name" {
-    run $CLI_COMMAND init --name ab
-    assert_failure
-    assert_output --partial "Invalid agent name"
 }

@@ -9,9 +9,3 @@ load '../../helpers/setup'
     assert_success
     assert_output --partial "Usage: vm0"
 }
-
-@test "CLI info command shows system information" {
-    run $CLI_COMMAND info
-    assert_success
-    assert_output --partial "System Information:"
-}

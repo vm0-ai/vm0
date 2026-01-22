@@ -147,6 +147,11 @@ describe("matchDomain", () => {
     it("should be case insensitive", () => {
       expect(matchDomain("*.EXAMPLE.com", "sub.example.COM")).toBe(true);
     });
+
+    // Migrated from E2E test: t08-firewall-sni.bats "wildcard domain matching works"
+    it("should match *.github.com with api.github.com", () => {
+      expect(matchDomain("*.github.com", "api.github.com")).toBe(true);
+    });
   });
 
   describe("edge cases", () => {

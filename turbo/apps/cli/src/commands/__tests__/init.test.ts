@@ -227,6 +227,41 @@ describe("init command", () => {
     });
   });
 
+  describe("non-interactive mode", () => {
+    it("should require --name flag when not interactive", async () => {
+      vi.mocked(promptUtils.isInteractive).mockReturnValue(false);
+
+      await expect(async () => {
+        await initCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "--name flag is required in non-interactive mode",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should work with --name flag in non-interactive mode", async () => {
+      vi.mocked(promptUtils.isInteractive).mockReturnValue(false);
+      vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);
+
+      await initCommand.parseAsync([
+        "node",
+        "cli",
+        "--name",
+        "non-interactive-agent",
+      ]);
+
+      expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
+      expect(existsSync(path.join(tempDir, "AGENTS.md"))).toBe(true);
+
+      const content = await fs.readFile(path.join(tempDir, "vm0.yaml"), "utf8");
+      expect(content).toContain("non-interactive-agent");
+    });
+  });
+
   describe("--name option", () => {
     beforeEach(() => {
       vi.mocked(yamlValidator.validateAgentName).mockReturnValue(true);

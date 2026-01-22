@@ -38,27 +38,6 @@ EOF
     assert_output --partial "Compose created"
 }
 
-@test "vm0 compose with explicit image shows deprecation warning" {
-    echo "# Creating config with explicit image but without working_dir..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with explicit image"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-EOF
-
-    echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Verifying deprecation warning..."
-    assert_output --partial "deprecated"
-    assert_output --partial "Compose"
-}
-
 @test "vm0 compose with explicit working_dir skips working_dir auto-config" {
     echo "# Creating config with explicit image and working_dir..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -99,61 +78,6 @@ EOF
 
     echo "# Verifying compose succeeded..."
     assert_output --partial "Compose"
-}
-
-@test "vm0 compose rejects invalid app" {
-    echo "# Creating config with invalid app..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with invalid app"
-    framework: claude-code
-    apps:
-      - invalid-app
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "Invalid app"
-}
-
-@test "vm0 compose rejects invalid app tag" {
-    echo "# Creating config with invalid app tag..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with invalid app tag"
-    framework: claude-code
-    apps:
-      - github:invalid-tag
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "Invalid app tag"
-}
-
-@test "vm0 compose requires image for unsupported framework" {
-    echo "# Creating config without image for unsupported framework..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent without image"
-    framework: unsupported-framework
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "agent.image"
 }
 
 # ============================================
@@ -426,63 +350,4 @@ EOF
 
     echo "# Verifying gh version output..."
     assert_output --partial "gh version"
-}
-
-# ============================================
-# Validation tests
-# ============================================
-
-@test "vm0 compose rejects invalid GitHub URL in skills" {
-    echo "# Creating config with invalid skills URL..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    skills:
-      - https://example.com/not-a-github-url
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "Invalid skill URL"
-}
-
-@test "vm0 compose rejects empty instructions" {
-    echo "# Creating config with empty instructions..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    instructions: ""
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    assert_output --partial "empty"
-}
-
-@test "vm0 compose with nonexistent instructions file fails" {
-    echo "# Creating config with nonexistent instructions file..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    instructions: nonexistent-file.md
-EOF
-
-    echo "# Running vm0 compose (should fail)..."
-    cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_failure
 }
