@@ -4,6 +4,7 @@ import {
   expect,
   vi,
   beforeEach,
+  afterEach,
   beforeAll,
   afterAll,
 } from "vitest";
@@ -666,9 +667,51 @@ describe("run-service", () => {
       });
 
       describe("model provider credential injection", () => {
+        // Track created scope IDs for cleanup (AP-4: use afterEach for robustness)
+        const createdScopeIds = new Set<string>();
+
+        afterEach(async () => {
+          // Clean up all resources for tracked scopes in correct order
+          for (const scopeId of createdScopeIds) {
+            // 1. Delete model providers (references credentials)
+            await globalThis.services.db
+              .delete(modelProviders)
+              .where(eq(modelProviders.scopeId, scopeId));
+
+            // 2. Find and delete compose versions for this scope
+            const scopeComposes = await globalThis.services.db
+              .select({ id: agentComposes.id })
+              .from(agentComposes)
+              .where(eq(agentComposes.scopeId, scopeId));
+
+            for (const compose of scopeComposes) {
+              await globalThis.services.db
+                .delete(agentComposeVersions)
+                .where(eq(agentComposeVersions.composeId, compose.id));
+            }
+
+            // 3. Delete composes
+            await globalThis.services.db
+              .delete(agentComposes)
+              .where(eq(agentComposes.scopeId, scopeId));
+
+            // 4. Delete credentials
+            await globalThis.services.db
+              .delete(credentials)
+              .where(eq(credentials.scopeId, scopeId));
+
+            // 5. Delete scope
+            await globalThis.services.db
+              .delete(scopes)
+              .where(eq(scopes.id, scopeId));
+          }
+          createdScopeIds.clear();
+        });
+
         test("skips injection when compose has explicit ANTHROPIC_API_KEY", async () => {
           const testUserId = `model-provider-skip-anthro-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
 
           await globalThis.services.db.insert(scopes).values({
             id: testScopeId,
@@ -717,22 +760,12 @@ describe("run-service", () => {
 
           // No credentials injected from model provider (compose has explicit config)
           expect(context.secrets).toBeUndefined();
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("skips injection when compose has explicit OPENAI_API_KEY", async () => {
           const testUserId = `model-provider-skip-openai-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
 
           await globalThis.services.db.insert(scopes).values({
             id: testScopeId,
@@ -777,22 +810,12 @@ describe("run-service", () => {
           });
 
           expect(context.secrets).toBeUndefined();
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("skips injection when compose has alternative auth method (CLAUDE_CODE_USE_FOUNDRY)", async () => {
           const testUserId = `model-provider-skip-foundry-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
 
           await globalThis.services.db.insert(scopes).values({
             id: testScopeId,
@@ -841,22 +864,12 @@ describe("run-service", () => {
 
           // No credentials injected from model provider (compose has alternative auth)
           expect(context.secrets).toBeUndefined();
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("uses specified model provider when --model-provider is passed", async () => {
           const testUserId = `model-provider-explicit-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
           const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
           await globalThis.services.db.insert(scopes).values({
@@ -928,28 +941,12 @@ describe("run-service", () => {
           expect(context.secrets).toEqual({
             ANTHROPIC_API_KEY: "test-anthropic-api-key-value",
           });
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(credentials)
-            .where(eq(credentials.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("uses default model provider when no explicit config", async () => {
           const testUserId = `model-provider-default-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
           const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
           await globalThis.services.db.insert(scopes).values({
@@ -1019,28 +1016,12 @@ describe("run-service", () => {
           expect(context.secrets).toEqual({
             ANTHROPIC_API_KEY: "default-provider-key-value",
           });
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(credentials)
-            .where(eq(credentials.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("throws BadRequestError when no LLM config and no model provider", async () => {
           const testUserId = `model-provider-none-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
 
           await globalThis.services.db.insert(scopes).values({
             id: testScopeId,
@@ -1095,22 +1076,12 @@ describe("run-service", () => {
               userId: testUserId,
             }),
           ).rejects.toThrow(/No LLM configuration found/);
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("throws BadRequestError when model provider type is invalid", async () => {
           const testUserId = `model-provider-invalid-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
 
           await globalThis.services.db.insert(scopes).values({
             id: testScopeId,
@@ -1166,22 +1137,12 @@ describe("run-service", () => {
               modelProvider: "non-existent-provider",
             }),
           ).rejects.toThrow(/Unknown model provider type/);
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("throws BadRequestError when model provider incompatible with framework", async () => {
           const testUserId = `model-provider-mismatch-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
           const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
           await globalThis.services.db.insert(scopes).values({
@@ -1260,28 +1221,12 @@ describe("run-service", () => {
               modelProvider: "openai-api-key",
             }),
           ).rejects.toThrow(/not compatible with framework/);
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(credentials)
-            .where(eq(credentials.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("auto-injects model provider credential into environment when no environment block exists", async () => {
           const testUserId = `model-provider-auto-inject-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
           const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
           await globalThis.services.db.insert(scopes).values({
@@ -1356,28 +1301,12 @@ describe("run-service", () => {
           expect(context.secrets).toEqual({
             CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-value",
           });
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(credentials)
-            .where(eq(credentials.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
 
         test("user-defined environment takes precedence over auto-injected credential", async () => {
           const testUserId = `model-provider-precedence-${Date.now()}`;
           const testScopeId = randomUUID();
+          createdScopeIds.add(testScopeId);
           const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
           await globalThis.services.db.insert(scopes).values({
@@ -1447,23 +1376,6 @@ describe("run-service", () => {
           expect(context.environment!["ANTHROPIC_API_KEY"]).toBe(
             "user-defined-key",
           );
-
-          // Cleanup
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
-          await globalThis.services.db
-            .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
-          await globalThis.services.db
-            .delete(credentials)
-            .where(eq(credentials.scopeId, testScopeId));
-          await globalThis.services.db
-            .delete(scopes)
-            .where(eq(scopes.id, testScopeId));
         });
       });
     });
