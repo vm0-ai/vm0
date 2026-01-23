@@ -1,5 +1,20 @@
 # Changelog
 
+## [10.6.1](https://github.com/vm0-ai/vm0/compare/web-v10.6.0...web-v10.6.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **run:** recognize alternative llm auth methods in env detection ([#1579](https://github.com/vm0-ai/vm0/issues/1579)) ([28ce716](https://github.com/vm0-ai/vm0/commit/28ce716f5deb1e30bec1d71c043740f5a392684e))
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [10.6.0](https://github.com/vm0-ai/vm0/compare/web-v10.5.0...web-v10.6.0) (2026-01-23)
 
 

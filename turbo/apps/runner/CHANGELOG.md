@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.1](https://github.com/vm0-ai/vm0/compare/runner-v3.0.0...runner-v3.0.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **ci:** increase parallel e2e test timeout to 45s ([#1574](https://github.com/vm0-ai/vm0/issues/1574)) ([2dbbbe2](https://github.com/vm0-ai/vm0/commit/2dbbbe2c40a0f3ba675a02a4ae7b3d6d324b117c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [3.0.0](https://github.com/vm0-ai/vm0/compare/runner-v2.15.0...runner-v3.0.0) (2026-01-23)
 
 
