@@ -1,6 +1,6 @@
 // VM0 Runner - Self-hosted runner that polls the VM0 API server and executes agent jobs in isolated Firecracker microVMs
 // Deployment: Added buildkit cache retry mechanism (issue #1328)
-// Test: Verify needs-runner-pipeline label control (issue #1544) - with label
+// CI: Added 60-second per-test timeout for E2E tests (issue #1549)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";
