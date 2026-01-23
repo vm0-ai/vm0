@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.1](https://github.com/vm0-ai/vm0/compare/core-v5.3.0...core-v5.3.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **web:** cors, auth token identification, and scope error responses ([#1506](https://github.com/vm0-ai/vm0/issues/1506)) ([b14ec55](https://github.com/vm0-ai/vm0/commit/b14ec559743c9538af5f6294d6581fbaff15a434))
+
 ## [5.3.0](https://github.com/vm0-ai/vm0/compare/core-v5.2.0...core-v5.3.0) (2026-01-22)
 
 

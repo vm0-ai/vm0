@@ -12,6 +12,7 @@ const SANDBOX_DEFAULTS = {
   vcpu: 2,
   memory_mb: 2048,
   poll_interval_ms: 5000,
+  guest_protocol: "vsock",
 } as const;
 
 const PROXY_DEFAULTS = {
@@ -47,6 +48,9 @@ export const runnerConfigSchema = z.object({
         .int()
         .min(1000)
         .default(SANDBOX_DEFAULTS.poll_interval_ms),
+      guest_protocol: z
+        .enum(["vsock", "ssh"])
+        .default(SANDBOX_DEFAULTS.guest_protocol),
     })
     .default(SANDBOX_DEFAULTS),
   firecracker: z.object({
@@ -94,6 +98,9 @@ export const debugConfigSchema = z.object({
         .int()
         .min(1000)
         .default(SANDBOX_DEFAULTS.poll_interval_ms),
+      guest_protocol: z
+        .enum(["vsock", "ssh"])
+        .default(SANDBOX_DEFAULTS.guest_protocol),
     })
     .default(SANDBOX_DEFAULTS),
   firecracker: z.object({

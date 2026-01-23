@@ -21,8 +21,8 @@ importers:
         specifier: ^7.4.2
         version: 7.4.4
       e2b:
-        specifier: ^2.7.0
-        version: 2.7.0
+        specifier: ^2.10.3
+        version: 2.10.3
       knip:
         specifier: ^5.63.1
         version: 5.69.1(@types/node@24.3.0)(typescript@5.9.2)
@@ -419,8 +419,8 @@ importers:
         specifier: ^6.35.1
         version: 6.35.1(next@15.5.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@e2b/code-interpreter':
-        specifier: ^2.2.0
-        version: 2.2.0
+        specifier: ^2.3.3
+        version: 2.3.3
       '@neondatabase/serverless':
         specifier: ^1.0.1
         version: 1.0.1
@@ -522,8 +522,8 @@ importers:
         specifier: ^0.31.4
         version: 0.31.4
       e2b:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.10.3
+        version: 2.10.3
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
@@ -1194,8 +1194,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@e2b/code-interpreter@2.2.0':
-    resolution: {integrity: sha512-j2XIhuuV+MvjCMJbwRCL3hZjkOTv4Jk1FygI4dCwaU9PggtAW+TXhyaVzzVPZroE9fqxLfrXGqY08P06Ei7MQA==}
+  '@e2b/code-interpreter@2.3.3':
+    resolution: {integrity: sha512-WOpSwc1WpvxyOijf6WMbR76BUuvd2O9ddXgCHHi65lkuy6YgQGq7oyd8PNsT331O9Tqbccjy6uF4xanSdLX1UA==}
     engines: {node: '>=20'}
 
   '@emnapi/core@1.7.1':
@@ -4984,12 +4984,8 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
-  e2b@2.7.0:
-    resolution: {integrity: sha512-pbCbkkdkkY+yIhhtdSE7lM/vhIROtHNI0hNpj8lBphDILNH2qmmjhxU7/wam8/xWRbiWbfuQaOsv100lD32nag==}
-    engines: {node: '>=20'}
-
-  e2b@2.8.3:
-    resolution: {integrity: sha512-P0hA5UceZ6HVfL9VDqQ0VG+IXZTy1K+FHek3xFkg7vSgcBm6wV9KG/YcvaoEdgiF+n1KS2TsIhunLs22jbrLyQ==}
+  e2b@2.10.3:
+    resolution: {integrity: sha512-HYSfI+Sfl+lI3OTnGEUgGoZ6Oe06j/qZC8RuxUDC9vWHTaoemDQ4COirWIoBQ8uWjmhVEfRsexUweFrc1HUa+g==}
     engines: {node: '>=20'}
 
   eastasianwidth@0.2.0:
@@ -5447,11 +5443,6 @@ packages:
 
   glob@10.4.5:
     resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
-    hasBin: true
-
-  glob@11.0.3:
-    resolution: {integrity: sha512-2Nim7dha1KVkaiF4q6Dj+ngPPMdfvLJEOpZk/jKiUAkqKebpGAWQXAq9z1xu9HKu5lWfqw/FASuccEjyznjPaA==}
-    engines: {node: 20 || >=22}
     hasBin: true
 
   glob@11.1.0:
@@ -7357,6 +7348,10 @@ packages:
     engines: {node: '>=18'}
     deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exhorbitant rates) by contacting i@izs.me
 
+  tar@7.5.6:
+    resolution: {integrity: sha512-xqUeu2JAIJpXyvskvU3uvQW8PAmHrtXp2KDuMJwQqW8Sqq0CaZBAQ+dKS3RBXVhU4wC5NjAdKrmh84241gO9cA==}
+    engines: {node: '>=18'}
+
   test-exclude@7.0.1:
     resolution: {integrity: sha512-pFYqmTw68LXVjeWJMST4+borgQP2AyMNbg1BpZh9LbyhUeNkeaPF9gzfPGUAnSMV3qPYdWUwDIjjCLiSDOl7vg==}
     engines: {node: '>=18'}
@@ -8927,9 +8922,9 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@e2b/code-interpreter@2.2.0':
+  '@e2b/code-interpreter@2.3.3':
     dependencies:
-      e2b: 2.8.3
+      e2b: 2.10.3
 
   '@emnapi/core@1.7.1':
     dependencies:
@@ -12652,20 +12647,7 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  e2b@2.7.0:
-    dependencies:
-      '@bufbuild/protobuf': 2.10.1
-      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.10.1)
-      '@connectrpc/connect-web': 2.0.0-rc.3(@bufbuild/protobuf@2.10.1)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.10.1))
-      chalk: 5.6.0
-      compare-versions: 6.1.1
-      dockerfile-ast: 0.7.1
-      glob: 11.0.3
-      openapi-fetch: 0.14.1
-      platform: 1.3.6
-      tar: 7.5.2
-
-  e2b@2.8.3:
+  e2b@2.10.3:
     dependencies:
       '@bufbuild/protobuf': 2.10.1
       '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.10.1)
@@ -12676,7 +12658,7 @@ snapshots:
       glob: 11.1.0
       openapi-fetch: 0.14.1
       platform: 1.3.6
-      tar: 7.5.2
+      tar: 7.5.6
 
   eastasianwidth@0.2.0: {}
 
@@ -13345,15 +13327,6 @@ snapshots:
       minipass: 7.1.2
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
-
-  glob@11.0.3:
-    dependencies:
-      foreground-child: 3.3.1
-      jackspeak: 4.1.1
-      minimatch: 10.1.1
-      minipass: 7.1.2
-      package-json-from-dist: 1.0.1
-      path-scurry: 2.0.1
 
   glob@11.1.0:
     dependencies:
@@ -15699,6 +15672,14 @@ snapshots:
       - react-native-b4a
 
   tar@7.5.2:
+    dependencies:
+      '@isaacs/fs-minipass': 4.0.1
+      chownr: 3.0.0
+      minipass: 7.1.2
+      minizlib: 3.1.0
+      yallist: 5.0.0
+
+  tar@7.5.6:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0

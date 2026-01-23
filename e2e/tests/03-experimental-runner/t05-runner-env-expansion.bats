@@ -6,7 +6,10 @@
 # This test verifies that:
 # 1. Vars and secrets are expanded in agent environment
 # 2. Secrets are masked in output
-# 3. Missing secrets/vars cause appropriate errors
+# 3. Session continuity behavior for secrets
+#
+# Note: Missing secrets/vars validation is tested in unit tests:
+# turbo/apps/web/src/lib/run/environment/__tests__/expand-environment.test.ts
 #
 # BLACK BOX test - only interacts via CLI/API
 
@@ -130,50 +133,6 @@ setup_artifact() {
     assert_success
     assert_output --partial "VAR=${VAR_VALUE}"
     assert_output --partial "SECRET=***"
-}
-
-@test "Runner env: fails when required secret is missing" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
-    setup_artifact
-
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Running without providing secret..."
-    unset TEST_SECRET
-
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --vars "testVar=somevalue" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    echo "# Output:"
-    echo "$output"
-
-    assert_failure
-    assert_output --partial "Missing required secrets"
-    assert_output --partial "TEST_SECRET"
-}
-
-@test "Runner env: fails when required vars are missing" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
-    setup_artifact
-
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Running without providing vars..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    echo "# Output:"
-    echo "$output"
-
-    assert_failure
-    assert_output --partial "Missing required"
-    assert_output --partial "testVar"
 }
 
 @test "Runner env: continue requires secrets to be re-provided" {

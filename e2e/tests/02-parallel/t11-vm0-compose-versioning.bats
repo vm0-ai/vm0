@@ -16,6 +16,10 @@ teardown() {
 
 # ============================================
 # vm0 compose versioning tests
+#
+# Integration tests verify the full compose workflow.
+# Unit tests for hashing, deduplication, and error handling
+# are in: turbo/apps/cli/src/__tests__/compose-versioning.test.ts
 # ============================================
 
 @test "vm0 compose should display version ID" {
@@ -39,46 +43,6 @@ EOF
     assert_output --partial "Version:"
     # Version should be 8 hex characters (short form of SHA-256)
     assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
-}
-
-@test "vm0 compose with same content should return 'version exists'" {
-    echo "# Creating config file..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for deduplication"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# First compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    # Extract version from first compose
-    VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-
-    echo "# Version 1: $VERSION1"
-
-    echo "# Second compose with identical content..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    # Should indicate version already exists (content deduplication)
-    assert_output --partial "version exists"
-
-    # Extract version from second compose
-    VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version 2: $VERSION2"
-
-    # Same content should produce same version ID
-    [ "$VERSION1" = "$VERSION2" ] || {
-        echo "# ERROR: Versions should match for identical content"
-        echo "#   Version 1: $VERSION1"
-        echo "#   Version 2: $VERSION2"
-        return 1
-    }
 }
 
 @test "vm0 compose with different content should create new version" {
@@ -124,52 +88,6 @@ EOF
     # Different content should produce different version ID
     [ "$VERSION1" != "$VERSION2" ] || {
         echo "# ERROR: Versions should differ for different content"
-        echo "#   Version 1: $VERSION1"
-        echo "#   Version 2: $VERSION2"
-        return 1
-    }
-}
-
-@test "vm0 compose version ID is deterministic (key order independent)" {
-    echo "# Creating config with keys in one order..."
-    cat > "$TEST_DIR/vm0-a.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Deterministic test"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# First compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0-a.yaml"
-    assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version 1: $VERSION1"
-
-    echo "# Creating config with keys in different order (same content)..."
-    cat > "$TEST_DIR/vm0-b.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    working_dir: /home/user/workspace
-    image: "vm0/claude-code:dev"
-    framework: claude-code
-    description: "Deterministic test"
-EOF
-
-    echo "# Second compose with same content, different key order..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0-b.yaml"
-    assert_success
-    VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version 2: $VERSION2"
-
-    # Same content with different key order should produce same version ID
-    [ "$VERSION1" = "$VERSION2" ] || {
-        echo "# ERROR: Version ID should be key-order independent"
         echo "#   Version 1: $VERSION1"
         echo "#   Version 2: $VERSION2"
         return 1
@@ -264,33 +182,6 @@ EOF
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
-}
-
-@test "vm0 run with nonexistent version shows error" {
-    export ARTIFACT_NAME="e2e-versioning-error-$(date +%s%3N)-$RANDOM"
-
-    echo "# Creating config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Error test"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Building agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Running with nonexistent version (should fail before artifact check)..."
-    run $CLI_COMMAND run "$AGENT_NAME:deadbeef" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-    assert_failure
-    assert_output --partial "Version not found"
 }
 
 @test "vm0 run without version specifier runs HEAD (backward compatible)" {

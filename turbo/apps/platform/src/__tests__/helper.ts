@@ -9,8 +9,8 @@ import {
   setPathname,
   setSearch,
 } from "../signals/location";
-import { Level, logger } from "../signals/log";
 import { vi } from "vitest";
+import { localStorageSignals } from "../signals/external/local-storage";
 
 export async function setupPage(options: {
   context: TestContext;
@@ -22,8 +22,11 @@ export async function setupPage(options: {
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
-  for (const loggerName of options.debugLoggers ?? []) {
-    logger(loggerName).level = Level.Debug;
+  if (options.debugLoggers) {
+    options.context.store.set(
+      localStorageSignals("debugLoggers").set$,
+      JSON.stringify(options.debugLoggers ?? []),
+    );
   }
 
   mockUser(

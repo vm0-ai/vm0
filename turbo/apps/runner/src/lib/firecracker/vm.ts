@@ -56,12 +56,14 @@ export class FirecrackerVM {
   private workDir: string;
   private socketPath: string;
   private vmOverlayPath: string; // Per-VM sparse overlay for writes
+  private vsockPath: string; // Vsock UDS path for host-guest communication
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
+    this.vsockPath = path.join(this.workDir, "vsock.sock");
   }
 
   /**
@@ -90,6 +92,13 @@ export class FirecrackerVM {
    */
   getSocketPath(): string {
     return this.socketPath;
+  }
+
+  /**
+   * Get the vsock UDS path for host-guest communication
+   */
+  getVsockPath(): string {
+    return this.vsockPath;
   }
 
   /**
@@ -260,6 +269,15 @@ export class FirecrackerVM {
       iface_id: "eth0",
       guest_mac: this.networkConfig.guestMac,
       host_dev_name: this.networkConfig.tapDevice,
+    });
+
+    // Configure vsock for host-guest communication
+    // Guest CID 3 is the standard guest identifier (CID 0=hypervisor, 1=local, 2=host)
+    console.log(`[VM ${this.config.vmId}] Vsock: ${this.vsockPath}`);
+    await this.client.setVsock({
+      vsock_id: "vsock0",
+      guest_cid: 3,
+      uds_path: this.vsockPath,
     });
   }
 

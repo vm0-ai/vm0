@@ -30,7 +30,7 @@ setup_artifact() {
 # --yes flag tests
 # ============================================
 
-@test "vm0 compose with --yes flag skips confirmation prompts" {
+@test "vm0 compose with --yes and -y flags skips confirmation prompts" {
     echo "# Step 1: Create config with skill"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -46,30 +46,25 @@ EOF
     echo "# Step 2: Compose with --yes flag"
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
-
-    echo "# Step 3: Verify compose succeeded"
     assert_output --partial "Compose"
     assert_output --partial "skill"
-}
 
-@test "vm0 compose with -y short flag skips confirmation prompts" {
-    echo "# Step 1: Create config with skill"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
+    echo "# Step 3: Create second config with different agent name for -y test"
+    local AGENT_NAME_2="${AGENT_NAME}-short"
+    cat > "$TEST_DIR/vm0-short.yaml" <<EOF
 version: "1.0"
 
 agents:
-  $AGENT_NAME:
+  $AGENT_NAME_2:
     description: "Test agent with -y short flag"
     framework: claude-code
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
 
-    echo "# Step 2: Compose with -y short flag"
-    run $CLI_COMMAND compose -y "$TEST_DIR/vm0.yaml"
+    echo "# Step 4: Compose with -y short flag"
+    run $CLI_COMMAND compose -y "$TEST_DIR/vm0-short.yaml"
     assert_success
-
-    echo "# Step 3: Verify compose succeeded"
     assert_output --partial "Compose"
 }
 
@@ -90,32 +85,6 @@ EOF
 
     echo "# Step 3: Verify compose succeeded"
     assert_output --partial "Compose"
-}
-
-# ============================================
-# Skills without frontmatter vars (regression)
-# ============================================
-
-@test "vm0 compose with skills that have no frontmatter vars works correctly" {
-    echo "# Step 1: Create config with github skill"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with skill"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# Step 2: Compose the config with --yes to skip confirmation"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 3: Verify compose succeeded"
-    assert_output --partial "Compose"
-    assert_output --partial "skill"
 }
 
 # ============================================
@@ -225,76 +194,10 @@ EOF
 
 # ============================================
 # Smart secret confirmation tests
+# Note: Secret state comparison logic (re-compose with same secrets skips confirmation,
+# new marker detection) is tested in unit tests at:
+# turbo/apps/cli/src/__tests__/skill-frontmatter.test.ts
 # ============================================
-
-@test "vm0 compose re-compose with same secrets skips confirmation" {
-    echo "# Step 1: Create config with skill that has vm0_secrets"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-EOF
-
-    echo "# Step 2: First compose with --yes to approve secrets"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-    assert_output --partial "Compose"
-    # First compose should show secrets
-    assert_output --partial "ELEVENLABS_API_KEY"
-
-    echo "# Step 3: Re-compose WITHOUT --yes flag (should succeed without prompting)"
-    # Since secrets are the same as HEAD, no confirmation should be needed
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    assert_output --partial "Compose"
-    # Should NOT show (new) marker since secret was already approved
-    refute_output --partial "(new)"
-}
-
-@test "vm0 compose shows (new) marker for truly new secrets" {
-    echo "# Step 1: Create config with first skill"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-EOF
-
-    echo "# Step 2: First compose with --yes"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 3: Add second skill with different secret"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-      - https://github.com/vm0-ai/vm0-skills/tree/main/resend
-EOF
-
-    echo "# Step 4: Compose with --yes and verify (new) marker"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-    # RESEND_API_KEY is new, should show (new) marker
-    assert_output --partial "(new)"
-    assert_output --partial "RESEND_API_KEY"
-    # ELEVENLABS_API_KEY is not new, should NOT have (new) marker next to it
-    # Note: We can't easily assert that ELEVENLABS doesn't have (new) without complex parsing
-}
 
 @test "vm0 compose fails in non-TTY with new secrets without --yes" {
     echo "# Step 1: Create config with first skill"

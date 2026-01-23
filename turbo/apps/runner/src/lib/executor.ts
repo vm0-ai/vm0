@@ -14,10 +14,11 @@
 import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import {
-  type SSHClient,
-  createVMSSHClient,
+  type GuestClient,
+  SSHClient,
   getRunnerSSHKeyPath,
 } from "./firecracker/guest.js";
+import { VsockClient } from "./firecracker/vsock.js";
 import {
   setupVMProxyRules,
   removeVMProxyRules,
@@ -70,11 +71,11 @@ export const CURL_ERROR_MESSAGES: Record<number, string> = {
  * Preflight connectivity check - verify VM can reach VM0 API
  * Run this AFTER network is configured but BEFORE starting agent
  *
- * This function uses ssh.exec() to run curl inside the VM (not on the host).
+ * This function uses guest.exec() to run curl inside the VM (not on the host).
  * The curl command is hardcoded with no user input interpolation, so shell
  * injection is not a concern here.
  *
- * @param ssh - SSH client connected to the VM
+ * @param guest - Guest client connected to the VM
  * @param apiUrl - VM0 API URL to test
  * @param runId - Run ID for the heartbeat request
  * @param sandboxToken - Authentication token for the API
@@ -82,7 +83,7 @@ export const CURL_ERROR_MESSAGES: Record<number, string> = {
  * @returns PreflightResult indicating success or failure with error message
  */
 export async function runPreflightCheck(
-  ssh: SSHClient,
+  guest: GuestClient,
   apiUrl: string,
   runId: string,
   sandboxToken: string,
@@ -101,8 +102,8 @@ export async function runPreflightCheck(
     : "";
   const curlCmd = `curl -sf --connect-timeout 5 --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}"${bypassHeader} -d '{"runId":"${runId}"}'`;
 
-  // Use 20 second timeout for SSH exec (curl has 10s max-time, plus buffer for SSH overhead)
-  const result = await ssh.exec(curlCmd, 20000);
+  // Use 20 second timeout for exec (curl has 10s max-time, plus buffer for overhead)
+  const result = await guest.exec(curlCmd, 20000);
 
   if (result.exitCode === 0) {
     return { success: true };
@@ -209,24 +210,40 @@ export async function executeJob(
     vm = new FirecrackerVM(vmConfig);
     await withSandboxTiming("vm_create", () => vm!.start());
 
-    // Get VM IP for SSH connection
+    // Get VM IP for network security rules
     guestIp = vm.getGuestIp();
     if (!guestIp) {
       throw new Error("VM started but no IP address available");
     }
     log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
-    // Create SSH client and wait for SSH to become available
-    // Connect as 'user' (not root) to match E2B behavior
-    // Privileged operations use sudo
-    const privateKeyPath = getRunnerSSHKeyPath();
-    const ssh = createVMSSHClient(guestIp, "user", privateKeyPath || undefined);
-    log(`[Executor] Waiting for SSH on ${guestIp}...`);
-    await withSandboxTiming("ssh_wait", () =>
-      ssh.waitUntilReachable(120000, 2000),
-    ); // 2 minute timeout, check every 2s
+    // Create guest client based on configured protocol
+    const guestProtocol = config.sandbox.guest_protocol;
+    let guest: GuestClient;
 
-    log(`[Executor] SSH ready on ${guestIp}`);
+    if (guestProtocol === "ssh") {
+      // SSH-based communication (legacy, slower but more debuggable)
+      const sshKeyPath = getRunnerSSHKeyPath();
+      guest = new SSHClient({
+        host: guestIp,
+        user: "user",
+        privateKeyPath: sshKeyPath || undefined,
+      });
+      log(`[Executor] Using SSH for guest communication: ${guestIp}`);
+    } else {
+      // Vsock-based communication (faster, no TCP overhead)
+      const vsockPath = vm.getVsockPath();
+      guest = new VsockClient(vsockPath);
+      log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
+    }
+
+    // Verify guest is reachable
+    log(`[Executor] Verifying ${guestProtocol} connectivity...`);
+    await withSandboxTiming("guest_wait", () =>
+      guest.waitUntilReachable(30000, 1000),
+    ); // 30 second timeout, check every 1s
+
+    log(`[Executor] Guest client ready (${guestProtocol})`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
@@ -258,23 +275,23 @@ export async function executeJob(
           config.proxy.ca_dir,
           "mitmproxy-ca-cert.pem",
         );
-        await installProxyCA(ssh, caCertPath);
+        await installProxyCA(guest, caCertPath);
       }
     }
 
     // Configure DNS - systemd may have overwritten resolv.conf at boot
     log(`[Executor] Configuring DNS...`);
-    await configureDNS(ssh);
+    await configureDNS(guest);
 
     // Upload all Python scripts
     log(`[Executor] Uploading scripts...`);
-    await withSandboxTiming("script_upload", () => uploadScripts(ssh));
+    await withSandboxTiming("script_upload", () => uploadScripts(guest));
     log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
       await withSandboxTiming("storage_download", () =>
-        downloadStorages(ssh, context.storageManifest!),
+        downloadStorages(guest, context.storageManifest!),
       );
     }
 
@@ -282,7 +299,7 @@ export async function executeJob(
     if (context.resumeSession) {
       await withSandboxTiming("session_restore", () =>
         restoreSessionHistory(
-          ssh,
+          guest,
           context.resumeSession!,
           context.workingDir,
           context.cliAgentType || "claude-code",
@@ -298,7 +315,7 @@ export async function executeJob(
     log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
-    await ssh.writeFile(ENV_JSON_PATH, envJson);
+    await guest.writeFile(ENV_JSON_PATH, envJson);
 
     // Run preflight connectivity check before starting agent
     // This verifies VM can reach VM0 API - if not, we report failure immediately
@@ -307,7 +324,7 @@ export async function executeJob(
       log(`[Executor] Running preflight connectivity check...`);
       const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       const preflight = await runPreflightCheck(
-        ssh,
+        guest,
         config.server.url,
         context.runId,
         context.sandboxToken,
@@ -343,14 +360,14 @@ export async function executeJob(
       // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
       // This avoids API dependencies while still testing the full VM setup pipeline
       log(`[Executor] Running command directly (benchmark mode)...`);
-      await ssh.exec(
+      await guest.exec(
         `nohup sh -c '${context.prompt}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
       log(`[Executor] Command started in background`);
     } else {
       // Production mode: run env-loader.mjs which loads environment and runs run-agent.mjs
       log(`[Executor] Running agent via env-loader (background)...`);
-      await ssh.exec(
+      await guest.exec(
         `nohup sh -c 'node ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
       log(`[Executor] Agent started in background`);
@@ -367,7 +384,7 @@ export async function executeJob(
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
 
       // Check if exit code file exists
-      const checkResult = await ssh.exec(`cat ${exitCodeFile} 2>/dev/null`);
+      const checkResult = await guest.exec(`cat ${exitCodeFile} 2>/dev/null`);
       if (checkResult.exitCode === 0 && checkResult.stdout.trim()) {
         const parsed = parseInt(checkResult.stdout.trim(), 10);
         exitCode = Number.isNaN(parsed) ? 1 : parsed;
@@ -378,7 +395,7 @@ export async function executeJob(
       // Check if agent process is still running (production mode only)
       // If exit code file doesn't exist but process is dead, agent crashed unexpectedly
       if (!options.benchmarkMode) {
-        const processCheck = await ssh.exec(
+        const processCheck = await guest.exec(
           `pgrep -f "env-loader.mjs" > /dev/null 2>&1 && echo "RUNNING" || echo "DEAD"`,
         );
 
@@ -389,10 +406,10 @@ export async function executeJob(
           );
 
           // Try to get diagnostic info from system log and dmesg
-          const logContent = await ssh.exec(
+          const logContent = await guest.exec(
             `tail -50 ${systemLogFile} 2>/dev/null`,
           );
-          const dmesgCheck = await ssh.exec(
+          const dmesgCheck = await guest.exec(
             `dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
           );
 
@@ -453,7 +470,9 @@ export async function executeJob(
     log(`[Executor] Agent finished in ${duration}s with exit code ${exitCode}`);
 
     // Read log file for debugging output
-    const logResult = await ssh.exec(`tail -100 ${systemLogFile} 2>/dev/null`);
+    const logResult = await guest.exec(
+      `tail -100 ${systemLogFile} 2>/dev/null`,
+    );
     if (logResult.stdout) {
       log(
         `[Executor] Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,

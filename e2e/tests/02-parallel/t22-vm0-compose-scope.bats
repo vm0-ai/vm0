@@ -4,6 +4,10 @@
 # Tests the scope/name:version naming convention for agent composes
 #
 # This test covers issue #757: Add scope support to agent compose
+#
+# Note: Error handling tests (non-existent scope/agent/version, cross-scope isolation)
+# have been moved to unit tests at turbo/apps/cli/src/__tests__/compose-scope.test.ts
+# for faster feedback and better test performance.
 
 load '../../helpers/setup'
 
@@ -24,32 +28,6 @@ teardown() {
 # vm0 compose displays scope/name format
 # ============================================
 
-@test "vm0 compose displays scope/name format in output" {
-    echo "# Creating config file..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for scope display"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Verifying output contains scope/name format..."
-    # Output should show something like "Compose created: user-abc12345/e2e-scope-compose-xxxx"
-    assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
-
-    echo "# Verifying output contains version..."
-    assert_output --partial "Version:"
-    assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
-}
-
 @test "vm0 compose shows scope/name:version in run instructions" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -66,6 +44,14 @@ EOF
     echo "# Running vm0 compose..."
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
+
+    echo "# Verifying output contains scope/name format..."
+    # Output should show something like "Compose created: user-abc12345/e2e-scope-compose-xxxx"
+    assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
+
+    echo "# Verifying output contains version..."
+    assert_output --partial "Version:"
+    assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
 
     echo "# Verifying run instructions include scope/name:version format..."
     # Output should show: vm0 run scope/name:version
@@ -167,152 +153,6 @@ EOF
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from versioned scope test"
     assert_success
-}
-
-@test "vm0 run with scope/name:latest works correctly" {
-    echo "# Step 1: Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for scope/name:latest"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    # Extract scope from compose output (avoids race condition with parallel tests)
-    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
-    echo "# Scope from compose output: $USER_SCOPE"
-
-    [ -n "$USER_SCOPE" ] || {
-        echo "# Failed to extract scope from compose output"
-        echo "# Output was: $output"
-        return 1
-    }
-
-    echo "# Step 3: Setting up artifact..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
-    assert_success
-
-    echo "# Step 4: Running with scope/name:latest format..."
-    run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:latest" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from latest scope test"
-    assert_success
-}
-
-# ============================================
-# Error handling tests
-# ============================================
-
-@test "vm0 run with non-existent scope shows error" {
-    echo "# Trying to run with a non-existent scope..."
-    run $CLI_COMMAND run "nonexistent-scope-xyz123/$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    assert_failure
-    # Should show scope not found error
-    assert_output --partial "not found"
-}
-
-@test "vm0 run with non-existent agent in valid scope shows error" {
-    echo "# Step 1: Get user's scope..."
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        skip "User has no scope configured"
-    fi
-
-    USER_SCOPE=$(echo "$output" | grep -oP 'Slug:\s+\K[a-z0-9-]+' | head -1)
-    [ -n "$USER_SCOPE" ] || skip "Could not extract user scope"
-    echo "# User scope: $USER_SCOPE"
-
-    echo "# Step 2: Trying to run non-existent agent..."
-    run $CLI_COMMAND run "$USER_SCOPE/nonexistent-agent-xyz123" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    assert_failure
-    # Should show agent not found error
-    assert_output --partial "not found"
-}
-
-@test "vm0 run with scope/name:nonexistent-version shows error" {
-    echo "# Step 1: Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for version error"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    # Extract scope from compose output (avoids race condition with parallel tests)
-    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
-    echo "# Scope from compose output: $USER_SCOPE"
-
-    [ -n "$USER_SCOPE" ] || {
-        echo "# Failed to extract scope from compose output"
-        echo "# Output was: $output"
-        return 1
-    }
-
-    echo "# Step 3: Trying to run with non-existent version..."
-    run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:deadbeef" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    assert_failure
-    # Should show version not found error
-    assert_output --partial "Version not found"
-}
-
-# ============================================
-# Cross-scope isolation tests
-# ============================================
-
-@test "vm0 run cannot access agent from different scope" {
-    echo "# Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for scope isolation"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Composing agent in user's scope..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Trying to access agent with wrong scope prefix..."
-    # Use a different scope that doesn't exist
-    run $CLI_COMMAND run "other-user-scope/$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello"
-
-    assert_failure
-    # Should fail because the scope doesn't exist or agent isn't in that scope
-    assert_output --partial "not found"
 }
 
 # ============================================

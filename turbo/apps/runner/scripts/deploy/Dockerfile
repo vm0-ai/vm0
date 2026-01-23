@@ -20,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install required packages
 # Core:
 # - openssh-server: SSH access for runner communication
-# - python3: Python 3.11+ for agent scripts
+# - python3: Python 3.11+ for agent scripts and vsock-agent
 # - systemd: Init system for VM boot
 # Development tools (matching e2b template):
 # - curl: HTTP client
@@ -122,5 +122,16 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
 
 # Re-enable essential services
 RUN systemctl enable ssh
+
+# Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
+# Protocol: 4-byte length prefix (big endian) + JSON message
+# Messages: ready, ping/pong, exec/exec_result
+RUN mkdir -p /usr/local/bin/vm0-agent
+COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
+RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
+
+# Install vsock-agent systemd service
+COPY vsock-agent.service /etc/systemd/system/vsock-agent.service
+RUN systemctl enable vsock-agent
 
 CMD ["/lib/systemd/systemd"]

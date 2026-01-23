@@ -36,10 +36,14 @@ export const NAVIGATION_CONFIG = [
   },
 ] as const satisfies readonly NavGroup[];
 
-// Footer navigation items (non-grouped)
-// Note: "Bill" is handled separately via SubscriptionDetailsButton in sidebar.tsx
 export const FOOTER_NAV_ITEMS = [
-  { id: "docs", label: "Documentation", icon: "HelpCircle", path: "/" },
+  {
+    id: "docs",
+    label: "Documentation",
+    icon: "HelpCircle",
+    url: "https://docs.vm0.ai",
+    newTab: true,
+  },
 ] as const satisfies readonly NavItem[];
 
 // Derived signal: active navigation item based on current pathname
@@ -63,9 +67,12 @@ export const activeNavItem$ = computed((get) => {
     }
   }
 
-  // Check footer navigation
+  // Check footer navigation (only items with internal paths)
   for (const item of FOOTER_NAV_ITEMS) {
-    if (pathname === item.path || pathname.startsWith(item.path + "/")) {
+    if (
+      "path" in item &&
+      (pathname === item.path || pathname.startsWith(item.path + "/"))
+    ) {
       return item.id;
     }
   }

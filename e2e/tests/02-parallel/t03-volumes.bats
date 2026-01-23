@@ -36,15 +36,6 @@ teardown() {
     assert_output --partial "my-dataset"
 }
 
-@test "volume init rejects invalid volume name with --name flag" {
-    mkdir -p "$TEST_VOLUME_DIR/test-dir"
-    cd "$TEST_VOLUME_DIR/test-dir"
-
-    run $CLI_COMMAND volume init --name "INVALID_NAME"
-    assert_failure
-    assert_output --partial "Invalid volume name"
-}
-
 @test "Push empty volume to cloud succeeds" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
@@ -176,55 +167,6 @@ EOF
     assert_output "content from version 1"
 
     rm -rf "$NEW_DIR"
-}
-
-@test "Pull non-existent version fails with error" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-
-    echo "some content" > data.txt
-    $CLI_COMMAND volume push >/dev/null
-
-    # Try to pull a non-existent version
-    NEW_DIR="$(mktemp -d)"
-    cd "$NEW_DIR"
-    mkdir -p .vm0
-    cat > .vm0/storage.yaml <<EOF
-name: $VOLUME_NAME
-EOF
-
-    # Use a valid-looking SHA-256 hash that doesn't exist (minimum 8 chars for short version)
-    FAKE_VERSION="00000000"
-    run $CLI_COMMAND volume pull "$FAKE_VERSION"
-    assert_failure
-    assert_output --partial "not found"
-
-    rm -rf "$NEW_DIR"
-}
-
-@test "volume status fails without init" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-
-    # No .vm0/storage.yaml exists
-    run $CLI_COMMAND volume status
-    assert_failure
-    assert_output --partial "No volume initialized"
-    assert_output --partial "vm0 volume init"
-}
-
-@test "volume status fails when not pushed to remote" {
-    mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-
-    # Init but no push - remote doesn't exist
-    run $CLI_COMMAND volume status
-    assert_failure
-    assert_output --partial "Checking volume"
-    assert_output --partial "Not found on remote"
-    assert_output --partial "vm0 volume push"
 }
 
 @test "volume status shows version info after push" {

@@ -26,6 +26,24 @@ export interface ExecResult {
 }
 
 /**
+ * Guest Client Interface
+ *
+ * Common interface for VM communication clients (SSH, Vsock).
+ * Allows swapping communication protocols without affecting consumers.
+ */
+export interface GuestClient {
+  exec(command: string, timeoutMs?: number): Promise<ExecResult>;
+  execOrThrow(command: string): Promise<string>;
+  writeFile(remotePath: string, content: string): Promise<void>;
+  writeFileWithSudo(remotePath: string, content: string): Promise<void>;
+  readFile(remotePath: string): Promise<string>;
+  isReachable(): Promise<boolean>;
+  waitUntilReachable(timeoutMs?: number, intervalMs?: number): Promise<void>;
+  mkdir(remotePath: string): Promise<void>;
+  exists(remotePath: string): Promise<boolean>;
+}
+
+/**
  * SSH client configuration
  */
 export interface SSHConfig {
@@ -57,8 +75,9 @@ const DEFAULT_SSH_OPTIONS = [
 
 /**
  * SSH Client for VM communication
+ * Implements GuestClient interface for protocol-agnostic usage.
  */
-export class SSHClient {
+export class SSHClient implements GuestClient {
   private config: SSHConfig;
   private sshOptions: string[];
 

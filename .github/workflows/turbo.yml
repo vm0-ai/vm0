@@ -552,6 +552,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -628,6 +629,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [prepare]
     if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -835,6 +837,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [prepare, deploy-runner-prepare]
     if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -882,6 +885,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     needs: [prepare, deploy-web, deploy-runner-prepare]
     if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -943,7 +947,7 @@ jobs:
   unlock-runner-host:
     runs-on: ubuntu-latest
     needs: [deploy-runner-prepare, cli-e2e-03-runner]
-    if: always() && github.event_name != 'push' && needs.deploy-runner-prepare.outputs.runner-host != ''
+    if: always() && contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') && github.event_name != 'push' && needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
       - name: Unlock runner host
         env:

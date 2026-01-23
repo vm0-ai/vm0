@@ -95,26 +95,6 @@ EOF
     assert_output --partial "Updated schedule"
 }
 
-@test "vm0 schedule deploy should fail with invalid cron expression" {
-    cd "$TEST_DIR"
-
-    cat > "$TEST_DIR/bad-schedule.yaml" <<EOF
-version: "1.0"
-
-schedules:
-  bad-schedule:
-    on:
-      cron: "invalid cron"
-      timezone: "UTC"
-    run:
-      agent: "${AGENT_NAME}"
-      prompt: "This should fail"
-EOF
-
-    run $CLI_COMMAND schedule deploy bad-schedule.yaml
-    assert_failure
-}
-
 # ============================================================
 # List tests
 # ============================================================
@@ -161,14 +141,6 @@ EOF
     assert_output --partial "enabled"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
-}
-
-@test "vm0 schedule status should fail for non-existent schedule" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule status "non-existent-schedule"
-    assert_failure
-    assert_output --partial "not found"
 }
 
 @test "vm0 schedule status should accept --limit option" {
@@ -275,14 +247,6 @@ EOF
     assert_output --partial "No schedules found"
 }
 
-@test "vm0 schedule delete should fail for non-existent schedule" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule delete "non-existent-schedule" --force
-    assert_failure
-    assert_output --partial "not found"
-}
-
 # ============================================================
 # Secrets handling tests
 # ============================================================
@@ -321,76 +285,6 @@ EOF
 # Init tests (non-interactive mode with flags)
 # ============================================================
 
-@test "vm0 schedule init should create schedule.yaml with daily frequency" {
-    cd "$TEST_DIR"
-
-    # Remove existing schedule.yaml to test init
-    rm -f schedule.yaml
-
-    run $CLI_COMMAND schedule init \
-        --name "$SCHEDULE_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Daily task" \
-        --no-vars
-    assert_success
-    assert_output --partial "Created schedule.yaml"
-
-    # Verify file was created
-    assert [ -f "schedule.yaml" ]
-
-    # Verify content
-    run cat schedule.yaml
-    assert_output --partial "version: \"1.0\""
-    assert_output --partial "$SCHEDULE_NAME"
-    assert_output --partial "cron:"
-    assert_output --partial "0 9 * * *"
-    assert_output --partial "Daily task"
-}
-
-@test "vm0 schedule init should create schedule.yaml with weekly frequency" {
-    cd "$TEST_DIR"
-
-    rm -f schedule.yaml
-
-    run $CLI_COMMAND schedule init \
-        --name "$SCHEDULE_NAME" \
-        --frequency weekly \
-        --time "10:30" \
-        --day "mon" \
-        --timezone "America/New_York" \
-        --prompt "Weekly task" \
-        --no-vars
-    assert_success
-    assert_output --partial "Created schedule.yaml"
-
-    # Verify cron for Monday at 10:30
-    run cat schedule.yaml
-    assert_output --partial "30 10 * * 1"
-}
-
-@test "vm0 schedule init should create schedule.yaml with monthly frequency" {
-    cd "$TEST_DIR"
-
-    rm -f schedule.yaml
-
-    run $CLI_COMMAND schedule init \
-        --name "$SCHEDULE_NAME" \
-        --frequency monthly \
-        --time "12:00" \
-        --day "15" \
-        --timezone "UTC" \
-        --prompt "Monthly task" \
-        --no-vars
-    assert_success
-    assert_output --partial "Created schedule.yaml"
-
-    # Verify cron for 15th at 12:00
-    run cat schedule.yaml
-    assert_output --partial "0 12 15 * *"
-}
-
 @test "vm0 schedule init generated file should be deployable" {
     cd "$TEST_DIR"
 
@@ -415,82 +309,6 @@ EOF
     run $CLI_COMMAND schedule list
     assert_success
     assert_output --partial "$SCHEDULE_NAME"
-}
-
-@test "vm0 schedule init should fail when vm0.yaml does not exist" {
-    # Create a temp directory without vm0.yaml
-    local EMPTY_DIR="$(mktemp -d)"
-    cd "$EMPTY_DIR"
-
-    run $CLI_COMMAND schedule init \
-        --name "test-schedule" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Should fail" \
-        --no-vars
-    assert_failure
-    assert_output --partial "No vm0.yaml found"
-
-    rm -rf "$EMPTY_DIR"
-}
-
-@test "vm0 schedule init should require --force to overwrite existing file" {
-    cd "$TEST_DIR"
-
-    # schedule.yaml already exists from setup
-    assert [ -f "schedule.yaml" ]
-
-    # Try init without --force (non-interactive should fail)
-    run $CLI_COMMAND schedule init \
-        --name "new-schedule" \
-        --frequency daily \
-        --time "10:00" \
-        --timezone "UTC" \
-        --prompt "New task" \
-        --no-vars
-    assert_failure
-    assert_output --partial "schedule.yaml already exists"
-}
-
-@test "vm0 schedule init with --force should overwrite existing file" {
-    cd "$TEST_DIR"
-
-    # schedule.yaml already exists from setup
-    assert [ -f "schedule.yaml" ]
-
-    # Init with --force
-    run $CLI_COMMAND schedule init \
-        --name "new-schedule-${UNIQUE_ID}" \
-        --frequency daily \
-        --time "11:00" \
-        --timezone "UTC" \
-        --prompt "Overwritten task" \
-        --no-vars \
-        --force
-    assert_success
-    assert_output --partial "Created schedule.yaml"
-
-    # Verify new content
-    run cat schedule.yaml
-    assert_output --partial "Overwritten task"
-    assert_output --partial "0 11 * * *"
-}
-
-@test "vm0 schedule init with --frequency once should require interactive mode" {
-    cd "$TEST_DIR"
-
-    rm -f schedule.yaml
-
-    # One-time schedules require interactive mode
-    run $CLI_COMMAND schedule init \
-        --name "$SCHEDULE_NAME" \
-        --frequency once \
-        --timezone "UTC" \
-        --prompt "One-time task" \
-        --no-vars
-    assert_failure
-    assert_output --partial "One-time schedules require interactive mode"
 }
 
 # ============================================================

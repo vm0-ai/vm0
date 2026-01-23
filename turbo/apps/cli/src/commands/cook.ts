@@ -34,7 +34,7 @@ interface AgentComposeConfig {
   volumes?: Record<string, VolumeConfig>;
 }
 
-const CONFIG_FILE = "vm0.yaml";
+export const CONFIG_FILE = "vm0.yaml";
 const ARTIFACT_DIR = "artifact";
 
 /**
@@ -224,7 +224,7 @@ export function extractRequiredVarNames(config: AgentComposeConfig): string[] {
  * @param envFilePath - Path to .env file
  * @returns Array of missing variable names
  */
-function checkMissingVariables(
+export function checkMissingVariables(
   varNames: string[],
   envFilePath: string,
 ): string[] {
@@ -256,7 +256,7 @@ function checkMissingVariables(
  * @param missingVars - Variable names to add as placeholders
  * @param envFilePath - Path to .env file
  */
-async function generateEnvPlaceholders(
+export async function generateEnvPlaceholders(
   missingVars: string[],
   envFilePath: string,
 ): Promise<void> {

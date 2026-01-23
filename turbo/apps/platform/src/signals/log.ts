@@ -200,3 +200,7 @@ export function resetLoggerForTest() {
     }
   }
 }
+
+export function getLoggers(): Partial<Record<string, ConsoleLogger>> {
+  return LOGGERS;
+}

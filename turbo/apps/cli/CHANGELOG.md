@@ -1,5 +1,26 @@
 # Changelog
 
+## [6.3.1](https://github.com/vm0-ai/vm0/compare/cli-v6.3.0...cli-v6.3.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **cli:** correct sequence gap detection to expect 1-based events ([#1526](https://github.com/vm0-ai/vm0/issues/1526)) ([1a4c2cd](https://github.com/vm0-ai/vm0/commit/1a4c2cdb97f6571de087c5414b6477fd698dfefd)), closes [#1525](https://github.com/vm0-ai/vm0/issues/1525)
+* **cli:** detect bun/yarn package managers and show manual upgrade instructions ([#1534](https://github.com/vm0-ai/vm0/issues/1534)) ([805ef7a](https://github.com/vm0-ai/vm0/commit/805ef7a80f74a65b6afedae1a3ff631df0684a30))
+* **cli:** resolve schedule by name globally for delete/enable/disable/status ([#1498](https://github.com/vm0-ai/vm0/issues/1498)) ([48d6275](https://github.com/vm0-ai/vm0/commit/48d62750589aac639d3e5120c2fd6114d5a34fea))
+
+
+### Performance Improvements
+
+* **e2e:** simplify model-provider tests to happy path only ([#1523](https://github.com/vm0-ai/vm0/issues/1523)) ([d58092b](https://github.com/vm0-ai/vm0/commit/d58092b9040684bfa57db1c0e5597e5421b29f6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.1
+
 ## [6.3.0](https://github.com/vm0-ai/vm0/compare/cli-v6.2.1...cli-v6.3.0) (2026-01-22)
 
 

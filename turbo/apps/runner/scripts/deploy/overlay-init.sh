@@ -42,7 +42,23 @@ mkdir -p /rom /rw
 mount --move /oldroot/rom /rom
 mount --move /oldroot/rw /rw
 
-# Clean up old root reference
+# Move devtmpfs from old root to new root
+# This is critical for /dev/vsock and other device nodes created by the kernel
+mount --move /oldroot/dev /dev
+
+# Load virtio-vsock kernel module for host-guest communication
+# This must be done before systemd starts the vsock-agent service
+# Note: Load before umount oldroot in case module deps are needed
+modprobe virtio-vsock 2>/dev/null || true
+
+# Verify /dev/vsock exists (for debugging)
+if [ -e /dev/vsock ]; then
+    echo "[overlay-init] /dev/vsock exists"
+else
+    echo "[overlay-init] WARNING: /dev/vsock does not exist after modprobe"
+fi
+
+# Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
 # Start the real init (systemd)

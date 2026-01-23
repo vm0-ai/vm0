@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.15.0](https://github.com/vm0-ai/vm0/compare/runner-v2.14.0...runner-v2.15.0) (2026-01-23)
+
+
+### Features
+
+* reduce vm0 run production timeout from 24 hours to 2 hours ([#1512](https://github.com/vm0-ai/vm0/issues/1512)) ([26d5011](https://github.com/vm0-ai/vm0/commit/26d5011627b535d002e3e07a74e13609d691ef4b)), closes [#1510](https://github.com/vm0-ai/vm0/issues/1510)
+* **runner:** add vsock full test script for metal devices ([#1517](https://github.com/vm0-ai/vm0/issues/1517)) ([c330a3d](https://github.com/vm0-ai/vm0/commit/c330a3d2f780868a49d6e10f2ce5608f8c5a38ab))
+* **runner:** add vsock support for host-guest communication ([#1524](https://github.com/vm0-ai/vm0/issues/1524)) ([e9f5a14](https://github.com/vm0-ai/vm0/commit/e9f5a144721bef2b05a6f320342d768b8ca4f16c))
+
+
+### Bug Fixes
+
+* **runner:** update vsock test script to match vm0 runner config ([#1520](https://github.com/vm0-ai/vm0/issues/1520)) ([446028e](https://github.com/vm0-ai/vm0/commit/446028e6b1d0485942b522b5faf302e69b005144))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.1
+
 ## [2.14.0](https://github.com/vm0-ai/vm0/compare/runner-v2.13.5...runner-v2.14.0) (2026-01-22)
 
 

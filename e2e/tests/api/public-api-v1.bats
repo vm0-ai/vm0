@@ -49,57 +49,29 @@ setup() {
 }
 
 # ============================================
-# Agents API Tests
+# API Tests - Each test verifies both data and pagination
 # ============================================
 
-@test "GET /v1/agents returns data array" {
+@test "GET /v1/agents returns data and pagination" {
     result=$(api_get "/v1/agents")
     echo "$result" | jq -e '.data' > /dev/null
-}
-
-@test "GET /v1/agents returns pagination object" {
-    result=$(api_get "/v1/agents")
     echo "$result" | jq -e '.pagination' > /dev/null
 }
 
-# ============================================
-# Runs API Tests
-# ============================================
-
-@test "GET /v1/runs returns data array" {
+@test "GET /v1/runs returns data and pagination" {
     result=$(api_get "/v1/runs")
     echo "$result" | jq -e '.data' > /dev/null
-}
-
-@test "GET /v1/runs returns pagination object" {
-    result=$(api_get "/v1/runs")
     echo "$result" | jq -e '.pagination' > /dev/null
 }
 
-# ============================================
-# Artifacts API Tests
-# ============================================
-
-@test "GET /v1/artifacts returns data array" {
+@test "GET /v1/artifacts returns data and pagination" {
     result=$(api_get "/v1/artifacts")
     echo "$result" | jq -e '.data' > /dev/null
-}
-
-@test "GET /v1/artifacts returns pagination object" {
-    result=$(api_get "/v1/artifacts")
     echo "$result" | jq -e '.pagination' > /dev/null
 }
 
-# ============================================
-# Volumes API Tests
-# ============================================
-
-@test "GET /v1/volumes returns data array" {
+@test "GET /v1/volumes returns data and pagination" {
     result=$(api_get "/v1/volumes")
     echo "$result" | jq -e '.data' > /dev/null
-}
-
-@test "GET /v1/volumes returns pagination object" {
-    result=$(api_get "/v1/volumes")
     echo "$result" | jq -e '.pagination' > /dev/null
 }
