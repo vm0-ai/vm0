@@ -30,10 +30,10 @@ import { getDefaultModelProvider } from "../model-provider/model-provider-servic
 const log = logger("run:build-context");
 
 /**
- * LLM environment variables that indicate explicit configuration.
+ * Model provider environment variables that indicate explicit configuration.
  * Includes both model-provider supported vars and alternative auth methods.
  */
-const LLM_ENV_VARS = [
+const MODEL_PROVIDER_ENV_VARS = [
   // Model-provider supported
   "CLAUDE_CODE_OAUTH_TOKEN",
   "ANTHROPIC_API_KEY",
@@ -68,8 +68,8 @@ async function resolveProviderType(
   const defaultProvider = await getDefaultModelProvider(scopeId, framework);
   if (!defaultProvider?.type) {
     throw new BadRequestError(
-      "No LLM configuration found. " +
-        "Run 'vm0 model-provider setup' to configure a model provider, " +
+      "No model provider configured. " +
+        "Run 'vm0 model-provider setup' to configure one, " +
         "or add environment variables to your vm0.yaml.",
     );
   }
@@ -86,20 +86,20 @@ interface ModelProviderCredentialResult {
 
 /**
  * Resolve and inject model provider credential if needed
- * Only injects if no explicit LLM config in compose environment
+ * Only injects if no explicit model provider config in compose environment
  */
 async function resolveModelProviderCredential(
   userId: string,
   framework: string,
-  hasExplicitLLMConfig: boolean,
+  hasExplicitModelProviderConfig: boolean,
   existingCredentials: Record<string, string> | undefined,
   explicitModelProvider?: string,
 ): Promise<ModelProviderCredentialResult> {
   let credentials = existingCredentials;
 
-  // Skip if explicit LLM config exists or framework doesn't use model providers
+  // Skip if explicit model provider config exists or framework doesn't use model providers
   if (
-    hasExplicitLLMConfig ||
+    hasExplicitModelProviderConfig ||
     (framework !== "claude-code" && framework !== "codex")
   ) {
     return { credentials, credentialName: undefined };
@@ -228,7 +228,7 @@ export interface BuildContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
-  // Model provider for automatic LLM credential injection
+  // Model provider for automatic credential injection
   modelProvider?: string;
 }
 
@@ -390,7 +390,7 @@ export async function buildExecutionContext(
   );
 
   // Step 4b: Model provider credential injection
-  const hasExplicitLLMConfig = LLM_ENV_VARS.some(
+  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
     (v) => firstAgent?.environment?.[v] !== undefined,
   );
   const framework = firstAgent?.framework || "claude-code";
@@ -398,7 +398,7 @@ export async function buildExecutionContext(
   const modelProviderResult = await resolveModelProviderCredential(
     params.userId,
     framework,
-    hasExplicitLLMConfig,
+    hasExplicitModelProviderConfig,
     credentials,
     params.modelProvider,
   );

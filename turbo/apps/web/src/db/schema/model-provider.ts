@@ -12,7 +12,7 @@ import { credentials } from "./credential";
 
 /**
  * Model Providers table
- * Stores metadata for LLM backend configurations
+ * Stores metadata for model provider configurations
  * Actual credentials stored in credentials table via FK
  */
 export const modelProviders = pgTable(

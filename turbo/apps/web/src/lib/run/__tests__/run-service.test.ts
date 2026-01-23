@@ -720,7 +720,7 @@ describe("run-service", () => {
             ownerId: testUserId,
           });
 
-          // Create a compose with explicit LLM config
+          // Create a compose with explicit model provider config
           const [compose] = await globalThis.services.db
             .insert(agentComposes)
             .values({
@@ -740,7 +740,7 @@ describe("run-service", () => {
                   framework: "claude-code",
                   working_dir: "/workspace",
                   environment: {
-                    // Explicit LLM config - model provider should be skipped
+                    // Explicit model provider config - injection should be skipped
                     ANTHROPIC_API_KEY: "explicit-api-key-value",
                   },
                 },
@@ -900,17 +900,17 @@ describe("run-service", () => {
             isDefault: false,
           });
 
-          // Create compose WITHOUT explicit LLM config
+          // Create compose WITHOUT explicit model provider config
           const [compose] = await globalThis.services.db
             .insert(agentComposes)
             .values({
               userId: testUserId,
               scopeId: testScopeId,
-              name: "test-compose-no-llm-config",
+              name: "test-compose-no-mp-config",
             })
             .returning();
 
-          const versionId = `test-version-no-llm-${Date.now()}`;
+          const versionId = `test-version-no-mp-config-${Date.now()}`;
           await globalThis.services.db.insert(agentComposeVersions).values({
             id: versionId,
             composeId: compose!.id,
@@ -977,7 +977,7 @@ describe("run-service", () => {
             isDefault: true, // This is the default!
           });
 
-          // Create compose WITHOUT explicit LLM config
+          // Create compose WITHOUT explicit model provider config
           const [compose] = await globalThis.services.db
             .insert(agentComposes)
             .values({
@@ -1018,7 +1018,7 @@ describe("run-service", () => {
           });
         });
 
-        test("throws BadRequestError when no LLM config and no model provider", async () => {
+        test("throws BadRequestError when no model provider configured", async () => {
           const testUserId = `model-provider-none-${Date.now()}`;
           const testScopeId = randomUUID();
           createdScopeIds.add(testScopeId);
@@ -1030,7 +1030,7 @@ describe("run-service", () => {
             ownerId: testUserId,
           });
 
-          // Create compose WITHOUT explicit LLM config and NO model provider
+          // Create compose WITHOUT explicit model provider config and NO model provider
           const [compose] = await globalThis.services.db
             .insert(agentComposes)
             .values({
@@ -1075,7 +1075,7 @@ describe("run-service", () => {
               sandboxToken: "token",
               userId: testUserId,
             }),
-          ).rejects.toThrow(/No LLM configuration found/);
+          ).rejects.toThrow(/No model provider configured/);
         });
 
         test("throws BadRequestError when model provider type is invalid", async () => {
@@ -1372,7 +1372,7 @@ describe("run-service", () => {
             userId: testUserId,
           });
 
-          // User-defined value should win (skips model provider injection due to hasExplicitLLMConfig)
+          // User-defined value should win (skips model provider injection due to hasExplicitModelProviderConfig)
           expect(context.environment!["ANTHROPIC_API_KEY"]).toBe(
             "user-defined-key",
           );

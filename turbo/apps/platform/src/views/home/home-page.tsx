@@ -26,7 +26,7 @@ export function HomePage() {
         <div className="flex flex-col gap-10 px-8 pb-8">
           {features?.platformOnboarding && (
             <>
-              <Step1LLMProvider />
+              <Step1ModelProvider />
               <Step2SampleAgents />
               <Step3InstallSkills />
               <UsefulReferences />
@@ -50,10 +50,10 @@ function StepHeader({ step, title }: { step: number; title: string }) {
   );
 }
 
-function Step1LLMProvider() {
+function Step1ModelProvider() {
   return (
     <section>
-      <StepHeader step={1} title="Provider your LLM provider" />
+      <StepHeader step={1} title="Configure your model provider" />
       <Card className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
@@ -61,10 +61,10 @@ function Step1LLMProvider() {
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">
-              Your LLM provider
+              Your model provider
             </p>
             <p className="text-xs text-muted-foreground">
-              Enter LLM provider secrets
+              Enter model provider secrets
             </p>
           </div>
         </div>

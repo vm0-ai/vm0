@@ -1,9 +1,9 @@
 ---
 title: Overview
-description: Configure different LLM providers for your agents
+description: Configure different model providers for your agents
 ---
 
-VM0 supports two agent providers: **Claude Code** and **Codex**. You can also use alternative LLM providers with Claude Code.
+VM0 supports two agent providers: **Claude Code** and **Codex**. You can also use alternative model providers with Claude Code.
 
 ## Provider Selection
 
@@ -43,13 +43,13 @@ Required environment variable:
 | ---------------- | ------------------- |
 | `OPENAI_API_KEY` | API key from OpenAI |
 
-## Alternative LLM Providers (Claude Code only)
+## Alternative Model Providers (Claude Code only)
 
 <Callout type="warning">
-  Alternative LLM providers are only supported with Claude Code, not Codex.
+  Alternative model providers are only supported with Claude Code, not Codex.
 </Callout>
 
-You can use various LLM providers that implement the Anthropic API by setting environment variables:
+You can use various model providers that implement the Anthropic API by setting environment variables:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
