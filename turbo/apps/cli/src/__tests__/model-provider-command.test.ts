@@ -20,15 +20,6 @@ import { deleteCommand } from "../commands/model-provider/delete";
 import { setDefaultCommand } from "../commands/model-provider/set-default";
 import chalk from "chalk";
 
-// Mock the config module to avoid filesystem dependencies in unit tests
-vi.mock("../lib/api/config", () => ({
-  getToken: vi.fn().mockResolvedValue("test-token"),
-  getApiUrl: vi.fn().mockResolvedValue("http://localhost:3000"),
-  loadConfig: vi.fn().mockResolvedValue({}),
-  saveConfig: vi.fn().mockResolvedValue(undefined),
-  clearConfig: vi.fn().mockResolvedValue(undefined),
-}));
-
 describe("Model Provider Command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");

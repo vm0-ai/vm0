@@ -18,15 +18,11 @@ import { server } from "../mocks/server";
 import { initCommand } from "../commands/volume/init";
 import { pullCommand } from "../commands/volume/pull";
 import * as storageUtils from "../lib/storage/storage-utils";
-import * as config from "../lib/api/config";
 import chalk from "chalk";
 
-// Mock dependencies
+// Mock storage-utils for filesystem operations
+// Note: Consider replacing with real implementations using temp directories
 vi.mock("../lib/storage/storage-utils");
-vi.mock("../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("Volume Command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -40,14 +36,15 @@ describe("Volume Command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("volume init - name validation", () => {

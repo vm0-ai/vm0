@@ -23,6 +23,7 @@ import * as storageUtils from "../lib/storage/storage-utils";
 import chalk from "chalk";
 
 // Mock storage utils but keep the real isValidStorageName implementation available
+// Note: Consider replacing with real implementations using temp directories
 vi.mock("../lib/storage/storage-utils", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../lib/storage/storage-utils")>();
@@ -37,10 +38,6 @@ vi.mock("../lib/storage/direct-upload", () => ({
 }));
 vi.mock("../lib/api", () => ({
   getStorageDownload: vi.fn(),
-}));
-vi.mock("../lib/api/config", () => ({
-  getApiUrl: vi.fn().mockResolvedValue("http://localhost:3000"),
-  getToken: vi.fn().mockResolvedValue("test-token"),
 }));
 
 describe("Artifact Command", () => {
@@ -57,6 +54,8 @@ describe("Artifact Command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     process.cwd = () => "/test/dir";
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -64,6 +63,7 @@ describe("Artifact Command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     process.cwd = originalCwd;
+    vi.unstubAllEnvs();
   });
 
   describe("help text", () => {

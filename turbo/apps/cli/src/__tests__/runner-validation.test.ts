@@ -19,13 +19,6 @@ import * as fs from "fs/promises";
 import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import * as config from "../lib/api/config";
-
-// Mock API config
-vi.mock("../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("Runner Group Validation", () => {
   let tempDir: string;
@@ -44,8 +37,8 @@ describe("Runner Group Validation", () => {
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-runner-validation-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -54,6 +47,7 @@ describe("Runner Group Validation", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("experimental_runner group format", () => {

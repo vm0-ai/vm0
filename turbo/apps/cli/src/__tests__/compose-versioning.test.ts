@@ -24,14 +24,7 @@ import * as fs from "fs/promises";
 import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import * as config from "../lib/api/config";
 import chalk from "chalk";
-
-// Mock API config
-vi.mock("../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("Compose Versioning", () => {
   let tempDir: string;
@@ -60,8 +53,8 @@ describe("Compose Versioning", () => {
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-versioning-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
     // Disable chalk colors for deterministic console output assertions
     chalk.level = 0;
   });
@@ -72,6 +65,7 @@ describe("Compose Versioning", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("Version ID Display Format", () => {
