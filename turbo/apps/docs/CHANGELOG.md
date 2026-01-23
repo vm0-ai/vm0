@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/docs-v0.19.0...docs-v0.20.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/docs-v0.18.0...docs-v0.19.0) (2026-01-20)
 
 

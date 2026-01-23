@@ -1,5 +1,30 @@
 # Changelog
 
+## [10.6.0](https://github.com/vm0-ai/vm0/compare/web-v10.5.0...web-v10.6.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
+
+### Bug Fixes
+
+* auto-inject model provider credential into environment ([#1561](https://github.com/vm0-ai/vm0/issues/1561)) ([66d891d](https://github.com/vm0-ai/vm0/commit/66d891d611f20b0cb349b19fafdbf68e2c688d86))
+* **test:** make credential service test user id unique ([#1548](https://github.com/vm0-ai/vm0/issues/1548)) ([555be25](https://github.com/vm0-ai/vm0/commit/555be256144ace98a475037d573db258bac094f4))
+
+
+### Performance Improvements
+
+* **web:** prioritize clerk session auth over cli token validation ([#1566](https://github.com/vm0-ai/vm0/issues/1566)) ([4b90fb8](https://github.com/vm0-ai/vm0/commit/4b90fb8856fd57a8894e5441d2b8b84fb857daec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.4.0
+
 ## [10.5.0](https://github.com/vm0-ai/vm0/compare/web-v10.4.0...web-v10.5.0) (2026-01-23)
 
 

@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.0.0](https://github.com/vm0-ai/vm0/compare/runner-v2.15.0...runner-v3.0.0) (2026-01-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runner:** guest_protocol config option is no longer supported. Remove it from existing runner.yaml configurations.
+
+### Features
+
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
+
+### Performance Improvements
+
+* **test:** refactor e2e tests to use setup_file() and split multi-run cases ([#1559](https://github.com/vm0-ai/vm0/issues/1559)) ([4404543](https://github.com/vm0-ai/vm0/commit/4404543a23eff6ba285b5703f6c337e681ca5e8a))
+
+
+### Code Refactoring
+
+* **runner:** remove ssh, use vsock only for guest communication ([#1552](https://github.com/vm0-ai/vm0/issues/1552)) ([21f5dd2](https://github.com/vm0-ai/vm0/commit/21f5dd243ae4b4a7cfbf4541584127d824cd0672))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.4.0
+
 ## [2.15.0](https://github.com/vm0-ai/vm0/compare/runner-v2.14.0...runner-v2.15.0) (2026-01-23)
 
 

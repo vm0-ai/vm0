@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.4.0](https://github.com/vm0-ai/vm0/compare/cli-v6.3.1...cli-v6.4.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** add help text for credential acquisition in model-provider setup ([#1562](https://github.com/vm0-ai/vm0/issues/1562)) ([3230f08](https://github.com/vm0-ai/vm0/commit/3230f0872227319519e473ecc53b053d4673f03a)), closes [#1558](https://github.com/vm0-ai/vm0/issues/1558)
+* **cli:** add ls alias and remove --json from credential list ([#1563](https://github.com/vm0-ai/vm0/issues/1563)) ([bfd7dfb](https://github.com/vm0-ai/vm0/commit/bfd7dfb9cb6e10f6be08a4d743d89a906de942fc)), closes [#1560](https://github.com/vm0-ai/vm0/issues/1560)
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.4.0
+
 ## [6.3.1](https://github.com/vm0-ai/vm0/compare/cli-v6.3.0...cli-v6.3.1) (2026-01-23)
 
 
