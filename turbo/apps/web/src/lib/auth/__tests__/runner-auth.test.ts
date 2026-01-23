@@ -25,7 +25,7 @@ vi.mock("next/headers", () => ({
 
 // Mock the sandbox-token module (external dependency)
 vi.mock("../sandbox-token", () => ({
-  isSandboxToken: (token: string) => token.split(".").length === 3,
+  isSandboxToken: (token: string) => token.startsWith("vm0_sbx_"),
 }));
 
 // Set required environment variables before initServices

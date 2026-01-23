@@ -5,6 +5,11 @@ import { logger } from "../logger";
 const log = logger("auth:sandbox");
 
 /**
+ * Prefix for sandbox tokens to distinguish from other token types
+ */
+const SANDBOX_TOKEN_PREFIX = "vm0_sbx_";
+
+/**
  * JWT payload for sandbox tokens
  */
 interface SandboxTokenPayload {
@@ -158,7 +163,8 @@ export async function generateSandboxToken(
     exp: now + expiresIn,
   };
 
-  const token = createJwt(payload);
+  const jwt = createJwt(payload);
+  const token = SANDBOX_TOKEN_PREFIX + jwt;
   log.debug(`Generated sandbox JWT for run ${runId}`);
   return token;
 }
@@ -167,10 +173,17 @@ export async function generateSandboxToken(
  * Verify a sandbox JWT token and extract auth info
  * Returns null if token is invalid, expired, or not a sandbox token
  *
- * @param token - The JWT token (without "Bearer " prefix)
+ * @param token - The prefixed token (without "Bearer " prefix)
  */
 export function verifySandboxToken(token: string): SandboxAuth | null {
-  const payload = verifyJwt(token);
+  // Check for prefix
+  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+    return null;
+  }
+
+  // Strip prefix and verify JWT
+  const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  const payload = verifyJwt(jwt);
   if (!payload) {
     return null;
   }
@@ -182,9 +195,8 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
 }
 
 /**
- * Check if a token looks like a sandbox JWT token
- * (has 3 parts separated by dots)
+ * Check if a token is a sandbox token by prefix
  */
 export function isSandboxToken(token: string): boolean {
-  return token.split(".").length === 3;
+  return token.startsWith(SANDBOX_TOKEN_PREFIX);
 }

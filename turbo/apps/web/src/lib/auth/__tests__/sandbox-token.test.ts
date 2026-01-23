@@ -11,13 +11,15 @@ process.env.SECRETS_ENCRYPTION_KEY =
 
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {
-    it("should generate a valid JWT token", async () => {
+    it("should generate a token with vm0_sbx_ prefix", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
 
       expect(token).toBeDefined();
       expect(typeof token).toBe("string");
-      // JWT format: header.payload.signature
-      expect(token.split(".")).toHaveLength(3);
+      expect(token.startsWith("vm0_sbx_")).toBe(true);
+      // JWT portion should have 3 parts
+      const jwt = token.slice("vm0_sbx_".length);
+      expect(jwt.split(".")).toHaveLength(3);
     });
 
     it("should generate different tokens for different runs", async () => {
@@ -45,18 +47,25 @@ describe("sandbox-token", () => {
       expect(auth?.runId).toBe("run-456");
     });
 
-    it("should return null for invalid token format", () => {
+    it("should return null for token without prefix", () => {
       const auth = verifySandboxToken("not-a-jwt-token");
+      expect(auth).toBeNull();
+    });
 
+    it("should return null for pure JWT without prefix", () => {
+      // Pure JWT format should be rejected
+      const auth = verifySandboxToken("header.payload.signature");
       expect(auth).toBeNull();
     });
 
     it("should return null for tampered token", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
-      // Tamper with the token by modifying the payload
-      const parts = token.split(".");
+      // Tamper with the token by modifying the payload portion
+      const prefix = "vm0_sbx_";
+      const jwt = token.slice(prefix.length);
+      const parts = jwt.split(".");
       parts[1] = parts[1] + "tampered";
-      const tamperedToken = parts.join(".");
+      const tamperedToken = prefix + parts.join(".");
 
       const auth = verifySandboxToken(tamperedToken);
 
@@ -66,9 +75,11 @@ describe("sandbox-token", () => {
     it("should return null for token with invalid signature", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
       // Replace signature with invalid one
-      const parts = token.split(".");
+      const prefix = "vm0_sbx_";
+      const jwt = token.slice(prefix.length);
+      const parts = jwt.split(".");
       parts[2] = "invalid-signature";
-      const invalidToken = parts.join(".");
+      const invalidToken = prefix + parts.join(".");
 
       const auth = verifySandboxToken(invalidToken);
 
@@ -109,18 +120,27 @@ describe("sandbox-token", () => {
   });
 
   describe("isSandboxToken", () => {
-    it("should return true for JWT-like tokens", () => {
-      expect(isSandboxToken("a.b.c")).toBe(true);
-      expect(isSandboxToken("header.payload.signature")).toBe(true);
+    it("should return true for tokens with vm0_sbx_ prefix", () => {
+      expect(isSandboxToken("vm0_sbx_a.b.c")).toBe(true);
+      expect(isSandboxToken("vm0_sbx_header.payload.signature")).toBe(true);
+      expect(isSandboxToken("vm0_sbx_anything")).toBe(true);
+    });
+
+    it("should return false for pure JWT without prefix", () => {
+      expect(isSandboxToken("a.b.c")).toBe(false);
+      expect(isSandboxToken("header.payload.signature")).toBe(false);
     });
 
     it("should return false for CLI tokens", () => {
       expect(isSandboxToken("vm0_live_abc123")).toBe(false);
     });
 
+    it("should return false for official runner tokens", () => {
+      expect(isSandboxToken("vm0_official_secret")).toBe(false);
+    });
+
     it("should return false for random strings", () => {
       expect(isSandboxToken("not-a-token")).toBe(false);
-      expect(isSandboxToken("only.two.parts.extra")).toBe(false);
       expect(isSandboxToken("")).toBe(false);
     });
   });
