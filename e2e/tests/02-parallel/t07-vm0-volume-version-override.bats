@@ -31,7 +31,17 @@ VOLEOF
     $CLI_COMMAND volume push >/dev/null
     cd - >/dev/null
 
-    # Create inline config with unique agent name - volume name will be set per test
+    # Create the test-volume that will be used for all override tests
+    # This volume must exist before composing the agent
+    export TEST_VOLUME_NAME="e2e-vol-t07-data-$(date +%s%3N)-$RANDOM"
+    mkdir -p "$TEST_DIR/$TEST_VOLUME_NAME"
+    cd "$TEST_DIR/$TEST_VOLUME_NAME"
+    echo "initial-data" > data.txt
+    $CLI_COMMAND volume init --name "$TEST_VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume push >/dev/null
+    cd - >/dev/null
+
+    # Create inline config with unique agent name using real volume names
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -45,7 +55,7 @@ agents:
     working_dir: /home/user/workspace
 volumes:
   test-volume:
-    name: PLACEHOLDER_VOLUME
+    name: $TEST_VOLUME_NAME
     version: latest
   claude-files:
     name: $CLAUDE_VOLUME_NAME
@@ -57,9 +67,10 @@ EOF
 }
 
 setup() {
-    # Per-test setup: create unique resource names
+    # Per-test setup: create unique artifact name
+    # VOLUME_NAME is set to the shared TEST_VOLUME_NAME from setup_file()
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export VOLUME_NAME="e2e-vol-override-${UNIQUE_ID}"
+    export VOLUME_NAME="$TEST_VOLUME_NAME"
     export ARTIFACT_NAME="e2e-art-override-${UNIQUE_ID}"
 }
 
@@ -80,11 +91,9 @@ teardown_file() {
     # This test verifies that --volume-version flag overrides the default volume version
     # Single vm0 run - safe for 30s timeout
 
-    # Step 1: Create test volume with multiple versions
-    echo "# Creating test volume with multiple versions..."
-    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    # Step 1: Push multiple versions to the shared test volume
+    echo "# Pushing multiple versions to shared test volume..."
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     # Version 1: content = "version-1"
     echo "version-1" > data.txt
@@ -138,11 +147,9 @@ teardown_file() {
 # ============================================================================
 
 @test "t07-3a: create checkpoint for volume override test" {
-    # Step 1: Create test volume
-    echo "# Creating test volume..."
-    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    # Step 1: Push a version to the shared test volume
+    echo "# Pushing checkpoint version to shared test volume..."
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "checkpoint-version" > data.txt
     run $CLI_COMMAND volume push
@@ -227,11 +234,9 @@ teardown_file() {
 # ============================================================================
 
 @test "t07-4a: create session for volume override continue test" {
-    # Step 1: Create test volume with initial version
-    echo "# Creating test volume..."
-    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    # Step 1: Push initial version to the shared test volume
+    echo "# Pushing initial version to shared test volume..."
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "initial-volume-content" > data.txt
     run $CLI_COMMAND volume push
