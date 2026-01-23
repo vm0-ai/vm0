@@ -13,7 +13,6 @@ sandbox:
   vcpu: {{ vcpu | default(2) }}
   memory_mb: {{ memory_mb | default(1024) }}
   poll_interval_ms: {{ poll_interval_ms | default(5000) }}
-  guest_protocol: {{ guest_protocol | default('vsock') }}
 
 firecracker:
   binary: /usr/local/bin/firecracker

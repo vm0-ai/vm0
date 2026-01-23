@@ -295,7 +295,7 @@ export class VsockClient implements GuestClient {
    * Write content to a file on the remote VM
    */
   async writeFile(remotePath: string, content: string): Promise<void> {
-    // Use exec with base64 encoding (same as SSH client)
+    // Use exec with base64 encoding to handle binary content
     const encoded = Buffer.from(content).toString("base64");
     const maxChunkSize = 65000;
 

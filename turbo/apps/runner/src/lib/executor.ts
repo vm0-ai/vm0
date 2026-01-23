@@ -2,7 +2,7 @@
  * Job Executor
  *
  * Executes agent jobs inside Firecracker VMs.
- * Handles VM lifecycle, script injection via SSH, and job completion.
+ * Handles VM lifecycle, script injection via vsock, and job completion.
  *
  * This executor achieves E2B parity by:
  * - Uploading the same Python scripts used by E2B
@@ -13,11 +13,7 @@
 
 import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
-import {
-  type GuestClient,
-  SSHClient,
-  getRunnerSSHKeyPath,
-} from "./firecracker/guest.js";
+import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import {
   setupVMProxyRules,
@@ -96,7 +92,7 @@ export async function runPreflightCheck(
   // -f: fail silently on HTTP errors (returns exit code 22)
   // --connect-timeout: max time for connection phase
   // --max-time: total max time for the request
-  // Note: This runs inside the VM via SSH, not on the runner host
+  // Note: This runs inside the VM via vsock, not on the runner host
   const bypassHeader = bypassSecret
     ? ` -H "x-vercel-protection-bypass: ${bypassSecret}"`
     : "";
@@ -217,33 +213,18 @@ export async function executeJob(
     }
     log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
-    // Create guest client based on configured protocol
-    const guestProtocol = config.sandbox.guest_protocol;
-    let guest: GuestClient;
-
-    if (guestProtocol === "ssh") {
-      // SSH-based communication (legacy, slower but more debuggable)
-      const sshKeyPath = getRunnerSSHKeyPath();
-      guest = new SSHClient({
-        host: guestIp,
-        user: "user",
-        privateKeyPath: sshKeyPath || undefined,
-      });
-      log(`[Executor] Using SSH for guest communication: ${guestIp}`);
-    } else {
-      // Vsock-based communication (faster, no TCP overhead)
-      const vsockPath = vm.getVsockPath();
-      guest = new VsockClient(vsockPath);
-      log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
-    }
+    // Create vsock guest client
+    const vsockPath = vm.getVsockPath();
+    const guest: GuestClient = new VsockClient(vsockPath);
+    log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
 
     // Verify guest is reachable
-    log(`[Executor] Verifying ${guestProtocol} connectivity...`);
+    log(`[Executor] Verifying vsock connectivity...`);
     await withSandboxTiming("guest_wait", () =>
       guest.waitUntilReachable(30000, 1000),
     ); // 30 second timeout, check every 1s
 
-    log(`[Executor] Guest client ready (${guestProtocol})`);
+    log(`[Executor] Guest client ready`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
