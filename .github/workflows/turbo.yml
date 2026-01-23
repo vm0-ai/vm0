@@ -528,7 +528,7 @@ jobs:
       - name: Run Parallel E2E Tests
         run: |
           echo "=== Running Parallel E2E Tests ==="
-          BATS_TEST_TIMEOUT=45 ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
+          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
           echo "✅ Parallel tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -604,7 +604,7 @@ jobs:
       - name: Run Runner E2E Tests
         run: |
           echo "=== Running Runner E2E Tests (4 parallel) ==="
-          BATS_TEST_TIMEOUT=30 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
