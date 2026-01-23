@@ -22,6 +22,7 @@ import {
   createTestCliToken,
   deleteTestCliToken,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
@@ -375,6 +376,44 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data.error.message).toContain("Not authenticated");
+    });
+
+    it("should succeed when Clerk auth passes even if sandbox token is present in header", async () => {
+      // Generate a sandbox JWT token (normally rejected on normal APIs)
+      const sandboxToken = await generateSandboxToken(
+        testUserId,
+        "some-run-id",
+      );
+
+      // Set sandbox token in Authorization header
+      mockHeaders.mockResolvedValue({
+        get: vi.fn((name: string) =>
+          name === "Authorization" ? `Bearer ${sandboxToken}` : null,
+        ),
+      } as unknown as Headers);
+
+      // Clerk auth returns valid user - this should take priority
+      mockClerk({ userId: testUserId });
+
+      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          prompt: "Test with sandbox token and Clerk auth",
+        }),
+      });
+
+      const response = await POST(request);
+
+      // Should succeed because Clerk auth is checked first and passes
+      // The sandbox token in header should be ignored
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.runId).toBeDefined();
+      expect(data.status).toBe("running");
     });
 
     it("should reject request for non-existent compose", async () => {

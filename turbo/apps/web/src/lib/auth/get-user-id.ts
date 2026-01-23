@@ -9,19 +9,26 @@ import { logger } from "../logger";
 const log = logger("auth:user");
 
 /**
- * Get the current user ID from CLI token or Clerk session
+ * Get the current user ID from Clerk session or CLI token
  * Returns null if not authenticated
+ *
+ * Priority:
+ * 1. Clerk session auth (for web users)
+ * 2. CLI token auth (for CLI/API users)
  *
  * IMPORTANT: This function rejects sandbox JWT tokens.
  * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
  * This ensures sandbox tokens cannot access normal user APIs.
  */
 export async function getUserId(): Promise<string | null> {
+  // Check Clerk session first - most web users are authenticated via Clerk
+  // This avoids unnecessary header parsing and database queries
   const { userId } = await auth();
   if (userId) {
     return userId;
   }
 
+  // Fall back to Authorization header for CLI tokens
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 
@@ -57,13 +64,8 @@ export async function getUserId(): Promise<string | null> {
 
         return tokenRecord.userId;
       }
-
-      return null;
     }
-
-    // Unknown token format
-    return null;
   }
 
-  return userId;
+  return null;
 }
