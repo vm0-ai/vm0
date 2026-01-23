@@ -70,6 +70,10 @@ export function Sidebar() {
             return null;
           }
 
+          if (group.label === "Observation" && !featureSwitches?.platformLogs) {
+            return null;
+          }
+
           return (
             <div key={group.label} className="p-2">
               <div className="h-8 flex items-center px-2 opacity-70">
@@ -93,7 +97,7 @@ export function Sidebar() {
 
       <div className="p-2">
         <div className="flex flex-col gap-1">
-          <VM0SubscriptionDetailsButton />
+          {featureSwitches?.pricing && <VM0SubscriptionDetailsButton />}
           {FOOTER_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.id}
