@@ -7,8 +7,10 @@ Messages: ready, ping/pong, exec/exec_result, error
 
 No socat needed - Python has native vsock support via socket.AF_VSOCK.
 
-For testing, supports Unix Domain Socket mode with --unix-socket option,
-which simulates Firecracker's vsock proxy handshake (CONNECT/OK).
+Guest-initiated connection: Agent connects to Host (CID=2) when ready,
+providing zero-latency notification instead of Host polling.
+
+For testing, supports Unix Domain Socket mode with --unix-socket option.
 """
 
 import argparse
@@ -160,6 +162,23 @@ def _handle_messages(conn: socket.socket) -> None:
         conn.close()
 
 
+def connect_to_host() -> None:
+    """Connect to host (Guest-initiated mode) - zero latency notification."""
+    log("INFO", "Connecting to host (CID=2)...")
+
+    # CID 2 is always the host
+    VMADDR_CID_HOST = 2
+
+    sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
+    try:
+        sock.connect((VMADDR_CID_HOST, VSOCK_PORT))
+        log("INFO", f"Connected to host on port {VSOCK_PORT}")
+        _handle_messages(sock)
+    except Exception as e:
+        log("ERROR", f"Failed to connect to host: {e}")
+        raise
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vsock agent for Firecracker VM")
     parser.add_argument(
@@ -169,12 +188,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    uds_mode = args.unix_socket is not None
-
     log("INFO", "Starting vsock agent...")
 
-    if uds_mode:
-        # Unix Domain Socket mode for testing
+    if args.unix_socket:
+        # Unix Domain Socket mode for testing (Host-initiated)
         socket_path = args.unix_socket
         if os.path.exists(socket_path):
             os.unlink(socket_path)
@@ -184,28 +201,21 @@ def main() -> None:
         sock.bind(socket_path)
         sock.listen(5)
         log("INFO", f"Listening on Unix socket: {socket_path}")
-    else:
-        # Real vsock mode for production
-        sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((socket.VMADDR_CID_ANY, VSOCK_PORT))
-        sock.listen(5)
-        log("INFO", f"Listening on vsock port {VSOCK_PORT}")
 
-    try:
-        while True:
-            conn, addr = sock.accept()
-            if uds_mode:
+        try:
+            while True:
+                conn, _ = sock.accept()
                 log("INFO", "Accepted Unix socket connection")
-            else:
-                log("INFO", f"Accepted connection from CID={addr[0]} port={addr[1]}")
-            handle_connection(conn, uds_mode)
-    except KeyboardInterrupt:
-        log("INFO", "Shutting down")
-    finally:
-        sock.close()
-        if uds_mode and os.path.exists(args.unix_socket):
-            os.unlink(args.unix_socket)
+                handle_connection(conn, uds_mode=True)
+        except KeyboardInterrupt:
+            log("INFO", "Shutting down")
+        finally:
+            sock.close()
+            if os.path.exists(socket_path):
+                os.unlink(socket_path)
+    else:
+        # Production mode: connect to host (Guest-initiated)
+        connect_to_host()
 
 
 if __name__ == "__main__":

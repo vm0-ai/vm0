@@ -27,7 +27,8 @@ export interface GuestClient {
   writeFileWithSudo(remotePath: string, content: string): Promise<void>;
   readFile(remotePath: string): Promise<string>;
   isReachable(): Promise<boolean>;
-  waitUntilReachable(timeoutMs?: number, intervalMs?: number): Promise<void>;
+  /** Wait for guest to connect (Guest-initiated, zero-latency mode) */
+  waitForGuestConnection(timeoutMs?: number): Promise<void>;
   mkdir(remotePath: string): Promise<void>;
   exists(remotePath: string): Promise<boolean>;
 }

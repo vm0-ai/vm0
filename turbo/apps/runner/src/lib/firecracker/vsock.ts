@@ -2,13 +2,14 @@
  * Vsock Client for Firecracker VMs
  *
  * Provides host-side communication with guest via virtio-vsock.
- * Firecracker exposes vsock as a Unix Domain Socket (UDS) with a simple protocol:
- * 1. Connect to UDS
- * 2. Send "CONNECT port\n"
- * 3. Receive "OK host_port\n" on success
- * 4. Socket becomes bidirectional stream to guest
  *
- * After Firecracker handshake, uses length-prefixed JSON protocol:
+ * Guest-initiated connection (zero-latency mode):
+ * - Host listens on "{vsockPath}_{port}" UDS
+ * - Guest connects to Host (CID=2) when ready
+ * - Firecracker forwards connection to Host's listener
+ * - No polling needed - instant notification when guest is ready
+ *
+ * Protocol: length-prefixed JSON
  * - 4-byte length prefix (big endian) + JSON message
  * - Message types: ready, ping, pong, exec, exec_result, error
  */
@@ -19,7 +20,6 @@ import * as crypto from "node:crypto";
 import type { ExecResult, GuestClient } from "./guest.js";
 
 const VSOCK_PORT = 1000;
-const CONNECT_TIMEOUT_MS = 5000;
 const HEADER_SIZE = 4;
 const MAX_MESSAGE_SIZE = 1024 * 1024;
 const DEFAULT_EXEC_TIMEOUT_MS = 300000; // 5 minutes
@@ -103,152 +103,6 @@ export class VsockClient implements GuestClient {
   }
 
   /**
-   * Connect to the guest agent via vsock
-   *
-   * Connection flow:
-   * 1. Connect to Firecracker's vsock UDS
-   * 2. Send "CONNECT port\n", receive "OK port\n"
-   * 3. Receive "ready" message from guest agent
-   * 4. Send "ping", receive "pong" to verify connection
-   */
-  private async connect(): Promise<void> {
-    if (this.connected && this.socket) {
-      return;
-    }
-
-    return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.vsockPath)) {
-        reject(new Error(`Vsock socket not found: ${this.vsockPath}`));
-        return;
-      }
-
-      const socket = net.createConnection(this.vsockPath);
-      const decoder = new Decoder();
-
-      // Connection state machine
-      const enum State {
-        WaitingForOK,
-        WaitingForReady,
-        WaitingForPong,
-        Connected,
-      }
-      let state = State.WaitingForOK;
-      let pingId: string | null = null;
-      let settled = false; // Track if promise is already resolved/rejected
-
-      // Buffer for accumulating incomplete data
-      let buffer = Buffer.alloc(0);
-
-      const timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          socket.destroy();
-          reject(new Error("Vsock connection timeout"));
-        }
-      }, CONNECT_TIMEOUT_MS);
-
-      const cleanup = (err: Error): void => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeout);
-          socket.destroy();
-          reject(err);
-        }
-      };
-
-      socket.on("connect", () => {
-        socket.write(`CONNECT ${VSOCK_PORT}\n`);
-      });
-
-      // Process length-prefixed messages after handshake
-      const processMessages = (): void => {
-        try {
-          for (const msg of decoder.decode(buffer)) {
-            if (state === State.WaitingForReady && msg.type === "ready") {
-              state = State.WaitingForPong;
-              pingId = crypto.randomUUID();
-              socket.write(encode({ type: "ping", id: pingId, payload: {} }));
-            } else if (
-              state === State.WaitingForPong &&
-              msg.type === "pong" &&
-              msg.id === pingId
-            ) {
-              settled = true;
-              clearTimeout(timeout);
-              state = State.Connected;
-              this.socket = socket;
-              this.connected = true;
-              resolve();
-            } else if (state === State.Connected) {
-              this.handleMessage(msg);
-            }
-          }
-          // Decoder consumes processed data internally, reset our buffer
-          buffer = Buffer.alloc(0);
-        } catch (e) {
-          cleanup(new Error(`Failed to parse message: ${e}`));
-        }
-      };
-
-      socket.on("data", (data: Buffer) => {
-        buffer = Buffer.concat([buffer, data]);
-
-        // State: WaitingForOK - parse text-based Firecracker handshake
-        if (state === State.WaitingForOK) {
-          const newlineIdx = buffer.indexOf(0x0a); // '\n'
-          if (newlineIdx === -1) {
-            return; // Wait for complete line
-          }
-
-          const line = buffer.subarray(0, newlineIdx).toString("utf-8");
-          buffer = buffer.subarray(newlineIdx + 1);
-
-          if (line.startsWith("OK ")) {
-            state = State.WaitingForReady;
-            // Process any remaining data (handles packet coalescing)
-            if (buffer.length > 0) {
-              processMessages();
-            }
-          } else {
-            cleanup(new Error(`Firecracker connect failed: ${line}`));
-          }
-          return;
-        }
-
-        // State: WaitingForReady/WaitingForPong/Connected - parse length-prefixed messages
-        processMessages();
-      });
-
-      socket.on("error", (err) => {
-        clearTimeout(timeout);
-        this.connected = false;
-        this.socket = null;
-        if (!settled) {
-          settled = true;
-          reject(new Error(`Vsock error: ${err.message}`));
-        }
-      });
-
-      socket.on("close", () => {
-        clearTimeout(timeout);
-        this.connected = false;
-        this.socket = null;
-        if (!settled) {
-          settled = true;
-          reject(new Error("Vsock closed before ready"));
-        }
-        // Reject all pending requests
-        const pending = Array.from(this.pendingRequests.values());
-        this.pendingRequests.clear();
-        for (const req of pending) {
-          clearTimeout(req.timeout);
-          req.reject(new Error("Connection closed"));
-        }
-      });
-    });
-  }
-
-  /**
    * Handle incoming message and route to pending request
    */
   private handleMessage(msg: Message): void {
@@ -268,10 +122,8 @@ export class VsockClient implements GuestClient {
     payload: T,
     timeoutMs: number,
   ): Promise<Message<R>> {
-    await this.connect();
-
-    if (!this.socket) {
-      throw new Error("Not connected");
+    if (!this.connected || !this.socket) {
+      throw new Error("Not connected - call waitForGuestConnection() first");
     }
 
     const id = crypto.randomUUID();
@@ -411,30 +263,261 @@ export class VsockClient implements GuestClient {
   }
 
   /**
-   * Wait for vsock to become available
+   * Wait for guest to connect (Guest-initiated mode)
+   *
+   * Instead of polling, this listens on "{vsockPath}_{port}" and waits
+   * for the guest to actively connect. This provides zero-latency
+   * notification when the guest is ready.
+   *
+   * Flow:
+   * 1. Host creates UDS server at "{vsockPath}_{port}"
+   * 2. Guest boots and vsock-agent connects to CID=2, port
+   * 3. Firecracker forwards connection to Host's UDS
+   * 4. Host accepts, receives "ready", sends ping/pong
    */
-  async waitUntilReachable(
-    timeoutMs: number = 120000,
-    intervalMs: number = 2000,
-  ): Promise<void> {
-    const start = Date.now();
-
-    while (Date.now() - start < timeoutMs) {
-      if (await this.isReachable()) {
-        return;
-      }
-
-      await new Promise<void>((resolve) => {
-        const remaining = timeoutMs - (Date.now() - start);
-        if (remaining > 0) {
-          setTimeout(resolve, Math.min(intervalMs, remaining));
-        } else {
-          resolve();
-        }
-      });
+  async waitForGuestConnection(timeoutMs: number = 30000): Promise<void> {
+    if (this.connected && this.socket) {
+      return;
     }
 
-    throw new Error(`Vsock not reachable after ${timeoutMs}ms`);
+    const listenerPath = `${this.vsockPath}_${VSOCK_PORT}`;
+
+    // Clean up stale socket file if exists
+    if (fs.existsSync(listenerPath)) {
+      fs.unlinkSync(listenerPath);
+    }
+
+    return new Promise((resolve, reject) => {
+      const server = net.createServer();
+      const decoder = new Decoder();
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          server.close();
+          if (fs.existsSync(listenerPath)) {
+            fs.unlinkSync(listenerPath);
+          }
+          reject(new Error(`Guest connection timeout after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      const cleanup = (err: Error): void => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          server.close();
+          if (fs.existsSync(listenerPath)) {
+            fs.unlinkSync(listenerPath);
+          }
+          reject(err);
+        }
+      };
+
+      server.on("error", (err) => {
+        cleanup(new Error(`Server error: ${err.message}`));
+      });
+
+      server.on("connection", (socket) => {
+        // Only accept first connection
+        server.close();
+
+        // Connection state machine
+        const enum State {
+          WaitingForReady,
+          WaitingForPong,
+          Connected,
+        }
+        let state = State.WaitingForReady;
+        let pingId: string | null = null;
+
+        socket.on("data", (data: Buffer) => {
+          try {
+            for (const msg of decoder.decode(data)) {
+              if (state === State.WaitingForReady && msg.type === "ready") {
+                state = State.WaitingForPong;
+                pingId = crypto.randomUUID();
+                socket.write(encode({ type: "ping", id: pingId, payload: {} }));
+              } else if (
+                state === State.WaitingForPong &&
+                msg.type === "pong" &&
+                msg.id === pingId
+              ) {
+                if (settled) {
+                  // Timeout already fired, discard this connection
+                  socket.destroy();
+                  return;
+                }
+                settled = true;
+                clearTimeout(timeout);
+                if (fs.existsSync(listenerPath)) {
+                  fs.unlinkSync(listenerPath);
+                }
+                state = State.Connected;
+                this.socket = socket;
+                this.connected = true;
+                resolve();
+              } else if (state === State.Connected) {
+                this.handleMessage(msg);
+              }
+            }
+          } catch (e) {
+            cleanup(new Error(`Failed to parse message: ${e}`));
+          }
+        });
+
+        socket.on("error", (err) => {
+          cleanup(new Error(`Socket error: ${err.message}`));
+        });
+
+        socket.on("close", () => {
+          if (!settled) {
+            cleanup(new Error("Guest disconnected before ready"));
+          }
+          this.connected = false;
+          this.socket = null;
+          const pending = Array.from(this.pendingRequests.values());
+          this.pendingRequests.clear();
+          for (const req of pending) {
+            clearTimeout(req.timeout);
+            req.reject(new Error("Connection closed"));
+          }
+        });
+      });
+
+      server.listen(listenerPath, () => {
+        // Server is ready, waiting for guest connection
+      });
+    });
+  }
+
+  /**
+   * Connect to agent (Host-initiated mode, for testing only)
+   *
+   * This mode is used for UDS-based testing where the agent runs
+   * as a server. In production, use waitForGuestConnection() instead.
+   *
+   * Flow:
+   * 1. Host connects to agent's UDS socket
+   * 2. Sends "CONNECT port\n", receives "OK port\n"
+   * 3. Agent sends "ready", Host sends ping, receives pong
+   */
+  async connectToAgent(timeoutMs: number = 5000): Promise<void> {
+    if (this.connected && this.socket) {
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection(this.vsockPath);
+      const decoder = new Decoder();
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          socket.destroy();
+          reject(new Error(`Connection timeout after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      const cleanup = (err: Error): void => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          socket.destroy();
+          reject(err);
+        }
+      };
+
+      const enum State {
+        WaitingForOk,
+        WaitingForReady,
+        WaitingForPong,
+        Connected,
+      }
+      let state = State.WaitingForOk;
+      let okBuffer = Buffer.alloc(0); // Only used for OK handshake
+      let pingId: string | null = null;
+
+      const processMessages = (data: Buffer): void => {
+        try {
+          for (const msg of decoder.decode(data)) {
+            if (state === State.WaitingForReady && msg.type === "ready") {
+              state = State.WaitingForPong;
+              pingId = crypto.randomUUID();
+              socket.write(encode({ type: "ping", id: pingId, payload: {} }));
+            } else if (
+              state === State.WaitingForPong &&
+              msg.type === "pong" &&
+              msg.id === pingId
+            ) {
+              if (settled) {
+                // Timeout already fired, discard this connection
+                socket.destroy();
+                return;
+              }
+              settled = true;
+              clearTimeout(timeout);
+              state = State.Connected;
+              this.socket = socket;
+              this.connected = true;
+              resolve();
+            } else if (state === State.Connected) {
+              this.handleMessage(msg);
+            }
+          }
+        } catch (e) {
+          cleanup(new Error(`Failed to parse message: ${e}`));
+        }
+      };
+
+      socket.on("connect", () => {
+        // Send Firecracker vsock proxy handshake
+        socket.write(`CONNECT ${VSOCK_PORT}\n`);
+      });
+
+      socket.on("data", (data: Buffer) => {
+        // Handle Firecracker vsock proxy handshake (OK response)
+        if (state === State.WaitingForOk) {
+          okBuffer = Buffer.concat([okBuffer, data]);
+          const okIndex = okBuffer.indexOf(Buffer.from("\n"));
+          if (okIndex !== -1) {
+            const line = okBuffer.subarray(0, okIndex).toString("utf-8");
+            const remainder = okBuffer.subarray(okIndex + 1);
+            if (line.startsWith("OK ")) {
+              state = State.WaitingForReady;
+              if (remainder.length > 0) {
+                processMessages(remainder);
+              }
+            } else {
+              cleanup(new Error(`Unexpected response: ${line}`));
+            }
+          }
+          return;
+        }
+
+        processMessages(data);
+      });
+
+      socket.on("error", (err) => {
+        cleanup(new Error(`Socket error: ${err.message}`));
+      });
+
+      socket.on("close", () => {
+        if (!settled) {
+          cleanup(new Error("Connection closed before ready"));
+        }
+        this.connected = false;
+        this.socket = null;
+        const pending = Array.from(this.pendingRequests.values());
+        this.pendingRequests.clear();
+        for (const req of pending) {
+          clearTimeout(req.timeout);
+          req.reject(new Error("Connection closed"));
+        }
+      });
+    });
   }
 
   /**

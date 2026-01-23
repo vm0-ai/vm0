@@ -106,6 +106,8 @@ describe("VsockClient Integration Tests", () => {
     socketPath = createSocketPath();
     agent = await startAgent(socketPath);
     client = new VsockClient(socketPath);
+    // Connect using Host-initiated mode (for UDS testing)
+    await client.connectToAgent();
   });
 
   afterEach(async () => {
@@ -148,11 +150,6 @@ describe("VsockClient Integration Tests", () => {
       const badClient = new VsockClient("/non/existent/socket.sock");
       const reachable = await badClient.isReachable();
       expect(reachable).toBe(false);
-    });
-
-    it("should wait until reachable", async () => {
-      await client!.waitUntilReachable(5000, 100);
-      // If we get here without error, the test passes
     });
   });
 
@@ -314,7 +311,10 @@ describe("VsockClient Integration Tests", () => {
       // Close connection
       client!.close();
 
-      // New connection should work (client auto-reconnects)
+      // Reconnect explicitly
+      await client!.connectToAgent();
+
+      // New connection should work
       result = await client!.exec("echo second");
       expect(result.stdout.trim()).toBe("second");
     });
