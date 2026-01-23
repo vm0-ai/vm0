@@ -118,6 +118,19 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
 RUN npm install -g agent-browser \
     && agent-browser install --with-deps
 
+# Install AWS CLI v2
+RUN apt-get update && apt-get install -y unzip \
+    && ARCH=$(dpkg --print-architecture) \
+    && if [ "$ARCH" = "arm64" ]; then \
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
+    else \
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; \
+    fi \
+    && unzip awscliv2.zip \
+    && sudo ./aws/install \
+    && rm -rf awscliv2.zip aws/ \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create vscode user with standard UID/GID for devcontainer compatibility
 # Following Microsoft's devcontainer pattern for better feature compatibility
 # Use -f flag to force group creation if GID already exists (1Password CLI creates GID 1000)
