@@ -1,6 +1,7 @@
 import { createStore, type Store } from "ccstate";
 import { afterEach } from "vitest";
-import { logger } from "../log";
+import { logger, resetLoggerForTest } from "../log";
+import { resetLocalStorageForTest$ } from "../external/local-storage";
 
 const L = logger("Test");
 
@@ -28,6 +29,9 @@ export function testContext(): TestContext {
         L.debug("create store");
         store = createStore();
         context.signal.addEventListener("abort", () => {
+          store?.set(resetLocalStorageForTest$);
+          resetLoggerForTest();
+
           store = null;
         });
       }

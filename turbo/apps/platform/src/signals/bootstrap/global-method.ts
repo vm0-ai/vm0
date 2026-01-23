@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { getLoggers, Level, logger } from "./log";
-import type { DebugLoggers } from "../types/global-method";
+import { getLoggers, Level, logger } from "../log";
+import type { DebugLoggers } from "../../types/global-method";
 
 const L = logger("GlobalMethod");
 
