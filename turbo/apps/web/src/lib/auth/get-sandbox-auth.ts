@@ -9,18 +9,18 @@ import { logger } from "../logger";
 const log = logger("auth:sandbox");
 
 /**
- * Get sandbox authentication from JWT token in Authorization header
+ * Get sandbox authentication from token in Authorization header
  *
  * This function is specifically for webhook endpoints that should only
- * accept sandbox JWT tokens. It verifies:
- * 1. The token is a valid JWT (not a regular CLI token)
- * 2. The token signature is valid
+ * accept sandbox tokens (vm0_sbx_ prefix). It verifies:
+ * 1. The token has the vm0_sbx_ prefix (not a CLI token)
+ * 2. The JWT signature is valid
  * 3. The token has not expired
  * 4. The token has the correct scope ("sandbox")
  *
  * Returns null if:
  * - No Authorization header
- * - Token is not a JWT (regular CLI tokens are rejected)
+ * - Token doesn't have vm0_sbx_ prefix (CLI tokens are rejected)
  * - Token is invalid or expired
  *
  * @returns SandboxAuth with userId and runId, or null if not authenticated
@@ -35,10 +35,10 @@ async function getSandboxAuth(): Promise<SandboxAuth | null> {
 
   const token = authHeader.substring(7); // Remove "Bearer "
 
-  // Only accept JWT tokens (sandbox tokens)
-  // Regular CLI tokens (vm0_live_xxx) are rejected
+  // Only accept sandbox tokens (vm0_sbx_ prefix)
+  // Regular CLI tokens (vm0_live_xxx) and other formats are rejected
   if (!isSandboxToken(token)) {
-    log.debug("Rejected non-JWT token on webhook endpoint");
+    log.debug("Rejected non-sandbox token on webhook endpoint");
     return null;
   }
 
