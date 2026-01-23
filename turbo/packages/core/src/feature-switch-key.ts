@@ -6,4 +6,8 @@
 export enum FeatureSwitchKey {
   Dummy = "dummy",
   Pricing = "pricing",
+  PlatformAgents = "platformAgents",
+  PlatformSecrets = "platformSecrets",
+  PlatformArtifacts = "platformArtifacts",
+  PlatformApiKeys = "platformApiKeys",
 }

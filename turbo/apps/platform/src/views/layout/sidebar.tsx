@@ -1,4 +1,4 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable } from "ccstate-react";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
   NAVIGATION_CONFIG,
@@ -10,9 +10,14 @@ import { clerk$, user$ } from "../../signals/auth.ts";
 import { NavLink } from "./nav-link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0SubscriptionDetailsButton } from "../clerk/subscription-detail.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 export function Sidebar() {
   const activeItem = useGet(activeNavItem$);
+  const featureSwitches = useLastResolved(featureSwitch$);
+  if (!featureSwitches) {
+    return null;
+  }
 
   return (
     <aside className="hidden md:flex w-[255px] flex-col border-r border-sidebar-border bg-sidebar">
@@ -40,40 +45,50 @@ export function Sidebar() {
               isActive={activeItem === GET_STARTED_ITEM.id}
             />
           </div>
-          <div className="h-8 flex items-center px-2 opacity-70">
-            <span className="text-xs leading-4 text-sidebar-foreground">
-              Your agents
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            {NAVIGATION_CONFIG[0].items.map((item) => (
-              <NavLink
-                key={item.id}
-                item={item}
-                isActive={activeItem === item.id}
-              />
-            ))}
-          </div>
         </div>
 
-        {NAVIGATION_CONFIG.slice(1).map((group) => (
-          <div key={group.label} className="p-2">
-            <div className="h-8 flex items-center px-2 opacity-70">
-              <span className="text-xs leading-4 text-sidebar-foreground">
-                {group.label}
-              </span>
+        {NAVIGATION_CONFIG.map((group) => {
+          if (
+            group.label === "Content" &&
+            !featureSwitches?.platformArtifacts
+          ) {
+            return null;
+          }
+
+          if (
+            group.label === "Your agents" &&
+            !featureSwitches?.platformAgents &&
+            !featureSwitches?.platformSecrets
+          ) {
+            return null;
+          }
+
+          if (
+            group.label === "Developers" &&
+            !featureSwitches?.platformApiKeys
+          ) {
+            return null;
+          }
+
+          return (
+            <div key={group.label} className="p-2">
+              <div className="h-8 flex items-center px-2 opacity-70">
+                <span className="text-xs leading-4 text-sidebar-foreground">
+                  {group.label}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.id}
+                    item={item}
+                    isActive={activeItem === item.id}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.id}
-                  item={item}
-                  isActive={activeItem === item.id}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="p-2">

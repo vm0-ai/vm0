@@ -27,6 +27,22 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: true,
   },
+  [FeatureSwitchKey.PlatformAgents]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformSecrets]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformArtifacts]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformApiKeys]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
 };
 
 /**
