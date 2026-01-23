@@ -790,6 +790,70 @@ describe("run-service", () => {
             .where(eq(scopes.id, testScopeId));
         });
 
+        test("skips injection when compose has alternative auth method (CLAUDE_CODE_USE_FOUNDRY)", async () => {
+          const testUserId = `model-provider-skip-foundry-${Date.now()}`;
+          const testScopeId = randomUUID();
+
+          await globalThis.services.db.insert(scopes).values({
+            id: testScopeId,
+            slug: `mp-skip-foundry-${Date.now()}`,
+            type: "personal",
+            ownerId: testUserId,
+          });
+
+          // Create a compose with Azure Foundry config (alternative auth)
+          const [compose] = await globalThis.services.db
+            .insert(agentComposes)
+            .values({
+              userId: testUserId,
+              scopeId: testScopeId,
+              name: "test-compose-foundry",
+            })
+            .returning();
+
+          const versionId = `test-version-foundry-${Date.now()}`;
+          await globalThis.services.db.insert(agentComposeVersions).values({
+            id: versionId,
+            composeId: compose!.id,
+            content: {
+              agents: {
+                "test-agent": {
+                  framework: "claude-code",
+                  working_dir: "/workspace",
+                  environment: {
+                    // Alternative auth - should be detected as explicit LLM config
+                    CLAUDE_CODE_USE_FOUNDRY: "1",
+                  },
+                },
+              },
+            },
+            createdBy: testUserId,
+          });
+
+          // Build context - should NOT throw even without model provider configured
+          const context = await runService.buildExecutionContext({
+            agentComposeVersionId: versionId,
+            prompt: "test prompt",
+            runId: `run-foundry-${Date.now()}`,
+            sandboxToken: "token",
+            userId: testUserId,
+          });
+
+          // No credentials injected from model provider (compose has alternative auth)
+          expect(context.secrets).toBeUndefined();
+
+          // Cleanup
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.id, versionId));
+          await globalThis.services.db
+            .delete(agentComposes)
+            .where(eq(agentComposes.id, compose!.id));
+          await globalThis.services.db
+            .delete(scopes)
+            .where(eq(scopes.id, testScopeId));
+        });
+
         test("uses specified model provider when --model-provider is passed", async () => {
           const testUserId = `model-provider-explicit-${Date.now()}`;
           const testScopeId = randomUUID();

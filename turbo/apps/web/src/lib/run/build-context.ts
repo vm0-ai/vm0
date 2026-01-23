@@ -30,13 +30,20 @@ import { getDefaultModelProvider } from "../model-provider/model-provider-servic
 const log = logger("run:build-context");
 
 /**
- * LLM environment variables that indicate explicit configuration
+ * LLM environment variables that indicate explicit configuration.
+ * Includes both model-provider supported vars and alternative auth methods.
  */
 const LLM_ENV_VARS = [
+  // Model-provider supported
   "CLAUDE_CODE_OAUTH_TOKEN",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_BASE_URL",
   "OPENAI_API_KEY",
+  // Alternative auth methods (not model-provider supported yet)
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "CLAUDE_CODE_USE_VERTEX",
 ];
 
 /**
