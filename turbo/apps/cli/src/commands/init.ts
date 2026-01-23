@@ -20,9 +20,6 @@ agents:
     # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills
     # skills:
     #   - https://github.com/vm0-ai/vm0-skills/tree/main/github
-    environment:
-      # Get token using: claude setup-token, then add to .env file
-      CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 `;
 }
 
@@ -130,8 +127,9 @@ export const initCommand = new Command()
     console.log(
       `  1. Get your Claude Code token: ${chalk.cyan("claude setup-token")}`,
     );
-    console.log(`  2. Set the environment variable (or add to .env file):`);
-    console.log(chalk.dim(`     export CLAUDE_CODE_OAUTH_TOKEN=<your-token>`));
+    console.log(
+      `  2. Configure your model provider: ${chalk.cyan("vm0 model-provider setup")}`,
+    );
     console.log(
       `  3. Run your agent: ${chalk.cyan(`vm0 cook "let's start working."`)}`,
     );

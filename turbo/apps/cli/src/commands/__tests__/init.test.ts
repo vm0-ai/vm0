@@ -165,7 +165,6 @@ describe("init command", () => {
         "# Build agentic workflow using natural language",
       );
       expect(content).toContain("# Agent skills");
-      expect(content).toContain("CLAUDE_CODE_OAUTH_TOKEN");
     });
 
     it("should display next steps after creation", async () => {
@@ -178,7 +177,7 @@ describe("init command", () => {
         expect.stringContaining("claude setup-token"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("CLAUDE_CODE_OAUTH_TOKEN"),
+        expect.stringContaining("vm0 model-provider setup"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("vm0 cook"),
