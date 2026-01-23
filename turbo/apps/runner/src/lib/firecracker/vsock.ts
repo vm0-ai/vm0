@@ -104,6 +104,12 @@ export class VsockClient implements GuestClient {
 
   /**
    * Connect to the guest agent via vsock
+   *
+   * Connection flow:
+   * 1. Connect to Firecracker's vsock UDS
+   * 2. Send "CONNECT port\n", receive "OK port\n"
+   * 3. Receive "ready" message from guest agent
+   * 4. Send "ping", receive "pong" to verify connection
    */
   private async connect(): Promise<void> {
     if (this.connected && this.socket) {
@@ -118,80 +124,125 @@ export class VsockClient implements GuestClient {
 
       const socket = net.createConnection(this.vsockPath);
       const decoder = new Decoder();
-      let fcConnected = false;
-      let gotReady = false;
+
+      // Connection state machine
+      const enum State {
+        WaitingForOK,
+        WaitingForReady,
+        WaitingForPong,
+        Connected,
+      }
+      let state = State.WaitingForOK;
       let pingId: string | null = null;
-      let connectionEstablished = false;
+      let settled = false; // Track if promise is already resolved/rejected
+
+      // Buffer for accumulating incomplete data
+      let buffer = Buffer.alloc(0);
 
       const timeout = setTimeout(() => {
-        socket.destroy();
-        reject(new Error("Vsock connection timeout"));
+        if (!settled) {
+          settled = true;
+          socket.destroy();
+          reject(new Error("Vsock connection timeout"));
+        }
       }, CONNECT_TIMEOUT_MS);
+
+      const cleanup = (err: Error): void => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          socket.destroy();
+          reject(err);
+        }
+      };
 
       socket.on("connect", () => {
         socket.write(`CONNECT ${VSOCK_PORT}\n`);
       });
 
+      // Process length-prefixed messages after handshake
+      const processMessages = (): void => {
+        try {
+          for (const msg of decoder.decode(buffer)) {
+            if (state === State.WaitingForReady && msg.type === "ready") {
+              state = State.WaitingForPong;
+              pingId = crypto.randomUUID();
+              socket.write(encode({ type: "ping", id: pingId, payload: {} }));
+            } else if (
+              state === State.WaitingForPong &&
+              msg.type === "pong" &&
+              msg.id === pingId
+            ) {
+              settled = true;
+              clearTimeout(timeout);
+              state = State.Connected;
+              this.socket = socket;
+              this.connected = true;
+              resolve();
+            } else if (state === State.Connected) {
+              this.handleMessage(msg);
+            }
+          }
+          // Decoder consumes processed data internally, reset our buffer
+          buffer = Buffer.alloc(0);
+        } catch (e) {
+          cleanup(new Error(`Failed to parse message: ${e}`));
+        }
+      };
+
       socket.on("data", (data: Buffer) => {
-        if (!fcConnected) {
-          const str = data.toString();
-          if (str.startsWith("OK ")) {
-            fcConnected = true;
+        buffer = Buffer.concat([buffer, data]);
+
+        // State: WaitingForOK - parse text-based Firecracker handshake
+        if (state === State.WaitingForOK) {
+          const newlineIdx = buffer.indexOf(0x0a); // '\n'
+          if (newlineIdx === -1) {
+            return; // Wait for complete line
+          }
+
+          const line = buffer.subarray(0, newlineIdx).toString("utf-8");
+          buffer = buffer.subarray(newlineIdx + 1);
+
+          if (line.startsWith("OK ")) {
+            state = State.WaitingForReady;
+            // Process any remaining data (handles packet coalescing)
+            if (buffer.length > 0) {
+              processMessages();
+            }
           } else {
-            clearTimeout(timeout);
-            socket.destroy();
-            reject(new Error(`Firecracker connect failed: ${str.trim()}`));
+            cleanup(new Error(`Firecracker connect failed: ${line}`));
           }
           return;
         }
 
-        try {
-          for (const msg of decoder.decode(data)) {
-            if (!connectionEstablished) {
-              // Still in handshake phase
-              if (!gotReady && msg.type === "ready") {
-                gotReady = true;
-                pingId = crypto.randomUUID();
-                const ping: Message = { type: "ping", id: pingId, payload: {} };
-                socket.write(encode(ping));
-              } else if (msg.type === "pong" && msg.id === pingId) {
-                clearTimeout(timeout);
-                this.socket = socket;
-                this.connected = true;
-                connectionEstablished = true;
-                resolve();
-              }
-            } else {
-              // Connection established, route to pending requests
-              this.handleMessage(msg);
-            }
-          }
-        } catch (e) {
-          clearTimeout(timeout);
-          socket.destroy();
-          reject(new Error(`Failed to parse message: ${e}`));
-        }
+        // State: WaitingForReady/WaitingForPong/Connected - parse length-prefixed messages
+        processMessages();
       });
 
       socket.on("error", (err) => {
         clearTimeout(timeout);
         this.connected = false;
         this.socket = null;
-        reject(new Error(`Vsock error: ${err.message}`));
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Vsock error: ${err.message}`));
+        }
       });
 
       socket.on("close", () => {
         clearTimeout(timeout);
         this.connected = false;
         this.socket = null;
-        if (!gotReady) {
+        if (!settled) {
+          settled = true;
           reject(new Error("Vsock closed before ready"));
         }
         // Reject all pending requests
-        for (const [id, req] of this.pendingRequests) {
+        const pending = Array.from(this.pendingRequests.values());
+        this.pendingRequests.clear();
+        for (const req of pending) {
           clearTimeout(req.timeout);
           req.reject(new Error("Connection closed"));
-          this.pendingRequests.delete(id);
         }
       });
     });
@@ -417,10 +468,11 @@ export class VsockClient implements GuestClient {
       this.socket = null;
     }
     this.connected = false;
-    for (const [id, req] of this.pendingRequests) {
+    const pending = Array.from(this.pendingRequests.values());
+    this.pendingRequests.clear();
+    for (const req of pending) {
       clearTimeout(req.timeout);
       req.reject(new Error("Connection closed"));
-      this.pendingRequests.delete(id);
     }
   }
 }
