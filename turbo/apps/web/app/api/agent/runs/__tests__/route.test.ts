@@ -228,6 +228,9 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     });
 
     it("should return 'failed' status if sandbox preparation fails", async () => {
+      // Silence expected error logs in this test
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
       // Make E2B SDK throw an error
       vi.mocked(Sandbox.create).mockRejectedValue(
         new Error("Sandbox creation failed"),
@@ -261,6 +264,9 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(failedRun!.status).toBe("failed");
       expect(failedRun!.error).toContain("Sandbox creation failed");
       expect(failedRun!.completedAt).toBeDefined();
+
+      // Verify error was logged (validates error handling path)
+      expect(errorSpy).toHaveBeenCalled();
     });
 
     it("should return quickly even with complex context building", async () => {
