@@ -45,16 +45,14 @@ teardown() {
     assert_output --partial "credential(s)"
 }
 
-@test "vm0 experimental-credential list --json outputs valid JSON" {
+@test "vm0 experimental-credential ls works as alias for list" {
     # First create a credential
     $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "secret-value"
 
-    # List in JSON format
-    run $CLI_COMMAND experimental-credential list --json
+    # List using ls alias
+    run $CLI_COMMAND experimental-credential ls
     assert_success
-
-    # Verify JSON is valid and contains our credential
-    echo "$output" | jq -e ".[] | select(.name == \"$TEST_CRED_NAME\")"
+    assert_output --partial "$TEST_CRED_NAME"
 }
 
 @test "vm0 experimental-credential set updates existing credential" {
@@ -81,12 +79,9 @@ teardown() {
     assert_output --partial "Credential \"$TEST_CRED_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND experimental-credential list --json
+    run $CLI_COMMAND experimental-credential list
     assert_success
-    # Should not contain our credential
-    if echo "$output" | jq -e ".[] | select(.name == \"$TEST_CRED_NAME\")" >/dev/null 2>&1; then
-        fail "Credential should have been deleted"
-    fi
+    refute_output --partial "$TEST_CRED_NAME"
 }
 
 # ============================================================================

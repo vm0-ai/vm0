@@ -4,16 +4,11 @@ import { listCredentials } from "../../lib/api";
 
 export const listCommand = new Command()
   .name("list")
+  .alias("ls")
   .description("List all credentials")
-  .option("--json", "Output in JSON format")
-  .action(async (options: { json?: boolean }) => {
+  .action(async () => {
     try {
       const result = await listCredentials();
-
-      if (options.json) {
-        console.log(JSON.stringify(result.credentials, null, 2));
-        return;
-      }
 
       if (result.credentials.length === 0) {
         console.log(chalk.dim("No credentials found."));

@@ -65,7 +65,7 @@ describe("Credential Command", () => {
       mockStdoutWrite.mockRestore();
     });
 
-    it("experimental-credential list --help shows options", async () => {
+    it("experimental-credential list --help shows ls alias", async () => {
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);
@@ -79,7 +79,7 @@ describe("Credential Command", () => {
       const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
 
       expect(output).toContain("List all credentials");
-      expect(output).toContain("--json");
+      expect(output).toContain("ls");
 
       mockStdoutWrite.mockRestore();
     });
