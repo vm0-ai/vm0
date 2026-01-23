@@ -19,7 +19,6 @@ import {
   generateNetworkBootArgs,
   type VMNetworkConfig,
 } from "./network.js";
-import { waitForVsock } from "./vsock.js";
 
 /**
  * VM configuration options
@@ -202,11 +201,6 @@ export class FirecrackerVM {
       console.log(
         `[VM ${this.config.vmId}] Running at ${this.networkConfig.guestIp}`,
       );
-
-      // Wait for vsock to become ready (verifies host-guest communication)
-      console.log(`[VM ${this.config.vmId}] Waiting for vsock...`);
-      await waitForVsock(this.vsockPath, 30000, 500);
-      console.log(`[VM ${this.config.vmId}] Vsock ready`);
     } catch (error) {
       this.state = "error";
       // Cleanup on failure

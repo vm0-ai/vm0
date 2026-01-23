@@ -232,7 +232,6 @@ export async function executeJob(
       log(`[Executor] Using SSH for guest communication: ${guestIp}`);
     } else {
       // Vsock-based communication (faster, no TCP overhead)
-      // VM.start() already waits for vsock to be ready via waitForVsock()
       const vsockPath = vm.getVsockPath();
       guest = new VsockClient(vsockPath);
       log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
