@@ -174,10 +174,10 @@ describe("init command", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith("Next steps:");
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("claude setup-token"),
+        expect.stringContaining("vm0 model-provider setup"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 model-provider setup"),
+        expect.stringContaining("AGENTS.md"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("vm0 cook"),

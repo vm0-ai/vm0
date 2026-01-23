@@ -125,10 +125,10 @@ export const initCommand = new Command()
     console.log();
     console.log("Next steps:");
     console.log(
-      `  1. Get your Claude Code token: ${chalk.cyan("claude setup-token")}`,
+      `  1. Set model provider (one-time): ${chalk.cyan("vm0 model-provider setup")}`,
     );
     console.log(
-      `  2. Configure your model provider: ${chalk.cyan("vm0 model-provider setup")}`,
+      `  2. Edit ${chalk.cyan("AGENTS.md")} to customize your agent's workflow`,
     );
     console.log(
       `  3. Run your agent: ${chalk.cyan(`vm0 cook "let's start working."`)}`,
