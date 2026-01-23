@@ -13,7 +13,11 @@
 
 import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
-import type { GuestClient } from "./firecracker/guest.js";
+import {
+  type GuestClient,
+  SSHClient,
+  getRunnerSSHKeyPath,
+} from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import {
   setupVMProxyRules,
@@ -213,20 +217,34 @@ export async function executeJob(
     }
     log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
 
-    // Create guest client using vsock for host-guest communication
-    // Vsock is faster than SSH (no TCP overhead, direct hypervisor channel)
-    // VM.start() already waits for vsock to be ready via waitForVsock()
-    const vsockPath = vm.getVsockPath();
-    const guest: GuestClient = new VsockClient(vsockPath);
-    log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
+    // Create guest client based on configured protocol
+    const guestProtocol = config.sandbox.guest_protocol;
+    let guest: GuestClient;
 
-    // Verify guest is reachable via vsock
-    log(`[Executor] Verifying vsock connectivity...`);
+    if (guestProtocol === "ssh") {
+      // SSH-based communication (legacy, slower but more debuggable)
+      const sshKeyPath = getRunnerSSHKeyPath();
+      guest = new SSHClient({
+        host: guestIp,
+        user: "user",
+        privateKeyPath: sshKeyPath || undefined,
+      });
+      log(`[Executor] Using SSH for guest communication: ${guestIp}`);
+    } else {
+      // Vsock-based communication (faster, no TCP overhead)
+      // VM.start() already waits for vsock to be ready via waitForVsock()
+      const vsockPath = vm.getVsockPath();
+      guest = new VsockClient(vsockPath);
+      log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
+    }
+
+    // Verify guest is reachable
+    log(`[Executor] Verifying ${guestProtocol} connectivity...`);
     await withSandboxTiming("guest_wait", () =>
       guest.waitUntilReachable(30000, 1000),
     ); // 30 second timeout, check every 1s
 
-    log(`[Executor] Vsock ready`);
+    log(`[Executor] Guest client ready (${guestProtocol})`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
