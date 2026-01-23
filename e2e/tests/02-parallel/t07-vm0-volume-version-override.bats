@@ -68,9 +68,11 @@ EOF
 
 setup() {
     # Per-test setup: create unique artifact name
-    # VOLUME_NAME is set to the shared TEST_VOLUME_NAME from setup_file()
+    # VOLUME_ALIAS is the key in the config's volumes section (used for --volume-version flag)
+    # VOLUME_DIR is the actual directory path for the volume
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export VOLUME_NAME="$TEST_VOLUME_NAME"
+    export VOLUME_ALIAS="test-volume"
+    export VOLUME_DIR="$TEST_DIR/$TEST_VOLUME_NAME"
     export ARTIFACT_NAME="e2e-art-override-${UNIQUE_ID}"
 }
 
@@ -93,7 +95,7 @@ teardown_file() {
 
     # Step 1: Push multiple versions to the shared test volume
     echo "# Pushing multiple versions to shared test volume..."
-    cd "$TEST_DIR/$VOLUME_NAME"
+    cd "$VOLUME_DIR"
 
     # Version 1: content = "version-1"
     echo "version-1" > data.txt
@@ -124,10 +126,11 @@ teardown_file() {
     assert_success
 
     # Step 3: Run agent WITH --volume-version to override to version 1 (~15s)
+    # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
     echo "# Running agent with --volume-version override..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        --volume-version "$VOLUME_NAME=$VERSION1" \
+        --volume-version "$VOLUME_ALIAS=$VERSION1" \
         "cat /home/user/data/data.txt"
 
     assert_success
@@ -149,7 +152,7 @@ teardown_file() {
 @test "t07-3a: create checkpoint for volume override test" {
     # Step 1: Push a version to the shared test volume
     echo "# Pushing checkpoint version to shared test volume..."
-    cd "$TEST_DIR/$VOLUME_NAME"
+    cd "$VOLUME_DIR"
 
     echo "checkpoint-version" > data.txt
     run $CLI_COMMAND volume push
@@ -180,15 +183,14 @@ teardown_file() {
     echo "# Checkpoint ID: $CHECKPOINT_ID"
     [ -n "$CHECKPOINT_ID" ]
 
-    # Save state for next tests
+    # Save state for next tests (use VOLUME_ALIAS for --volume-version, VOLUME_DIR for file access)
     echo "$CHECKPOINT_ID" > "$BATS_FILE_TMPDIR/t07-3-checkpoint_id"
-    echo "$VOLUME_NAME" > "$BATS_FILE_TMPDIR/t07-3-volume_name"
-    echo "$TEST_DIR/$VOLUME_NAME" > "$BATS_FILE_TMPDIR/t07-3-volume_dir"
+    echo "$VOLUME_ALIAS" > "$BATS_FILE_TMPDIR/t07-3-volume_alias"
+    echo "$VOLUME_DIR" > "$BATS_FILE_TMPDIR/t07-3-volume_dir"
 }
 
 @test "t07-3b: push override version for checkpoint test" {
     # Load state from previous test
-    VOLUME_NAME=$(cat "$BATS_FILE_TMPDIR/t07-3-volume_name")
     VOLUME_DIR=$(cat "$BATS_FILE_TMPDIR/t07-3-volume_dir")
 
     # Push new volume version (override version)
@@ -208,13 +210,14 @@ teardown_file() {
 @test "t07-3c: resume checkpoint with --volume-version override" {
     # Load state from previous tests
     CHECKPOINT_ID=$(cat "$BATS_FILE_TMPDIR/t07-3-checkpoint_id")
-    VOLUME_NAME=$(cat "$BATS_FILE_TMPDIR/t07-3-volume_name")
+    VOLUME_ALIAS=$(cat "$BATS_FILE_TMPDIR/t07-3-volume_alias")
     OVERRIDE_VERSION=$(cat "$BATS_FILE_TMPDIR/t07-3-override_version")
 
     # Resume from checkpoint WITH volume override (~15s)
+    # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
     echo "# Resuming with --volume-version override..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        --volume-version "$VOLUME_NAME=$OVERRIDE_VERSION" \
+        --volume-version "$VOLUME_ALIAS=$OVERRIDE_VERSION" \
         "cat /home/user/data/data.txt"
 
     assert_success
@@ -236,7 +239,7 @@ teardown_file() {
 @test "t07-4a: create session for volume override continue test" {
     # Step 1: Push initial version to the shared test volume
     echo "# Pushing initial version to shared test volume..."
-    cd "$TEST_DIR/$VOLUME_NAME"
+    cd "$VOLUME_DIR"
 
     echo "initial-volume-content" > data.txt
     run $CLI_COMMAND volume push
@@ -267,11 +270,11 @@ teardown_file() {
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ]
 
-    # Save state for next tests
+    # Save state for next tests (use VOLUME_ALIAS for --volume-version, VOLUME_DIR for file access)
     echo "$SESSION_ID" > "$BATS_FILE_TMPDIR/t07-4-session_id"
-    echo "$VOLUME_NAME" > "$BATS_FILE_TMPDIR/t07-4-volume_name"
+    echo "$VOLUME_ALIAS" > "$BATS_FILE_TMPDIR/t07-4-volume_alias"
     echo "$INITIAL_VERSION" > "$BATS_FILE_TMPDIR/t07-4-initial_version"
-    echo "$TEST_DIR/$VOLUME_NAME" > "$BATS_FILE_TMPDIR/t07-4-volume_dir"
+    echo "$VOLUME_DIR" > "$BATS_FILE_TMPDIR/t07-4-volume_dir"
 }
 
 @test "t07-4b: push new version for session continue test" {
@@ -292,13 +295,14 @@ teardown_file() {
 @test "t07-4c: continue session with --volume-version override" {
     # Load state from previous tests
     SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t07-4-session_id")
-    VOLUME_NAME=$(cat "$BATS_FILE_TMPDIR/t07-4-volume_name")
+    VOLUME_ALIAS=$(cat "$BATS_FILE_TMPDIR/t07-4-volume_alias")
     INITIAL_VERSION=$(cat "$BATS_FILE_TMPDIR/t07-4-initial_version")
 
     # Continue session with initial volume version override (~15s)
+    # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
     echo "# Continuing session with --volume-version override..."
     run $CLI_COMMAND run continue "$SESSION_ID" \
-        --volume-version "$VOLUME_NAME=$INITIAL_VERSION" \
+        --volume-version "$VOLUME_ALIAS=$INITIAL_VERSION" \
         "cat /home/user/data/data.txt"
 
     assert_success
