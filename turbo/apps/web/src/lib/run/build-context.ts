@@ -199,6 +199,8 @@ export async function buildExecutionContext(
 
   // Step 4: Check if credentials are needed and fetch them from the user's scope
   let credentials: Record<string, string> | undefined;
+  // Track which credential is for model provider auto-injection
+  let modelProviderCredentialName: string | undefined;
 
   // Extract variable references from compose to check for credentials
   const compose = agentCompose as {
@@ -293,6 +295,7 @@ export async function buildExecutionContext(
             if (credentialValue) {
               credentials = credentials || {};
               credentials[credentialName] = credentialValue;
+              modelProviderCredentialName = credentialName;
               log.debug(
                 `Injected model provider credential: ${credentialName}`,
               );
@@ -312,7 +315,7 @@ export async function buildExecutionContext(
 
   // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
   // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
-  const { environment } = expandEnvironmentFromCompose(
+  let { environment } = expandEnvironmentFromCompose(
     agentCompose,
     vars,
     secrets,
@@ -320,6 +323,24 @@ export async function buildExecutionContext(
     params.userId,
     params.runId,
   );
+
+  // Step 5b: Auto-inject model provider credential into environment
+  // This ensures the credential is available even when no environment block exists
+  if (
+    modelProviderCredentialName &&
+    credentials?.[modelProviderCredentialName]
+  ) {
+    // Only inject if not already set (user-defined environment takes precedence)
+    if (!environment?.[modelProviderCredentialName]) {
+      environment = environment || {};
+      // We've already checked credentials[modelProviderCredentialName] is truthy above
+      environment[modelProviderCredentialName] =
+        credentials[modelProviderCredentialName]!;
+      log.debug(
+        `Auto-injected model provider credential to environment: ${modelProviderCredentialName}`,
+      );
+    }
+  }
 
   // Step 6: Merge credentials into secrets for client-side log masking
   // Credentials are server-stored user-level secrets and must be masked like CLI secrets
