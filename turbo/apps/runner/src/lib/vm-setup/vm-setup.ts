@@ -1,12 +1,13 @@
 /**
  * VM Setup Operations
  *
- * SSH-based setup operations for Firecracker VMs.
+ * Guest-based setup operations for Firecracker VMs.
  * These functions configure the VM environment before agent execution.
+ * Works with any GuestClient implementation (SSH or Vsock).
  */
 
 import fs from "fs";
-import type { SSHClient } from "../firecracker/guest.js";
+import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { getAllScripts } from "../scripts/utils.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
@@ -15,20 +16,20 @@ import { SCRIPT_PATHS } from "../scripts/index.js";
  * Upload all scripts to VM individually via SSH
  * Scripts are installed to /usr/local/bin which requires sudo
  */
-export async function uploadScripts(ssh: SSHClient): Promise<void> {
+export async function uploadScripts(guest: GuestClient): Promise<void> {
   const scripts = getAllScripts();
 
   // Create directory (requires sudo for /usr/local/bin)
   // No lib directory needed - scripts are self-contained ESM bundles
-  await ssh.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
+  await guest.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
 
   // Write each script file individually using sudo tee
   for (const script of scripts) {
-    await ssh.writeFileWithSudo(script.path, script.content);
+    await guest.writeFileWithSudo(script.path, script.content);
   }
 
   // Set executable permissions (requires sudo)
-  await ssh.execOrThrow(
+  await guest.execOrThrow(
     `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true`,
   );
 }
@@ -37,7 +38,7 @@ export async function uploadScripts(ssh: SSHClient): Promise<void> {
  * Download storages to VM using storage manifest
  */
 export async function downloadStorages(
-  ssh: SSHClient,
+  guest: GuestClient,
   manifest: StorageManifest,
 ): Promise<void> {
   // Count archives to download
@@ -54,10 +55,10 @@ export async function downloadStorages(
 
   // Write manifest to VM
   const manifestJson = JSON.stringify(manifest);
-  await ssh.writeFile("/tmp/storage-manifest.json", manifestJson);
+  await guest.writeFile("/tmp/storage-manifest.json", manifestJson);
 
   // Run download script
-  const result = await ssh.exec(
+  const result = await guest.exec(
     `node ${SCRIPT_PATHS.download} /tmp/storage-manifest.json`,
   );
 
@@ -72,7 +73,7 @@ export async function downloadStorages(
  * Restore session history for resume functionality
  */
 export async function restoreSessionHistory(
-  ssh: SSHClient,
+  guest: GuestClient,
   resumeSession: ResumeSession,
   workingDir: string,
   cliAgentType: string,
@@ -98,8 +99,8 @@ export async function restoreSessionHistory(
 
   // Create directory and write file
   const dirPath = sessionPath.substring(0, sessionPath.lastIndexOf("/"));
-  await ssh.execOrThrow(`mkdir -p "${dirPath}"`);
-  await ssh.writeFile(sessionPath, sessionHistory);
+  await guest.execOrThrow(`mkdir -p "${dirPath}"`);
+  await guest.writeFile(sessionPath, sessionHistory);
 
   console.log(
     `[Executor] Session history restored (${sessionHistory.split("\n").length} lines)`,
@@ -110,11 +111,11 @@ export async function restoreSessionHistory(
  * Install proxy CA certificate in VM for network security mode
  * This allows the VM to trust the runner's mitmproxy for HTTPS interception
  *
- * @param ssh - SSH client connected to the VM
+ * @param guest - Guest client connected to the VM
  * @param caCertPath - Path to the CA certificate file on the runner host
  */
 export async function installProxyCA(
-  ssh: SSHClient,
+  guest: GuestClient,
   caCertPath: string,
 ): Promise<void> {
   // Read CA certificate from runner host
@@ -130,13 +131,13 @@ export async function installProxyCA(
   );
 
   // Write CA cert to VM's CA certificates directory
-  await ssh.writeFileWithSudo(
+  await guest.writeFileWithSudo(
     "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
     caCert,
   );
 
   // Update CA certificates (requires sudo)
-  await ssh.execOrThrow("sudo update-ca-certificates");
+  await guest.execOrThrow("sudo update-ca-certificates");
   console.log(`[Executor] Proxy CA certificate installed successfully`);
 }
 
@@ -146,14 +147,14 @@ export async function installProxyCA(
  * so we need to ensure DNS servers are configured after SSH is ready.
  * Requires sudo since we're connected as 'user', not root.
  */
-export async function configureDNS(ssh: SSHClient): Promise<void> {
+export async function configureDNS(guest: GuestClient): Promise<void> {
   // Remove any symlink and write static DNS configuration
   // Use sudo since /etc/resolv.conf requires root access
   const dnsConfig = `nameserver 8.8.8.8
 nameserver 8.8.4.4
 nameserver 1.1.1.1`;
 
-  await ssh.execOrThrow(
+  await guest.execOrThrow(
     `sudo sh -c 'rm -f /etc/resolv.conf && echo "${dnsConfig}" > /etc/resolv.conf'`,
   );
 }
