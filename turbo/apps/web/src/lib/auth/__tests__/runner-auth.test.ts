@@ -89,10 +89,13 @@ describe("runner-auth", () => {
       });
     });
 
-    describe("with sandbox JWT token", () => {
+    describe("with sandbox token", () => {
       it("should return null (sandbox tokens are rejected)", async () => {
+        // Use token with vm0_sbx_ prefix to test sandbox token rejection
         mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue("Bearer header.payload.signature"),
+          get: vi
+            .fn()
+            .mockReturnValue("Bearer vm0_sbx_header.payload.signature"),
         });
 
         const result = await getRunnerAuth();
