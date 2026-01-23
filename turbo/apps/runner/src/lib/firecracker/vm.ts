@@ -4,7 +4,7 @@
  * Manages the complete lifecycle of a Firecracker microVM:
  * - Process management (spawn, terminate)
  * - Configuration via API
- * - Network setup
+ * - Network setup (TAP devices, IP allocation)
  * - Boot and shutdown
  */
 
