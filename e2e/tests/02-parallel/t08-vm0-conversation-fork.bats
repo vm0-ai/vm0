@@ -12,10 +12,10 @@
 
 load '../../helpers/setup'
 
-# Unique agent name for this test file to avoid compose conflicts in parallel runs
-AGENT_NAME="e2e-t08-$(date +%s%3N)-$RANDOM"
-
 setup_file() {
+    # Unique agent name for this test file - must be generated in setup_file()
+    # and exported to persist across test cases
+    export AGENT_NAME="e2e-t08-$(date +%s%3N)-$RANDOM"
     # Create shared test directory for this file
     export TEST_DIR="$(mktemp -d)"
     export TEST_CONFIG="$TEST_DIR/vm0.yaml"
