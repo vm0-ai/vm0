@@ -12,7 +12,7 @@ const SANDBOX_DEFAULTS = {
   vcpu: 2,
   memory_mb: 2048,
   poll_interval_ms: 5000,
-  guest_protocol: "ssh",
+  guest_protocol: "vsock",
 } as const;
 
 const PROXY_DEFAULTS = {
