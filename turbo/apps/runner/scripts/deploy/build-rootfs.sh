@@ -166,11 +166,11 @@ verify_rootfs() {
         echo "  Python: ${PYTHON_VERSION}"
     fi
 
-    if [ ! -f "$MOUNT_POINT/usr/sbin/sshd" ]; then
-        echo "ERROR: SSH server not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vsock-agent.py" ]; then
+        echo "ERROR: vsock-agent not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  SSH: installed"
+        echo "  vsock-agent: installed"
     fi
 
     if [ ! -f "$MOUNT_POINT/lib/systemd/systemd" ]; then
