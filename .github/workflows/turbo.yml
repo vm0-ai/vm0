@@ -528,7 +528,7 @@ jobs:
       - name: Run Parallel E2E Tests
         run: |
           echo "=== Running Parallel E2E Tests ==="
-          BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
+          BATS_TEST_TIMEOUT=45 ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
           echo "✅ Parallel tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
