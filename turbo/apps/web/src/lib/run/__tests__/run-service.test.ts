@@ -29,7 +29,11 @@ vi.mock("../../e2b", () => ({
   },
 }));
 
-// Mock agent-session service (third-party-like service for session management)
+// Mock agent-session service to isolate unit tests from database dependencies.
+// The agent-session service manages CLI agent sessions and conversations, which
+// requires database access. Mocking it allows testing RunService methods that
+// depend on session lookups without requiring actual session records in the database.
+// The relative path "../../agent-session" is resolved by vitest relative to this test file.
 vi.mock("../../agent-session", () => ({
   agentSessionService: {
     getByIdWithConversation: vi.fn(),
