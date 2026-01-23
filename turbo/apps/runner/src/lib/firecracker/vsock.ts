@@ -203,7 +203,6 @@ export async function waitForVsock(
 export class VsockClient implements GuestClient {
   private vsockPath: string;
   private socket: net.Socket | null = null;
-  private decoder: Decoder | null = null;
   private connected = false;
   private pendingRequests = new Map<
     string,
@@ -237,6 +236,7 @@ export class VsockClient implements GuestClient {
       let fcConnected = false;
       let gotReady = false;
       let pingId: string | null = null;
+      let connectionEstablished = false;
 
       const timeout = setTimeout(() => {
         socket.destroy();
@@ -262,20 +262,22 @@ export class VsockClient implements GuestClient {
 
         try {
           for (const msg of decoder.decode(data)) {
-            if (!gotReady && msg.type === "ready") {
-              gotReady = true;
-              pingId = crypto.randomUUID();
-              const ping: Message = { type: "ping", id: pingId, payload: {} };
-              socket.write(encode(ping));
-            } else if (msg.type === "pong" && msg.id === pingId) {
-              clearTimeout(timeout);
-              this.socket = socket;
-              this.decoder = decoder;
-              this.connected = true;
-              this.setupMessageHandler();
-              resolve();
-            } else if (gotReady) {
-              // After connection established, route to pending requests
+            if (!connectionEstablished) {
+              // Still in handshake phase
+              if (!gotReady && msg.type === "ready") {
+                gotReady = true;
+                pingId = crypto.randomUUID();
+                const ping: Message = { type: "ping", id: pingId, payload: {} };
+                socket.write(encode(ping));
+              } else if (msg.type === "pong" && msg.id === pingId) {
+                clearTimeout(timeout);
+                this.socket = socket;
+                this.connected = true;
+                connectionEstablished = true;
+                resolve();
+              }
+            } else {
+              // Connection established, route to pending requests
               this.handleMessage(msg);
             }
           }
@@ -307,23 +309,6 @@ export class VsockClient implements GuestClient {
           this.pendingRequests.delete(id);
         }
       });
-    });
-  }
-
-  /**
-   * Setup message handler for connected socket
-   */
-  private setupMessageHandler(): void {
-    if (!this.socket || !this.decoder) return;
-
-    this.socket.on("data", (data: Buffer) => {
-      try {
-        for (const msg of this.decoder!.decode(data)) {
-          this.handleMessage(msg);
-        }
-      } catch (e) {
-        console.error(`[Vsock] Failed to decode message: ${e}`);
-      }
     });
   }
 
