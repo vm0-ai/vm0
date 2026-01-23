@@ -47,7 +47,15 @@ export function NavLink({ item, isActive }: NavLinkProps) {
   return (
     <button
       onClick={() => {
-        navigate(item.path);
+        if (item.path) {
+          navigate(item.path);
+        } else if (item.url) {
+          if (item.newTab) {
+            window.open(item.url, "_blank");
+          } else {
+            window.location.href = item.url;
+          }
+        }
       }}
       className={`flex w-full items-center gap-2 h-8 p-2 rounded-lg text-sm leading-5 transition-colors ${
         isActive

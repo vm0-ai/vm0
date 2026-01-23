@@ -19,7 +19,9 @@ export interface NavItem {
   id: string;
   label: string;
   icon: NavIconName;
-  path: RoutePath;
+  path?: RoutePath;
+  url?: string;
+  newTab?: boolean;
 }
 
 export interface NavGroup {
