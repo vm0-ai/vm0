@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/platform-v0.16.0...platform-v0.17.0) (2026-01-23)
+
+
+### Features
+
+* **platform:** add onboarding flow with automatic scope creation ([#1514](https://github.com/vm0-ai/vm0/issues/1514)) ([a6c34b4](https://github.com/vm0-ai/vm0/commit/a6c34b4069c94a4d7d3bb6426aa05549424b4f85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.1
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/platform-v0.15.1...platform-v0.16.0) (2026-01-22)
 
 

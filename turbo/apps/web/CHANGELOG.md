@@ -1,5 +1,26 @@
 # Changelog
 
+## [10.5.0](https://github.com/vm0-ai/vm0/compare/web-v10.4.0...web-v10.5.0) (2026-01-23)
+
+
+### Features
+
+* **platform:** add onboarding flow with automatic scope creation ([#1514](https://github.com/vm0-ai/vm0/issues/1514)) ([a6c34b4](https://github.com/vm0-ai/vm0/commit/a6c34b4069c94a4d7d3bb6426aa05549424b4f85))
+* reduce vm0 run production timeout from 24 hours to 2 hours ([#1512](https://github.com/vm0-ai/vm0/issues/1512)) ([26d5011](https://github.com/vm0-ai/vm0/commit/26d5011627b535d002e3e07a74e13609d691ef4b)), closes [#1510](https://github.com/vm0-ai/vm0/issues/1510)
+
+
+### Bug Fixes
+
+* support dark mode for cli-auth page logo ([#1509](https://github.com/vm0-ai/vm0/issues/1509)) ([c9e4ab8](https://github.com/vm0-ai/vm0/commit/c9e4ab8eda738802b76b978bd9763752df0a79bd))
+* **web:** cors, auth token identification, and scope error responses ([#1506](https://github.com/vm0-ai/vm0/issues/1506)) ([b14ec55](https://github.com/vm0-ai/vm0/commit/b14ec559743c9538af5f6294d6581fbaff15a434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.3.1
+
 ## [10.4.0](https://github.com/vm0-ai/vm0/compare/web-v10.3.0...web-v10.4.0) (2026-01-22)
 
 
