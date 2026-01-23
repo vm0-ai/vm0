@@ -17,6 +17,11 @@ const log = logger("auth:user");
  * This ensures sandbox tokens cannot access normal user APIs.
  */
 export async function getUserId(): Promise<string | null> {
+  const { userId } = await auth();
+  if (userId) {
+    return userId;
+  }
+
   const headersList = await headers();
   const authHeader = headersList.get("Authorization");
 
@@ -60,7 +65,5 @@ export async function getUserId(): Promise<string | null> {
     return null;
   }
 
-  // Fall back to Clerk session auth
-  const { userId } = await auth();
   return userId;
 }
