@@ -18,7 +18,7 @@ describe("setupPage", () => {
   });
 
   it("should load debug loggers correctly", async () => {
-    const { set$ } = localStorageSignals("debugLoggers");
+    const { set$ } = localStorageSignals("debugLogger");
     context.store.set(set$, JSON.stringify(["Foo"]));
 
     await setupPage({

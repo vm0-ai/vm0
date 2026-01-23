@@ -4,5 +4,6 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
+  Dummy = "dummy",
   Pricing = "pricing",
 }

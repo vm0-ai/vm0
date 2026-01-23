@@ -3,7 +3,7 @@ import { localStorageSignals } from "../external/local-storage";
 import { Level, logger } from "../log";
 import { throwIfAbort } from "../utils";
 
-const { get$ } = localStorageSignals("debugLoggers");
+const { get$, set$ } = localStorageSignals("debugLogger");
 
 const L = logger("Logger");
 
@@ -28,3 +28,5 @@ export const setupLoggers$ = command(({ get }) => {
     }
   }
 });
+
+export const setDebugLoggerLocalStorage$ = set$;
