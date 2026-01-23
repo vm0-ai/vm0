@@ -10,6 +10,7 @@ import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
+import { setupGlobalMethod$ } from "./global-method.ts";
 
 const L = logger("bootstrap");
 
@@ -31,6 +32,8 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
     set(setRootSignal$, signal);
+
+    set(setupGlobalMethod$, signal);
 
     render();
 
