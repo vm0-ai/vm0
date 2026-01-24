@@ -16,8 +16,9 @@ import { VsockClient } from "../vsock.js";
 /**
  * Integration tests for VsockClient and vsock-agent.py
  *
- * These tests start a real Python vsock-agent process in UDS mode
- * and verify the full communication protocol between host and guest.
+ * These tests use Guest-initiated connection mode (same as production):
+ * - Host (VsockClient) listens on "{socketPath}_1000"
+ * - Agent connects to that socket
  */
 
 const AGENT_SCRIPT = path.resolve(
@@ -25,38 +26,22 @@ const AGENT_SCRIPT = path.resolve(
   "../../../../scripts/deploy/vsock-agent.py",
 );
 
+const VSOCK_PORT = 1000;
+
 // Helper to create a unique socket path for each test
 function createSocketPath(): string {
   return path.join(os.tmpdir(), `vsock-test-${process.pid}-${Date.now()}.sock`);
 }
 
-// Helper to wait for socket file to exist
-async function waitForSocket(
-  socketPath: string,
-  timeoutMs: number = 5000,
-): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (fs.existsSync(socketPath)) {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Socket ${socketPath} not created within ${timeoutMs}ms`);
-}
-
-// Helper to start the Python agent
-async function startAgent(socketPath: string): Promise<ChildProcess> {
-  const agent = spawn("python3", [AGENT_SCRIPT, "--unix-socket", socketPath], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  // Wait for socket to be created
-  await waitForSocket(socketPath);
-
-  // Give agent a moment to start listening
-  await new Promise((r) => setTimeout(r, 100));
-
+// Helper to start the Python agent (connects to host)
+function startAgent(listenerPath: string): ChildProcess {
+  const agent = spawn(
+    "python3",
+    [AGENT_SCRIPT, "--unix-socket", listenerPath],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   return agent;
 }
 
@@ -80,12 +65,15 @@ async function stopAgent(
     });
   }
 
-  // Clean up socket file
-  if (socketPath && fs.existsSync(socketPath)) {
-    try {
-      fs.unlinkSync(socketPath);
-    } catch {
-      // Ignore
+  // Clean up socket files
+  const listenerPath = `${socketPath}_${VSOCK_PORT}`;
+  for (const p of [socketPath, listenerPath]) {
+    if (p && fs.existsSync(p)) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        // Ignore
+      }
     }
   }
 }
@@ -104,10 +92,18 @@ describe("VsockClient Integration Tests", () => {
 
   beforeEach(async () => {
     socketPath = createSocketPath();
-    agent = await startAgent(socketPath);
     client = new VsockClient(socketPath);
-    // Connect using Host-initiated mode (for UDS testing)
-    await client.connectToAgent();
+
+    // Host listens, then agent connects (same as production)
+    const listenerPath = `${socketPath}_${VSOCK_PORT}`;
+    const connectionPromise = client.waitForGuestConnection(5000);
+
+    // Start agent after a small delay to ensure host is listening
+    await new Promise((r) => setTimeout(r, 50));
+    agent = startAgent(listenerPath);
+
+    // Wait for connection
+    await connectionPromise;
   });
 
   afterEach(async () => {
@@ -301,22 +297,6 @@ describe("VsockClient Integration Tests", () => {
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(String(i));
       }
-    });
-
-    it("should reconnect after close", async () => {
-      // First connection
-      let result = await client!.exec("echo first");
-      expect(result.stdout.trim()).toBe("first");
-
-      // Close connection
-      client!.close();
-
-      // Reconnect explicitly
-      await client!.connectToAgent();
-
-      // New connection should work
-      result = await client!.exec("echo second");
-      expect(result.stdout.trim()).toBe("second");
     });
   });
 });
