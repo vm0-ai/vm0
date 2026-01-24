@@ -16,7 +16,8 @@ FROM node:24-alpine
 
 # Install required packages
 # Core:
-# - python3: Python 3 for vsock-agent (stdlib only, no pip needed)
+# - python3: Python 3 for vsock-agent
+# - py3-pip: Python package manager
 # - openrc: Init system for VM boot (lighter than systemd)
 # - procps: Process utilities (pgrep, free) needed by metrics and executor
 # Development tools (matching e2b template):
@@ -35,6 +36,7 @@ FROM node:24-alpine
 # - libc6-compat: glibc compatibility for some binaries
 RUN apk add --no-cache \
     python3 \
+    py3-pip \
     openrc \
     procps \
     curl \
