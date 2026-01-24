@@ -147,10 +147,6 @@ export async function installProxyCA(
   // Run c_rehash to update certificate hash symlinks (needed by OpenSSL)
   await guest.execOrThrow("sudo c_rehash /etc/ssl/certs 2>&1 || true");
 
-  // Check if cert.pem is a symlink (it usually is in Alpine)
-  const linkCheck = await guest.exec("ls -la /etc/ssl/cert.pem 2>&1 | head -1");
-  console.log(`[Executor] cert.pem status: ${linkCheck.stdout.trim()}`);
-
   // Workaround: Directly append to the CA bundle for immediate effect
   // Alpine's /etc/ssl/cert.pem is a symlink to /etc/ssl/certs/ca-certificates.crt
   // So we only need to append to one file
@@ -165,12 +161,6 @@ export async function installProxyCA(
   console.log(
     `[Executor] Proxy CA certificate installed (${verifyResult.stdout.trim()} certs in bundle)`,
   );
-
-  // Debug: Verify curl can read the CA bundle
-  const curlCheck = await guest.exec(
-    "curl --version | head -1 && ls -la /etc/ssl/certs/ca-certificates.crt | awk '{print $5}' && tail -3 /etc/ssl/certs/ca-certificates.crt",
-  );
-  console.log(`[Executor] curl/CA debug: ${curlCheck.stdout.trim()}`);
 }
 
 /**
