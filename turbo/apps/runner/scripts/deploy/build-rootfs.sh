@@ -173,11 +173,11 @@ verify_rootfs() {
         echo "  vsock-agent: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/lib/systemd/systemd" ]; then
-        echo "ERROR: systemd not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/sbin/tini" ]; then
+        echo "ERROR: tini not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  systemd: installed"
+        echo "  tini: installed"
     fi
 
     if [ ! -f "$MOUNT_POINT/sbin/overlay-init" ]; then
