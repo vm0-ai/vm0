@@ -44,9 +44,7 @@ program
     console.log(`API Host: ${apiUrl}`);
   });
 
-const authCommand = program
-  .command("auth")
-  .description("Authentication commands");
+const authCommand = program.command("auth").description("Authenticate vm0");
 
 authCommand
   .command("login")
