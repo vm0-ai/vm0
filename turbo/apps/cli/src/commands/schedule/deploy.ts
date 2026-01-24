@@ -121,25 +121,22 @@ export const deployCommand = new Command()
 
       // Resolve agent reference to compose ID
       const agentRef = schedule.run.agent;
-      let composeId: string;
 
-      try {
-        // Parse agent reference: [scope/]name[:version]
-        // For now, just use the name part
-        const namePart = agentRef.includes("/")
-          ? agentRef.split("/").pop()!
-          : agentRef;
-        const agentName = namePart.includes(":")
-          ? namePart.split(":")[0]!
-          : namePart;
+      const namePart = agentRef.includes("/")
+        ? agentRef.split("/").pop()!
+        : agentRef;
+      const agentName = namePart.includes(":")
+        ? namePart.split(":")[0]!
+        : namePart;
 
-        const compose = await getComposeByName(agentName);
-        composeId = compose.id;
-      } catch {
+      const compose = await getComposeByName(agentName);
+      if (!compose) {
         console.error(chalk.red(`✗ Agent not found: ${agentRef}`));
         console.error(chalk.dim("  Make sure the agent is pushed first"));
         process.exit(1);
       }
+
+      const composeId = compose.id;
 
       // Expand environment variables
       const expandedVars = expandEnvVarsInObject(schedule.run.vars);

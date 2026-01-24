@@ -111,6 +111,16 @@ export const mainRunCommand = new Command()
             console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
           const compose = await getComposeByName(name, scope);
+          if (!compose) {
+            console.error(chalk.red(`✗ Agent not found: ${identifier}`));
+            console.error(
+              chalk.dim(
+                "  Make sure you've composed the agent with: vm0 compose",
+              ),
+            );
+            process.exit(1);
+          }
+
           composeId = compose.id;
           composeContent = compose.content;
           if (verbose) {
@@ -252,6 +262,7 @@ export const mainRunCommand = new Command()
         }
         showNextSteps(result);
       } catch (error) {
+        console.log(error);
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
             console.error(

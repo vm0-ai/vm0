@@ -1,5 +1,5 @@
 // Core types (only export what's actually used)
-export type { ApiError, GetComposeResponse, RunResult } from "./core/types";
+export type { ApiError, RunResult } from "./core/types";
 
 // HTTP utilities (only export what's actually used)
 export { httpGet } from "./core/http";

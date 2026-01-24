@@ -19,6 +19,8 @@ vi.mock("../lib/api/config", () => ({
   getApiUrl: vi.fn().mockResolvedValue("https://www.vm0.ai"),
 }));
 
+import { program } from "../index";
+
 describe("Info Command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -32,8 +34,6 @@ describe("Info Command", () => {
   });
 
   it("should display system information header", async () => {
-    const { program } = await import("../index");
-
     await program.parseAsync(["node", "cli", "info"]);
 
     const allCalls = mockConsoleLog.mock.calls.map((call) => call[0] as string);
