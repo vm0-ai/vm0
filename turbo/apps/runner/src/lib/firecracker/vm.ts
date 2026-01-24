@@ -60,6 +60,7 @@ export class FirecrackerVM {
 
   constructor(config: VMConfig) {
     this.config = config;
+
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
