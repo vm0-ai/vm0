@@ -1,13 +1,5 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "path";
-import { config } from "dotenv";
-import { existsSync } from "fs";
-
-// Load .env.local for tests if it exists (local development)
-const envLocalPath = resolve(__dirname, ".env.local");
-if (existsSync(envLocalPath)) {
-  config({ path: envLocalPath });
-}
 
 export default defineConfig({
   test: {

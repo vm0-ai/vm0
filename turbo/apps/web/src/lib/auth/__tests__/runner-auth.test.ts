@@ -17,6 +17,14 @@ const TEST_OFFICIAL_SECRET =
 const TEST_CLI_TOKEN = "vm0_live_test_token_12345";
 const TEST_USER_ID = "test-user-runner-auth";
 
+// Set required environment variables before initServices
+vi.hoisted(() => {
+  vi.stubEnv(
+    "OFFICIAL_RUNNER_SECRET",
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  );
+});
+
 // Mock the headers
 const mockHeaders = vi.fn();
 vi.mock("next/headers", () => ({
@@ -27,9 +35,6 @@ vi.mock("next/headers", () => ({
 vi.mock("../sandbox-token", () => ({
   isSandboxToken: (token: string) => token.split(".").length === 3,
 }));
-
-// Set required environment variables before initServices
-process.env.OFFICIAL_RUNNER_SECRET = TEST_OFFICIAL_SECRET;
 
 // Import module after setting up mocks
 let getRunnerAuth: typeof import("../runner-auth").getRunnerAuth;

@@ -30,8 +30,10 @@ import * as s3Client from "../s3/s3-client";
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-// Set required environment variables
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+// Override default env var with test-specific value
+vi.hoisted(() => {
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
+});
 
 // Test constants
 const TEST_USER_ID = "test-user-artifact-storage";

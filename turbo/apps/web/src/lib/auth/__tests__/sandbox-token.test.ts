@@ -5,9 +5,7 @@ import {
   isSandboxToken,
 } from "../sandbox-token";
 
-// Set required environment variables before any imports
-process.env.SECRETS_ENCRYPTION_KEY =
-  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+// SECRETS_ENCRYPTION_KEY is set in setup.ts
 
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {

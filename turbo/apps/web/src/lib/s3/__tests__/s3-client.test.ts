@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseS3Uri, uploadStorageVersionArchive } from "../s3-client";
 import type { FileEntry } from "../../storage/content-hash";
 
-// Set required environment variables before any imports
-process.env.R2_ACCOUNT_ID = "test-account-id";
-process.env.R2_ACCESS_KEY_ID = "test-key";
-process.env.R2_SECRET_ACCESS_KEY = "test-secret";
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-bucket";
+// R2 env vars are set in setup.ts
 
 // Mock AWS SDK
 vi.mock("@aws-sdk/client-s3", () => ({

@@ -17,8 +17,10 @@ import { storages, storageVersions } from "../../../db/schema/storage";
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-// Set required environment variables before initServices
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+// Override default env var with test-specific value
+vi.hoisted(() => {
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
+});
 
 // Test user ID for isolation
 const TEST_USER_ID = "test-user-storage-service";

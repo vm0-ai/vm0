@@ -34,7 +34,6 @@
     "ably": "^2.17.0",
     "archiver": "^7.0.1",
     "croner": "^9.1.0",
-    "dotenv": "^17.2.1",
     "drizzle-orm": "^0.44.5",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",

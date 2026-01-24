@@ -16,8 +16,10 @@ import type { FileEntry } from "../../storage/content-hash";
 // Mock AWS SDK (third-party external dependency)
 vi.mock("@aws-sdk/client-s3");
 
-// Set required environment variables before initServices
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-blobs-bucket";
+// Override default env var with test-specific value
+vi.hoisted(() => {
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-blobs-bucket");
+});
 
 // Prefix for test data to enable cleanup
 const TEST_HASH_PREFIX = "test_";

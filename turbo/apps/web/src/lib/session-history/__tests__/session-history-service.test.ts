@@ -16,8 +16,10 @@ import * as s3Client from "../../s3/s3-client";
 // Mock AWS SDK (third-party external dependency)
 vi.mock("@aws-sdk/client-s3");
 
-// Set required environment variables
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+// Override default env var with test-specific value
+vi.hoisted(() => {
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
+});
 
 describe("SessionHistoryService", () => {
   let service: SessionHistoryService;
