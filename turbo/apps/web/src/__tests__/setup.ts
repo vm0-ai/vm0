@@ -5,13 +5,10 @@ import { vi } from "vitest";
 // Using vi.hoisted() ensures stubs run before module imports
 //
 // All env vars are explicitly stubbed here for deterministic test behavior.
-// Tests run in GitHub Actions and dev containers with consistent database config.
+// Note: DATABASE_URL is NOT stubbed because it differs between environments:
+// - Local dev: postgresql://postgres:postgres@localhost:5432/postgres
+// - CI (GitHub Actions): postgresql://postgres@postgres:5432/postgres (service container)
 vi.hoisted(() => {
-  // Database connection (same in CI and devcontainer)
-  vi.stubEnv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/postgres",
-  );
   // Required env vars from env.ts schema
   vi.stubEnv(
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
