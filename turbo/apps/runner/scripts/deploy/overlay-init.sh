@@ -7,7 +7,7 @@
 # 2. Mounts the ext4 overlay filesystem (read-write) from /dev/vdb
 # 3. Creates an overlayfs combining both
 # 4. Switches root to the overlay
-# 5. Executes the real init (systemd)
+# 5. Starts vsock-agent via tini
 #
 # Device mapping:
 #   /dev/vda - squashfs base (read-only, shared across VMs)
@@ -61,5 +61,9 @@ fi
 # Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
-# Start the real init (systemd)
-exec /lib/systemd/systemd "$@"
+# Mount virtual filesystems
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sys /sys 2>/dev/null || true
+
+# Start vsock-agent with tini for proper signal handling
+exec /sbin/tini -- /usr/bin/python3 /usr/local/bin/vm0-agent/vsock-agent.py

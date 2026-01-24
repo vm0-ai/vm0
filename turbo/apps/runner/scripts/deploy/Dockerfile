@@ -1,28 +1,27 @@
-# Firecracker VM rootfs image (Universal)
-# Based on Node.js 24 with Python 3.11+, vsock-agent, and agent CLIs
+# Firecracker VM rootfs image (Wolfi)
+# Based on Wolfi with Node.js 22, Python 3, tini, and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
 # - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
 # - Codex CLI (@openai/codex) for framework: codex
 # - GitHub CLI (gh) for apps: [github]
 #
-# This mirrors the e2b template configurations for consistency.
-# See: turbo/scripts/e2b/vm0-*/template.ts
+# Wolfi advantages over Alpine:
+# - Uses glibc (better compatibility than musl)
+# - Minimal design for fast boot
+# - No init system overhead (uses tini + custom init)
 #
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
 
-FROM node:24-bookworm-slim
-
-# Avoid interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
+FROM cgr.dev/chainguard/wolfi-base
 
 # Install required packages
 # Core:
-# - python3: Python 3.11+ for agent scripts and vsock-agent
-# - systemd: Init system for VM boot
-# - procps: Process utilities (pgrep, free) needed by metrics and executor
-# Development tools (matching e2b template):
+# - nodejs-22: Node.js runtime for Claude Code and Codex CLIs
+# - python-3: Python 3 for vsock-agent
+# - tini: Lightweight init for signal handling
+# Development tools:
 # - curl: HTTP client
 # - git: Version control
 # - ripgrep: Fast code search (used by Claude Code)
@@ -32,12 +31,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - iproute2: Network utilities (ip command)
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    systemd \
-    systemd-sysv \
-    procps \
+# - bash: Required by some CLIs
+# - kmod: Kernel module loading (modprobe)
+RUN apk add --no-cache \
+    nodejs-22 \
+    npm \
+    python-3 \
+    py3-pip \
+    tini \
     curl \
     git \
     ripgrep \
@@ -46,69 +47,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    bash \
+    gh \
+    kmod \
+    procps
 
-# Install Claude Code CLI globally (matching e2b template)
-RUN npm install -g @anthropic-ai/claude-code@2.1.12
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code@latest
 
-# Install Codex CLI globally (matching e2b template)
-# See: turbo/scripts/e2b/vm0-codex/template.ts
+# Install Codex CLI globally
 RUN npm install -g @openai/codex@latest
 
-# Install GitHub CLI (for apps: [github])
-# See: turbo/scripts/e2b/vm0-claude-code-github/template.ts
-# https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-    | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
+# Clean npm cache to reduce image size
+RUN npm cache clean --force
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
-# - Home directory at /home/user
-# - Add to sudo group for privileged operations
-# Note: node:24-bookworm-slim has 'node' user at UID 1000, so we delete it first
-RUN userdel -r node 2>/dev/null || true \
-    && useradd -m -u 1000 -s /bin/bash user \
-    && usermod -aG sudo user \
-    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
-    && passwd -d user
-
-# NOTE: DNS configuration is handled in build-rootfs.sh after export
-# /etc/resolv.conf is read-only during Docker build
+RUN adduser -D -u 1000 -s /bin/bash user \
+    && mkdir -p /etc/sudoers.d \
+    && echo 'user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/user
 
 # Create working directory for agent scripts
 RUN mkdir -p /opt/vm0-scripts/lib
 
 # Create directories for overlay-init (squashfs is read-only at boot)
-# These are needed by /sbin/overlay-init to set up overlayfs
 RUN mkdir -p /rom /rw /mnt/root
 
-# Set default target for systemd
-RUN systemctl set-default multi-user.target
-
-# Clean up unnecessary systemd services for faster boot
-RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
-    && rm -f /etc/systemd/system/*.wants/* \
-    && rm -f /lib/systemd/system/local-fs.target.wants/* \
-    && rm -f /lib/systemd/system/sockets.target.wants/*udev* \
-    && rm -f /lib/systemd/system/sockets.target.wants/*initctl* \
-    && rm -f /lib/systemd/system/basic.target.wants/* \
-    && rm -f /lib/systemd/system/anaconda.target.wants/*
-
-# Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
-# Protocol: 4-byte length prefix (big endian) + JSON message
-# Messages: ready, ping/pong, exec/exec_result
+# Install vsock-agent
 RUN mkdir -p /usr/local/bin/vm0-agent
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Install vsock-agent systemd service
-COPY vsock-agent.service /etc/systemd/system/vsock-agent.service
-RUN systemctl enable vsock-agent
+# Environment
+ENV LANG=C.UTF-8
 
-CMD ["/lib/systemd/systemd"]
+# Note: VM boot uses kernel param init=/sbin/overlay-init (copied by build-rootfs.sh)
+# overlay-init sets up overlayfs and starts tini + vsock-agent
