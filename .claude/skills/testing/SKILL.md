@@ -83,8 +83,7 @@ What to mock (from external to internal):
 ```
 External (MOCK):
 ├── Third-party SaaS (Clerk, E2B, AWS, Anthropic)
-├── Node.js built-ins (fs, child_process)
-└── Framework APIs (next/headers)
+└── Node.js built-ins (fs, child_process)
 
 Internal (USE REAL):
 ├── Database (globalThis.services.db)
@@ -327,9 +326,6 @@ Based on systematic review of 70+ test files, tests should **only mock third-par
 - `child_process` - Process spawning
 - Other Node.js core modules
 
-✅ **Next.js framework APIs**:
-- `next/headers` - For mocking request headers in tests
-
 **BEFORE (❌ Wrong):**
 ```typescript
 // ❌ Mock internal get-user-id utility
@@ -410,7 +406,6 @@ it("should create a run with real service integration", async () => {
 | `@e2b/code-interpreter` | ✅ Yes | Third-party SaaS, requires API key |
 | `@anthropic-ai/sdk` | ✅ Yes | Third-party API, requires API key |
 | `fs`, `child_process` | ✅ Yes | Node.js built-ins for I/O operations |
-| `next/headers` | ✅ Yes | Next.js framework API (test setup) |
 | `globalThis.services.db` | ❌ No | Project database, use real connection |
 | `../../blob/blob-service` | ❌ No | Internal service, use real implementation |
 | `../../storage/*` | ❌ No | Internal service, use real implementation |
@@ -767,25 +762,18 @@ import { initServices } from "../../../../src/lib/init-services";
 // ========== MOCKS SECTION ==========
 // Only mock EXTERNAL third-party packages
 
-// Mock Next.js framework API
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock external Clerk auth (third-party SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
 // ========== IMPORTS SECTION ==========
-import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 // Import real internal services (NO MOCKS!)
 import { POST } from "./route";
 import { agentRuns } from "../../../../src/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
 // ========== TEST SUITE ==========
@@ -805,10 +793,6 @@ describe("POST /api/agent/runs", () => {
     mockAuth.mockResolvedValue({
       userId: testUserId,
     } as Awaited<ReturnType<typeof auth>>);
-
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
   });
 
   afterEach(async () => {
@@ -850,17 +834,6 @@ beforeEach(() => {
   mockAuth
     .mockResolvedValueOnce({ userId: null } as Awaited<ReturnType<typeof auth>>)
     .mockResolvedValueOnce({ userId: testUserId } as Awaited<ReturnType<typeof auth>>);
-});
-```
-
-**CLI token authentication**:
-```typescript
-beforeEach(() => {
-  mockHeaders.mockResolvedValue({
-    get: vi.fn((name: string) =>
-      name === "Authorization" ? "Bearer vm0_live_test" : null
-    ),
-  } as unknown as Headers);
 });
 ```
 
@@ -1514,20 +1487,15 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } 
 
 // ========== MOCKS SECTION ==========
 // Place ALL vi.mock() calls at the top, before any imports
-// Only mock EXTERNAL third-party packages or framework APIs
+// Only mock EXTERNAL third-party packages
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // ========== IMPORTS SECTION ==========
 // Import mocked modules first
 import { auth } from "@clerk/nextjs/server";
-import { headers } from "next/headers";
 
 // Import test utilities
 import { initServices } from "../../../../src/lib/init-services";
@@ -1541,7 +1509,6 @@ import { eq } from "drizzle-orm";
 
 // Get typed mock references
 const mockAuth = vi.mocked(auth);
-const mockHeaders = vi.mocked(headers);
 
 // ========== TEST SUITE ==========
 describe("Module Name", () => {
@@ -1631,10 +1598,6 @@ describe("Module Name", () => {
 - `@axiomhq/js` - Logging SaaS
 - `@stripe/stripe-js` - Payment API
 
-**Framework APIs**:
-- `next/headers` - Request headers
-- `next/cookies` - Request cookies
-
 ### Internal Implementation (USE REAL)
 
 **Database**:
@@ -1707,7 +1670,6 @@ Use this workflow when refactoring an existing test file:
 - [ ] Classify each mock:
   - External (third-party from node_modules) → KEEP
   - Internal (relative path `../../` or `../`) → REMOVE
-  - Framework (next/headers, next/cookies) → KEEP
   - Built-in (fs, child_process) → EVALUATE
 
 **Questions to ask**:
