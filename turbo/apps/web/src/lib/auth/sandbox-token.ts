@@ -1,4 +1,4 @@
-import { createHmac, hkdfSync, randomBytes } from "crypto";
+import { createHmac, hkdfSync } from "crypto";
 import { env } from "../../env";
 import { logger } from "../logger";
 
@@ -45,14 +45,7 @@ function base64UrlDecode(data: string): Buffer {
 function deriveJwtKey(): Buffer {
   const keyHex = env().SECRETS_ENCRYPTION_KEY;
   if (!keyHex) {
-    // Development fallback - NOT FOR PRODUCTION
-    if (env().NODE_ENV === "production") {
-      throw new Error("SECRETS_ENCRYPTION_KEY must be set in production");
-    }
-    log.warn(
-      "SECRETS_ENCRYPTION_KEY not configured, using random key (dev mode only)",
-    );
-    return randomBytes(32);
+    throw new Error("SECRETS_ENCRYPTION_KEY must be configured");
   }
 
   const masterKey = Buffer.from(keyHex, "hex");

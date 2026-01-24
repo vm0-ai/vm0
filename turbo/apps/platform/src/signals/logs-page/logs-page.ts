@@ -5,8 +5,6 @@ import { updatePage$ } from "../react-router.ts";
 import { initLogs$ } from "./logs-signals.ts";
 
 export const setupLogsPage$ = command(({ set }, signal: AbortSignal) => {
-  signal.throwIfAborted();
-
   // Initialize logs (clears and loads first batch)
   set(initLogs$, signal);
 

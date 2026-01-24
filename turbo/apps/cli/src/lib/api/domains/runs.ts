@@ -21,7 +21,7 @@ export async function createRun(body: {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
-  // Model provider for automatic LLM credential injection
+  // Model provider for automatic credential injection
   modelProvider?: string;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;

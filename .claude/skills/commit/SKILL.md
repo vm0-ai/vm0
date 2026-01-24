@@ -1,7 +1,6 @@
 ---
 name: commit
 description: Complete pre-commit workflow - run quality checks (format, lint, type, test) and validate/create conventional commit messages
-allowed-tools: Bash, Read, Glob, Edit
 context: fork
 ---
 

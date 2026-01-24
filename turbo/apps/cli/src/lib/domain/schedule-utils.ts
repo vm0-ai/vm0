@@ -174,8 +174,6 @@ export function detectTimezone(): string {
  * Agent configuration within vm0.yaml
  */
 interface AgentConfig {
-  experimental_vars?: string[];
-  experimental_secrets?: string[];
   environment?: Record<string, string>;
 }
 
@@ -189,7 +187,7 @@ interface VarsAndSecrets {
 
 /**
  * Extract variable and secret names from vm0.yaml
- * Looks for experimental_vars, experimental_secrets, and ${{ vars.X }}, ${{ secrets.X }} patterns
+ * Looks for ${{ vars.X }} and ${{ secrets.X }} patterns in environment
  */
 export function extractVarsAndSecrets(): VarsAndSecrets {
   const result: VarsAndSecrets = { vars: [], secrets: [] };
@@ -207,14 +205,6 @@ export function extractVarsAndSecrets(): VarsAndSecrets {
     const agent = agents[0];
     if (!agent) {
       return result;
-    }
-
-    // Collect from experimental_vars and experimental_secrets
-    if (agent.experimental_vars) {
-      result.vars.push(...agent.experimental_vars);
-    }
-    if (agent.experimental_secrets) {
-      result.secrets.push(...agent.experimental_secrets);
     }
 
     // Parse environment for ${{ vars.X }} and ${{ secrets.X }} patterns

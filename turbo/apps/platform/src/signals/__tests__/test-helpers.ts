@@ -2,6 +2,7 @@ import { createStore, type Store } from "ccstate";
 import { afterEach } from "vitest";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
+import { resetAllMockHandlers } from "../../mocks/handlers";
 
 const L = logger("Test");
 
@@ -31,6 +32,7 @@ export function testContext(): TestContext {
         context.signal.addEventListener("abort", () => {
           store?.set(resetLocalStorageForTest$);
           resetLoggerForTest();
+          resetAllMockHandlers();
 
           store = null;
         });

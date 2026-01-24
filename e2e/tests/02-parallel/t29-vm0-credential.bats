@@ -13,11 +13,11 @@ setup() {
 
 teardown() {
     # Clean up test credential if it exists
-    $CLI_COMMAND experimental-credential delete -y "$TEST_CRED_NAME" 2>/dev/null || true
+    $CLI_COMMAND credential delete -y "$TEST_CRED_NAME" 2>/dev/null || true
 }
 
-@test "vm0 experimental-credential --help shows command description" {
-    run $CLI_COMMAND experimental-credential --help
+@test "vm0 credential --help shows command description" {
+    run $CLI_COMMAND credential --help
     assert_success
     assert_output --partial "Manage stored credentials"
     assert_output --partial "list"
@@ -25,61 +25,61 @@ teardown() {
     assert_output --partial "delete"
 }
 
-@test "vm0 experimental-credential set creates a credential" {
-    run $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "test-secret-value"
+@test "vm0 credential set creates a credential" {
+    run $CLI_COMMAND credential set "$TEST_CRED_NAME" "test-secret-value"
     assert_success
     assert_output --partial "Credential \"$TEST_CRED_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
     assert_output --partial "\${{ credentials.$TEST_CRED_NAME }}"
 }
 
-@test "vm0 experimental-credential list shows created credential" {
+@test "vm0 credential list shows created credential" {
     # First create a credential
-    $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "secret-value" --description "E2E test"
+    $CLI_COMMAND credential set "$TEST_CRED_NAME" "secret-value" --description "E2E test"
 
     # Then list credentials
-    run $CLI_COMMAND experimental-credential list
+    run $CLI_COMMAND credential list
     assert_success
     assert_output --partial "$TEST_CRED_NAME"
     assert_output --partial "E2E test"
     assert_output --partial "credential(s)"
 }
 
-@test "vm0 experimental-credential ls works as alias for list" {
+@test "vm0 credential ls works as alias for list" {
     # First create a credential
-    $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "secret-value"
+    $CLI_COMMAND credential set "$TEST_CRED_NAME" "secret-value"
 
     # List using ls alias
-    run $CLI_COMMAND experimental-credential ls
+    run $CLI_COMMAND credential ls
     assert_success
     assert_output --partial "$TEST_CRED_NAME"
 }
 
-@test "vm0 experimental-credential set updates existing credential" {
+@test "vm0 credential set updates existing credential" {
     # Create initial credential
-    $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "initial-value"
+    $CLI_COMMAND credential set "$TEST_CRED_NAME" "initial-value"
 
     # Update it
-    run $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "updated-value" --description "Updated"
+    run $CLI_COMMAND credential set "$TEST_CRED_NAME" "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Credential \"$TEST_CRED_NAME\" saved"
 
     # Verify description was updated
-    run $CLI_COMMAND experimental-credential list
+    run $CLI_COMMAND credential list
     assert_output --partial "Updated"
 }
 
-@test "vm0 experimental-credential delete removes credential" {
+@test "vm0 credential delete removes credential" {
     # Create a credential
-    $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "to-be-deleted"
+    $CLI_COMMAND credential set "$TEST_CRED_NAME" "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
-    run $CLI_COMMAND experimental-credential delete -y "$TEST_CRED_NAME"
+    run $CLI_COMMAND credential delete -y "$TEST_CRED_NAME"
     assert_success
     assert_output --partial "Credential \"$TEST_CRED_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND experimental-credential list
+    run $CLI_COMMAND credential list
     assert_success
     refute_output --partial "$TEST_CRED_NAME"
 }
@@ -107,7 +107,7 @@ teardown() {
 
     # Step 1: Create a credential in the platform
     echo "# Creating credential: $TEST_CRED_NAME"
-    run $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "$cred_value"
+    run $CLI_COMMAND credential set "$TEST_CRED_NAME" "$cred_value"
     assert_success
 
     # Step 2: Create config that uses the credential (without runner)
@@ -180,7 +180,7 @@ EOF
 
     # Step 1: Create a credential in the platform
     echo "# Creating credential: $TEST_CRED_NAME"
-    run $CLI_COMMAND experimental-credential set "$TEST_CRED_NAME" "$cred_value"
+    run $CLI_COMMAND credential set "$TEST_CRED_NAME" "$cred_value"
     assert_success
 
     # Step 2: Create config that uses both a credential and a secret

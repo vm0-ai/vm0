@@ -36,7 +36,7 @@ const unifiedRunRequestSchema = z.object({
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
 
-  // Model provider for automatic LLM credential injection
+  // Model provider for automatic credential injection
   modelProvider: z.string().optional(),
 
   // Required

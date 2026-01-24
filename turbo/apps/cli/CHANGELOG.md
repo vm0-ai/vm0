@@ -1,5 +1,58 @@
 # Changelog
 
+## [7.0.0](https://github.com/vm0-ai/vm0/compare/cli-v6.4.1...cli-v7.0.0) (2026-01-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* The experimental_secrets and experimental_vars fields have been removed from the agent compose schema. Users must migrate to the environment syntax with ${{ secrets.X }} and ${{ vars.X }} patterns.
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Miscellaneous Chores
+
+* remove experimental_secrets/vars syntax sugar ([#1588](https://github.com/vm0-ai/vm0/issues/1588)) ([7960555](https://github.com/vm0-ai/vm0/commit/79605555ec153c21a689d0b15e61ab40e05ad073))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
+## [6.4.1](https://github.com/vm0-ai/vm0/compare/cli-v6.4.0...cli-v6.4.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
+## [6.4.0](https://github.com/vm0-ai/vm0/compare/cli-v6.3.1...cli-v6.4.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** add help text for credential acquisition in model-provider setup ([#1562](https://github.com/vm0-ai/vm0/issues/1562)) ([3230f08](https://github.com/vm0-ai/vm0/commit/3230f0872227319519e473ecc53b053d4673f03a)), closes [#1558](https://github.com/vm0-ai/vm0/issues/1558)
+* **cli:** add ls alias and remove --json from credential list ([#1563](https://github.com/vm0-ai/vm0/issues/1563)) ([bfd7dfb](https://github.com/vm0-ai/vm0/commit/bfd7dfb9cb6e10f6be08a4d743d89a906de942fc)), closes [#1560](https://github.com/vm0-ai/vm0/issues/1560)
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.4.0
+
 ## [6.3.1](https://github.com/vm0-ai/vm0/compare/cli-v6.3.0...cli-v6.3.1) (2026-01-23)
 
 

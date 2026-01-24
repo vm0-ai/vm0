@@ -3,7 +3,6 @@ name: Query Axiom Logs
 description: Query logs from Axiom for debugging (read-only, no ingestion allowed)
 context: fork
 agent: Explore
-allowed-tools: Bash(axiom:*, source:*), Read
 ---
 
 # Query Axiom Logs

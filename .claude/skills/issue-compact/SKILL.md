@@ -1,7 +1,6 @@
 ---
 name: issue-compact
 description: Consolidate GitHub issue discussion into clean body for handoff
-allowed-tools: Bash
 ---
 
 # Issue Compact Skill

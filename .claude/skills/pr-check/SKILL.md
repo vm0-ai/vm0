@@ -1,7 +1,6 @@
 ---
 name: pr-check
 description: Monitor PR CI pipeline, auto-fix issues, and loop until all checks pass
-allowed-tools: Bash, Read, Grep, Glob, Edit
 context: fork
 ---
 

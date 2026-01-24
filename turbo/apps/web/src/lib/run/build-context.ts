@@ -30,6 +30,179 @@ import { getDefaultModelProvider } from "../model-provider/model-provider-servic
 const log = logger("run:build-context");
 
 /**
+ * Model provider environment variables that indicate explicit configuration.
+ * Includes both model-provider supported vars and alternative auth methods.
+ */
+const MODEL_PROVIDER_ENV_VARS = [
+  // Model-provider supported
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
+  "OPENAI_API_KEY",
+  // Alternative auth methods (not model-provider supported yet)
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "CLAUDE_CODE_USE_VERTEX",
+];
+
+/**
+ * Resolve model provider type from explicit value or default
+ */
+async function resolveProviderType(
+  scopeId: string,
+  framework: ModelProviderFramework,
+  explicitModelProvider?: string,
+): Promise<ModelProviderType> {
+  if (explicitModelProvider) {
+    // Validate that the specified model provider type is valid
+    if (!(explicitModelProvider in MODEL_PROVIDER_TYPES)) {
+      throw new BadRequestError(
+        `Unknown model provider type "${explicitModelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
+      );
+    }
+    return explicitModelProvider as ModelProviderType;
+  }
+
+  // Get default provider for framework
+  const defaultProvider = await getDefaultModelProvider(scopeId, framework);
+  if (!defaultProvider?.type) {
+    throw new BadRequestError(
+      "No model provider configured. " +
+        "Run 'vm0 model-provider setup' to configure one, " +
+        "or add environment variables to your vm0.yaml.",
+    );
+  }
+  return defaultProvider.type;
+}
+
+/**
+ * Result of model provider credential resolution
+ */
+interface ModelProviderCredentialResult {
+  credentials: Record<string, string> | undefined;
+  credentialName: string | undefined;
+}
+
+/**
+ * Resolve and inject model provider credential if needed
+ * Only injects if no explicit model provider config in compose environment
+ */
+async function resolveModelProviderCredential(
+  userId: string,
+  framework: string,
+  hasExplicitModelProviderConfig: boolean,
+  existingCredentials: Record<string, string> | undefined,
+  explicitModelProvider?: string,
+): Promise<ModelProviderCredentialResult> {
+  let credentials = existingCredentials;
+
+  // Skip if explicit model provider config exists or framework doesn't use model providers
+  if (
+    hasExplicitModelProviderConfig ||
+    (framework !== "claude-code" && framework !== "codex")
+  ) {
+    return { credentials, credentialName: undefined };
+  }
+
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
+    return { credentials, credentialName: undefined };
+  }
+
+  // Resolve model provider type (explicit or default)
+  const providerType = await resolveProviderType(
+    userScope.id,
+    framework as ModelProviderFramework,
+    explicitModelProvider,
+  );
+
+  // Validate framework compatibility
+  const providerFramework = getFrameworkForType(providerType);
+  if (providerFramework !== framework) {
+    throw new BadRequestError(
+      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
+        `This provider is for "${providerFramework}" agents.`,
+    );
+  }
+
+  // Get credential and inject
+  const credentialName = getCredentialNameForType(providerType);
+  const credentialValue = await getCredentialValue(
+    userScope.id,
+    credentialName,
+  );
+
+  if (credentialValue) {
+    credentials = credentials || {};
+    credentials[credentialName] = credentialValue;
+    log.debug(`Injected model provider credential: ${credentialName}`);
+  }
+
+  return { credentials, credentialName };
+}
+
+/**
+ * Fetch credentials referenced in compose environment
+ */
+async function fetchReferencedCredentials(
+  userId: string,
+  environment: Record<string, string> | undefined,
+): Promise<Record<string, string> | undefined> {
+  if (!environment) {
+    return undefined;
+  }
+
+  const refs = extractVariableReferences(environment);
+  const grouped = groupVariablesBySource(refs);
+
+  if (grouped.credentials.length === 0) {
+    return undefined;
+  }
+
+  log.debug(
+    `Credentials referenced in environment: ${grouped.credentials.map((r) => r.name).join(", ")}`,
+  );
+
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
+    return undefined;
+  }
+
+  const credentials = await getCredentialValues(userScope.id);
+  log.debug(
+    `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
+  );
+  return credentials;
+}
+
+/**
+ * Auto-inject model provider credential into environment
+ * Returns the potentially modified environment
+ */
+function autoInjectCredentialToEnvironment(
+  environment: Record<string, string> | undefined,
+  credentialName: string | undefined,
+  credentials: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!credentialName || !credentials?.[credentialName]) {
+    return environment;
+  }
+
+  // Only inject if not already set (user-defined environment takes precedence)
+  if (environment?.[credentialName]) {
+    return environment;
+  }
+
+  const result = environment || {};
+  result[credentialName] = credentials[credentialName]!;
+  log.debug(
+    `Auto-injected model provider credential to environment: ${credentialName}`,
+  );
+  return result;
+}
+
+/**
  * Parameters for building execution context
  */
 export interface BuildContextParams {
@@ -55,7 +228,7 @@ export interface BuildContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
-  // Model provider for automatic LLM credential injection
+  // Model provider for automatic credential injection
   modelProvider?: string;
 }
 
@@ -119,7 +292,6 @@ async function loadAgentComposeForNewRun(
  * @param params Unified run parameters
  * @returns Execution context for executors
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function buildExecutionContext(
   params: BuildContextParams,
 ): Promise<ExecutionContext> {
@@ -200,125 +372,55 @@ export async function buildExecutionContext(
   // Step 4: Check if credentials are needed and fetch them from the user's scope
   let credentials: Record<string, string> | undefined;
 
-  // Extract variable references from compose to check for credentials
+  // Extract compose structure
   const compose = agentCompose as {
     agents?: Record<
       string,
       { environment?: Record<string, string>; framework?: string }
     >;
   };
-  if (compose?.agents) {
-    const agents = Object.values(compose.agents);
-    const firstAgent = agents[0];
-    if (firstAgent?.environment) {
-      const refs = extractVariableReferences(firstAgent.environment);
-      const grouped = groupVariablesBySource(refs);
+  const firstAgent = compose?.agents
+    ? Object.values(compose.agents)[0]
+    : undefined;
 
-      // If credentials are referenced, fetch them from the user's scope
-      if (grouped.credentials.length > 0) {
-        log.debug(
-          `Credentials referenced in environment: ${grouped.credentials.map((r) => r.name).join(", ")}`,
-        );
+  // Fetch credentials referenced in environment
+  credentials = await fetchReferencedCredentials(
+    params.userId,
+    firstAgent?.environment,
+  );
 
-        const userScope = await getUserScopeByClerkId(params.userId);
-        if (userScope) {
-          credentials = await getCredentialValues(userScope.id);
-          log.debug(
-            `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
-          );
-        }
-      }
-    }
+  // Step 4b: Model provider credential injection
+  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
+    (v) => firstAgent?.environment?.[v] !== undefined,
+  );
+  const framework = firstAgent?.framework || "claude-code";
 
-    // Step 4b: Model provider credential injection
-    // Only inject if no explicit LLM config in compose environment
-    const LLM_ENV_VARS = [
-      "CLAUDE_CODE_OAUTH_TOKEN",
-      "ANTHROPIC_API_KEY",
-      "ANTHROPIC_BASE_URL",
-      "OPENAI_API_KEY",
-    ];
-
-    const hasExplicitLLMConfig = LLM_ENV_VARS.some(
-      (v) => firstAgent?.environment?.[v] !== undefined,
-    );
-
-    if (!hasExplicitLLMConfig) {
-      const framework = (firstAgent?.framework || "claude-code") as
-        | ModelProviderFramework
-        | "aider";
-
-      // Skip model provider injection for frameworks that don't use it
-      if (framework === "claude-code" || framework === "codex") {
-        const userScope = await getUserScopeByClerkId(params.userId);
-
-        if (userScope) {
-          // Resolve model provider (explicit or default)
-          let providerType: ModelProviderType | undefined;
-
-          if (params.modelProvider) {
-            // Validate that the specified model provider type is valid
-            if (!(params.modelProvider in MODEL_PROVIDER_TYPES)) {
-              throw new BadRequestError(
-                `Unknown model provider type "${params.modelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
-              );
-            }
-            providerType = params.modelProvider as ModelProviderType;
-          } else {
-            // Get default provider for framework
-            const defaultProvider = await getDefaultModelProvider(
-              userScope.id,
-              framework,
-            );
-            providerType = defaultProvider?.type;
-          }
-
-          if (providerType) {
-            // Validate framework compatibility
-            const providerFramework = getFrameworkForType(providerType);
-            if (providerFramework !== framework) {
-              throw new BadRequestError(
-                `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
-                  `This provider is for "${providerFramework}" agents.`,
-              );
-            }
-
-            // Get credential and inject
-            const credentialName = getCredentialNameForType(providerType);
-            const credentialValue = await getCredentialValue(
-              userScope.id,
-              credentialName,
-            );
-
-            if (credentialValue) {
-              credentials = credentials || {};
-              credentials[credentialName] = credentialValue;
-              log.debug(
-                `Injected model provider credential: ${credentialName}`,
-              );
-            }
-          } else {
-            // No model provider configured - throw helpful error
-            throw new BadRequestError(
-              "No LLM configuration found. " +
-                "Run 'vm0 model-provider setup' to configure a model provider, " +
-                "or add environment variables to your vm0.yaml.",
-            );
-          }
-        }
-      }
-    }
-  }
+  const modelProviderResult = await resolveModelProviderCredential(
+    params.userId,
+    framework,
+    hasExplicitModelProviderConfig,
+    credentials,
+    params.modelProvider,
+  );
+  credentials = modelProviderResult.credentials;
+  const modelProviderCredentialName = modelProviderResult.credentialName;
 
   // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
   // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
-  const { environment } = expandEnvironmentFromCompose(
+  const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
     vars,
     secrets,
     credentials,
     params.userId,
     params.runId,
+  );
+
+  // Step 5b: Auto-inject model provider credential into environment
+  const environment = autoInjectCredentialToEnvironment(
+    expandedEnvironment,
+    modelProviderCredentialName,
+    credentials,
   );
 
   // Step 6: Merge credentials into secrets for client-side log masking

@@ -218,11 +218,11 @@ export async function executeJob(
     const guest: GuestClient = new VsockClient(vsockPath);
     log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
 
-    // Verify guest is reachable
-    log(`[Executor] Verifying vsock connectivity...`);
+    // Wait for guest to connect (zero-latency: guest notifies host when ready)
+    log(`[Executor] Waiting for guest connection...`);
     await withSandboxTiming("guest_wait", () =>
-      guest.waitUntilReachable(30000, 1000),
-    ); // 30 second timeout, check every 1s
+      guest.waitForGuestConnection(30000),
+    );
 
     log(`[Executor] Guest client ready`);
 

@@ -1,7 +1,6 @@
 ---
 name: dev-server
 description: Development server lifecycle management for the vm0 project
-allowed-tools: Bash, KillShell, TaskOutput
 context: fork
 ---
 

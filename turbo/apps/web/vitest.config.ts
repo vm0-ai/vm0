@@ -17,6 +17,8 @@ export default defineConfig({
     // Don't override env vars, let them pass through from system
     // Run tests sequentially to avoid database race conditions
     fileParallelism: false,
+    // Automatically clear mocks before each test (eliminates manual vi.clearAllMocks() calls)
+    clearMocks: true,
   },
   resolve: {
     alias: {

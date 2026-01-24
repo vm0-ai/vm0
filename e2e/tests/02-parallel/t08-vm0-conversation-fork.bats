@@ -6,23 +6,32 @@
 # 2. --conversation flag can fork from a specific conversation
 # 3. Fork maintains conversation history while allowing different artifact version
 #
-# Test count: 2 tests with 4 vm0 run calls
+# Refactored to split multi-vm0-run tests into separate cases for timeout safety.
+# Each case has max one vm0 run call (~15s), fitting within 30s timeout.
+# State is shared between cases via $BATS_FILE_TMPDIR.
 
 load '../../helpers/setup'
 
-# Unique agent name for this test file to avoid compose conflicts in parallel runs
-AGENT_NAME="e2e-t08"
+setup_file() {
+    # Unique agent name for this test file - must be generated in setup_file()
+    # and exported to persist across test cases
+    export AGENT_NAME="e2e-t08-$(date +%s%3N)-$RANDOM"
+    # Create shared test directory for this file
+    export TEST_DIR="$(mktemp -d)"
+    export TEST_CONFIG="$TEST_DIR/vm0.yaml"
 
-setup() {
-    # Create unique volume for this test
-    create_test_volume "e2e-vol-t08"
+    # Create unique volume for this test file
+    export VOLUME_NAME="e2e-vol-t08-$(date +%s%3N)-$RANDOM"
+    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    cd "$TEST_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume push >/dev/null
+    cd - >/dev/null
 
-    # Create temporary test directory
-    export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    # Use unique test artifact name with timestamp
-    export ARTIFACT_NAME="e2e-conversation-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
-    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -38,32 +47,37 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
+
+    # Compose agent once for all tests in this file
+    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
 }
 
-teardown() {
-    # Clean up temporary directory
-    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
-        rm -rf "$TEST_ARTIFACT_DIR"
-    fi
-    # Clean up config file
-    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
-        rm -f "$TEST_CONFIG"
-    fi
-    # Clean up test volume
-    cleanup_test_volume
+setup() {
+    # Per-test setup: create unique artifact name
+    export ARTIFACT_NAME="e2e-conversation-$(date +%s%3N)-$RANDOM"
+    export TEST_ARTIFACT_DIR="$TEST_DIR/artifacts"
+    mkdir -p "$TEST_ARTIFACT_DIR"
 }
 
-@test "Build VM0 conversation fork test agent configuration" {
+teardown_file() {
+    # Clean up shared test directory
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
+}
+
+@test "t08-1: build agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "VM0 conversation: output includes conversationId" {
+@test "t08-2: run output includes conversationId" {
     # This test verifies that run completion output includes conversationId
+    # Single vm0 run - safe for 30s timeout
 
     # Step 1: Create artifact
-    echo "# Step 1: Creating artifact..."
+    echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -72,8 +86,8 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent
-    echo "# Step 2: Running agent..."
+    # Step 2: Run agent (~15s)
+    echo "# Running agent..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello world'"
@@ -98,14 +112,13 @@ teardown() {
     echo "# Verified: conversationId is present in output"
 }
 
-@test "VM0 conversation: fork with --conversation flag" {
-    # This test verifies that:
-    # 1. Can fork from a conversation using --conversation flag
-    # 2. Fork inherits conversation history
-    # 3. Fork uses specified artifact version (not conversation's original)
+# ============================================================================
+# Test 3: Fork with --conversation flag (split into 3a, 3b, 3c)
+# ============================================================================
 
+@test "t08-3a: create initial conversation for fork test" {
     # Step 1: Create artifact with initial content
-    echo "# Step 1: Creating initial artifact..."
+    echo "# Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -115,8 +128,8 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent to create initial conversation
-    echo "# Step 2: Running agent to create conversation..."
+    # Step 2: Run agent to create initial conversation (~15s)
+    echo "# Running agent to create conversation..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'original run' && cat version.txt && echo 200 > counter.txt"
@@ -133,20 +146,37 @@ teardown() {
         return 1
     }
 
-    # Step 3: Update artifact to new version
-    echo "# Step 3: Pushing new artifact version..."
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    # Save state for next tests
+    echo "$CONVERSATION_ID" > "$BATS_FILE_TMPDIR/t08-3-conversation_id"
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t08-3-artifact_name"
+    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t08-3-artifact_dir"
+}
+
+@test "t08-3b: push new artifact version for fork test" {
+    # Load state from previous test
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_name")
+    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_dir")
+
+    # Push new artifact version
+    echo "# Pushing new artifact version..."
+    cd "$ARTIFACT_DIR"
     echo "v2" > version.txt
     echo "999" > counter.txt
     echo "new-file" > new.txt
     run $CLI_COMMAND artifact push
     assert_success
     echo "# New artifact version pushed"
+}
 
-    # Step 4: Fork from conversation with NEW artifact version
+@test "t08-3c: fork from conversation uses new artifact version" {
+    # Load state from previous tests
+    CONVERSATION_ID=$(cat "$BATS_FILE_TMPDIR/t08-3-conversation_id")
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_name")
+
+    # Fork from conversation with NEW artifact version (~15s)
     # This is the key test: --conversation lets us continue conversation history
     # but with a different (newer) artifact version
-    echo "# Step 4: Forking from conversation with new artifact..."
+    echo "# Forking from conversation with new artifact..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --conversation "$CONVERSATION_ID" \

@@ -6,23 +6,32 @@
 # 2. vm0 run continue uses session's conversation but latest artifact version
 # 3. Session stores and inherits templateVars for continue operations
 #
-# Test count: 4 tests with 6 vm0 run calls
+# Refactored to split multi-vm0-run tests into separate cases for timeout safety.
+# Each case has max one vm0 run call (~15s), fitting within 30s timeout.
+# State is shared between cases via $BATS_FILE_TMPDIR.
 
 load '../../helpers/setup'
 
-# Unique agent name for this test file to avoid compose conflicts in parallel runs
-AGENT_NAME="e2e-t06"
+setup_file() {
+    # Unique agent name for this test file - must be generated in setup_file()
+    # and exported to persist across test cases
+    export AGENT_NAME="e2e-t06-$(date +%s%3N)-$RANDOM"
+    # Create shared test directory for this file
+    export TEST_DIR="$(mktemp -d)"
+    export TEST_CONFIG="$TEST_DIR/vm0.yaml"
 
-setup() {
-    # Create unique volume for this test
-    create_test_volume "e2e-vol-t06"
+    # Create unique volume for this test file
+    export VOLUME_NAME="e2e-vol-t06-$(date +%s%3N)-$RANDOM"
+    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    cd "$TEST_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume push >/dev/null
+    cd - >/dev/null
 
-    # Create temporary test directory
-    export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    # Use unique test artifact name with timestamp
-    export ARTIFACT_NAME="e2e-session-art-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
-    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -38,34 +47,42 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
+
+    # Compose agent once for all tests in this file
+    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
 }
 
-teardown() {
-    # Clean up temporary directory
-    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
-        rm -rf "$TEST_ARTIFACT_DIR"
-    fi
-    # Clean up config file
-    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
-        rm -f "$TEST_CONFIG"
-    fi
-    # Clean up test volume
-    cleanup_test_volume
+setup() {
+    # Per-test setup: create unique artifact name
+    export ARTIFACT_NAME="e2e-session-art-$(date +%s%3N)-$RANDOM"
+    export TEST_ARTIFACT_DIR="$TEST_DIR/artifacts"
+    mkdir -p "$TEST_ARTIFACT_DIR"
 }
 
-@test "Build VM0 agent session test agent configuration" {
+teardown_file() {
+    # Clean up shared test directory
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
+}
+
+# =============================================================================
+# Test 1: Build configuration (fast, no vm0 run)
+# =============================================================================
+
+@test "t06-1: build agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "VM0 agent session: continue uses latest artifact version" {
-    # This test verifies:
-    # 1. Agent run creates an agent session
-    # 2. Continue from session uses latest artifact (not checkpoint snapshot)
+# =============================================================================
+# Test 2: Continue uses latest artifact version
+# Split into 4 cases: create artifact, run agent, push new content, continue
+# =============================================================================
 
-    # Step 1: Create artifact with initial content
-    echo "# Step 1: Creating initial artifact..."
+@test "t06-2a: create artifact for continue-latest test" {
+    echo "# Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -75,9 +92,15 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent to modify artifact
-    echo "# Step 2: Running agent to create session..."
-    # Use extended timeout for CI environments which may be slower
+    # Save artifact info for subsequent tests
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-2-artifact_name"
+    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-2-artifact_dir"
+}
+
+@test "t06-2b: run agent to create session" {
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-2-artifact_name")
+
+    echo "# Running agent to create session..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
@@ -88,7 +111,7 @@ teardown() {
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
 
-    # Extract session ID
+    # Extract and save session ID
     SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ] || {
@@ -97,10 +120,14 @@ teardown() {
         return 1
     }
 
-    # Step 3: Push NEW content to artifact (simulating external changes)
-    # This makes HEAD different from the checkpoint version
-    echo "# Step 3: Pushing new content to make HEAD different..."
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    echo "$SESSION_ID" > "$BATS_FILE_TMPDIR/t06-2-session_id"
+}
+
+@test "t06-2c: push new content to make HEAD different" {
+    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/t06-2-artifact_dir")
+
+    echo "# Pushing new content to make HEAD different..."
+    cd "$ARTIFACT_DIR"
     echo "external-update" > external.txt   # Add new file
     echo "999" > counter.txt                 # Update counter
     rm -f agent.txt 2>/dev/null || true      # Remove agent's file
@@ -108,36 +135,36 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
     echo "# New HEAD version pushed"
+}
 
-    # Step 4: Continue from session - should get LATEST artifact (HEAD), not checkpoint
-    # This is the KEY DIFFERENCE from checkpoint resume
-    echo "# Step 4: Continuing from session (should use latest artifact)..."
+@test "t06-2d: continue session uses latest artifact version" {
+    SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t06-2-session_id")
+
+    echo "# Continuing from session (should use latest artifact)..."
     run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
 
     assert_success
     assert_output --partial "[tool_use] Bash"
 
-    # Step 5: Verify LATEST version is used (not checkpoint version)
-    echo "# Step 5: Verifying latest artifact version is used..."
-
-    # Should see external.txt (added after checkpoint in step 3)
+    # Verify LATEST version is used (not checkpoint version)
+    # Should see external.txt (added after checkpoint)
     assert_output --partial "external.txt"
 
-    # Should NOT see agent.txt (it was removed in step 3)
+    # Should NOT see agent.txt (it was removed)
     refute_output --partial "agent.txt"
 
     # Counter should be 999 (from HEAD/latest), not 200 (from checkpoint)
     assert_output --partial "999"
-
-    # Verify we did NOT get checkpoint version content
     refute_output --regexp "^200$"
 }
 
-@test "VM0 agent session: session persists across runs with same config and artifact" {
-    # This test verifies that findOrCreate returns existing session
+# =============================================================================
+# Test 3: Session persists across runs with same config and artifact
+# Split into 3 cases: create artifact, first run, second run + verify
+# =============================================================================
 
-    # Step 1: Create artifact
-    echo "# Step 1: Creating artifact..."
+@test "t06-3a: create artifact for session-persists test" {
+    echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -146,9 +173,13 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: First run - creates new session
-    echo "# Step 2: First run (creates session)..."
-    # Use extended timeout for CI environments which may be slower
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-3-artifact_name"
+}
+
+@test "t06-3b: first run creates new session" {
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-3-artifact_name")
+
+    echo "# First run (creates session)..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'first run'"
@@ -160,9 +191,14 @@ teardown() {
     echo "# First session ID: $SESSION_ID_1"
     [ -n "$SESSION_ID_1" ]
 
-    # Step 3: Second run with same config and artifact - should return same session
-    echo "# Step 3: Second run (should return same session)..."
-    # Use extended timeout for CI environments which may be slower
+    echo "$SESSION_ID_1" > "$BATS_FILE_TMPDIR/t06-3-session_id_1"
+}
+
+@test "t06-3c: second run returns same session" {
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-3-artifact_name")
+    SESSION_ID_1=$(cat "$BATS_FILE_TMPDIR/t06-3-session_id_1")
+
+    echo "# Second run (should return same session)..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'second run'"
@@ -185,17 +221,13 @@ teardown() {
     echo "# Verified: Same session returned for subsequent runs"
 }
 
-@test "VM0 agent session: continue works with templateVars" {
-    # This test verifies that continue works correctly when the original run
-    # had template variables set via -e flag. The templateVars are stored in
-    # the session and should be inherited when continuing.
-    #
-    # Note: We use this agent (without template vars in config) to test the
-    # basic templateVars storage and retrieval mechanism. The actual template
-    # expansion in volumes is tested separately.
+# =============================================================================
+# Test 4: Continue works with templateVars
+# Split into 3 cases: create artifact, run with vars, continue
+# =============================================================================
 
-    # Step 1: Create artifact
-    echo "# Step 1: Creating artifact..."
+@test "t06-4a: create artifact for templateVars test" {
+    echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -204,10 +236,14 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent WITH template variables (even though config doesn't use them)
-    # This tests that templateVars are properly stored in the session
-    echo "# Step 2: Running agent with --vars testKey=testValue..."
-    # Use extended timeout for CI environments which may be slower
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-4-artifact_name"
+    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-4-artifact_dir"
+}
+
+@test "t06-4b: run agent with templateVars" {
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-4-artifact_name")
+
+    echo "# Running agent with --vars testKey=testValue..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
@@ -218,7 +254,6 @@ teardown() {
     assert_output --partial "initial-content"
     assert_output --partial "Session:"
 
-    # Extract session ID
     SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ] || {
@@ -227,18 +262,23 @@ teardown() {
         return 1
     }
 
-    # Step 3: Update artifact with new content
-    echo "# Step 3: Updating artifact..."
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    echo "$SESSION_ID" > "$BATS_FILE_TMPDIR/t06-4-session_id"
+}
+
+@test "t06-4c: update artifact content" {
+    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/t06-4-artifact_dir")
+
+    echo "# Updating artifact..."
+    cd "$ARTIFACT_DIR"
     echo "updated-content" > testfile.txt
     run $CLI_COMMAND artifact push
     assert_success
+}
 
-    # Step 4: Continue from session
-    # This verifies that:
-    # 1. The continue API correctly retrieves templateVars from the session
-    # 2. The continue works even when original run had templateVars
-    echo "# Step 4: Continuing from session..."
+@test "t06-4d: continue from session with templateVars" {
+    SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t06-4-session_id")
+
+    echo "# Continuing from session..."
     run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
 
     assert_success
@@ -250,14 +290,15 @@ teardown() {
     echo "# Verified: Continue works with templateVars stored in session"
 }
 
-@test "VM0 agent session: run continue loads secrets from environment variables" {
-    # This test verifies that vm0 run continue automatically loads secrets
-    # from environment variables when not provided via --secrets flag.
-    # This is the fix for issue #845.
+# =============================================================================
+# Test 5: Run continue loads secrets from environment variables
+# Split into 3 cases: setup config, run with secrets, continue with env
+# =============================================================================
 
+@test "t06-5a: setup config with secrets for continue test" {
     # Create env-expansion config dynamically with unique agent name
     local ENV_AGENT_NAME="e2e-env-continue-$(date +%s%3N)-$RANDOM"
-    local ENV_CONFIG="$(mktemp --suffix=.yaml)"
+    local ENV_CONFIG="$TEST_DIR/env-continue.yaml"
     cat > "$ENV_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -277,25 +318,29 @@ volumes:
     version: latest
 EOF
 
-    # Step 1: Build the config with secrets
-    echo "# Step 1: Building config with secrets..."
+    echo "# Building config with secrets..."
     run $CLI_COMMAND compose "$ENV_CONFIG"
     assert_success
     assert_output --partial "$ENV_AGENT_NAME"
 
-    # Step 2: Create artifact
-    echo "# Step 2: Creating artifact..."
+    # Create artifact
+    echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
     echo "test-content" > testfile.txt
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 3: Run agent WITH secrets to create session
-    # The env-expansion config has: TEST_VAR and TEST_SECRET
-    echo "# Step 3: Running agent with secrets to create session..."
+    echo "$ENV_AGENT_NAME" > "$BATS_FILE_TMPDIR/t06-5-env_agent_name"
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-5-artifact_name"
+}
+
+@test "t06-5b: run agent with secrets to create session" {
+    ENV_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-5-env_agent_name")
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-5-artifact_name")
+
+    echo "# Running agent with secrets to create session..."
     run $CLI_COMMAND run "$ENV_AGENT_NAME" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
@@ -305,7 +350,6 @@ EOF
     assert_success
     assert_output --partial "Session:"
 
-    # Extract session ID
     SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ] || {
@@ -314,12 +358,13 @@ EOF
         return 1
     }
 
-    # Clean up config file
-    rm -f "$ENV_CONFIG"
+    echo "$SESSION_ID" > "$BATS_FILE_TMPDIR/t06-5-session_id"
+}
 
-    # Step 4: Continue WITHOUT --secrets flag, but WITH env var set
-    # This is the key test: secrets should be loaded from environment
-    echo "# Step 4: Continuing with secret in environment variable..."
+@test "t06-5c: continue loads secrets from environment variables" {
+    SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t06-5-session_id")
+
+    echo "# Continuing with secret in environment variable..."
     export TEST_SECRET="env-secret-value"
     run $CLI_COMMAND run continue "$SESSION_ID" "echo 'continue test'"
 
@@ -333,14 +378,15 @@ EOF
     echo "# Verified: run continue loads secrets from environment variables"
 }
 
-@test "VM0 agent session: run resume loads secrets from environment variables" {
-    # This test verifies that vm0 run resume automatically loads secrets
-    # from environment variables when not provided via --secrets flag.
-    # This is the fix for issue #845.
+# =============================================================================
+# Test 6: Run resume loads secrets from environment variables
+# Split into 3 cases: setup config, run with secrets, resume with env
+# =============================================================================
 
+@test "t06-6a: setup config with secrets for resume test" {
     # Create env-expansion config dynamically with unique agent name
     local ENV_AGENT_NAME="e2e-env-resume-$(date +%s%3N)-$RANDOM"
-    local ENV_CONFIG="$(mktemp --suffix=.yaml)"
+    local ENV_CONFIG="$TEST_DIR/env-resume.yaml"
     cat > "$ENV_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -360,23 +406,28 @@ volumes:
     version: latest
 EOF
 
-    # Step 1: Build the config with secrets
-    echo "# Step 1: Building config with secrets..."
+    echo "# Building config with secrets..."
     run $CLI_COMMAND compose "$ENV_CONFIG"
     assert_success
 
-    # Step 2: Create artifact
-    echo "# Step 2: Creating artifact..."
+    # Create artifact
+    echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
     echo "test-content" > testfile.txt
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 3: Run agent WITH secrets to create checkpoint
-    echo "# Step 3: Running agent with secrets to create checkpoint..."
+    echo "$ENV_AGENT_NAME" > "$BATS_FILE_TMPDIR/t06-6-env_agent_name"
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t06-6-artifact_name"
+}
+
+@test "t06-6b: run agent with secrets to create checkpoint" {
+    ENV_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-6-env_agent_name")
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t06-6-artifact_name")
+
+    echo "# Running agent with secrets to create checkpoint..."
     run $CLI_COMMAND run "$ENV_AGENT_NAME" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
@@ -386,7 +437,6 @@ EOF
     assert_success
     assert_output --partial "Checkpoint:"
 
-    # Extract checkpoint ID
     CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
     echo "# Checkpoint ID: $CHECKPOINT_ID"
     [ -n "$CHECKPOINT_ID" ] || {
@@ -395,12 +445,13 @@ EOF
         return 1
     }
 
-    # Clean up config file
-    rm -f "$ENV_CONFIG"
+    echo "$CHECKPOINT_ID" > "$BATS_FILE_TMPDIR/t06-6-checkpoint_id"
+}
 
-    # Step 4: Resume WITHOUT --secrets flag, but WITH env var set
-    # This is the key test: secrets should be loaded from environment
-    echo "# Step 4: Resuming with secret in environment variable..."
+@test "t06-6c: resume loads secrets from environment variables" {
+    CHECKPOINT_ID=$(cat "$BATS_FILE_TMPDIR/t06-6-checkpoint_id")
+
+    echo "# Resuming with secret in environment variable..."
     export TEST_SECRET="env-secret-value"
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" "echo 'resume test'"
 

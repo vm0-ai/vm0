@@ -1,7 +1,6 @@
 ---
 name: pr-review
 description: Review a pull request and post findings as a PR comment
-allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 context: fork
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: pull-request
 description: PR lifecycle management - create PRs with proper commits, merge with validation, and manage PR comments
-allowed-tools: Bash, Read, Grep
 context: fork
 ---
 
