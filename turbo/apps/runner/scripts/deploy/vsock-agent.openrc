@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+# VM0 Vsock Agent - OpenRC service script
+# Manages the vsock-agent for host-guest communication
+
+name="vsock-agent"
+description="VM0 Vsock Agent for host-guest communication"
+
+command="/usr/bin/python3"
+command_args="/usr/local/bin/vm0-agent/vsock-agent.py"
+command_background="yes"
+pidfile="/run/vsock-agent.pid"
+
+# Log to file for debugging
+output_log="/var/log/vsock-agent.log"
+error_log="/var/log/vsock-agent.log"
+
+# Restart on failure
+respawn_delay=1
+respawn_max=0
+
+depend() {
+    # Start after local filesystems are mounted
+    after localmount
+}
+
+start_pre() {
+    # Ensure /run directory exists
+    checkpath --directory --mode 0755 /run
+    # Ensure log directory exists
+    checkpath --directory --mode 0755 /var/log
+}

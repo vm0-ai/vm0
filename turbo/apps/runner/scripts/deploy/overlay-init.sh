@@ -7,7 +7,7 @@
 # 2. Mounts the ext4 overlay filesystem (read-write) from /dev/vdb
 # 3. Creates an overlayfs combining both
 # 4. Switches root to the overlay
-# 5. Executes the real init (systemd)
+# 5. Executes the real init (OpenRC)
 #
 # Device mapping:
 #   /dev/vda - squashfs base (read-only, shared across VMs)
@@ -47,7 +47,7 @@ mount --move /oldroot/rw /rw
 mount --move /oldroot/dev /dev
 
 # Load virtio-vsock kernel module for host-guest communication
-# This must be done before systemd starts the vsock-agent service
+# This must be done before OpenRC starts the vsock-agent service
 # Note: Load before umount oldroot in case module deps are needed
 modprobe virtio-vsock 2>/dev/null || true
 
@@ -61,5 +61,5 @@ fi
 # Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
-# Start the real init (systemd)
-exec /lib/systemd/systemd "$@"
+# Start the real init (OpenRC)
+exec /sbin/init "$@"
