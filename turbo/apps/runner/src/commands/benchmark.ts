@@ -13,7 +13,6 @@ interface BenchmarkOptions {
   config: string;
   workingDir: string;
   agentType: string;
-  mitm: boolean;
 }
 
 /**
@@ -38,14 +37,6 @@ function createBenchmarkContext(
     resumeSession: null,
     secretValues: null,
     cliAgentType: options.agentType,
-    // Enable MITM proxy for CA installation testing (opt-in via --mitm flag)
-    experimentalFirewall: options.mitm
-      ? {
-          enabled: true,
-          experimental_mitm: true,
-          rules: [{ final: "ALLOW" as const }],
-        }
-      : undefined,
   };
 }
 
@@ -57,7 +48,6 @@ export const benchmarkCommand = new Command("benchmark")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--working-dir <path>", "Working directory in VM", "/home/user")
   .option("--agent-type <type>", "Agent type", "claude-code")
-  .option("--mitm", "Enable MITM proxy for CA installation testing")
   .action(async (prompt: string, options: BenchmarkOptions): Promise<void> => {
     const timer = new Timer();
 
