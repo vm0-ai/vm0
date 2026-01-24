@@ -686,7 +686,7 @@ jobs:
         shell: bash
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS_LY }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
