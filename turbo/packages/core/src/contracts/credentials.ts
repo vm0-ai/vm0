@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -75,6 +75,7 @@ export const credentialsMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/credentials",
+    headers: authHeadersSchema,
     responses: {
       200: credentialListResponseSchema,
       401: apiErrorSchema,
@@ -90,6 +91,7 @@ export const credentialsMainContract = c.router({
   set: {
     method: "PUT",
     path: "/api/credentials",
+    headers: authHeadersSchema,
     body: setCredentialRequestSchema,
     responses: {
       200: credentialResponseSchema,
@@ -115,6 +117,7 @@ export const credentialsByNameContract = c.router({
   get: {
     method: "GET",
     path: "/api/credentials/:name",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: credentialNameSchema,
     }),
@@ -134,6 +137,7 @@ export const credentialsByNameContract = c.router({
   delete: {
     method: "DELETE",
     path: "/api/credentials/:name",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: credentialNameSchema,
     }),

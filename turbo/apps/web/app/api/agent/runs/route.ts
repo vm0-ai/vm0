@@ -23,10 +23,10 @@ const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

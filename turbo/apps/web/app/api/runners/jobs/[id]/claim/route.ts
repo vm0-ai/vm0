@@ -24,10 +24,10 @@ import {
 const log = logger("api:runners:jobs:claim");
 
 const router = tsr.router(runnersJobClaimContract, {
-  claim: async ({ params }) => {
+  claim: async ({ params, headers }) => {
     initServices();
 
-    const auth = await getRunnerAuth();
+    const auth = await getRunnerAuth(headers.authorization);
     if (!auth) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

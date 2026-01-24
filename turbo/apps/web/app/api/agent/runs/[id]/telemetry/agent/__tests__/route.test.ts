@@ -19,23 +19,15 @@ import { scopes } from "../../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import { headers } from "next/headers";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../../../src/lib/axiom";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 // Spy for queryAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,10 +81,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     initServices();
 
     mockClerk({ userId: testUserId });
-
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Setup Axiom SDK mock
     const mockAxiomClient = {

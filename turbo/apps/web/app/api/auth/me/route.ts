@@ -4,8 +4,8 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 
 const router = tsr.router(authContract, {
-  me: async () => {
-    const userId = await getUserId();
+  me: async ({ headers }) => {
+    const userId = await getUserId(headers.authorization);
 
     if (!userId) {
       return {

@@ -44,7 +44,9 @@ interface UsageResponse {
 export async function GET(request: NextRequest) {
   initServices();
 
-  const userId = await getUserId();
+  const userId = await getUserId(
+    request.headers.get("Authorization") ?? undefined,
+  );
   if (!userId) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },

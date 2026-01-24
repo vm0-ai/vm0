@@ -27,11 +27,6 @@ import {
   deleteTestCliToken,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -40,15 +35,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../../src/lib/axiom";
-
-const mockHeaders = vi.mocked(headers);
 
 // Spy for queryAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,11 +84,6 @@ describe("GET /api/agent/runs/:id/events", () => {
 
     // Mock Clerk auth to return the test user ID by default
     mockClerk({ userId: testUserId });
-
-    // Mock headers() to return null Authorization, forcing Clerk auth fallback
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Setup Axiom SDK mock
     const mockAxiomClient = {
@@ -1188,13 +1175,6 @@ describe("GET /api/agent/runs/:id/events", () => {
     beforeEach(async () => {
       // Create valid CLI token in database
       testCliToken = await createTestCliToken(testUserId);
-
-      // Mock headers to return Authorization header with CLI token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${testCliToken}` : null,
-        ),
-      } as unknown as Headers);
     });
 
     afterEach(async () => {
@@ -1205,6 +1185,11 @@ describe("GET /api/agent/runs/:id/events", () => {
     it("should accept request with valid CLI token", async () => {
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+        {
+          headers: {
+            Authorization: `Bearer ${testCliToken}`,
+          },
+        },
       );
 
       const response = await GET(request);
@@ -1221,17 +1206,16 @@ describe("GET /api/agent/runs/:id/events", () => {
         new Date(Date.now() - 1000), // Expired 1 second ago
       );
 
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${expiredToken}` : null,
-        ),
-      } as unknown as Headers);
-
       // Mock Clerk to return null (unauthenticated)
       mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+        {
+          headers: {
+            Authorization: `Bearer ${expiredToken}`,
+          },
+        },
       );
 
       const response = await GET(request);

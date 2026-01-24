@@ -22,10 +22,10 @@ import type {
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
 
 const router = tsr.router(runEventsContract, {
-  getEvents: async ({ params, query }) => {
+  getEvents: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

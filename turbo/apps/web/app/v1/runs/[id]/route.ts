@@ -30,10 +30,10 @@ interface RunResult {
 
 const router = tsr.router(publicRunByIdContract, {
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  get: async ({ params }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,

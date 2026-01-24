@@ -16,10 +16,10 @@ const router = tsr.router(modelProvidersByTypeContract, {
   /**
    * DELETE /api/model-providers/:type - Delete a model provider
    */
-  delete: async ({ params }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

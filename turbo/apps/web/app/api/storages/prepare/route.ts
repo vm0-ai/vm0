@@ -21,11 +21,11 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:prepare");
 
 const router = tsr.router(storagesPrepareContract, {
-  prepare: async ({ body }) => {
+  prepare: async ({ body, headers }) => {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

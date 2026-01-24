@@ -22,12 +22,13 @@ interface PublicApiAuth {
  *
  * Uses CLI tokens (vm0_live_*) for authentication.
  *
+ * @param authHeader - The Authorization header value (optional)
  * @returns Authentication result or TsRestResponse error
  */
-export async function authenticatePublicApi(): Promise<
-  PublicApiAuth | TsRestResponse
-> {
-  const userId = await getUserId();
+export async function authenticatePublicApi(
+  authHeader?: string,
+): Promise<PublicApiAuth | TsRestResponse> {
+  const userId = await getUserId(authHeader);
 
   if (!userId) {
     // getUserId returns null for missing/invalid tokens

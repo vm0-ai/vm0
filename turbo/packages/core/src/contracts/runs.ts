@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -131,6 +131,7 @@ export const runsMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/agent/runs",
+    headers: authHeadersSchema,
     body: unifiedRunRequestSchema,
     responses: {
       201: createRunResponseSchema,
@@ -153,6 +154,7 @@ export const runsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/runs/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -177,6 +179,7 @@ export const runEventsContract = c.router({
   getEvents: {
     method: "GET",
     path: "/api/agent/runs/:id/events",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -282,6 +285,7 @@ export const runTelemetryContract = c.router({
   getTelemetry: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -305,6 +309,7 @@ export const runSystemLogContract = c.router({
   getSystemLog: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/system-log",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -333,6 +338,7 @@ export const runMetricsContract = c.router({
   getMetrics: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/metrics",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -361,6 +367,7 @@ export const runAgentEventsContract = c.router({
   getAgentEvents: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/agent",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -389,6 +396,7 @@ export const runNetworkLogsContract = c.router({
   getNetworkLogs: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/network",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),

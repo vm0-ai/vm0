@@ -1,5 +1,4 @@
 import { auth } from "@clerk/nextjs/server";
-import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
@@ -12,14 +11,13 @@ const log = logger("auth:user");
  * Get the current user ID from CLI token or Clerk session
  * Returns null if not authenticated
  *
+ * @param authHeader - The Authorization header value (optional)
+ *
  * IMPORTANT: This function rejects sandbox JWT tokens.
  * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
  * This ensures sandbox tokens cannot access normal user APIs.
  */
-export async function getUserId(): Promise<string | null> {
-  const headersList = await headers();
-  const authHeader = headersList.get("Authorization");
-
+export async function getUserId(authHeader?: string): Promise<string | null> {
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7); // Remove "Bearer "
 

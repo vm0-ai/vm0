@@ -15,17 +15,6 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock next/headers to return headers from the current request
-let mockAuthHeader: string | null = null;
-vi.mock("next/headers", () => ({
-  headers: vi.fn().mockImplementation(async () => ({
-    get: (name: string) => {
-      if (name === "authorization") return mockAuthHeader;
-      return null;
-    },
-  })),
-}));
-
 // Mock E2B SDK (external)
 vi.mock("@e2b/code-interpreter", () => ({
   Sandbox: {
@@ -61,8 +50,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
     // Set CRON_SECRET for tests
     process.env.CRON_SECRET = cronSecret;
-    // Reset mock auth header
-    mockAuthHeader = null;
 
     // Mock Clerk auth for compose API
     mockAuth.mockResolvedValue({
@@ -124,7 +111,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
   describe("Authentication", () => {
     it("should reject request without cron secret", async () => {
-      mockAuthHeader = null;
       const request = new NextRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
@@ -140,11 +126,13 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should reject request with invalid cron secret", async () => {
-      mockAuthHeader = "Bearer invalid-secret";
       const request = new NextRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: "Bearer invalid-secret",
+          },
         },
       );
 
@@ -154,11 +142,13 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should accept request with valid cron secret", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       const request = new NextRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -170,11 +160,13 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
   describe("Cleanup Logic", () => {
     it("should return empty results when no expired sandboxes exist", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       const request = new NextRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -188,7 +180,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup expired sandbox (heartbeat > 2 minutes ago)", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       // Create a run with expired heartbeat (3 minutes ago)
       const expiredTime = new Date(Date.now() - 3 * 60 * 1000);
       await globalThis.services.db.insert(agentRuns).values({
@@ -206,6 +197,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -233,7 +227,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should NOT cleanup sandbox with recent heartbeat", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       // Create a run with recent heartbeat (30 seconds ago)
       const recentTime = new Date(Date.now() - 30 * 1000);
       await globalThis.services.db.insert(agentRuns).values({
@@ -251,6 +244,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -274,7 +270,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should NOT cleanup completed runs even with old heartbeat", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       // Create a completed run with old heartbeat
       const oldTime = new Date(Date.now() - 10 * 60 * 1000);
       await globalThis.services.db.insert(agentRuns).values({
@@ -292,6 +287,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -306,7 +304,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup multiple expired sandboxes", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       const expiredTime = new Date(Date.now() - 5 * 60 * 1000);
 
       // Create two runs with expired heartbeats
@@ -336,6 +333,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 
@@ -352,7 +352,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should handle sandbox without sandboxId gracefully", async () => {
-      mockAuthHeader = `Bearer ${cronSecret}`;
       const expiredTime = new Date(Date.now() - 3 * 60 * 1000);
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId1,
@@ -369,6 +368,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
         },
       );
 

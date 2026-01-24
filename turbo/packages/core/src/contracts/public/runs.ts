@@ -4,7 +4,7 @@
  * Run endpoints for executing agents and monitoring execution.
  */
 import { z } from "zod";
-import { initContract } from "../base";
+import { authHeadersSchema, initContract } from "../base";
 import {
   publicApiErrorSchema,
   createPaginatedResponseSchema,
@@ -111,6 +111,7 @@ export const publicRunsListContract = c.router({
   list: {
     method: "GET",
     path: "/v1/runs",
+    headers: authHeadersSchema,
     query: runListQuerySchema,
     responses: {
       200: paginatedRunsSchema,
@@ -123,6 +124,7 @@ export const publicRunsListContract = c.router({
   create: {
     method: "POST",
     path: "/v1/runs",
+    headers: authHeadersSchema,
     body: createRunRequestSchema,
     responses: {
       202: publicRunDetailSchema, // Async operation
@@ -144,6 +146,7 @@ export const publicRunByIdContract = c.router({
   get: {
     method: "GET",
     path: "/v1/runs/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -165,6 +168,7 @@ export const publicRunCancelContract = c.router({
   cancel: {
     method: "POST",
     path: "/v1/runs/:id/cancel",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -219,6 +223,7 @@ export const publicRunLogsContract = c.router({
   getLogs: {
     method: "GET",
     path: "/v1/runs/:id/logs",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -277,6 +282,7 @@ export const publicRunMetricsContract = c.router({
   getMetrics: {
     method: "GET",
     path: "/v1/runs/:id/metrics",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -325,6 +331,7 @@ export const publicRunEventsContract = c.router({
   streamEvents: {
     method: "GET",
     path: "/v1/runs/:id/events",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),

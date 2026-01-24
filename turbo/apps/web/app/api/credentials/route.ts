@@ -23,10 +23,10 @@ const router = tsr.router(credentialsMainContract, {
   /**
    * GET /api/credentials - List all credentials
    */
-  list: async () => {
+  list: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -51,10 +51,10 @@ const router = tsr.router(credentialsMainContract, {
   /**
    * PUT /api/credentials - Create or update a credential
    */
-  set: async ({ body }) => {
+  set: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

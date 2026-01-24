@@ -19,23 +19,15 @@ import { scopes } from "../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("/api/usage", () => {
   const testUserId = `test-user-usage-${Date.now()}-${process.pid}`;
@@ -102,11 +94,6 @@ describe("/api/usage", () => {
 
     // Mock Clerk auth to return test user by default
     mockClerk({ userId: testUserId });
-
-    // Mock headers() to return no Authorization header by default
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
   });
 
   afterEach(async () => {

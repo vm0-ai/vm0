@@ -77,7 +77,9 @@ export async function GET(
 ): Promise<Response> {
   initServices();
 
-  const auth = await authenticatePublicApi();
+  const auth = await authenticatePublicApi(
+    request.headers.get("Authorization") ?? undefined,
+  );
   if (!isAuthSuccess(auth)) {
     return createErrorResponse(
       401,

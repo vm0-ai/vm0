@@ -17,12 +17,6 @@ const TEST_OFFICIAL_SECRET =
 const TEST_CLI_TOKEN = "vm0_live_test_token_12345";
 const TEST_USER_ID = "test-user-runner-auth";
 
-// Mock the headers
-const mockHeaders = vi.fn();
-vi.mock("next/headers", () => ({
-  headers: () => mockHeaders(),
-}));
-
 // Mock the sandbox-token module (external dependency)
 vi.mock("../sandbox-token", () => ({
   isSandboxToken: (token: string) => token.split(".").length === 3,
@@ -69,33 +63,26 @@ describe("runner-auth", () => {
   describe("getRunnerAuth", () => {
     describe("with no Authorization header", () => {
       it("should return null", async () => {
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(null),
-        });
-
         const result = await getRunnerAuth();
+        expect(result).toBeNull();
+      });
+
+      it("should return null with undefined", async () => {
+        const result = await getRunnerAuth(undefined);
         expect(result).toBeNull();
       });
     });
 
     describe("with non-Bearer token", () => {
       it("should return null", async () => {
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue("Basic sometoken"),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth("Basic sometoken");
         expect(result).toBeNull();
       });
     });
 
     describe("with sandbox JWT token", () => {
       it("should return null (sandbox tokens are rejected)", async () => {
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue("Bearer header.payload.signature"),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth("Bearer header.payload.signature");
         expect(result).toBeNull();
       });
     });
@@ -103,22 +90,14 @@ describe("runner-auth", () => {
     describe("with official runner token", () => {
       it("should return official-runner context when secret matches", async () => {
         const token = `${OFFICIAL_RUNNER_TOKEN_PREFIX}${TEST_OFFICIAL_SECRET}`;
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${token}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${token}`);
         expect(result).toEqual({ type: "official-runner" });
       });
 
       it("should return null when secret does not match", async () => {
         const wrongSecret = "wrong_secret_that_does_not_match_at_all_here";
         const token = `${OFFICIAL_RUNNER_TOKEN_PREFIX}${wrongSecret}`;
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${token}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${token}`);
         expect(result).toBeNull();
       });
 
@@ -133,11 +112,7 @@ describe("runner-auth", () => {
         ).OFFICIAL_RUNNER_SECRET = undefined;
 
         const token = `${OFFICIAL_RUNNER_TOKEN_PREFIX}${TEST_OFFICIAL_SECRET}`;
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${token}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${token}`);
         expect(result).toBeNull();
 
         // Restore the environment variable
@@ -151,11 +126,7 @@ describe("runner-auth", () => {
       it("should be timing-safe and reject secrets with different lengths", async () => {
         const shortSecret = "short";
         const token = `${OFFICIAL_RUNNER_TOKEN_PREFIX}${shortSecret}`;
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${token}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${token}`);
         expect(result).toBeNull();
       });
     });
@@ -170,20 +141,12 @@ describe("runner-auth", () => {
           expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour from now
         });
 
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${TEST_CLI_TOKEN}`);
         expect(result).toEqual({ type: "user", userId: TEST_USER_ID });
       });
 
       it("should return null when token is not found", async () => {
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${TEST_CLI_TOKEN}`);
         expect(result).toBeNull();
       });
 
@@ -197,11 +160,7 @@ describe("runner-auth", () => {
           lastUsedAt: null,
         });
 
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue(`Bearer ${TEST_CLI_TOKEN}`),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth(`Bearer ${TEST_CLI_TOKEN}`);
 
         // Verify the result
         expect(result).toEqual({ type: "user", userId: TEST_USER_ID });
@@ -223,11 +182,7 @@ describe("runner-auth", () => {
 
     describe("with unknown token format", () => {
       it("should return null for random string", async () => {
-        mockHeaders.mockResolvedValue({
-          get: vi.fn().mockReturnValue("Bearer random_unknown_token"),
-        });
-
-        const result = await getRunnerAuth();
+        const result = await getRunnerAuth("Bearer random_unknown_token");
         expect(result).toBeNull();
       });
     });

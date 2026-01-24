@@ -20,10 +20,10 @@ import {
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
-  getByName: async ({ query }) => {
+  getByName: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,
@@ -118,10 +118,10 @@ const router = tsr.router(composesMainContract, {
     };
   },
 
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

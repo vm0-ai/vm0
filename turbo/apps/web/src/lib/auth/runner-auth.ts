@@ -5,7 +5,6 @@
  * Supports official runners (vm0_official_*) and user runners (vm0_live_*).
  */
 
-import { headers } from "next/headers";
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
@@ -70,12 +69,12 @@ function validateOfficialRunnerSecret(providedSecret: string): boolean {
  *    - Validated against cli_tokens table
  *    - Returns { type: 'user', userId }
  *
+ * @param authHeader - The Authorization header value (optional)
  * @returns RunnerAuthContext if authenticated, null otherwise
  */
-export async function getRunnerAuth(): Promise<RunnerAuthContext | null> {
-  const headersList = await headers();
-  const authHeader = headersList.get("Authorization");
-
+export async function getRunnerAuth(
+  authHeader?: string,
+): Promise<RunnerAuthContext | null> {
   if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }

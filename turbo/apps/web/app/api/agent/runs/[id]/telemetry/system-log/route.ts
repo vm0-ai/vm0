@@ -22,10 +22,10 @@ interface AxiomSystemLogEvent {
 }
 
 const router = tsr.router(runSystemLogContract, {
-  getSystemLog: async ({ params, query }) => {
+  getSystemLog: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

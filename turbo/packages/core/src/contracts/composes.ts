@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { experimentalFirewallSchema } from "./runners";
 
@@ -225,6 +225,7 @@ export const composesMainContract = c.router({
   getByName: {
     method: "GET",
     path: "/api/agent/composes",
+    headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
       scope: z.string().optional(),
@@ -247,6 +248,7 @@ export const composesMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/agent/composes",
+    headers: authHeadersSchema,
     body: z.object({
       content: agentComposeContentSchema,
     }),
@@ -271,6 +273,7 @@ export const composesByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/composes/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Compose ID is required"),
     }),
@@ -294,6 +297,7 @@ export const composesVersionsContract = c.router({
   resolveVersion: {
     method: "GET",
     path: "/api/agent/composes/versions",
+    headers: authHeadersSchema,
     query: z.object({
       composeId: z.string().min(1, "Missing composeId query parameter"),
       version: composeVersionQuerySchema,
@@ -332,6 +336,7 @@ export const composesListContract = c.router({
   list: {
     method: "GET",
     path: "/api/agent/composes/list",
+    headers: authHeadersSchema,
     query: z.object({
       scope: z.string().optional(),
     }),
