@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { initScope$ } from "./scope.ts";
+import { initScope$, hasScope$ } from "./scope.ts";
+import {
+  hasClaudeCodeOAuthToken$,
+  createModelProvider$,
+} from "./external/model-providers.ts";
 
 /**
  * Internal state for onboarding modal visibility.
@@ -43,6 +47,16 @@ export const canSaveOnboarding$ = computed((get) => {
 });
 
 /**
+ * Whether the user needs to complete onboarding.
+ * Returns true if scope is missing OR claude-code-oauth-token is missing.
+ */
+export const needsOnboarding$ = computed(async (get) => {
+  const scopeExists = await get(hasScope$);
+  const hasOAuthToken = await get(hasClaudeCodeOAuthToken$);
+  return !scopeExists || !hasOAuthToken;
+});
+
+/**
  * Set the OAuth token value.
  */
 export const setTokenValue$ = command(({ set }, value: string) => {
@@ -82,26 +96,64 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
 });
 
 /**
- * Start the onboarding flow - show modal and initialize scope.
+ * Start the onboarding flow - show modal only.
+ * Scope and model provider creation is deferred to save action.
  */
-export const startOnboarding$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    set(internalShowOnboardingModal$, true);
-    await set(initScope$, signal);
+export const startOnboarding$ = command(({ set }) => {
+  set(internalShowOnboardingModal$, true);
+});
+
+/**
+ * Close the onboarding modal (Add it later).
+ * Creates scope if needed but skips model provider creation.
+ */
+export const closeOnboardingModal$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    // Create scope if it doesn't exist
+    const scopeExists = await get(hasScope$);
+    signal.throwIfAborted();
+
+    if (!scopeExists) {
+      await set(initScope$, signal);
+      signal.throwIfAborted();
+    }
+
+    // Clear token and close modal
+    set(internalTokenValue$, "");
+    set(internalShowOnboardingModal$, false);
   },
 );
 
 /**
- * Close the onboarding modal.
- */
-export const closeOnboardingModal$ = command(({ set }) => {
-  set(internalShowOnboardingModal$, false);
-});
-
-/**
  * Save the onboarding configuration.
+ * Creates scope if needed and creates the model provider with OAuth token.
  */
-export const saveOnboardingConfig$ = command(({ set }) => {
-  // TODO: Save the configuration to backend
-  set(internalShowOnboardingModal$, false);
-});
+export const saveOnboardingConfig$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    // Get token value
+    const tokenValue = get(internalTokenValue$);
+    if (!tokenValue.trim()) {
+      return;
+    }
+
+    // Create scope if it doesn't exist
+    const scopeExists = await get(hasScope$);
+    signal.throwIfAborted();
+
+    if (!scopeExists) {
+      await set(initScope$, signal);
+      signal.throwIfAborted();
+    }
+
+    // Create model provider with OAuth token
+    await set(createModelProvider$, {
+      type: "claude-code-oauth-token",
+      credential: tokenValue.trim(),
+    });
+    signal.throwIfAborted();
+
+    // Clear token and close modal
+    set(internalTokenValue$, "");
+    set(internalShowOnboardingModal$, false);
+  },
+);

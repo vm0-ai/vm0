@@ -20,6 +20,7 @@ import {
   canSaveOnboarding$,
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function OnboardingModal() {
   const isOpen = useGet(showOnboardingModal$);
@@ -30,6 +31,7 @@ export function OnboardingModal() {
   const copyStatus = useGet(copyStatus$);
   const copyToClipboard = useSet(copyToClipboard$);
   const canSave = useGet(canSaveOnboarding$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <Dialog open={isOpen}>
@@ -43,7 +45,7 @@ export function OnboardingModal() {
         {/* Close button */}
         <DialogClose asChild>
           <button
-            onClick={() => closeModal()}
+            onClick={() => detach(closeModal(pageSignal), Reason.DomCallback)}
             className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
             <IconX className="h-6 w-6 text-foreground" />
@@ -109,10 +111,16 @@ export function OnboardingModal() {
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => closeModal()}>
+          <Button
+            variant="outline"
+            onClick={() => detach(closeModal(pageSignal), Reason.DomCallback)}
+          >
             Add it later
           </Button>
-          <Button onClick={() => saveConfig()} disabled={!canSave}>
+          <Button
+            onClick={() => detach(saveConfig(pageSignal), Reason.DomCallback)}
+            disabled={!canSave}
+          >
             Save
           </Button>
         </div>
