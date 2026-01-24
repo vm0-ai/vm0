@@ -139,28 +139,38 @@ export async function installProxyCA(
   // Update CA certificates using multiple methods for maximum compatibility
   // Note: Alpine's update-ca-certificates has issues in newer versions (3.11.5+)
   // See: https://gitlab.alpinelinux.org/alpine/aports/-/issues/11373
-  await guest.execOrThrow("sudo update-ca-certificates 2>&1 || true");
+  const updateResult = await guest.exec("sudo update-ca-certificates 2>&1");
+  console.log(
+    `[Executor] update-ca-certificates: ${updateResult.stdout.trim() || updateResult.stderr.trim() || "no output"}`,
+  );
 
   // Run c_rehash to update certificate hash symlinks (needed by OpenSSL)
   await guest.execOrThrow("sudo c_rehash /etc/ssl/certs 2>&1 || true");
 
-  // Workaround: Directly append to both CA bundle files for immediate effect
-  // Alpine uses /etc/ssl/cert.pem (curl default), Debian uses /etc/ssl/certs/ca-certificates.crt
-  // Ensure files exist before appending (they may be missing if ca-certificates-bundle not installed)
+  // Check if cert.pem is a symlink (it usually is in Alpine)
+  const linkCheck = await guest.exec("ls -la /etc/ssl/cert.pem 2>&1 | head -1");
+  console.log(`[Executor] cert.pem status: ${linkCheck.stdout.trim()}`);
+
+  // Workaround: Directly append to the CA bundle for immediate effect
+  // Alpine's /etc/ssl/cert.pem is a symlink to /etc/ssl/certs/ca-certificates.crt
+  // So we only need to append to one file
   await guest.execOrThrow(
-    `sudo sh -c 'touch /etc/ssl/certs/ca-certificates.crt && cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/certs/ca-certificates.crt'`,
-  );
-  await guest.execOrThrow(
-    `sudo sh -c 'touch /etc/ssl/cert.pem && cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/cert.pem'`,
+    `sudo sh -c 'cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/certs/ca-certificates.crt'`,
   );
 
   // Verify the CA was added successfully
   const verifyResult = await guest.exec(
-    "grep -c 'BEGIN CERTIFICATE' /etc/ssl/cert.pem",
+    "grep -c 'BEGIN CERTIFICATE' /etc/ssl/certs/ca-certificates.crt",
   );
   console.log(
     `[Executor] Proxy CA certificate installed (${verifyResult.stdout.trim()} certs in bundle)`,
   );
+
+  // Debug: Verify curl can read the CA bundle
+  const curlCheck = await guest.exec(
+    "curl --version | head -1 && ls -la /etc/ssl/certs/ca-certificates.crt | awk '{print $5}' && tail -3 /etc/ssl/certs/ca-certificates.crt",
+  );
+  console.log(`[Executor] curl/CA debug: ${curlCheck.stdout.trim()}`);
 }
 
 /**
