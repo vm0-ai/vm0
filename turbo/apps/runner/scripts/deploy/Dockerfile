@@ -49,7 +49,9 @@ RUN apk add --no-cache \
     libgcc \
     libstdc++ \
     libc6-compat \
-    github-cli
+    github-cli \
+    && mkdir -p /usr/local/share/ca-certificates \
+    && update-ca-certificates
 
 # Install Claude Code CLI globally
 # Note: Using npm install as native installer requires interactive shell
