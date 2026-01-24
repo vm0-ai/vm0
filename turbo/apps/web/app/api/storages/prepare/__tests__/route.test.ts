@@ -1,13 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-} from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -41,23 +32,24 @@ import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
+import { generateTestId } from "../../../../../src/__tests__/api-test-helpers";
 
 const mockHeaders = vi.mocked(headers);
 
-// Test constants
-const TEST_USER_ID = "test-user-prepare";
-const TEST_PREFIX = "test-prepare-";
-
 describe("POST /api/storages/prepare", () => {
+  // Unique test ID per test for isolation (no cleanup needed)
+  let testId: string;
+
   beforeAll(async () => {
     initServices();
   });
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
+  beforeEach(() => {
+    // Generate unique prefix for this test
+    testId = generateTestId();
 
     // Mock Clerk auth to return test user by default
-    mockClerk({ userId: TEST_USER_ID });
+    mockClerk({ userId: testId });
 
     // Setup S3 mocks
     vi.spyOn(s3Client, "generatePresignedPutUrl").mockResolvedValue(
@@ -77,56 +69,7 @@ describe("POST /api/storages/prepare", () => {
       get: vi.fn().mockReturnValue(null),
     } as unknown as Headers);
 
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: TEST_USER_ID });
-
-    // Clean up test data
-    await globalThis.services.db
-      .update(storages)
-      .set({ headVersionId: null })
-      .where(eq(storages.userId, TEST_USER_ID));
-
-    const testStorages = await globalThis.services.db
-      .select({ id: storages.id })
-      .from(storages)
-      .where(eq(storages.userId, TEST_USER_ID));
-
-    for (const storage of testStorages) {
-      await globalThis.services.db
-        .delete(storageVersions)
-        .where(eq(storageVersions.storageId, storage.id));
-    }
-
-    await globalThis.services.db
-      .delete(storages)
-      .where(eq(storages.userId, TEST_USER_ID));
-  });
-
-  afterEach(() => {
     clearClerkMock();
-  });
-
-  afterAll(async () => {
-    // Final cleanup
-    await globalThis.services.db
-      .update(storages)
-      .set({ headVersionId: null })
-      .where(eq(storages.userId, TEST_USER_ID));
-
-    const testStorages = await globalThis.services.db
-      .select({ id: storages.id })
-      .from(storages)
-      .where(eq(storages.userId, TEST_USER_ID));
-
-    for (const storage of testStorages) {
-      await globalThis.services.db
-        .delete(storageVersions)
-        .where(eq(storageVersions.storageId, storage.id));
-    }
-
-    await globalThis.services.db
-      .delete(storages)
-      .where(eq(storages.userId, TEST_USER_ID));
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -190,7 +133,7 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should create new storage when it does not exist", async () => {
-    const storageName = `${TEST_PREFIX}new-storage`;
+    const storageName = `${testId}-new-storage`;
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
@@ -221,20 +164,20 @@ describe("POST /api/storages/prepare", () => {
       .from(storages)
       .where(eq(storages.name, storageName));
     expect(storage).toBeDefined();
-    expect(storage!.userId).toBe(TEST_USER_ID);
+    expect(storage!.userId).toBe(testId);
   });
 
   it("should return existing=true when version already exists", async () => {
-    const storageName = `${TEST_PREFIX}existing-version`;
+    const storageName = `${testId}-existing-version`;
 
     // Create storage first
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: TEST_USER_ID,
+        userId: testId,
         name: storageName,
         type: "volume",
-        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
+        s3Prefix: `${testId}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -259,10 +202,10 @@ describe("POST /api/storages/prepare", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
+      s3Key: `${testId}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: TEST_USER_ID,
+      createdBy: testId,
     });
 
     // Prepare again with same files
@@ -285,14 +228,14 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should compute deterministic version ID from files", async () => {
-    const storageName = `${TEST_PREFIX}deterministic`;
+    const storageName = `${testId}-deterministic`;
 
     // Create storage
     await globalThis.services.db.insert(storages).values({
-      userId: TEST_USER_ID,
+      userId: testId,
       name: storageName,
       type: "artifact",
-      s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
+      s3Prefix: `${testId}/artifact/${storageName}`,
       size: 0,
       fileCount: 0,
     });
@@ -333,16 +276,16 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return upload URLs when version exists but S3 files are missing", async () => {
-    const storageName = `${TEST_PREFIX}s3missing`;
+    const storageName = `${testId}-s3missing`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: TEST_USER_ID,
+        userId: testId,
         name: storageName,
         type: "volume",
-        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
+        s3Prefix: `${testId}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -367,10 +310,10 @@ describe("POST /api/storages/prepare", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
+      s3Key: `${testId}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: TEST_USER_ID,
+      createdBy: testId,
     });
 
     // Mock S3 files as missing
