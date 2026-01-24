@@ -34,6 +34,15 @@ export const tokenValue$ = computed((get) => get(internalTokenValue$));
 export const copyStatus$ = computed((get) => get(internalCopyStatus$));
 
 /**
+ * Whether the Save button should be enabled.
+ * Requires a non-empty token value.
+ */
+export const canSaveOnboarding$ = computed((get) => {
+  const tokenValue = get(internalTokenValue$);
+  return tokenValue.trim().length > 0;
+});
+
+/**
  * Set the OAuth token value.
  */
 export const setTokenValue$ = command(({ set }, value: string) => {

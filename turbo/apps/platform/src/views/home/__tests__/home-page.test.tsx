@@ -49,6 +49,17 @@ describe("home page", () => {
 
     expect(screen.getByText(/First, tell us how your LLM works/)).toBeDefined();
 
+    // Save button should be disabled when token is empty
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeDisabled();
+
+    // Type a token value
+    const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
+    await user.type(tokenInput, "sk-ant-oat-test-token");
+
+    // Save button should now be enabled
+    expect(saveButton).toBeEnabled();
+
     // Click "Add it later" to close the modal
     await user.click(screen.getByText("Add it later"));
 

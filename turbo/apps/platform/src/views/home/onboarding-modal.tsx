@@ -17,6 +17,7 @@ import {
   saveOnboardingConfig$,
   copyStatus$,
   copyToClipboard$,
+  canSaveOnboarding$,
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
@@ -28,6 +29,7 @@ export function OnboardingModal() {
   const saveConfig = useSet(saveOnboardingConfig$);
   const copyStatus = useGet(copyStatus$);
   const copyToClipboard = useSet(copyToClipboard$);
+  const canSave = useGet(canSaveOnboarding$);
 
   return (
     <Dialog open={isOpen}>
@@ -83,6 +85,7 @@ export function OnboardingModal() {
                 placeholder="sk-ant-oat..."
                 value={tokenValue}
                 onChange={(e) => setTokenValue(e.target.value)}
+                required
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -109,7 +112,9 @@ export function OnboardingModal() {
           <Button variant="outline" onClick={() => closeModal()}>
             Add it later
           </Button>
-          <Button onClick={() => saveConfig()}>Save</Button>
+          <Button onClick={() => saveConfig()} disabled={!canSave}>
+            Save
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
