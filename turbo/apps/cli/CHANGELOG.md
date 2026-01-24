@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.0.1](https://github.com/vm0-ai/vm0/compare/cli-v7.0.0...cli-v7.0.1) (2026-01-24)
+
+
+### Bug Fixes
+
+* **cli:** remove color from [tool_result] and [result] labels ([#1601](https://github.com/vm0-ai/vm0/issues/1601)) ([de84f7d](https://github.com/vm0-ai/vm0/commit/de84f7db63e41385828a75b35f070774d8add943)), closes [#1595](https://github.com/vm0-ai/vm0/issues/1595)
+
 ## [7.0.0](https://github.com/vm0-ai/vm0/compare/cli-v6.4.1...cli-v7.0.0) (2026-01-24)
 
 

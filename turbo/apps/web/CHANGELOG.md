@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.7.1](https://github.com/vm0-ai/vm0/compare/web-v10.7.0...web-v10.7.1) (2026-01-24)
+
+
+### Performance Improvements
+
+* **test:** use unique prefix isolation for runs api tests ([#1597](https://github.com/vm0-ai/vm0/issues/1597)) ([ef8b88e](https://github.com/vm0-ai/vm0/commit/ef8b88e32c0069881afae44232206c863d014b5c))
+
 ## [10.7.0](https://github.com/vm0-ai/vm0/compare/web-v10.6.1...web-v10.7.0) (2026-01-24)
 
 

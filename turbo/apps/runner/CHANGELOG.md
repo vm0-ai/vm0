@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/vm0-ai/vm0/compare/runner-v3.0.2...runner-v3.0.3) (2026-01-24)
+
+
+### Performance Improvements
+
+* **runner:** optimize kernel boot args for faster vm startup ([#1594](https://github.com/vm0-ai/vm0/issues/1594)) ([7399a9a](https://github.com/vm0-ai/vm0/commit/7399a9a5af526ca66d773f3ca1deea24884f9e15))
+
 ## [3.0.2](https://github.com/vm0-ai/vm0/compare/runner-v3.0.1...runner-v3.0.2) (2026-01-24)
 
 
