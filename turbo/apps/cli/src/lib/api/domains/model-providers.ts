@@ -20,7 +20,7 @@ export async function listModelProviders(): Promise<ModelProviderListResponse> {
   const config = await getClientConfig();
   const client = initClient(modelProvidersMainContract, config);
 
-  const result = await client.list();
+  const result = await client.list({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

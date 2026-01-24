@@ -10,7 +10,7 @@ export async function listCredentials(): Promise<CredentialListResponse> {
   const config = await getClientConfig();
   const client = initClient(credentialsMainContract, config);
 
-  const result = await client.list();
+  const result = await client.list({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

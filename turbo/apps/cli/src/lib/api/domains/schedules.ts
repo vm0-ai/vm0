@@ -48,7 +48,7 @@ export async function listSchedules(): Promise<ScheduleListResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesMainContract, config);
 
-  const result = await client.list();
+  const result = await client.list({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

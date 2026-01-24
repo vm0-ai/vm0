@@ -80,7 +80,9 @@ describe("Artifact Command", () => {
 
       const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
 
-      expect(output).toContain("Manage cloud artifacts");
+      expect(output).toContain(
+        "Manage artifacts (specified at run, versioned after run)",
+      );
       expect(output).toContain("init");
       expect(output).toContain("push");
       expect(output).toContain("pull");
