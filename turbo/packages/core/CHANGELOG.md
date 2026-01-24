@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.1](https://github.com/vm0-ai/vm0/compare/core-v6.0.0...core-v6.0.1) (2026-01-24)
+
+
+### Bug Fixes
+
+* **ci:** add production environment to release workflow jobs ([#1612](https://github.com/vm0-ai/vm0/issues/1612)) ([96912b0](https://github.com/vm0-ai/vm0/commit/96912b0329960f4404087418323266c0c711d599))
+
 ## [6.0.0](https://github.com/vm0-ai/vm0/compare/core-v5.5.0...core-v6.0.0) (2026-01-24)
 
 

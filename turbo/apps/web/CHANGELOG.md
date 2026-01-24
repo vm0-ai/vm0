@@ -1,5 +1,14 @@
 # Changelog
 
+## [10.7.2](https://github.com/vm0-ai/vm0/compare/web-v10.7.1...web-v10.7.2) (2026-01-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.1
+
 ## [10.7.1](https://github.com/vm0-ai/vm0/compare/web-v10.7.0...web-v10.7.1) (2026-01-24)
 
 
