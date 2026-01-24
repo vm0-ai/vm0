@@ -32,20 +32,13 @@ function createTestRequest(
   });
 }
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 
-const mockHeaders = vi.mocked(headers);
 const mockAuth = vi.mocked(auth);
 
 describe("GET /api/agent/sessions/:id", () => {
@@ -60,11 +53,6 @@ describe("GET /api/agent/sessions/:id", () => {
 
   beforeAll(async () => {
     initServices();
-
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Mock Clerk auth to return test user
     mockAuth.mockResolvedValue({

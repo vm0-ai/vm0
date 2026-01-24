@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -6,13 +14,9 @@ import {
   storages,
   storageVersions,
 } from "../../../../../src/db/schema/storage";
+import { blobs } from "../../../../../src/db/schema/blob";
 import { computeContentHashFromHashes } from "../../../../../src/lib/storage/content-hash";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
-
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
 
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
@@ -30,40 +34,74 @@ vi.hoisted(() => {
 
 // Static imports - mocks are already in place due to hoisting
 import { POST } from "../route";
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
-import { generateTestId } from "../../../../../src/__tests__/api-test-helpers";
 
-const mockHeaders = vi.mocked(headers);
+// Test constants
+const TEST_USER_ID = "test-user-commit";
+const TEST_PREFIX = "test-commit-";
 
 describe("POST /api/storages/commit", () => {
-  // Unique test ID per test for isolation (no cleanup needed)
-  let testId: string;
-
   beforeAll(async () => {
     initServices();
   });
 
-  beforeEach(() => {
-    // Generate unique prefix for this test
-    testId = generateTestId();
+  beforeEach(async () => {
+    vi.clearAllMocks();
 
     // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testId });
+    mockClerk({ userId: TEST_USER_ID });
 
     // Setup S3 mocks
     vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValue(true);
     vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
 
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
-
     clearClerkMock();
+    // Clean up test data
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -125,14 +163,14 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should return 400 when versionId does not match computed hash", async () => {
-    const storageName = `${testId}-mismatch`;
+    const storageName = `${TEST_PREFIX}mismatch`;
 
     // Create storage
     await globalThis.services.db.insert(storages).values({
-      userId: testId,
+      userId: TEST_USER_ID,
       name: storageName,
       type: "volume",
-      s3Prefix: `${testId}/volume/${storageName}`,
+      s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
       size: 0,
       fileCount: 0,
     });
@@ -160,16 +198,16 @@ describe("POST /api/storages/commit", () => {
   it("should return 400 when S3 objects do not exist", async () => {
     vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValueOnce(false); // manifest doesn't exist
 
-    const storageName = `${testId}-missing-s3`;
+    const storageName = `${TEST_PREFIX}missing-s3`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "volume",
-        s3Prefix: `${testId}/volume/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -199,19 +237,16 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should create version and update HEAD on successful commit", async () => {
-    const storageName = `${testId}-success`;
-    // Use testId to generate unique hashes for this test
-    const hash1 = testId.padEnd(64, "e").substring(0, 64);
-    const hash2 = testId.padEnd(64, "f").substring(0, 64);
+    const storageName = `${TEST_PREFIX}success`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "artifact",
-        s3Prefix: `${testId}/artifact/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -220,12 +255,12 @@ describe("POST /api/storages/commit", () => {
     const files = [
       {
         path: "file1.txt",
-        hash: hash1,
+        hash: "e".repeat(64),
         size: 100,
       },
       {
         path: "file2.txt",
-        hash: hash2,
+        hash: "f".repeat(64),
         size: 200,
       },
     ];
@@ -268,6 +303,14 @@ describe("POST /api/storages/commit", () => {
       .from(storages)
       .where(eq(storages.id, storage!.id));
     expect(updatedStorage!.headVersionId).toBe(versionId);
+
+    // Clean up blobs created
+    await globalThis.services.db
+      .delete(blobs)
+      .where(eq(blobs.hash, "e".repeat(64)));
+    await globalThis.services.db
+      .delete(blobs)
+      .where(eq(blobs.hash, "f".repeat(64)));
   });
 
   it("should commit empty artifact without requiring archive in S3", async () => {
@@ -276,16 +319,16 @@ describe("POST /api/storages/commit", () => {
     // Mock: manifest exists (only one call expected for empty artifact)
     vi.spyOn(s3Client, "s3ObjectExists").mockResolvedValueOnce(true); // manifest exists
 
-    const storageName = `${testId}-empty`;
+    const storageName = `${TEST_PREFIX}empty`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "artifact",
-        s3Prefix: `${testId}/artifact/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -330,16 +373,16 @@ describe("POST /api/storages/commit", () => {
   });
 
   it("should return deduplicated=true when version already exists", async () => {
-    const storageName = `${testId}-idempotent`;
+    const storageName = `${TEST_PREFIX}idempotent`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "volume",
-        s3Prefix: `${testId}/volume/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -358,10 +401,10 @@ describe("POST /api/storages/commit", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${testId}/volume/${storageName}/${versionId}`,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: testId,
+      createdBy: TEST_USER_ID,
     });
 
     // Update HEAD
@@ -399,16 +442,16 @@ describe("POST /api/storages/commit", () => {
     // Mock S3 files as missing for existing version
     vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValueOnce(false);
 
-    const storageName = `${testId}-s3missing`;
+    const storageName = `${TEST_PREFIX}s3missing`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "volume",
-        s3Prefix: `${testId}/volume/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -427,10 +470,10 @@ describe("POST /api/storages/commit", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${testId}/volume/${storageName}/${versionId}`,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: testId,
+      createdBy: TEST_USER_ID,
     });
 
     // Commit should fail because S3 files are missing
@@ -462,16 +505,16 @@ describe("POST /api/storages/commit", () => {
     // the code verifies the version exists before updating HEAD pointer.
     // If the version doesn't exist (concurrent transaction hasn't committed),
     // the commit should fail with a clear error message instead of FK violation.
-    const storageName = `${testId}-race-condition`;
+    const storageName = `${TEST_PREFIX}race-condition`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "artifact",
-        s3Prefix: `${testId}/artifact/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
         size: 0,
         fileCount: 0,
       })

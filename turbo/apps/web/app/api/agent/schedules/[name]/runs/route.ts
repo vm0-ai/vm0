@@ -13,10 +13,10 @@ import { NotFoundError } from "../../../../../../src/lib/errors";
 const log = logger("api:schedules:runs");
 
 const router = tsr.router(scheduleRunsContract, {
-  listRuns: async ({ params, query }) => {
+  listRuns: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

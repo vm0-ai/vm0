@@ -23,10 +23,10 @@ const router = tsr.router(modelProvidersMainContract, {
   /**
    * GET /api/model-providers - List all model providers
    */
-  list: async () => {
+  list: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -52,10 +52,10 @@ const router = tsr.router(modelProvidersMainContract, {
   /**
    * PUT /api/model-providers - Create or update a model provider
    */
-  upsert: async ({ body }) => {
+  upsert: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

@@ -33,10 +33,10 @@ const CANCELLABLE_STATUSES = ["pending", "running"];
 
 const router = tsr.router(publicRunCancelContract, {
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  cancel: async ({ params }) => {
+  cancel: async ({ params, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,

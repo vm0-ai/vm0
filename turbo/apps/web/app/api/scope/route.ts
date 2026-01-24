@@ -24,10 +24,10 @@ const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
    */
-  get: async () => {
+  get: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -56,10 +56,10 @@ const router = tsr.router(scopeContract, {
   /**
    * POST /api/scope - Create user's scope
    */
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -102,10 +102,10 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update user's scope slug
    */
-  update: async ({ body }) => {
+  update: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

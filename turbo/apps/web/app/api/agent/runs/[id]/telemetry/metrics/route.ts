@@ -26,10 +26,10 @@ interface AxiomMetricEvent {
 }
 
 const router = tsr.router(runMetricsContract, {
-  getMetrics: async ({ params, query }) => {
+  getMetrics: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

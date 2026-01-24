@@ -31,7 +31,9 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const versionId = searchParams.get("version_id") ?? undefined;
 
-  const auth = await authenticatePublicApi();
+  const auth = await authenticatePublicApi(
+    request.headers.get("Authorization") ?? undefined,
+  );
   if (!isAuthSuccess(auth)) {
     return NextResponse.json(
       {

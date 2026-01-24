@@ -19,10 +19,10 @@ import { eq, and } from "drizzle-orm";
 const STORAGE_TYPE = "artifact";
 
 const router = tsr.router(publicArtifactByIdContract, {
-  get: async ({ params }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,

@@ -39,10 +39,10 @@ interface AxiomNetworkEvent {
 }
 
 const router = tsr.router(runNetworkLogsContract, {
-  getNetworkLogs: async ({ params, query }) => {
+  getNetworkLogs: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

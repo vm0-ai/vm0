@@ -23,13 +23,13 @@ import { logger } from "../../../../../../src/lib/logger";
 const log = logger("webhook:storages:commit");
 
 const router = tsr.router(webhookStoragesCommitContract, {
-  commit: async ({ body }) => {
+  commit: async ({ body, headers }) => {
     initServices();
 
     const { runId, storageName, storageType, versionId, files, message } = body;
 
     // Authenticate with sandbox JWT and verify runId matches
-    const auth = await getSandboxAuthForRun(runId);
+    const auth = getSandboxAuthForRun(runId, headers.authorization);
     if (!auth) {
       return {
         status: 401 as const,

@@ -18,10 +18,10 @@ import {
 const log = logger("api:runners:poll");
 
 const router = tsr.router(runnersPollContract, {
-  poll: async ({ body }) => {
+  poll: async ({ body, headers }) => {
     initServices();
 
-    const auth = await getRunnerAuth();
+    const auth = await getRunnerAuth(headers.authorization);
     if (!auth) {
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }

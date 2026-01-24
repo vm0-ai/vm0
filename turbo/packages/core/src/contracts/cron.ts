@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -34,6 +34,7 @@ export const cronCleanupSandboxesContract = c.router({
   cleanup: {
     method: "GET",
     path: "/api/cron/cleanup-sandboxes",
+    headers: authHeadersSchema,
     responses: {
       200: cleanupResponseSchema,
       401: apiErrorSchema,

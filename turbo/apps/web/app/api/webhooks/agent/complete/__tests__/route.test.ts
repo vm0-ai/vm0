@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { POST } from "../route";
 import { POST as createCompose } from "../../../../agent/composes/route";
 import { NextRequest } from "next/server";
@@ -6,20 +14,16 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
 import { conversations } from "../../../../../../src/db/schema/conversation";
+import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createDefaultComposeConfig,
   createTestSandboxToken,
-  generateTestId,
 } from "../../../../../../src/__tests__/api-test-helpers";
-
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
 
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
@@ -33,31 +37,27 @@ vi.mock("@e2b/code-interpreter", () => ({
   },
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
 import { Sandbox } from "@e2b/code-interpreter";
 
-const mockHeaders = vi.mocked(headers);
 const mockSandboxConnect = vi.mocked(Sandbox.connect);
 
 describe("POST /api/webhooks/agent/complete", () => {
-  // Unique test ID per test for isolation (no cleanup needed)
-  let testId: string;
-  let testAgentName: string;
-  let testRunId: string;
+  // Generate unique IDs for this test run
+  const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testAgentName = `test-agent-complete-${Date.now()}`;
+  const testRunId = randomUUID();
+  let testComposeId: string;
   let testVersionId: string;
   let testToken: string;
-  let testSandboxId: string;
+  const testSandboxId = `sandbox-${Date.now()}`;
 
   beforeEach(async () => {
-    // Generate unique prefix for this test
-    testId = generateTestId();
-    testAgentName = `${testId}-agent`;
-    testRunId = randomUUID();
-    testSandboxId = `${testId}-sandbox`;
+    // Clear all mocks
+    vi.clearAllMocks();
 
     // Initialize services
     initServices();
@@ -69,15 +69,27 @@ describe("POST /api/webhooks/agent/complete", () => {
     mockSandboxConnect.mockResolvedValue(mockSandbox as unknown as Sandbox);
 
     // Generate JWT token for sandbox auth
-    testToken = await createTestSandboxToken(testId, testRunId);
+    testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return test user (needed for compose API)
-    mockClerk({ userId: testId });
+    mockClerk({ userId: testUserId });
 
-    // Mock headers() to return no Authorization header by default
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
+    // Clean up any existing test data
+    await globalThis.services.db
+      .delete(agentRunEvents)
+      .where(eq(agentRunEvents.runId, testRunId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.id, testRunId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
 
     // Create test compose via API endpoint
     const config = createDefaultComposeConfig(testAgentName);
@@ -92,12 +104,38 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     const response = await createCompose(request);
     const data = await response.json();
+    testComposeId = data.composeId;
     testVersionId = data.versionId;
 
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
-    clearClerkMock();
   });
+
+  afterEach(async () => {
+    clearClerkMock();
+    // Clean up test data after each test
+    await globalThis.services.db
+      .delete(agentRunEvents)
+      .where(eq(agentRunEvents.runId, testRunId));
+
+    await globalThis.services.db
+      .delete(agentSessions)
+      .where(eq(agentSessions.agentComposeId, testComposeId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.id, testRunId));
+
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+  });
+
+  afterAll(async () => {});
 
   // ============================================
   // Authentication Tests
@@ -133,13 +171,6 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject complete without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -196,14 +227,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       const nonExistentRunId = randomUUID();
       // Generate JWT with the non-existent runId
       const tokenForNonExistentRun = await createTestSandboxToken(
-        testId,
+        testUserId,
         nonExistentRunId,
       );
-
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -240,11 +266,6 @@ describe("POST /api/webhooks/agent/complete", () => {
         createdAt: new Date(),
       });
 
-      // Mock headers() to return the test token (JWT with testId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -273,18 +294,11 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Success", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should handle successful completion (exitCode=0) and send vm0_result", async () => {
       // Create run with sandboxId
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         sandboxId: testSandboxId,
         status: "running",
@@ -358,7 +372,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Create run with sandboxId
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         sandboxId: testSandboxId,
         status: "running",
@@ -408,7 +422,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Create run
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
@@ -450,18 +464,11 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Error Handling", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should return 404 when checkpoint not found for successful run", async () => {
       // Create run without checkpoint
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         status: "running",
         prompt: "Test prompt",
@@ -496,18 +503,11 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Idempotency", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should return success without processing for already completed run", async () => {
       // Create already completed run
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         status: "completed",
         prompt: "Test prompt",
@@ -553,7 +553,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Create already failed run
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
-        userId: testId,
+        userId: testUserId,
         agentComposeVersionId: testVersionId,
         status: "failed",
         prompt: "Test prompt",

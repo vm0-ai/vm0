@@ -16,10 +16,10 @@ const router = tsr.router(modelProvidersConvertContract, {
   /**
    * POST /api/model-providers/:type/convert - Convert user credential to model provider
    */
-  convert: async ({ params }) => {
+  convert: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

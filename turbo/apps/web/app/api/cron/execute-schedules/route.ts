@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { initServices } from "../../../../src/lib/init-services";
 import { scheduleService } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
@@ -10,12 +9,11 @@ const log = logger("cron:execute-schedules");
  * Cron endpoint that executes due schedules
  * Configured to run every minute via Vercel cron
  */
-export async function GET() {
+export async function GET(request: Request) {
   initServices();
 
   // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
-  const headersList = await headers();
-  const authHeader = headersList.get("authorization");
+  const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

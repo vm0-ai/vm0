@@ -16,7 +16,7 @@ import type {
 export async function getComposeByName(
   name: string,
   scope?: string,
-): Promise<GetComposeResponse> {
+): Promise<GetComposeResponse | null> {
   const config = await getClientConfig();
   const client = initClient(composesMainContract, config);
 
@@ -26,6 +26,10 @@ export async function getComposeByName(
 
   if (result.status === 200) {
     return result.body;
+  }
+
+  if (result.status === 404) {
+    return null;
   }
 
   handleError(result, `Compose not found: ${name}`);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -15,6 +15,7 @@ export const authContract = c.router({
   me: {
     method: "GET",
     path: "/api/auth/me",
+    headers: authHeadersSchema,
     responses: {
       200: z.object({
         userId: z.string(),

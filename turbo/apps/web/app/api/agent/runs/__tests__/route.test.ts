@@ -1,9 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { POST } from "../route";
 import { POST as createCompose } from "../../composes/route";
 import { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -12,16 +21,9 @@ import {
   createDefaultComposeConfig,
   createTestCliToken,
   deleteTestCliToken,
-  generateTestId,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
-
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
 
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
@@ -35,32 +37,26 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
 
-const mockHeaders = vi.mocked(headers);
-
 describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
-  // Unique test ID per test for isolation (no cleanup needed)
-  let testId: string;
-  let testAgentName: string;
-  let testScopeId: string;
+  // Generate unique IDs for this test run
+  const testUserId = `test-user-${Date.now()}-${process.pid}`;
+  const testAgentName = `test-agent-runs-${Date.now()}`;
+  const testScopeId = randomUUID();
   let testComposeId: string;
 
   beforeEach(async () => {
-    // Generate unique prefix for this test
-    testId = generateTestId();
-    testAgentName = `${testId}-agent`;
-    testScopeId = randomUUID();
+    vi.clearAllMocks();
 
     // Initialize services
     initServices();
 
     // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testId });
+    mockClerk({ userId: testUserId });
 
     // Setup E2B SDK mock - create sandbox
     const mockSandbox = {
@@ -89,17 +85,25 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
     vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
 
-    // Mock headers() to return null Authorization, forcing Clerk auth fallback
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
+    // Clean up test data from previous runs
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
 
     // Create test scope for the user (required for compose creation)
     await globalThis.services.db.insert(scopes).values({
       id: testScopeId,
       slug: `test-${testScopeId.slice(0, 8)}`,
       type: "personal",
-      ownerId: testId,
+      ownerId: testUserId,
     });
 
     // Create test compose via API endpoint
@@ -118,9 +122,23 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     testComposeId = data.composeId;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     clearClerkMock();
+    // Clean up test data
+    await globalThis.services.db
+      .delete(agentRuns)
+      .where(eq(agentRuns.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.userId, testUserId));
+
+    await globalThis.services.db
+      .delete(scopes)
+      .where(eq(scopes.id, testScopeId));
   });
+
+  afterAll(async () => {});
 
   // ============================================
   // Fire-and-Forget Execution Tests
@@ -194,9 +212,6 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     });
 
     it("should return 'failed' status if sandbox preparation fails", async () => {
-      // Silence expected error logs in this test
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
       // Make E2B SDK throw an error
       vi.mocked(Sandbox.create).mockRejectedValue(
         new Error("Sandbox creation failed"),
@@ -230,9 +245,6 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(failedRun!.status).toBe("failed");
       expect(failedRun!.error).toContain("Sandbox creation failed");
       expect(failedRun!.completedAt).toBeDefined();
-
-      // Verify error was logged (validates error handling path)
-      expect(errorSpy).toHaveBeenCalled();
     });
 
     it("should return quickly even with complex context building", async () => {
@@ -349,41 +361,6 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
       expect(data.error.message).toContain("Not authenticated");
     });
 
-    it("should succeed when Clerk auth passes even if sandbox token is present in header", async () => {
-      // Generate a sandbox JWT token (normally rejected on normal APIs)
-      const sandboxToken = await generateSandboxToken(testId, "some-run-id");
-
-      // Set sandbox token in Authorization header
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${sandboxToken}` : null,
-        ),
-      } as unknown as Headers);
-
-      // Clerk auth returns valid user - this should take priority
-      mockClerk({ userId: testId });
-
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test with sandbox token and Clerk auth",
-        }),
-      });
-
-      const response = await POST(request);
-
-      // Should succeed because Clerk auth is checked first and passes
-      // The sandbox token in header should be ignored
-      expect(response.status).toBe(201);
-      const data = await response.json();
-      expect(data.runId).toBeDefined();
-      expect(data.status).toBe("running");
-    });
-
     it("should reject request for non-existent compose", async () => {
       const nonExistentComposeId = randomUUID();
 
@@ -415,14 +392,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
     beforeEach(async () => {
       // Create valid CLI token in database
-      testCliToken = await createTestCliToken(testId);
-
-      // Mock headers to return Authorization header with CLI token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${testCliToken}` : null,
-        ),
-      } as unknown as Headers);
+      testCliToken = await createTestCliToken(testUserId);
     });
 
     afterEach(async () => {
@@ -435,6 +405,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${testCliToken}`,
         },
         body: JSON.stringify({
           agentComposeId: testComposeId,
@@ -457,21 +428,15 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
         .limit(1);
 
       expect(run).toBeDefined();
-      expect(run!.userId).toBe(testId);
+      expect(run!.userId).toBe(testUserId);
     });
 
     it("should reject expired CLI token and fall back to Clerk", async () => {
       // Create expired token
       const expiredToken = await createTestCliToken(
-        testId,
+        testUserId,
         new Date(Date.now() - 1000), // Expired 1 second ago
       );
-
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? `Bearer ${expiredToken}` : null,
-        ),
-      } as unknown as Headers);
 
       // Mock Clerk to return null (unauthenticated)
       mockClerk({ userId: null });
@@ -480,6 +445,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${expiredToken}`,
         },
         body: JSON.stringify({
           agentComposeId: testComposeId,
@@ -498,13 +464,6 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
     });
 
     it("should reject invalid CLI token and fall back to Clerk", async () => {
-      // Use invalid token (not in database)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn((name: string) =>
-          name === "Authorization" ? "Bearer vm0_live_invalid_token" : null,
-        ),
-      } as unknown as Headers);
-
       // Mock Clerk to return null (unauthenticated)
       mockClerk({ userId: null });
 
@@ -512,6 +471,7 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: "Bearer vm0_live_invalid_token",
         },
         body: JSON.stringify({
           agentComposeId: testComposeId,

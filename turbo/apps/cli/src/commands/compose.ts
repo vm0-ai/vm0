@@ -188,13 +188,9 @@ export const composeCommand = new Command()
 
       // Fetch HEAD version to compare secrets (for smart confirmation)
       let headSecrets = new Set<string>();
-      try {
-        const existingCompose = await getComposeByName(agentName);
-        if (existingCompose.content) {
-          headSecrets = getSecretsFromComposeContent(existingCompose.content);
-        }
-      } catch {
-        // No existing compose - all secrets are new (first-time compose)
+      const existingCompose = await getComposeByName(agentName);
+      if (existingCompose?.content) {
+        headSecrets = getSecretsFromComposeContent(existingCompose.content);
       }
 
       // Determine truly new secrets (not in HEAD version)

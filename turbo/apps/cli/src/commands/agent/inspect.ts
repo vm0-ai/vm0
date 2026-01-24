@@ -1,10 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  getComposeByName,
-  getComposeVersion,
-  type GetComposeResponse,
-} from "../../lib/api";
+import { getComposeByName, getComposeVersion } from "../../lib/api";
 import {
   deriveComposeVariableSources,
   type AgentVariableSources,
@@ -159,16 +155,12 @@ export const inspectCommand = new Command()
         }
 
         // Get compose by name
-        let compose: GetComposeResponse;
-        try {
-          compose = await getComposeByName(name, options.scope);
-        } catch (error) {
-          if (error instanceof Error && error.message.includes("not found")) {
-            console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-            console.error(chalk.dim("  Run: vm0 agent list"));
-            process.exit(1);
-          }
-          throw error;
+        const compose = await getComposeByName(name, options.scope);
+
+        if (!compose) {
+          console.error(chalk.red(`✗ Agent compose not found: ${name}`));
+          console.error(chalk.dim("  Run: vm0 agent list"));
+          process.exit(1);
         }
 
         // Resolve version if not "latest" or full hash

@@ -229,9 +229,8 @@ export class EventRenderer {
   ): void {
     const isError = Boolean(event.data.isError);
     const status = isError ? "Error" : "Completed";
-    const color = isError ? chalk.red : chalk.green;
 
-    console.log(prefix + color("[tool_result]") + suffix + " " + status);
+    console.log(prefix + "[tool_result]" + suffix + " " + status);
 
     // Show full result without truncation
     const result = String(event.data.result || "");
@@ -245,9 +244,8 @@ export class EventRenderer {
   ): void {
     const success = Boolean(event.data.success);
     const status = success ? "✓ completed successfully" : "✗ failed";
-    const color = success ? chalk.green : chalk.red;
 
-    console.log(prefix + color("[result]") + suffix + " " + status);
+    console.log(prefix + "[result]" + suffix + " " + status);
 
     const durationMs = Number(event.data.durationMs || 0);
     const durationSec = (durationMs / 1000).toFixed(1);

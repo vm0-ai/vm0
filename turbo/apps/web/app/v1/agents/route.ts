@@ -18,10 +18,10 @@ import { agentComposes } from "../../../src/db/schema/agent-compose";
 import { eq, and, desc, gt } from "drizzle-orm";
 
 const router = tsr.router(publicAgentsListContract, {
-  list: async ({ query }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,

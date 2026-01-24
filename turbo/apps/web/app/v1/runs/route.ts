@@ -25,10 +25,10 @@ import { runService } from "../../../src/lib/run";
 import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
 
 const router = tsr.router(publicRunsListContract, {
-  list: async ({ query }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,
@@ -126,10 +126,10 @@ const router = tsr.router(publicRunsListContract, {
   },
 
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,

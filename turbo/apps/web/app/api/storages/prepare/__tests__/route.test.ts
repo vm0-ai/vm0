@@ -1,4 +1,13 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -7,11 +16,6 @@ import {
   storageVersions,
 } from "../../../../../src/db/schema/storage";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
-
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
 
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
@@ -29,29 +33,25 @@ vi.hoisted(() => {
 
 // Static imports - mocks are already in place due to hoisting
 import { POST } from "../route";
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
-import { generateTestId } from "../../../../../src/__tests__/api-test-helpers";
 
-const mockHeaders = vi.mocked(headers);
+// Test constants
+const TEST_USER_ID = "test-user-prepare";
+const TEST_PREFIX = "test-prepare-";
 
 describe("POST /api/storages/prepare", () => {
-  // Unique test ID per test for isolation (no cleanup needed)
-  let testId: string;
-
   beforeAll(async () => {
     initServices();
   });
 
-  beforeEach(() => {
-    // Generate unique prefix for this test
-    testId = generateTestId();
+  beforeEach(async () => {
+    vi.clearAllMocks();
 
     // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testId });
+    mockClerk({ userId: TEST_USER_ID });
 
     // Setup S3 mocks
     vi.spyOn(s3Client, "generatePresignedPutUrl").mockResolvedValue(
@@ -66,12 +66,53 @@ describe("POST /api/storages/prepare", () => {
     });
     vi.spyOn(s3Client, "verifyS3FilesExist").mockResolvedValue(true);
 
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
+    // Clean up test data
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
 
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+  });
+
+  afterEach(() => {
     clearClerkMock();
+  });
+
+  afterAll(async () => {
+    // Final cleanup
+    await globalThis.services.db
+      .update(storages)
+      .set({ headVersionId: null })
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    const testStorages = await globalThis.services.db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
+
+    for (const storage of testStorages) {
+      await globalThis.services.db
+        .delete(storageVersions)
+        .where(eq(storageVersions.storageId, storage.id));
+    }
+
+    await globalThis.services.db
+      .delete(storages)
+      .where(eq(storages.userId, TEST_USER_ID));
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -135,7 +176,7 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should create new storage when it does not exist", async () => {
-    const storageName = `${testId}-new-storage`;
+    const storageName = `${TEST_PREFIX}new-storage`;
 
     const request = new NextRequest(
       "http://localhost:3000/api/storages/prepare",
@@ -166,20 +207,20 @@ describe("POST /api/storages/prepare", () => {
       .from(storages)
       .where(eq(storages.name, storageName));
     expect(storage).toBeDefined();
-    expect(storage!.userId).toBe(testId);
+    expect(storage!.userId).toBe(TEST_USER_ID);
   });
 
   it("should return existing=true when version already exists", async () => {
-    const storageName = `${testId}-existing-version`;
+    const storageName = `${TEST_PREFIX}existing-version`;
 
     // Create storage first
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "volume",
-        s3Prefix: `${testId}/volume/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -204,10 +245,10 @@ describe("POST /api/storages/prepare", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${testId}/volume/${storageName}/${versionId}`,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: testId,
+      createdBy: TEST_USER_ID,
     });
 
     // Prepare again with same files
@@ -230,14 +271,14 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should compute deterministic version ID from files", async () => {
-    const storageName = `${testId}-deterministic`;
+    const storageName = `${TEST_PREFIX}deterministic`;
 
     // Create storage
     await globalThis.services.db.insert(storages).values({
-      userId: testId,
+      userId: TEST_USER_ID,
       name: storageName,
       type: "artifact",
-      s3Prefix: `${testId}/artifact/${storageName}`,
+      s3Prefix: `${TEST_USER_ID}/artifact/${storageName}`,
       size: 0,
       fileCount: 0,
     });
@@ -278,16 +319,16 @@ describe("POST /api/storages/prepare", () => {
   });
 
   it("should return upload URLs when version exists but S3 files are missing", async () => {
-    const storageName = `${testId}-s3missing`;
+    const storageName = `${TEST_PREFIX}s3missing`;
 
     // Create storage
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId: testId,
+        userId: TEST_USER_ID,
         name: storageName,
         type: "volume",
-        s3Prefix: `${testId}/volume/${storageName}`,
+        s3Prefix: `${TEST_USER_ID}/volume/${storageName}`,
         size: 100,
         fileCount: 1,
       })
@@ -312,10 +353,10 @@ describe("POST /api/storages/prepare", () => {
     await globalThis.services.db.insert(storageVersions).values({
       id: versionId,
       storageId: storage!.id,
-      s3Key: `${testId}/volume/${storageName}/${versionId}`,
+      s3Key: `${TEST_USER_ID}/volume/${storageName}/${versionId}`,
       size: 100,
       fileCount: 1,
-      createdBy: testId,
+      createdBy: TEST_USER_ID,
     });
 
     // Mock S3 files as missing

@@ -36,23 +36,15 @@ function createTestRequest(
   });
 }
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("Public API v1 - Artifacts Endpoints", () => {
   const testUserId = "test-user-artifacts-api";
@@ -61,11 +53,6 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
   beforeAll(async () => {
     initServices();
-
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     await globalThis.services.db

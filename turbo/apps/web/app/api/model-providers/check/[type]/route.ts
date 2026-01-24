@@ -16,10 +16,10 @@ const router = tsr.router(modelProvidersCheckContract, {
   /**
    * GET /api/model-providers/check/:type - Check if credential exists
    */
-  check: async ({ params }) => {
+  check: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

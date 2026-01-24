@@ -25,11 +25,6 @@ import {
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -88,13 +83,10 @@ mockS3Client.mockImplementation(() => ({
   }),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("POST /api/webhooks/agent/checkpoints", () => {
   // Generate unique IDs for this test run
@@ -118,11 +110,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockClerk({ userId: testUserId });
-
-    // Mock headers() to return no Authorization header by default
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     // Delete agent_runs first - CASCADE will delete related checkpoints and conversations
@@ -238,13 +225,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   // ============================================
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject checkpoint without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -396,11 +376,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         nonExistentRunId,
       );
 
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -443,10 +418,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       });
 
       // Mock headers() to return the test token (JWT with testUserId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -483,10 +454,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   describe("Success", () => {
     it("should create checkpoint with artifact snapshot", async () => {
       // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       // Setup
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
@@ -596,10 +563,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   describe("Uniqueness", () => {
     it("should handle duplicate checkpoint requests via upsert", async () => {
       // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       // Setup
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,

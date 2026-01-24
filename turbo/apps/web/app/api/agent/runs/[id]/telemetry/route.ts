@@ -26,10 +26,10 @@ interface TelemetryData {
 }
 
 const router = tsr.router(runTelemetryContract, {
-  getTelemetry: async ({ params }) => {
+  getTelemetry: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

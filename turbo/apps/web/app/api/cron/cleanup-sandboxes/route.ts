@@ -1,6 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
-import { headers } from "next/headers";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -28,12 +27,11 @@ interface CleanupResult {
 }
 
 const router = tsr.router(cronCleanupSandboxesContract, {
-  cleanup: async () => {
+  cleanup: async ({ headers }) => {
     initServices();
 
     // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
-    const headersList = await headers();
-    const authHeader = headersList.get("authorization");
+    const authHeader = headers.authorization;
     const cronSecret = process.env.CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {

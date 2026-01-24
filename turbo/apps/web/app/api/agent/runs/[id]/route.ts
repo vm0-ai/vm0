@@ -10,10 +10,10 @@ import { eq } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 
 const router = tsr.router(runsByIdContract, {
-  getById: async ({ params }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

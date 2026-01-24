@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   storageTypeSchema,
@@ -49,6 +49,7 @@ export const webhookEventsContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/events",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       events: z.array(agentEventSchema).min(1, "events array cannot be empty"),
@@ -79,6 +80,7 @@ export const webhookCompleteContract = c.router({
   complete: {
     method: "POST",
     path: "/api/webhooks/agent/complete",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       exitCode: z.number(),
@@ -109,6 +111,7 @@ export const webhookCheckpointsContract = c.router({
   create: {
     method: "POST",
     path: "/api/webhooks/agent/checkpoints",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       cliAgentType: z.string().min(1, "cliAgentType is required"),
@@ -147,6 +150,7 @@ export const webhookHeartbeatContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/heartbeat",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
     }),
@@ -182,6 +186,7 @@ export const webhookStoragesContract = c.router({
   upload: {
     method: "POST",
     path: "/api/webhooks/agent/storages",
+    headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
     responses: {
@@ -220,6 +225,7 @@ export const webhookStoragesIncrementalContract = c.router({
   upload: {
     method: "POST",
     path: "/api/webhooks/agent/storages/incremental",
+    headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
     responses: {
@@ -305,6 +311,7 @@ export const webhookTelemetryContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/telemetry",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       systemLog: z.string().optional(),
@@ -340,6 +347,7 @@ export const webhookStoragesPrepareContract = c.router({
   prepare: {
     method: "POST",
     path: "/api/webhooks/agent/storages/prepare",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
       storageName: z.string().min(1, "Storage name is required"),
@@ -379,6 +387,7 @@ export const webhookStoragesCommitContract = c.router({
   commit: {
     method: "POST",
     path: "/api/webhooks/agent/storages/commit",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
       storageName: z.string().min(1, "Storage name is required"),

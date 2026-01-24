@@ -46,11 +46,6 @@ function createTestRequest(
   });
 }
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -66,13 +61,10 @@ vi.mock("@aws-sdk/s3-request-presigner");
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("Public API v1 - Runs Endpoints", () => {
   // Use unique test ID for isolation (no cleanup needed)
@@ -198,11 +190,6 @@ describe("Public API v1 - Runs Endpoints", () => {
     vi.mocked(Axiom).mockImplementation(
       () => mockAxiomClient as unknown as Axiom,
     );
-
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Mock Clerk auth to return test user by default
     mockClerk({ userId: testUserId });

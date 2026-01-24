@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -143,6 +143,7 @@ export const schedulesMainContract = c.router({
   deploy: {
     method: "POST",
     path: "/api/agent/schedules",
+    headers: authHeadersSchema,
     body: deployScheduleRequestSchema,
     responses: {
       200: deployScheduleResponseSchema, // Updated
@@ -162,6 +163,7 @@ export const schedulesMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/agent/schedules",
+    headers: authHeadersSchema,
     responses: {
       200: scheduleListResponseSchema,
       401: apiErrorSchema,
@@ -182,6 +184,7 @@ export const schedulesByNameContract = c.router({
   getByName: {
     method: "GET",
     path: "/api/agent/schedules/:name",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
@@ -203,6 +206,7 @@ export const schedulesByNameContract = c.router({
   delete: {
     method: "DELETE",
     path: "/api/agent/schedules/:name",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
@@ -229,6 +233,7 @@ export const schedulesEnableContract = c.router({
   enable: {
     method: "POST",
     path: "/api/agent/schedules/:name/enable",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
@@ -250,6 +255,7 @@ export const schedulesEnableContract = c.router({
   disable: {
     method: "POST",
     path: "/api/agent/schedules/:name/disable",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
@@ -277,6 +283,7 @@ export const scheduleRunsContract = c.router({
   listRuns: {
     method: "GET",
     path: "/api/agent/schedules/:name/runs",
+    headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),

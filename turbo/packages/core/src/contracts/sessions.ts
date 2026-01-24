@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -70,6 +70,7 @@ export const sessionsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/sessions/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Session ID is required"),
     }),
@@ -94,6 +95,7 @@ export const checkpointsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/checkpoints/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Checkpoint ID is required"),
     }),

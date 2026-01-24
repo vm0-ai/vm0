@@ -19,11 +19,6 @@ import { scopes } from "../../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Axiom module
 vi.mock("../../../../../../../../src/lib/axiom", () => ({
   queryAxiom: vi.fn(),
@@ -39,14 +34,12 @@ vi.mock("../../../../../../../../src/lib/axiom", () => ({
   },
 }));
 
-import { headers } from "next/headers";
 import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../../../src/__tests__/clerk-mock";
 
-const mockHeaders = vi.mocked(headers);
 const mockQueryAxiom = vi.mocked(queryAxiom);
 
 /**
@@ -103,10 +96,6 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     initServices();
 
     mockClerk({ userId: testUserId });
-
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Setup mockQueryAxiom - returns empty array by default
     mockQueryAxiom.mockResolvedValue([]);

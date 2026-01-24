@@ -20,11 +20,11 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:commit");
 
 const router = tsr.router(storagesCommitContract, {
-  commit: async ({ body }) => {
+  commit: async ({ body, headers }) => {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

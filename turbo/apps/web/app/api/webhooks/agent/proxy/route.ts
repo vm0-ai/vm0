@@ -44,7 +44,10 @@ async function handleProxyRequest(request: Request) {
   }
 
   // 2. Authenticate via sandbox JWT and verify runId matches
-  const auth = await getSandboxAuthForRun(runId);
+  const auth = getSandboxAuthForRun(
+    runId,
+    request.headers.get("Authorization") ?? undefined,
+  );
   if (!auth) {
     log.warn("Proxy request without valid authentication or runId mismatch");
     return NextResponse.json(

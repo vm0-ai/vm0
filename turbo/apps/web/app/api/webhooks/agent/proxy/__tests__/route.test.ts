@@ -6,11 +6,6 @@ import { createProxyToken } from "../../../../../../src/lib/proxy/token-service"
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
 import { randomUUID } from "crypto";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -20,13 +15,10 @@ vi.mock("@clerk/nextjs/server", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("POST /api/webhooks/agent/proxy", () => {
   const testUserId = `test-user-proxy-${Date.now()}-${process.pid}`;
@@ -42,11 +34,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
     // Mock Clerk auth to return null (webhook uses token auth)
     mockClerk({ userId: null });
-
-    // Default: no auth header
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
   });
 
   afterEach(async () => {
@@ -73,10 +60,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
     });
 
     it("should reject request with invalid token", async () => {
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue("Bearer invalid-token"),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fhttpbin.org%2Fget&runId=${testRunId}`,
         {
@@ -96,13 +79,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
   // ============================================
 
   describe("URL Validation", () => {
-    beforeEach(async () => {
-      // Setup valid token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject request without url parameter", async () => {
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?runId=${testRunId}`,
@@ -246,13 +222,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
   // ============================================
 
   describe("Proxy Forwarding", () => {
-    beforeEach(async () => {
-      // Setup valid token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should forward request to target URL", async () => {
       const targetResponse = new Response(JSON.stringify({ success: true }), {
         status: 200,
@@ -335,13 +304,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
   // ============================================
 
   describe("Header Forwarding", () => {
-    beforeEach(async () => {
-      // Setup valid token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should forward custom headers to target", async () => {
       const targetResponse = new Response("{}", {
         status: 200,
@@ -408,13 +370,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
   // ============================================
 
   describe("SSE Streaming", () => {
-    beforeEach(async () => {
-      // Setup valid token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should pass through SSE content-type", async () => {
       // Mock SSE response
       const sseBody = new ReadableStream({
@@ -463,11 +418,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
     beforeEach(async () => {
       // Generate a new JWT token for the proxyTestRunId
       proxyTestToken = await createTestSandboxToken(testUserId, proxyTestRunId);
-
-      // Setup valid token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${proxyTestToken}`),
-      } as unknown as Headers);
     });
 
     it("should decrypt proxy token in Authorization header (Bearer format)", async () => {
@@ -586,10 +536,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testUserId,
         differentRunId,
       );
-
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${differentRunToken}`),
-      } as unknown as Headers);
 
       const request = new NextRequest(
         // Different runId than what's in the proxy token
