@@ -8,7 +8,7 @@ import { cloneCommand } from "./clone";
 
 export const artifactCommand = new Command()
   .name("artifact")
-  .description("Manage cloud artifacts (work products)")
+  .description("Manage artifacts (specified at run, versioned after run)")
   .addCommand(initCommand)
   .addCommand(pushCommand)
   .addCommand(pullCommand)

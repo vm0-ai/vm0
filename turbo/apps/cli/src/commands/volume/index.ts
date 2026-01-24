@@ -8,7 +8,7 @@ import { cloneCommand } from "./clone";
 
 export const volumeCommand = new Command()
   .name("volume")
-  .description("Manage cloud volumes")
+  .description("Manage volumes (defined in compose, not versioned after run)")
   .addCommand(initCommand)
   .addCommand(pushCommand)
   .addCommand(pullCommand)
