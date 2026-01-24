@@ -164,7 +164,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
-    expect(getResponse.status).toBe(400);
+    expect(getResponse.status).toBe(404);
     expect(getData.error.message).toContain("Agent compose not found");
     expect(getData.error.message).toContain("nonexistent-agent");
   });
@@ -244,7 +244,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
-    expect(getResponse.status).toBe(400);
+    expect(getResponse.status).toBe(404);
     expect(getData.error.message).toContain("Agent compose not found");
 
     // Cleanup

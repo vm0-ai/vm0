@@ -79,11 +79,11 @@ const router = tsr.router(composesMainContract, {
 
     if (composes.length === 0 || !composes[0]) {
       return {
-        status: 400 as const,
+        status: 404 as const,
         body: {
           error: {
             message: `Agent compose not found: ${query.name}`,
-            code: "BAD_REQUEST",
+            code: "NOT_FOUND",
           },
         },
       };

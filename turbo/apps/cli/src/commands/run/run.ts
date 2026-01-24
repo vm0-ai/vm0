@@ -262,7 +262,6 @@ export const mainRunCommand = new Command()
         }
         showNextSteps(result);
       } catch (error) {
-        console.log(error);
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
             console.error(
