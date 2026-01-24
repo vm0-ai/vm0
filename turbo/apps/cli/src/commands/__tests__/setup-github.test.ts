@@ -291,7 +291,6 @@ agents:
       expect(content).toContain("vars: |");
       expect(content).toContain("REGION=${{ vars.REGION }}");
     });
-
   });
 
   describe("existing file handling", () => {
