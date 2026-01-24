@@ -10,13 +10,12 @@ command_args="/usr/local/bin/vm0-agent/vsock-agent.py"
 command_background="yes"
 pidfile="/run/vsock-agent.pid"
 
-# Log to file for debugging
+# Let start-stop-daemon create the pidfile since Python doesn't create one
+start_stop_daemon_args="--make-pidfile"
+
+# Log output for debugging
 output_log="/var/log/vsock-agent.log"
 error_log="/var/log/vsock-agent.log"
-
-# Restart on failure
-respawn_delay=1
-respawn_max=0
 
 depend() {
     # Start after local filesystems are mounted
