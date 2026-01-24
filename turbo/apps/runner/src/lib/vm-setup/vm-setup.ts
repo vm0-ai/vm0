@@ -136,8 +136,14 @@ export async function installProxyCA(
     caCert,
   );
 
-  // Update CA certificates (requires sudo)
-  await guest.execOrThrow("sudo update-ca-certificates");
+  // Update CA certificates
+  // Note: Alpine's update-ca-certificates has issues in newer versions (3.11.5+)
+  // See: https://gitlab.alpinelinux.org/alpine/aports/-/issues/11373
+  // Workaround: Also directly append to the CA bundle for immediate effect
+  await guest.execOrThrow("sudo update-ca-certificates || true");
+  await guest.execOrThrow(
+    `sudo sh -c 'cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/certs/ca-certificates.crt'`,
+  );
   console.log(`[Executor] Proxy CA certificate installed successfully`);
 }
 
