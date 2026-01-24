@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/platform-v0.19.0...platform-v0.20.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/platform-v0.18.0...platform-v0.19.0) (2026-01-23)
 
 

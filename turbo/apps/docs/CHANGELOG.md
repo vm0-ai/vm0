@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/docs-v0.20.1...docs-v0.21.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
 ## [0.20.1](https://github.com/vm0-ai/vm0/compare/docs-v0.20.0...docs-v0.20.1) (2026-01-23)
 
 

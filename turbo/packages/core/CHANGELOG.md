@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.0.0](https://github.com/vm0-ai/vm0/compare/core-v5.5.0...core-v6.0.0) (2026-01-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* The experimental_secrets and experimental_vars fields have been removed from the agent compose schema. Users must migrate to the environment syntax with ${{ secrets.X }} and ${{ vars.X }} patterns.
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Miscellaneous Chores
+
+* remove experimental_secrets/vars syntax sugar ([#1588](https://github.com/vm0-ai/vm0/issues/1588)) ([7960555](https://github.com/vm0-ai/vm0/commit/79605555ec153c21a689d0b15e61ab40e05ad073))
+
 ## [5.5.0](https://github.com/vm0-ai/vm0/compare/core-v5.4.0...core-v5.5.0) (2026-01-23)
 
 

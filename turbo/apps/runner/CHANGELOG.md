@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.2](https://github.com/vm0-ai/vm0/compare/runner-v3.0.1...runner-v3.0.2) (2026-01-24)
+
+
+### Performance Improvements
+
+* **runner:** implement guest-initiated vsock connection for zero-latency detection ([#1583](https://github.com/vm0-ai/vm0/issues/1583)) ([4663500](https://github.com/vm0-ai/vm0/commit/46635008d24beca4f636da9c8aa7c51fb2ae4a63))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
 ## [3.0.1](https://github.com/vm0-ai/vm0/compare/runner-v3.0.0...runner-v3.0.1) (2026-01-23)
 
 
