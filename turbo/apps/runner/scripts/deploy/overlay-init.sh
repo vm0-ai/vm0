@@ -35,7 +35,7 @@ mkdir -p /mnt/root/oldroot
 
 # Switch to new root filesystem
 cd /mnt/root
-/usr/sbin/pivot_root . oldroot
+pivot_root . oldroot
 
 # Now we're in the new root. Move mounts from old root to new locations.
 mkdir -p /rom /rw
