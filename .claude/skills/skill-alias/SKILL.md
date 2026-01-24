@@ -1,7 +1,6 @@
 ---
 name: skill-alias
 description: Create command aliases for skills with arguments
-allowed-tools: Write, Bash
 context: fork
 ---
 

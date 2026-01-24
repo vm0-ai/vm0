@@ -1,7 +1,6 @@
 ---
 name: tech-debt
 description: Technical debt management - scan codebase for bad smells and create tracking issues
-allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 context: fork
 ---
 

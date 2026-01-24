@@ -1,7 +1,6 @@
 ---
 name: cli-e2e-testing
 description: CLI E2E testing patterns with BATS - parallelization, state sharing, and timeout management
-allowed-tools: Read, Glob, Grep
 context: fork
 ---
 

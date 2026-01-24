@@ -1,7 +1,6 @@
 ---
 name: issue-create
 description: Create GitHub issues from conversation context (general, bug reports, or feature requests)
-allowed-tools: Bash
 ---
 
 # Issue Creation Skill

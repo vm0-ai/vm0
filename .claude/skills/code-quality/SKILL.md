@@ -1,7 +1,6 @@
 ---
 name: code-quality
 description: Deep code review and quality analysis for vm0 project
-allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 context: fork
 ---
 

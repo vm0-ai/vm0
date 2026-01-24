@@ -1,7 +1,6 @@
 ---
 name: ops-utils
 description: Operations and infrastructure utilities for vm0 project
-allowed-tools: Bash
 context: fork
 ---
 

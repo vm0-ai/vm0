@@ -1,7 +1,6 @@
 ---
 name: testing
 description: Comprehensive testing patterns and anti-patterns for writing and reviewing tests
-allowed-tools: Read, Glob, Grep
 context: fork
 ---
 
