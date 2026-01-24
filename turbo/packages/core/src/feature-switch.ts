@@ -11,33 +11,47 @@ import { FeatureSwitchKey } from "./feature-switch-key";
  * Feature switch definition
  */
 export interface FeatureSwitch {
-  readonly key: FeatureSwitchKey;
   readonly maintainer: string;
   readonly enabled: boolean;
 }
 
 /**
- * Pricing feature switch
- */
-export const PricingSwitch: FeatureSwitch = {
-  key: FeatureSwitchKey.Pricing,
-  maintainer: "ethan@vm0.ai",
-  enabled: false,
-};
-
-/**
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
-  [FeatureSwitchKey.Pricing]: PricingSwitch,
+  [FeatureSwitchKey.Pricing]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.Dummy]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: true,
+  },
+  [FeatureSwitchKey.PlatformOnboarding]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformAgents]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformSecrets]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformArtifacts]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformApiKeys]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PlatformLogs]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
 };
-
-/**
- * Get a feature switch by key
- */
-export function getFeatureSwitch(key: FeatureSwitchKey): FeatureSwitch {
-  return FEATURE_SWITCHES[key];
-}
 
 /**
  * Check if a feature is enabled
@@ -47,6 +61,6 @@ export function getFeatureSwitch(key: FeatureSwitchKey): FeatureSwitch {
 export async function isFeatureEnabled(
   key: FeatureSwitchKey,
 ): Promise<boolean> {
-  const featureSwitch = getFeatureSwitch(key);
+  const featureSwitch = FEATURE_SWITCHES[key];
   return Promise.resolve(featureSwitch.enabled);
 }

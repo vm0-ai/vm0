@@ -10,7 +10,9 @@ import {
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
-import { localStorageSignals } from "../signals/external/local-storage";
+import type { FeatureSwitchKey } from "@vm0/core";
+import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
+import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 
 export async function setupPage(options: {
   context: TestContext;
@@ -18,14 +20,22 @@ export async function setupPage(options: {
   user?: { id: string; fullName: string } | null;
   session?: { token: string } | null;
   debugLoggers?: string[];
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
 }) {
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
   if (options.debugLoggers) {
     options.context.store.set(
-      localStorageSignals("debugLoggers").set$,
+      setDebugLoggerLocalStorage$,
       JSON.stringify(options.debugLoggers ?? []),
+    );
+  }
+
+  if (options.featureSwitches) {
+    options.context.store.set(
+      setFeatureSwitchLocalStorage$,
+      JSON.stringify(options.featureSwitches),
     );
   }
 

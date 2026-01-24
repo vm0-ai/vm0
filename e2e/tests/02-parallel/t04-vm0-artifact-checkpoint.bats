@@ -5,23 +5,32 @@
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
 #
-# Test count: 2 tests with 2 vm0 run calls (1 run + 1 resume)
+# Refactored to split multi-vm0-run test into separate cases for timeout safety.
+# Each case has max one vm0 run call (~15s), fitting within 30s timeout.
+# State is shared between cases via $BATS_FILE_TMPDIR.
 
 load '../../helpers/setup'
 
-# Unique agent name for this test file to avoid compose conflicts in parallel runs
-AGENT_NAME="e2e-t04"
+setup_file() {
+    # Unique agent name for this test file - must be generated in setup_file()
+    # and exported to persist across test cases
+    export AGENT_NAME="e2e-t04-$(date +%s%3N)-$RANDOM"
+    # Create shared test directory for this file
+    export TEST_DIR="$(mktemp -d)"
+    export TEST_CONFIG="$TEST_DIR/vm0.yaml"
 
-setup() {
-    # Create unique volume for this test
-    create_test_volume "e2e-vol-t04"
+    # Create unique volume for this test file
+    export VOLUME_NAME="e2e-vol-t04-$(date +%s%3N)-$RANDOM"
+    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    cd "$TEST_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $CLI_COMMAND volume push >/dev/null
+    cd - >/dev/null
 
-    # Create temporary test directory
-    export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    # Use unique test artifact name with timestamp
-    export ARTIFACT_NAME="e2e-checkpoint-art-$(date +%s%3N)-$RANDOM"
     # Create inline config with unique agent name
-    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
@@ -37,35 +46,34 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
+
+    # Compose agent once for all tests in this file
+    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
 }
 
-teardown() {
-    # Clean up temporary directory
-    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
-        rm -rf "$TEST_ARTIFACT_DIR"
-    fi
-    # Clean up config file
-    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
-        rm -f "$TEST_CONFIG"
-    fi
-    # Clean up test volume
-    cleanup_test_volume
+setup() {
+    # Per-test setup: create unique artifact name
+    export ARTIFACT_NAME="e2e-checkpoint-art-$(date +%s%3N)-$RANDOM"
+    export TEST_ARTIFACT_DIR="$TEST_DIR/artifacts"
+    mkdir -p "$TEST_ARTIFACT_DIR"
 }
 
-@test "Build VM0 artifact checkpoint test agent configuration" {
+teardown_file() {
+    # Clean up shared test directory
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
+}
+
+@test "t04-1: build agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "VM0 artifact checkpoint: agent changes preserved on resume, not HEAD" {
-    # This single test verifies both:
-    # 1. Agent run creates new version during checkpoint
-    # 2. Resume restores checkpoint version (not HEAD)
-    # Optimized from 2 separate tests (4 vm0 runs) to 1 test (2 vm0 runs)
-
+@test "t04-2: create artifact and run agent to create checkpoint" {
     # Step 1: Create artifact with initial content
-    echo "# Step 1: Creating initial artifact..."
+    echo "# Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -76,25 +84,22 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent to:
-    # - Create agent-marker.txt (new file)
-    # - Modify counter.txt from 100 to 101
-    echo "# Step 2: Running agent to modify artifact..."
-    # Use extended timeout for CI environments which may be slower
+    # Step 2: Run agent to create checkpoint (~15s)
+    # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
+    echo "# Running agent to modify artifact..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
 
-    # Verify mock-claude execution events (deterministic with mock-claude)
+    # Verify mock-claude execution events
     assert_output --partial "[tool_use] Bash"
     assert_output --partial "echo 'created by agent'"
     assert_output --partial "[result]"
-
     assert_output --partial "Checkpoint:"
 
-    # Extract checkpoint ID
+    # Extract and save checkpoint ID for next test
     CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
     echo "# Checkpoint ID: $CHECKPOINT_ID"
     [ -n "$CHECKPOINT_ID" ] || {
@@ -103,10 +108,21 @@ teardown() {
         return 1
     }
 
-    # Step 3: Push new content to artifact (simulating external changes)
+    # Save state for subsequent tests
+    echo "$CHECKPOINT_ID" > "$BATS_FILE_TMPDIR/checkpoint_id"
+    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/artifact_name"
+    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/artifact_dir"
+}
+
+@test "t04-3: push new content to make HEAD different from checkpoint" {
+    # Load state from previous test
+    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/artifact_name")
+    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/artifact_dir")
+
+    # Push new content to artifact (simulating external changes)
     # This makes HEAD different from the checkpoint version
-    echo "# Step 3: Pushing new content to make HEAD different..."
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    echo "# Pushing new content to make HEAD different..."
+    cd "$ARTIFACT_DIR"
     echo "0" > counter.txt               # Reset counter to 0
     echo "external content" > state.txt  # Change state
     echo "external marker" > external-marker.txt  # Add new file
@@ -115,10 +131,14 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
     echo "# New HEAD version pushed"
+}
 
-    # Step 4: Resume from checkpoint - should get checkpoint version, not HEAD
-    # Use 120s timeout as resume involves S3 download + sandbox startup + session restore
-    echo "# Step 4: Resuming from checkpoint..."
+@test "t04-4: resume from checkpoint restores checkpoint version not HEAD" {
+    # Load state from previous tests
+    CHECKPOINT_ID=$(cat "$BATS_FILE_TMPDIR/checkpoint_id")
+
+    # Resume from checkpoint - should get checkpoint version, not HEAD (~15s)
+    echo "# Resuming from checkpoint: $CHECKPOINT_ID"
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
         "ls && cat counter.txt"
 
@@ -128,18 +148,14 @@ teardown() {
     assert_output --partial "[tool_use] Bash"
     assert_output --partial "ls && cat counter.txt"
 
-    # Step 5: Verify checkpoint version is restored
-    echo "# Step 5: Verifying checkpoint version is restored..."
-
+    # Verify checkpoint version is restored:
     # Should see agent-marker.txt (created during agent run)
-    # With mock-claude, ls output is deterministic
     assert_output --partial "agent-marker.txt"
 
     # Should NOT see external-marker.txt (added after checkpoint)
     refute_output --partial "external-marker.txt"
 
     # Counter should be 101 (from checkpoint), not 0 (HEAD)
-    # With mock-claude, cat output is deterministic
     assert_output --partial "101"
 
     # Verify we did NOT get HEAD version content

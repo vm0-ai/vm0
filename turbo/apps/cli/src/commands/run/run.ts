@@ -63,7 +63,7 @@ export const mainRunCommand = new Command()
   )
   .option(
     "--model-provider <type>",
-    "Override model provider for LLM credentials (e.g., anthropic-api-key)",
+    "Override model provider (e.g., anthropic-api-key)",
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(

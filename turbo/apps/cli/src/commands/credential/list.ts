@@ -4,24 +4,17 @@ import { listCredentials } from "../../lib/api";
 
 export const listCommand = new Command()
   .name("list")
+  .alias("ls")
   .description("List all credentials")
-  .option("--json", "Output in JSON format")
-  .action(async (options: { json?: boolean }) => {
+  .action(async () => {
     try {
       const result = await listCredentials();
-
-      if (options.json) {
-        console.log(JSON.stringify(result.credentials, null, 2));
-        return;
-      }
 
       if (result.credentials.length === 0) {
         console.log(chalk.dim("No credentials found."));
         console.log();
         console.log("To add a credential:");
-        console.log(
-          chalk.cyan("  vm0 experimental-credential set MY_API_KEY <value>"),
-        );
+        console.log(chalk.cyan("  vm0 credential set MY_API_KEY <value>"));
         return;
       }
 

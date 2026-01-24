@@ -14,18 +14,23 @@ export const MODEL_PROVIDER_TYPES = {
     credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
     label: "Claude Code (OAuth Token)",
     credentialLabel: "OAuth token",
+    helpText:
+      "To get your OAuth token, run: claude setup-token\n(Requires Claude Pro or Max subscription)",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
     credentialName: "ANTHROPIC_API_KEY",
     label: "Anthropic API Key",
     credentialLabel: "API key",
+    helpText:
+      "Get your API key at: https://console.anthropic.com/settings/keys",
   },
   "openai-api-key": {
     framework: "codex" as const,
     credentialName: "OPENAI_API_KEY",
     label: "OpenAI API Key",
     credentialLabel: "API key",
+    helpText: "Get your API key at: https://platform.openai.com/api-keys",
   },
 } as const;
 

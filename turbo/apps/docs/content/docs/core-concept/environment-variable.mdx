@@ -147,9 +147,9 @@ Organize your configuration logically:
 
 ```yaml title="vm0.yaml"
 environment:
-  # LLM Provider Configuration
-  ANTHROPIC_BASE_URL: "${{ vars.LLM_BASE_URL }}"
-  ANTHROPIC_AUTH_TOKEN: "${{ secrets.LLM_API_KEY }}"
+  # Model Provider Configuration
+  ANTHROPIC_BASE_URL: "${{ vars.MODEL_PROVIDER_BASE_URL }}"
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.MODEL_PROVIDER_API_KEY }}"
 
   # Database Configuration
   DATABASE_URL: "${{ secrets.DATABASE_URL }}"

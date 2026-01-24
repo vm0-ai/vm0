@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.5.0](https://github.com/vm0-ai/vm0/compare/core-v5.4.0...core-v5.5.0) (2026-01-23)
+
+
+### Features
+
+* **platform:** add onboarding ui and model providers signal ([#1575](https://github.com/vm0-ai/vm0/issues/1575)) ([4e2c017](https://github.com/vm0-ai/vm0/commit/4e2c0173a258779e971dc4b7834746f0be63e1c5))
+
+
+### Bug Fixes
+
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+## [5.4.0](https://github.com/vm0-ai/vm0/compare/core-v5.3.1...core-v5.4.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** add help text for credential acquisition in model-provider setup ([#1562](https://github.com/vm0-ai/vm0/issues/1562)) ([3230f08](https://github.com/vm0-ai/vm0/commit/3230f0872227319519e473ecc53b053d4673f03a)), closes [#1558](https://github.com/vm0-ai/vm0/issues/1558)
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+* **platform:** add feature switches for sidebar navigation sections ([#1556](https://github.com/vm0-ai/vm0/issues/1556)) ([993375f](https://github.com/vm0-ai/vm0/commit/993375f342b4f11d6e8b050ac9c8b6dfdc27c410))
+
 ## [5.3.1](https://github.com/vm0-ai/vm0/compare/core-v5.3.0...core-v5.3.1) (2026-01-23)
 
 

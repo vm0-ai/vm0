@@ -11,26 +11,26 @@ import {
  * Unit tests for preflight connectivity check functions
  */
 
-// Mock SSH client type matching SSHClient interface
-interface MockSSHClient {
+// Mock guest client type matching GuestClient interface
+interface MockGuestClient {
   exec: ReturnType<typeof vi.fn>;
 }
 
 describe("runPreflightCheck", () => {
-  let mockSsh: MockSSHClient;
+  let mockGuest: MockGuestClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSsh = {
+    mockGuest = {
       exec: vi.fn(),
     };
   });
 
   it("returns success when curl succeeds", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -40,8 +40,8 @@ describe("runPreflightCheck", () => {
     expect(result.error).toBeUndefined();
 
     // Verify curl command was called with correct URL and timeout
-    expect(mockSsh.exec).toHaveBeenCalledOnce();
-    const [curlCmd, timeout] = mockSsh.exec.mock.calls[0] as [string, number];
+    expect(mockGuest.exec).toHaveBeenCalledOnce();
+    const [curlCmd, timeout] = mockGuest.exec.mock.calls[0] as [string, number];
     expect(curlCmd).toContain(
       "https://api.example.com/api/webhooks/agent/heartbeat",
     );
@@ -49,14 +49,14 @@ describe("runPreflightCheck", () => {
     expect(curlCmd).toContain("run-123");
     expect(curlCmd).toContain("--connect-timeout 5");
     expect(curlCmd).toContain("--max-time 10");
-    expect(timeout).toBe(20000); // 20 second SSH timeout
+    expect(timeout).toBe(20000); // 20 second guest exec timeout
   });
 
   it("returns DNS error for exit code 6", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 6, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 6, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -68,10 +68,10 @@ describe("runPreflightCheck", () => {
   });
 
   it("returns connection refused error for exit code 7", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 7, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 7, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -82,10 +82,10 @@ describe("runPreflightCheck", () => {
   });
 
   it("returns timeout error for exit code 28", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 28, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 28, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -96,10 +96,10 @@ describe("runPreflightCheck", () => {
   });
 
   it("returns TLS error for exit code 60", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 60, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 60, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -110,10 +110,10 @@ describe("runPreflightCheck", () => {
   });
 
   it("returns HTTP error for exit code 22", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 22, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 22, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -124,10 +124,10 @@ describe("runPreflightCheck", () => {
   });
 
   it("returns generic error for unknown exit code", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 99, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 99, stdout: "", stderr: "" });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -138,14 +138,14 @@ describe("runPreflightCheck", () => {
   });
 
   it("includes stderr in error message when available", async () => {
-    mockSsh.exec.mockResolvedValue({
+    mockGuest.exec.mockResolvedValue({
       exitCode: 60,
       stdout: "",
       stderr: "SSL certificate problem: unable to get local issuer certificate",
     });
 
     const result = await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
@@ -157,33 +157,33 @@ describe("runPreflightCheck", () => {
   });
 
   it("includes Vercel bypass header when bypassSecret is provided", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
 
     await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
       "bypass-secret-789",
     );
 
-    expect(mockSsh.exec).toHaveBeenCalledOnce();
-    const [curlCmd] = mockSsh.exec.mock.calls[0] as [string, number];
+    expect(mockGuest.exec).toHaveBeenCalledOnce();
+    const [curlCmd] = mockGuest.exec.mock.calls[0] as [string, number];
     expect(curlCmd).toContain("x-vercel-protection-bypass: bypass-secret-789");
   });
 
   it("does not include Vercel bypass header when bypassSecret is not provided", async () => {
-    mockSsh.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    mockGuest.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
 
     await runPreflightCheck(
-      mockSsh as unknown as Parameters<typeof runPreflightCheck>[0],
+      mockGuest as unknown as Parameters<typeof runPreflightCheck>[0],
       "https://api.example.com",
       "run-123",
       "token-456",
     );
 
-    expect(mockSsh.exec).toHaveBeenCalledOnce();
-    const [curlCmd] = mockSsh.exec.mock.calls[0] as [string, number];
+    expect(mockGuest.exec).toHaveBeenCalledOnce();
+    const [curlCmd] = mockGuest.exec.mock.calls[0] as [string, number];
     expect(curlCmd).not.toContain("x-vercel-protection-bypass");
   });
 });

@@ -114,6 +114,12 @@ export const setupCommand = new Command()
           }
 
           const config = MODEL_PROVIDER_TYPES[type];
+
+          // Display help text for obtaining credentials
+          console.log();
+          console.log(chalk.dim(config.helpText));
+          console.log();
+
           const credentialResponse = await prompts(
             {
               type: "password",

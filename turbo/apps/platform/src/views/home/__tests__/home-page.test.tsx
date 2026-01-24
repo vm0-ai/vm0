@@ -14,7 +14,7 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText("Welcome, You're in.")).toBeDefined();
+    expect(screen.getByText("Welcome. You're in.")).toBeDefined();
     expect(context.store.get(pathname$)).toBe("/");
   });
 

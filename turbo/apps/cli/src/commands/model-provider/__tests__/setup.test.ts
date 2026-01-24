@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setupCommand } from "../setup";
+import { MODEL_PROVIDER_TYPES } from "@vm0/core";
 
 describe("model-provider setup command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -90,6 +91,31 @@ describe("model-provider setup command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("anthropic-api-key"),
       );
+    });
+  });
+
+  describe("help text configuration", () => {
+    it("should have helpText defined for all provider types", () => {
+      for (const config of Object.values(MODEL_PROVIDER_TYPES)) {
+        expect(config.helpText).toBeDefined();
+        expect(config.helpText.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("should have correct helpText for claude-code-oauth-token", () => {
+      const config = MODEL_PROVIDER_TYPES["claude-code-oauth-token"];
+      expect(config.helpText).toContain("claude setup-token");
+      expect(config.helpText).toContain("Claude Pro or Max subscription");
+    });
+
+    it("should have correct helpText for anthropic-api-key", () => {
+      const config = MODEL_PROVIDER_TYPES["anthropic-api-key"];
+      expect(config.helpText).toContain("console.anthropic.com");
+    });
+
+    it("should have correct helpText for openai-api-key", () => {
+      const config = MODEL_PROVIDER_TYPES["openai-api-key"];
+      expect(config.helpText).toContain("platform.openai.com");
     });
   });
 });

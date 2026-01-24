@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import crypto from "crypto";
 import { loadDebugConfig, validateFirecrackerPaths } from "../lib/config.js";
 import { executeJob } from "../lib/executor.js";
@@ -13,7 +13,6 @@ interface BenchmarkOptions {
   config: string;
   workingDir: string;
   agentType: string;
-  guestProtocol?: "vsock" | "ssh";
 }
 
 /**
@@ -49,12 +48,6 @@ export const benchmarkCommand = new Command("benchmark")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--working-dir <path>", "Working directory in VM", "/home/user")
   .option("--agent-type <type>", "Agent type", "claude-code")
-  .addOption(
-    new Option(
-      "--guest-protocol <protocol>",
-      "Guest communication protocol",
-    ).choices(["vsock", "ssh"]),
-  )
   .action(async (prompt: string, options: BenchmarkOptions): Promise<void> => {
     const timer = new Timer();
 
@@ -62,11 +55,6 @@ export const benchmarkCommand = new Command("benchmark")
       // Load config
       timer.log("Loading configuration...");
       const config = loadDebugConfig(options.config);
-
-      // Apply command-line overrides
-      if (options.guestProtocol) {
-        config.sandbox.guest_protocol = options.guestProtocol;
-      }
 
       validateFirecrackerPaths(config.firecracker);
 

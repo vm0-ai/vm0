@@ -1,5 +1,3 @@
-import { DEBUG } from "../env.ts";
-
 const LOG_LEVELS = {
   DEBUG: "debug",
   INFO: "info",
@@ -74,7 +72,7 @@ export function logger(name: string): ConsoleLogger {
   }
 
   const loggerInstance: ConsoleLogger = {
-    level: DEBUG.includes(name) ? Level.Debug : Level.Info,
+    level: Level.Info,
     shouldLog(level: Level): boolean {
       return (
         LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[loggerInstance.level]
@@ -196,7 +194,7 @@ export function logger(name: string): ConsoleLogger {
 export function resetLoggerForTest() {
   for (const key in LOGGERS) {
     if (LOGGERS[key]) {
-      LOGGERS[key].level = DEBUG.includes(key) ? Level.Debug : Level.Info;
+      LOGGERS[key].level = Level.Info;
     }
   }
 }

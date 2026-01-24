@@ -1,5 +1,5 @@
 # Firecracker VM rootfs image (Universal)
-# Based on Node.js 24 with Python 3.11+, SSH server, and agent CLIs
+# Based on Node.js 24 with Python 3.11+, vsock-agent, and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
 # - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
@@ -19,9 +19,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages
 # Core:
-# - openssh-server: SSH access for runner communication
 # - python3: Python 3.11+ for agent scripts and vsock-agent
 # - systemd: Init system for VM boot
+# - procps: Process utilities (pgrep, free) needed by metrics and executor
 # Development tools (matching e2b template):
 # - curl: HTTP client
 # - git: Version control
@@ -33,11 +33,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssh-server \
     python3 \
     python3-pip \
     systemd \
     systemd-sysv \
+    procps \
     curl \
     git \
     ripgrep \
@@ -78,26 +78,6 @@ RUN userdel -r node 2>/dev/null || true \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
 
-# Configure SSH server for VM communication
-# - Allow root and user login with empty password (acceptable for ephemeral sandboxes)
-# - Disable DNS lookup for faster connections
-# - Create required directories for both root and user
-RUN mkdir -p /run/sshd /root/.ssh /home/user/.ssh \
-    && chmod 700 /root/.ssh /home/user/.ssh \
-    && chown user:user /home/user/.ssh \
-    && sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
-    && sed -i 's/#PermitEmptyPasswords.*/PermitEmptyPasswords yes/' /etc/ssh/sshd_config \
-    && sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
-    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
-    && echo 'UseDNS no' >> /etc/ssh/sshd_config \
-    && passwd -d root
-
-# Generate SSH host keys (baked into image for consistency)
-RUN ssh-keygen -A
-
-# Enable SSH service to start on boot
-RUN systemctl enable ssh
-
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
@@ -119,9 +99,6 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
     && rm -f /lib/systemd/system/sockets.target.wants/*initctl* \
     && rm -f /lib/systemd/system/basic.target.wants/* \
     && rm -f /lib/systemd/system/anaconda.target.wants/*
-
-# Re-enable essential services
-RUN systemctl enable ssh
 
 # Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
 # Protocol: 4-byte length prefix (big endian) + JSON message

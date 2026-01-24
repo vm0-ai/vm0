@@ -43,7 +43,7 @@ describe("Credential Command", () => {
   });
 
   describe("help text", () => {
-    it("experimental-credential --help shows command description", async () => {
+    it("credential --help shows command description", async () => {
       // Commander outputs help to stdout via process.stdout.write
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
@@ -65,7 +65,7 @@ describe("Credential Command", () => {
       mockStdoutWrite.mockRestore();
     });
 
-    it("experimental-credential list --help shows options", async () => {
+    it("credential list --help shows ls alias", async () => {
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);
@@ -79,12 +79,12 @@ describe("Credential Command", () => {
       const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
 
       expect(output).toContain("List all credentials");
-      expect(output).toContain("--json");
+      expect(output).toContain("ls");
 
       mockStdoutWrite.mockRestore();
     });
 
-    it("experimental-credential set --help shows usage", async () => {
+    it("credential set --help shows usage", async () => {
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);
@@ -105,7 +105,7 @@ describe("Credential Command", () => {
       mockStdoutWrite.mockRestore();
     });
 
-    it("experimental-credential delete --help shows usage", async () => {
+    it("credential delete --help shows usage", async () => {
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);

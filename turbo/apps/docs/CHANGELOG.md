@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/docs-v0.20.0...docs-v0.20.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/docs-v0.19.0...docs-v0.20.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** improve vm0 init onboarding with model-provider setup ([#1571](https://github.com/vm0-ai/vm0/issues/1571)) ([e4e4c23](https://github.com/vm0-ai/vm0/commit/e4e4c23c7d5681965f573e1795b360b5cc3d07b1))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/docs-v0.18.0...docs-v0.19.0) (2026-01-20)
 
 

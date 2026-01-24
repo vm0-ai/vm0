@@ -22,7 +22,7 @@ teardown() {
 
 teardown_file() {
     # Set a stable model provider at the end for subsequent parallel tests to use
-    # This ensures all tests in 02-parallel have a default LLM configuration
+    # This ensures all tests in 02-parallel have a default model provider configuration
     # Using claude-code-oauth-token as the default for claude-code framework
     $CLI_COMMAND model-provider setup \
         --type "claude-code-oauth-token" \

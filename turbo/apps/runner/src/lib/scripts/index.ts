@@ -14,6 +14,6 @@ export {
 /**
  * Environment loader script path
  * This wrapper loads environment from JSON file before executing run-agent.mjs
- * Runner uses this because SSH doesn't support passing environment variables directly
+ * Runner uses this because remote exec doesn't support passing environment variables directly
  */
 export const ENV_LOADER_PATH = "/usr/local/bin/vm0-agent/env-loader.mjs";

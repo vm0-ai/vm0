@@ -3,7 +3,7 @@
  *
  * Guest-based setup operations for Firecracker VMs.
  * These functions configure the VM environment before agent execution.
- * Works with any GuestClient implementation (SSH or Vsock).
+ * Works with any GuestClient implementation (currently VsockClient).
  */
 
 import fs from "fs";
@@ -13,7 +13,7 @@ import { getAllScripts } from "../scripts/utils.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
 
 /**
- * Upload all scripts to VM individually via SSH
+ * Upload all scripts to VM individually via guest client
  * Scripts are installed to /usr/local/bin which requires sudo
  */
 export async function uploadScripts(guest: GuestClient): Promise<void> {
@@ -144,7 +144,7 @@ export async function installProxyCA(
 /**
  * Configure DNS in the VM
  * Systemd-resolved may overwrite /etc/resolv.conf at boot,
- * so we need to ensure DNS servers are configured after SSH is ready.
+ * so we need to ensure DNS servers are configured after the VM is ready.
  * Requires sudo since we're connected as 'user', not root.
  */
 export async function configureDNS(guest: GuestClient): Promise<void> {
