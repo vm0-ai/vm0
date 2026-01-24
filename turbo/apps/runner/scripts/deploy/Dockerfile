@@ -87,7 +87,15 @@ RUN rc-update del networking boot 2>/dev/null || true \
     && rc-update del machine-id boot 2>/dev/null || true \
     && rc-update del hwclock boot 2>/dev/null || true \
     && rc-update del modules boot 2>/dev/null || true \
-    && rc-update del modloop boot 2>/dev/null || true
+    && rc-update del modloop boot 2>/dev/null || true \
+    && rc-update del hostname boot 2>/dev/null || true \
+    && rc-update del sysctl boot 2>/dev/null || true \
+    && rc-update del bootmisc boot 2>/dev/null || true \
+    && rc-update del urandom boot 2>/dev/null || true
+
+# Optimize OpenRC for fast VM boot
+RUN sed -i 's/^#*rc_parallel=.*/rc_parallel="YES"/' /etc/rc.conf 2>/dev/null || echo 'rc_parallel="YES"' >> /etc/rc.conf \
+    && sed -i 's/^#*rc_cgroup_mode=.*/rc_cgroup_mode="none"/' /etc/rc.conf 2>/dev/null || echo 'rc_cgroup_mode="none"' >> /etc/rc.conf
 
 # Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
 # Protocol: 4-byte length prefix (big endian) + JSON message
