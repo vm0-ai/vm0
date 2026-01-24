@@ -5,6 +5,7 @@ import {
   initRoutes$,
   navigateInReact$,
   setupAuthPageWrapper,
+  setupPageWrapper,
 } from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
@@ -12,6 +13,7 @@ import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
+import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 
 const L = logger("Bootstrap");
 
@@ -23,6 +25,10 @@ const ROUTE_CONFIG = [
   {
     path: "/logs",
     setup: setupScopeRequiredPageWrapper(setupLogsPage$),
+  },
+  {
+    path: "/_playground",
+    setup: setupPageWrapper(setupPlaygroundPage$),
   },
 ] as const;
 

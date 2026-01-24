@@ -4,6 +4,9 @@
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
 
+/* Include @vm0/ui components in Tailwind's content scanning */
+@source "../../../../../packages/ui/src/**/*.tsx";
+
 @theme {
   /* Font families */
   --font-family-sans:

@@ -4,8 +4,12 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { pathname$ } from "../../../signals/route.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { server } from "../../../mocks/server.ts";
+import { http, HttpResponse } from "msw";
+import { userEvent } from "@testing-library/user-event";
 
 const context = testContext();
+const user = userEvent.setup();
 
 describe("home page", () => {
   it("should render the home page", async () => {
@@ -26,5 +30,28 @@ describe("home page", () => {
     });
 
     expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
+  });
+
+  it("should show onboarding modal when scope returns 404", async () => {
+    server.use(
+      http.get("/api/scope", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.post("/api/scope", () => {
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/",
+    });
+
+    expect(screen.getByText(/First, tell us how your LLM works/)).toBeDefined();
+
+    // Click "Add it later" to close the modal
+    await user.click(screen.getByText("Add it later"));
+
+    expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
   });
 });
