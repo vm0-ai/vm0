@@ -18,13 +18,6 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock next/headers
-vi.mock("next/headers", () => ({
-  headers: vi.fn().mockImplementation(async () => ({
-    get: () => null,
-  })),
-}));
-
 import { mockClerk, clearClerkMock } from "../../../__tests__/clerk-mock";
 import { POST as createCompose } from "../../../../app/api/agent/composes/route";
 
