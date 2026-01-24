@@ -23,9 +23,9 @@ import {
 
 export const mainRunCommand = new Command()
   .name("run")
-  .description("Execute an agent")
+  .description("Run an agent")
   .argument(
-    "<identifier>",
+    "<agent-name>",
     "Agent reference: [scope/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
