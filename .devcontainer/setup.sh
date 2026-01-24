@@ -26,6 +26,15 @@ echo "✓ Locale configured"
 sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki
 
+# Create ~/.claude symlink to ~/.config/claude for Claude Code IDE integration
+# The VS Code extension uses ~/.claude/ide/ while CLI respects CLAUDE_CONFIG_DIR
+if [ ! -L "$HOME/.claude" ]; then
+  rm -rf "$HOME/.claude"
+  mkdir -p "$HOME/.config/claude"
+  ln -s "$HOME/.config/claude" "$HOME/.claude"
+  echo "✓ Linked ~/.claude to ~/.config/claude"
+fi
+
 # Add local development domains to /etc/hosts
 echo "📝 Adding local domains to /etc/hosts..."
 if ! grep -q "vm7.ai" /etc/hosts; then
