@@ -76,7 +76,7 @@ describe("scope set command", () => {
         expect.stringContaining("Scope created: testslug"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("testslug/<image-name>"),
+        expect.stringContaining("testslug/<agent-name>"),
       );
     });
 
