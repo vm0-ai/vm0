@@ -61,5 +61,10 @@ fi
 # Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
+# Initialize OpenRC state directory
+# OpenRC needs /run/openrc/softlevel to know the system was booted with OpenRC
+mkdir -p /run/openrc
+touch /run/openrc/softlevel
+
 # Start the real init (OpenRC)
 exec /sbin/init "$@"
