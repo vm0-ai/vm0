@@ -34,8 +34,8 @@ export function getSecretsFromComposeContent(content: unknown): Set<string> {
 
 export const composeCommand = new Command()
   .name("compose")
-  .description("Create or update agent compose")
-  .argument("<config-file>", "Path to config YAML file")
+  .description("Create or update agent compose (e.g., vm0.yaml)")
+  .argument("<agent-yaml>", "Path to agent YAML file")
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
   // eslint-disable-next-line complexity -- TODO: refactor complex function
   .action(async (configFile: string, options: { yes?: boolean }) => {
