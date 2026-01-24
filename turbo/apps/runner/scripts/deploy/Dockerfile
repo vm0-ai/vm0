@@ -2,8 +2,8 @@
 # Based on Node.js 24 Alpine with Python 3, vsock-agent, and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
-# - Claude Code CLI for framework: claude-code
-# - Codex CLI for framework: codex
+# - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
+# - Codex CLI (@openai/codex) for framework: codex
 # - GitHub CLI (gh) for apps: [github]
 #
 # This mirrors the e2b template configurations for consistency.
