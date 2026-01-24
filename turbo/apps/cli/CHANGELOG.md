@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.1.1](https://github.com/vm0-ai/vm0/compare/cli-v7.1.0...cli-v7.1.1) (2026-01-24)
+
+
+### Bug Fixes
+
+* **cli:** refactor runner-validation tests to use it.each for isolation ([#1618](https://github.com/vm0-ai/vm0/issues/1618)) ([6259210](https://github.com/vm0-ai/vm0/commit/62592102cf3741b8db7637cdc95c492b7f8584da))
+
 ## [7.1.0](https://github.com/vm0-ai/vm0/compare/cli-v7.0.2...cli-v7.1.0) (2026-01-24)
 
 
