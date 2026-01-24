@@ -41,7 +41,10 @@ describe("logger", () => {
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    // Only restore individual env vars that were stubbed in this file
+    // Don't use vi.unstubAllEnvs() as it clears stubs from setup.ts
+    vi.stubEnv("DEBUG", "");
+    vi.stubEnv("NODE_ENV", "test");
   });
 
   describe("console output", () => {
@@ -211,7 +214,8 @@ describe("logger", () => {
 
   describe("Axiom not configured", () => {
     it("should not send to Axiom when AXIOM_TOKEN is not set", () => {
-      vi.unstubAllEnvs();
+      // Clear AXIOM_TOKEN to simulate unconfigured state
+      vi.stubEnv("AXIOM_TOKEN", "");
       clearLoggerCache();
 
       const log = logger("test");
@@ -285,7 +289,8 @@ describe("logger", () => {
     });
 
     it("should not throw when Axiom is not configured", async () => {
-      vi.unstubAllEnvs();
+      // Clear AXIOM_TOKEN to simulate unconfigured state
+      vi.stubEnv("AXIOM_TOKEN", "");
       clearLoggerCache();
 
       // Should not throw
