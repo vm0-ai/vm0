@@ -136,19 +136,31 @@ export async function installProxyCA(
     caCert,
   );
 
-  // Update CA certificates
+  // Update CA certificates using multiple methods for maximum compatibility
   // Note: Alpine's update-ca-certificates has issues in newer versions (3.11.5+)
   // See: https://gitlab.alpinelinux.org/alpine/aports/-/issues/11373
+  await guest.execOrThrow("sudo update-ca-certificates 2>&1 || true");
+
+  // Run c_rehash to update certificate hash symlinks (needed by OpenSSL)
+  await guest.execOrThrow("sudo c_rehash /etc/ssl/certs 2>&1 || true");
+
   // Workaround: Directly append to both CA bundle files for immediate effect
   // Alpine uses /etc/ssl/cert.pem (curl default), Debian uses /etc/ssl/certs/ca-certificates.crt
-  await guest.execOrThrow("sudo update-ca-certificates || true");
+  // Ensure files exist before appending (they may be missing if ca-certificates-bundle not installed)
   await guest.execOrThrow(
-    `sudo sh -c 'cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/certs/ca-certificates.crt'`,
+    `sudo sh -c 'touch /etc/ssl/certs/ca-certificates.crt && cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/certs/ca-certificates.crt'`,
   );
   await guest.execOrThrow(
-    `sudo sh -c 'cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/cert.pem'`,
+    `sudo sh -c 'touch /etc/ssl/cert.pem && cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt >> /etc/ssl/cert.pem'`,
   );
-  console.log(`[Executor] Proxy CA certificate installed successfully`);
+
+  // Verify the CA was added successfully
+  const verifyResult = await guest.exec(
+    "grep -c 'BEGIN CERTIFICATE' /etc/ssl/cert.pem",
+  );
+  console.log(
+    `[Executor] Proxy CA certificate installed (${verifyResult.stdout.trim()} certs in bundle)`,
+  );
 }
 
 /**
