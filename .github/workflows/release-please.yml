@@ -126,6 +126,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -150,6 +151,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -178,6 +180,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -270,6 +273,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260116
     permissions:
       contents: read
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
