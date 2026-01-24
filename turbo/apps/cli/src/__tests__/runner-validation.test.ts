@@ -11,7 +11,15 @@
  * - Invalid runner group format (missing slash)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../mocks/server";
 import { composeCommand } from "../commands/compose";
@@ -23,17 +31,17 @@ import * as os from "os";
 describe("Runner Group Validation", () => {
   let tempDir: string;
   let originalCwd: string;
-
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  let mockExit: MockInstance<typeof process.exit>;
+  let mockConsoleLog: MockInstance<typeof console.log>;
+  let mockConsoleError: MockInstance<typeof console.error>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called");
+    }) as never);
+    mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-runner-validation-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
@@ -44,9 +52,7 @@ describe("Runner Group Validation", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
@@ -121,17 +127,10 @@ agents:
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should accept various valid scope/name formats", async () => {
-      // Test multiple valid formats: lowercase letters, numbers, and hyphens
-      const validGroups = [
-        "org/team",
-        "my-org/my-runner",
-        "company123/prod-runner",
-        "a/b",
-      ];
-
-      for (const group of validGroups) {
-        vi.clearAllMocks();
+    // Test multiple valid formats using it.each for proper test isolation
+    it.each(["org/team", "my-org/my-runner", "company123/prod-runner", "a/b"])(
+      "should accept valid runner group format: %s",
+      async (group) => {
         await fs.writeFile(
           path.join(tempDir, "vm0.yaml"),
           `version: "1.0"
@@ -169,24 +168,20 @@ agents:
         expect(mockConsoleLog).toHaveBeenCalledWith(
           expect.stringContaining("Compose"),
         );
-      }
-    });
+      },
+    );
 
-    it("should reject various invalid group formats", async () => {
-      // Test multiple invalid formats
-      const invalidGroups = [
-        "no-slash",
-        "too/many/slashes",
-        "UPPERCASE/invalid",
-        "/leading-slash",
-        "trailing-slash/",
-      ];
-
-      for (const group of invalidGroups) {
-        vi.clearAllMocks();
-        await fs.writeFile(
-          path.join(tempDir, "vm0.yaml"),
-          `version: "1.0"
+    // Test multiple invalid formats using it.each for proper test isolation
+    it.each([
+      "no-slash",
+      "too/many/slashes",
+      "UPPERCASE/invalid",
+      "/leading-slash",
+      "trailing-slash/",
+    ])("should reject invalid runner group format: %s", async (group) => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
 
 agents:
   test-agent:
@@ -194,14 +189,13 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${group}`,
-        );
+      );
 
-        await expect(async () => {
-          await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-        }).rejects.toThrow("process.exit called");
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+      }).rejects.toThrow("process.exit called");
 
-        expect(mockExit).toHaveBeenCalledWith(1);
-      }
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 });
