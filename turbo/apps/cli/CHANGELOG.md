@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.1.0](https://github.com/vm0-ai/vm0/compare/cli-v7.0.2...cli-v7.1.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** improve cook command help text ([#1616](https://github.com/vm0-ai/vm0/issues/1616)) ([a294c49](https://github.com/vm0-ai/vm0/commit/a294c49a06da83a381c3034d95250afd05397075))
+
 ## [7.0.2](https://github.com/vm0-ai/vm0/compare/cli-v7.0.1...cli-v7.0.2) (2026-01-24)
 
 
