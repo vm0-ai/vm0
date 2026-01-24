@@ -5,7 +5,6 @@ import {
   beforeAll,
   beforeEach,
   afterEach,
-  afterAll,
   vi,
 } from "vitest";
 import { NextRequest } from "next/server";
@@ -24,6 +23,7 @@ import { scopes } from "../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
+import { generateTestId } from "../../../../src/__tests__/api-test-helpers";
 import { Sandbox } from "@e2b/code-interpreter";
 import * as s3Client from "../../../../src/lib/s3/s3-client";
 import { Axiom } from "@axiomhq/js";
@@ -75,27 +75,20 @@ import {
 const mockHeaders = vi.mocked(headers);
 
 describe("Public API v1 - Runs Endpoints", () => {
-  const testUserId = "test-user-runs-api";
-  const testScopeId = randomUUID();
+  // Use unique test ID for isolation (no cleanup needed)
+  let testUserId: string;
+  let testScopeId: string;
   let testAgentId: string;
+  let testAgentName: string;
   let testVersionId: string;
   let testRunId: string;
 
   beforeAll(async () => {
+    // Generate unique prefix for this test run
+    testUserId = generateTestId();
+    testScopeId = randomUUID();
+
     initServices();
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
 
     // Create test scope for the user
     await globalThis.services.db.insert(scopes).values({
@@ -105,12 +98,13 @@ describe("Public API v1 - Runs Endpoints", () => {
       ownerId: testUserId,
     });
 
-    // Create test agent
+    // Create test agent with unique name based on testUserId
     testAgentId = randomUUID();
+    testAgentName = `${testUserId}-agent`;
     const testConfig = {
       version: "1.0",
       agents: {
-        "test-agent-runs": {
+        [testAgentName]: {
           image: "vm0/claude-code:dev",
           framework: "claude-code",
           working_dir: "/home/user/workspace",
@@ -123,13 +117,16 @@ describe("Public API v1 - Runs Endpoints", () => {
 
     await globalThis.services.db.insert(agentComposes).values({
       id: testAgentId,
-      name: "test-agent-runs",
+      name: testAgentName,
       userId: testUserId,
       scopeId: testScopeId,
     });
 
-    // Create test version
-    const configJson = JSON.stringify(testConfig);
+    // Create test version - include testAgentId in hash for uniqueness
+    const configJson = JSON.stringify({
+      ...testConfig,
+      _testAgentId: testAgentId,
+    });
     testVersionId = createHash("sha256").update(configJson).digest("hex");
 
     await globalThis.services.db.insert(agentComposeVersions).values({
@@ -215,24 +212,7 @@ describe("Public API v1 - Runs Endpoints", () => {
     clearClerkMock();
   });
 
-  afterAll(async () => {
-    // Cleanup: Delete test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, testAgentId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-  });
+  // No afterAll cleanup needed - unique testUserId ensures isolation
 
   describe("GET /v1/runs - List Runs", () => {
     it("should list runs with pagination", async () => {
@@ -303,7 +283,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(data.status).toBe("running");
       expect(data.prompt).toBe("Test prompt for runs API");
       expect(data.agent_id).toBe(testAgentId);
-      expect(data.agent_name).toBe("test-agent-runs");
+      expect(data.agent_name).toBe(testAgentName);
     });
 
     it("should return 404 for non-existent run", async () => {
@@ -523,7 +503,7 @@ describe("Public API v1 - Runs Endpoints", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agent: "test-agent-runs",
+          agent: testAgentName,
           prompt: "Create run by name",
         }),
       });
@@ -533,7 +513,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(202);
       expect(data.id).toBeDefined();
-      expect(data.agent_name).toBe("test-agent-runs");
+      expect(data.agent_name).toBe(testAgentName);
     });
 
     it("should return 404 for non-existent agent", async () => {
