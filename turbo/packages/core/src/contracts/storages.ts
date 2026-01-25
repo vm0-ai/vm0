@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -63,6 +63,7 @@ export const storagesContract = c.router({
   upload: {
     method: "POST",
     path: "/api/storages",
+    headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
     responses: {
@@ -87,6 +88,7 @@ export const storagesContract = c.router({
   download: {
     method: "GET",
     path: "/api/storages",
+    headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Storage name is required"),
       version: versionQuerySchema,
@@ -154,6 +156,7 @@ export const storagesPrepareContract = c.router({
   prepare: {
     method: "POST",
     path: "/api/storages/prepare",
+    headers: authHeadersSchema,
     body: z.object({
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
@@ -195,6 +198,7 @@ export const storagesCommitContract = c.router({
   commit: {
     method: "POST",
     path: "/api/storages/commit",
+    headers: authHeadersSchema,
     body: z.object({
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
@@ -232,6 +236,7 @@ export const storagesDownloadContract = c.router({
   download: {
     method: "GET",
     path: "/api/storages/download",
+    headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Storage name is required"),
       type: storageTypeSchema,
@@ -272,6 +277,7 @@ export const storagesListContract = c.router({
   list: {
     method: "GET",
     path: "/api/storages/list",
+    headers: authHeadersSchema,
     query: z.object({
       type: storageTypeSchema,
     }),

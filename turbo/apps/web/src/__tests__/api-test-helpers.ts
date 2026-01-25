@@ -117,3 +117,21 @@ export async function deleteTestCliToken(token: string): Promise<void> {
     .delete(cliTokens)
     .where(eq(cliTokens.token, token));
 }
+
+/**
+ * Generate a unique test ID for test isolation.
+ * Each test gets a unique prefix to avoid data collision without cleanup.
+ *
+ * Format: "t" + timestamp (base36) + random (4 hex chars)
+ * Example: "t1abc2def3gh4i5j6k7l"
+ *
+ * This approach eliminates the need for beforeEach/afterEach cleanup
+ * as each test operates on completely isolated data.
+ *
+ * @returns A unique test ID string
+ */
+export function generateTestId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(16).substring(2, 6);
+  return `t${timestamp}${random}`;
+}

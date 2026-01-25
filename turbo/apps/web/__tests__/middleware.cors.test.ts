@@ -4,12 +4,15 @@ import { handleCors } from "../middleware.cors";
 import { reloadEnv } from "../src/env";
 
 function getHandleCors(vercelEnv?: string) {
-  vi.unstubAllEnvs();
-
+  // Reset VERCEL_ENV and NODE_ENV to simulate different environments
+  // Note: vi.stubEnv overwrites previous stubs, so we can just set new values
   if (vercelEnv === "development") {
     vi.stubEnv("NODE_ENV", vercelEnv);
+    vi.stubEnv("VERCEL_ENV", ""); // Clear VERCEL_ENV
   } else if (vercelEnv) {
     vi.stubEnv("VERCEL_ENV", vercelEnv);
+  } else {
+    vi.stubEnv("VERCEL_ENV", ""); // Clear VERCEL_ENV for undefined case
   }
 
   reloadEnv();

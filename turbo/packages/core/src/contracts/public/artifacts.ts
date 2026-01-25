@@ -5,7 +5,7 @@
  * Artifacts are output storage (work products created by agents).
  */
 import { z } from "zod";
-import { initContract } from "../base";
+import { authHeadersSchema, initContract } from "../base";
 import {
   publicApiErrorSchema,
   createPaginatedResponseSchema,
@@ -74,6 +74,7 @@ export const publicArtifactsListContract = c.router({
   list: {
     method: "GET",
     path: "/v1/artifacts",
+    headers: authHeadersSchema,
     query: listQuerySchema,
     responses: {
       200: paginatedArtifactsSchema,
@@ -92,6 +93,7 @@ export const publicArtifactByIdContract = c.router({
   get: {
     method: "GET",
     path: "/v1/artifacts/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Artifact ID is required"),
     }),
@@ -113,6 +115,7 @@ export const publicArtifactVersionsContract = c.router({
   list: {
     method: "GET",
     path: "/v1/artifacts/:id/versions",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Artifact ID is required"),
     }),
@@ -136,6 +139,7 @@ export const publicArtifactDownloadContract = c.router({
   download: {
     method: "GET",
     path: "/v1/artifacts/:id/download",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Artifact ID is required"),
     }),

@@ -42,7 +42,7 @@ export const setCommand = new Command()
             console.error();
             console.error(
               chalk.yellow(
-                "Warning: Changing your scope may break existing image references.",
+                "Warning: Changing your scope may break existing agent references.",
               ),
             );
             process.exit(1);
@@ -60,8 +60,8 @@ export const setCommand = new Command()
         }
 
         console.log();
-        console.log("Your images will now be namespaced as:");
-        console.log(chalk.cyan(`  ${scope.slug}/<image-name>`));
+        console.log("Your agents will now be namespaced as:");
+        console.log(chalk.cyan(`  ${scope.slug}/<agent-name>`));
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {

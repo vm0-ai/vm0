@@ -23,9 +23,9 @@ import {
 
 export const mainRunCommand = new Command()
   .name("run")
-  .description("Execute an agent")
+  .description("Run an agent")
   .argument(
-    "<identifier>",
+    "<agent-name>",
     "Agent reference: [scope/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
@@ -63,7 +63,7 @@ export const mainRunCommand = new Command()
   )
   .option(
     "--model-provider <type>",
-    "Override model provider for LLM credentials (e.g., anthropic-api-key)",
+    "Override model provider (e.g., anthropic-api-key)",
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
@@ -111,6 +111,16 @@ export const mainRunCommand = new Command()
             console.log(chalk.dim(`  Resolving agent: ${displayRef}`));
           }
           const compose = await getComposeByName(name, scope);
+          if (!compose) {
+            console.error(chalk.red(`✗ Agent not found: ${identifier}`));
+            console.error(
+              chalk.dim(
+                "  Make sure you've composed the agent with: vm0 compose",
+              ),
+            );
+            process.exit(1);
+          }
+
           composeId = compose.id;
           composeContent = compose.content;
           if (verbose) {

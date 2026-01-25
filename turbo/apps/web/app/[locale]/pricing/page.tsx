@@ -478,8 +478,8 @@ export default function PricingPage() {
                     pro={true}
                   />
                   <TableRow2
-                    feature="Bring your own LLM"
-                    description="Use your own language model API keys and configurations"
+                    feature="Bring your own model"
+                    description="Use your own model provider API keys and configurations"
                     free={true}
                     pro={true}
                   />

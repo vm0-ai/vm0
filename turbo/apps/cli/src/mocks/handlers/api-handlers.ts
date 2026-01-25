@@ -1,6 +1,14 @@
 import { http, HttpResponse } from "msw";
 
 export const apiHandlers = [
+  // GET /api/agent/composes - getComposeByName
+  http.get("http://localhost:3000/api/agent/composes", () => {
+    return HttpResponse.json(
+      { error: "Not found", message: "Compose not found" },
+      { status: 404 },
+    );
+  }),
+
   // POST /api/agent/composes - createOrUpdateCompose
   http.post("http://localhost:3000/api/agent/composes", () => {
     return HttpResponse.json(

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -75,6 +75,7 @@ export const scopeContract = c.router({
   get: {
     method: "GET",
     path: "/api/scope",
+    headers: authHeadersSchema,
     responses: {
       200: scopeResponseSchema,
       401: apiErrorSchema,
@@ -91,6 +92,7 @@ export const scopeContract = c.router({
   create: {
     method: "POST",
     path: "/api/scope",
+    headers: authHeadersSchema,
     body: createScopeRequestSchema,
     responses: {
       201: scopeResponseSchema,
@@ -109,6 +111,7 @@ export const scopeContract = c.router({
   update: {
     method: "PUT",
     path: "/api/scope",
+    headers: authHeadersSchema,
     body: updateScopeRequestSchema,
     responses: {
       200: scopeResponseSchema,

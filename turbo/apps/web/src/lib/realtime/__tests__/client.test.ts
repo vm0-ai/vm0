@@ -38,8 +38,6 @@ vi.mock("ably", () => {
 });
 
 describe("realtime/client", () => {
-  const originalEnv = process.env.ABLY_API_KEY;
-
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset module cache to get fresh singleton state
@@ -56,17 +54,12 @@ describe("realtime/client", () => {
   });
 
   afterEach(() => {
-    // Restore original env
-    if (originalEnv) {
-      process.env.ABLY_API_KEY = originalEnv;
-    } else {
-      delete process.env.ABLY_API_KEY;
-    }
+    vi.unstubAllEnvs();
   });
 
   describe("publishEvents", () => {
     it("should return false when ABLY_API_KEY is not configured", async () => {
-      delete process.env.ABLY_API_KEY;
+      // ABLY_API_KEY is not set by default
       const { publishEvents } = await import("../client");
 
       const result = await publishEvents("run-123", [{ type: "test" }], 1);
@@ -75,7 +68,7 @@ describe("realtime/client", () => {
     });
 
     it("should publish events to the correct channel when configured", async () => {
-      process.env.ABLY_API_KEY = "test-api-key";
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
       const { publishEvents } = await import("../client");
 
       const events = [{ type: "test", data: "value" }];
@@ -94,7 +87,7 @@ describe("realtime/client", () => {
     });
 
     it("should return false and not throw when publish fails", async () => {
-      process.env.ABLY_API_KEY = "test-api-key";
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
       // Make publish fail by re-mocking
       vi.mocked(Ably.Rest).mockImplementationOnce(() => {
@@ -116,7 +109,7 @@ describe("realtime/client", () => {
 
   describe("publishStatus", () => {
     it("should return false when ABLY_API_KEY is not configured", async () => {
-      delete process.env.ABLY_API_KEY;
+      // ABLY_API_KEY is not set by default
       const { publishStatus } = await import("../client");
 
       const result = await publishStatus("run-123", "completed", {
@@ -127,7 +120,7 @@ describe("realtime/client", () => {
     });
 
     it("should publish status to the correct channel when configured", async () => {
-      process.env.ABLY_API_KEY = "test-api-key";
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
       const { publishStatus } = await import("../client");
 
       const result = await publishStatus(
@@ -144,7 +137,7 @@ describe("realtime/client", () => {
 
   describe("generateRunToken", () => {
     it("should return null when ABLY_API_KEY is not configured", async () => {
-      delete process.env.ABLY_API_KEY;
+      // ABLY_API_KEY is not set by default
       const { generateRunToken } = await import("../client");
 
       const result = await generateRunToken("run-123");
@@ -153,7 +146,7 @@ describe("realtime/client", () => {
     });
 
     it("should generate token with correct capability when configured", async () => {
-      process.env.ABLY_API_KEY = "test-api-key";
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
       const { generateRunToken } = await import("../client");
 
       const result = await generateRunToken("run-789");
@@ -175,7 +168,7 @@ describe("realtime/client", () => {
     });
 
     it("should return null when token generation fails", async () => {
-      process.env.ABLY_API_KEY = "test-api-key";
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
       // Make token generation fail
       vi.mocked(Ably.Rest).mockImplementationOnce(() => {

@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/platform-v0.21.0...platform-v0.21.1) (2026-01-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.1
+
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/platform-v0.20.0...platform-v0.21.0) (2026-01-24)
+
+
+### Features
+
+* **platform:** add oauth token configuration to onboarding modal ([#1598](https://github.com/vm0-ai/vm0/issues/1598)) ([ead50d2](https://github.com/vm0-ai/vm0/commit/ead50d25b3db8843fed8ae8202297e37914a8de1))
+* **platform:** add save button validation to onboarding modal ([#1604](https://github.com/vm0-ai/vm0/issues/1604)) ([107379f](https://github.com/vm0-ai/vm0/commit/107379f0c8187ef6365ef365adf8b0106ca12a35))
+* **platform:** show onboarding modal when no oauth token exists ([#1609](https://github.com/vm0-ai/vm0/issues/1609)) ([43fb460](https://github.com/vm0-ai/vm0/commit/43fb460382926f201f399175cf69d100108c15cf)), closes [#1607](https://github.com/vm0-ai/vm0/issues/1607)
+
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/platform-v0.19.0...platform-v0.20.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/platform-v0.18.0...platform-v0.19.0) (2026-01-23)
+
+
+### Features
+
+* **platform:** add onboarding ui and model providers signal ([#1575](https://github.com/vm0-ai/vm0/issues/1575)) ([4e2c017](https://github.com/vm0-ai/vm0/commit/4e2c0173a258779e971dc4b7834746f0be63e1c5))
+
+
+### Bug Fixes
+
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/platform-v0.17.0...platform-v0.18.0) (2026-01-23)
 
 

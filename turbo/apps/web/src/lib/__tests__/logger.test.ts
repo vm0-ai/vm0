@@ -41,7 +41,10 @@ describe("logger", () => {
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    // Only restore individual env vars that were stubbed in this file
+    // Don't use vi.unstubAllEnvs() as it clears stubs from setup.ts
+    vi.stubEnv("DEBUG", "");
+    vi.stubEnv("NODE_ENV", "test");
   });
 
   describe("console output", () => {
@@ -211,7 +214,8 @@ describe("logger", () => {
 
   describe("Axiom not configured", () => {
     it("should not send to Axiom when AXIOM_TOKEN is not set", () => {
-      delete process.env.AXIOM_TOKEN;
+      // Clear AXIOM_TOKEN to simulate unconfigured state
+      vi.stubEnv("AXIOM_TOKEN", "");
       clearLoggerCache();
 
       const log = logger("test");
@@ -250,7 +254,7 @@ describe("logger", () => {
 
   describe("formatMessage helper", () => {
     it("should handle empty args", () => {
-      process.env.AXIOM_TOKEN = "test-token";
+      vi.stubEnv("AXIOM_TOKEN", "test-token");
       clearLoggerCache();
 
       const log = logger("test");
@@ -260,7 +264,7 @@ describe("logger", () => {
     });
 
     it("should convert non-string first arg to string", () => {
-      process.env.AXIOM_TOKEN = "test-token";
+      vi.stubEnv("AXIOM_TOKEN", "test-token");
       clearLoggerCache();
 
       const log = logger("test");
@@ -272,7 +276,7 @@ describe("logger", () => {
 
   describe("flushLogs", () => {
     it("should call flush on Axiom logger when configured", async () => {
-      process.env.AXIOM_TOKEN = "test-token";
+      vi.stubEnv("AXIOM_TOKEN", "test-token");
       clearLoggerCache();
 
       // Trigger logger initialization
@@ -285,7 +289,8 @@ describe("logger", () => {
     });
 
     it("should not throw when Axiom is not configured", async () => {
-      delete process.env.AXIOM_TOKEN;
+      // Clear AXIOM_TOKEN to simulate unconfigured state
+      vi.stubEnv("AXIOM_TOKEN", "");
       clearLoggerCache();
 
       // Should not throw

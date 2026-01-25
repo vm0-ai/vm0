@@ -13,23 +13,15 @@ import {
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("POST /api/webhooks/agent/heartbeat", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
@@ -47,10 +39,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockClerk({ userId: testUserId });
-
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -121,13 +109,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
   });
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject heartbeat without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
@@ -157,11 +138,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         testUserId,
         nonExistentRunId,
       );
-
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
@@ -196,11 +172,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         createdAt: new Date(),
       });
 
-      // Mock headers() to return the test token (JWT with testUserId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
@@ -223,11 +194,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
 
   describe("Success", () => {
     it("should update lastHeartbeatAt for valid heartbeat", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const initialTime = new Date(Date.now() - 60000); // 1 minute ago
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
@@ -278,11 +244,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
     });
 
     it("should handle multiple consecutive heartbeats", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const initialTime = new Date(Date.now() - 60000); // 1 minute ago
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,

@@ -1,5 +1,65 @@
 # Changelog
 
+## [7.1.0](https://github.com/vm0-ai/vm0/compare/cli-v7.0.2...cli-v7.1.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** improve cook command help text ([#1616](https://github.com/vm0-ai/vm0/issues/1616)) ([a294c49](https://github.com/vm0-ai/vm0/commit/a294c49a06da83a381c3034d95250afd05397075))
+
+## [7.0.2](https://github.com/vm0-ai/vm0/compare/cli-v7.0.1...cli-v7.0.2) (2026-01-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.1
+
+## [7.0.1](https://github.com/vm0-ai/vm0/compare/cli-v7.0.0...cli-v7.0.1) (2026-01-24)
+
+
+### Bug Fixes
+
+* **cli:** remove color from [tool_result] and [result] labels ([#1601](https://github.com/vm0-ai/vm0/issues/1601)) ([de84f7d](https://github.com/vm0-ai/vm0/commit/de84f7db63e41385828a75b35f070774d8add943)), closes [#1595](https://github.com/vm0-ai/vm0/issues/1595)
+
+## [7.0.0](https://github.com/vm0-ai/vm0/compare/cli-v6.4.1...cli-v7.0.0) (2026-01-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* The experimental_secrets and experimental_vars fields have been removed from the agent compose schema. Users must migrate to the environment syntax with ${{ secrets.X }} and ${{ vars.X }} patterns.
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Miscellaneous Chores
+
+* remove experimental_secrets/vars syntax sugar ([#1588](https://github.com/vm0-ai/vm0/issues/1588)) ([7960555](https://github.com/vm0-ai/vm0/commit/79605555ec153c21a689d0b15e61ab40e05ad073))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
+## [6.4.1](https://github.com/vm0-ai/vm0/compare/cli-v6.4.0...cli-v6.4.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [6.4.0](https://github.com/vm0-ai/vm0/compare/cli-v6.3.1...cli-v6.4.0) (2026-01-23)
 
 

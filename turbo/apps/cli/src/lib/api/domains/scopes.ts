@@ -10,7 +10,7 @@ export async function getScope(): Promise<ScopeResponse> {
   const config = await getClientConfig();
   const client = initClient(scopeContract, config);
 
-  const result = await client.get();
+  const result = await client.get({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

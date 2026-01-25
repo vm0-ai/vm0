@@ -253,32 +253,6 @@ function extractSecretsAndVars(config: unknown): ExtractedVars {
     vars.add(ref.name);
   }
 
-  // Extract from experimental_* shorthand
-  const cfg = config as Record<string, unknown>;
-  const agents = cfg.agents as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  if (agents) {
-    const agentConfig = Object.values(agents)[0];
-    if (agentConfig) {
-      const expSecrets = agentConfig.experimental_secrets as
-        | string[]
-        | undefined;
-      const expVars = agentConfig.experimental_vars as string[] | undefined;
-
-      if (expSecrets) {
-        for (const s of expSecrets) {
-          secrets.add(s);
-        }
-      }
-      if (expVars) {
-        for (const v of expVars) {
-          vars.add(v);
-        }
-      }
-    }
-  }
-
   // Always include VM0_TOKEN in secrets
   secrets.add("VM0_TOKEN");
 

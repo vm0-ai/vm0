@@ -23,10 +23,10 @@ const router = tsr.router(credentialsByNameContract, {
   /**
    * GET /api/credentials/:name - Get a credential by name
    */
-  get: async ({ params }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -55,10 +55,10 @@ const router = tsr.router(credentialsByNameContract, {
   /**
    * DELETE /api/credentials/:name - Delete a credential
    */
-  delete: async ({ params }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }

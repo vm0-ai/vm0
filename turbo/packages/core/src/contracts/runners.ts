@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -63,6 +63,7 @@ export const runnersPollContract = c.router({
   poll: {
     method: "POST",
     path: "/api/runners/poll",
+    headers: authHeadersSchema,
     body: z.object({
       group: runnerGroupSchema,
     }),
@@ -162,6 +163,7 @@ export const runnersJobClaimContract = c.router({
   claim: {
     method: "POST",
     path: "/api/runners/jobs/:id/claim",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().uuid(),
     }),

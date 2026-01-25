@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import {
   verifySandboxToken,
   isSandboxToken,
@@ -9,7 +8,7 @@ import { logger } from "../logger";
 const log = logger("auth:sandbox");
 
 /**
- * Get sandbox authentication from JWT token in Authorization header
+ * Get sandbox authentication and verify it matches the expected runId
  *
  * This function is specifically for webhook endpoints that should only
  * accept sandbox JWT tokens. It verifies:
@@ -17,18 +16,22 @@ const log = logger("auth:sandbox");
  * 2. The token signature is valid
  * 3. The token has not expired
  * 4. The token has the correct scope ("sandbox")
+ * 5. The token's runId matches the expected runId
  *
  * Returns null if:
  * - No Authorization header
  * - Token is not a JWT (regular CLI tokens are rejected)
  * - Token is invalid or expired
+ * - Token's runId doesn't match the expected runId
  *
- * @returns SandboxAuth with userId and runId, or null if not authenticated
+ * @param expectedRunId - The runId from the request body to verify against
+ * @param authHeader - The Authorization header value (optional)
+ * @returns SandboxAuth if valid and runId matches, null otherwise
  */
-async function getSandboxAuth(): Promise<SandboxAuth | null> {
-  const headersList = await headers();
-  const authHeader = headersList.get("Authorization");
-
+export function getSandboxAuthForRun(
+  expectedRunId: string,
+  authHeader?: string,
+): SandboxAuth | null {
   if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }
@@ -45,28 +48,6 @@ async function getSandboxAuth(): Promise<SandboxAuth | null> {
   const auth = verifySandboxToken(token);
   if (!auth) {
     log.debug("Invalid or expired sandbox token");
-    return null;
-  }
-
-  return auth;
-}
-
-/**
- * Get sandbox authentication and verify it matches the expected runId
- *
- * This is a stricter version that ensures the token's runId matches
- * the runId in the request body. Use this when the endpoint receives
- * a runId in the request and needs to verify the token is authorized
- * for that specific run.
- *
- * @param expectedRunId - The runId from the request body to verify against
- * @returns SandboxAuth if valid and runId matches, null otherwise
- */
-export async function getSandboxAuthForRun(
-  expectedRunId: string,
-): Promise<SandboxAuth | null> {
-  const auth = await getSandboxAuth();
-  if (!auth) {
     return null;
   }
 

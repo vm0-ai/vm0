@@ -35,23 +35,15 @@ function createTestRequest(
   });
 }
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 describe("GET /api/agent/composes?name=<name>", () => {
   const testUserId = "test-user-get-by-name";
@@ -59,11 +51,6 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
   beforeAll(async () => {
     initServices();
-
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -164,7 +151,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
-    expect(getResponse.status).toBe(400);
+    expect(getResponse.status).toBe(404);
     expect(getData.error.message).toContain("Agent compose not found");
     expect(getData.error.message).toContain("nonexistent-agent");
   });
@@ -244,7 +231,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const getResponse = await GET(getRequest);
     const getData = await getResponse.json();
 
-    expect(getResponse.status).toBe(400);
+    expect(getResponse.status).toBe(404);
     expect(getData.error.message).toContain("Agent compose not found");
 
     // Cleanup

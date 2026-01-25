@@ -12,11 +12,6 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -25,15 +20,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../src/lib/axiom";
-
-const mockHeaders = vi.mocked(headers);
 
 // Spy for ingestToAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,10 +48,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     mockClerk({ userId: null });
-
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Setup Axiom SDK mock
     const mockAxiomClient = {
@@ -171,13 +159,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   });
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject telemetry without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
@@ -209,11 +190,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         testUserId,
         nonExistentRunId,
       );
-
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
 
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
@@ -249,11 +225,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         createdAt: new Date(),
       });
 
-      // Mock headers() to return the test token (JWT with testUserId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/telemetry",
         {
@@ -277,11 +248,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
   describe("Success", () => {
     beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
         userId: testUserId,

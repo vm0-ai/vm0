@@ -291,31 +291,6 @@ agents:
       expect(content).toContain("vars: |");
       expect(content).toContain("REGION=${{ vars.REGION }}");
     });
-
-    it("should handle experimental_secrets and experimental_vars", async () => {
-      // Overwrite vm0.yaml with experimental fields
-      await fs.writeFile(
-        "vm0.yaml",
-        `version: "1.0"
-agents:
-  my-test-agent:
-    framework: claude-code
-    instructions: AGENTS.md
-    experimental_secrets:
-      - CUSTOM_SECRET
-    experimental_vars:
-      - CUSTOM_VAR
-`,
-      );
-
-      await setupGithubCommand.parseAsync(["node", "cli", "--skip-secrets"]);
-
-      // Read the actual file that was written
-      const content = await fs.readFile(".github/workflows/run.yml", "utf-8");
-
-      expect(content).toContain("CUSTOM_SECRET=${{ secrets.CUSTOM_SECRET }}");
-      expect(content).toContain("CUSTOM_VAR=${{ vars.CUSTOM_VAR }}");
-    });
   });
 
   describe("existing file handling", () => {

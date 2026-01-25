@@ -17,11 +17,6 @@ import {
 } from "../../../../../src/db/schema/storage";
 import * as s3Client from "../../../../../src/lib/s3/s3-client";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -31,18 +26,17 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-// Set required environment variables
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+// Override default env var with test-specific value
+vi.hoisted(() => {
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
+});
 
 // Static imports - mocks are already in place due to hoisting
 import { GET } from "../route";
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 // Test constants
 const TEST_USER_ID = "test-user-download";
@@ -63,14 +57,6 @@ describe("GET /api/storages/download", () => {
     vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
       "https://s3.example.com/presigned-download-url",
     );
-
-    // Mock headers() - return empty headers so auth falls through to Clerk
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
-
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: TEST_USER_ID });
 
     // Clean up test data
     await globalThis.services.db

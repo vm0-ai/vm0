@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
-import {
-  composeCommand,
-  transformExperimentalShorthand,
-  getSecretsFromComposeContent,
-} from "../compose";
+import { composeCommand, getSecretsFromComposeContent } from "../compose";
 import * as fs from "fs/promises";
 import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
@@ -405,134 +401,6 @@ describe("compose command", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
-  });
-});
-
-describe("transformExperimentalShorthand", () => {
-  it("should transform experimental_secrets to environment", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_secrets: ["API_KEY", "DB_URL"],
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      API_KEY: "${{ secrets.API_KEY }}",
-      DB_URL: "${{ secrets.DB_URL }}",
-    });
-    expect(agent.experimental_secrets).toBeUndefined();
-  });
-
-  it("should transform experimental_vars to environment", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_vars: ["CLOUD_NAME", "REGION"],
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      CLOUD_NAME: "${{ vars.CLOUD_NAME }}",
-      REGION: "${{ vars.REGION }}",
-    });
-    expect(agent.experimental_vars).toBeUndefined();
-  });
-
-  it("should preserve explicit environment over shorthand (secrets)", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_secrets: ["API_KEY"],
-      environment: {
-        API_KEY: "${{ secrets.DIFFERENT_KEY }}",
-      },
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      API_KEY: "${{ secrets.DIFFERENT_KEY }}",
-    });
-  });
-
-  it("should preserve explicit environment over shorthand (vars)", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_vars: ["CLOUD_NAME"],
-      environment: {
-        CLOUD_NAME: "explicit-value",
-      },
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      CLOUD_NAME: "explicit-value",
-    });
-  });
-
-  it("should combine all three sources correctly", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_secrets: ["SECRET1", "SECRET2"],
-      experimental_vars: ["VAR1"],
-      environment: {
-        SECRET2: "${{ secrets.OVERRIDE }}",
-        EXPLICIT: "https://api.example.com",
-      },
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      SECRET1: "${{ secrets.SECRET1 }}",
-      SECRET2: "${{ secrets.OVERRIDE }}",
-      VAR1: "${{ vars.VAR1 }}",
-      EXPLICIT: "https://api.example.com",
-    });
-    expect(agent.experimental_secrets).toBeUndefined();
-    expect(agent.experimental_vars).toBeUndefined();
-  });
-
-  it("should not modify agent without shorthand fields", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      environment: { KEY: "value" },
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({ KEY: "value" });
-    expect(agent.experimental_secrets).toBeUndefined();
-    expect(agent.experimental_vars).toBeUndefined();
-  });
-
-  it("should handle empty arrays", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_secrets: [],
-      experimental_vars: [],
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.experimental_secrets).toBeUndefined();
-    expect(agent.experimental_vars).toBeUndefined();
-    expect(agent.environment).toBeUndefined();
-  });
-
-  it("should create environment when only shorthand provided", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-      experimental_secrets: ["API_KEY"],
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toEqual({
-      API_KEY: "${{ secrets.API_KEY }}",
-    });
-  });
-
-  it("should handle agent with no shorthand or environment", () => {
-    const agent: Record<string, unknown> = {
-      framework: "claude-code",
-    };
-    transformExperimentalShorthand(agent);
-
-    expect(agent.environment).toBeUndefined();
   });
 });
 

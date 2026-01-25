@@ -20,10 +20,10 @@ import {
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
-  getByName: async ({ query }) => {
+  getByName: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,
@@ -79,11 +79,11 @@ const router = tsr.router(composesMainContract, {
 
     if (composes.length === 0 || !composes[0]) {
       return {
-        status: 400 as const,
+        status: 404 as const,
         body: {
           error: {
             message: `Agent compose not found: ${query.name}`,
-            code: "BAD_REQUEST",
+            code: "NOT_FOUND",
           },
         },
       };
@@ -118,10 +118,10 @@ const router = tsr.router(composesMainContract, {
     };
   },
 
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

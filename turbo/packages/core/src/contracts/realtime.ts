@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -28,6 +28,7 @@ export const realtimeTokenContract = c.router({
   create: {
     method: "POST",
     path: "/api/realtime/token",
+    headers: authHeadersSchema,
     body: z.object({
       runId: z.string().uuid("runId must be a valid UUID"),
     }),

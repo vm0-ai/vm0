@@ -19,7 +19,7 @@ import { recordSandboxInternalOperation } from "../../../../../src/lib/metrics";
 const log = logger("webhooks:telemetry");
 
 const router = tsr.router(webhookTelemetryContract, {
-  send: async ({ body }) => {
+  send: async ({ body, headers }) => {
     const startTime = Date.now();
     log.debug(`[telemetry] START runId=${body.runId}`);
 
@@ -27,7 +27,7 @@ const router = tsr.router(webhookTelemetryContract, {
 
     // Authenticate with sandbox JWT and verify runId matches
     const authStart = Date.now();
-    const auth = await getSandboxAuthForRun(body.runId);
+    const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     log.debug(`[telemetry] auth took ${Date.now() - authStart}ms`);
 
     if (!auth) {

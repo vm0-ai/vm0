@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -132,6 +132,7 @@ export const modelProvidersMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/model-providers",
+    headers: authHeadersSchema,
     responses: {
       200: modelProviderListResponseSchema,
       401: apiErrorSchema,
@@ -142,6 +143,7 @@ export const modelProvidersMainContract = c.router({
   upsert: {
     method: "PUT",
     path: "/api/model-providers",
+    headers: authHeadersSchema,
     body: upsertModelProviderRequestSchema,
     responses: {
       200: upsertModelProviderResponseSchema,
@@ -164,6 +166,7 @@ export const modelProvidersCheckContract = c.router({
   check: {
     method: "GET",
     path: "/api/model-providers/check/:type",
+    headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
     }),
@@ -185,6 +188,7 @@ export const modelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
     path: "/api/model-providers/:type",
+    headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
     }),
@@ -207,6 +211,7 @@ export const modelProvidersConvertContract = c.router({
   convert: {
     method: "POST",
     path: "/api/model-providers/:type/convert",
+    headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
     }),
@@ -232,6 +237,7 @@ export const modelProvidersSetDefaultContract = c.router({
   setDefault: {
     method: "POST",
     path: "/api/model-providers/:type/set-default",
+    headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
     }),

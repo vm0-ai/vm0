@@ -25,11 +25,6 @@ import {
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth (external SaaS)
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -42,14 +37,12 @@ vi.mock("@e2b/code-interpreter", () => ({
   },
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
 import { Sandbox } from "@e2b/code-interpreter";
 
-const mockHeaders = vi.mocked(headers);
 const mockSandboxConnect = vi.mocked(Sandbox.connect);
 
 describe("POST /api/webhooks/agent/complete", () => {
@@ -80,11 +73,6 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockClerk({ userId: testUserId });
-
-    // Mock headers() to return no Authorization header by default
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     await globalThis.services.db
@@ -183,13 +171,6 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject complete without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -250,11 +231,6 @@ describe("POST /api/webhooks/agent/complete", () => {
         nonExistentRunId,
       );
 
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -290,11 +266,6 @@ describe("POST /api/webhooks/agent/complete", () => {
         createdAt: new Date(),
       });
 
-      // Mock headers() to return the test token (JWT with testUserId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -323,13 +294,6 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Success", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should handle successful completion (exitCode=0) and send vm0_result", async () => {
       // Create run with sandboxId
       await globalThis.services.db.insert(agentRuns).values({
@@ -500,13 +464,6 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Error Handling", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should return 404 when checkpoint not found for successful run", async () => {
       // Create run without checkpoint
       await globalThis.services.db.insert(agentRuns).values({
@@ -546,13 +503,6 @@ describe("POST /api/webhooks/agent/complete", () => {
   // ============================================
 
   describe("Idempotency", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should return success without processing for already completed run", async () => {
       // Create already completed run
       await globalThis.services.db.insert(agentRuns).values({

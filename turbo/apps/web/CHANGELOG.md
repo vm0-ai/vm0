@@ -1,5 +1,55 @@
 # Changelog
 
+## [10.7.2](https://github.com/vm0-ai/vm0/compare/web-v10.7.1...web-v10.7.2) (2026-01-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.1
+
+## [10.7.1](https://github.com/vm0-ai/vm0/compare/web-v10.7.0...web-v10.7.1) (2026-01-24)
+
+
+### Performance Improvements
+
+* **test:** use unique prefix isolation for runs api tests ([#1597](https://github.com/vm0-ai/vm0/issues/1597)) ([ef8b88e](https://github.com/vm0-ai/vm0/commit/ef8b88e32c0069881afae44232206c863d014b5c))
+
+## [10.7.0](https://github.com/vm0-ai/vm0/compare/web-v10.6.1...web-v10.7.0) (2026-01-24)
+
+
+### Features
+
+* **cli:** rename experimental-credential to credential ([#1582](https://github.com/vm0-ai/vm0/issues/1582)) ([499e605](https://github.com/vm0-ai/vm0/commit/499e605c046f7f048c96f3ca6d8b257189aca40c))
+
+
+### Performance Improvements
+
+* **test:** use unique prefix isolation for slow web tests instead of cleanup ([#1590](https://github.com/vm0-ai/vm0/issues/1590)) ([283c8f4](https://github.com/vm0-ai/vm0/commit/283c8f4a6239e8443b3ed2d706e47ad5f226006f)), closes [#1589](https://github.com/vm0-ai/vm0/issues/1589)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
+## [10.6.1](https://github.com/vm0-ai/vm0/compare/web-v10.6.0...web-v10.6.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **run:** recognize alternative llm auth methods in env detection ([#1579](https://github.com/vm0-ai/vm0/issues/1579)) ([28ce716](https://github.com/vm0-ai/vm0/commit/28ce716f5deb1e30bec1d71c043740f5a392684e))
+* unify terminology from llm to model provider ([#1580](https://github.com/vm0-ai/vm0/issues/1580)) ([dfe6a2c](https://github.com/vm0-ai/vm0/commit/dfe6a2c99f9b8a0de02cb3afc902ae2eb57cefd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [10.6.0](https://github.com/vm0-ai/vm0/compare/web-v10.5.0...web-v10.6.0) (2026-01-23)
 
 

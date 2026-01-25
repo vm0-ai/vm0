@@ -85,7 +85,7 @@ For running agent code in sandboxes:
   - Without this, the default E2B image is used (Claude Code must be manually installed)
 
 ### Anthropic-Compatible API Configuration
-To use Anthropic-compatible LLM providers (e.g., Anthropic, Minimax, or custom providers), configure environment variables in your Agent Compose YAML using user secrets:
+To use Anthropic-compatible model providers (e.g., Anthropic, Minimax, or custom providers), configure environment variables in your Agent Compose YAML using user secrets:
 
 ```yaml
 # vm0.config.yaml

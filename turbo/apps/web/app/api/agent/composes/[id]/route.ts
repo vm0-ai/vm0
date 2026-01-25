@@ -14,10 +14,10 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 
 const router = tsr.router(composesByIdContract, {
-  getById: async ({ params }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

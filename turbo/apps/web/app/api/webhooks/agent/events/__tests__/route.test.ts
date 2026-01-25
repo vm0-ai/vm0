@@ -21,11 +21,6 @@ import {
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -34,15 +29,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 // Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../src/__tests__/clerk-mock";
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../src/lib/axiom";
-
-const mockHeaders = vi.mocked(headers);
 
 // Spy for ingestToAxiom - will be set up in beforeEach
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,12 +60,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
     // Mock Clerk auth to return test user (needed for compose API)
     mockClerk({ userId: testUserId });
-
-    // Mock headers() to return a HeadersList-like object
-    // By default, return no Authorization header (for auth failure tests)
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Setup Axiom SDK mock
     const mockAxiomClient = {
@@ -181,11 +167,6 @@ describe("POST /api/webhooks/agent/events", () => {
       // Use an invalid token format
       const invalidToken = "invalid-token-not-jwt";
 
-      // Mock headers() to return the invalid token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${invalidToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -219,13 +200,6 @@ describe("POST /api/webhooks/agent/events", () => {
   // ============================================
 
   describe("Validation", () => {
-    beforeEach(async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-    });
-
     it("should reject webhook without runId", async () => {
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/events",
@@ -316,11 +290,6 @@ describe("POST /api/webhooks/agent/events", () => {
         nonExistentRunId,
       );
 
-      // Mock headers() to return the token
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${tokenForNonExistentRun}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -363,11 +332,6 @@ describe("POST /api/webhooks/agent/events", () => {
         createdAt: new Date(),
       });
 
-      // Mock headers() to return the test token (JWT with testUserId)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       const request = new NextRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -404,11 +368,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Success", () => {
     it("should accept valid webhook and ingest to Axiom", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       // Create agent run owned by user
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
@@ -484,11 +443,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Data Integrity", () => {
     it("should store event data correctly in Axiom", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       // Setup
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,
@@ -573,11 +527,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Batch Processing", () => {
     it("should handle multiple events in single request", async () => {
-      // Mock headers() to return the test token (JWT)
-      mockHeaders.mockResolvedValue({
-        get: vi.fn().mockReturnValue(`Bearer ${testToken}`),
-      } as unknown as Headers);
-
       // Setup
       await globalThis.services.db.insert(agentRuns).values({
         id: testRunId,

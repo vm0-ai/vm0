@@ -505,7 +505,7 @@ class ApiClient {
       jsonQuery: true,
     });
 
-    const result = await client.get();
+    const result = await client.get({ headers: {} });
 
     // ts-rest returns discriminated union based on status code
     if (result.status === 200) {
@@ -840,7 +840,7 @@ class ApiClient {
       jsonQuery: true,
     });
 
-    const result = await client.list();
+    const result = await client.list({ headers: {} });
 
     if (result.status === 200) {
       return result.body;
@@ -1192,7 +1192,7 @@ class ApiClient {
       jsonQuery: true,
     });
 
-    const result = await client.list();
+    const result = await client.list({ headers: {} });
 
     if (result.status === 200) {
       return result.body;

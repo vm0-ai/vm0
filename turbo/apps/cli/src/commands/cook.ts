@@ -311,7 +311,7 @@ async function autoPullArtifact(
 // Create the cook command with subcommands
 const cookCmd = new Command()
   .name("cook")
-  .description("One-click agent preparation and execution from vm0.yaml");
+  .description("Quick start: prepare, compose and run agent from vm0.yaml");
 
 // Default action for "vm0 cook [prompt]"
 cookCmd

@@ -227,10 +227,23 @@ export class FirecrackerVM {
     });
 
     // Configure boot source (kernel)
-    // Add network configuration to boot args
-    // Use overlay-init as init to set up overlayfs before systemd
+    // Boot args:
+    //   - console=ttyS0: serial console output
+    //   - reboot=k: use keyboard controller for reboot
+    //   - panic=1: reboot after 1 second on kernel panic
+    //   - pci=off: disable PCI bus (not needed in microVM)
+    //   - nomodules: skip module loading (not needed in microVM)
+    //   - random.trust_cpu=on: trust CPU RNG, skip entropy wait
+    //   - quiet loglevel=0: minimize kernel log output
+    //   - nokaslr: disable kernel address space randomization
+    //   - audit=0: disable kernel auditing
+    //   - numa=off: disable NUMA (single node)
+    //   - mitigations=off: disable CPU vulnerability mitigations
+    //   - noresume: skip hibernation resume check
+    //   - init=/sbin/overlay-init: use overlay-init to set up overlayfs before systemd
+    //   - ip=...: network configuration (guest IP, gateway, netmask)
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
-    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off init=/sbin/overlay-init ${networkBootArgs}`;
+    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/overlay-init ${networkBootArgs}`;
 
     console.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
     await this.client.setBootSource({

@@ -5,7 +5,7 @@
  * Volumes are input storage (data provided to agents).
  */
 import { z } from "zod";
-import { initContract } from "../base";
+import { authHeadersSchema, initContract } from "../base";
 import {
   publicApiErrorSchema,
   createPaginatedResponseSchema,
@@ -73,6 +73,7 @@ export const publicVolumesListContract = c.router({
   list: {
     method: "GET",
     path: "/v1/volumes",
+    headers: authHeadersSchema,
     query: listQuerySchema,
     responses: {
       200: paginatedVolumesSchema,
@@ -91,6 +92,7 @@ export const publicVolumeByIdContract = c.router({
   get: {
     method: "GET",
     path: "/v1/volumes/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Volume ID is required"),
     }),
@@ -112,6 +114,7 @@ export const publicVolumeVersionsContract = c.router({
   list: {
     method: "GET",
     path: "/v1/volumes/:id/versions",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Volume ID is required"),
     }),
@@ -135,6 +138,7 @@ export const publicVolumeDownloadContract = c.router({
   download: {
     method: "GET",
     path: "/v1/volumes/:id/download",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Volume ID is required"),
     }),

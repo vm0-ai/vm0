@@ -43,8 +43,10 @@ mkdir my-agent && cd my-agent
 
 vm0 init
 cat AGENTS.md # check the workflow which your agent will run
-vm0 cook "run your workflow"
+vm0 cook "let's start working"
 ```
+
+<img src="https://raw.githubusercontent.com/vm0-ai/vm0-cookbooks/main/tapes/welcome/welcome.gif" alt="VM0 CLI Quickstart Demo" width="500">
 
 ## 📚 Documentation
 

@@ -13,10 +13,10 @@ import { NotFoundError, BadRequestError } from "../../../../src/lib/errors";
 const log = logger("api:schedules");
 
 const router = tsr.router(schedulesMainContract, {
-  deploy: async ({ body }) => {
+  deploy: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,
@@ -94,10 +94,10 @@ const router = tsr.router(schedulesMainContract, {
     }
   },
 
-  list: async () => {
+  list: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

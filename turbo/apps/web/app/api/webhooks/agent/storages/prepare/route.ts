@@ -24,7 +24,7 @@ import { logger } from "../../../../../../src/lib/logger";
 const log = logger("webhook:storages:prepare");
 
 const router = tsr.router(webhookStoragesPrepareContract, {
-  prepare: async ({ body }) => {
+  prepare: async ({ body, headers }) => {
     initServices();
 
     const {
@@ -38,7 +38,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     } = body;
 
     // Authenticate with sandbox JWT and verify runId matches
-    const auth = await getSandboxAuthForRun(runId);
+    const auth = getSandboxAuthForRun(runId, headers.authorization);
     if (!auth) {
       return {
         status: 401 as const,

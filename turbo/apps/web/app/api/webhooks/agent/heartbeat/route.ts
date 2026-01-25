@@ -13,11 +13,11 @@ import { logger } from "../../../../../src/lib/logger";
 const log = logger("webhooks:heartbeat");
 
 const router = tsr.router(webhookHeartbeatContract, {
-  send: async ({ body }) => {
+  send: async ({ body, headers }) => {
     initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
-    const auth = await getSandboxAuthForRun(body.runId);
+    const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     if (!auth) {
       return {
         status: 401 as const,

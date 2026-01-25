@@ -5,7 +5,7 @@
  * Maps internal "composes" to public "agents" naming.
  */
 import { z } from "zod";
-import { initContract } from "../base";
+import { authHeadersSchema, initContract } from "../base";
 import {
   publicApiErrorSchema,
   createPaginatedResponseSchema,
@@ -75,6 +75,7 @@ export const publicAgentsListContract = c.router({
   list: {
     method: "GET",
     path: "/v1/agents",
+    headers: authHeadersSchema,
     query: agentListQuerySchema,
     responses: {
       200: paginatedAgentsSchema,
@@ -94,6 +95,7 @@ export const publicAgentByIdContract = c.router({
   get: {
     method: "GET",
     path: "/v1/agents/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Agent ID is required"),
     }),
@@ -115,6 +117,7 @@ export const publicAgentVersionsContract = c.router({
   list: {
     method: "GET",
     path: "/v1/agents/:id/versions",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Agent ID is required"),
     }),

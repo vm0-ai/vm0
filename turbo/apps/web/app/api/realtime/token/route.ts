@@ -7,10 +7,10 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateRunToken } from "../../../../src/lib/realtime/client";
 
 const router = tsr.router(realtimeTokenContract, {
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

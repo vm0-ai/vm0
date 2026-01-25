@@ -20,23 +20,15 @@ import { scopes } from "../../../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// Mock Next.js headers() function
-vi.mock("next/headers", () => ({
-  headers: vi.fn(),
-}));
-
 // Mock Clerk auth
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-import { headers } from "next/headers";
 import {
   mockClerk,
   clearClerkMock,
 } from "../../../../../../../src/__tests__/clerk-mock";
-
-const mockHeaders = vi.mocked(headers);
 
 /**
  * Helper to create a NextRequest for testing.
@@ -64,11 +56,6 @@ describe("GET /api/agent/runs/:id/telemetry", () => {
 
     // Mock Clerk auth to return the test user ID by default
     mockClerk({ userId: testUserId });
-
-    // Mock headers()
-    mockHeaders.mockResolvedValue({
-      get: vi.fn().mockReturnValue(null),
-    } as unknown as Headers);
 
     // Clean up any existing test data
     await globalThis.services.db

@@ -36,11 +36,11 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-// Set required environment variables for e2b config
-process.env.E2B_TEMPLATE_NAME = "mock-template";
-
-// Set required environment variables before initServices
-process.env.R2_USER_STORAGES_BUCKET_NAME = "test-storages-bucket";
+// Override default env vars with test-specific values
+vi.hoisted(() => {
+  vi.stubEnv("E2B_TEMPLATE_NAME", "mock-template");
+  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
+});
 
 // Import e2bService after mocks are set up
 let e2bService: typeof import("../e2b-service").e2bService;

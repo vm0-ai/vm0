@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { experimentalFirewallSchema } from "./runners";
 
@@ -108,13 +108,6 @@ const appStringSchema = z.string().superRefine((val, ctx) => {
 });
 
 /**
- * Non-empty string array schema for experimental fields
- */
-const nonEmptyStringArraySchema = z.array(
-  z.string().min(1, "Array entries cannot be empty strings"),
-);
-
-/**
  * Agent definition schema
  */
 const agentDefinitionSchema = z.object({
@@ -168,16 +161,6 @@ const agentDefinitionSchema = z.object({
    * When enabled, filters outbound traffic by domain/IP rules.
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
-  /**
-   * Array of secret names to inject from the scope's secret store.
-   * Each entry must be a non-empty string.
-   */
-  experimental_secrets: nonEmptyStringArraySchema.optional(),
-  /**
-   * Array of variable names to inject from the scope's variable store.
-   * Each entry must be a non-empty string.
-   */
-  experimental_vars: nonEmptyStringArraySchema.optional(),
 });
 
 /**
@@ -225,6 +208,7 @@ export const composesMainContract = c.router({
   getByName: {
     method: "GET",
     path: "/api/agent/composes",
+    headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
       scope: z.string().optional(),
@@ -247,6 +231,7 @@ export const composesMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/agent/composes",
+    headers: authHeadersSchema,
     body: z.object({
       content: agentComposeContentSchema,
     }),
@@ -271,6 +256,7 @@ export const composesByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/composes/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Compose ID is required"),
     }),
@@ -294,6 +280,7 @@ export const composesVersionsContract = c.router({
   resolveVersion: {
     method: "GET",
     path: "/api/agent/composes/versions",
+    headers: authHeadersSchema,
     query: z.object({
       composeId: z.string().min(1, "Missing composeId query parameter"),
       version: composeVersionQuerySchema,
@@ -332,6 +319,7 @@ export const composesListContract = c.router({
   list: {
     method: "GET",
     path: "/api/agent/composes/list",
+    headers: authHeadersSchema,
     query: z.object({
       scope: z.string().optional(),
     }),

@@ -1,5 +1,49 @@
 # Changelog
 
+## [3.0.4](https://github.com/vm0-ai/vm0/compare/runner-v3.0.3...runner-v3.0.4) (2026-01-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.1
+
+## [3.0.3](https://github.com/vm0-ai/vm0/compare/runner-v3.0.2...runner-v3.0.3) (2026-01-24)
+
+
+### Performance Improvements
+
+* **runner:** optimize kernel boot args for faster vm startup ([#1594](https://github.com/vm0-ai/vm0/issues/1594)) ([7399a9a](https://github.com/vm0-ai/vm0/commit/7399a9a5af526ca66d773f3ca1deea24884f9e15))
+
+## [3.0.2](https://github.com/vm0-ai/vm0/compare/runner-v3.0.1...runner-v3.0.2) (2026-01-24)
+
+
+### Performance Improvements
+
+* **runner:** implement guest-initiated vsock connection for zero-latency detection ([#1583](https://github.com/vm0-ai/vm0/issues/1583)) ([4663500](https://github.com/vm0-ai/vm0/commit/46635008d24beca4f636da9c8aa7c51fb2ae4a63))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.0.0
+
+## [3.0.1](https://github.com/vm0-ai/vm0/compare/runner-v3.0.0...runner-v3.0.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* **ci:** increase parallel e2e test timeout to 45s ([#1574](https://github.com/vm0-ai/vm0/issues/1574)) ([2dbbbe2](https://github.com/vm0-ai/vm0/commit/2dbbbe2c40a0f3ba675a02a4ae7b3d6d324b117c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 5.5.0
+
 ## [3.0.0](https://github.com/vm0-ai/vm0/compare/runner-v2.15.0...runner-v3.0.0) (2026-01-23)
 
 

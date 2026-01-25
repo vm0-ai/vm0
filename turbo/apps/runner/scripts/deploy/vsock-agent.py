@@ -6,8 +6,15 @@ Protocol: 4-byte length prefix (big endian) + JSON message
 Messages: ready, ping/pong, exec/exec_result, error
 
 No socat needed - Python has native vsock support via socket.AF_VSOCK.
+
+Guest-initiated connection: Agent connects to Host (CID=2) when ready,
+providing zero-latency notification instead of Host polling.
+
+For testing, supports Unix Domain Socket mode with --unix-socket option,
+where agent connects to the specified socket path (same as production flow).
 """
 
+import argparse
 import json
 import socket
 import struct
@@ -96,9 +103,8 @@ def handle(msg: dict) -> dict:
         return {"type": "error", "id": msg_id, "payload": {"message": f"Unknown type: {msg_type}"}}
 
 
-def handle_connection(conn: socket.socket) -> None:
-    """Handle a single host connection."""
-    log("INFO", "Host connected")
+def _handle_messages(conn: socket.socket) -> None:
+    """Handle message loop after connection is established."""
     decoder = Decoder()
 
     # Send ready signal
@@ -122,26 +128,39 @@ def handle_connection(conn: socket.socket) -> None:
         conn.close()
 
 
-def main() -> None:
-    log("INFO", "Starting vsock agent...")
-
-    # Create vsock socket directly (no socat needed)
-    sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((socket.VMADDR_CID_ANY, VSOCK_PORT))
-    sock.listen(5)
-
-    log("INFO", f"Listening on vsock port {VSOCK_PORT}")
+def connect(unix_socket: str | None = None) -> None:
+    """Connect to host and handle messages."""
+    if unix_socket:
+        # Unix Domain Socket mode (for testing)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        addr = unix_socket
+        log("INFO", f"Connecting to Unix socket: {unix_socket}...")
+    else:
+        # Vsock mode (production) - CID 2 is always the host
+        sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
+        addr = (2, VSOCK_PORT)
+        log("INFO", "Connecting to host (CID=2)...")
 
     try:
-        while True:
-            conn, addr = sock.accept()
-            log("INFO", f"Accepted connection from CID={addr[0]} port={addr[1]}")
-            handle_connection(conn)
-    except KeyboardInterrupt:
-        log("INFO", "Shutting down")
-    finally:
-        sock.close()
+        sock.connect(addr)
+        log("INFO", "Connected")
+        _handle_messages(sock)
+    except Exception as e:
+        log("ERROR", f"Failed to connect: {e}")
+        raise
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Vsock agent for Firecracker VM")
+    parser.add_argument(
+        "--unix-socket",
+        type=str,
+        help="Connect to Unix Domain Socket instead of vsock (for testing)",
+    )
+    args = parser.parse_args()
+
+    log("INFO", "Starting vsock agent...")
+    connect(args.unix_socket)
 
 
 if __name__ == "__main__":

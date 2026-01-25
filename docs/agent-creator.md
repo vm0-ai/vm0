@@ -6,7 +6,7 @@ This skill guides users through creating a complete VM0 agent configuration. The
 
 The wizard follows these phases:
 1. Language preference selection
-2. LLM backend selection
+2. Model provider selection
 3. Workflow description gathering
 4. Skills recommendation and selection
 5. Agent instructions design (AGENTS.md)
@@ -41,12 +41,12 @@ After selection, continue the entire workflow in the user's chosen language.
 
 ---
 
-## Phase 2: LLM Backend Selection
+## Phase 2: Model Provider Selection
 
-Ask the user which LLM backend they want to use:
+Ask the user which model provider they want to use:
 
 ```
-Which LLM backend would you like to use for your agent?
+Which model provider would you like to use for your agent?
 
 1. Claude (OAuth Token) - Recommended for Claude Code users
    Run `claude setup-token` to get your token
@@ -258,7 +258,7 @@ agents:
     skills:
       - "https://github.com/vm0-ai/vm0-skills/tree/main/skill-name"
     environment:
-      # LLM backend variables (from Phase 2 selection)
+      # Model provider variables (from Phase 2 selection)
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       # Skill secrets (API keys, tokens)
       SKILL_API_KEY: ${{ secrets.SKILL_API_KEY }}
@@ -325,7 +325,7 @@ CLOUD_NAME=
 
 For each key in the .env file, provide specific instructions on how to obtain it:
 
-1. **LLM backend keys**: Refer to Phase 2 documentation links
+1. **Model provider keys**: Refer to Phase 2 documentation links
 2. **Skill keys**: Read the skill's README in https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name] - each skill documents how to obtain its required credentials and config values
 
 ### Step 5: Inform user

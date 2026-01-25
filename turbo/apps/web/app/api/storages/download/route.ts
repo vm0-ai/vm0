@@ -16,11 +16,11 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:download");
 
 const router = tsr.router(storagesDownloadContract, {
-  download: async ({ query }) => {
+  download: async ({ query, headers }) => {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId();
+    const userId = await getUserId(headers.authorization);
     if (!userId) {
       return {
         status: 401 as const,

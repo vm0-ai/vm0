@@ -1,7 +1,6 @@
 ---
 name: cli-e2e-testing
 description: CLI E2E testing patterns with BATS - parallelization, state sharing, and timeout management
-allowed-tools: Read, Glob, Grep
 context: fork
 ---
 
@@ -67,7 +66,7 @@ Files run in PARALLEL (up to -j 10)
 
 ### 5. Timeout Management
 
-Each test case has a **30-second timeout** (`BATS_TEST_TIMEOUT=30`).
+Each test case has a timeout: **30s for serial**, **60s for parallel/runner tests**.
 
 **Don't stack multiple `vm0 run` in one case - will timeout!**
 
@@ -364,5 +363,5 @@ Before committing E2E tests:
 ## Reference
 
 - BATS documentation: https://bats-core.readthedocs.io/en/stable/writing-tests.html
-- Test timeout: `BATS_TEST_TIMEOUT=30` (30 seconds per case)
+- Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=60` (parallel/runner)
 - Parallelization: `-j 10 --no-parallelize-within-files`

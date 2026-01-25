@@ -14,11 +14,11 @@ import { logger } from "../../../../../src/lib/logger";
 const log = logger("webhook:checkpoints");
 
 const router = tsr.router(webhookCheckpointsContract, {
-  create: async ({ body }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
-    const auth = await getSandboxAuthForRun(body.runId);
+    const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     if (!auth) {
       return {
         status: 401 as const,

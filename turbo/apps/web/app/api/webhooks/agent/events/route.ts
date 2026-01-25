@@ -19,11 +19,11 @@ import { publishEvents } from "../../../../../src/lib/realtime/client";
 const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
-  send: async ({ body }) => {
+  send: async ({ body, headers }) => {
     initServices();
 
     // Authenticate with sandbox JWT and verify runId matches
-    const auth = await getSandboxAuthForRun(body.runId);
+    const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     if (!auth) {
       return {
         status: 401 as const,

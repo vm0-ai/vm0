@@ -4,6 +4,6 @@ import { setCommand } from "./set";
 
 export const scopeCommand = new Command()
   .name("scope")
-  .description("Manage your scope (namespace for images)")
+  .description("Manage your scope (namespace for agents)")
   .addCommand(statusCommand)
   .addCommand(setCommand);

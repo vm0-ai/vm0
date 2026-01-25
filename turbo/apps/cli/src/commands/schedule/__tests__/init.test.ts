@@ -118,7 +118,7 @@ describe("schedule init utilities", () => {
       expect(result).toEqual({ vars: [], secrets: [] });
     });
 
-    it("should extract experimental_vars and experimental_secrets", () => {
+    it("should extract vars and secrets from environment syntax", () => {
       // Create real vm0.yaml file
       writeFileSync(
         path.join(tempDir, "vm0.yaml"),
@@ -126,12 +126,11 @@ describe("schedule init utilities", () => {
 agents:
   my-agent:
     provider: anthropic
-    experimental_vars:
-      - API_KEY
-      - BASE_URL
-    experimental_secrets:
-      - DATABASE_URL
-      - API_SECRET
+    environment:
+      API_KEY: "\${{ vars.API_KEY }}"
+      BASE_URL: "\${{ vars.BASE_URL }}"
+      DATABASE_URL: "\${{ secrets.DATABASE_URL }}"
+      API_SECRET: "\${{ secrets.API_SECRET }}"
 `,
       );
 
@@ -171,8 +170,6 @@ agents:
 agents:
   my-agent:
     provider: anthropic
-    experimental_vars:
-      - API_KEY
     environment:
       KEY1: "\${{ vars.API_KEY }}"
       KEY2: "\${{ vars.API_KEY }}"
