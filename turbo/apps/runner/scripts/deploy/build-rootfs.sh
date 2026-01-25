@@ -113,8 +113,7 @@ create_squashfs_image() {
     echo "[EXTRACT] Extracting filesystem..."
     sudo tar -xf "$tar_path" -C "$EXTRACT_DIR"
 
-    # Ensure resolv.conf is a regular file (not a symlink)
-    # This is important because systemd-resolved creates a symlink
+    # Configure DNS by creating a static resolv.conf
     sudo rm -f "$EXTRACT_DIR/etc/resolv.conf"
     echo "nameserver 8.8.8.8" | sudo tee "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
@@ -173,11 +172,11 @@ verify_rootfs() {
         echo "  vsock-agent: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/lib/systemd/systemd" ]; then
-        echo "ERROR: systemd not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/bin/tini" ]; then
+        echo "ERROR: tini not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  systemd: installed"
+        echo "  tini: installed"
     fi
 
     if [ ! -f "$MOUNT_POINT/sbin/overlay-init" ]; then
