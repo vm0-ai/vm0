@@ -1259,7 +1259,7 @@ vi.mock("@clerk/clerk-js", () => ({
 
 // Start MSW server before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
+  server.listen({ onUnhandledRequest: "error" });
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
 });

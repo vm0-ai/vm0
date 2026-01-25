@@ -152,7 +152,7 @@ export const handlers = [...exampleHandlers, ...productHandlers];
 2. **Test error scenarios**: Create handlers for 400, 404, 500 responses
 3. **Use TypeScript**: Define types for request/response bodies
 4. **Isolate test data**: Override handlers in tests rather than mutating shared mock data
-5. **Don't mock everything**: Use `onUnhandledRequest: "bypass"` to let real requests through
+5. **Mock all requests in tests**: Use `onUnhandledRequest: "error"` to catch missing mocks
 
 ## API Reference
 
