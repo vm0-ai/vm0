@@ -65,5 +65,8 @@ umount -l /oldroot 2>/dev/null || true
 mount -t proc proc /proc 2>/dev/null || true
 mount -t sysfs sys /sys 2>/dev/null || true
 
+# Set PATH to include /usr/local/bin for node and other executables
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 # Start vsock-agent with tini for proper signal handling and zombie reaping
 exec /usr/bin/tini -- /usr/bin/python3 /usr/local/bin/vm0-agent/vsock-agent.py
