@@ -51,7 +51,7 @@ RUN apk add --no-cache \
     gh \
     kmod \
     procps \
-    util-linux
+    mount
 
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code@latest
