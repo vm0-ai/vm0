@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { verifyDeviceAction } from "./actions";
+import { useTheme } from "../components/ThemeProvider";
 
 const CODE_LENGTH = 8;
 
@@ -13,6 +14,7 @@ export default function CliAuthPage(): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     inputRefs.current[0]?.focus();
@@ -111,13 +113,62 @@ export default function CliAuthPage(): React.JSX.Element {
   const isComplete = digits.every((d) => d !== "");
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-sidebar p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_0px_rgba(0,0,0,0.06),0px_0px_2px_0px_rgba(0,0,0,0.08)]">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      {/* Theme Toggle Button */}
+      <button
+        onClick={toggleTheme}
+        className="fixed right-6 top-6 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
+        aria-label="Toggle theme"
+      >
+        {theme === "dark" ? (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" />
+            <path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" />
+            <path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" />
+            <path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" />
+            <path d="m19.07 4.93-1.41 1.41" />
+          </svg>
+        ) : (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+        )}
+      </button>
+
+      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-col items-center gap-8 p-10">
           {/* Header with Logo */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <Image
-              src="/assets/vm0-logo-dark.svg"
+              src={
+                theme === "dark"
+                  ? "/assets/vm0-logo.svg"
+                  : "/assets/vm0-logo-dark.svg"
+              }
               alt="VM0"
               width={82}
               height={20}
@@ -166,7 +217,7 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}
@@ -190,7 +241,7 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}
@@ -207,7 +258,7 @@ export default function CliAuthPage(): React.JSX.Element {
               <button
                 type="submit"
                 disabled={loading || !isComplete}
-                className="mt-4 h-9 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 h-9 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 {loading ? "Verifying..." : "Verify"}
               </button>
