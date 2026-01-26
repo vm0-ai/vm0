@@ -226,20 +226,21 @@ export const statusCommand = new Command()
 
         const content = compose.content as AgentComposeContent;
 
-        // Derive variable sources if --no-sources flag is not set
-        // Default: sources = true (enabled), --no-sources sets it to false
+        // Derive variable sources
+        // --no-sources: skip network (skill downloads), but still extract variables
+        // Without flag: fetch skills to determine variable sources
         let variableSources: Map<string, AgentVariableSources> | undefined;
-        if (options.sources !== false) {
-          try {
-            variableSources = await deriveComposeVariableSources(content);
-          } catch {
-            // Failed to derive sources, show warning and continue without them
-            console.error(
-              chalk.yellow(
-                "⚠ Warning: Failed to fetch skill sources, showing basic info",
-              ),
-            );
-          }
+        try {
+          variableSources = await deriveComposeVariableSources(content, {
+            skipNetwork: options.sources === false,
+          });
+        } catch {
+          // Failed to derive sources, show warning and continue without them
+          console.error(
+            chalk.yellow(
+              "⚠ Warning: Failed to fetch skill sources, showing basic info",
+            ),
+          );
         }
 
         // Format and display the compose
