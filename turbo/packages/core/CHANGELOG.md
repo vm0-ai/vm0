@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.0](https://github.com/vm0-ai/vm0/compare/core-v6.0.1...core-v6.1.0) (2026-01-26)
+
+
+### Features
+
+* **platform:** redesign homepage and add settings page ([#1639](https://github.com/vm0-ai/vm0/issues/1639)) ([b0515d5](https://github.com/vm0-ai/vm0/commit/b0515d5e75149dd92a11f14f6b80c6661f76afa5))
+
 ## [6.0.1](https://github.com/vm0-ai/vm0/compare/core-v6.0.0...core-v6.0.1) (2026-01-24)
 
 

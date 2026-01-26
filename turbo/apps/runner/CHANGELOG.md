@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.0.6](https://github.com/vm0-ai/vm0/compare/runner-v3.0.5...runner-v3.0.6) (2026-01-26)
+
+
+### Performance Improvements
+
+* **runner:** add timing logs to vm-init for boot analysis ([#1666](https://github.com/vm0-ai/vm0/issues/1666)) ([4715fba](https://github.com/vm0-ai/vm0/commit/4715fba4e836560bdd2e9ec6a011d45b60471f8a))
+* **runner:** implement native binary vsock protocol for file transfer ([#1660](https://github.com/vm0-ai/vm0/issues/1660)) ([064aff5](https://github.com/vm0-ai/vm0/commit/064aff57c75f1fb7937dd05edf0f3d2533d295d8))
+* **runner:** pre-bundle agent scripts in rootfs image ([#1670](https://github.com/vm0-ai/vm0/issues/1670)) ([e93a43d](https://github.com/vm0-ai/vm0/commit/e93a43d128c6e6e4719a7a3ccb5cb8e0af779080))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
 ## [3.0.5](https://github.com/vm0-ai/vm0/compare/runner-v3.0.4...runner-v3.0.5) (2026-01-26)
 
 

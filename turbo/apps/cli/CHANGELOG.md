@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.0.1](https://github.com/vm0-ai/vm0/compare/cli-v8.0.0...cli-v8.0.1) (2026-01-26)
+
+
+### Bug Fixes
+
+* **cli:** vm0 agent status now displays environment variables correctly ([#1661](https://github.com/vm0-ai/vm0/issues/1661)) ([e67bac6](https://github.com/vm0-ai/vm0/commit/e67bac6904d4ce97b6243222ab14ea7e5dc93e38))
+* **schedule:** validate required secrets/vars before schedule creation ([#1659](https://github.com/vm0-ai/vm0/issues/1659)) ([0c7908e](https://github.com/vm0-ai/vm0/commit/0c7908e0c673b741e7d4497326d9ed81151a9f14)), closes [#1650](https://github.com/vm0-ai/vm0/issues/1650)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
 ## [8.0.0](https://github.com/vm0-ai/vm0/compare/cli-v7.1.1...cli-v8.0.0) (2026-01-26)
 
 

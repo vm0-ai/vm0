@@ -1,5 +1,27 @@
 # Changelog
 
+## [10.8.0](https://github.com/vm0-ai/vm0/compare/web-v10.7.2...web-v10.8.0) (2026-01-26)
+
+
+### Features
+
+* improve cli auth page ui and design system ([#1656](https://github.com/vm0-ai/vm0/issues/1656)) ([eb1ef40](https://github.com/vm0-ai/vm0/commit/eb1ef40c74a5fea169ef6c36af5425dbcece1f25))
+* **platform:** redesign homepage and add settings page ([#1639](https://github.com/vm0-ai/vm0/issues/1639)) ([b0515d5](https://github.com/vm0-ai/vm0/commit/b0515d5e75149dd92a11f14f6b80c6661f76afa5))
+
+
+### Bug Fixes
+
+* **cli:** improve missing secrets/vars error messages to mention --env-file option ([#1654](https://github.com/vm0-ai/vm0/issues/1654)) ([14dbaef](https://github.com/vm0-ai/vm0/commit/14dbaef49248e2397a1c01dedc2afaa9a1409590))
+* mark scheduled runs as failed when execution preparation fails ([#1657](https://github.com/vm0-ai/vm0/issues/1657)) ([8fda8c0](https://github.com/vm0-ai/vm0/commit/8fda8c0f7384cc0e536255d90e1aea934bd311e6)), closes [#1653](https://github.com/vm0-ai/vm0/issues/1653)
+* **schedule:** validate required secrets/vars before schedule creation ([#1659](https://github.com/vm0-ai/vm0/issues/1659)) ([0c7908e](https://github.com/vm0-ai/vm0/commit/0c7908e0c673b741e7d4497326d9ed81151a9f14)), closes [#1650](https://github.com/vm0-ai/vm0/issues/1650)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
 ## [10.7.2](https://github.com/vm0-ai/vm0/compare/web-v10.7.1...web-v10.7.2) (2026-01-24)
 
 
