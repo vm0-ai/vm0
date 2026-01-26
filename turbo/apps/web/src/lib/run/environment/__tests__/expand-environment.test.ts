@@ -170,6 +170,17 @@ describe("expandEnvironmentFromCompose", () => {
         },
       };
 
+      expect(() =>
+        expandEnvironmentFromCompose(
+          compose,
+          undefined,
+          undefined,
+          undefined,
+          userId,
+          runId,
+        ),
+      ).toThrow(BadRequestError);
+
       try {
         expandEnvironmentFromCompose(
           compose,
@@ -289,6 +300,17 @@ describe("expandEnvironmentFromCompose", () => {
           },
         },
       };
+
+      expect(() =>
+        expandEnvironmentFromCompose(
+          compose,
+          undefined,
+          undefined,
+          undefined,
+          userId,
+          runId,
+        ),
+      ).toThrow(BadRequestError);
 
       try {
         expandEnvironmentFromCompose(
