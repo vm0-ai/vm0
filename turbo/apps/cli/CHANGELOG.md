@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.0.0](https://github.com/vm0-ai/vm0/compare/cli-v7.1.1...cli-v8.0.0) (2026-01-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* The CLI no longer implicitly loads `.env` files from the current directory. Users must now explicitly specify `--env-file <path>` to load environment variables from a file.
+* **cli:** All schedule commands now require agent name instead of schedule name. The schedule.yaml file is no longer used.
+* The vm0 setup-github command has been removed. Users who need GitHub Actions workflows should set them up manually.
+
+### Features
+
+* **cli:** redesign schedule commands to be agent-centric ([#1633](https://github.com/vm0-ai/vm0/issues/1633)) ([ad70674](https://github.com/vm0-ai/vm0/commit/ad706745bc4bdb268014c404f53bd6bd8a32e255))
+* remove setup-github command ([#1628](https://github.com/vm0-ai/vm0/issues/1628)) ([d82410e](https://github.com/vm0-ai/vm0/commit/d82410edd74e97a3218e30e6b185cd04a853fb91)), closes [#1625](https://github.com/vm0-ai/vm0/issues/1625)
+* replace implicit .env loading with explicit --env-file flag ([#1637](https://github.com/vm0-ai/vm0/issues/1637)) ([a94e9ac](https://github.com/vm0-ai/vm0/commit/a94e9ac420458c46c275c2163e32dd7dc1f7774e))
+
 ## [7.1.1](https://github.com/vm0-ai/vm0/compare/cli-v7.1.0...cli-v7.1.1) (2026-01-24)
 
 

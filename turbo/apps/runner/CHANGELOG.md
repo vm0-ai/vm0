@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.5](https://github.com/vm0-ai/vm0/compare/runner-v3.0.4...runner-v3.0.5) (2026-01-26)
+
+
+### Performance Improvements
+
+* **runner:** replace systemd with tini for faster vm boot ([#1623](https://github.com/vm0-ai/vm0/issues/1623)) ([6c09811](https://github.com/vm0-ai/vm0/commit/6c09811df156f9ce8cba2847b7d83c30ec90af20))
+
 ## [3.0.4](https://github.com/vm0-ai/vm0/compare/runner-v3.0.3...runner-v3.0.4) (2026-01-24)
 
 
