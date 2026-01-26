@@ -42,9 +42,92 @@ interface AgentComposeContent {
 }
 
 /**
+ * Format a list section with label and items
+ */
+function formatListSection(label: string, items: string[]): void {
+  if (items.length === 0) return;
+  console.log(`    ${label}:`);
+  for (const item of items) {
+    console.log(`      - ${item}`);
+  }
+}
+
+/**
+ * Format volumes with optional version resolution
+ */
+function formatVolumes(
+  volumes: string[],
+  volumeConfigs?: Record<string, VolumeConfig>,
+): void {
+  if (volumes.length === 0) return;
+  console.log(`    Volumes:`);
+  for (const vol of volumes) {
+    const volumeDef = volumeConfigs?.[vol];
+    if (volumeDef) {
+      console.log(`      - ${vol}:${volumeDef.version.slice(0, 8)}`);
+    } else {
+      console.log(`      - ${vol}`);
+    }
+  }
+}
+
+/**
+ * Format secrets and vars with source information
+ */
+function formatVariableSources(sources: AgentVariableSources): void {
+  if (sources.secrets.length > 0) {
+    console.log(`    Secrets:`);
+    for (const secret of sources.secrets) {
+      const sourceInfo = chalk.dim(`(${secret.source})`);
+      console.log(`      - ${secret.name.padEnd(20)} ${sourceInfo}`);
+    }
+  }
+  if (sources.vars.length > 0) {
+    console.log(`    Vars:`);
+    for (const v of sources.vars) {
+      const sourceInfo = chalk.dim(`(${v.source})`);
+      console.log(`      - ${v.name.padEnd(20)} ${sourceInfo}`);
+    }
+  }
+}
+
+/**
+ * Format details for a single agent
+ */
+function formatAgentDetails(
+  agentName: string,
+  agent: AgentDefinition,
+  agentSources: AgentVariableSources | undefined,
+  volumeConfigs: Record<string, VolumeConfig> | undefined,
+): void {
+  console.log(`  ${chalk.cyan(agentName)}:`);
+  console.log(`    Framework: ${agent.framework}`);
+
+  if (agent.image) {
+    console.log(`    Image:    ${agent.image}`);
+  }
+
+  formatListSection("Apps", agent.apps ?? []);
+
+  if (agent.working_dir) {
+    console.log(`    Working Dir: ${agent.working_dir}`);
+  }
+
+  formatVolumes(agent.volumes ?? [], volumeConfigs);
+  formatListSection("Skills", agent.skills ?? []);
+
+  if (agentSources) {
+    formatVariableSources(agentSources);
+  }
+
+  if (agent.experimental_runner) {
+    console.log(`    Runner: ${agent.experimental_runner.group}`);
+  }
+}
+
+/**
  * Format the compose content for display
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 function formatComposeOutput(
   name: string,
   versionId: string,
@@ -57,72 +140,8 @@ function formatComposeOutput(
 
   console.log(chalk.bold("Agents:"));
   for (const [agentName, agent] of Object.entries(content.agents)) {
-    console.log(`  ${chalk.cyan(agentName)}:`);
-    console.log(`    Framework: ${agent.framework}`);
-
-    if (agent.image) {
-      console.log(`    Image:    ${agent.image}`);
-    }
-
-    if (agent.apps && agent.apps.length > 0) {
-      console.log(`    Apps:`);
-      for (const app of agent.apps) {
-        console.log(`      - ${app}`);
-      }
-    }
-
-    if (agent.working_dir) {
-      console.log(`    Working Dir: ${agent.working_dir}`);
-    }
-
-    // Show volumes if defined
-    if (agent.volumes && agent.volumes.length > 0) {
-      console.log(`    Volumes:`);
-      for (const vol of agent.volumes) {
-        // Check if volume has a defined version in compose
-        const volumeDef = content.volumes?.[vol];
-        if (volumeDef) {
-          console.log(`      - ${vol}:${volumeDef.version.slice(0, 8)}`);
-        } else {
-          console.log(`      - ${vol}`);
-        }
-      }
-    }
-
-    // Show skills if defined
-    if (agent.skills && agent.skills.length > 0) {
-      console.log(`    Skills:`);
-      for (const skill of agent.skills) {
-        console.log(`      - ${skill}`);
-      }
-    }
-
-    // Show secrets/vars with source information
     const agentSources = variableSources?.get(agentName);
-
-    if (agentSources) {
-      // Display with source information
-      if (agentSources.secrets.length > 0) {
-        console.log(`    Secrets:`);
-        for (const secret of agentSources.secrets) {
-          const sourceInfo = chalk.dim(`(${secret.source})`);
-          console.log(`      - ${secret.name.padEnd(20)} ${sourceInfo}`);
-        }
-      }
-
-      if (agentSources.vars.length > 0) {
-        console.log(`    Vars:`);
-        for (const v of agentSources.vars) {
-          const sourceInfo = chalk.dim(`(${v.source})`);
-          console.log(`      - ${v.name.padEnd(20)} ${sourceInfo}`);
-        }
-      }
-    }
-
-    // Show runner configuration if defined
-    if (agent.experimental_runner) {
-      console.log(`    Runner: ${agent.experimental_runner.group}`);
-    }
+    formatAgentDetails(agentName, agent, agentSources, content.volumes);
   }
 }
 
