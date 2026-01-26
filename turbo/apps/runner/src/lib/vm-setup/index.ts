@@ -9,5 +9,4 @@ export {
   downloadStorages,
   restoreSessionHistory,
   installProxyCA,
-  configureDNS,
 } from "./vm-setup.js";

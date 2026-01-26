@@ -38,7 +38,6 @@ import {
   downloadStorages,
   restoreSessionHistory,
   installProxyCA,
-  configureDNS,
 } from "./vm-setup/index.js";
 
 /**
@@ -259,10 +258,6 @@ export async function executeJob(
         await installProxyCA(guest, caCertPath);
       }
     }
-
-    // Configure DNS - systemd may have overwritten resolv.conf at boot
-    log(`[Executor] Configuring DNS...`);
-    await configureDNS(guest);
 
     // Upload all Python scripts
     log(`[Executor] Uploading scripts...`);
