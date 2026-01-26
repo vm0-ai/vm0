@@ -5,6 +5,7 @@ import {
   promptText,
   promptConfirm,
   promptSelect,
+  promptPassword,
 } from "../../lib/utils/prompt-utils";
 import {
   generateCronExpression,
@@ -14,7 +15,9 @@ import {
   getTomorrowDateLocal,
   getCurrentTimeLocal,
   toISODateTime,
+  extractRequiredConfiguration,
   type ScheduleFrequency,
+  type RequiredConfiguration,
 } from "../../lib/domain/schedule-utils";
 import { getComposeByName, deploySchedule, listSchedules } from "../../lib/api";
 
@@ -483,11 +486,99 @@ async function gatherSecrets(
 }
 
 /**
- * Resolve agent and get composeId
+ * Gather missing configuration (secrets and vars) from compose requirements
+ * In interactive mode, prompts for missing values
+ * In non-interactive mode, returns what was provided (server will validate)
  */
-async function resolveAgent(
-  agentName: string,
-): Promise<{ composeId: string; scheduleName: string }> {
+async function gatherMissingConfiguration(
+  required: RequiredConfiguration,
+  providedSecrets: Record<string, string>,
+  providedVars: Record<string, string>,
+  existingSecretNames: string[] | undefined | null,
+): Promise<{
+  secrets: Record<string, string>;
+  vars: Record<string, string>;
+}> {
+  const secrets = { ...providedSecrets };
+  const vars = { ...providedVars };
+
+  // Determine which secrets are missing
+  const providedSecretNames = Object.keys(providedSecrets);
+  const existingNames = existingSecretNames ?? [];
+  const missingSecrets = required.secrets.filter(
+    (name) =>
+      !providedSecretNames.includes(name) && !existingNames.includes(name),
+  );
+
+  // Determine which vars are missing
+  const providedVarNames = Object.keys(providedVars);
+  const missingVars = required.vars.filter(
+    (name) => !providedVarNames.includes(name),
+  );
+
+  // No missing configuration
+  if (missingSecrets.length === 0 && missingVars.length === 0) {
+    return { secrets, vars };
+  }
+
+  // Non-interactive mode: return what we have (server will validate)
+  if (!isInteractive()) {
+    return { secrets, vars };
+  }
+
+  // Interactive mode: show requirements and prompt for missing values
+  if (missingSecrets.length > 0 || missingVars.length > 0) {
+    console.log(chalk.yellow("\nAgent requires the following configuration:"));
+
+    if (missingSecrets.length > 0) {
+      console.log(chalk.dim("  Secrets:"));
+      for (const name of missingSecrets) {
+        console.log(chalk.dim(`    ${name}`));
+      }
+    }
+
+    if (missingVars.length > 0) {
+      console.log(chalk.dim("  Vars:"));
+      for (const name of missingVars) {
+        console.log(chalk.dim(`    ${name}`));
+      }
+    }
+
+    console.log("");
+  }
+
+  // Prompt for missing secrets
+  for (const name of missingSecrets) {
+    const value = await promptPassword(
+      `Enter value for secret ${chalk.cyan(name)}`,
+    );
+    if (value) {
+      secrets[name] = value;
+    }
+  }
+
+  // Prompt for missing vars
+  for (const name of missingVars) {
+    const value = await promptText(
+      `Enter value for var ${chalk.cyan(name)}`,
+      "",
+    );
+    if (value) {
+      vars[name] = value;
+    }
+  }
+
+  return { secrets, vars };
+}
+
+/**
+ * Resolve agent and get composeId with content
+ */
+async function resolveAgent(agentName: string): Promise<{
+  composeId: string;
+  scheduleName: string;
+  composeContent: unknown;
+}> {
   const compose = await getComposeByName(agentName);
   if (!compose) {
     console.error(chalk.red(`✗ Agent not found: ${agentName}`));
@@ -497,7 +588,42 @@ async function resolveAgent(
   return {
     composeId: compose.id,
     scheduleName: `${agentName}-schedule`,
+    composeContent: compose.content,
   };
+}
+
+/**
+ * Gather timing configuration (day, time, atTime) based on frequency
+ */
+async function gatherTiming(
+  frequency: ScheduleFrequency,
+  options: SetupOptions,
+  defaults: ExistingScheduleDefaults,
+): Promise<{
+  day: number | undefined;
+  time: string | undefined;
+  atTime: string | undefined;
+} | null> {
+  if (frequency === "once") {
+    const result = await gatherOneTimeSchedule(
+      options.day,
+      options.time,
+      defaults.time,
+    );
+    if (!result) return null;
+    return { day: undefined, time: undefined, atTime: result };
+  }
+
+  const day =
+    (await gatherDay(frequency, options.day, defaults.day)) ?? undefined;
+  if (day === null && (frequency === "weekly" || frequency === "monthly")) {
+    return null;
+  }
+
+  const time = await gatherRecurringTime(options.time, defaults.time);
+  if (!time) return null;
+
+  return { day, time, atTime: undefined };
 }
 
 /**
@@ -636,8 +762,12 @@ export const setupCommand = new Command()
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .action(async (agentName: string, options: SetupOptions) => {
     try {
-      // 1. Resolve agent to composeId
-      const { composeId, scheduleName } = await resolveAgent(agentName);
+      // 1. Resolve agent to composeId and get content
+      const { composeId, scheduleName, composeContent } =
+        await resolveAgent(agentName);
+
+      // Extract required configuration from compose
+      const requiredConfig = extractRequiredConfiguration(composeContent);
 
       // 2. Check for existing schedule
       const existingSchedule = await findExistingSchedule(agentName);
@@ -663,42 +793,12 @@ export const setupCommand = new Command()
       }
 
       // 4. Gather day and time
-      let day: number | undefined;
-      let time: string | undefined;
-      let atTime: string | undefined;
-
-      if (frequency === "once") {
-        const result = await gatherOneTimeSchedule(
-          options.day,
-          options.time,
-          defaults.time,
-        );
-        if (!result) {
-          console.log(chalk.dim("Cancelled"));
-          return;
-        }
-        atTime = result;
-      } else {
-        day =
-          (await gatherDay(frequency, options.day, defaults.day)) ?? undefined;
-        if (
-          day === null &&
-          (frequency === "weekly" || frequency === "monthly")
-        ) {
-          console.log(chalk.dim("Cancelled"));
-          return;
-        }
-
-        const timeResult = await gatherRecurringTime(
-          options.time,
-          defaults.time,
-        );
-        if (!timeResult) {
-          console.log(chalk.dim("Cancelled"));
-          return;
-        }
-        time = timeResult;
+      const timing = await gatherTiming(frequency, options, defaults);
+      if (!timing) {
+        console.log(chalk.dim("Cancelled"));
+        return;
       }
+      const { day, time, atTime } = timing;
 
       // 5. Gather timezone
       const timezone = await gatherTimezone(
@@ -720,16 +820,27 @@ export const setupCommand = new Command()
         return;
       }
 
-      // 7. Handle vars
-      const vars = await gatherVars(options.var || [], existingSchedule?.vars);
+      // 7. Handle vars (from options or existing)
+      const initialVars = await gatherVars(
+        options.var || [],
+        existingSchedule?.vars,
+      );
 
-      // 8. Handle secrets
-      const secrets = await gatherSecrets(
+      // 8. Handle secrets (from options or existing)
+      const initialSecrets = await gatherSecrets(
         options.secret || [],
         existingSchedule?.secretNames,
       );
 
-      // 9. Build trigger and deploy
+      // 9. Gather missing configuration (prompt in interactive mode)
+      const { secrets, vars } = await gatherMissingConfiguration(
+        requiredConfig,
+        initialSecrets ?? {},
+        initialVars ?? {},
+        existingSchedule?.secretNames,
+      );
+
+      // 10. Build trigger and deploy
       await buildAndDeploy({
         scheduleName,
         composeId,
@@ -740,8 +851,8 @@ export const setupCommand = new Command()
         atTime,
         timezone,
         prompt: promptText_,
-        vars,
-        secrets,
+        vars: Object.keys(vars).length > 0 ? vars : undefined,
+        secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
         artifactName: options.artifactName,
       });
     } catch (error) {

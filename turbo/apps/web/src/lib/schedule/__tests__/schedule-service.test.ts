@@ -297,6 +297,154 @@ describe("ScheduleService", () => {
     });
   });
 
+  describe("deploy validation", () => {
+    const COMPOSE_WITH_SECRETS_ID = "00000000-0000-0000-0000-000000000090";
+    const VERSION_WITH_SECRETS_ID = "test-version-with-secrets-requirement";
+
+    beforeAll(async () => {
+      // Create a compose that requires secrets
+      await globalThis.services.db
+        .insert(agentComposes)
+        .values({
+          id: COMPOSE_WITH_SECRETS_ID,
+          userId: TEST_USER_ID,
+          scopeId: TEST_SCOPE_ID,
+          name: "agent-with-secrets",
+          headVersionId: VERSION_WITH_SECRETS_ID,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing();
+
+      // Create compose version with secrets/vars requirements
+      await globalThis.services.db
+        .insert(agentComposeVersions)
+        .values({
+          id: VERSION_WITH_SECRETS_ID,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          content: {
+            agents: {
+              "agent-with-secrets": {
+                framework: "test",
+                environment: {
+                  API_KEY: "${{ secrets.API_KEY }}",
+                  DB_PASSWORD: "${{ secrets.DB_PASSWORD }}",
+                  API_URL: "${{ vars.API_URL }}",
+                },
+              },
+            },
+          },
+          createdBy: TEST_USER_ID,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+    });
+
+    beforeEach(async () => {
+      // Clean up schedules for this compose
+      await globalThis.services.db
+        .delete(agentSchedules)
+        .where(eq(agentSchedules.composeId, COMPOSE_WITH_SECRETS_ID));
+    });
+
+    afterAll(async () => {
+      // Clean up
+      await globalThis.services.db
+        .delete(agentSchedules)
+        .where(eq(agentSchedules.composeId, COMPOSE_WITH_SECRETS_ID));
+
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, VERSION_WITH_SECRETS_ID));
+
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, COMPOSE_WITH_SECRETS_ID));
+    });
+
+    it("should reject deploy when required secrets are missing", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+        }),
+      ).rejects.toThrow("Missing required configuration");
+    });
+
+    it("should reject deploy when only some required secrets are provided", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}partial-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          secrets: {
+            API_KEY: "value1",
+            // Missing DB_PASSWORD
+          },
+          vars: {
+            API_URL: "https://example.com",
+          },
+        }),
+      ).rejects.toThrow("Secrets: DB_PASSWORD");
+    });
+
+    it("should reject deploy when required vars are missing", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-vars`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          secrets: {
+            API_KEY: "value1",
+            DB_PASSWORD: "value2",
+          },
+          // Missing vars.API_URL
+        }),
+      ).rejects.toThrow("Vars: API_URL");
+    });
+
+    it("should accept deploy when all required config is provided", async () => {
+      const result = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}all-config`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Should succeed",
+        secrets: {
+          API_KEY: "value1",
+          DB_PASSWORD: "value2",
+        },
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+
+      expect(result.created).toBe(true);
+      expect(result.schedule.secretNames).toContain("API_KEY");
+      expect(result.schedule.secretNames).toContain("DB_PASSWORD");
+      expect(result.schedule.vars).toEqual({ API_URL: "https://example.com" });
+    });
+
+    it("should include multiple missing items in error message", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-all`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail with detailed error",
+        }),
+      ).rejects.toThrow(/Secrets:.*API_KEY.*DB_PASSWORD|DB_PASSWORD.*API_KEY/);
+    });
+  });
+
   describe("getByName", () => {
     it("should return schedule by name", async () => {
       await scheduleService.deploy(TEST_USER_ID, {

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { listSchedules } from "../api";
 
 const CONFIG_FILE = "vm0.yaml";
@@ -299,6 +300,44 @@ export function toISODateTime(dateTimeStr: string): string {
   const isoStr = dateTimeStr.replace(" ", "T") + ":00";
   const date = new Date(isoStr);
   return date.toISOString();
+}
+
+/**
+ * Result of extracting required configuration from compose content
+ */
+export interface RequiredConfiguration {
+  secrets: string[];
+  vars: string[];
+  credentials: string[];
+}
+
+/**
+ * Extract required secrets, vars, and credentials from compose content.
+ * Uses the same extraction logic as vm0 run command.
+ * @param composeContent - The compose content from API (unknown type to handle various formats)
+ * @returns Object with arrays of required secret, var, and credential names
+ */
+export function extractRequiredConfiguration(
+  composeContent: unknown,
+): RequiredConfiguration {
+  const result: RequiredConfiguration = {
+    secrets: [],
+    vars: [],
+    credentials: [],
+  };
+
+  if (!composeContent) {
+    return result;
+  }
+
+  const refs = extractVariableReferences(composeContent);
+  const grouped = groupVariablesBySource(refs);
+
+  result.secrets = grouped.secrets.map((r) => r.name);
+  result.vars = grouped.vars.map((r) => r.name);
+  result.credentials = grouped.credentials.map((r) => r.name);
+
+  return result;
 }
 
 /**

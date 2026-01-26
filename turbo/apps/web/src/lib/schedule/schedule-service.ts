@@ -1,7 +1,11 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
-import { agentComposes } from "../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
 import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
@@ -74,6 +78,54 @@ function isValidTimezone(timezone: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Extract required configuration from compose content
+ */
+function extractRequiredConfiguration(composeContent: unknown): {
+  secrets: string[];
+  vars: string[];
+  credentials: string[];
+} {
+  const result = {
+    secrets: [] as string[],
+    vars: [] as string[],
+    credentials: [] as string[],
+  };
+  if (!composeContent) return result;
+
+  const refs = extractVariableReferences(composeContent);
+  const grouped = groupVariablesBySource(refs);
+
+  result.secrets = grouped.secrets.map((r) => r.name);
+  result.vars = grouped.vars.map((r) => r.name);
+  result.credentials = grouped.credentials.map((r) => r.name);
+
+  return result;
+}
+
+/**
+ * Build error message for missing configuration
+ */
+function buildMissingConfigError(missing: {
+  secrets: string[];
+  vars: string[];
+  credentials: string[];
+}): string {
+  const parts: string[] = [];
+
+  if (missing.secrets.length > 0) {
+    parts.push(`Secrets: ${missing.secrets.join(", ")}`);
+  }
+  if (missing.vars.length > 0) {
+    parts.push(`Vars: ${missing.vars.join(", ")}`);
+  }
+  if (missing.credentials.length > 0) {
+    parts.push(`Credentials: ${missing.credentials.join(", ")}`);
+  }
+
+  return `Missing required configuration:\n  ${parts.join("\n  ")}`;
 }
 
 /**
@@ -192,6 +244,42 @@ export class ScheduleService {
     // Validate timezone
     if (!isValidTimezone(request.timezone)) {
       throw new BadRequestError(`Invalid timezone: ${request.timezone}`);
+    }
+
+    // Validate required secrets/vars/credentials against compose content
+    if (compose.headVersionId) {
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (version) {
+        const required = extractRequiredConfiguration(version.content);
+        const providedSecrets = request.secrets
+          ? Object.keys(request.secrets)
+          : [];
+        const providedVars = request.vars ? Object.keys(request.vars) : [];
+
+        const missingSecrets = required.secrets.filter(
+          (name) => !providedSecrets.includes(name),
+        );
+        const missingVars = required.vars.filter(
+          (name) => !providedVars.includes(name),
+        );
+        // Credentials are not provided via schedule setup (they come from platform)
+        // so we don't validate them here
+
+        if (missingSecrets.length > 0 || missingVars.length > 0) {
+          throw new BadRequestError(
+            buildMissingConfigError({
+              secrets: missingSecrets,
+              vars: missingVars,
+              credentials: [],
+            }),
+          );
+        }
+      }
     }
 
     // Check for existing schedule with same name on this compose

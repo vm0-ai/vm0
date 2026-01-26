@@ -500,3 +500,167 @@ teardown() {
     assert_success
     assert_output --partial "Deleted"
 }
+
+# ============================================================
+# Secrets/Vars validation tests
+# ============================================================
+
+@test "vm0 schedule setup fails when required secrets are missing" {
+    local SECRET_AGENT_NAME="secrets-test-agent-${UNIQUE_ID}"
+    local SECRET_TEST_DIR="$(mktemp -d)"
+
+    # Create agent with secrets requirement
+    cat > "$SECRET_TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${SECRET_AGENT_NAME}:
+    description: "Test agent with secrets requirement"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: "\${{ secrets.API_KEY }}"
+EOF
+
+    cd "$SECRET_TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Try to setup schedule without providing required secret
+    run $CLI_COMMAND schedule setup "$SECRET_AGENT_NAME" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Should fail"
+    assert_failure
+    assert_output --partial "Missing required configuration"
+    assert_output --partial "API_KEY"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$SECRET_AGENT_NAME" --force 2>/dev/null || true
+    rm -rf "$SECRET_TEST_DIR"
+}
+
+@test "vm0 schedule setup succeeds when required secrets are provided" {
+    local SECRET_AGENT_NAME="secrets-provided-agent-${UNIQUE_ID}"
+    local SECRET_TEST_DIR="$(mktemp -d)"
+
+    # Create agent with secrets requirement
+    cat > "$SECRET_TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${SECRET_AGENT_NAME}:
+    description: "Test agent with secrets requirement"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: "\${{ secrets.API_KEY }}"
+EOF
+
+    cd "$SECRET_TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Setup schedule with required secret provided
+    run $CLI_COMMAND schedule setup "$SECRET_AGENT_NAME" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Should succeed" \
+        --secret "API_KEY=test-secret-value"
+    assert_success
+    assert_output --partial "Created schedule"
+
+    # Verify secret is shown in status
+    run $CLI_COMMAND schedule status "$SECRET_AGENT_NAME"
+    assert_success
+    assert_output --partial "Secrets:"
+    assert_output --partial "API_KEY"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$SECRET_AGENT_NAME" --force 2>/dev/null || true
+    rm -rf "$SECRET_TEST_DIR"
+}
+
+@test "vm0 schedule setup fails when required vars are missing" {
+    local VAR_AGENT_NAME="vars-test-agent-${UNIQUE_ID}"
+    local VAR_TEST_DIR="$(mktemp -d)"
+
+    # Create agent with vars requirement
+    cat > "$VAR_TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${VAR_AGENT_NAME}:
+    description: "Test agent with vars requirement"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_URL: "\${{ vars.API_URL }}"
+EOF
+
+    cd "$VAR_TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Try to setup schedule without providing required var
+    run $CLI_COMMAND schedule setup "$VAR_AGENT_NAME" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Should fail"
+    assert_failure
+    assert_output --partial "Missing required configuration"
+    assert_output --partial "API_URL"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$VAR_AGENT_NAME" --force 2>/dev/null || true
+    rm -rf "$VAR_TEST_DIR"
+}
+
+@test "vm0 schedule setup succeeds when required vars are provided" {
+    local VAR_AGENT_NAME="vars-provided-agent-${UNIQUE_ID}"
+    local VAR_TEST_DIR="$(mktemp -d)"
+
+    # Create agent with vars requirement
+    cat > "$VAR_TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${VAR_AGENT_NAME}:
+    description: "Test agent with vars requirement"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_URL: "\${{ vars.API_URL }}"
+EOF
+
+    cd "$VAR_TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Setup schedule with required var provided
+    run $CLI_COMMAND schedule setup "$VAR_AGENT_NAME" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Should succeed" \
+        --var "API_URL=https://api.example.com"
+    assert_success
+    assert_output --partial "Created schedule"
+
+    # Verify var is shown in status
+    run $CLI_COMMAND schedule status "$VAR_AGENT_NAME"
+    assert_success
+    assert_output --partial "Variables:"
+    assert_output --partial "API_URL"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$VAR_AGENT_NAME" --force 2>/dev/null || true
+    rm -rf "$VAR_TEST_DIR"
+}

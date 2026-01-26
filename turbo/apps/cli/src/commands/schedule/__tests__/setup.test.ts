@@ -6,6 +6,7 @@ import {
   generateCronExpression,
   detectTimezone,
   extractVarsAndSecrets,
+  extractRequiredConfiguration,
   validateTimeFormat,
   validateDateFormat,
   getTomorrowDateLocal,
@@ -298,4 +299,111 @@ agents:
   // Note: resolveScheduleByAgent is tested via E2E tests in
   // e2e/tests/02-parallel/t20-vm0-schedule.bats (global resolution tests)
   // since it requires real API calls and mocking internal modules is not acceptable
+
+  describe("extractRequiredConfiguration", () => {
+    it("should return empty arrays for null/undefined content", () => {
+      expect(extractRequiredConfiguration(null)).toEqual({
+        secrets: [],
+        vars: [],
+        credentials: [],
+      });
+      expect(extractRequiredConfiguration(undefined)).toEqual({
+        secrets: [],
+        vars: [],
+        credentials: [],
+      });
+    });
+
+    it("should return empty arrays for empty compose content", () => {
+      const result = extractRequiredConfiguration({});
+      expect(result).toEqual({ secrets: [], vars: [], credentials: [] });
+    });
+
+    it("should extract secrets from compose content", () => {
+      const composeContent = {
+        agents: {
+          "test-agent": {
+            environment: {
+              API_KEY: "${{ secrets.API_KEY }}",
+              DB_PASSWORD: "${{ secrets.DB_PASSWORD }}",
+            },
+          },
+        },
+      };
+      const result = extractRequiredConfiguration(composeContent);
+      expect(result.secrets).toContain("API_KEY");
+      expect(result.secrets).toContain("DB_PASSWORD");
+      expect(result.vars).toEqual([]);
+      expect(result.credentials).toEqual([]);
+    });
+
+    it("should extract vars from compose content", () => {
+      const composeContent = {
+        agents: {
+          "test-agent": {
+            environment: {
+              API_URL: "${{ vars.API_URL }}",
+              REGION: "${{ vars.REGION }}",
+            },
+          },
+        },
+      };
+      const result = extractRequiredConfiguration(composeContent);
+      expect(result.vars).toContain("API_URL");
+      expect(result.vars).toContain("REGION");
+      expect(result.secrets).toEqual([]);
+    });
+
+    it("should extract credentials from compose content", () => {
+      const composeContent = {
+        agents: {
+          "test-agent": {
+            environment: {
+              OAUTH_TOKEN: "${{ credentials.OAUTH_TOKEN }}",
+            },
+          },
+        },
+      };
+      const result = extractRequiredConfiguration(composeContent);
+      expect(result.credentials).toContain("OAUTH_TOKEN");
+    });
+
+    it("should extract mixed secrets, vars, and credentials", () => {
+      const composeContent = {
+        agents: {
+          "test-agent": {
+            environment: {
+              API_KEY: "${{ secrets.API_KEY }}",
+              API_URL: "${{ vars.API_URL }}",
+              OAUTH_TOKEN: "${{ credentials.OAUTH_TOKEN }}",
+            },
+          },
+        },
+      };
+      const result = extractRequiredConfiguration(composeContent);
+      expect(result.secrets).toContain("API_KEY");
+      expect(result.vars).toContain("API_URL");
+      expect(result.credentials).toContain("OAUTH_TOKEN");
+    });
+
+    it("should not duplicate variable names", () => {
+      const composeContent = {
+        agents: {
+          "agent-1": {
+            environment: {
+              KEY1: "${{ secrets.API_KEY }}",
+            },
+          },
+          "agent-2": {
+            environment: {
+              KEY2: "${{ secrets.API_KEY }}",
+            },
+          },
+        },
+      };
+      const result = extractRequiredConfiguration(composeContent);
+      // API_KEY should only appear once
+      expect(result.secrets.filter((s) => s === "API_KEY")).toHaveLength(1);
+    });
+  });
 });
