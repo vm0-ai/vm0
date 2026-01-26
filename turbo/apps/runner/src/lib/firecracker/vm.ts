@@ -8,10 +8,11 @@
  * - Boot and shutdown
  */
 
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { exec, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { promisify } from "node:util";
 import { FirecrackerClient } from "./client.js";
 import {
   createTapDevice,
@@ -19,6 +20,8 @@ import {
   generateNetworkBootArgs,
   type VMNetworkConfig,
 } from "./network.js";
+
+const execAsync = promisify(exec);
 
 /**
  * VM configuration options
@@ -119,20 +122,27 @@ export class FirecrackerVM {
         fs.unlinkSync(this.socketPath);
       }
 
-      // Create sparse overlay file for this VM
-      // The base rootfs (squashfs) is shared read-only across all VMs
-      // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
-      // Size matches the original rootfs size (2GB) to maintain same writable capacity
-      console.log(`[VM ${this.config.vmId}] Creating sparse overlay file...`);
-      const overlaySize = 2 * 1024 * 1024 * 1024; // 2GB sparse file (same as original rootfs)
-      const fd = fs.openSync(this.vmOverlayPath, "w");
-      fs.ftruncateSync(fd, overlaySize);
-      fs.closeSync(fd);
-      execSync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`, { stdio: "ignore" });
+      // Create sparse overlay file and set up network in parallel
+      // These operations are independent and can run concurrently
+      console.log(`[VM ${this.config.vmId}] Setting up overlay and network...`);
 
-      // Set up network first
-      console.log(`[VM ${this.config.vmId}] Setting up network...`);
-      this.networkConfig = await createTapDevice(this.config.vmId);
+      const createOverlay = async () => {
+        // Create sparse overlay file for this VM
+        // The base rootfs (squashfs) is shared read-only across all VMs
+        // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
+        // Size matches the original rootfs size (2GB) to maintain same writable capacity
+        const overlaySize = 2 * 1024 * 1024 * 1024; // 2GB sparse file (same as original rootfs)
+        const fd = fs.openSync(this.vmOverlayPath, "w");
+        fs.ftruncateSync(fd, overlaySize);
+        fs.closeSync(fd);
+        await execAsync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`);
+      };
+
+      const [, networkConfig] = await Promise.all([
+        createOverlay(),
+        createTapDevice(this.config.vmId),
+      ]);
+      this.networkConfig = networkConfig;
 
       // Spawn Firecracker process
       console.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
