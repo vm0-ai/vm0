@@ -77,8 +77,12 @@ RUN userdel -r node 2>/dev/null || true \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
 
-# NOTE: DNS configuration is handled in build-rootfs.sh after export
-# /etc/resolv.conf is read-only during Docker build
+# Configure DNS with static nameservers for VM
+# Note: /etc/resolv.conf is a symlink in bookworm, delete and recreate as regular file
+RUN rm -f /etc/resolv.conf && \
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf && \
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 
 # Create directories needed by vm-init script
 # These must exist in the squashfs image because vm-init runs with squashfs as root
@@ -90,5 +94,9 @@ RUN mkdir -p /rom /rw /mnt/root
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Note: vsock-agent will be started by vm-init.sh using tini
+# Install vm-init script for VM initialization
+# This runs as PID 1 to set up overlayfs and start vsock-agent
+COPY vm-init.sh /sbin/vm-init
+RUN chmod 755 /sbin/vm-init
+
 ENV LANG=C.UTF-8
