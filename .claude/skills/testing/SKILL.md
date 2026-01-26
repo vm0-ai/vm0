@@ -256,16 +256,15 @@ it("should write file", () => {
 });
 ```
 
-**Migrated files (9 total)**:
+**Migrated files (8 total)**:
 1. `apps/cli/src/commands/__tests__/init.test.ts`
 2. `apps/cli/src/commands/__tests__/compose.test.ts`
 3. `apps/cli/src/commands/__tests__/cook.test.ts`
 4. `apps/runner/src/lib/proxy/__tests__/vm-registry.test.ts`
 5. `apps/runner/src/__tests__/config.test.ts`
-6. `apps/cli/src/commands/__tests__/setup-github.test.ts`
-7. `apps/cli/src/commands/schedule/__tests__/init.test.ts`
-8. `apps/cli/src/lib/domain/__tests__/cook-state.test.ts`
-9. `apps/runner/src/lib/proxy/__tests__/proxy-manager.test.ts`
+6. `apps/cli/src/commands/schedule/__tests__/init.test.ts`
+7. `apps/cli/src/lib/domain/__tests__/cook-state.test.ts`
+8. `apps/runner/src/lib/proxy/__tests__/proxy-manager.test.ts`
 
 **Remaining exception**: `ip-pool.test.ts` (requires code refactoring to accept configurable paths)
 
@@ -1187,8 +1186,7 @@ afterEach(() => {
 - Less boilerplate code
 - More reliable test isolation
 
-**Files updated (5)**:
-- `setup-github.test.ts`
+**Files updated (4)**:
 - `config.test.ts`
 - `cook.test.ts`
 - `logger.test.ts`
