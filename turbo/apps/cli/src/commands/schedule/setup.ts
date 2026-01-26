@@ -181,6 +181,447 @@ interface SetupOptions {
   artifactName: string;
 }
 
+interface ExistingScheduleDefaults {
+  frequency?: ScheduleFrequency;
+  day?: number;
+  time?: string;
+}
+
+interface ScheduleListItem {
+  composeName: string;
+  cronExpression?: string | null;
+  atTime?: string | null;
+  timezone: string;
+  prompt: string;
+  vars?: Record<string, string> | null;
+  secretNames?: string[] | null;
+}
+
+/**
+ * Get defaults from existing schedule
+ */
+function getExistingDefaults(
+  existingSchedule: ScheduleListItem | undefined,
+): ExistingScheduleDefaults {
+  const defaults: ExistingScheduleDefaults = {};
+
+  if (existingSchedule?.cronExpression) {
+    const parsed = parseFrequencyFromCron(existingSchedule.cronExpression);
+    if (parsed) {
+      defaults.frequency = parsed.frequency;
+      defaults.day = parsed.day;
+      defaults.time = parsed.time;
+    }
+  } else if (existingSchedule?.atTime) {
+    defaults.frequency = "once";
+  }
+
+  return defaults;
+}
+
+/**
+ * Gather frequency from options or interactive prompt
+ */
+async function gatherFrequency(
+  optionFrequency: string | undefined,
+  existingFrequency: ScheduleFrequency | undefined,
+): Promise<ScheduleFrequency | null> {
+  let frequency = optionFrequency as ScheduleFrequency | undefined;
+
+  if (frequency && ["daily", "weekly", "monthly", "once"].includes(frequency)) {
+    return frequency;
+  }
+
+  if (!isInteractive()) {
+    console.error(
+      chalk.red("✗ --frequency is required (daily|weekly|monthly|once)"),
+    );
+    process.exit(1);
+  }
+
+  const defaultIndex = existingFrequency
+    ? FREQUENCY_CHOICES.findIndex((c) => c.value === existingFrequency)
+    : 0;
+
+  frequency = await promptSelect<ScheduleFrequency>(
+    "Schedule frequency",
+    FREQUENCY_CHOICES,
+    defaultIndex >= 0 ? defaultIndex : 0,
+  );
+
+  return frequency || null;
+}
+
+/**
+ * Gather day for weekly/monthly frequency
+ */
+async function gatherDay(
+  frequency: ScheduleFrequency,
+  optionDay: string | undefined,
+  existingDay: number | undefined,
+): Promise<number | null> {
+  if (frequency !== "weekly" && frequency !== "monthly") {
+    return null;
+  }
+
+  if (optionDay) {
+    const day = parseDayOption(optionDay, frequency);
+    if (day === undefined) {
+      console.error(
+        chalk.red(
+          `✗ Invalid day: ${optionDay}. Use mon-sun for weekly or 1-31 for monthly.`,
+        ),
+      );
+      process.exit(1);
+    }
+    return day;
+  }
+
+  if (!isInteractive()) {
+    console.error(chalk.red("✗ --day is required for weekly/monthly"));
+    process.exit(1);
+  }
+
+  if (frequency === "weekly") {
+    const defaultDayIndex =
+      existingDay !== undefined
+        ? DAY_OF_WEEK_CHOICES.findIndex((c) => c.value === existingDay)
+        : 0;
+    const day = await promptSelect(
+      "Day of week",
+      DAY_OF_WEEK_CHOICES,
+      defaultDayIndex >= 0 ? defaultDayIndex : 0,
+    );
+    return day ?? null;
+  }
+
+  const dayStr = await promptText(
+    "Day of month (1-31)",
+    existingDay?.toString() || "1",
+  );
+  if (!dayStr) return null;
+
+  const day = parseInt(dayStr, 10);
+  if (isNaN(day) || day < 1 || day > 31) {
+    console.error(chalk.red("✗ Day must be between 1 and 31"));
+    process.exit(1);
+  }
+  return day;
+}
+
+/**
+ * Gather time for recurring schedules
+ */
+async function gatherRecurringTime(
+  optionTime: string | undefined,
+  existingTime: string | undefined,
+): Promise<string | undefined> {
+  if (optionTime) {
+    const validation = validateTimeFormat(optionTime);
+    if (validation !== true) {
+      console.error(chalk.red(`✗ Invalid time: ${validation}`));
+      process.exit(1);
+    }
+    return optionTime;
+  }
+
+  if (!isInteractive()) {
+    console.error(chalk.red("✗ --time is required (HH:MM format)"));
+    process.exit(1);
+  }
+
+  return await promptText(
+    "Time (HH:MM)",
+    existingTime || "09:00",
+    validateTimeFormat,
+  );
+}
+
+/**
+ * Gather date and time for one-time schedule
+ */
+async function gatherOneTimeSchedule(
+  optionDay: string | undefined,
+  optionTime: string | undefined,
+  existingTime: string | undefined,
+): Promise<string | null> {
+  if (optionDay && optionTime) {
+    if (!validateDateFormat(optionDay)) {
+      console.error(
+        chalk.red(
+          `✗ Invalid date format: ${optionDay}. Use YYYY-MM-DD format.`,
+        ),
+      );
+      process.exit(1);
+    }
+    if (!validateTimeFormat(optionTime)) {
+      console.error(
+        chalk.red(`✗ Invalid time format: ${optionTime}. Use HH:MM format.`),
+      );
+      process.exit(1);
+    }
+    return `${optionDay} ${optionTime}`;
+  }
+
+  if (!isInteractive()) {
+    console.error(chalk.red("✗ One-time schedules require interactive mode"));
+    console.error(
+      chalk.dim("  Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags"),
+    );
+    process.exit(1);
+  }
+
+  const tomorrowDate = getTomorrowDateLocal();
+  const date = await promptText(
+    "Date (YYYY-MM-DD, default tomorrow)",
+    tomorrowDate,
+    validateDateFormat,
+  );
+  if (!date) return null;
+
+  const currentTime = getCurrentTimeLocal();
+  const time = await promptText(
+    "Time (HH:MM)",
+    existingTime || currentTime,
+    validateTimeFormat,
+  );
+  if (!time) return null;
+
+  return `${date} ${time}`;
+}
+
+/**
+ * Gather timezone from options or interactive prompt
+ */
+async function gatherTimezone(
+  optionTimezone: string | undefined,
+  existingTimezone: string | undefined | null,
+): Promise<string | undefined> {
+  if (optionTimezone) return optionTimezone;
+
+  const detectedTimezone = detectTimezone();
+
+  if (!isInteractive()) {
+    return detectedTimezone;
+  }
+
+  return await promptText("Timezone", existingTimezone || detectedTimezone);
+}
+
+/**
+ * Gather prompt text from options or interactive prompt
+ */
+async function gatherPromptText(
+  optionPrompt: string | undefined,
+  existingPrompt: string | undefined | null,
+): Promise<string | undefined> {
+  if (optionPrompt) return optionPrompt;
+
+  if (!isInteractive()) {
+    console.error(chalk.red("✗ --prompt is required"));
+    process.exit(1);
+  }
+
+  return await promptText(
+    "Prompt to run",
+    existingPrompt || "let's start working.",
+  );
+}
+
+/**
+ * Gather vars from options or existing schedule
+ */
+async function gatherVars(
+  optionVars: string[],
+  existingVars: Record<string, string> | undefined | null,
+): Promise<Record<string, string> | undefined> {
+  if (optionVars.length > 0) {
+    return parseKeyValuePairs(optionVars);
+  }
+
+  if (isInteractive() && existingVars) {
+    const keepVars = await promptConfirm(
+      `Keep existing variables? (${Object.keys(existingVars).join(", ")})`,
+      true,
+    );
+    if (keepVars) {
+      return existingVars;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Gather secrets from options or existing schedule
+ */
+async function gatherSecrets(
+  optionSecrets: string[],
+  existingSecretNames: string[] | undefined | null,
+): Promise<Record<string, string> | undefined> {
+  if (optionSecrets.length > 0) {
+    return parseKeyValuePairs(optionSecrets);
+  }
+
+  if (
+    isInteractive() &&
+    existingSecretNames &&
+    existingSecretNames.length > 0
+  ) {
+    const keepSecrets = await promptConfirm(
+      `Keep existing secrets? (${existingSecretNames.join(", ")})`,
+      true,
+    );
+    if (!keepSecrets) {
+      console.log(
+        chalk.dim("  Note: You'll need to provide new secret values"),
+      );
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve agent and get composeId
+ */
+async function resolveAgent(
+  agentName: string,
+): Promise<{ composeId: string; scheduleName: string }> {
+  const compose = await getComposeByName(agentName);
+  if (!compose) {
+    console.error(chalk.red(`✗ Agent not found: ${agentName}`));
+    console.error(chalk.dim("  Make sure the agent is composed first"));
+    process.exit(1);
+  }
+  return {
+    composeId: compose.id,
+    scheduleName: `${agentName}-schedule`,
+  };
+}
+
+/**
+ * Find existing schedule for agent
+ */
+async function findExistingSchedule(
+  agentName: string,
+): Promise<ScheduleListItem | undefined> {
+  const { schedules } = await listSchedules();
+  return schedules.find((s) => s.composeName === agentName);
+}
+
+/**
+ * Build and deploy schedule
+ */
+async function buildAndDeploy(params: {
+  scheduleName: string;
+  composeId: string;
+  agentName: string;
+  frequency: ScheduleFrequency;
+  time: string | undefined;
+  day: number | undefined;
+  atTime: string | undefined;
+  timezone: string;
+  prompt: string;
+  vars: Record<string, string> | undefined;
+  secrets: Record<string, string> | undefined;
+  artifactName: string;
+}): Promise<void> {
+  let cronExpression: string | undefined;
+  let atTimeISO: string | undefined;
+
+  if (params.atTime) {
+    atTimeISO = toISODateTime(params.atTime);
+  } else if (params.time && params.frequency !== "once") {
+    cronExpression = generateCronExpression(
+      params.frequency,
+      params.time,
+      params.day,
+    );
+  }
+
+  const expandedVars = expandEnvVarsInObject(params.vars);
+  const expandedSecrets = expandEnvVarsInObject(params.secrets);
+
+  console.log(
+    `\nDeploying schedule for agent ${chalk.cyan(params.agentName)}...`,
+  );
+
+  const deployResult = await deploySchedule({
+    name: params.scheduleName,
+    composeId: params.composeId,
+    cronExpression,
+    atTime: atTimeISO,
+    timezone: params.timezone,
+    prompt: params.prompt,
+    vars: expandedVars,
+    secrets: expandedSecrets,
+    artifactName: params.artifactName,
+  });
+
+  displayDeployResult(params.agentName, deployResult);
+}
+
+/**
+ * Handle setup command errors
+ */
+function handleSetupError(error: unknown): never {
+  console.error(chalk.red("✗ Failed to setup schedule"));
+  if (error instanceof Error) {
+    if (error.message.includes("Not authenticated")) {
+      console.error(chalk.dim("  Run: vm0 auth login"));
+    } else {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+  }
+  process.exit(1);
+}
+
+/**
+ * Display deployment result
+ */
+function displayDeployResult(
+  agentName: string,
+  deployResult: {
+    created: boolean;
+    schedule: {
+      timezone: string;
+      cronExpression?: string | null;
+      nextRunAt?: string | null;
+      atTime?: string | null;
+    };
+  },
+): void {
+  if (deployResult.created) {
+    console.log(
+      chalk.green(`✓ Created schedule for agent ${chalk.cyan(agentName)}`),
+    );
+  } else {
+    console.log(
+      chalk.green(`✓ Updated schedule for agent ${chalk.cyan(agentName)}`),
+    );
+  }
+
+  console.log(chalk.dim(`  Timezone: ${deployResult.schedule.timezone}`));
+
+  if (deployResult.schedule.cronExpression) {
+    console.log(chalk.dim(`  Cron: ${deployResult.schedule.cronExpression}`));
+    if (deployResult.schedule.nextRunAt) {
+      const nextRun = formatInTimezone(
+        deployResult.schedule.nextRunAt,
+        deployResult.schedule.timezone,
+      );
+      console.log(chalk.dim(`  Next run: ${nextRun}`));
+    }
+  } else if (deployResult.schedule.atTime) {
+    const atTimeFormatted = formatInTimezone(
+      deployResult.schedule.atTime,
+      deployResult.schedule.timezone,
+    );
+    console.log(chalk.dim(`  At: ${atTimeFormatted}`));
+  }
+}
+
 export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for an agent")
@@ -193,372 +634,117 @@ export const setupCommand = new Command()
   .option("--var <name=value>", "Variable (can be repeated)", collect, [])
   .option("--secret <name=value>", "Secret (can be repeated)", collect, [])
   .option("--artifact-name <name>", "Artifact name", "artifact")
-  .action(
-    // eslint-disable-next-line complexity -- complex interactive flow
-    async (agentName: string, options: SetupOptions) => {
-      try {
-        // 1. Resolve agent to composeId
-        const compose = await getComposeByName(agentName);
-        if (!compose) {
-          console.error(chalk.red(`✗ Agent not found: ${agentName}`));
-          console.error(chalk.dim("  Make sure the agent is composed first"));
-          process.exit(1);
-        }
+  .action(async (agentName: string, options: SetupOptions) => {
+    try {
+      // 1. Resolve agent to composeId
+      const { composeId, scheduleName } = await resolveAgent(agentName);
 
-        const composeId = compose.id;
-        const scheduleName = `${agentName}-schedule`;
+      // 2. Check for existing schedule
+      const existingSchedule = await findExistingSchedule(agentName);
 
-        // 2. Check for existing schedule
-        const { schedules } = await listSchedules();
-        const existingSchedule = schedules.find(
-          (s) => s.composeName === agentName,
-        );
+      console.log(
+        chalk.dim(
+          existingSchedule
+            ? `Editing existing schedule for agent ${agentName}`
+            : `Creating new schedule for agent ${agentName}`,
+        ),
+      );
 
-        const isEditMode = !!existingSchedule;
-        if (isEditMode) {
-          console.log(
-            chalk.dim(`Editing existing schedule for agent ${agentName}`),
-          );
-        } else {
-          console.log(
-            chalk.dim(`Creating new schedule for agent ${agentName}`),
-          );
-        }
+      const defaults = getExistingDefaults(existingSchedule);
 
-        // Parse existing schedule for defaults
-        let existingFrequency: ScheduleFrequency | undefined;
-        let existingDay: number | undefined;
-        let existingTime: string | undefined;
-
-        if (existingSchedule?.cronExpression) {
-          const parsed = parseFrequencyFromCron(
-            existingSchedule.cronExpression,
-          );
-          if (parsed) {
-            existingFrequency = parsed.frequency;
-            existingDay = parsed.day;
-            existingTime = parsed.time;
-          }
-        } else if (existingSchedule?.atTime) {
-          existingFrequency = "once";
-        }
-
-        // 3. Gather frequency
-        let frequency: ScheduleFrequency | undefined = options.frequency as
-          | ScheduleFrequency
-          | undefined;
-        if (
-          !frequency ||
-          !["daily", "weekly", "monthly", "once"].includes(frequency)
-        ) {
-          if (!isInteractive()) {
-            console.error(
-              chalk.red(
-                "✗ --frequency is required (daily|weekly|monthly|once)",
-              ),
-            );
-            process.exit(1);
-          }
-          const defaultIndex = existingFrequency
-            ? FREQUENCY_CHOICES.findIndex((c) => c.value === existingFrequency)
-            : 0;
-          frequency = await promptSelect<ScheduleFrequency>(
-            "Schedule frequency",
-            FREQUENCY_CHOICES,
-            defaultIndex >= 0 ? defaultIndex : 0,
-          );
-          if (!frequency) {
-            console.log(chalk.dim("Cancelled"));
-            return;
-          }
-        }
-
-        // 4. Gather day (for weekly/monthly)
-        let day: number | undefined;
-        if (frequency === "weekly" || frequency === "monthly") {
-          if (options.day) {
-            day = parseDayOption(options.day, frequency);
-            if (day === undefined) {
-              console.error(
-                chalk.red(
-                  `✗ Invalid day: ${options.day}. Use mon-sun for weekly or 1-31 for monthly.`,
-                ),
-              );
-              process.exit(1);
-            }
-          } else if (isInteractive()) {
-            if (frequency === "weekly") {
-              const defaultDayIndex =
-                existingDay !== undefined
-                  ? DAY_OF_WEEK_CHOICES.findIndex(
-                      (c) => c.value === existingDay,
-                    )
-                  : 0;
-              day = await promptSelect(
-                "Day of week",
-                DAY_OF_WEEK_CHOICES,
-                defaultDayIndex >= 0 ? defaultDayIndex : 0,
-              );
-              if (day === undefined) {
-                console.log(chalk.dim("Cancelled"));
-                return;
-              }
-            } else {
-              const dayStr = await promptText(
-                "Day of month (1-31)",
-                existingDay?.toString() || "1",
-              );
-              if (!dayStr) {
-                console.log(chalk.dim("Cancelled"));
-                return;
-              }
-              day = parseInt(dayStr, 10);
-              if (isNaN(day) || day < 1 || day > 31) {
-                console.error(chalk.red("✗ Day must be between 1 and 31"));
-                process.exit(1);
-              }
-            }
-          } else {
-            console.error(chalk.red("✗ --day is required for weekly/monthly"));
-            process.exit(1);
-          }
-        }
-
-        // 5. Gather time
-        let time: string | undefined = options.time;
-        let atTime: string | undefined;
-
-        if (frequency === "once") {
-          // For once frequency, --day is used as the date (YYYY-MM-DD)
-          const dateFromOption = options.day;
-
-          if (dateFromOption && time) {
-            // Non-interactive mode: validate provided date and time
-            if (!validateDateFormat(dateFromOption)) {
-              console.error(
-                chalk.red(
-                  `✗ Invalid date format: ${dateFromOption}. Use YYYY-MM-DD format.`,
-                ),
-              );
-              process.exit(1);
-            }
-            if (!validateTimeFormat(time)) {
-              console.error(
-                chalk.red(`✗ Invalid time format: ${time}. Use HH:MM format.`),
-              );
-              process.exit(1);
-            }
-            atTime = `${dateFromOption} ${time}`;
-          } else if (!isInteractive()) {
-            console.error(
-              chalk.red("✗ One-time schedules require interactive mode"),
-            );
-            console.error(
-              chalk.dim(
-                "  Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags",
-              ),
-            );
-            process.exit(1);
-          } else {
-            // Interactive mode: prompt for date and time
-            const tomorrowDate = getTomorrowDateLocal();
-            const date = await promptText(
-              "Date (YYYY-MM-DD, default tomorrow)",
-              tomorrowDate,
-              validateDateFormat,
-            );
-            if (!date) {
-              console.log(chalk.dim("Cancelled"));
-              return;
-            }
-
-            const currentTime = getCurrentTimeLocal();
-            time = await promptText(
-              "Time (HH:MM)",
-              existingTime || currentTime,
-              validateTimeFormat,
-            );
-            if (!time) {
-              console.log(chalk.dim("Cancelled"));
-              return;
-            }
-
-            atTime = `${date} ${time}`;
-          }
-        } else {
-          if (!time) {
-            if (!isInteractive()) {
-              console.error(chalk.red("✗ --time is required (HH:MM format)"));
-              process.exit(1);
-            }
-            time = await promptText(
-              "Time (HH:MM)",
-              existingTime || "09:00",
-              validateTimeFormat,
-            );
-            if (!time) {
-              console.log(chalk.dim("Cancelled"));
-              return;
-            }
-          } else {
-            const validation = validateTimeFormat(time);
-            if (validation !== true) {
-              console.error(chalk.red(`✗ Invalid time: ${validation}`));
-              process.exit(1);
-            }
-          }
-        }
-
-        // 6. Gather timezone
-        const detectedTimezone = detectTimezone();
-        let timezone = options.timezone;
-        if (!timezone) {
-          if (isInteractive()) {
-            timezone = await promptText(
-              "Timezone",
-              existingSchedule?.timezone || detectedTimezone,
-            );
-            if (!timezone) {
-              console.log(chalk.dim("Cancelled"));
-              return;
-            }
-          } else {
-            timezone = detectedTimezone;
-          }
-        }
-
-        // 7. Gather prompt
-        let promptText_ = options.prompt;
-        if (!promptText_) {
-          if (!isInteractive()) {
-            console.error(chalk.red("✗ --prompt is required"));
-            process.exit(1);
-          }
-          promptText_ = await promptText(
-            "Prompt to run",
-            existingSchedule?.prompt || "let's start working.",
-          );
-          if (!promptText_) {
-            console.log(chalk.dim("Cancelled"));
-            return;
-          }
-        }
-
-        // 8. Handle vars
-        let vars: Record<string, string> | undefined;
-        if (options.var && options.var.length > 0) {
-          vars = parseKeyValuePairs(options.var);
-        } else if (isInteractive() && existingSchedule?.vars) {
-          const keepVars = await promptConfirm(
-            `Keep existing variables? (${Object.keys(existingSchedule.vars).join(", ")})`,
-            true,
-          );
-          if (keepVars) {
-            vars = existingSchedule.vars;
-          }
-        }
-
-        // 9. Handle secrets
-        let secrets: Record<string, string> | undefined;
-        if (options.secret && options.secret.length > 0) {
-          secrets = parseKeyValuePairs(options.secret);
-        } else if (
-          isInteractive() &&
-          existingSchedule?.secretNames &&
-          existingSchedule.secretNames.length > 0
-        ) {
-          const keepSecrets = await promptConfirm(
-            `Keep existing secrets? (${existingSchedule.secretNames.join(", ")})`,
-            true,
-          );
-          if (!keepSecrets) {
-            console.log(
-              chalk.dim("  Note: You'll need to provide new secret values"),
-            );
-          }
-          // If keeping secrets, we don't send them (API preserves existing)
-          // If not keeping, we need to prompt for new values but can't since
-          // this is complex - for now just skip
-        }
-
-        // 10. Build trigger
-        let cronExpression: string | undefined;
-        let atTimeISO: string | undefined;
-
-        if (atTime) {
-          atTimeISO = toISODateTime(atTime);
-        } else if (time && frequency !== "once") {
-          cronExpression = generateCronExpression(frequency, time, day);
-        }
-
-        // 11. Expand environment variables
-        const expandedVars = expandEnvVarsInObject(vars);
-        const expandedSecrets = expandEnvVarsInObject(secrets);
-
-        // 12. Deploy to cloud
-        console.log(
-          `\nDeploying schedule for agent ${chalk.cyan(agentName)}...`,
-        );
-
-        const body = {
-          name: scheduleName,
-          composeId,
-          cronExpression,
-          atTime: atTimeISO,
-          timezone: timezone || "UTC",
-          prompt: promptText_,
-          vars: expandedVars,
-          secrets: expandedSecrets,
-          artifactName: options.artifactName,
-        };
-
-        const deployResult = await deploySchedule(body);
-
-        // 13. Display result
-        if (deployResult.created) {
-          console.log(
-            chalk.green(
-              `✓ Created schedule for agent ${chalk.cyan(agentName)}`,
-            ),
-          );
-        } else {
-          console.log(
-            chalk.green(
-              `✓ Updated schedule for agent ${chalk.cyan(agentName)}`,
-            ),
-          );
-        }
-
-        console.log(chalk.dim(`  Timezone: ${deployResult.schedule.timezone}`));
-
-        if (deployResult.schedule.cronExpression) {
-          console.log(
-            chalk.dim(`  Cron: ${deployResult.schedule.cronExpression}`),
-          );
-          if (deployResult.schedule.nextRunAt) {
-            const nextRun = formatInTimezone(
-              deployResult.schedule.nextRunAt,
-              deployResult.schedule.timezone,
-            );
-            console.log(chalk.dim(`  Next run: ${nextRun}`));
-          }
-        } else if (deployResult.schedule.atTime) {
-          const atTimeFormatted = formatInTimezone(
-            deployResult.schedule.atTime,
-            deployResult.schedule.timezone,
-          );
-          console.log(chalk.dim(`  At: ${atTimeFormatted}`));
-        }
-      } catch (error) {
-        console.error(chalk.red("✗ Failed to setup schedule"));
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(chalk.dim("  Run: vm0 auth login"));
-          } else {
-            console.error(chalk.dim(`  ${error.message}`));
-          }
-        }
-        process.exit(1);
+      // 3. Gather frequency
+      const frequency = await gatherFrequency(
+        options.frequency,
+        defaults.frequency,
+      );
+      if (!frequency) {
+        console.log(chalk.dim("Cancelled"));
+        return;
       }
-    },
-  );
+
+      // 4. Gather day and time
+      let day: number | undefined;
+      let time: string | undefined;
+      let atTime: string | undefined;
+
+      if (frequency === "once") {
+        const result = await gatherOneTimeSchedule(
+          options.day,
+          options.time,
+          defaults.time,
+        );
+        if (!result) {
+          console.log(chalk.dim("Cancelled"));
+          return;
+        }
+        atTime = result;
+      } else {
+        day =
+          (await gatherDay(frequency, options.day, defaults.day)) ?? undefined;
+        if (
+          day === null &&
+          (frequency === "weekly" || frequency === "monthly")
+        ) {
+          console.log(chalk.dim("Cancelled"));
+          return;
+        }
+
+        const timeResult = await gatherRecurringTime(
+          options.time,
+          defaults.time,
+        );
+        if (!timeResult) {
+          console.log(chalk.dim("Cancelled"));
+          return;
+        }
+        time = timeResult;
+      }
+
+      // 5. Gather timezone
+      const timezone = await gatherTimezone(
+        options.timezone,
+        existingSchedule?.timezone,
+      );
+      if (!timezone) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+
+      // 6. Gather prompt
+      const promptText_ = await gatherPromptText(
+        options.prompt,
+        existingSchedule?.prompt,
+      );
+      if (!promptText_) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+
+      // 7. Handle vars
+      const vars = await gatherVars(options.var || [], existingSchedule?.vars);
+
+      // 8. Handle secrets
+      const secrets = await gatherSecrets(
+        options.secret || [],
+        existingSchedule?.secretNames,
+      );
+
+      // 9. Build trigger and deploy
+      await buildAndDeploy({
+        scheduleName,
+        composeId,
+        agentName,
+        frequency,
+        time,
+        day,
+        atTime,
+        timezone,
+        prompt: promptText_,
+        vars,
+        secrets,
+        artifactName: options.artifactName,
+      });
+    } catch (error) {
+      handleSetupError(error);
+    }
+  });

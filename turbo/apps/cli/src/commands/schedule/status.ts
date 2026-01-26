@@ -51,6 +51,121 @@ function formatRunStatus(status: RunStatus): string {
   }
 }
 
+/**
+ * Print run configuration section
+ */
+function printRunConfiguration(schedule: ScheduleResponse): void {
+  const statusText = schedule.enabled
+    ? chalk.green("enabled")
+    : chalk.yellow("disabled");
+  console.log(`${"Status:".padEnd(16)}${statusText}`);
+
+  console.log(
+    `${"Agent:".padEnd(16)}${schedule.composeName} ${chalk.dim(`(${schedule.scopeSlug})`)}`,
+  );
+
+  const promptPreview =
+    schedule.prompt.length > 60
+      ? schedule.prompt.slice(0, 57) + "..."
+      : schedule.prompt;
+  console.log(`${"Prompt:".padEnd(16)}${chalk.dim(promptPreview)}`);
+
+  if (schedule.vars && Object.keys(schedule.vars).length > 0) {
+    console.log(
+      `${"Variables:".padEnd(16)}${Object.keys(schedule.vars).join(", ")}`,
+    );
+  }
+
+  if (schedule.secretNames && schedule.secretNames.length > 0) {
+    console.log(`${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`);
+  }
+
+  if (schedule.artifactName) {
+    const artifactInfo = schedule.artifactVersion
+      ? `${schedule.artifactName}:${schedule.artifactVersion}`
+      : schedule.artifactName;
+    console.log(`${"Artifact:".padEnd(16)}${artifactInfo}`);
+  }
+
+  if (
+    schedule.volumeVersions &&
+    Object.keys(schedule.volumeVersions).length > 0
+  ) {
+    console.log(
+      `${"Volumes:".padEnd(16)}${Object.keys(schedule.volumeVersions).join(", ")}`,
+    );
+  }
+}
+
+/**
+ * Print time schedule section
+ */
+function printTimeSchedule(schedule: ScheduleResponse): void {
+  console.log();
+  console.log(`${"Trigger:".padEnd(16)}${formatTrigger(schedule)}`);
+  console.log(`${"Timezone:".padEnd(16)}${detectTimezone()}`);
+
+  if (schedule.enabled) {
+    console.log(
+      `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
+    );
+  }
+}
+
+/**
+ * Print recent runs section
+ */
+async function printRecentRuns(
+  name: string,
+  composeId: string,
+  limit: number,
+): Promise<void> {
+  if (limit <= 0) return;
+
+  try {
+    const { runs } = await listScheduleRuns({ name, composeId, limit });
+
+    if (runs.length > 0) {
+      console.log();
+      console.log("Recent Runs:");
+      console.log(
+        chalk.dim("RUN ID                                STATUS     CREATED"),
+      );
+      for (const run of runs) {
+        const id = run.id;
+        const status = formatRunStatus(run.status).padEnd(10);
+        const created = formatDateTimeStyled(run.createdAt);
+        console.log(`${id}  ${status} ${created}`);
+      }
+    }
+  } catch {
+    console.log();
+    console.log(chalk.dim("Recent Runs: (unable to fetch)"));
+  }
+}
+
+/**
+ * Handle status command errors
+ */
+function handleStatusError(error: unknown, agentName: string): never {
+  console.error(chalk.red("✗ Failed to get schedule status"));
+  if (error instanceof Error) {
+    if (error.message.includes("Not authenticated")) {
+      console.error(chalk.dim("  Run: vm0 auth login"));
+    } else if (
+      error.message.includes("not found") ||
+      error.message.includes("Not found") ||
+      error.message.includes("No schedule found")
+    ) {
+      console.error(chalk.dim(`  No schedule found for agent "${agentName}"`));
+      console.error(chalk.dim("  Run: vm0 schedule list"));
+    } else {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+  }
+  process.exit(1);
+}
+
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a schedule")
@@ -60,141 +175,28 @@ export const statusCommand = new Command()
     "Number of recent runs to show (0 to hide)",
     "5",
   )
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   .action(async (agentName: string, options: { limit: string }) => {
     try {
-      // Resolve schedule by agent name
       const resolved = await resolveScheduleByAgent(agentName);
       const { name, composeId } = resolved;
 
-      // Get schedule details
       const schedule = await getScheduleByName({ name, composeId });
 
-      // Print header
       console.log();
       console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
       console.log(chalk.dim("━".repeat(50)));
 
-      // === Group 1: Run Configuration ===
+      printRunConfiguration(schedule);
+      printTimeSchedule(schedule);
 
-      // Status
-      const statusText = schedule.enabled
-        ? chalk.green("enabled")
-        : chalk.yellow("disabled");
-      console.log(`${"Status:".padEnd(16)}${statusText}`);
-
-      // Agent
-      console.log(
-        `${"Agent:".padEnd(16)}${schedule.composeName} ${chalk.dim(`(${schedule.scopeSlug})`)}`,
-      );
-
-      // Prompt (truncated)
-      const promptPreview =
-        schedule.prompt.length > 60
-          ? schedule.prompt.slice(0, 57) + "..."
-          : schedule.prompt;
-      console.log(`${"Prompt:".padEnd(16)}${chalk.dim(promptPreview)}`);
-
-      // Variables
-      if (schedule.vars && Object.keys(schedule.vars).length > 0) {
-        console.log(
-          `${"Variables:".padEnd(16)}${Object.keys(schedule.vars).join(", ")}`,
-        );
-      }
-
-      // Secrets
-      if (schedule.secretNames && schedule.secretNames.length > 0) {
-        console.log(
-          `${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`,
-        );
-      }
-
-      // Artifact
-      if (schedule.artifactName) {
-        const artifactInfo = schedule.artifactVersion
-          ? `${schedule.artifactName}:${schedule.artifactVersion}`
-          : schedule.artifactName;
-        console.log(`${"Artifact:".padEnd(16)}${artifactInfo}`);
-      }
-
-      // Volume versions
-      if (
-        schedule.volumeVersions &&
-        Object.keys(schedule.volumeVersions).length > 0
-      ) {
-        console.log(
-          `${"Volumes:".padEnd(16)}${Object.keys(schedule.volumeVersions).join(", ")}`,
-        );
-      }
-
-      // === Group 2: Time Schedule ===
-      console.log();
-
-      // Trigger
-      console.log(`${"Trigger:".padEnd(16)}${formatTrigger(schedule)}`);
-
-      // Timezone
-      console.log(`${"Timezone:".padEnd(16)}${detectTimezone()}`);
-
-      // Next run (only if enabled)
-      if (schedule.enabled) {
-        console.log(
-          `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
-        );
-      }
-
-      // === Group 3: Recent Runs ===
       const limit = Math.min(
         Math.max(0, parseInt(options.limit, 10) || 5),
         100,
       );
-      if (limit > 0) {
-        try {
-          const { runs } = await listScheduleRuns({
-            name,
-            composeId,
-            limit,
-          });
+      await printRecentRuns(name, composeId, limit);
 
-          if (runs.length > 0) {
-            console.log();
-            console.log("Recent Runs:");
-            console.log(
-              chalk.dim(
-                "RUN ID                                STATUS     CREATED",
-              ),
-            );
-            for (const run of runs) {
-              const id = run.id;
-              const status = formatRunStatus(run.status).padEnd(10);
-              const created = formatDateTimeStyled(run.createdAt);
-              console.log(`${id}  ${status} ${created}`);
-            }
-          }
-        } catch {
-          console.log();
-          console.log(chalk.dim("Recent Runs: (unable to fetch)"));
-        }
-      }
       console.log();
     } catch (error) {
-      console.error(chalk.red("✗ Failed to get schedule status"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (
-          error.message.includes("not found") ||
-          error.message.includes("Not found") ||
-          error.message.includes("No schedule found")
-        ) {
-          console.error(
-            chalk.dim(`  No schedule found for agent "${agentName}"`),
-          );
-          console.error(chalk.dim("  Run: vm0 schedule list"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
+      handleStatusError(error, agentName);
     }
   });
