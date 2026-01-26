@@ -19,7 +19,7 @@ jobs:
       - name: Check if cleanup needed
         id: check
         env:
-          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS_LY }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
@@ -47,7 +47,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS_LY }}
+          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
         run: |
           SSH_KEY_FILE="$HOME/.ssh/metal.pem"
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
