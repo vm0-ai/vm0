@@ -220,7 +220,7 @@
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
       tags: [prepare]
 
-    - name: Copy vsock-agent files for rootfs build
+    - name: Copy rootfs build files
       copy:
         src: "{{ item }}"
         dest: "{{ runner_base_dir }}/deploy-runner/"
@@ -228,26 +228,8 @@
         group: "{{ ansible_user }}"
         mode: '0644'
       with_fileglob:
+        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/vsock-agent.*"
-      tags: [prepare]
-
-    - name: Copy Dockerfile for rootfs build
-      copy:
-        src: "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
-        dest: "{{ runner_base_dir }}/deploy-runner/Dockerfile"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      tags: [prepare]
-
-    - name: Copy agent scripts for rootfs build
-      copy:
-        src: "{{ item }}"
-        dest: "{{ runner_base_dir }}/deploy-runner/"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      with_fileglob:
         - "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/*.mjs"
       tags: [prepare]
 
