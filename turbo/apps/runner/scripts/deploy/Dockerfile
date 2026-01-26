@@ -80,6 +80,10 @@ RUN userdel -r node 2>/dev/null || true \
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
+# Create directories needed by vm-init script
+# These must exist in the squashfs image because vm-init runs with squashfs as root
+RUN mkdir -p /rom /rw /mnt/root
+
 # Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
 # Protocol: 4-byte length prefix (big endian) + JSON message
 # Messages: ready, ping/pong, exec/exec_result
