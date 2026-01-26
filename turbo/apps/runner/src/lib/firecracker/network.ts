@@ -276,10 +276,6 @@ export async function createTapDevice(
   await clearStaleIptablesRulesForIP(guestIp);
   log(`[VM ${vmId}] Stale iptables cleared`);
 
-  // Ensure bridge exists
-  await setupBridge();
-  log(`[VM ${vmId}] Bridge ready`);
-
   // Delete existing TAP device if it exists (from previous runs or failed cleanup)
   if (await tapDeviceExists(tapDevice)) {
     log(`[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`);
