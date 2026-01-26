@@ -119,12 +119,8 @@ create_squashfs_image() {
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    # Inject vm-init script for VM initialization
-    echo "[INJECT] Adding vm-init script..."
-    sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
-    sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
-
     # Create squashfs with xz compression (best compression ratio)
+    # Note: vm-init script is already installed via Dockerfile
     echo "[SQUASH] Creating squashfs (this may take a moment)..."
     sudo mksquashfs "$EXTRACT_DIR" "$OUTPUT_PATH" -comp xz -noappend -quiet
 

@@ -90,5 +90,7 @@ RUN mkdir -p /rom /rw /mnt/root
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Note: vsock-agent will be started by vm-init.sh using tini
+# Install vm-init script (PID 1, sets up overlayfs and starts vsock-agent)
+COPY vm-init.sh /sbin/vm-init
+RUN chmod 755 /sbin/vm-init
 ENV LANG=C.UTF-8
