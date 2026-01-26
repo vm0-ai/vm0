@@ -274,9 +274,11 @@ export async function createTapDevice(
   // Clear any stale iptables rules for this IP from previous VMs
   // This prevents leftover REDIRECT rules from interfering with network
   await clearStaleIptablesRulesForIP(guestIp);
+  log(`[VM ${vmId}] Stale iptables cleared`);
 
   // Ensure bridge exists
   await setupBridge();
+  log(`[VM ${vmId}] Bridge ready`);
 
   // Delete existing TAP device if it exists (from previous runs or failed cleanup)
   if (await tapDeviceExists(tapDevice)) {
@@ -286,13 +288,14 @@ export async function createTapDevice(
 
   // Create TAP device
   await execCommand(`ip tuntap add ${tapDevice} mode tap`);
+  log(`[VM ${vmId}] TAP device created`);
 
   // Add TAP to bridge
   await execCommand(`ip link set ${tapDevice} master ${BRIDGE_NAME}`);
+  log(`[VM ${vmId}] TAP added to bridge`);
 
   // Bring TAP up
   await execCommand(`ip link set ${tapDevice} up`);
-
   log(`[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`);
 
   return {
