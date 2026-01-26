@@ -14,16 +14,12 @@ export const listCommand = new Command()
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));
         console.log(
-          chalk.dim("  Create one with: vm0 schedule deploy schedule.yaml"),
+          chalk.dim("  Create one with: vm0 schedule setup <agent-name>"),
         );
         return;
       }
 
       // Calculate column widths
-      const nameWidth = Math.max(
-        4,
-        ...result.schedules.map((s) => s.name.length),
-      );
       const agentWidth = Math.max(
         5,
         ...result.schedules.map((s) => s.composeName.length),
@@ -39,7 +35,6 @@ export const listCommand = new Command()
 
       // Print header
       const header = [
-        "NAME".padEnd(nameWidth),
         "AGENT".padEnd(agentWidth),
         "TRIGGER".padEnd(triggerWidth),
         "STATUS".padEnd(8),
@@ -62,7 +57,6 @@ export const listCommand = new Command()
           : "-";
 
         const row = [
-          schedule.name.padEnd(nameWidth),
           schedule.composeName.padEnd(agentWidth),
           trigger.padEnd(triggerWidth),
           status.padEnd(8 + (schedule.enabled ? 0 : 2)), // Account for chalk chars

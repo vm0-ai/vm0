@@ -3,7 +3,6 @@ import { parse as parseYaml } from "yaml";
 import { listSchedules } from "../api";
 
 const CONFIG_FILE = "vm0.yaml";
-const SCHEDULE_FILE = "schedule.yaml";
 
 /**
  * vm0.yaml structure for agent compose
@@ -38,44 +37,6 @@ export function loadAgentName(): LoadAgentNameResult {
     return {
       agentName: null,
       error: err instanceof Error ? err.message : "Failed to parse vm0.yaml",
-    };
-  }
-}
-
-/**
- * Result of loading schedule name from schedule.yaml
- */
-interface LoadScheduleNameResult {
-  scheduleName: string | null;
-  error?: string;
-}
-
-/**
- * Load schedule.yaml and return the first schedule name.
- * Returns error message if file exists but cannot be parsed.
- */
-export function loadScheduleName(): LoadScheduleNameResult {
-  if (!existsSync(SCHEDULE_FILE)) {
-    return { scheduleName: null };
-  }
-  try {
-    const content = readFileSync(SCHEDULE_FILE, "utf8");
-    const parsed = parseYaml(content) as {
-      schedules?: Record<string, unknown>;
-    };
-    if (!parsed?.schedules) {
-      return {
-        scheduleName: null,
-        error: "No schedules defined in schedule.yaml",
-      };
-    }
-    const scheduleNames = Object.keys(parsed.schedules);
-    return { scheduleName: scheduleNames[0] || null };
-  } catch (err) {
-    return {
-      scheduleName: null,
-      error:
-        err instanceof Error ? err.message : "Failed to parse schedule.yaml",
     };
   }
 }
@@ -350,19 +311,19 @@ interface ResolveScheduleResult {
 }
 
 /**
- * Resolve a schedule by name using the list API.
- * Searches across all user's schedules globally.
- * @throws Error if schedule not found
+ * Resolve a schedule by agent name using the list API.
+ * Searches across all user's schedules and finds by composeName (agent name).
+ * @throws Error if agent has no schedule
  */
-export async function resolveScheduleByName(
-  name: string,
+export async function resolveScheduleByAgent(
+  agentName: string,
 ): Promise<ResolveScheduleResult> {
   const { schedules } = await listSchedules();
 
-  const schedule = schedules.find((s) => s.name === name);
+  const schedule = schedules.find((s) => s.composeName === agentName);
 
   if (!schedule) {
-    throw new Error(`Schedule "${name}" not found`);
+    throw new Error(`No schedule found for agent "${agentName}"`);
   }
 
   return {

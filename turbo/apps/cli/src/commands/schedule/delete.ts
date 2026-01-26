@@ -2,10 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import * as readline from "readline";
 import { deleteSchedule } from "../../lib/api";
-import {
-  loadScheduleName,
-  resolveScheduleByName,
-} from "../../lib/domain/schedule-utils";
+import { resolveScheduleByAgent } from "../../lib/domain/schedule-utils";
 
 /**
  * Prompt for confirmation
@@ -28,39 +25,18 @@ export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
   .description("Delete a schedule")
-  .argument(
-    "[name]",
-    "Schedule name (auto-detected from schedule.yaml if omitted)",
-  )
+  .argument("<agent-name>", "Agent name")
   .option("-f, --force", "Skip confirmation prompt")
-  .action(async (nameArg: string | undefined, options: { force?: boolean }) => {
-    // Auto-detect schedule name if not provided
-    let name = nameArg;
+  .action(async (agentName: string, options: { force?: boolean }) => {
     try {
-      if (!name) {
-        const scheduleResult = loadScheduleName();
-        if (scheduleResult.error) {
-          console.error(chalk.red(`✗ ${scheduleResult.error}`));
-          process.exit(1);
-        }
-        if (!scheduleResult.scheduleName) {
-          console.error(chalk.red("✗ Schedule name required"));
-          console.error(
-            chalk.dim(
-              "  Provide name or run from directory with schedule.yaml",
-            ),
-          );
-          process.exit(1);
-        }
-        name = scheduleResult.scheduleName;
-      }
-
-      // Resolve schedule by name (searches globally across all agents)
-      const resolved = await resolveScheduleByName(name);
+      // Resolve schedule by agent name
+      const resolved = await resolveScheduleByAgent(agentName);
 
       // Confirm deletion
       if (!options.force) {
-        const confirmed = await confirm(`Delete schedule ${chalk.cyan(name)}?`);
+        const confirmed = await confirm(
+          `Delete schedule for agent ${chalk.cyan(agentName)}?`,
+        );
         if (!confirmed) {
           console.log(chalk.dim("Cancelled"));
           return;
@@ -68,16 +44,26 @@ export const deleteCommand = new Command()
       }
 
       // Call API
-      await deleteSchedule({ name, composeId: resolved.composeId });
+      await deleteSchedule({
+        name: resolved.name,
+        composeId: resolved.composeId,
+      });
 
-      console.log(chalk.green(`✓ Deleted schedule ${chalk.cyan(name)}`));
+      console.log(
+        chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
+      );
     } catch (error) {
       console.error(chalk.red("✗ Failed to delete schedule"));
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.message.toLowerCase().includes("not found")) {
-          console.error(chalk.dim(`  Schedule "${name}" not found`));
+        } else if (
+          error.message.toLowerCase().includes("not found") ||
+          error.message.includes("No schedule found")
+        ) {
+          console.error(
+            chalk.dim(`  No schedule found for agent "${agentName}"`),
+          );
           console.error(chalk.dim("  Run: vm0 schedule list"));
         } else {
           console.error(chalk.dim(`  ${error.message}`));

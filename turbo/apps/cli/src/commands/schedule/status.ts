@@ -2,14 +2,12 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getScheduleByName, listScheduleRuns } from "../../lib/api";
 import {
-  loadScheduleName,
   formatDateTime,
   detectTimezone,
-  resolveScheduleByName,
+  resolveScheduleByAgent,
 } from "../../lib/domain/schedule-utils";
 import type { ScheduleResponse, RunSummary } from "@vm0/core";
 
-// Re-export RunStatus type for local use (same as RunSummary['status'])
 type RunStatus = RunSummary["status"];
 
 /**
@@ -18,7 +16,6 @@ type RunStatus = RunSummary["status"];
 function formatDateTimeStyled(dateStr: string | null): string {
   if (!dateStr) return chalk.dim("-");
   const formatted = formatDateTime(dateStr);
-  // Add chalk.dim to the relative part (in parentheses)
   return formatted.replace(/\(([^)]+)\)$/, chalk.dim("($1)"));
 }
 
@@ -57,48 +54,25 @@ function formatRunStatus(status: RunStatus): string {
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a schedule")
-  .argument(
-    "[name]",
-    "Schedule name (auto-detected from schedule.yaml if omitted)",
-  )
+  .argument("<agent-name>", "Agent name")
   .option(
     "-l, --limit <number>",
     "Number of recent runs to show (0 to hide)",
     "5",
   )
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  .action(async (nameArg: string | undefined, options: { limit: string }) => {
+  .action(async (agentName: string, options: { limit: string }) => {
     try {
-      // Auto-detect schedule name if not provided
-      let name = nameArg;
-      if (!name) {
-        const scheduleResult = loadScheduleName();
-        if (scheduleResult.error) {
-          console.error(chalk.red(`✗ ${scheduleResult.error}`));
-          process.exit(1);
-        }
-        if (!scheduleResult.scheduleName) {
-          console.error(chalk.red("✗ Schedule name required"));
-          console.error(
-            chalk.dim(
-              "  Provide name or run from directory with schedule.yaml",
-            ),
-          );
-          process.exit(1);
-        }
-        name = scheduleResult.scheduleName;
-      }
-
-      // Resolve schedule by name (searches globally across all agents)
-      const resolved = await resolveScheduleByName(name);
-      const composeId = resolved.composeId;
+      // Resolve schedule by agent name
+      const resolved = await resolveScheduleByAgent(agentName);
+      const { name, composeId } = resolved;
 
       // Get schedule details
       const schedule = await getScheduleByName({ name, composeId });
 
       // Print header
       console.log();
-      console.log(`Schedule: ${chalk.cyan(schedule.name)}`);
+      console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
       console.log(chalk.dim("━".repeat(50)));
 
       // === Group 1: Run Configuration ===
@@ -210,10 +184,11 @@ export const statusCommand = new Command()
           console.error(chalk.dim("  Run: vm0 auth login"));
         } else if (
           error.message.includes("not found") ||
-          error.message.includes("Not found")
+          error.message.includes("Not found") ||
+          error.message.includes("No schedule found")
         ) {
           console.error(
-            chalk.dim(`  Schedule "${nameArg ?? "unknown"}" not found`),
+            chalk.dim(`  No schedule found for agent "${agentName}"`),
           );
           console.error(chalk.dim("  Run: vm0 schedule list"));
         } else {
