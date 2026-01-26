@@ -142,19 +142,20 @@ export async function installProxyCA(
 }
 
 /**
- * Configure DNS in the VM
- * Systemd-resolved may overwrite /etc/resolv.conf at boot,
- * so we need to ensure DNS servers are configured after the VM is ready.
- * Requires sudo since we're connected as 'user', not root.
+ * Verify DNS configuration in the VM
+ * DNS is pre-configured in the rootfs image during build (build-rootfs.sh).
+ * This function verifies the configuration is correct.
  */
 export async function configureDNS(guest: GuestClient): Promise<void> {
-  // Remove any symlink and write static DNS configuration
-  // Use sudo since /etc/resolv.conf requires root access
-  const dnsConfig = `nameserver 8.8.8.8
+  const expectedDns = `nameserver 8.8.8.8
 nameserver 8.8.4.4
 nameserver 1.1.1.1`;
 
-  await guest.execOrThrow(
-    `sudo sh -c 'rm -f /etc/resolv.conf && echo "${dnsConfig}" > /etc/resolv.conf'`,
-  );
+  const actualDns = (await guest.execOrThrow("cat /etc/resolv.conf")).trim();
+
+  if (actualDns !== expectedDns) {
+    console.warn(
+      `[Executor] DNS config mismatch. Expected:\n${expectedDns}\nActual:\n${actualDns}`,
+    );
+  }
 }
