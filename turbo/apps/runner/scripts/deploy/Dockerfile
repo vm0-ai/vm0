@@ -83,8 +83,8 @@ RUN userdel -r node 2>/dev/null || true \
 # Create working directory for agent scripts
 RUN mkdir -p /opt/vm0-scripts/lib
 
-# Create directories for overlay-init (squashfs is read-only at boot)
-# These are needed by /sbin/overlay-init to set up overlayfs
+# Create directories for vm-init (squashfs is read-only at boot)
+# These are needed by /sbin/vm-init to set up overlayfs
 RUN mkdir -p /rom /rw /mnt/root
 
 # Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
@@ -94,5 +94,5 @@ RUN mkdir -p /usr/local/bin/vm0-agent
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Note: vsock-agent will be started by overlay-init.sh using tini
+# Note: vsock-agent will be started by vm-init.sh using tini
 ENV LANG=C.UTF-8

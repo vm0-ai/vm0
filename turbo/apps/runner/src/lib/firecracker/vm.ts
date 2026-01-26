@@ -240,10 +240,10 @@ export class FirecrackerVM {
     //   - numa=off: disable NUMA (single node)
     //   - mitigations=off: disable CPU vulnerability mitigations
     //   - noresume: skip hibernation resume check
-    //   - init=/sbin/overlay-init: use overlay-init to set up overlayfs and start vsock-agent with tini
+    //   - init=/sbin/vm-init: use vm-init to set up overlayfs and start vsock-agent with tini
     //   - ip=...: network configuration (guest IP, gateway, netmask)
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
-    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/overlay-init ${networkBootArgs}`;
+    const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
 
     console.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
     await this.client.setBootSource({
@@ -265,7 +265,7 @@ export class FirecrackerVM {
 
     // Configure overlay drive (ext4, read-write, per-VM)
     // This is mounted as /dev/vdb inside the VM
-    // The overlay-init script combines these using overlayfs
+    // The vm-init script combines these using overlayfs
     console.log(`[VM ${this.config.vmId}] Overlay: ${this.vmOverlayPath}`);
     await this.client.setDrive({
       drive_id: "overlay",
