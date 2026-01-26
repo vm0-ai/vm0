@@ -49,14 +49,14 @@ mount --move /oldroot/dev /dev
 
 # Load virtio-vsock kernel module for host-guest communication
 # Note: Load before umount oldroot in case module deps are needed
-modprobe virtio-vsock 2>/dev/null || true
+modprobe virtio-vsock
 
 # Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
 # Mount virtual filesystems needed by tini and processes
-mount -t proc proc /proc 2>/dev/null || true
-mount -t sysfs sys /sys 2>/dev/null || true
+mount -t proc proc /proc
+mount -t sysfs sys /sys
 
 # Set PATH to include /usr/local/bin for node and other executables
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
