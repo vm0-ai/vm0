@@ -240,7 +240,7 @@ export class FirecrackerVM {
     //   - numa=off: disable NUMA (single node)
     //   - mitigations=off: disable CPU vulnerability mitigations
     //   - noresume: skip hibernation resume check
-    //   - init=/sbin/overlay-init: use overlay-init to set up overlayfs before systemd
+    //   - init=/sbin/overlay-init: use overlay-init to set up overlayfs and start vsock-agent with tini
     //   - ip=...: network configuration (guest IP, gateway, netmask)
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
     const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/overlay-init ${networkBootArgs}`;
