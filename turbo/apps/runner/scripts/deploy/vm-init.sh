@@ -48,11 +48,12 @@ mount --move /oldroot/rw /rw
 mount --move /oldroot/dev /dev
 
 # Clean up old root reference
+# Note: May fail with "No such file or directory" if kernel already released /oldroot after pivot_root
 umount -l /oldroot 2>/dev/null || true
 
 # Mount virtual filesystems needed by tini and processes
-mount -t proc proc /proc 2>/dev/null || true
-mount -t sysfs sys /sys 2>/dev/null || true
+mount -t proc proc /proc
+mount -t sysfs sys /sys
 
 # Set PATH to include /usr/local/bin for node and other executables
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
