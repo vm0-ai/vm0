@@ -31,14 +31,6 @@ describe("agent list command", () => {
     it("should have 'ls' as an alias", () => {
       expect(listCommand.alias()).toBe("ls");
     });
-
-    it("should have --scope option", () => {
-      const scopeOption = listCommand.options.find(
-        (opt) => opt.long === "--scope",
-      );
-      expect(scopeOption).toBeDefined();
-      expect(scopeOption?.description).toContain("Scope");
-    });
   });
 });
 
@@ -58,14 +50,6 @@ describe("agent status command", () => {
       expect(args.length).toBe(1);
       expect(args[0]?.name()).toBe("name[:version]");
       expect(args[0]?.required).toBe(true);
-    });
-
-    it("should have --scope option", () => {
-      const scopeOption = statusCommand.options.find(
-        (opt) => opt.long === "--scope",
-      );
-      expect(scopeOption).toBeDefined();
-      expect(scopeOption?.description).toContain("Scope");
     });
 
     it("should have --no-sources option", () => {

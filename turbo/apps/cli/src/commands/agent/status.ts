@@ -159,107 +159,98 @@ export const statusCommand = new Command()
     "<name[:version]>",
     "Agent name with optional version (e.g., my-agent:latest or my-agent:a1b2c3d4)",
   )
-  .option("-s, --scope <scope>", "Scope to look up the compose from")
   .option("--no-sources", "Skip fetching skills to determine variable sources")
-  .action(
-    async (
-      argument: string,
-      options: { scope?: string; sources?: boolean },
-    ) => {
-      try {
-        // Parse NAME:VERSION argument
-        const colonIndex = argument.lastIndexOf(":");
-        let name: string;
-        let version: string;
+  .action(async (argument: string, options: { sources?: boolean }) => {
+    try {
+      // Parse NAME:VERSION argument
+      const colonIndex = argument.lastIndexOf(":");
+      let name: string;
+      let version: string;
 
-        if (colonIndex === -1) {
-          name = argument;
-          version = "latest";
-        } else {
-          name = argument.slice(0, colonIndex);
-          version = argument.slice(colonIndex + 1) || "latest";
-        }
+      if (colonIndex === -1) {
+        name = argument;
+        version = "latest";
+      } else {
+        name = argument.slice(0, colonIndex);
+        version = argument.slice(colonIndex + 1) || "latest";
+      }
 
-        // Get compose by name
-        const compose = await getComposeByName(name, options.scope);
+      // Get compose by name
+      const compose = await getComposeByName(name);
 
-        if (!compose) {
-          console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-          console.error(chalk.dim("  Run: vm0 agent list"));
-          process.exit(1);
-        }
-
-        // Resolve version if not "latest" or full hash
-        let resolvedVersionId = compose.headVersionId;
-
-        if (version !== "latest" && compose.headVersionId) {
-          // Check if it's already a full hash or needs resolution
-          if (version.length < 64) {
-            // Resolve the version prefix
-            try {
-              const versionInfo = await getComposeVersion(compose.id, version);
-              resolvedVersionId = versionInfo.versionId;
-            } catch (error) {
-              if (
-                error instanceof Error &&
-                error.message.includes("not found")
-              ) {
-                console.error(chalk.red(`✗ Version not found: ${version}`));
-                console.error(
-                  chalk.dim(
-                    `  HEAD version: ${compose.headVersionId?.slice(0, 8)}`,
-                  ),
-                );
-                process.exit(1);
-              }
-              throw error;
-            }
-          } else {
-            resolvedVersionId = version;
-          }
-        }
-
-        if (!resolvedVersionId || !compose.content) {
-          console.error(chalk.red(`✗ No version found for: ${name}`));
-          process.exit(1);
-        }
-
-        const content = compose.content as AgentComposeContent;
-
-        // Derive variable sources
-        // --no-sources: skip network (skill downloads), but still extract variables
-        // Without flag: fetch skills to determine variable sources
-        let variableSources: Map<string, AgentVariableSources> | undefined;
-        try {
-          variableSources = await deriveComposeVariableSources(content, {
-            skipNetwork: options.sources === false,
-          });
-        } catch {
-          // Failed to derive sources, show warning and continue without them
-          console.error(
-            chalk.yellow(
-              "⚠ Warning: Failed to fetch skill sources, showing basic info",
-            ),
-          );
-        }
-
-        // Format and display the compose
-        formatComposeOutput(
-          compose.name,
-          resolvedVersionId,
-          content,
-          variableSources,
-        );
-      } catch (error) {
-        console.error(chalk.red("✗ Failed to get agent compose status"));
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(chalk.dim("  Run: vm0 auth login"));
-          } else {
-            console.error(chalk.dim(`  ${error.message}`));
-          }
-        }
+      if (!compose) {
+        console.error(chalk.red(`✗ Agent compose not found: ${name}`));
+        console.error(chalk.dim("  Run: vm0 agent list"));
         process.exit(1);
       }
-    },
-  );
+
+      // Resolve version if not "latest" or full hash
+      let resolvedVersionId = compose.headVersionId;
+
+      if (version !== "latest" && compose.headVersionId) {
+        // Check if it's already a full hash or needs resolution
+        if (version.length < 64) {
+          // Resolve the version prefix
+          try {
+            const versionInfo = await getComposeVersion(compose.id, version);
+            resolvedVersionId = versionInfo.versionId;
+          } catch (error) {
+            if (error instanceof Error && error.message.includes("not found")) {
+              console.error(chalk.red(`✗ Version not found: ${version}`));
+              console.error(
+                chalk.dim(
+                  `  HEAD version: ${compose.headVersionId?.slice(0, 8)}`,
+                ),
+              );
+              process.exit(1);
+            }
+            throw error;
+          }
+        } else {
+          resolvedVersionId = version;
+        }
+      }
+
+      if (!resolvedVersionId || !compose.content) {
+        console.error(chalk.red(`✗ No version found for: ${name}`));
+        process.exit(1);
+      }
+
+      const content = compose.content as AgentComposeContent;
+
+      // Derive variable sources
+      // --no-sources: skip network (skill downloads), but still extract variables
+      // Without flag: fetch skills to determine variable sources
+      let variableSources: Map<string, AgentVariableSources> | undefined;
+      try {
+        variableSources = await deriveComposeVariableSources(content, {
+          skipNetwork: options.sources === false,
+        });
+      } catch {
+        // Failed to derive sources, show warning and continue without them
+        console.error(
+          chalk.yellow(
+            "⚠ Warning: Failed to fetch skill sources, showing basic info",
+          ),
+        );
+      }
+
+      // Format and display the compose
+      formatComposeOutput(
+        compose.name,
+        resolvedVersionId,
+        content,
+        variableSources,
+      );
+    } catch (error) {
+      console.error(chalk.red("✗ Failed to get agent compose status"));
+      if (error instanceof Error) {
+        if (error.message.includes("Not authenticated")) {
+          console.error(chalk.dim("  Run: vm0 auth login"));
+        } else {
+          console.error(chalk.dim(`  ${error.message}`));
+        }
+      }
+      process.exit(1);
+    }
+  });
