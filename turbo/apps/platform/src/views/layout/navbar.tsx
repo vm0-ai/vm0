@@ -39,7 +39,12 @@ export function Navbar({ breadcrumb }: NavbarProps) {
 
       {/* Right section: Join Discord button - pr-6 (24px) to match Figma */}
       <div className="pr-6">
-        <button className="inline-flex items-center gap-2 h-9 px-2.5 rounded-lg hover:bg-accent/50 transition-colors">
+        <a
+          className="inline-flex items-center gap-2 h-9 px-2.5 rounded-lg hover:bg-accent/50 transition-colors"
+          href="https://discord.com/invite/WMpAmHFfp6"
+          target="_blank"
+          rel="noreferrer"
+        >
           <span className="flex items-center shrink-0 size-[18px]">
             <img
               src="/discord-icon.svg"
@@ -52,7 +57,7 @@ export function Navbar({ breadcrumb }: NavbarProps) {
           <span className="flex items-center text-sm font-medium leading-5 text-foreground whitespace-nowrap">
             Join Discord
           </span>
-        </button>
+        </a>
       </div>
     </header>
   );
