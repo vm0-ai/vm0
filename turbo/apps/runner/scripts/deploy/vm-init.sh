@@ -52,7 +52,7 @@ mount --move /oldroot/dev /dev
 modprobe virtio-vsock
 
 # Clean up old root reference (after modprobe to ensure module deps are available)
-umount -l /oldroot 2>/dev/null || true
+umount -l /oldroot
 
 # Mount virtual filesystems needed by tini and processes
 mount -t proc proc /proc
