@@ -7,7 +7,6 @@ import {
   parseRunIdsFromOutput,
   extractRequiredVarNames,
   checkMissingVariables,
-  generateEnvPlaceholders,
   CONFIG_FILE,
 } from "../cook";
 
@@ -53,37 +52,38 @@ describe("cook command - environment variable check", () => {
       vi.stubEnv(TEST_VAR_2, "test-password");
 
       const varNames = [TEST_VAR_1, TEST_VAR_2];
-      const envFilePath = path.join(tempDir, ".env");
 
-      const missing = checkMissingVariables(varNames, envFilePath);
+      // No envFilePath - only check process.env
+      const missing = checkMissingVariables(varNames);
 
       expect(missing).toHaveLength(0);
     });
 
-    it("should return empty array when variables are in .env file", async () => {
-      // Create .env file with the variables
+    it("should return empty array when variables are in --env-file", async () => {
+      // Create env file with the variables
       const envFilePath = path.join(tempDir, ".env");
       await fs.writeFile(
         envFilePath,
-        `${TEST_VAR_1}=from-dotenv\n${TEST_VAR_2}=from-dotenv\n`,
+        `${TEST_VAR_1}=from-file\n${TEST_VAR_2}=from-file\n`,
       );
 
       const varNames = [TEST_VAR_1, TEST_VAR_2];
 
+      // Explicitly provide envFilePath
       const missing = checkMissingVariables(varNames, envFilePath);
 
       expect(missing).toHaveLength(0);
     });
 
-    it("should return missing variables not in env or .env", async () => {
+    it("should return missing variables not in env or --env-file", async () => {
       // Use unique variable names that won't exist in process.env
       const UNIQUE_VAR_EXISTS = "COOK_TEST_VAR_EXISTS_" + Date.now();
       const UNIQUE_VAR_MISSING_1 = "COOK_TEST_VAR_MISSING_1_" + Date.now();
       const UNIQUE_VAR_MISSING_2 = "COOK_TEST_VAR_MISSING_2_" + Date.now();
 
-      // Create .env file with only one variable
+      // Create env file with only one variable
       const envFilePath = path.join(tempDir, ".env");
-      await fs.writeFile(envFilePath, `${UNIQUE_VAR_EXISTS}=from-dotenv\n`);
+      await fs.writeFile(envFilePath, `${UNIQUE_VAR_EXISTS}=from-file\n`);
 
       const varNames = [
         UNIQUE_VAR_EXISTS,
@@ -98,68 +98,27 @@ describe("cook command - environment variable check", () => {
       expect(missing).not.toContain(UNIQUE_VAR_EXISTS);
     });
 
-    it("should return all variables when .env file does not exist", () => {
+    it("should return all variables when no --env-file and not in process.env", () => {
       // Use unique variable names that won't exist in process.env
       const UNIQUE_VAR_1 = "COOK_TEST_UNIQUE_VAR_1_" + Date.now();
       const UNIQUE_VAR_2 = "COOK_TEST_UNIQUE_VAR_2_" + Date.now();
 
-      const envFilePath = path.join(tempDir, ".env");
-
       const varNames = [UNIQUE_VAR_1, UNIQUE_VAR_2];
 
-      const missing = checkMissingVariables(varNames, envFilePath);
+      // No envFilePath - only check process.env
+      const missing = checkMissingVariables(varNames);
 
       expect(missing).toContain(UNIQUE_VAR_1);
       expect(missing).toContain(UNIQUE_VAR_2);
     });
-  });
 
-  describe("generateEnvPlaceholders", () => {
-    it("should create new .env file with placeholders", async () => {
-      const envFilePath = path.join(tempDir, ".env");
-      const missingVars = ["API_KEY", "DB_PASSWORD"];
+    it("should throw error when --env-file does not exist", () => {
+      const envFilePath = path.join(tempDir, "nonexistent.env");
+      const varNames = [TEST_VAR_1];
 
-      await generateEnvPlaceholders(missingVars, envFilePath);
-
-      const content = await fs.readFile(envFilePath, "utf8");
-      expect(content).toBe("API_KEY=\nDB_PASSWORD=\n");
-    });
-
-    it("should append to existing .env file without overwriting", async () => {
-      const envFilePath = path.join(tempDir, ".env");
-      await fs.writeFile(envFilePath, "EXISTING_VAR=value\n");
-
-      const missingVars = ["NEW_VAR"];
-      await generateEnvPlaceholders(missingVars, envFilePath);
-
-      const finalContent = await fs.readFile(envFilePath, "utf8");
-      expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
-    });
-
-    it("should add newline before appending if file doesn't end with newline", async () => {
-      const envFilePath = path.join(tempDir, ".env");
-      await fs.writeFile(envFilePath, "EXISTING_VAR=value"); // No trailing newline
-
-      const missingVars = ["NEW_VAR"];
-      await generateEnvPlaceholders(missingVars, envFilePath);
-
-      const finalContent = await fs.readFile(envFilePath, "utf8");
-      expect(finalContent).toBe("EXISTING_VAR=value\nNEW_VAR=\n");
-    });
-
-    it("should append multiple missing variables", async () => {
-      const envFilePath = path.join(tempDir, ".env");
-      await fs.writeFile(envFilePath, "EXISTING_VAR=existing-value\n");
-
-      const missingVars = ["NEW_VAR_1", "NEW_VAR_2"];
-      await generateEnvPlaceholders(missingVars, envFilePath);
-
-      const finalContent = await fs.readFile(envFilePath, "utf8");
-      expect(finalContent).toBe(
-        "EXISTING_VAR=existing-value\nNEW_VAR_1=\nNEW_VAR_2=\n",
+      expect(() => checkMissingVariables(varNames, envFilePath)).toThrow(
+        `Environment file not found: ${envFilePath}`,
       );
-      // Verify existing content was preserved
-      expect(finalContent).toContain("EXISTING_VAR=existing-value");
     });
   });
 });

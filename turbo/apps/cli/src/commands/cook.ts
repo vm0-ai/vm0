@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import { readFile, mkdir, writeFile, appendFile } from "fs/promises";
-import { existsSync, readFileSync } from "fs";
+import { readFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { parse as parseYaml } from "yaml";
@@ -219,59 +219,38 @@ export function extractRequiredVarNames(config: AgentComposeConfig): string[] {
 }
 
 /**
- * Check which variables are missing from environment and .env file
+ * Check which variables are missing from environment and optional --env-file
  * @param varNames - Variable names to check
- * @param envFilePath - Path to .env file
+ * @param envFilePath - Optional path to env file (only checked if explicitly provided)
  * @returns Array of missing variable names
  */
 export function checkMissingVariables(
   varNames: string[],
-  envFilePath: string,
+  envFilePath?: string,
 ): string[] {
-  // Load .env file if it exists
-  let dotenvValues: Record<string, string> = {};
-  if (existsSync(envFilePath)) {
+  // Load env file if explicitly provided
+  let fileValues: Record<string, string> = {};
+  if (envFilePath) {
+    if (!existsSync(envFilePath)) {
+      throw new Error(`Environment file not found: ${envFilePath}`);
+    }
     const result = dotenvConfig({ path: envFilePath, quiet: true });
     if (result.parsed) {
-      dotenvValues = result.parsed;
+      fileValues = result.parsed;
     }
   }
 
-  // Check which variables are missing
+  // Check which variables are missing (priority: file > env)
   const missing: string[] = [];
   for (const name of varNames) {
     const inEnv = process.env[name] !== undefined;
-    const inDotenv = dotenvValues[name] !== undefined;
-    if (!inEnv && !inDotenv) {
+    const inFile = fileValues[name] !== undefined;
+    if (!inEnv && !inFile) {
       missing.push(name);
     }
   }
 
   return missing;
-}
-
-/**
- * Generate .env file with placeholder entries for missing variables
- * Creates file if it doesn't exist, appends to existing file
- * @param missingVars - Variable names to add as placeholders
- * @param envFilePath - Path to .env file
- */
-export async function generateEnvPlaceholders(
-  missingVars: string[],
-  envFilePath: string,
-): Promise<void> {
-  const placeholders = missingVars.map((name) => `${name}=`).join("\n");
-
-  if (existsSync(envFilePath)) {
-    // Read existing content to check if we need a newline
-    const existingContent = readFileSync(envFilePath, "utf8");
-    const needsNewline =
-      existingContent.length > 0 && !existingContent.endsWith("\n");
-    const prefix = needsNewline ? "\n" : "";
-    await appendFile(envFilePath, `${prefix}${placeholders}\n`);
-  } else {
-    await writeFile(envFilePath, `${placeholders}\n`);
-  }
 }
 
 /**
@@ -316,6 +295,10 @@ const cookCmd = new Command()
 // Default action for "vm0 cook [prompt]"
 cookCmd
   .argument("[prompt]", "Prompt for the agent")
+  .option(
+    "--env-file <path>",
+    "Load environment variables from file (priority: CLI flags > file > env vars)",
+  )
   .option("-y, --yes", "Skip confirmation prompts")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
@@ -324,6 +307,7 @@ cookCmd
     async (
       prompt: string | undefined,
       options: {
+        envFile?: string;
         yes?: boolean;
         debugNoMockClaude?: boolean;
         noAutoUpdate?: boolean;
@@ -378,22 +362,28 @@ cookCmd
       // Step 1.5: Check for missing environment variables
       const requiredVarNames = extractRequiredVarNames(config);
       if (requiredVarNames.length > 0) {
-        const envFilePath = path.join(cwd, ".env");
-        const missingVars = checkMissingVariables(
-          requiredVarNames,
-          envFilePath,
-        );
-
-        if (missingVars.length > 0) {
-          await generateEnvPlaceholders(missingVars, envFilePath);
-          console.log();
-          console.log(
-            chalk.yellow(
-              `⚠ Missing environment variables. Please fill in values in .env file:`,
-            ),
+        try {
+          const missingVars = checkMissingVariables(
+            requiredVarNames,
+            options.envFile,
           );
-          for (const varName of missingVars) {
-            console.log(chalk.yellow(`    ${varName}`));
+
+          if (missingVars.length > 0) {
+            console.log();
+            console.error(chalk.red("✗ Missing required variables:"));
+            for (const varName of missingVars) {
+              console.error(chalk.red(`    ${varName}`));
+            }
+            console.error(
+              chalk.dim(
+                "\n  Provide via --env-file, or set as environment variables",
+              ),
+            );
+            process.exit(1);
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            console.error(chalk.red(`✗ ${error.message}`));
           }
           process.exit(1);
         }
@@ -635,51 +625,66 @@ cookCmd
     "Continue from the last session (latest conversation and artifact)",
   )
   .argument("<prompt>", "Prompt for the continued agent")
+  .option(
+    "--env-file <path>",
+    "Load environment variables from file (priority: CLI flags > file > env vars)",
+  )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
-  .action(async (prompt: string, options: { debugNoMockClaude?: boolean }) => {
-    const state = await loadCookState();
-    if (!state.lastSessionId) {
-      console.error(chalk.red("✗ No previous session found"));
-      console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
-      process.exit(1);
-    }
+  .action(
+    async (
+      prompt: string,
+      options: { envFile?: string; debugNoMockClaude?: boolean },
+    ) => {
+      const state = await loadCookState();
+      if (!state.lastSessionId) {
+        console.error(chalk.red("✗ No previous session found"));
+        console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
+        process.exit(1);
+      }
 
-    const cwd = process.cwd();
-    const artifactDir = path.join(cwd, ARTIFACT_DIR);
+      const cwd = process.cwd();
+      const artifactDir = path.join(cwd, ARTIFACT_DIR);
 
-    printCommand(`vm0 run continue ${state.lastSessionId} "${prompt}"`);
-    console.log();
-
-    let runOutput: string;
-    try {
-      runOutput = await execVm0RunWithCapture(
-        [
-          "run",
-          "continue",
-          state.lastSessionId,
-          ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-          prompt,
-        ],
-        { cwd },
+      const envFileArg = options.envFile
+        ? ` --env-file ${options.envFile}`
+        : "";
+      printCommand(
+        `vm0 run continue${envFileArg} ${state.lastSessionId} "${prompt}"`,
       );
-    } catch {
-      // Error already displayed by vm0 run
-      process.exit(1);
-    }
+      console.log();
 
-    // Update state with new IDs
-    const newIds = parseRunIdsFromOutput(runOutput);
-    if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
-      await saveCookState({
-        lastRunId: newIds.runId,
-        lastSessionId: newIds.sessionId,
-        lastCheckpointId: newIds.checkpointId,
-      });
-    }
+      let runOutput: string;
+      try {
+        runOutput = await execVm0RunWithCapture(
+          [
+            "run",
+            "continue",
+            ...(options.envFile ? ["--env-file", options.envFile] : []),
+            state.lastSessionId,
+            ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+            prompt,
+          ],
+          { cwd },
+        );
+      } catch {
+        // Error already displayed by vm0 run
+        process.exit(1);
+      }
 
-    // Auto-pull artifact
-    await autoPullArtifact(runOutput, artifactDir);
-  });
+      // Update state with new IDs
+      const newIds = parseRunIdsFromOutput(runOutput);
+      if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
+        await saveCookState({
+          lastRunId: newIds.runId,
+          lastSessionId: newIds.sessionId,
+          lastCheckpointId: newIds.checkpointId,
+        });
+      }
+
+      // Auto-pull artifact
+      await autoPullArtifact(runOutput, artifactDir);
+    },
+  );
 
 // Subcommand: vm0 cook resume <prompt>
 cookCmd
@@ -688,50 +693,65 @@ cookCmd
     "Resume from the last checkpoint (snapshotted conversation and artifact)",
   )
   .argument("<prompt>", "Prompt for the resumed agent")
+  .option(
+    "--env-file <path>",
+    "Load environment variables from file (priority: CLI flags > file > env vars)",
+  )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
-  .action(async (prompt: string, options: { debugNoMockClaude?: boolean }) => {
-    const state = await loadCookState();
-    if (!state.lastCheckpointId) {
-      console.error(chalk.red("✗ No previous checkpoint found"));
-      console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
-      process.exit(1);
-    }
+  .action(
+    async (
+      prompt: string,
+      options: { envFile?: string; debugNoMockClaude?: boolean },
+    ) => {
+      const state = await loadCookState();
+      if (!state.lastCheckpointId) {
+        console.error(chalk.red("✗ No previous checkpoint found"));
+        console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
+        process.exit(1);
+      }
 
-    const cwd = process.cwd();
-    const artifactDir = path.join(cwd, ARTIFACT_DIR);
+      const cwd = process.cwd();
+      const artifactDir = path.join(cwd, ARTIFACT_DIR);
 
-    printCommand(`vm0 run resume ${state.lastCheckpointId} "${prompt}"`);
-    console.log();
-
-    let runOutput: string;
-    try {
-      runOutput = await execVm0RunWithCapture(
-        [
-          "run",
-          "resume",
-          state.lastCheckpointId,
-          ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-          prompt,
-        ],
-        { cwd },
+      const envFileArg = options.envFile
+        ? ` --env-file ${options.envFile}`
+        : "";
+      printCommand(
+        `vm0 run resume${envFileArg} ${state.lastCheckpointId} "${prompt}"`,
       );
-    } catch {
-      // Error already displayed by vm0 run
-      process.exit(1);
-    }
+      console.log();
 
-    // Update state with new IDs
-    const newIds = parseRunIdsFromOutput(runOutput);
-    if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
-      await saveCookState({
-        lastRunId: newIds.runId,
-        lastSessionId: newIds.sessionId,
-        lastCheckpointId: newIds.checkpointId,
-      });
-    }
+      let runOutput: string;
+      try {
+        runOutput = await execVm0RunWithCapture(
+          [
+            "run",
+            "resume",
+            ...(options.envFile ? ["--env-file", options.envFile] : []),
+            state.lastCheckpointId,
+            ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+            prompt,
+          ],
+          { cwd },
+        );
+      } catch {
+        // Error already displayed by vm0 run
+        process.exit(1);
+      }
 
-    // Auto-pull artifact
-    await autoPullArtifact(runOutput, artifactDir);
-  });
+      // Update state with new IDs
+      const newIds = parseRunIdsFromOutput(runOutput);
+      if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
+        await saveCookState({
+          lastRunId: newIds.runId,
+          lastSessionId: newIds.sessionId,
+          lastCheckpointId: newIds.checkpointId,
+        });
+      }
+
+      // Auto-pull artifact
+      await autoPullArtifact(runOutput, artifactDir);
+    },
+  );
 
 export const cookCommand = cookCmd;

@@ -1367,4 +1367,54 @@ describe("run command", () => {
       );
     });
   });
+
+  describe("--env-file option", () => {
+    it("should error when --env-file points to nonexistent file", async () => {
+      // Use a compose that references variables to trigger loadValues
+      const composeWithVars = {
+        id: testUuid,
+        name: "test-agent",
+        headVersionId: "version-123",
+        content: {
+          version: "1",
+          agents: {
+            "test-agent": {
+              provider: "claude",
+              environment: {
+                API_KEY: "${{ vars.API_KEY }}",
+              },
+            },
+          },
+        },
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      };
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVars);
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--env-file",
+          "/nonexistent/path/.env",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Environment file not found: /nonexistent/path/.env",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
 });

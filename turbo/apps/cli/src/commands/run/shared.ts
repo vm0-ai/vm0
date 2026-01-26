@@ -1,6 +1,5 @@
 import chalk from "chalk";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import { getEvents, type RunResult } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
@@ -73,44 +72,35 @@ export function extractSecretNames(composeContent: unknown): string[] {
 }
 
 /**
- * Load values with priority: CLI args > environment variables > .env file
+ * Load values with priority: CLI args > --env-file > environment variables
  *
  * For values referenced in the compose config but not provided via CLI,
- * falls back to environment variables and .env file.
+ * falls back to --env-file (if specified) and environment variables.
  * CLI-provided values are always passed through.
+ *
+ * Priority order (matches Docker CLI):
+ * 1. CLI flags (--vars, --secrets) - HIGHEST
+ * 2. --env-file values - MEDIUM
+ * 3. process.env - LOWEST
  *
  * @param cliValues Values passed via CLI flags
  * @param configNames Names referenced in compose config (for env fallback)
+ * @param envFilePath Optional path to env file (only loads if explicitly provided)
  * @returns Merged values object with CLI taking highest priority
  */
 export function loadValues(
   cliValues: Record<string, string>,
   configNames: string[],
+  envFilePath?: string,
 ): Record<string, string> | undefined {
   // Start with CLI-provided values (highest priority, always passed through)
   const result: Record<string, string> = { ...cliValues };
 
-  // For names referenced in config but not provided via CLI, load from env/.env
+  // For names referenced in config but not provided via CLI, load from file/env
   const missingNames = configNames.filter((name) => !(name in result));
 
   if (missingNames.length > 0) {
-    // Load .env file if it exists (lowest priority)
-    const envFilePath = path.resolve(process.cwd(), ".env");
-    let dotenvValues: Record<string, string> = {};
-
-    if (fs.existsSync(envFilePath)) {
-      const dotenvResult = dotenvConfig({ path: envFilePath, quiet: true });
-      if (dotenvResult.parsed) {
-        // Only include keys that are missing
-        dotenvValues = Object.fromEntries(
-          Object.entries(dotenvResult.parsed).filter(([key]) =>
-            missingNames.includes(key),
-          ),
-        );
-      }
-    }
-
-    // Get from environment variables (medium priority)
+    // Get from environment variables (lowest priority)
     const envValues: Record<string, string> = {};
     for (const name of missingNames) {
       const envValue = process.env[name];
@@ -119,8 +109,26 @@ export function loadValues(
       }
     }
 
-    // Merge with priority: env > .env (CLI already in result)
-    Object.assign(result, dotenvValues, envValues);
+    // Load from --env-file if explicitly provided (medium priority, overrides env)
+    let fileValues: Record<string, string> = {};
+    if (envFilePath) {
+      if (!fs.existsSync(envFilePath)) {
+        throw new Error(`Environment file not found: ${envFilePath}`);
+      }
+      const dotenvResult = dotenvConfig({ path: envFilePath, quiet: true });
+      if (dotenvResult.parsed) {
+        // Only include keys that are missing from CLI
+        fileValues = Object.fromEntries(
+          Object.entries(dotenvResult.parsed).filter(([key]) =>
+            missingNames.includes(key),
+          ),
+        );
+      }
+    }
+
+    // Merge with priority: file > env (CLI already in result)
+    // Apply env first, then file values override
+    Object.assign(result, envValues, fileValues);
   }
 
   return Object.keys(result).length > 0 ? result : undefined;

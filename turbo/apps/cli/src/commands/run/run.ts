@@ -30,14 +30,18 @@ export const mainRunCommand = new Command()
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
+    "--env-file <path>",
+    "Load environment variables from file (priority: CLI flags > file > env vars)",
+  )
+  .option(
     "--vars <KEY=value>",
-    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
+    "Variables for ${{ vars.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
     {},
   )
   .option(
     "--secrets <KEY=value>",
-    "Secrets for ${{ secrets.xxx }} (repeatable, falls back to env vars and .env)",
+    "Secrets for ${{ secrets.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
     {},
   )
@@ -72,6 +76,7 @@ export const mainRunCommand = new Command()
       identifier: string,
       prompt: string,
       options: {
+        envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
         artifactName?: string;
@@ -153,12 +158,16 @@ export const mainRunCommand = new Command()
         }
         // Note: "latest" version uses agentComposeId which resolves to HEAD
 
-        // 4. Load vars and secrets with priority: CLI args > env vars > .env file
+        // 4. Load vars and secrets with priority: CLI args > --env-file > env vars
         const varNames = extractVarNames(composeContent);
-        const vars = loadValues(options.vars, varNames);
+        const vars = loadValues(options.vars, varNames, options.envFile);
 
         const secretNames = extractSecretNames(composeContent);
-        const secrets = loadValues(options.secrets, secretNames);
+        const secrets = loadValues(
+          options.secrets,
+          secretNames,
+          options.envFile,
+        );
 
         if (verbose && varNames.length > 0) {
           console.log(chalk.dim(`  Required vars: ${varNames.join(", ")}`));
@@ -278,6 +287,8 @@ export const mainRunCommand = new Command()
             console.error(
               chalk.dim("  Make sure the version hash is correct."),
             );
+          } else if (error.message.startsWith("Environment file not found:")) {
+            console.error(chalk.red(`✗ ${error.message}`));
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Agent not found: ${identifier}`));
             console.error(

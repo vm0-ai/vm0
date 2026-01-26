@@ -19,14 +19,18 @@ export const resumeCommand = new Command()
   .argument("<checkpointId>", "Checkpoint ID to resume from")
   .argument("<prompt>", "Prompt for the resumed agent")
   .option(
+    "--env-file <path>",
+    "Load environment variables from file (priority: CLI flags > file > env vars)",
+  )
+  .option(
     "--vars <KEY=value>",
-    "Variables for ${{ vars.xxx }} (repeatable, falls back to env vars and .env)",
+    "Variables for ${{ vars.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
     {},
   )
   .option(
     "--secrets <KEY=value>",
-    "Secrets for ${{ secrets.xxx }} (repeatable, required for resume)",
+    "Secrets for ${{ secrets.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
     {},
   )
@@ -52,6 +56,7 @@ export const resumeCommand = new Command()
       checkpointId: string,
       prompt: string,
       options: {
+        envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
         verbose?: boolean;
@@ -66,6 +71,7 @@ export const resumeCommand = new Command()
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
+        envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
@@ -97,9 +103,10 @@ export const resumeCommand = new Command()
         const requiredSecretNames =
           checkpointInfo.agentComposeSnapshot.secretNames || [];
 
-        // 3. Load secrets from CLI options + environment variables
-        // CLI-provided secrets take precedence, then fall back to env vars
-        const loadedSecrets = loadValues(secrets, requiredSecretNames);
+        // 3. Load secrets from CLI options + --env-file + environment variables
+        // Priority: CLI flags > --env-file > env vars
+        const envFile = options.envFile || allOpts.envFile;
+        const loadedSecrets = loadValues(secrets, requiredSecretNames, envFile);
 
         // 4. Display starting message (verbose only)
         if (verbose) {
@@ -186,6 +193,8 @@ export const resumeCommand = new Command()
             console.error(
               chalk.dim("  Try running without --experimental-realtime"),
             );
+          } else if (error.message.startsWith("Environment file not found:")) {
+            console.error(chalk.red(`✗ ${error.message}`));
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
           } else {
