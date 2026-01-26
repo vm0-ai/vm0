@@ -47,23 +47,9 @@ describe("secrets-encryption", () => {
       expect(encrypted1).not.toBe(encrypted2);
     });
 
-    it("should store unencrypted in dev mode when key not provided", () => {
-      vi.stubEnv("NODE_ENV", "development");
-
-      const secrets = ["API_KEY"];
-      const result = encryptSecrets(secrets, undefined);
-
-      expect(result).not.toBeNull();
-      const parsed = JSON.parse(result!);
-      expect(parsed.unencrypted).toBe(true);
-      expect(parsed.data).toEqual(secrets);
-    });
-
-    it("should throw in production when key not provided", () => {
-      vi.stubEnv("NODE_ENV", "production");
-
+    it("should throw when key not provided", () => {
       expect(() => encryptSecrets(["SECRET"], undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY must be set in production",
+        "SECRETS_ENCRYPTION_KEY is required",
       );
     });
 
@@ -88,21 +74,11 @@ describe("secrets-encryption", () => {
       expect(decrypted).toEqual(secrets);
     });
 
-    it("should handle unencrypted data (dev mode fallback)", () => {
-      const unencrypted = JSON.stringify({
-        unencrypted: true,
-        data: ["SECRET"],
-      });
-      const result = decryptSecrets(unencrypted, undefined);
-
-      expect(result).toEqual(["SECRET"]);
-    });
-
-    it("should throw for encrypted data without key", () => {
+    it("should throw when key not provided", () => {
       const encrypted = encryptSecrets(["SECRET"], TEST_KEY);
 
       expect(() => decryptSecrets(encrypted, undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY not configured but encrypted data found",
+        "SECRETS_ENCRYPTION_KEY is required",
       );
     });
 
@@ -154,22 +130,9 @@ describe("secrets-encryption", () => {
       expect(encrypted1).not.toBe(encrypted2);
     });
 
-    it("should store unencrypted in dev mode when key not provided", () => {
-      vi.stubEnv("NODE_ENV", "development");
-
-      const secrets = { API_KEY: "secret123" };
-      const result = encryptSecretsMap(secrets, undefined);
-
-      const parsed = JSON.parse(result!);
-      expect(parsed.unencrypted).toBe(true);
-      expect(parsed.data).toEqual(secrets);
-    });
-
-    it("should throw in production when key not provided", () => {
-      vi.stubEnv("NODE_ENV", "production");
-
+    it("should throw when key not provided", () => {
       expect(() => encryptSecretsMap({ KEY: "value" }, undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY must be set in production",
+        "SECRETS_ENCRYPTION_KEY is required",
       );
     });
   });
@@ -192,16 +155,6 @@ describe("secrets-encryption", () => {
       expect(decrypted).toEqual(secrets);
     });
 
-    it("should handle unencrypted data (dev mode fallback)", () => {
-      const unencrypted = JSON.stringify({
-        unencrypted: true,
-        data: { KEY: "value" },
-      });
-      const result = decryptSecretsMap(unencrypted, undefined);
-
-      expect(result).toEqual({ KEY: "value" });
-    });
-
     it("should preserve all key-value pairs through encryption cycle", () => {
       const secrets = {
         key1: "value1",
@@ -216,11 +169,11 @@ describe("secrets-encryption", () => {
       expect(Object.keys(decrypted!)).toHaveLength(4);
     });
 
-    it("should throw for encrypted data without key", () => {
+    it("should throw when key not provided", () => {
       const encrypted = encryptSecretsMap({ KEY: "value" }, TEST_KEY);
 
       expect(() => decryptSecretsMap(encrypted, undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY not configured but encrypted data found",
+        "SECRETS_ENCRYPTION_KEY is required",
       );
     });
 
