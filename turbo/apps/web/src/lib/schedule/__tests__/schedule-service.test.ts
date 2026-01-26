@@ -759,5 +759,205 @@ describe("ScheduleService", () => {
       expect(result.executed).toBe(0);
       expect(result.skipped).toBe(0);
     });
+
+    it("should mark run as failed when buildExecutionContext throws", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Missing required secrets: API_KEY"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-context`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule that fails context building",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-context`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      // Should be counted as skipped (error thrown but caught)
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(1);
+
+      // Verify run was created and marked as failed
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
+      expect(runs[0]!.error).toBe("Missing required secrets: API_KEY");
+      expect(runs[0]!.completedAt).not.toBeNull();
+    });
+
+    it("should mark run as failed when prepareAndDispatch throws", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make prepareAndDispatch throw an error
+      vi.mocked(runService.buildExecutionContext).mockResolvedValueOnce(
+        {} as Awaited<ReturnType<typeof runService.buildExecutionContext>>,
+      );
+      vi.mocked(runService.prepareAndDispatch).mockRejectedValueOnce(
+        new Error("Runner group scope mismatch"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-dispatch`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule that fails dispatch",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-dispatch`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.skipped).toBe(1);
+
+      // Verify run was marked as failed
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
+      expect(runs[0]!.error).toBe("Runner group scope mismatch");
+    });
+
+    it("should disable one-time schedule on failure", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Configuration error"),
+      );
+
+      // Create a one-time schedule
+      const futureTime = new Date(Date.now() + 1000).toISOString();
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "One-time schedule that fails",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-onetime`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify schedule was disabled
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-onetime`));
+
+      expect(schedule!.enabled).toBe(false);
+      expect(schedule!.nextRunAt).toBeNull();
+      expect(schedule!.lastRunAt).not.toBeNull();
+    });
+
+    it("should advance nextRunAt for cron schedule on failure", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Configuration error"),
+      );
+
+      // Create a cron schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-cron`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Cron schedule that fails",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-cron`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify schedule still enabled with advanced nextRunAt
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-cron`));
+
+      expect(schedule!.enabled).toBe(true);
+      expect(schedule!.nextRunAt).not.toBeNull();
+      expect(schedule!.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(schedule!.lastRunAt).not.toBeNull();
+      expect(schedule!.lastRunId).not.toBeNull();
+    });
+
+    it("should set lastRunId immediately to prevent duplicate runs", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Error during context building"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}lastrunid-test`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Test lastRunId is set immediately",
+      });
+
+      // Set nextRunAt to past so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}lastrunid-test`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify lastRunId was set even though execution failed
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}lastrunid-test`));
+
+      expect(schedule!.lastRunId).not.toBeNull();
+
+      // Verify the run exists and is linked
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, schedule!.lastRunId!));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
+    });
   });
 });

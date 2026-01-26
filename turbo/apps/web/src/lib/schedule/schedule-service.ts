@@ -683,27 +683,74 @@ export class ScheduleService {
       return;
     }
 
-    // Generate sandbox token with the run ID
-    const sandboxToken = await generateSandboxToken(compose.userId, run.id);
+    // Update lastRunId immediately to prevent duplicate runs
+    // This ensures skip-if-active check works even if subsequent steps fail
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({ lastRunId: run.id })
+      .where(eq(agentSchedules.id, schedule.id));
 
-    // Build execution context and dispatch
-    const context = await runService.buildExecutionContext({
-      runId: run.id,
-      agentComposeVersionId: compose.headVersionId,
-      prompt: schedule.prompt,
-      sandboxToken,
-      userId: compose.userId,
-      vars: schedule.vars ?? undefined,
-      secrets: secrets ?? undefined,
-      artifactName: schedule.artifactName ?? undefined,
-      artifactVersion: schedule.artifactVersion ?? undefined,
-      volumeVersions: schedule.volumeVersions ?? undefined,
-      agentName: compose.name,
-    });
+    try {
+      // Generate sandbox token with the run ID
+      const sandboxToken = await generateSandboxToken(compose.userId, run.id);
 
-    await runService.prepareAndDispatch(context);
+      // Build execution context and dispatch
+      const context = await runService.buildExecutionContext({
+        runId: run.id,
+        agentComposeVersionId: compose.headVersionId,
+        prompt: schedule.prompt,
+        sandboxToken,
+        userId: compose.userId,
+        vars: schedule.vars ?? undefined,
+        secrets: secrets ?? undefined,
+        artifactName: schedule.artifactName ?? undefined,
+        artifactVersion: schedule.artifactVersion ?? undefined,
+        volumeVersions: schedule.volumeVersions ?? undefined,
+        agentName: compose.name,
+      });
 
-    // Calculate next run time
+      await runService.prepareAndDispatch(context);
+    } catch (error) {
+      // Mark run as failed with error message
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      log.error(`Run ${run.id} failed during preparation: ${errorMessage}`);
+
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          error: errorMessage,
+        })
+        .where(eq(agentRuns.id, run.id));
+
+      // Update schedule state (disable one-time, advance cron)
+      if (schedule.cronExpression) {
+        const nextRunAt = this.calculateNextRun(
+          schedule.cronExpression,
+          schedule.timezone,
+        );
+        await globalThis.services.db
+          .update(agentSchedules)
+          .set({ lastRunAt: new Date(), nextRunAt })
+          .where(eq(agentSchedules.id, schedule.id));
+        log.debug(
+          `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
+        );
+      } else {
+        // One-time schedule: disable after failed execution
+        await globalThis.services.db
+          .update(agentSchedules)
+          .set({ enabled: false, lastRunAt: new Date(), nextRunAt: null })
+          .where(eq(agentSchedules.id, schedule.id));
+        log.debug(`One-time schedule ${schedule.name} failed and disabled`);
+      }
+
+      throw error; // Re-throw so executeDueSchedules counts it as skipped
+    }
+
+    // Calculate next run time for success path
     let nextRunAt: Date | null = null;
     if (schedule.cronExpression) {
       nextRunAt = this.calculateNextRun(
@@ -711,13 +758,12 @@ export class ScheduleService {
         schedule.timezone,
       );
     } else {
-      // One-time schedule: disable after execution
+      // One-time schedule: disable after successful execution
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           enabled: false,
           lastRunAt: new Date(),
-          lastRunId: run.id,
           nextRunAt: null,
         })
         .where(eq(agentSchedules.id, schedule.id));
@@ -725,12 +771,11 @@ export class ScheduleService {
       return;
     }
 
-    // Update schedule with next run time
+    // Update schedule with next run time (lastRunId already set above)
     await globalThis.services.db
       .update(agentSchedules)
       .set({
         lastRunAt: new Date(),
-        lastRunId: run.id,
         nextRunAt,
       })
       .where(eq(agentSchedules.id, schedule.id));
