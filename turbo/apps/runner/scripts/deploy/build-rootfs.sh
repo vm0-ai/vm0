@@ -119,10 +119,10 @@ create_squashfs_image() {
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    # Inject overlay-init script for OverlayFS boot
-    echo "[INJECT] Adding overlay-init script..."
-    sudo cp "$SCRIPT_DIR/overlay-init.sh" "$EXTRACT_DIR/sbin/overlay-init"
-    sudo chmod 755 "$EXTRACT_DIR/sbin/overlay-init"
+    # Inject vm-init script for VM initialization
+    echo "[INJECT] Adding vm-init script..."
+    sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
+    sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
 
     # Create squashfs with xz compression (best compression ratio)
     echo "[SQUASH] Creating squashfs (this may take a moment)..."
@@ -179,11 +179,11 @@ verify_rootfs() {
         echo "  tini: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/sbin/overlay-init" ]; then
-        echo "ERROR: overlay-init not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/sbin/vm-init" ]; then
+        echo "ERROR: vm-init not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  overlay-init: installed"
+        echo "  vm-init: installed"
     fi
 
     # Check for Codex CLI (for framework: codex)

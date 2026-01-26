@@ -86,5 +86,5 @@ RUN userdel -r node 2>/dev/null || true \
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
-# Note: vsock-agent will be started by overlay-init.sh using tini
+# Note: vsock-agent will be started by vm-init.sh using tini
 ENV LANG=C.UTF-8

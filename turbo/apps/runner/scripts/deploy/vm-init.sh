@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# overlay-init: Set up overlayfs before starting vsock-agent
+# vm-init: VM initialization script
 #
 # This script runs as PID 1 when the VM boots. It:
 # 1. Mounts the squashfs base filesystem (read-only) from /dev/vda
@@ -53,9 +53,9 @@ modprobe virtio-vsock 2>/dev/null || true
 
 # Verify /dev/vsock exists (for debugging)
 if [ -e /dev/vsock ]; then
-    echo "[overlay-init] /dev/vsock exists"
+    echo "[vm-init] /dev/vsock exists"
 else
-    echo "[overlay-init] WARNING: /dev/vsock does not exist after modprobe"
+    echo "[vm-init] WARNING: /dev/vsock does not exist after modprobe"
 fi
 
 # Clean up old root reference (after modprobe to ensure module deps are available)
