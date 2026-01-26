@@ -17,18 +17,18 @@
 set -e
 
 # Mount read-only base filesystem (squashfs on /dev/vda)
-mkdir -p /rom
+# Note: /rom directory is pre-created in the squashfs image during build
 mount -t squashfs -o ro /dev/vda /rom
 
 # Mount read-write overlay filesystem (ext4 on /dev/vdb)
-mkdir -p /rw
+# Note: /rw directory is pre-created in the squashfs image during build
 mount -t ext4 /dev/vdb /rw
 
 # Create overlay directories
 mkdir -p /rw/upper /rw/work
 
 # Create merged root with overlayfs
-mkdir -p /mnt/root
+# Note: /mnt/root directory is pre-created in the squashfs image during build
 mount -t overlay overlay -o lowerdir=/rom,upperdir=/rw/upper,workdir=/rw/work /mnt/root
 
 # Prepare new root for pivot
