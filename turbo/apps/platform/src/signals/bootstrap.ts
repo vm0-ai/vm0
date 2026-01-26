@@ -41,7 +41,9 @@ export const bootstrap$ = command(
     set(setRootSignal$, signal);
 
     set(setupLoggers$);
-    set(setupGlobalMethod$, signal);
+    set(setupGlobalMethod$, signal).catch(() => {
+      // Global method setup runs in background, errors are non-fatal
+    });
 
     render();
 

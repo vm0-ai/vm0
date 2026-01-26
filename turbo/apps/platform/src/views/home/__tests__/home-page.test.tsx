@@ -18,7 +18,9 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText("Welcome. You're in.")).toBeDefined();
+    expect(
+      screen.getByText("Welcome. Let's build your agent fast."),
+    ).toBeDefined();
     expect(context.store.get(pathname$)).toBe("/");
   });
 
@@ -47,7 +49,9 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText(/First, tell us how your LLM works/)).toBeDefined();
+    expect(
+      screen.getByText(/First, tell us how your LLM works/),
+    ).toBeInTheDocument();
 
     // Save button should be disabled when token is empty
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -63,7 +67,7 @@ describe("home page", () => {
     // Click "Add it later" to close the modal
     await user.click(screen.getByText("Add it later"));
 
-    expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
+    expect(saveButton).not.toBeInTheDocument();
   });
 
   it("should show onboarding modal when no claude-code-oauth-token exists", async () => {
