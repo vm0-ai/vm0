@@ -329,39 +329,62 @@ export const setupCommand = new Command()
         let atTime: string | undefined;
 
         if (frequency === "once") {
-          if (!isInteractive()) {
+          // For once frequency, --day is used as the date (YYYY-MM-DD)
+          const dateFromOption = options.day;
+
+          if (dateFromOption && time) {
+            // Non-interactive mode: validate provided date and time
+            if (!validateDateFormat(dateFromOption)) {
+              console.error(
+                chalk.red(
+                  `✗ Invalid date format: ${dateFromOption}. Use YYYY-MM-DD format.`,
+                ),
+              );
+              process.exit(1);
+            }
+            if (!validateTimeFormat(time)) {
+              console.error(
+                chalk.red(`✗ Invalid time format: ${time}. Use HH:MM format.`),
+              );
+              process.exit(1);
+            }
+            atTime = `${dateFromOption} ${time}`;
+          } else if (!isInteractive()) {
             console.error(
               chalk.red("✗ One-time schedules require interactive mode"),
             );
             console.error(
-              chalk.dim("  Use cron frequency for non-interactive mode"),
+              chalk.dim(
+                "  Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags",
+              ),
             );
             process.exit(1);
-          }
+          } else {
+            // Interactive mode: prompt for date and time
+            const tomorrowDate = getTomorrowDateLocal();
+            const date = await promptText(
+              "Date (YYYY-MM-DD, default tomorrow)",
+              tomorrowDate,
+              validateDateFormat,
+            );
+            if (!date) {
+              console.log(chalk.dim("Cancelled"));
+              return;
+            }
 
-          const tomorrowDate = getTomorrowDateLocal();
-          const date = await promptText(
-            "Date (YYYY-MM-DD, default tomorrow)",
-            tomorrowDate,
-            validateDateFormat,
-          );
-          if (!date) {
-            console.log(chalk.dim("Cancelled"));
-            return;
-          }
+            const currentTime = getCurrentTimeLocal();
+            time = await promptText(
+              "Time (HH:MM)",
+              existingTime || currentTime,
+              validateTimeFormat,
+            );
+            if (!time) {
+              console.log(chalk.dim("Cancelled"));
+              return;
+            }
 
-          const currentTime = getCurrentTimeLocal();
-          time = await promptText(
-            "Time (HH:MM)",
-            existingTime || currentTime,
-            validateTimeFormat,
-          );
-          if (!time) {
-            console.log(chalk.dim("Cancelled"));
-            return;
+            atTime = `${date} ${time}`;
           }
-
-          atTime = `${date} ${time}`;
         } else {
           if (!time) {
             if (!isInteractive()) {
