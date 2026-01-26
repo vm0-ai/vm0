@@ -1,0 +1,102 @@
+---
+title: Scheduling Your Agent
+description: Run your research agent automatically on a schedule
+---
+
+Now let's set up your research agent to run automatically on a schedule. VM0 provides a built-in scheduling system that lets you run agents at specific times without any external infrastructure.
+
+## Prerequisites
+
+You should have completed the previous sections of this tutorial and have a working research agent with Firecrawl and Tavily skills configured.
+
+## Step 1: Compose Your Agent
+
+First, make sure your agent is composed and ready:
+
+```bash
+vm0 compose vm0.yaml
+```
+
+This ensures your latest agent configuration is uploaded to VM0.
+
+## Step 2: Set Up a Schedule
+
+Use the `vm0 schedule setup` command to create a schedule for your agent:
+
+```bash
+vm0 schedule setup my-researcher
+```
+
+This interactive command will guide you through the setup process:
+
+```
+Creating new schedule for agent my-researcher
+
+? Schedule frequency › Daily
+? Time (HH:MM) › 09:00
+? Timezone › America/Los_Angeles
+? Prompt to run › research the latest AI news and developments
+```
+
+After completing the prompts, you'll see a confirmation:
+
+```
+Deploying schedule for agent my-researcher...
+✓ Created schedule for agent my-researcher
+  Timezone: America/Los_Angeles
+  Cron: 0 9 * * *
+  Next run: 2025-01-27 09:00
+```
+
+Your agent is now scheduled to run daily at 9:00 AM!
+
+## What Just Happened?
+
+You configured VM0's built-in scheduler to run your agent automatically. The scheduler:
+
+1. Stores your schedule configuration on VM0's servers
+2. Triggers agent runs at the specified times
+3. Uses your configured secrets and variables
+4. Saves output to the artifact directory
+
+No external infrastructure like GitHub Actions or cron servers is needed - VM0 handles everything.
+
+## Managing Your Schedule
+
+You can view and control your schedules with these commands:
+
+```bash
+# View all your schedules
+vm0 schedule list
+
+# Check status of a specific schedule
+vm0 schedule status my-researcher
+
+# Pause a schedule temporarily
+vm0 schedule disable my-researcher
+
+# Resume a paused schedule
+vm0 schedule enable my-researcher
+
+# Remove a schedule completely
+vm0 schedule delete my-researcher
+```
+
+<Callout type="info">
+For more schedule options (weekly, monthly, one-time), see the [CLI Reference](/docs/reference/cli).
+</Callout>
+
+## Next Steps
+
+Congratulations! You've completed the tutorial series. Your research agent can now:
+
+- Gather information from multiple sources using Tavily
+- Extract clean content using Firecrawl
+- Create comprehensive research reports
+- Run automatically on a schedule
+
+From here, you can:
+
+- Visit [Model Selection](/docs/model-selection) to explore cost-effective model alternatives
+- Check out more [Skills](/docs/core-concept/skills) to add new capabilities
+- Experiment with your `AGENTS.md` to customize the output format

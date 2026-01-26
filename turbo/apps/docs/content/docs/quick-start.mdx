@@ -26,6 +26,18 @@ Authenticate with your VM0 account:
 vm0 auth login
 ```
 
+## Set Up Model Provider
+
+Configure your model provider credentials (one-time setup):
+
+```bash
+vm0 model-provider setup
+```
+
+This interactive command will prompt you to select a provider and enter your credentials. The credentials are stored securely on VM0's servers and automatically used in all your agent runs.
+
+For other model providers like Anthropic API, OpenAI, or third-party providers, see [Model Selection](/docs/model-selection).
+
 ## Create Your First Agent
 
 Create a new directory and initialize a VM0 agent:
@@ -39,17 +51,6 @@ This creates two files:
 
 - **[vm0.yaml](/docs/reference/vm0-yaml)** - Agent configuration file that defines the agent's provider and environment settings
 - **AGENTS.md** - Instructions file that describes what the agent should do and how it should behave
-
-## Initialize Token
-
-Set up your Claude Code OAuth token:
-
-```bash
-claude setup-token
-echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
-```
-
-You can also use other model providers instead of Claude, like Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/model-selection) for configuration options.
 
 ## Run Your Agent
 

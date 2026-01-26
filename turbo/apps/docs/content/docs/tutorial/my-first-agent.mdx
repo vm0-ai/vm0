@@ -10,6 +10,7 @@ In this guide, you'll create your first VM0 agent, configure it, and run it to s
 Before starting, make sure you have:
 - VM0 CLI installed (`npm install -g @vm0/cli`)
 - Authenticated with VM0 (`vm0 auth login`)
+- Model provider configured (`vm0 model-provider setup`) - see [Quick Start](/docs/quick-start) if you haven't done this yet
 
 ## Step 1: Create Your Project
 
@@ -43,12 +44,6 @@ agents:
     framework: claude-code
     # Build agentic workflow using natural language
     instructions: AGENTS.md
-    # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills
-    # skills:
-    #   - https://github.com/vm0-ai/vm0-skills/tree/main/github
-    environment:
-      # Get token using: claude setup-token, then add to .env file
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
 ```markdown title="AGENTS.md"
@@ -64,33 +59,9 @@ You are a HackerNews AI content curator.
 4. Write the summary to content.md
 ```
 
-The `vm0.yaml` file includes helpful comments showing you where to add skills and how the environment variables work. The `AGENTS.md` file provides a complete example workflow that you can study and customize. We'll modify this in the next part of the tutorial to build our research agent.
+The `vm0.yaml` file includes helpful comments showing you where to add skills. The `AGENTS.md` file provides a complete example workflow that you can study and customize. We'll modify this in the next part of the tutorial to build our research agent.
 
-## Step 3: Set Up Claude Code Token
-
-Your agent needs authentication to use Claude. Set up your OAuth token:
-
-```bash
-claude setup-token
-```
-
-This will open your browser to authenticate with Claude. After completing authentication, you'll receive a token.
-
-Create a `.env` file in your project directory:
-
-```bash
-echo "CLAUDE_CODE_OAUTH_TOKEN=<your-token>" > .env
-```
-
-<Callout type="info">
-Replace `<your-token>` with the actual token you received from the authentication process.
-</Callout>
-
-<Callout type="tip">
-You can also use other model providers instead of Claude, such as Moonshot (Kimi), MiniMax, DeepSeek, Z.AI (GLM), or OpenRouter. See [Model Selection](/docs/model-selection) for configuration options.
-</Callout>
-
-## Step 4: Run Your First Agent
+## Step 3: Run Your First Agent
 
 Now let's run your agent and watch it complete the workflow:
 
@@ -205,49 +176,9 @@ After this step, your project should look like this:
 research-agent/
 ├── vm0.yaml       # Agent configuration
 ├── AGENTS.md      # Agent instructions (system prompt)
-├── .env           # Your secrets (never commit this!)
 └── artifact/      # Output files from agent runs
     └── content.md # HackerNews AI summary created by agent
 ```
-
-## Before Moving On
-
-<Callout type="tip">
-This step is optional. If you're familiar with git and want to track your project changes, follow the steps below. Otherwise, you can skip directly to the next section.
-</Callout>
-
-Let's create a `.gitignore` file and commit your work. This is a good practice to track your project changes.
-
-Create a `.gitignore` file in your project directory:
-
-```bash
-cat > .gitignore << 'EOF'
-# Environment variables (contains secrets)
-.env
-
-# Artifact directory (already persisted in VM0 remote storage)
-artifact/
-EOF
-```
-
-<Callout type="info">
-The `artifact/` directory is automatically synced with VM0's remote storage, so you don't need to commit it to git. The `.env` file contains your API tokens and should never be committed for security reasons.
-</Callout>
-
-Initialize git repository and commit:
-
-```bash
-# Initialize git repository
-git init
-
-# Add files to staging
-git add .gitignore vm0.yaml AGENTS.md
-
-# Commit with a conventional commit message
-git commit -m "chore: initial agent setup with gitignore"
-```
-
-Now your project is tracked in git and sensitive files are protected!
 
 ## Next Steps
 

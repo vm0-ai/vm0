@@ -8,10 +8,8 @@ Now that you've run your first agent, let's customize it to become a deep resear
 ## Prerequisites
 
 Make sure you've completed the previous step and have:
-- A `research-agent/` directory with `vm0.yaml`, `AGENTS.md`, and `.gitignore`
-- Claude Code token configured in `.env`
+- A `research-agent/` directory with `vm0.yaml` and `AGENTS.md`
 - Successfully run `vm0 cook "let's do it"`
-- Committed your initial setup to git
 
 Your project structure should look like this:
 
@@ -19,8 +17,6 @@ Your project structure should look like this:
 research-agent/
 ├── vm0.yaml
 ├── AGENTS.md
-├── .gitignore
-├── .env
 └── artifact/
     └── content.md
 ```
@@ -233,24 +229,6 @@ vm0 run my-researcher --artifact-name artifact "top 5 note-taking apps"
 # Academic research
 vm0 run my-researcher --artifact-name artifact "psychological effects of remote work"
 ```
-
-## Before Moving On
-
-<Callout type="tip">
-This step is optional. If you're familiar with git and want to track your project changes, follow the steps below. Otherwise, you can skip directly to the next section.
-</Callout>
-
-Let's commit the updated instructions:
-
-```bash
-# Add the modified AGENTS.md
-git add AGENTS.md
-
-# Commit with a conventional commit message
-git commit -m "feat: update instructions for deep research workflow"
-```
-
-Now your changes are saved!
 
 ## Next Steps
 

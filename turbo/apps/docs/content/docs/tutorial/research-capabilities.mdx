@@ -37,8 +37,6 @@ agents:
   my-researcher:
     framework: claude-code
     instructions: AGENTS.md
-    environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
       - https://github.com/vm0-ai/vm0-skills/tree/main/tavily
@@ -119,18 +117,18 @@ You'll see an error asking for the API keys:
   Missing required secrets: TAVILY_API_KEY, FIRECRAWL_API_KEY. Use '--secrets TAVILY_API_KEY=<value>' to provide them.
 ```
 
-Open your `.env` file and add the API keys:
-
-```bash title=".env"
-FIRECRAWL_API_KEY=fc-xxx
-TAVILY_API_KEY=tvly-xxx
-```
-
-Now run again:
+Run again with the API keys:
 
 ```bash
-vm0 run my-researcher --artifact-name artifact "research the latest developments in WebAssembly for 2025"
+vm0 run my-researcher --artifact-name artifact \
+  --secrets FIRECRAWL_API_KEY=fc-xxx \
+  --secrets TAVILY_API_KEY=tvly-xxx \
+  "research the latest developments in WebAssembly for 2025"
 ```
+
+<Callout type="tip">
+You can also store secrets in a `.env` file and load it with `--env-file .env` to avoid typing them each time.
+</Callout>
 
 This time it should work! You'll see the agent:
 
@@ -153,15 +151,6 @@ During execution, Claude Code could see these tools in its available toolkit and
 
 To learn more about how skills are mounted into the sandbox, see the [Volume documentation](/docs/core-concept/volume). For details on how environment variables and secrets work, check the [Environment Variables documentation](/docs/core-concept/environment-variable).
 
-<Callout>
-  This is optional. You can commit your changes if you want to save this milestone.
-
-  ```bash
-  git add .
-  git commit -m "feat: add firecrawl and tavily skills to research agent"
-  ```
-</Callout>
-
 ## Next Steps
 
-Your research agent is now much more capable! Next we'll try making the agent automatically commit research records to a GitHub repository. This requires providing git and github cli tools to the agent sandbox. We'll learn how to achieve this by customizing the container image.
+Your research agent is now much more capable! In the next part, we'll set up automatic scheduling so your agent can run research tasks on a recurring basis.
