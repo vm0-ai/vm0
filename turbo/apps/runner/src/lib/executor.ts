@@ -197,6 +197,7 @@ export async function executeJob(
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
       workDir: path.join(workspacesDir, `vm0-${vmId}`),
+      logger: log,
     };
 
     // Create and start VM
