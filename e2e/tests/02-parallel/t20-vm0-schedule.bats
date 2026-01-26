@@ -53,6 +53,15 @@ teardown() {
     assert_success
     assert_output --partial "Created schedule"
     assert_output --partial "$AGENT_NAME"
+
+    # Verify via status command
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Agent:"
+    assert_output --partial "$AGENT_NAME"
+    assert_output --partial "Trigger:"
+    assert_output --partial "0 9 * * *"
+    assert_output --partial "enabled"
 }
 
 @test "vm0 schedule setup should update existing schedule" {
@@ -74,6 +83,12 @@ teardown() {
         --prompt "Updated scheduled task"
     assert_success
     assert_output --partial "Updated schedule"
+
+    # Verify updated time via status command
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Trigger:"
+    assert_output --partial "0 10 * * *"
 }
 
 @test "vm0 schedule setup with weekly frequency" {
@@ -87,6 +102,12 @@ teardown() {
         --prompt "Weekly task"
     assert_success
     assert_output --partial "Created schedule"
+
+    # Verify weekly cron expression via status (Monday = 1)
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Trigger:"
+    assert_output --partial "0 9 * * 1"
 }
 
 @test "vm0 schedule setup with monthly frequency" {
@@ -100,6 +121,12 @@ teardown() {
         --prompt "Monthly task"
     assert_success
     assert_output --partial "Created schedule"
+
+    # Verify monthly cron expression via status (15th of month)
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Trigger:"
+    assert_output --partial "0 9 15 * *"
 }
 
 @test "vm0 schedule setup with once frequency" {
@@ -116,6 +143,12 @@ teardown() {
         --prompt "One-time task"
     assert_success
     assert_output --partial "Created schedule"
+
+    # Verify one-time schedule via status
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Trigger:"
+    assert_output --partial "(one-time)"
 }
 
 @test "vm0 schedule setup with vars" {
@@ -169,6 +202,12 @@ teardown() {
         --artifact-name "my-artifact"
     assert_success
     assert_output --partial "Created schedule"
+
+    # Verify artifact via status command
+    run $CLI_COMMAND schedule status "$AGENT_NAME"
+    assert_success
+    assert_output --partial "Artifact:"
+    assert_output --partial "my-artifact"
 }
 
 # ============================================================
