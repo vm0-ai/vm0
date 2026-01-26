@@ -47,11 +47,7 @@ mount --move /oldroot/rw /rw
 # This is critical for /dev/vsock and other device nodes created by the kernel
 mount --move /oldroot/dev /dev
 
-# Load virtio-vsock kernel module for host-guest communication
-# Note: Load before umount oldroot in case module deps are needed
-modprobe virtio-vsock
-
-# Clean up old root reference (after modprobe to ensure module deps are available)
+# Clean up old root reference
 umount -l /oldroot
 
 # Mount virtual filesystems needed by tini and processes
