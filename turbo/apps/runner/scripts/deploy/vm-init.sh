@@ -48,7 +48,8 @@ mount --move /oldroot/rw /rw
 mount --move /oldroot/dev /dev
 
 # Clean up old root reference
-umount -l /oldroot
+# Note: Lazy umount may fail if already released by kernel (non-fatal)
+umount -l /oldroot 2>/dev/null || true
 
 # Mount virtual filesystems needed by tini and processes
 mount -t proc proc /proc
