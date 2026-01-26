@@ -13,6 +13,7 @@ import {
   IconFiles,
   IconSquareKey,
   IconSparkles,
+  IconSettings,
   type Icon,
 } from "@tabler/icons-react";
 import type { NavItem } from "../../types/navigation.ts";
@@ -33,6 +34,7 @@ const ICON_MAP = {
   Files: IconFiles,
   SquareKey: IconSquareKey,
   Sparkles: IconSparkles,
+  Settings: IconSettings,
 } as const satisfies Record<string, Icon>;
 
 interface NavLinkProps {

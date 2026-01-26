@@ -1,19 +1,25 @@
-import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { Card } from "@vm0/ui/components/ui/card";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
+import { IconTrash } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
-import {
-  settingsTokenValue$,
-  setSettingsTokenValue$,
-  settingsIsEditing$,
-  setSettingsIsEditing$,
-  saveModelProvider$,
-  cancelSettingsEdit$,
-  existingTokenMask$,
-} from "../../signals/settings-page/settings-page.ts";
+
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
+import {
+  cancelSettingsEdit$,
+  deleteOAuthToken$,
+  hasClaudeCodeOauthToken$,
+  isEditingClaudeCodeOauthToken$,
+  claudeCodeOauthTokenPlaceholder$,
+  saveClaudeCodeOauthToken$,
+  updateClaudeCodeOauthTokenValue$,
+  claudeCodeOauthTokenValue$,
+  startEditing$,
+  actionPromise$,
+} from "../../signals/settings-page/model-providers.ts";
 
 export function SettingsPage() {
   return (
@@ -23,32 +29,24 @@ export function SettingsPage() {
       subtitle="Your project settings"
     >
       <div className="flex flex-col gap-6 px-8 pb-8">
-        <ModelProviderTab />
-        <ModelProviderCard />
+        <ClaudeCodeOAuthTokenCard />
       </div>
     </AppShell>
   );
 }
 
-function ModelProviderTab() {
-  return (
-    <div className="flex gap-2">
-      <button className="px-4 py-2 text-sm font-medium border border-border rounded-full bg-background">
-        Model provider
-      </button>
-    </div>
-  );
-}
-
-function ModelProviderCard() {
-  const tokenValue = useGet(settingsTokenValue$);
-  const setTokenValue = useSet(setSettingsTokenValue$);
-  const isEditing = useGet(settingsIsEditing$);
-  const setIsEditing = useSet(setSettingsIsEditing$);
-  const saveProvider = useSet(saveModelProvider$);
+function ClaudeCodeOAuthTokenCard() {
+  const tokenValue = useGet(claudeCodeOauthTokenValue$);
+  const setTokenValue = useSet(updateClaudeCodeOauthTokenValue$);
+  const isEditing = useGet(isEditingClaudeCodeOauthToken$);
+  const setIsEditing = useSet(startEditing$);
+  const saveProvider = useSet(saveClaudeCodeOauthToken$);
   const cancelEdit = useSet(cancelSettingsEdit$);
-  const existingMask = useLastResolved(existingTokenMask$);
+  const placeholder = useLastResolved(claudeCodeOauthTokenPlaceholder$);
+  const hasToken = useLastResolved(hasClaudeCodeOauthToken$);
+  const deleteToken = useSet(deleteOAuthToken$);
   const pageSignal = useGet(pageSignal$);
+  const actionStatus = useLoadable(actionPromise$);
 
   const handleSave = () => {
     detach(saveProvider(pageSignal), Reason.DomCallback);
@@ -58,8 +56,12 @@ function ModelProviderCard() {
     cancelEdit();
   };
 
+  const handleDelete = () => {
+    detach(deleteToken(pageSignal), Reason.DomCallback);
+  };
+
   return (
-    <Card className="p-6 border-dashed">
+    <Card className="p-6">
       <div className="flex flex-col gap-4">
         <div>
           <h3 className="text-base font-medium text-foreground">
@@ -74,38 +76,48 @@ function ModelProviderCard() {
           <label className="text-sm font-medium text-foreground">
             Claude Code OAuth token
           </label>
-          {isEditing ? (
+
+          <div className="flex gap-2">
             <Input
-              placeholder="sk-ant-oa..."
               value={tokenValue}
+              placeholder={
+                actionStatus.state === "loading" ? "Saving..." : placeholder
+              }
               onChange={(e) => setTokenValue(e.target.value)}
+              readOnly={actionStatus.state === "loading"}
+              onFocus={() => {
+                detach(setIsEditing(pageSignal), Reason.DomCallback);
+              }}
             />
-          ) : (
-            <Input
-              value={existingMask || ""}
-              placeholder="sk-ant-oa..."
-              readOnly
-              onClick={() => setIsEditing(true)}
-              className="cursor-pointer"
-            />
-          )}
-          <p className="text-xs text-muted-foreground">
-            You can find it by entering Claude set-up token in your terminal.
-          </p>
+            {actionStatus.state !== "loading" && hasToken && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDelete}
+                aria-label="Delete Claude Code OAuth token"
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+              >
+                <IconTrash className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <ClaudeCodeSetupPrompt />
         </div>
 
-        <div className="flex gap-2">
-          <Button
-            onClick={handleSave}
-            disabled={!tokenValue && isEditing}
-            size="sm"
-          >
-            Save
-          </Button>
-          <Button variant="outline" onClick={handleCancel} size="sm">
-            Cancel
-          </Button>
-        </div>
+        {isEditing && (
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSave}
+              disabled={!tokenValue && isEditing}
+              size="sm"
+            >
+              Save
+            </Button>
+            <Button variant="outline" onClick={handleCancel} size="sm">
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
     </Card>
   );
