@@ -47,6 +47,10 @@ mount --move /oldroot/rw /rw
 # This is critical for /dev/vsock and other device nodes created by the kernel
 mount --move /oldroot/dev /dev
 
+# Load virtio-vsock kernel module for host-guest communication
+# Note: nomodules boot arg only skips auto-loading, manual modprobe still works
+modprobe virtio-vsock 2>/dev/null || true
+
 # Clean up old root reference
 # Note: Lazy umount may fail if already released by kernel (non-fatal)
 umount -l /oldroot 2>/dev/null || true
