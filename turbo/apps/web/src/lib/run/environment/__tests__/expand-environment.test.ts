@@ -156,6 +156,33 @@ describe("expandEnvironmentFromCompose", () => {
         expect((error as BadRequestError).message).toContain("API_KEY=<value>");
       }
     });
+
+    it("should include --env-file hint in error message", () => {
+      const compose = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            framework: "claude-code",
+            environment: {
+              API_KEY: "${{ secrets.API_KEY }}",
+            },
+          },
+        },
+      };
+
+      try {
+        expandEnvironmentFromCompose(
+          compose,
+          undefined,
+          undefined,
+          undefined,
+          userId,
+          runId,
+        );
+      } catch (error) {
+        expect((error as BadRequestError).message).toContain("--env-file");
+      }
+    });
   });
 
   describe("missing required vars", () => {
@@ -247,6 +274,37 @@ describe("expandEnvironmentFromCompose", () => {
         );
         expect((error as BadRequestError).message).toContain("REGION");
         expect((error as BadRequestError).message).not.toContain("CLOUD_NAME");
+      }
+    });
+
+    it("should include --vars and --env-file hints in error message", () => {
+      const compose = {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            framework: "claude-code",
+            environment: {
+              CLOUD_NAME: "${{ vars.CLOUD_NAME }}",
+            },
+          },
+        },
+      };
+
+      try {
+        expandEnvironmentFromCompose(
+          compose,
+          undefined,
+          undefined,
+          undefined,
+          userId,
+          runId,
+        );
+      } catch (error) {
+        expect((error as BadRequestError).message).toContain("--vars");
+        expect((error as BadRequestError).message).toContain(
+          "CLOUD_NAME=<value>",
+        );
+        expect((error as BadRequestError).message).toContain("--env-file");
       }
     });
   });
