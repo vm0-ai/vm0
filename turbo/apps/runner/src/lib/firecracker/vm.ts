@@ -141,6 +141,7 @@ export class FirecrackerVM {
         fs.ftruncateSync(fd, overlaySize);
         fs.closeSync(fd);
         await execAsync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`);
+        this.log(`[VM ${this.config.vmId}] Overlay created`);
       };
 
       const [, networkConfig] = await Promise.all([
