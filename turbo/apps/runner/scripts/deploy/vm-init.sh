@@ -51,13 +51,6 @@ mount --move /oldroot/dev /dev
 # Note: Load before umount oldroot in case module deps are needed
 modprobe virtio-vsock 2>/dev/null || true
 
-# Verify /dev/vsock exists (for debugging)
-if [ -e /dev/vsock ]; then
-    echo "[vm-init] /dev/vsock exists"
-else
-    echo "[vm-init] WARNING: /dev/vsock does not exist after modprobe"
-fi
-
 # Clean up old root reference (after modprobe to ensure module deps are available)
 umount -l /oldroot 2>/dev/null || true
 
