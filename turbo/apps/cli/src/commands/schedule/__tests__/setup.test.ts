@@ -13,7 +13,7 @@ import {
   toISODateTime,
 } from "../../../lib/domain/schedule-utils";
 
-describe("schedule init utilities", () => {
+describe("schedule setup utilities", () => {
   let tempDir: string;
   let originalCwd: string;
 
@@ -295,7 +295,7 @@ agents:
     });
   });
 
-  // Note: resolveScheduleByName is tested via E2E tests in
+  // Note: resolveScheduleByAgent is tested via E2E tests in
   // e2e/tests/02-parallel/t20-vm0-schedule.bats (global resolution tests)
   // since it requires real API calls and mocking internal modules is not acceptable
 });
