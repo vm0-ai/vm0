@@ -276,12 +276,12 @@
       tags: [prepare]
 
     # Calculate hash of all files that affect rootfs content
+    # Must match files copied above: Dockerfile, *.sh, vsock-agent.*, *.mjs
     - name: Calculate rootfs build inputs hash
       shell: |
         cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
-            "{{ runner_base_dir }}/deploy-runner/vm-init.sh" \
-            "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
-            "{{ runner_base_dir }}/deploy-runner/vsock-agent.py" \
+            "{{ runner_base_dir }}/deploy-runner/"*.sh \
+            "{{ runner_base_dir }}/deploy-runner/vsock-agent."* \
             "{{ runner_base_dir }}/deploy-runner/"*.mjs 2>/dev/null \
         | sha256sum | cut -d' ' -f1
       register: rootfs_inputs_hash
