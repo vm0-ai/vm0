@@ -1,6 +1,6 @@
 import { setupPage } from "../../../__tests__/helper";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { pathname$ } from "../../../signals/route.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -140,7 +140,9 @@ describe("home page", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     // Wait for async operations
-    expect(providerCreated).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(providerCreated).toBeTruthy();
+    });
     expect(createdType).toBe("claude-code-oauth-token");
     expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
   });
