@@ -80,17 +80,9 @@ RUN userdel -r node 2>/dev/null || true \
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
-# Create working directory for agent scripts
-RUN mkdir -p /opt/vm0-scripts/lib
-
-# Create directories for overlay-init (squashfs is read-only at boot)
-# These are needed by /sbin/overlay-init to set up overlayfs
-RUN mkdir -p /rom /rw /mnt/root
-
 # Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
 # Protocol: 4-byte length prefix (big endian) + JSON message
 # Messages: ready, ping/pong, exec/exec_result
-RUN mkdir -p /usr/local/bin/vm0-agent
 COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
 RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
 
