@@ -279,11 +279,11 @@
     # Must match files copied above: Dockerfile, *.sh, vsock-agent.*, *.mjs
     - name: Calculate rootfs build inputs hash
       shell: |
-        cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
-            "{{ runner_base_dir }}/deploy-runner/"*.sh \
-            "{{ runner_base_dir }}/deploy-runner/vsock-agent."* \
-            "{{ runner_base_dir }}/deploy-runner/"*.mjs 2>/dev/null \
-        | sha256sum | cut -d' ' -f1
+        find "{{ runner_base_dir }}/deploy-runner/" \
+          \( -name "Dockerfile" -o -name "*.sh" -o -name "vsock-agent.*" -o -name "*.mjs" \) \
+          -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
+      args:
+        executable: /bin/bash
       register: rootfs_inputs_hash
       changed_when: false
       tags: [prepare]
