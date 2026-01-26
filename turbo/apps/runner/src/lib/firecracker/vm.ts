@@ -146,7 +146,7 @@ export class FirecrackerVM {
 
       const [, networkConfig] = await Promise.all([
         createOverlay(),
-        createTapDevice(this.config.vmId),
+        createTapDevice(this.config.vmId, this.log.bind(this)),
       ]);
       this.networkConfig = networkConfig;
 
