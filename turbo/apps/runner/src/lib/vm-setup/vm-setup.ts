@@ -11,9 +11,6 @@ import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
 
-// Note: uploadScripts was removed - scripts are now pre-bundled in rootfs
-// See: apps/runner/scripts/deploy/Dockerfile
-
 /**
  * Download storages to VM using storage manifest
  */

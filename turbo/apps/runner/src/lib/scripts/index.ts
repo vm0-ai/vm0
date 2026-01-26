@@ -2,7 +2,7 @@
  * Agent execution scripts configuration
  *
  * Note: Script content is no longer exported here - scripts are pre-bundled
- * in the rootfs image during build. See: apps/runner/scripts/deploy/Dockerfile
+ * in the rootfs image during build. See: apps/runner/scripts/deploy/build-rootfs.sh
  *
  * Only paths are exported for runtime usage (e.g., running download script).
  */

@@ -258,9 +258,6 @@ export async function executeJob(
       }
     }
 
-    // Agent scripts are pre-bundled in rootfs (see Dockerfile)
-    // No upload needed - scripts at /usr/local/bin/vm0-agent/*.mjs
-
     // Download storages if manifest provided
     if (context.storageManifest) {
       await withSandboxTiming("storage_download", () =>

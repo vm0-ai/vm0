@@ -87,7 +87,4 @@ RUN mkdir -p /rom /rw /mnt/root
 # Create vm0-agent directory for scripts installed by build-rootfs.sh
 RUN mkdir -p /usr/local/bin/vm0-agent
 
-# Note: vm-init.sh, vsock-agent.py, and .mjs scripts are installed by build-rootfs.sh
-# after Docker export. This avoids rebuilding the Docker image when scripts change.
-
 ENV LANG=C.UTF-8
