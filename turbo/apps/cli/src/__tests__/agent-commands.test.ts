@@ -1,8 +1,8 @@
 /**
- * Unit tests for agent list and inspect commands
+ * Unit tests for agent list and status commands
  *
  * These tests validate command metadata (name, description, aliases).
- * This replaces E2E tests for help/alias tests from t26-vm0-agent-list-inspect.bats.
+ * This replaces E2E tests for help/alias tests from t26-vm0-agent-list-status.bats.
  *
  * Note: API interaction tests (error handling for nonexistent agents/versions)
  * remain in E2E tests because ts-rest client intercepting requires complex setup.
@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import { listCommand } from "../commands/agent/list";
-import { inspectCommand } from "../commands/agent/inspect";
+import { statusCommand } from "../commands/agent/status";
 
 describe("agent list command", () => {
   describe("command metadata", () => {
@@ -42,26 +42,26 @@ describe("agent list command", () => {
   });
 });
 
-describe("agent inspect command", () => {
+describe("agent status command", () => {
   describe("command metadata", () => {
     it("should have correct command description", () => {
-      expect(inspectCommand.description()).toBe("Inspect an agent compose");
+      expect(statusCommand.description()).toBe("Show status of agent compose");
     });
 
     it("should have correct command name", () => {
-      expect(inspectCommand.name()).toBe("inspect");
+      expect(statusCommand.name()).toBe("status");
     });
 
     it("should accept name[:version] argument format", () => {
       // The command is configured to accept a single required argument
-      const args = inspectCommand.registeredArguments;
+      const args = statusCommand.registeredArguments;
       expect(args.length).toBe(1);
       expect(args[0]?.name()).toBe("name[:version]");
       expect(args[0]?.required).toBe(true);
     });
 
     it("should have --scope option", () => {
-      const scopeOption = inspectCommand.options.find(
+      const scopeOption = statusCommand.options.find(
         (opt) => opt.long === "--scope",
       );
       expect(scopeOption).toBeDefined();
@@ -69,7 +69,7 @@ describe("agent inspect command", () => {
     });
 
     it("should have --no-sources option", () => {
-      const noSourcesOption = inspectCommand.options.find(
+      const noSourcesOption = statusCommand.options.find(
         (opt) => opt.long === "--no-sources",
       );
       expect(noSourcesOption).toBeDefined();

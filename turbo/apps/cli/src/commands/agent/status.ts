@@ -126,9 +126,9 @@ function formatComposeOutput(
   }
 }
 
-export const inspectCommand = new Command()
-  .name("inspect")
-  .description("Inspect an agent compose")
+export const statusCommand = new Command()
+  .name("status")
+  .description("Show status of agent compose")
   .argument(
     "<name[:version]>",
     "Agent name with optional version (e.g., my-agent:latest or my-agent:a1b2c3d4)",
@@ -224,7 +224,7 @@ export const inspectCommand = new Command()
           variableSources,
         );
       } catch (error) {
-        console.error(chalk.red("✗ Failed to inspect agent compose"));
+        console.error(chalk.red("✗ Failed to get agent compose status"));
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
             console.error(chalk.dim("  Run: vm0 auth login"));

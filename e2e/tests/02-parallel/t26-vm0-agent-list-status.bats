@@ -2,7 +2,7 @@
 
 load '../../helpers/setup'
 
-# vm0 agent list and inspect command tests
+# vm0 agent list and status command tests
 #
 # Note: Help/alias tests (command description, name, alias) have been moved to unit tests:
 # turbo/apps/cli/src/__tests__/agent-commands.test.ts
@@ -78,17 +78,17 @@ EOF
 }
 
 # ============================================
-# Inspect Command Tests
+# Status Command Tests
 # ============================================
 
-@test "vm0 agent inspect shows agent details" {
+@test "vm0 agent status shows agent details" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent for inspect command"
+    description: "Test agent for status command"
     framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
@@ -98,8 +98,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agent inspect"
-    run $CLI_COMMAND agent inspect "$AGENT_NAME"
+    echo "# Step 3: Run vm0 agent status"
+    run $CLI_COMMAND agent status "$AGENT_NAME"
     assert_success
     assert_output --partial "Name:"
     assert_output --partial "Version:"
@@ -107,7 +107,7 @@ EOF
     assert_output --partial "Framework:"
 }
 
-@test "vm0 agent inspect with version specifier" {
+@test "vm0 agent status with version specifier" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -126,13 +126,13 @@ EOF
     VERSION=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Captured version: $VERSION"
 
-    echo "# Step 3: Run vm0 agent inspect with version specifier"
-    run $CLI_COMMAND agent inspect "$AGENT_NAME:$VERSION"
+    echo "# Step 3: Run vm0 agent status with version specifier"
+    run $CLI_COMMAND agent status "$AGENT_NAME:$VERSION"
     assert_success
     assert_output --partial "$VERSION"
 }
 
-@test "vm0 agent inspect with :latest tag" {
+@test "vm0 agent status with :latest tag" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -149,14 +149,14 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agent inspect with :latest"
-    run $CLI_COMMAND agent inspect "$AGENT_NAME:latest"
+    echo "# Step 3: Run vm0 agent status with :latest"
+    run $CLI_COMMAND agent status "$AGENT_NAME:latest"
     assert_success
     assert_output --partial "Name:"
     assert_output --partial "Version:"
 }
 
-@test "vm0 agent inspect with --no-sources flag" {
+@test "vm0 agent status with --no-sources flag" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -173,8 +173,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agent inspect with --no-sources flag"
-    run $CLI_COMMAND agent inspect "$AGENT_NAME" --no-sources
+    echo "# Step 3: Run vm0 agent status with --no-sources flag"
+    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
     assert_success
     assert_output --partial "Name:"
 }
@@ -183,13 +183,13 @@ EOF
 # Error Handling Tests
 # ============================================
 
-@test "vm0 agent inspect fails for nonexistent agent" {
-    run $CLI_COMMAND agent inspect "nonexistent-agent-12345"
+@test "vm0 agent status fails for nonexistent agent" {
+    run $CLI_COMMAND agent status "nonexistent-agent-12345"
     assert_failure
     assert_output --partial "not found"
 }
 
-@test "vm0 agent inspect fails for nonexistent version" {
+@test "vm0 agent status fails for nonexistent version" {
     echo "# Step 1: Create vm0.yaml config file"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -206,8 +206,8 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Run vm0 agent inspect with nonexistent version"
-    run $CLI_COMMAND agent inspect "$AGENT_NAME:deadbeef"
+    echo "# Step 3: Run vm0 agent status with nonexistent version"
+    run $CLI_COMMAND agent status "$AGENT_NAME:deadbeef"
     assert_failure
     assert_output --partial "Version not found"
 }
