@@ -211,3 +211,118 @@ EOF
     assert_failure
     assert_output --partial "Version not found"
 }
+
+# ============================================
+# Environment Variable Display Tests
+# ============================================
+
+@test "vm0 agent status shows secrets from environment" {
+    echo "# Step 1: Create vm0.yaml with secrets"
+    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    framework: claude-code
+    environment:
+      API_KEY: "${{ secrets.MY_API_KEY }}"
+      AUTH_TOKEN: "${{ secrets.AUTH_TOKEN }}"
+EOF
+    # Replace $AGENT_NAME in the file
+    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+
+    echo "# Step 2: Run vm0 compose"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
+    assert_success
+
+    echo "# Step 3: Run vm0 agent status and verify secrets are displayed"
+    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
+    assert_success
+    assert_output --partial "Secrets:"
+    assert_output --partial "MY_API_KEY"
+    assert_output --partial "AUTH_TOKEN"
+}
+
+@test "vm0 agent status shows vars from environment" {
+    echo "# Step 1: Create vm0.yaml with vars"
+    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    framework: claude-code
+    environment:
+      DEBUG_MODE: "${{ vars.DEBUG }}"
+      LOG_LEVEL: "${{ vars.LOG_LEVEL }}"
+EOF
+    # Replace $AGENT_NAME in the file
+    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+
+    echo "# Step 2: Run vm0 compose"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Run vm0 agent status and verify vars are displayed"
+    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
+    assert_success
+    assert_output --partial "Vars:"
+    assert_output --partial "DEBUG"
+    assert_output --partial "LOG_LEVEL"
+}
+
+@test "vm0 agent status shows credentials from environment" {
+    echo "# Step 1: Create vm0.yaml with credentials"
+    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    framework: claude-code
+    environment:
+      DATABASE_URL: "${{ credentials.DB_URL }}"
+EOF
+    # Replace $AGENT_NAME in the file
+    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+
+    echo "# Step 2: Run vm0 compose"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Run vm0 agent status and verify credentials are displayed"
+    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
+    assert_success
+    assert_output --partial "Credentials:"
+    assert_output --partial "DB_URL"
+}
+
+@test "vm0 agent status shows mixed secrets vars and credentials" {
+    echo "# Step 1: Create vm0.yaml with mixed environment variables"
+    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    framework: claude-code
+    environment:
+      API_KEY: "${{ secrets.API_KEY }}"
+      DEBUG: "${{ vars.DEBUG }}"
+      DB_URL: "${{ credentials.DB_URL }}"
+      STATIC_VALUE: "hardcoded"
+EOF
+    # Replace $AGENT_NAME in the file
+    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+
+    echo "# Step 2: Run vm0 compose"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
+    assert_success
+
+    echo "# Step 3: Run vm0 agent status and verify all types are displayed"
+    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
+    assert_success
+    assert_output --partial "Secrets:"
+    assert_output --partial "API_KEY"
+    assert_output --partial "Vars:"
+    assert_output --partial "DEBUG"
+    assert_output --partial "Credentials:"
+    assert_output --partial "DB_URL"
+}
