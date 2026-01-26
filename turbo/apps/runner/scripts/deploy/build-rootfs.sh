@@ -57,6 +57,38 @@ check_dependencies() {
     echo "[OK] All dependencies available"
 }
 
+# Get agent scripts directory
+# In CI/Ansible deployment: scripts are in SCRIPT_DIR (copied by ansible)
+# In local development: scripts are in packages/core/src/sandbox/scripts/dist
+get_agent_scripts_dir() {
+    SCRIPTS="run-agent.mjs download.mjs mock-claude.mjs env-loader.mjs"
+
+    # Check if scripts exist in SCRIPT_DIR (ansible deployment scenario)
+    ALL_EXIST=true
+    for script in $SCRIPTS; do
+        if [ ! -f "$SCRIPT_DIR/$script" ]; then
+            ALL_EXIST=false
+            break
+        fi
+    done
+
+    if [ "$ALL_EXIST" = true ]; then
+        echo "$SCRIPT_DIR"
+        return
+    fi
+
+    # Fall back to core package dist directory (local development)
+    CORE_SCRIPTS_DIR="$SCRIPT_DIR/../../../../packages/core/src/sandbox/scripts/dist"
+
+    if [ ! -d "$CORE_SCRIPTS_DIR" ]; then
+        echo "ERROR: Core scripts not found at $CORE_SCRIPTS_DIR" >&2
+        echo "Run 'pnpm --filter @vm0/core run build' first" >&2
+        exit 1
+    fi
+
+    echo "$CORE_SCRIPTS_DIR"
+}
+
 # Build Docker image
 build_image() {
     echo "[BUILD] Building Docker image..."
@@ -119,8 +151,22 @@ create_squashfs_image() {
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
+    # Install vm-init script (PID 1)
+    echo "[INSTALL] Installing vm-init..."
+    sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
+    sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
+
+    # Install agent files (vsock-agent and ESM scripts from @vm0/core)
+    echo "[INSTALL] Installing agent files..."
+    AGENT_SCRIPTS_DIR=$(get_agent_scripts_dir)
+    sudo cp "$SCRIPT_DIR/vsock-agent.py" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$AGENT_SCRIPTS_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$AGENT_SCRIPTS_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$AGENT_SCRIPTS_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$AGENT_SCRIPTS_DIR/env-loader.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
+
     # Create squashfs with xz compression (best compression ratio)
-    # Note: vm-init script is already installed via Dockerfile
     echo "[SQUASH] Creating squashfs (this may take a moment)..."
     sudo mksquashfs "$EXTRACT_DIR" "$OUTPUT_PATH" -comp xz -noappend -quiet
 
@@ -180,6 +226,14 @@ verify_rootfs() {
         ERRORS=$((ERRORS + 1))
     else
         echo "  vm-init: installed"
+    fi
+
+    # Check for agent scripts
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/run-agent.mjs" ]; then
+        echo "ERROR: run-agent.mjs not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  agent scripts: installed"
     fi
 
     # Check for Codex CLI (for framework: codex)

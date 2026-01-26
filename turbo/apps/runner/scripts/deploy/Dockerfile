@@ -84,13 +84,10 @@ RUN userdel -r node 2>/dev/null || true \
 # These are needed by /sbin/vm-init to set up overlayfs
 RUN mkdir -p /rom /rw /mnt/root
 
-# Install vsock-agent (Python, no socat needed - native AF_VSOCK support)
-# Protocol: 4-byte length prefix (big endian) + JSON message
-# Messages: ready, ping/pong, exec/exec_result
-COPY vsock-agent.py /usr/local/bin/vm0-agent/vsock-agent.py
-RUN chmod +x /usr/local/bin/vm0-agent/vsock-agent.py
+# Create vm0-agent directory for scripts installed by build-rootfs.sh
+RUN mkdir -p /usr/local/bin/vm0-agent
 
-# Install vm-init script (PID 1, sets up overlayfs and starts vsock-agent)
-COPY vm-init.sh /sbin/vm-init
-RUN chmod 755 /sbin/vm-init
+# Note: vm-init.sh, vsock-agent.py, and .mjs scripts are installed by build-rootfs.sh
+# after Docker export. This avoids rebuilding the Docker image when scripts change.
+
 ENV LANG=C.UTF-8

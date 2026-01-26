@@ -9,30 +9,10 @@
 import fs from "fs";
 import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
-import { getAllScripts } from "../scripts/utils.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
 
-/**
- * Upload all scripts to VM individually via guest client
- * Scripts are installed to /usr/local/bin which requires sudo
- */
-export async function uploadScripts(guest: GuestClient): Promise<void> {
-  const scripts = getAllScripts();
-
-  // Create directory (requires sudo for /usr/local/bin)
-  // No lib directory needed - scripts are self-contained ESM bundles
-  await guest.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
-
-  // Write each script file individually using sudo tee
-  for (const script of scripts) {
-    await guest.writeFileWithSudo(script.path, script.content);
-  }
-
-  // Set executable permissions (requires sudo)
-  await guest.execOrThrow(
-    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true`,
-  );
-}
+// Note: uploadScripts was removed - scripts are now pre-bundled in rootfs
+// See: apps/runner/scripts/deploy/Dockerfile
 
 /**
  * Download storages to VM using storage manifest

@@ -240,6 +240,17 @@
         mode: '0644'
       tags: [prepare]
 
+    - name: Copy agent scripts for rootfs build
+      copy:
+        src: "{{ item }}"
+        dest: "{{ runner_base_dir }}/deploy-runner/"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      with_fileglob:
+        - "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/*.mjs"
+      tags: [prepare]
+
     # ========================================
     # Phase 4: Install Dependencies (if needed)
     # ========================================
@@ -286,8 +297,10 @@
     - name: Calculate rootfs build inputs hash
       shell: |
         cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
-            "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
+            "{{ runner_base_dir }}/deploy-runner/vm-init.sh" \
             "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
+            "{{ runner_base_dir }}/deploy-runner/vsock-agent.py" \
+            "{{ runner_base_dir }}/deploy-runner/"*.mjs 2>/dev/null \
         | sha256sum | cut -d' ' -f1
       register: rootfs_inputs_hash
       changed_when: false

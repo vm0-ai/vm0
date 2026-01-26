@@ -5,7 +5,6 @@
  */
 
 export {
-  uploadScripts,
   downloadStorages,
   restoreSessionHistory,
   installProxyCA,
