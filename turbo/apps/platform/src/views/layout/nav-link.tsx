@@ -65,7 +65,9 @@ export function NavLink({ item, isActive }: NavLinkProps) {
           : "text-sidebar-foreground hover:bg-sidebar-accent"
       }`}
     >
-      {IconComponent && <IconComponent size={16} stroke={1.5} className="shrink-0" />}
+      {IconComponent && (
+        <IconComponent size={16} stroke={1.5} className="shrink-0" />
+      )}
       <span className="truncate">{item.label}</span>
     </button>
   );

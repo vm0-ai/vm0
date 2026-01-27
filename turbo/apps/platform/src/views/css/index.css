@@ -44,7 +44,9 @@
 
   /* Clerk subscription drawer header styling */
   .cl-drawerHeader {
-    background-color: hsl(var(--gray-50)) !important; /* sidebar color (gray-50) */
+    background-color: hsl(
+      var(--gray-50)
+    ) !important; /* sidebar color (gray-50) */
     border-bottom: 1px solid hsl(var(--gray-200)) !important; /* border token (gray-200) */
   }
 }

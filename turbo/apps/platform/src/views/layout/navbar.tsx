@@ -16,7 +16,11 @@ export function Navbar({ breadcrumb }: NavbarProps) {
             className="flex items-center justify-center size-7 px-2 hover:bg-muted rounded transition-colors"
             aria-label="Toggle sidebar"
           >
-            <IconLayoutSidebar size={16} stroke={1.5} className="shrink-0 text-foreground" />
+            <IconLayoutSidebar
+              size={16}
+              stroke={1.5}
+              className="shrink-0 text-foreground"
+            />
           </button>
 
           {/* Vertical divider - matching Figma's logo placeholder */}

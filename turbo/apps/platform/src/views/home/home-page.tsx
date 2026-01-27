@@ -1,10 +1,7 @@
 import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  IconFileText,
-  IconChevronRight,
-} from "@tabler/icons-react";
+import { IconFileText, IconChevronRight } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { OnboardingModal } from "./onboarding-modal.tsx";
 import { useGet } from "ccstate-react";
@@ -55,9 +52,7 @@ function Step1InstallSkill() {
       />
       <Card className="flex items-center justify-between p-4 font-mono">
         <code className="text-sm overflow-x-auto text-muted-foreground">
-          <span>npx</span>{" "}
-          <span>@vm0/cli</span>{" "}
-          <span>setup-claude</span>
+          <span>npx</span> <span>@vm0/cli</span> <span>setup-claude</span>
         </code>
         <CopyButton text={`${command}`} />
       </Card>
@@ -113,7 +108,13 @@ function Step2SampleAgents() {
         <SampleAgentCard
           name="Hacker News Research"
           description="Get the latest insights from Hacker News"
-          icon={<img src="/hackernews-platform.svg" alt="Hacker News" className="h-10 w-10" />}
+          icon={
+            <img
+              src="/hackernews-platform.svg"
+              alt="Hacker News"
+              className="h-10 w-10"
+            />
+          }
           iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
@@ -124,7 +125,13 @@ function Step2SampleAgents() {
         <SampleAgentCard
           name="TikTok Influencer Finder"
           description="Search, filter, and surface TikTok creators for you"
-          icon={<img src="/tiktok-platform.svg" alt="TikTok" className="h-10 w-10" />}
+          icon={
+            <img
+              src="/tiktok-platform.svg"
+              alt="TikTok"
+              className="h-10 w-10"
+            />
+          }
           iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
@@ -187,14 +194,30 @@ function UsefulReferences({ theme }: { theme: string }) {
         <ReferenceCard
           title="Explore our community"
           description="Join us on Discord"
-          icon={<img src="/discord-platform.svg" alt="Discord" className="h-8 w-8" />}
+          icon={
+            <img
+              src="/discord-platform.svg"
+              alt="Discord"
+              className="h-8 w-8"
+            />
+          }
           iconBg=""
           href="https://discord.com/invite/WMpAmHFfp6"
         />
         <ReferenceCard
           title="Visit our GitHub"
           description="Explore our open-source code"
-          icon={<img src={theme === "dark" ? "/github-platform-dark.svg" : "/github-platform.svg"} alt="GitHub" className="h-8 w-8" />}
+          icon={
+            <img
+              src={
+                theme === "dark"
+                  ? "/github-platform-dark.svg"
+                  : "/github-platform.svg"
+              }
+              alt="GitHub"
+              className="h-8 w-8"
+            />
+          }
           iconBg=""
           href="https://github.com/vm0-ai/vm0"
         />

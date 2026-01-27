@@ -12,7 +12,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { VM0SubscriptionDetailsButton } from "../clerk/subscription-detail.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { theme$ } from "../../signals/theme.ts";
-import { userMenuOpen$, toggleUserMenu$, closeUserMenu$ } from "../../signals/user-menu.ts";
+import {
+  userMenuOpen$,
+  toggleUserMenu$,
+  closeUserMenu$,
+} from "../../signals/user-menu.ts";
 
 export function Sidebar() {
   const activeItem = useGet(activeNavItem$);
@@ -143,12 +147,7 @@ function UserProfile() {
   return (
     <>
       {/* Backdrop overlay to close menu when clicking outside */}
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={closeMenu}
-        />
-      )}
+      {isMenuOpen && <div className="fixed inset-0 z-10" onClick={closeMenu} />}
 
       <div className="p-2 relative z-20">
         <button
@@ -226,9 +225,15 @@ function UserProfile() {
               className="w-full flex items-center gap-3 px-5 py-4 hover:bg-muted transition-colors text-left"
             >
               <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                <IconLogout size={20} stroke={1.5} className="text-foreground" />
+                <IconLogout
+                  size={20}
+                  stroke={1.5}
+                  className="text-foreground"
+                />
               </div>
-              <span className="text-sm leading-5 text-foreground">Sign out</span>
+              <span className="text-sm leading-5 text-foreground">
+                Sign out
+              </span>
             </button>
           </div>
         )}
