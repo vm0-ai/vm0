@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/vm0-ai/vm0/compare/docs-v1.1.1...docs-v1.1.2) (2026-01-27)
+
+
+### Bug Fixes
+
+* **docs:** update scheduling documentation with vm0 schedule command ([#1721](https://github.com/vm0-ai/vm0/issues/1721)) ([b7489e8](https://github.com/vm0-ai/vm0/commit/b7489e81b04e34d11877070cc57e9e95aaf36e33)), closes [#1720](https://github.com/vm0-ai/vm0/issues/1720)
+
 ## [1.1.1](https://github.com/vm0-ai/vm0/compare/docs-v1.1.0...docs-v1.1.1) (2026-01-27)
 
 
