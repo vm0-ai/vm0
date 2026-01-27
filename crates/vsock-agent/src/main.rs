@@ -171,7 +171,14 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     };
 
     let preview = if command.len() > 100 {
-        format!("{}...", &command[..100])
+        // Find a safe UTF-8 boundary at or before byte 100
+        let end = command
+            .char_indices()
+            .take_while(|(i, _)| *i < 100)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(100);
+        format!("{}...", &command[..end])
     } else {
         command.to_string()
     };
