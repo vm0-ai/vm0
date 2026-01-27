@@ -58,7 +58,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":database: *Database Migration* starting..."
+            text: "*Database Migration* starting..."
 
       - name: Get Production Database URL
         id: get-db-url
@@ -81,23 +81,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Migration completed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Database Migration* starting...\n:white_check_mark: Migration completed"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Migration failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Database Migration* starting...\n:x: Migration failed"
 
   # Deploy web app to production
   deploy-web-production:
@@ -123,7 +123,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":rocket: *Web App* deploying to production..."
+            text: "*Web App* deploying to production..."
 
       - name: Get Production Database URL
         id: get-db-url
@@ -164,23 +164,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* deploying to production...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* deploying to production...\n:x: Deploy failed"
 
   # Deploy docs app to production
   deploy-docs-production:
@@ -206,7 +206,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":books: *Docs* deploying to production..."
+            text: "*Docs* deploying to production..."
 
       - name: Deploy Docs to Vercel Production
         id: deploy
@@ -222,23 +222,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Docs* deploying to production...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Docs* deploying to production...\n:x: Deploy failed"
 
   # Deploy site app to production
   deploy-site-production:
@@ -264,7 +264,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":globe_with_meridians: *Site* deploying to production..."
+            text: "*Site* deploying to production..."
 
       - name: Deploy Site to Vercel Production
         id: deploy
@@ -284,23 +284,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Site* deploying to production...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Site* deploying to production...\n:x: Deploy failed"
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
@@ -326,7 +326,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":desktop_computer: *Platform* deploying to production..."
+            text: "*Platform* deploying to production..."
 
       - name: Deploy Platform to Vercel Production
         id: deploy
@@ -345,23 +345,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Platform* deploying to production...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Platform* deploying to production...\n:x: Deploy failed"
 
   publish-npm:
     needs: release-please
@@ -383,7 +383,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":package: *CLI* publishing to npm..."
+            text: "*CLI* publishing to npm..."
 
       - uses: actions/setup-node@v4
         with:
@@ -412,23 +412,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*CLI* publishing to npm...\n:white_check_mark: Published successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*CLI* publishing to npm...\n:x: Publish failed"
 
   publish-runner-npm:
     needs: release-please
@@ -450,7 +450,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":package: *Runner* publishing to npm..."
+            text: "*Runner* publishing to npm..."
 
       - uses: actions/setup-node@v4
         with:
@@ -479,23 +479,23 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner* publishing to npm...\n:white_check_mark: Published successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner* publishing to npm...\n:x: Publish failed"
 
   # Deploy runner to production metal instances
   deploy-runner-production:
@@ -520,7 +520,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: ":server: *Runner* deploying to production servers..."
+            text: "*Runner* deploying to production servers..."
 
       - name: Build Core Package
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
@@ -575,20 +575,20 @@ jobs:
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":white_check_mark: Deployed successfully"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner* deploying to production servers...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
-          method: chat.postMessage
+          method: chat.update
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            thread_ts: "${{ steps.slack-start.outputs.ts }}"
-            text: ":x: Deploy failed"
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner* deploying to production servers...\n:x: Deploy failed"
