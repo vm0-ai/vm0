@@ -824,8 +824,8 @@ jobs:
 
       - name: Install ARM64 cross-linker
         run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
+          apt-get update
+          apt-get install -y musl-tools gcc-aarch64-linux-gnu
 
       - name: Build vsock-agent for ARM64
         run: |
