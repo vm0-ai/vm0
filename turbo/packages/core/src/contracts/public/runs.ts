@@ -33,13 +33,13 @@ export type PublicRunStatus = z.infer<typeof publicRunStatusSchema>;
  */
 export const publicRunSchema = z.object({
   id: z.string(),
-  agent_id: z.string(),
-  agent_name: z.string(),
+  agentId: z.string(),
+  agentName: z.string(),
   status: publicRunStatusSchema,
   prompt: z.string(),
-  created_at: timestampSchema,
-  started_at: timestampSchema.nullable(),
-  completed_at: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  startedAt: timestampSchema.nullable(),
+  completedAt: timestampSchema.nullable(),
 });
 
 export type PublicRun = z.infer<typeof publicRunSchema>;
@@ -49,11 +49,11 @@ export type PublicRun = z.infer<typeof publicRunSchema>;
  */
 export const publicRunDetailSchema = publicRunSchema.extend({
   error: z.string().nullable(),
-  execution_time_ms: z.number().nullable(),
-  checkpoint_id: z.string().nullable(),
-  session_id: z.string().nullable(),
-  artifact_name: z.string().nullable(),
-  artifact_version: z.string().nullable(),
+  executionTimeMs: z.number().nullable(),
+  checkpointId: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  artifactName: z.string().nullable(),
+  artifactVersion: z.string().nullable(),
   volumes: z.record(z.string(), z.string()).optional(),
 });
 
@@ -69,16 +69,16 @@ export const paginatedRunsSchema =
  * Create run request schema
  */
 export const createRunRequestSchema = z.object({
-  // Agent identification (one of: agent, agent_id, session_id, checkpoint_id)
+  // Agent identification (one of: agent, agentId, sessionId, checkpointId)
   agent: z.string().optional(), // Agent name
-  agent_id: z.string().optional(), // Agent ID
-  agent_version: z.string().optional(), // Version specifier (e.g., "latest", "v1", specific ID)
+  agentId: z.string().optional(), // Agent ID
+  agentVersion: z.string().optional(), // Version specifier (e.g., "latest", "v1", specific ID)
 
   // Continue session
-  session_id: z.string().optional(),
+  sessionId: z.string().optional(),
 
   // Resume from checkpoint
-  checkpoint_id: z.string().optional(),
+  checkpointId: z.string().optional(),
 
   // Required
   prompt: z.string().min(1, "Prompt is required"),
@@ -86,8 +86,8 @@ export const createRunRequestSchema = z.object({
   // Optional configuration
   variables: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
-  artifact_name: z.string().optional(), // Artifact name to mount
-  artifact_version: z.string().optional(), // Artifact version (defaults to latest)
+  artifactName: z.string().optional(), // Artifact name to mount
+  artifactVersion: z.string().optional(), // Artifact version (defaults to latest)
   volumes: z.record(z.string(), z.string()).optional(), // volume_name -> version
 });
 
@@ -97,7 +97,7 @@ export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
  * Run list query parameters
  */
 export const runListQuerySchema = listQuerySchema.extend({
-  agent_id: z.string().optional(),
+  agentId: z.string().optional(),
   status: publicRunStatusSchema.optional(),
   since: timestampSchema.optional(),
 });
@@ -245,11 +245,11 @@ export const publicRunLogsContract = c.router({
  */
 export const metricPointSchema = z.object({
   timestamp: timestampSchema,
-  cpu_percent: z.number(),
-  memory_used_mb: z.number(),
-  memory_total_mb: z.number(),
-  disk_used_mb: z.number(),
-  disk_total_mb: z.number(),
+  cpuPercent: z.number(),
+  memoryUsedMb: z.number(),
+  memoryTotalMb: z.number(),
+  diskUsedMb: z.number(),
+  diskTotalMb: z.number(),
 });
 
 export type MetricPoint = z.infer<typeof metricPointSchema>;
@@ -258,9 +258,9 @@ export type MetricPoint = z.infer<typeof metricPointSchema>;
  * Metrics summary schema
  */
 export const metricsSummarySchema = z.object({
-  avg_cpu_percent: z.number(),
-  max_memory_used_mb: z.number(),
-  total_duration_ms: z.number().nullable(),
+  avgCpuPercent: z.number(),
+  maxMemoryUsedMb: z.number(),
+  totalDurationMs: z.number().nullable(),
 });
 
 export type MetricsSummary = z.infer<typeof metricsSummarySchema>;
@@ -336,7 +336,7 @@ export const publicRunEventsContract = c.router({
       id: z.string().min(1, "Run ID is required"),
     }),
     query: z.object({
-      last_event_id: z.string().optional(), // For reconnection
+      lastEventId: z.string().optional(), // For reconnection
     }),
     responses: {
       200: z.any(), // SSE stream - actual content is text/event-stream

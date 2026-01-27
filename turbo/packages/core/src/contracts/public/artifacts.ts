@@ -21,11 +21,11 @@ const c = initContract();
 export const publicArtifactSchema = z.object({
   id: z.string(),
   name: z.string(),
-  current_version_id: z.string().nullable(),
+  currentVersionId: z.string().nullable(),
   size: z.number(), // Total size in bytes
-  file_count: z.number(),
-  created_at: timestampSchema,
-  updated_at: timestampSchema,
+  fileCount: z.number(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
 });
 
 export type PublicArtifact = z.infer<typeof publicArtifactSchema>;
@@ -35,12 +35,12 @@ export type PublicArtifact = z.infer<typeof publicArtifactSchema>;
  */
 export const artifactVersionSchema = z.object({
   id: z.string(), // SHA-256 content hash
-  artifact_id: z.string(),
+  artifactId: z.string(),
   size: z.number(), // Size in bytes
-  file_count: z.number(),
+  fileCount: z.number(),
   message: z.string().nullable(), // Optional commit message
-  created_by: z.string(),
-  created_at: timestampSchema,
+  createdBy: z.string(),
+  createdAt: timestampSchema,
 });
 
 export type ArtifactVersion = z.infer<typeof artifactVersionSchema>;
@@ -49,7 +49,7 @@ export type ArtifactVersion = z.infer<typeof artifactVersionSchema>;
  * Artifact detail schema (includes current version info)
  */
 export const publicArtifactDetailSchema = publicArtifactSchema.extend({
-  current_version: artifactVersionSchema.nullable(),
+  currentVersion: artifactVersionSchema.nullable(),
 });
 
 export type PublicArtifactDetail = z.infer<typeof publicArtifactDetailSchema>;
@@ -144,7 +144,7 @@ export const publicArtifactDownloadContract = c.router({
       id: z.string().min(1, "Artifact ID is required"),
     }),
     query: z.object({
-      version_id: z.string().optional(), // Defaults to current version
+      versionId: z.string().optional(), // Defaults to current version
     }),
     responses: {
       302: z.undefined(), // Redirect to presigned URL

@@ -121,13 +121,13 @@ const router = tsr.router(publicAgentVersionsContract, {
       body: {
         data: data.map((version) => ({
           id: version.id,
-          agent_id: agent.id,
-          version_number: versionNumberMap.get(version.id) ?? 1,
-          created_at: version.createdAt.toISOString(),
+          agentId: agent.id,
+          versionNumber: versionNumberMap.get(version.id) ?? 1,
+          createdAt: version.createdAt.toISOString(),
         })),
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };

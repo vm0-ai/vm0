@@ -122,8 +122,8 @@ const router = tsr.router(platformLogsListContract, {
           id: run.id,
         })),
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };

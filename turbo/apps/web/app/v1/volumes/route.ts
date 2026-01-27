@@ -86,15 +86,15 @@ const router = tsr.router(publicVolumesListContract, {
         data: data.map((s) => ({
           id: s.id,
           name: s.name,
-          current_version_id: s.headVersionId,
+          currentVersionId: s.headVersionId,
           size: Number(s.size),
-          file_count: s.fileCount,
-          created_at: s.createdAt.toISOString(),
-          updated_at: s.updatedAt.toISOString(),
+          fileCount: s.fileCount,
+          createdAt: s.createdAt.toISOString(),
+          updatedAt: s.updatedAt.toISOString(),
         })),
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };

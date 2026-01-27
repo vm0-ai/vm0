@@ -103,8 +103,8 @@ const router = tsr.router(publicRunsListContract, {
       body: {
         data: data.map(({ run, compose }) => ({
           id: run.id,
-          agent_id: compose?.id ?? "",
-          agent_name: compose?.name ?? "unknown",
+          agentId: compose?.id ?? "",
+          agentName: compose?.name ?? "unknown",
           status: run.status as
             | "pending"
             | "running"
@@ -113,13 +113,13 @@ const router = tsr.router(publicRunsListContract, {
             | "timeout"
             | "cancelled",
           prompt: run.prompt,
-          created_at: run.createdAt.toISOString(),
-          started_at: run.startedAt?.toISOString() ?? null,
-          completed_at: run.completedAt?.toISOString() ?? null,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.startedAt?.toISOString() ?? null,
+          completedAt: run.completedAt?.toISOString() ?? null,
         })),
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };
@@ -163,18 +163,18 @@ const router = tsr.router(publicRunsListContract, {
     let agentComposeVersionId: string | undefined;
     let agentCompose: typeof agentComposes.$inferSelect | undefined;
 
-    // Priority: checkpoint_id > session_id > agent_id > agent (name)
-    if (body.checkpoint_id) {
+    // Priority: checkpointId > sessionId > agentId > agent (name)
+    if (body.checkpointId) {
       // Resume from checkpoint - validate and get version ID
       const checkpointData = await runService.validateCheckpoint(
-        body.checkpoint_id,
+        body.checkpointId,
         auth.userId,
       );
       agentComposeVersionId = checkpointData.agentComposeVersionId;
-    } else if (body.session_id) {
+    } else if (body.sessionId) {
       // Continue session
       const sessionData = await runService.validateAgentSession(
-        body.session_id,
+        body.sessionId,
         auth.userId,
       );
 
@@ -200,14 +200,14 @@ const router = tsr.router(publicRunsListContract, {
       agentComposeVersionId =
         sessionData.agentComposeVersionId || compose.headVersionId;
       agentCompose = compose;
-    } else if (body.agent_id) {
+    } else if (body.agentId) {
       // Find by agent ID
       const [compose] = await globalThis.services.db
         .select()
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.id, body.agent_id),
+            eq(agentComposes.id, body.agentId),
             eq(agentComposes.scopeId, userScope.id),
           ),
         )
@@ -220,7 +220,7 @@ const router = tsr.router(publicRunsListContract, {
             error: {
               type: "not_found_error" as const,
               code: "resource_not_found",
-              message: `No such agent: '${body.agent_id}'`,
+              message: `No such agent: '${body.agentId}'`,
             },
           },
         };
@@ -290,7 +290,7 @@ const router = tsr.router(publicRunsListContract, {
             type: "invalid_request_error" as const,
             code: "missing_parameter",
             message:
-              "Must provide one of: agent, agent_id, session_id, or checkpoint_id",
+              "Must provide one of: agent, agentId, sessionId, or checkpointId",
           },
         },
       };
@@ -306,7 +306,7 @@ const router = tsr.router(publicRunsListContract, {
         prompt: body.prompt,
         vars: body.variables ?? null,
         secretNames: body.secrets ? Object.keys(body.secrets) : null,
-        resumedFromCheckpointId: body.checkpoint_id ?? null,
+        resumedFromCheckpointId: body.checkpointId ?? null,
       })
       .returning();
 
@@ -327,8 +327,8 @@ const router = tsr.router(publicRunsListContract, {
     const sandboxToken = await generateSandboxToken(auth.userId, run.id);
 
     const context = await runService.buildExecutionContext({
-      checkpointId: body.checkpoint_id,
-      sessionId: body.session_id,
+      checkpointId: body.checkpointId,
+      sessionId: body.sessionId,
       agentComposeVersionId: agentComposeVersionId!,
       vars: body.variables,
       secrets: body.secrets,
@@ -338,8 +338,8 @@ const router = tsr.router(publicRunsListContract, {
       sandboxToken,
       userId: auth.userId,
       agentName: agentCompose?.name,
-      resumedFromCheckpointId: body.checkpoint_id,
-      continuedFromSessionId: body.session_id,
+      resumedFromCheckpointId: body.checkpointId,
+      continuedFromSessionId: body.sessionId,
     });
 
     const result = await runService.prepareAndDispatch(context);
@@ -348,8 +348,8 @@ const router = tsr.router(publicRunsListContract, {
       status: 202 as const,
       body: {
         id: run.id,
-        agent_id: agentCompose?.id ?? "",
-        agent_name: agentCompose?.name ?? "unknown",
+        agentId: agentCompose?.id ?? "",
+        agentName: agentCompose?.name ?? "unknown",
         status: result.status as
           | "pending"
           | "running"
@@ -358,15 +358,15 @@ const router = tsr.router(publicRunsListContract, {
           | "timeout"
           | "cancelled",
         prompt: body.prompt,
-        created_at: run.createdAt.toISOString(),
-        started_at: null,
-        completed_at: null,
+        createdAt: run.createdAt.toISOString(),
+        startedAt: null,
+        completedAt: null,
         error: null,
-        execution_time_ms: null,
-        checkpoint_id: null,
-        session_id: body.session_id ?? null,
-        artifact_name: body.artifact_name ?? null,
-        artifact_version: body.artifact_version ?? null,
+        executionTimeMs: null,
+        checkpointId: null,
+        sessionId: body.sessionId ?? null,
+        artifactName: body.artifactName ?? null,
+        artifactVersion: body.artifactVersion ?? null,
         volumes: body.volumes,
       },
     };

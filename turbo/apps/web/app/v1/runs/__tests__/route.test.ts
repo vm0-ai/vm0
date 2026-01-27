@@ -211,7 +211,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.pagination).toBeDefined();
-      expect(data.pagination.has_more).toBeDefined();
+      expect(data.pagination.hasMore).toBeDefined();
     });
 
     it("should support limit parameter", async () => {
@@ -269,8 +269,8 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(data.id).toBe(testRunId);
       expect(data.status).toBe("running");
       expect(data.prompt).toBe("Test prompt for runs API");
-      expect(data.agent_id).toBe(testAgentId);
-      expect(data.agent_name).toBe(testAgentName);
+      expect(data.agentId).toBe(testAgentId);
+      expect(data.agentName).toBe(testAgentName);
     });
 
     it("should return 404 for non-existent run", async () => {
@@ -346,7 +346,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBe(runToCancel);
       expect(data.status).toBe("cancelled");
-      expect(data.completed_at).toBeDefined();
+      expect(data.completedAt).toBeDefined();
     });
 
     it("should return 400 when cancelling already completed run", async () => {
@@ -447,8 +447,8 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.summary).toBeDefined();
-      expect(data.summary.avg_cpu_percent).toBe(0);
-      expect(data.summary.max_memory_used_mb).toBe(0);
+      expect(data.summary.avgCpuPercent).toBe(0);
+      expect(data.summary.maxMemoryUsedMb).toBe(0);
     });
 
     it("should return 404 for non-existent run", async () => {
@@ -466,12 +466,12 @@ describe("Public API v1 - Runs Endpoints", () => {
   });
 
   describe("POST /v1/runs - Create Run", () => {
-    it("should create a run with agent_id", async () => {
+    it("should create a run with agentId", async () => {
       const request = createTestRequest("http://localhost:3000/v1/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agent_id: testAgentId,
+          agentId: testAgentId,
           prompt: "Create a new run",
         }),
       });
@@ -500,7 +500,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(202);
       expect(data.id).toBeDefined();
-      expect(data.agent_name).toBe(testAgentName);
+      expect(data.agentName).toBe(testAgentName);
     });
 
     it("should return 404 for non-existent agent", async () => {

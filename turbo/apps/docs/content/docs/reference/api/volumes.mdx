@@ -35,16 +35,16 @@ curl https://api.vm0.ai/v1/volumes \
     {
       "id": "vol_abc123",
       "name": "training-data",
-      "current_version_id": "v1_xyz789",
+      "currentVersionId": "v1_xyz789",
       "size": 1048576,
-      "file_count": 10,
-      "created_at": "2024-01-15T00:00:00Z",
-      "updated_at": "2024-01-15T10:30:00Z"
+      "fileCount": 10,
+      "createdAt": "2024-01-15T00:00:00Z",
+      "updatedAt": "2024-01-15T10:30:00Z"
     }
   ],
   "pagination": {
-    "has_more": false,
-    "next_cursor": null
+    "hasMore": false,
+    "nextCursor": null
   }
 }
 ```
@@ -78,20 +78,20 @@ curl https://api.vm0.ai/v1/volumes/vol_abc123 \
 {
   "id": "vol_abc123",
   "name": "training-data",
-  "current_version_id": "v1_xyz789",
+  "currentVersionId": "v1_xyz789",
   "size": 1048576,
-  "file_count": 10,
-  "current_version": {
+  "fileCount": 10,
+  "currentVersion": {
     "id": "v1_xyz789",
-    "volume_id": "vol_abc123",
+    "volumeId": "vol_abc123",
     "size": 1048576,
-    "file_count": 10,
+    "fileCount": 10,
     "message": "Added new dataset",
-    "created_by": "user_abc",
-    "created_at": "2024-01-15T10:30:00Z"
+    "createdBy": "user_abc",
+    "createdAt": "2024-01-15T10:30:00Z"
   },
-  "created_at": "2024-01-15T00:00:00Z",
-  "updated_at": "2024-01-15T10:30:00Z"
+  "createdAt": "2024-01-15T00:00:00Z",
+  "updatedAt": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -125,17 +125,17 @@ curl https://api.vm0.ai/v1/volumes/vol_abc123/versions \
   "data": [
     {
       "id": "v1_xyz789",
-      "volume_id": "vol_abc123",
+      "volumeId": "vol_abc123",
       "size": 1048576,
-      "file_count": 10,
+      "fileCount": 10,
       "message": "Added new dataset",
-      "created_by": "user_abc",
-      "created_at": "2024-01-15T10:30:00Z"
+      "createdBy": "user_abc",
+      "createdAt": "2024-01-15T10:30:00Z"
     }
   ],
   "pagination": {
-    "has_more": false,
-    "next_cursor": null
+    "hasMore": false,
+    "nextCursor": null
   }
 }
 ```
@@ -160,7 +160,7 @@ Returns a 302 redirect to a presigned URL for downloading the volume as a tar.gz
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `version_id` | string | Specific version (defaults to current) |
+| `versionId` | string | Specific version (defaults to current) |
 
 ### Request
 
@@ -187,20 +187,20 @@ Location: https://storage.example.com/presigned-url-for-archive.tar.gz
 |-------|------|-------------|
 | `id` | string | Unique volume identifier (prefix: `vol_`) |
 | `name` | string | Volume name |
-| `current_version_id` | string | ID of the current version |
+| `currentVersionId` | string | ID of the current version |
 | `size` | integer | Total size in bytes |
-| `file_count` | integer | Number of files |
-| `created_at` | string | ISO 8601 creation timestamp |
-| `updated_at` | string | ISO 8601 last update timestamp |
+| `fileCount` | integer | Number of files |
+| `createdAt` | string | ISO 8601 creation timestamp |
+| `updatedAt` | string | ISO 8601 last update timestamp |
 
 ## Version Object
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique version identifier |
-| `volume_id` | string | Parent volume ID |
+| `volumeId` | string | Parent volume ID |
 | `size` | integer | Version size in bytes |
-| `file_count` | integer | Number of files in version |
+| `fileCount` | integer | Number of files in version |
 | `message` | string | Commit message |
-| `created_by` | string | User who created the version |
-| `created_at` | string | ISO 8601 creation timestamp |
+| `createdBy` | string | User who created the version |
+| `createdAt` | string | ISO 8601 creation timestamp |

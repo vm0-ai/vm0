@@ -30,7 +30,7 @@ export type PublicApiErrorType = z.infer<typeof publicApiErrorTypeSchema>;
  *     "code": "resource_missing",
  *     "message": "No such agent: 'xxx'",
  *     "param": "agent_id",
- *     "doc_url": "https://docs.vm7.ai/errors/resource_missing"
+ *     "docUrl": "https://docs.vm7.ai/errors/resource_missing"
  *   }
  * }
  */
@@ -40,7 +40,7 @@ export const publicApiErrorSchema = z.object({
     code: z.string(),
     message: z.string(),
     param: z.string().optional(),
-    doc_url: z.string().url().optional(),
+    docUrl: z.string().url().optional(),
   }),
 });
 
@@ -86,7 +86,7 @@ export function createPublicApiError(
       code,
       message,
       param: options?.param,
-      doc_url: options?.docUrl,
+      docUrl: options?.docUrl,
     },
   };
 }
@@ -109,14 +109,14 @@ export const errorTypeToStatus: Record<PublicApiErrorType, number> = {
  * {
  *   "data": [...],
  *   "pagination": {
- *     "has_more": true,
- *     "next_cursor": "eyJpZCI6MTIzfQ=="
+ *     "hasMore": true,
+ *     "nextCursor": "eyJpZCI6MTIzfQ=="
  *   }
  * }
  */
 export const paginationSchema = z.object({
-  has_more: z.boolean(),
-  next_cursor: z.string().nullable(),
+  hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
 });
 
 export type Pagination = z.infer<typeof paginationSchema>;

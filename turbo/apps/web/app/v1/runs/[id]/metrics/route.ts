@@ -99,9 +99,9 @@ const router = tsr.router(publicRunMetricsContract, {
         body: {
           data: [],
           summary: {
-            avg_cpu_percent: 0,
-            max_memory_used_mb: 0,
-            total_duration_ms: null,
+            avgCpuPercent: 0,
+            maxMemoryUsedMb: 0,
+            totalDurationMs: null,
           },
         },
       };
@@ -110,11 +110,11 @@ const router = tsr.router(publicRunMetricsContract, {
     // Transform to API response format
     const data = events.map((e) => ({
       timestamp: e._time,
-      cpu_percent: e.cpu,
-      memory_used_mb: e.mem_used,
-      memory_total_mb: e.mem_total,
-      disk_used_mb: e.disk_used,
-      disk_total_mb: e.disk_total,
+      cpuPercent: e.cpu,
+      memoryUsedMb: e.mem_used,
+      memoryTotalMb: e.mem_total,
+      diskUsedMb: e.disk_used,
+      diskTotalMb: e.disk_total,
     }));
 
     // Calculate summary statistics
@@ -138,9 +138,9 @@ const router = tsr.router(publicRunMetricsContract, {
       body: {
         data,
         summary: {
-          avg_cpu_percent: Math.round(avgCpuPercent * 100) / 100,
-          max_memory_used_mb: Math.round(maxMemoryUsedMb * 100) / 100,
-          total_duration_ms: totalDurationMs,
+          avgCpuPercent: Math.round(avgCpuPercent * 100) / 100,
+          maxMemoryUsedMb: Math.round(maxMemoryUsedMb * 100) / 100,
+          totalDurationMs: totalDurationMs,
         },
       },
     };

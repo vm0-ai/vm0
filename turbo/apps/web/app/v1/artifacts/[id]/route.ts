@@ -74,12 +74,12 @@ const router = tsr.router(publicArtifactByIdContract, {
       if (version) {
         currentVersion = {
           id: version.id,
-          artifact_id: artifact.id,
+          artifactId: artifact.id,
           size: Number(version.size),
-          file_count: version.fileCount,
+          fileCount: version.fileCount,
           message: version.message,
-          created_by: version.createdBy,
-          created_at: version.createdAt.toISOString(),
+          createdBy: version.createdBy,
+          createdAt: version.createdAt.toISOString(),
         };
       }
     }
@@ -89,12 +89,12 @@ const router = tsr.router(publicArtifactByIdContract, {
       body: {
         id: artifact.id,
         name: artifact.name,
-        current_version_id: artifact.headVersionId,
+        currentVersionId: artifact.headVersionId,
         size: Number(artifact.size),
-        file_count: artifact.fileCount,
-        created_at: artifact.createdAt.toISOString(),
-        updated_at: artifact.updatedAt.toISOString(),
-        current_version: currentVersion,
+        fileCount: artifact.fileCount,
+        createdAt: artifact.createdAt.toISOString(),
+        updatedAt: artifact.updatedAt.toISOString(),
+        currentVersion: currentVersion,
       },
     };
   },

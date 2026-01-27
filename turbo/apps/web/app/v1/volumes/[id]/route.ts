@@ -74,12 +74,12 @@ const router = tsr.router(publicVolumeByIdContract, {
       if (version) {
         currentVersion = {
           id: version.id,
-          volume_id: volume.id,
+          volumeId: volume.id,
           size: Number(version.size),
-          file_count: version.fileCount,
+          fileCount: version.fileCount,
           message: version.message,
-          created_by: version.createdBy,
-          created_at: version.createdAt.toISOString(),
+          createdBy: version.createdBy,
+          createdAt: version.createdAt.toISOString(),
         };
       }
     }
@@ -89,12 +89,12 @@ const router = tsr.router(publicVolumeByIdContract, {
       body: {
         id: volume.id,
         name: volume.name,
-        current_version_id: volume.headVersionId,
+        currentVersionId: volume.headVersionId,
         size: Number(volume.size),
-        file_count: volume.fileCount,
-        created_at: volume.createdAt.toISOString(),
-        updated_at: volume.updatedAt.toISOString(),
-        current_version: currentVersion,
+        fileCount: volume.fileCount,
+        createdAt: volume.createdAt.toISOString(),
+        updatedAt: volume.updatedAt.toISOString(),
+        currentVersion: currentVersion,
       },
     };
   },

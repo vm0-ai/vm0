@@ -115,7 +115,7 @@ describe("Public API v1 - Volumes Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.pagination).toBeDefined();
-      expect(data.pagination.has_more).toBeDefined();
+      expect(data.pagination.hasMore).toBeDefined();
     });
 
     it("should support limit parameter", async () => {
@@ -156,7 +156,7 @@ describe("Public API v1 - Volumes Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBe(testVolumeId);
       expect(data.name).toBe("test-volume-v1");
-      expect(data.current_version).toBeNull();
+      expect(data.currentVersion).toBeNull();
     });
 
     it("should return 404 for non-existent volume", async () => {

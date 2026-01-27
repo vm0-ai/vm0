@@ -29,7 +29,7 @@ export async function GET(
 
   const { id } = await params;
   const { searchParams } = new URL(request.url);
-  const versionId = searchParams.get("version_id") ?? undefined;
+  const versionId = searchParams.get("versionId") ?? undefined;
 
   const auth = await authenticatePublicApi(
     request.headers.get("Authorization") ?? undefined,

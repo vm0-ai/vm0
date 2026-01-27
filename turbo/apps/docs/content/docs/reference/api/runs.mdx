@@ -32,7 +32,7 @@ Returns a paginated list of runs.
 |-----------|------|---------|-------------|
 | `limit` | integer | 20 | Items per page (1-100) |
 | `cursor` | string | - | Pagination cursor |
-| `agent_id` | string | - | Filter by agent ID |
+| `agentId` | string | - | Filter by agent ID |
 | `status` | string | - | Filter by status |
 | `since` | string | - | Filter by start time (ISO 8601) |
 
@@ -50,18 +50,18 @@ curl "https://api.vm0.ai/v1/runs?status=completed&limit=10" \
   "data": [
     {
       "id": "run_abc123",
-      "agent_id": "ag_xyz789",
-      "agent_name": "my-agent",
+      "agentId": "ag_xyz789",
+      "agentName": "my-agent",
       "status": "completed",
       "prompt": "Research AI trends",
-      "created_at": "2024-01-15T10:00:00Z",
-      "started_at": "2024-01-15T10:00:05Z",
-      "completed_at": "2024-01-15T10:15:00Z"
+      "createdAt": "2024-01-15T10:00:00Z",
+      "startedAt": "2024-01-15T10:00:05Z",
+      "completedAt": "2024-01-15T10:15:00Z"
     }
   ],
   "pagination": {
-    "has_more": false,
-    "next_cursor": null
+    "hasMore": false,
+    "nextCursor": null
   }
 }
 ```
@@ -81,18 +81,18 @@ Starts a new agent execution. Returns immediately with run details; the agent ex
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `agent` | string | * | Agent name |
-| `agent_id` | string | * | Agent ID |
-| `session_id` | string | * | Continue existing session |
-| `checkpoint_id` | string | * | Resume from checkpoint |
-| `agent_version` | string | No | Version specifier (default: `latest`) |
+| `agentId` | string | * | Agent ID |
+| `sessionId` | string | * | Continue existing session |
+| `checkpointId` | string | * | Resume from checkpoint |
+| `agentVersion` | string | No | Version specifier (default: `latest`) |
 | `prompt` | string | Yes | Task prompt for the agent |
 | `variables` | object | No | Environment variables |
 | `secrets` | object | No | Secret environment variables |
 | `volumes` | object | No | Volume mounts (name -> version) |
-| `artifact_name` | string | No | Artifact name to mount |
-| `artifact_version` | string | No | Artifact version (defaults to latest) |
+| `artifactName` | string | No | Artifact name to mount |
+| `artifactVersion` | string | No | Artifact version (defaults to latest) |
 
-*One of `agent`, `agent_id`, `session_id`, or `checkpoint_id` is required.
+*One of `agent`, `agentId`, `sessionId`, or `checkpointId` is required.
 
 ### Request
 
@@ -114,19 +114,19 @@ curl https://api.vm0.ai/v1/runs \
 ```json
 {
   "id": "run_def456",
-  "agent_id": "ag_xyz789",
-  "agent_name": "my-agent",
+  "agentId": "ag_xyz789",
+  "agentName": "my-agent",
   "status": "pending",
   "prompt": "Research the latest AI trends and create a summary report",
   "error": null,
-  "execution_time_ms": null,
-  "checkpoint_id": null,
-  "session_id": "sess_abc123",
-  "artifact_name": null,
-  "artifact_version": null,
-  "created_at": "2024-01-15T10:00:00Z",
-  "started_at": null,
-  "completed_at": null
+  "executionTimeMs": null,
+  "checkpointId": null,
+  "sessionId": "sess_abc123",
+  "artifactName": null,
+  "artifactVersion": null,
+  "createdAt": "2024-01-15T10:00:00Z",
+  "startedAt": null,
+  "completedAt": null
 }
 ```
 
@@ -158,20 +158,20 @@ curl https://api.vm0.ai/v1/runs/run_abc123 \
 ```json
 {
   "id": "run_abc123",
-  "agent_id": "ag_xyz789",
-  "agent_name": "my-agent",
+  "agentId": "ag_xyz789",
+  "agentName": "my-agent",
   "status": "completed",
   "prompt": "Research AI trends",
   "error": null,
-  "execution_time_ms": 900000,
-  "checkpoint_id": "chk_xyz789",
-  "session_id": "sess_abc123",
-  "artifact_name": "research-output",
-  "artifact_version": "v1_abc123",
+  "executionTimeMs": 900000,
+  "checkpointId": "chk_xyz789",
+  "sessionId": "sess_abc123",
+  "artifactName": "research-output",
+  "artifactVersion": "v1_abc123",
   "volumes": {},
-  "created_at": "2024-01-15T10:00:00Z",
-  "started_at": "2024-01-15T10:00:05Z",
-  "completed_at": "2024-01-15T10:15:00Z"
+  "createdAt": "2024-01-15T10:00:00Z",
+  "startedAt": "2024-01-15T10:00:05Z",
+  "completedAt": "2024-01-15T10:15:00Z"
 }
 ```
 
@@ -222,7 +222,7 @@ Streams real-time events using Server-Sent Events (SSE).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `last_event_id` | string | Resume from event ID |
+| `lastEventId` | string | Resume from event ID |
 
 ### Request
 
@@ -254,7 +254,7 @@ data: {"content": "Starting research..."}
 id: evt_124
 
 event: complete
-data: {"status": "completed", "execution_time_ms": 900000}
+data: {"status": "completed", "executionTimeMs": 900000}
 id: evt_125
 ```
 
@@ -313,8 +313,8 @@ curl "https://api.vm0.ai/v1/runs/run_abc123/logs?type=agent&limit=50" \
     }
   ],
   "pagination": {
-    "has_more": true,
-    "next_cursor": "xxx"
+    "hasMore": true,
+    "nextCursor": "xxx"
   }
 }
 ```
@@ -349,17 +349,17 @@ curl https://api.vm0.ai/v1/runs/run_abc123/metrics \
   "data": [
     {
       "timestamp": "2024-01-15T10:00:05Z",
-      "cpu_percent": 25.5,
-      "memory_used_mb": 512,
-      "memory_total_mb": 2048,
-      "disk_used_mb": 100,
-      "disk_total_mb": 1000
+      "cpuPercent": 25.5,
+      "memoryUsedMb": 512,
+      "memoryTotalMb": 2048,
+      "diskUsedMb": 100,
+      "diskTotalMb": 1000
     }
   ],
   "summary": {
-    "avg_cpu_percent": 30.0,
-    "max_memory_used_mb": 1024,
-    "total_duration_ms": 900000
+    "avgCpuPercent": 30.0,
+    "maxMemoryUsedMb": 1024,
+    "totalDurationMs": 900000
   }
 }
 ```
@@ -371,17 +371,17 @@ curl https://api.vm0.ai/v1/runs/run_abc123/metrics \
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique run identifier (prefix: `run_`) |
-| `agent_id` | string | Agent that was executed |
-| `agent_name` | string | Agent name |
+| `agentId` | string | Agent that was executed |
+| `agentName` | string | Agent name |
 | `status` | string | Current status |
 | `prompt` | string | Task prompt |
 | `error` | string | Error message (when failed) |
-| `execution_time_ms` | integer | Total execution time |
-| `checkpoint_id` | string | Checkpoint for resuming |
-| `session_id` | string | Session identifier |
-| `artifact_name` | string | Output artifact name |
-| `artifact_version` | string | Output artifact version |
+| `executionTimeMs` | integer | Total execution time |
+| `checkpointId` | string | Checkpoint for resuming |
+| `sessionId` | string | Session identifier |
+| `artifactName` | string | Output artifact name |
+| `artifactVersion` | string | Output artifact version |
 | `volumes` | object | Input volume versions |
-| `created_at` | string | ISO 8601 creation timestamp |
-| `started_at` | string | ISO 8601 start timestamp |
-| `completed_at` | string | ISO 8601 completion timestamp |
+| `createdAt` | string | ISO 8601 creation timestamp |
+| `startedAt` | string | ISO 8601 start timestamp |
+| `completedAt` | string | ISO 8601 completion timestamp |

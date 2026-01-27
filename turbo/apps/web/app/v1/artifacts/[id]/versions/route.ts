@@ -94,16 +94,16 @@ const router = tsr.router(publicArtifactVersionsContract, {
       body: {
         data: data.map((v) => ({
           id: v.id,
-          artifact_id: artifact.id,
+          artifactId: artifact.id,
           size: Number(v.size),
-          file_count: v.fileCount,
+          fileCount: v.fileCount,
           message: v.message,
-          created_by: v.createdBy,
-          created_at: v.createdAt.toISOString(),
+          createdBy: v.createdBy,
+          createdAt: v.createdAt.toISOString(),
         })),
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };

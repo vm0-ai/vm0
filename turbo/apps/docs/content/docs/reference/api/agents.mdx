@@ -43,14 +43,14 @@ curl "https://api.vm0.ai/v1/agents?name=my-agent" \
     {
       "id": "ag_abc123",
       "name": "my-agent",
-      "current_version_id": "v1_xyz789",
-      "created_at": "2024-01-15T00:00:00Z",
-      "updated_at": "2024-01-15T10:30:00Z"
+      "currentVersionId": "v1_xyz789",
+      "createdAt": "2024-01-15T00:00:00Z",
+      "updatedAt": "2024-01-15T10:30:00Z"
     }
   ],
   "pagination": {
-    "has_more": false,
-    "next_cursor": null
+    "hasMore": false,
+    "nextCursor": null
   }
 }
 ```
@@ -84,9 +84,9 @@ curl https://api.vm0.ai/v1/agents/ag_abc123 \
 {
   "id": "ag_abc123",
   "name": "my-agent",
-  "current_version_id": "v1_xyz789",
-  "created_at": "2024-01-15T00:00:00Z",
-  "updated_at": "2024-01-15T10:30:00Z"
+  "currentVersionId": "v1_xyz789",
+  "createdAt": "2024-01-15T00:00:00Z",
+  "updatedAt": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -127,20 +127,20 @@ curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
   "data": [
     {
       "id": "v1_xyz789",
-      "agent_id": "ag_abc123",
-      "version_number": 2,
-      "created_at": "2024-01-15T10:30:00Z"
+      "agentId": "ag_abc123",
+      "versionNumber": 2,
+      "createdAt": "2024-01-15T10:30:00Z"
     },
     {
       "id": "v1_abc123",
-      "agent_id": "ag_abc123",
-      "version_number": 1,
-      "created_at": "2024-01-15T00:00:00Z"
+      "agentId": "ag_abc123",
+      "versionNumber": 1,
+      "createdAt": "2024-01-15T00:00:00Z"
     }
   ],
   "pagination": {
-    "has_more": false,
-    "next_cursor": null
+    "hasMore": false,
+    "nextCursor": null
   }
 }
 ```
@@ -153,15 +153,15 @@ curl https://api.vm0.ai/v1/agents/ag_abc123/versions \
 |-------|------|-------------|
 | `id` | string | Unique agent identifier (prefix: `ag_`) |
 | `name` | string | Agent name |
-| `current_version_id` | string | ID of the current version |
-| `created_at` | string | ISO 8601 creation timestamp |
-| `updated_at` | string | ISO 8601 last update timestamp |
+| `currentVersionId` | string | ID of the current version |
+| `createdAt` | string | ISO 8601 creation timestamp |
+| `updatedAt` | string | ISO 8601 last update timestamp |
 
 ## Version Object
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique version identifier |
-| `agent_id` | string | Parent agent ID |
-| `version_number` | integer | Sequential version number |
-| `created_at` | string | ISO 8601 creation timestamp |
+| `agentId` | string | Parent agent ID |
+| `versionNumber` | integer | Sequential version number |
+| `createdAt` | string | ISO 8601 creation timestamp |

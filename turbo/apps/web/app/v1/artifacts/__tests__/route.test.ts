@@ -119,7 +119,7 @@ describe("Public API v1 - Artifacts Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.pagination).toBeDefined();
-      expect(data.pagination.has_more).toBeDefined();
+      expect(data.pagination.hasMore).toBeDefined();
     });
 
     it("should support limit parameter", async () => {
@@ -160,7 +160,7 @@ describe("Public API v1 - Artifacts Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBe(testArtifactId);
       expect(data.name).toBe("test-artifact-v1");
-      expect(data.current_version).toBeNull();
+      expect(data.currentVersion).toBeNull();
     });
 
     it("should return 404 for non-existent artifact", async () => {

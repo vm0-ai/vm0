@@ -159,7 +159,7 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.pagination).toBeDefined();
-      expect(data.pagination.has_more).toBe(false);
+      expect(data.pagination.hasMore).toBe(false);
     });
 
     it("should support limit parameter", async () => {
@@ -186,7 +186,7 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(data.data).toBeInstanceOf(Array);
       expect(data.data.length).toBe(1);
       expect(data.data[0].name).toBe("test-agent-v1");
-      expect(data.pagination.has_more).toBe(false);
+      expect(data.pagination.hasMore).toBe(false);
     });
 
     it("should return empty array when name not found", async () => {
@@ -200,8 +200,8 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.data.length).toBe(0);
-      expect(data.pagination.has_more).toBe(false);
-      expect(data.pagination.next_cursor).toBeNull();
+      expect(data.pagination.hasMore).toBe(false);
+      expect(data.pagination.nextCursor).toBeNull();
     });
 
     it("should filter by name case-insensitively", async () => {
@@ -279,9 +279,9 @@ describe("Public API v1 - Agents Endpoints", () => {
       // Each version should have required fields
       const version = data.data[0];
       expect(version.id).toBeDefined();
-      expect(version.agent_id).toBe(testAgentId);
-      expect(version.version_number).toBeDefined();
-      expect(version.created_at).toBeDefined();
+      expect(version.agentId).toBe(testAgentId);
+      expect(version.versionNumber).toBeDefined();
+      expect(version.createdAt).toBeDefined();
     });
 
     it("should return 404 for non-existent agent", async () => {

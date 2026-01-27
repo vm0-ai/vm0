@@ -107,8 +107,8 @@ const router = tsr.router(publicRunByIdContract, {
       status: 200 as const,
       body: {
         id: run.id,
-        agent_id: compose?.id ?? "",
-        agent_name: compose?.name ?? "unknown",
+        agentId: compose?.id ?? "",
+        agentName: compose?.name ?? "unknown",
         status: run.status as
           | "pending"
           | "running"
@@ -117,15 +117,15 @@ const router = tsr.router(publicRunByIdContract, {
           | "timeout"
           | "cancelled",
         prompt: run.prompt,
-        created_at: run.createdAt.toISOString(),
-        started_at: run.startedAt?.toISOString() ?? null,
-        completed_at: run.completedAt?.toISOString() ?? null,
+        createdAt: run.createdAt.toISOString(),
+        startedAt: run.startedAt?.toISOString() ?? null,
+        completedAt: run.completedAt?.toISOString() ?? null,
         error: run.error ?? null,
-        execution_time_ms: executionTimeMs,
-        checkpoint_id: runResult?.checkpointId ?? null,
-        session_id: runResult?.agentSessionId ?? null,
-        artifact_name: runResult?.artifactName ?? null,
-        artifact_version: runResult?.artifactVersion ?? null,
+        executionTimeMs: executionTimeMs,
+        checkpointId: runResult?.checkpointId ?? null,
+        sessionId: runResult?.agentSessionId ?? null,
+        artifactName: runResult?.artifactName ?? null,
+        artifactVersion: runResult?.artifactVersion ?? null,
         volumes: runResult?.volumes,
       },
     };

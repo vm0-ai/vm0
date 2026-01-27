@@ -229,8 +229,8 @@ ${timeFilterStr}
       body: {
         data,
         pagination: {
-          has_more: hasMore,
-          next_cursor: nextCursor,
+          hasMore: hasMore,
+          nextCursor: nextCursor,
         },
       },
     };

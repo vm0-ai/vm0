@@ -21,11 +21,11 @@ const c = initContract();
 export const publicVolumeSchema = z.object({
   id: z.string(),
   name: z.string(),
-  current_version_id: z.string().nullable(),
+  currentVersionId: z.string().nullable(),
   size: z.number(), // Total size in bytes
-  file_count: z.number(),
-  created_at: timestampSchema,
-  updated_at: timestampSchema,
+  fileCount: z.number(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
 });
 
 export type PublicVolume = z.infer<typeof publicVolumeSchema>;
@@ -35,12 +35,12 @@ export type PublicVolume = z.infer<typeof publicVolumeSchema>;
  */
 export const volumeVersionSchema = z.object({
   id: z.string(), // SHA-256 content hash
-  volume_id: z.string(),
+  volumeId: z.string(),
   size: z.number(), // Size in bytes
-  file_count: z.number(),
+  fileCount: z.number(),
   message: z.string().nullable(), // Optional commit message
-  created_by: z.string(),
-  created_at: timestampSchema,
+  createdBy: z.string(),
+  createdAt: timestampSchema,
 });
 
 export type VolumeVersion = z.infer<typeof volumeVersionSchema>;
@@ -49,7 +49,7 @@ export type VolumeVersion = z.infer<typeof volumeVersionSchema>;
  * Volume detail schema (includes current version info)
  */
 export const publicVolumeDetailSchema = publicVolumeSchema.extend({
-  current_version: volumeVersionSchema.nullable(),
+  currentVersion: volumeVersionSchema.nullable(),
 });
 
 export type PublicVolumeDetail = z.infer<typeof publicVolumeDetailSchema>;
@@ -143,7 +143,7 @@ export const publicVolumeDownloadContract = c.router({
       id: z.string().min(1, "Volume ID is required"),
     }),
     query: z.object({
-      version_id: z.string().optional(), // Defaults to current version
+      versionId: z.string().optional(), // Defaults to current version
     }),
     responses: {
       302: z.undefined(), // Redirect to presigned URL

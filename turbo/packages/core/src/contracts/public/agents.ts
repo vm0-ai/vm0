@@ -21,9 +21,9 @@ const c = initContract();
 export const publicAgentSchema = z.object({
   id: z.string(),
   name: z.string(),
-  current_version_id: z.string().nullable(),
-  created_at: timestampSchema,
-  updated_at: timestampSchema,
+  currentVersionId: z.string().nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
 });
 
 export type PublicAgent = z.infer<typeof publicAgentSchema>;
@@ -33,9 +33,9 @@ export type PublicAgent = z.infer<typeof publicAgentSchema>;
  */
 export const agentVersionSchema = z.object({
   id: z.string(),
-  agent_id: z.string(),
-  version_number: z.number(),
-  created_at: timestampSchema,
+  agentId: z.string(),
+  versionNumber: z.number(),
+  createdAt: timestampSchema,
 });
 
 export type AgentVersion = z.infer<typeof agentVersionSchema>;

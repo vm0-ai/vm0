@@ -1021,7 +1021,7 @@ class ApiClient {
     name?: string;
   }): Promise<{
     data: PublicAgent[];
-    pagination: { next_cursor: string | null; has_more: boolean };
+    pagination: { nextCursor: string | null; hasMore: boolean };
   }> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -1051,7 +1051,7 @@ class ApiClient {
     limit?: number;
   }): Promise<{
     data: PublicArtifact[];
-    pagination: { next_cursor: string | null; has_more: boolean };
+    pagination: { nextCursor: string | null; hasMore: boolean };
   }> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -1105,7 +1105,7 @@ class ApiClient {
     limit?: number;
   }): Promise<{
     data: PublicVolume[];
-    pagination: { next_cursor: string | null; has_more: boolean };
+    pagination: { nextCursor: string | null; hasMore: boolean };
   }> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();

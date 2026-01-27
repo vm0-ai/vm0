@@ -81,9 +81,9 @@ const router = tsr.router(publicAgentByIdContract, {
       body: {
         id: agent.id,
         name: agent.name,
-        current_version_id: agent.headVersionId,
-        created_at: agent.createdAt.toISOString(),
-        updated_at: agent.updatedAt.toISOString(),
+        currentVersionId: agent.headVersionId,
+        createdAt: agent.createdAt.toISOString(),
+        updatedAt: agent.updatedAt.toISOString(),
       },
     };
   },
