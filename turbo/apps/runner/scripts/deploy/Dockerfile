@@ -50,6 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# Install Bun for fast script execution
+RUN curl -fsSL https://bun.sh/install | bash \
+    && ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
 # Install Claude Code CLI globally (matching e2b template)
 RUN npm install -g @anthropic-ai/claude-code@2.1.12
 
