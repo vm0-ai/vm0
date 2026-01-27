@@ -837,7 +837,7 @@ jobs:
         run: |
           RUNNER_DIR="/opt/vm0-runner/${JOB_REF}"
           # Use numeric hash of job-ref for proxy port to ensure consistency
-          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
+          PROXY_PORT=$((8080 + 10#$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -948,7 +948,7 @@ jobs:
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
-          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
+          PROXY_PORT=$((8080 + 10#$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
