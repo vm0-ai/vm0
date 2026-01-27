@@ -4,6 +4,7 @@ import {
   isInteractive,
   promptText,
   promptSelect,
+  promptConfirm,
 } from "../../lib/utils/prompt-utils";
 import {
   generateCronExpression,
@@ -16,7 +17,13 @@ import {
   extractRequiredConfiguration,
   type ScheduleFrequency,
 } from "../../lib/domain/schedule-utils";
-import { getComposeByName, deploySchedule, listSchedules } from "../../lib/api";
+import {
+  getComposeByName,
+  deploySchedule,
+  listSchedules,
+  enableSchedule,
+  ApiRequestError,
+} from "../../lib/api";
 import { gatherConfiguration } from "./gather-configuration";
 
 const FREQUENCY_CHOICES = [
@@ -164,6 +171,7 @@ interface SetupOptions {
   var?: string[];
   secret?: string[];
   artifactName: string;
+  enable?: boolean;
 }
 
 interface ExistingScheduleDefaults {
@@ -180,6 +188,7 @@ interface ScheduleListItem {
   prompt: string;
   vars?: Record<string, string> | null;
   secretNames?: string[] | null;
+  enabled?: boolean;
 }
 
 /**
@@ -478,6 +487,16 @@ async function findExistingSchedule(
   return schedules.find((s) => s.composeName === agentName);
 }
 
+interface DeployResult {
+  created: boolean;
+  schedule: {
+    timezone: string;
+    cronExpression?: string | null;
+    nextRunAt?: string | null;
+    atTime?: string | null;
+  };
+}
+
 /**
  * Build and deploy schedule
  */
@@ -494,7 +513,7 @@ async function buildAndDeploy(params: {
   vars: Record<string, string> | undefined;
   secrets: Record<string, string> | undefined;
   artifactName: string;
-}): Promise<void> {
+}): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
 
@@ -527,7 +546,7 @@ async function buildAndDeploy(params: {
     artifactName: params.artifactName,
   });
 
-  displayDeployResult(params.agentName, deployResult);
+  return deployResult;
 }
 
 /**
@@ -550,15 +569,7 @@ function handleSetupError(error: unknown): never {
  */
 function displayDeployResult(
   agentName: string,
-  deployResult: {
-    created: boolean;
-    schedule: {
-      timezone: string;
-      cronExpression?: string | null;
-      nextRunAt?: string | null;
-      atTime?: string | null;
-    };
-  },
+  deployResult: DeployResult,
 ): void {
   if (deployResult.created) {
     console.log(
@@ -588,12 +599,79 @@ function displayDeployResult(
     );
     console.log(chalk.dim(`  At: ${atTimeFormatted}`));
   }
+}
 
-  if (deployResult.created) {
-    console.log();
+/**
+ * Try to enable a schedule, handling errors gracefully
+ */
+async function tryEnableSchedule(
+  scheduleName: string,
+  composeId: string,
+  agentName: string,
+): Promise<void> {
+  try {
+    await enableSchedule({ name: scheduleName, composeId });
     console.log(
-      `  To activate: ${chalk.cyan(`vm0 schedule enable ${agentName}`)}`,
+      chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
     );
+  } catch (error) {
+    console.error(chalk.yellow("⚠ Failed to enable schedule"));
+    if (error instanceof ApiRequestError) {
+      if (error.code === "SCHEDULE_PAST") {
+        console.error(chalk.dim("  Scheduled time has already passed"));
+      } else {
+        console.error(chalk.dim(`  ${error.message}`));
+      }
+    } else if (error instanceof Error) {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+    console.log(
+      `  To enable manually: ${chalk.cyan(`vm0 schedule enable ${agentName}`)}`,
+    );
+  }
+}
+
+/**
+ * Show hint for manual enable command
+ */
+function showEnableHint(agentName: string): void {
+  console.log();
+  console.log(`  To enable: ${chalk.cyan(`vm0 schedule enable ${agentName}`)}`);
+}
+
+/**
+ * Handle schedule enabling after deployment
+ */
+async function handleScheduleEnabling(params: {
+  scheduleName: string;
+  composeId: string;
+  agentName: string;
+  enableFlag: boolean;
+  shouldPromptEnable: boolean;
+}): Promise<void> {
+  const { scheduleName, composeId, agentName, enableFlag, shouldPromptEnable } =
+    params;
+
+  if (enableFlag) {
+    // --enable flag: auto-enable
+    await tryEnableSchedule(scheduleName, composeId, agentName);
+    return;
+  }
+
+  if (shouldPromptEnable && isInteractive()) {
+    // Interactive: prompt user (default: yes)
+    const enableNow = await promptConfirm("Enable this schedule?", true);
+    if (enableNow) {
+      await tryEnableSchedule(scheduleName, composeId, agentName);
+    } else {
+      showEnableHint(agentName);
+    }
+    return;
+  }
+
+  if (shouldPromptEnable) {
+    // Non-interactive without --enable: show hint
+    showEnableHint(agentName);
   }
 }
 
@@ -609,6 +687,7 @@ export const setupCommand = new Command()
   .option("--var <name=value>", "Variable (can be repeated)", collect, [])
   .option("--secret <name=value>", "Secret (can be repeated)", collect, [])
   .option("--artifact-name <name>", "Artifact name", "artifact")
+  .option("-e, --enable", "Enable schedule immediately after creation")
   .action(async (agentName: string, options: SetupOptions) => {
     try {
       // 1. Resolve agent to composeId and get content
@@ -680,7 +759,7 @@ export const setupCommand = new Command()
       // 8. Build trigger and deploy
       // If preserveExistingSecrets is true, send undefined to signal server to preserve existing secrets
       // Otherwise send the gathered secrets (which may be empty if user skipped prompts)
-      await buildAndDeploy({
+      const deployResult = await buildAndDeploy({
         scheduleName,
         composeId,
         agentName,
@@ -697,6 +776,23 @@ export const setupCommand = new Command()
             ? config.secrets
             : undefined,
         artifactName: options.artifactName,
+      });
+
+      // 9. Display deployment result
+      displayDeployResult(agentName, deployResult);
+
+      // 10. Handle schedule enabling
+      // Prompt if: new schedule OR updating a disabled schedule
+      const shouldPromptEnable =
+        deployResult.created ||
+        (existingSchedule !== undefined && !existingSchedule.enabled);
+
+      await handleScheduleEnabling({
+        scheduleName,
+        composeId,
+        agentName,
+        enableFlag: options.enable ?? false,
+        shouldPromptEnable,
       });
     } catch (error) {
       handleSetupError(error);
