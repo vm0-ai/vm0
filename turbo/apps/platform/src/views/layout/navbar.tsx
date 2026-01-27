@@ -1,5 +1,5 @@
 import { IconLayoutSidebar } from "@tabler/icons-react";
-import { ThemeToggle } from "../../components/theme-toggle.tsx";
+import { ThemeToggle } from "../components/theme-toggle.tsx";
 
 interface NavbarProps {
   breadcrumb: string[];

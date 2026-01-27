@@ -19,7 +19,7 @@ export const toggleTheme$ = command(({ get, set }) => {
   set(internalTheme$, newTheme);
   
   // Update the data-theme attribute on the root element
-  document.documentElement.setAttribute("data-theme", newTheme);
+  document.documentElement.dataset.theme = newTheme;
   
   // Store preference in localStorage
   localStorage.setItem("theme", newTheme);
@@ -34,7 +34,7 @@ export const initTheme$ = command(({ set }) => {
   
   if (stored) {
     set(internalTheme$, stored);
-    document.documentElement.setAttribute("data-theme", stored);
+    document.documentElement.dataset.theme = stored;
     return;
   }
   
@@ -42,5 +42,5 @@ export const initTheme$ = command(({ set }) => {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme = prefersDark ? "dark" : "light";
   set(internalTheme$, theme);
-  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.dataset.theme = theme;
 });
