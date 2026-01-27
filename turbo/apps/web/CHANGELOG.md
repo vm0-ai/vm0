@@ -1,5 +1,13 @@
 # Changelog
 
+## [10.9.0](https://github.com/vm0-ai/vm0/compare/web-v10.8.0...web-v10.9.0) (2026-01-27)
+
+
+### Features
+
+* enhance auth pages with brand gradient background and improved styling ([#1676](https://github.com/vm0-ai/vm0/issues/1676)) ([ab5fc44](https://github.com/vm0-ai/vm0/commit/ab5fc4400f4065d0548116b3a1bff0c807f425db))
+* improve cli auth success page ui ([#1663](https://github.com/vm0-ai/vm0/issues/1663)) ([af71dfe](https://github.com/vm0-ai/vm0/commit/af71dfe438b5d13854996880fa5d62c8cafb3d7f))
+
 ## [10.8.0](https://github.com/vm0-ai/vm0/compare/web-v10.7.2...web-v10.8.0) (2026-01-26)
 
 
