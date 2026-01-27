@@ -286,5 +286,25 @@ export {
   type AblyTokenRequest,
 } from "./realtime";
 
+export {
+  platformLogsListContract,
+  platformLogsByIdContract,
+  platformLogStatusSchema,
+  platformLogEntrySchema,
+  paginationSchema,
+  platformLogsListResponseSchema,
+  artifactSchema,
+  platformLogDetailSchema,
+  type PlatformLogsListContract,
+  type PlatformLogsByIdContract,
+  // Inferred types
+  type PlatformLogStatus,
+  type PlatformLogEntry,
+  type Pagination,
+  type PlatformLogsListResponse,
+  type Artifact,
+  type PlatformLogDetail,
+} from "./platform";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";
