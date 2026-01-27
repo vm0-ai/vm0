@@ -20,8 +20,9 @@
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::process::Command;
-use std::{env, fs};
+use std::process::{Child, Command, Stdio};
+use std::time::Duration;
+use std::{env, fs, thread};
 
 // Vsock constants (only used on Linux)
 #[cfg(target_os = "linux")]
@@ -100,13 +101,61 @@ fn encode_write_file_result(seq: u32, success: bool, error: &str) -> Vec<u8> {
     encode(MSG_WRITE_FILE_RESULT, seq, &payload)
 }
 
+/// Exit code returned when command times out (same as bash/Python)
+const EXIT_CODE_TIMEOUT: i32 = 124;
+
+/// Run a child process with timeout. Returns (exit_code, stdout, stderr).
+/// Returns exit code 124 on timeout (same as bash timeout command).
+fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
+    use std::sync::mpsc;
+
+    let timeout = Duration::from_millis(timeout_ms as u64);
+    let child_id = child.id();
+
+    // Channel to signal when process completes
+    let (tx, rx) = mpsc::channel::<()>();
+
+    // Spawn a thread that will kill the process after timeout
+    thread::spawn(move || {
+        // Wait for either timeout or signal that process completed
+        if rx.recv_timeout(timeout).is_err() {
+            // Timeout reached, kill the process
+            unsafe {
+                libc::kill(child_id as i32, libc::SIGKILL);
+            }
+        }
+    });
+
+    // Wait for the process to complete
+    let output = child.wait_with_output();
+
+    // Signal that process completed (killer thread will exit)
+    let _ = tx.send(());
+
+    match output {
+        Ok(output) => {
+            // Check if process was killed by our timeout
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if output.status.signal() == Some(libc::SIGKILL) {
+                    return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
+                }
+            }
+            let exit_code = output.status.code().unwrap_or(1);
+            (exit_code, output.stdout, output.stderr)
+        }
+        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+    }
+}
+
 /// Handle exec message
 fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     if payload.len() < 8 {
         return (1, Vec::new(), b"Invalid exec payload".to_vec());
     }
 
-    let _timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]); // TODO: implement timeout
+    let timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let cmd_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
 
     if payload.len() < 8 + cmd_len {
@@ -123,18 +172,17 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     } else {
         command.to_string()
     };
-    log("INFO", &format!("exec: {}", preview));
+    log("INFO", &format!("exec: {} (timeout={}ms)", preview, timeout_ms));
 
-    let result = Command::new("sh")
+    let child = Command::new("sh")
         .arg("-c")
         .arg(command)
-        .output();
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
 
-    match result {
-        Ok(output) => {
-            let exit_code = output.status.code().unwrap_or(1);
-            (exit_code, output.stdout, output.stderr)
-        }
+    match child {
+        Ok(child) => wait_with_timeout(child, timeout_ms),
         Err(e) => (1, Vec::new(), format!("Failed to execute: {}", e).into_bytes()),
     }
 }
@@ -176,30 +224,40 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
     );
 
     if use_sudo {
-        // Use sudo tee to write
+        // Use sudo tee to write (30s timeout, same as Python)
+        const SUDO_TEE_TIMEOUT_MS: u32 = 30_000;
+
         let mut child = match Command::new("sudo")
             .arg("tee")
             .arg(path)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
         {
             Ok(c) => c,
             Err(e) => return (false, format!("Failed to spawn sudo tee: {}", e)),
         };
 
-        if let Some(ref mut stdin) = child.stdin {
+        // Write content to stdin and close it
+        if let Some(mut stdin) = child.stdin.take() {
             if let Err(e) = stdin.write_all(content) {
+                let _ = child.kill();
                 return (false, format!("Failed to write to stdin: {}", e));
             }
+            // stdin is dropped here, closing the pipe
         }
 
-        match child.wait() {
-            Ok(status) if status.success() => (true, String::new()),
-            Ok(status) => (false, format!("sudo tee failed with status: {}", status)),
-            Err(e) => (false, format!("Failed to wait for sudo tee: {}", e)),
+        // Wait with timeout
+        let (exit_code, _, stderr) = wait_with_timeout(child, SUDO_TEE_TIMEOUT_MS);
+        if exit_code == EXIT_CODE_TIMEOUT {
+            return (false, "sudo tee timed out".to_string());
         }
+        if exit_code != 0 {
+            let stderr_str = String::from_utf8_lossy(&stderr);
+            return (false, format!("sudo tee failed: {}", stderr_str));
+        }
+        (true, String::new())
     } else {
         // Direct write
         if let Some(parent) = std::path::Path::new(path).parent() {
