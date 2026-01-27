@@ -16,6 +16,8 @@
 #
 set -e
 
+echo "[vm-init] start"
+
 # Mount read-only base filesystem (squashfs on /dev/vda)
 # Note: /rom directory is pre-created in the squashfs image during build
 mount -t squashfs -o ro /dev/vda /rom
@@ -59,4 +61,5 @@ mount -t sysfs sys /sys
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Start vsock-agent with tini for proper signal handling and zombie reaping
+echo "[vm-init] starting vsock-agent"
 exec /usr/bin/tini -- /usr/bin/python3 /usr/local/bin/vm0-agent/vsock-agent.py
