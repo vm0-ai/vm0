@@ -61,7 +61,8 @@ teardown() {
     assert_output --partial "$AGENT_NAME"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
-    assert_output --partial "enabled"
+    # Schedules now default to disabled and require explicit enabling
+    assert_output --partial "disabled"
 }
 
 @test "vm0 schedule setup should update existing schedule" {
@@ -230,7 +231,8 @@ teardown() {
     assert_success
     assert_output --partial "$AGENT_NAME"
     assert_output --partial "AGENT"
-    assert_output --partial "enabled"
+    # Schedules now default to disabled and require explicit enabling
+    assert_output --partial "disabled"
 }
 
 @test "vm0 schedule list should show empty message when no schedules" {
@@ -261,7 +263,8 @@ teardown() {
     assert_output --partial "Agent:"
     assert_output --partial "$AGENT_NAME"
     assert_output --partial "Status:"
-    assert_output --partial "enabled"
+    # Schedules now default to disabled and require explicit enabling
+    assert_output --partial "disabled"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
 }
@@ -435,7 +438,8 @@ teardown() {
     assert_success
     assert_output --partial "Agent:"
     assert_output --partial "$AGENT_NAME"
-    assert_output --partial "enabled"
+    # Schedules now default to disabled and require explicit enabling
+    assert_output --partial "disabled"
 }
 
 @test "vm0 schedule disable should work from any directory (global resolution)" {
