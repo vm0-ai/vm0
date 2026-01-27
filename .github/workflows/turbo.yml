@@ -835,8 +835,7 @@ jobs:
           # Copy binary to deploy directory for ansible to pick up
           cp target/aarch64-unknown-linux-musl/release/vsock-agent \
             ../turbo/apps/runner/scripts/deploy/vsock-agent
-          echo "Built vsock-agent for ARM64:"
-          file ../turbo/apps/runner/scripts/deploy/vsock-agent
+          ls -la ../turbo/apps/runner/scripts/deploy/vsock-agent
 
       - name: Build runner bundle
         run: |
