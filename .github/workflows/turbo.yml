@@ -171,6 +171,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      # TODO: Move Rust to vm0-toolchain Docker image
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core

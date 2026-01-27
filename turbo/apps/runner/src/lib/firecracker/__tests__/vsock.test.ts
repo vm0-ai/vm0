@@ -14,16 +14,16 @@ import * as os from "node:os";
 import { VsockClient } from "../vsock.js";
 
 /**
- * Integration tests for VsockClient and vsock-agent.py
+ * Integration tests for VsockClient and vsock-agent (Rust)
  *
  * These tests use Guest-initiated connection mode (same as production):
  * - Host (VsockClient) listens on "{socketPath}_1000"
  * - Agent connects to that socket
  */
 
-const AGENT_SCRIPT = path.resolve(
+const AGENT_BINARY = path.resolve(
   __dirname,
-  "../../../../scripts/deploy/vsock-agent.py",
+  "../../../../../../../crates/target/debug/vsock-agent",
 );
 
 const VSOCK_PORT = 1000;
@@ -33,15 +33,11 @@ function createSocketPath(): string {
   return path.join(os.tmpdir(), `vsock-test-${process.pid}-${Date.now()}.sock`);
 }
 
-// Helper to start the Python agent (connects to host)
+// Helper to start the Rust agent (connects to host)
 function startAgent(listenerPath: string): ChildProcess {
-  const agent = spawn(
-    "python3",
-    [AGENT_SCRIPT, "--unix-socket", listenerPath],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const agent = spawn(AGENT_BINARY, ["--unix-socket", listenerPath], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return agent;
 }
 
@@ -84,9 +80,12 @@ describe("VsockClient Integration Tests", () => {
   let client: VsockClient | null = null;
 
   beforeAll(() => {
-    // Verify agent script exists
-    if (!fs.existsSync(AGENT_SCRIPT)) {
-      throw new Error(`Agent script not found: ${AGENT_SCRIPT}`);
+    // Verify agent binary exists (run `cargo build` in crates/ first)
+    if (!fs.existsSync(AGENT_BINARY)) {
+      throw new Error(
+        `Agent binary not found: ${AGENT_BINARY}\n` +
+          `Run 'cargo build' in the crates/ directory first.`,
+      );
     }
   });
 
