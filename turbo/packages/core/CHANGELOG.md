@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.3.0](https://github.com/vm0-ai/vm0/compare/core-v6.2.0...core-v6.3.0) (2026-01-27)
+
+
+### Features
+
+* **api:** add platform logs API endpoints ([#1717](https://github.com/vm0-ai/vm0/issues/1717)) ([9c87393](https://github.com/vm0-ai/vm0/commit/9c873936dec218536a1ffa810eb2d9fd7032d373))
+
 ## [6.2.0](https://github.com/vm0-ai/vm0/compare/core-v6.1.0...core-v6.2.0) (2026-01-27)
 
 

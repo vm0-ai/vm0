@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/vm0-ai/vm0/compare/docs-v1.1.0...docs-v1.1.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* **docs:** update environment variables to include credentials and fix env-file ([#1714](https://github.com/vm0-ai/vm0/issues/1714)) ([57b91bb](https://github.com/vm0-ai/vm0/commit/57b91bb7d1c26fa63c78b77de26ac9d75b9eafc3)), closes [#1713](https://github.com/vm0-ai/vm0/issues/1713)
+
 ## [1.1.0](https://github.com/vm0-ai/vm0/compare/docs-v1.0.0...docs-v1.1.0) (2026-01-27)
 
 

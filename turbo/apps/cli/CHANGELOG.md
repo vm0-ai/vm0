@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.1.1](https://github.com/vm0-ai/vm0/compare/cli-v8.1.0...cli-v8.1.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* **cli:** add default msw handler for /api/scope endpoint ([#1709](https://github.com/vm0-ai/vm0/issues/1709)) ([c1ec2b3](https://github.com/vm0-ai/vm0/commit/c1ec2b3988977f63a9c067298b296dd9417eb184))
+* **cli:** fix schedule setup secrets not sent for new schedules ([#1716](https://github.com/vm0-ai/vm0/issues/1716)) ([7d141b1](https://github.com/vm0-ai/vm0/commit/7d141b176edfc754930a46713f2dfbece210b0b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.3.0
+
 ## [8.1.0](https://github.com/vm0-ai/vm0/compare/cli-v8.0.2...cli-v8.1.0) (2026-01-27)
 
 

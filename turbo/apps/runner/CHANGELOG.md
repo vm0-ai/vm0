@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.2.0](https://github.com/vm0-ai/vm0/compare/runner-v3.1.0...runner-v3.2.0) (2026-01-27)
+
+
+### Features
+
+* **runner:** add startup logs to vm-init.sh ([#1719](https://github.com/vm0-ai/vm0/issues/1719)) ([91131b4](https://github.com/vm0-ai/vm0/commit/91131b418524ab35cf3194736cef9e8f79f19335))
+
+
+### Bug Fixes
+
+* **runner:** use 3-digit milliseconds in timing format ([#1706](https://github.com/vm0-ai/vm0/issues/1706)) ([dfa4d96](https://github.com/vm0-ai/vm0/commit/dfa4d9699816d59e389f9614897e078b79f36b34))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.3.0
+
 ## [3.1.0](https://github.com/vm0-ai/vm0/compare/runner-v3.0.6...runner-v3.1.0) (2026-01-27)
 
 

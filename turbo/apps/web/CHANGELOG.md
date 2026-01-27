@@ -1,5 +1,19 @@
 # Changelog
 
+## [10.12.0](https://github.com/vm0-ai/vm0/compare/web-v10.11.0...web-v10.12.0) (2026-01-27)
+
+
+### Features
+
+* **api:** add platform logs API endpoints ([#1717](https://github.com/vm0-ai/vm0/issues/1717)) ([9c87393](https://github.com/vm0-ai/vm0/commit/9c873936dec218536a1ffa810eb2d9fd7032d373))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.3.0
+
 ## [10.11.0](https://github.com/vm0-ai/vm0/compare/web-v10.10.0...web-v10.11.0) (2026-01-27)
 
 
